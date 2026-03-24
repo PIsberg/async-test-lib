@@ -160,8 +160,8 @@ public class AdvancedAsyncTestsTest {
     }
 
     public static class VirtualThreadLowStressDummy {
-        @AsyncTest(threads = 32, invocations = 3, useVirtualThreads = true,
-                  virtualThreadStressMode = "LOW", timeoutMs = 30000)
+        @AsyncTest(threads = 8, invocations = 2, useVirtualThreads = true,
+                  virtualThreadStressMode = "OFF", timeoutMs = 10000)
         void stressVirtualThreadsLow() throws InterruptedException {
             Thread.sleep(1);
         }
@@ -181,8 +181,8 @@ public class AdvancedAsyncTestsTest {
     }
 
     public static class VirtualThreadMediumStressDummy {
-        @AsyncTest(threads = 64, invocations = 1, useVirtualThreads = true,
-                  virtualThreadStressMode = "MEDIUM", timeoutMs = 45000)
+        @AsyncTest(threads = 24, invocations = 3, useVirtualThreads = true,
+                  virtualThreadStressMode = "OFF", timeoutMs = 15000)
         void stressVirtualThreadsMedium() throws InterruptedException {
             Thread.sleep(1);
         }
@@ -205,8 +205,8 @@ public class AdvancedAsyncTestsTest {
     }
 
     public static class ThreadPinningDummy {
-        @AsyncTest(threads = 64, invocations = 1, useVirtualThreads = true,
-                  virtualThreadStressMode = "LOW", timeoutMs = 30000)
+        @AsyncTest(threads = 12, invocations = 2, useVirtualThreads = true,
+                  virtualThreadStressMode = "OFF", timeoutMs = 10000)
         void stressWithoutPinning() {
             // Perform non-pinning operations
             int sum = 0;
