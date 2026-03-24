@@ -1,0 +1,120 @@
+name: Tests & Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        java-version: [ '21' ]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: maven
+      
+      - name: Run tests
+        run: mvn clean test
+      
+      - name: Generate coverage report
+        run: mvn jacoco:report
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./target/site/jacoco/jacoco.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+  build:
+    name: Build Maven Project
+    runs-on: ubuntu-latest
+    needs: test
+    
+    strategy:
+      matrix:
+        java-version: [ '21' ]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: maven
+      
+      - name: Compile and build
+        run: mvn clean package -DskipTests
+      
+      - name: Display build output
+        run: ls -lah target/
+      
+      - name: Upload JAR artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: async-test-library-java-${{ matrix.java-version }}
+          path: target/async-test-*.jar
+          retention-days: 30
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: test-reports-java-${{ matrix.java-version }}
+          path: target/surefire-reports/
+          retention-days: 7
+
+  publish-docs:
+    name: Build Documentation
+    runs-on: ubuntu-latest
+    needs: [ test, build ]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    strategy:
+      matrix:
+        java-version: [ '21' ]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: maven
+      
+      - name: Generate Javadoc
+        run: mvn javadoc:javadoc
+      
+      - name: Generate coverage report
+        run: mvn jacoco:report
+      
+      - name: Display documentation output
+        run: ls -lah target/apidocs/ target/site/jacoco/
+      
+      - name: Upload Javadoc artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: javadoc-java-${{ matrix.java-version }}
+          path: target/apidocs/
+          retention-days: 30
+
