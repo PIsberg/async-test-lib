@@ -103,18 +103,22 @@ jobs:
           cache: maven
       
       - name: Generate Javadoc
-        run: mvn javadoc:javadoc
-      
-      - name: Generate coverage report
-        run: mvn jacoco:report
+        run: mvn test javadoc:javadoc jacoco:report
       
       - name: Display documentation output
-        run: ls -lah target/apidocs/ target/site/jacoco/
+        run: ls -lah target/site/apidocs/ target/site/jacoco/
       
       - name: Upload Javadoc artifacts
         uses: actions/upload-artifact@v4
         with:
           name: javadoc-java-${{ matrix.java-version }}
-          path: target/apidocs/
+          path: target/site/apidocs/
+          retention-days: 30
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-java-${{ matrix.java-version }}
+          path: target/site/jacoco/
           retention-days: 30
 
