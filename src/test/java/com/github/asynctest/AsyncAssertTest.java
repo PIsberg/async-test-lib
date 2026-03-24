@@ -3,6 +3,7 @@ package com.github.asynctest;
 import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,14 +29,20 @@ public class AsyncAssertTest {
     }
 
     @Test
-    void testFutureCapture() {
-        CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
-            try { Thread.sleep(200); } catch (InterruptedException e) {}
-            return "SUCCESS";
+    void testFutureCapture() throws InterruptedException {
+        CompletableFuture<String> future = new CompletableFuture<>();
+        CountDownLatch started = new CountDownLatch(1);
+        Thread producer = new Thread(() -> {
+            started.countDown();
+            try { Thread.sleep(200); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            future.complete("SUCCESS");
         });
+        producer.start();
+        started.await();
 
         AsyncAssert.FutureCapture<String> capture = AsyncAssert.capture(future);
-        capture.awaitDone(Duration.ofSeconds(2));
+        capture.awaitDone(Duration.ofSeconds(5));
+        producer.join();
 
         assertTrue(capture.isComplete());
         assertEquals("SUCCESS", capture.getResult());

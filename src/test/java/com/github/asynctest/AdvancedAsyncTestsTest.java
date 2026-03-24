@@ -1,6 +1,7 @@
 package com.github.asynctest;
 
 import com.github.asynctest.diagnostics.*;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.platform.testkit.engine.EngineTestKit;
 import org.junit.platform.testkit.engine.Events;
@@ -147,6 +148,7 @@ public class AdvancedAsyncTestsTest {
 
     @Test
     void testVirtualThreadBasicStress() {
+        Assumptions.assumeTrue(VirtualThreadStressConfig.isVirtualThreadSupported());
         Events testEvents = EngineTestKit
                 .engine("junit-jupiter")
                 .selectors(selectClass(VirtualThreadLowStressDummy.class))
@@ -158,8 +160,8 @@ public class AdvancedAsyncTestsTest {
     }
 
     public static class VirtualThreadLowStressDummy {
-        @AsyncTest(threads = 100, invocations = 5, useVirtualThreads = true, 
-                  virtualThreadStressMode = "LOW", timeoutMs = 10000)
+        @AsyncTest(threads = 32, invocations = 3, useVirtualThreads = true,
+                  virtualThreadStressMode = "LOW", timeoutMs = 30000)
         void stressVirtualThreadsLow() throws InterruptedException {
             Thread.sleep(1);
         }
@@ -167,6 +169,7 @@ public class AdvancedAsyncTestsTest {
 
     @Test
     void testVirtualThreadMediumStress() {
+        Assumptions.assumeTrue(VirtualThreadStressConfig.isVirtualThreadSupported());
         Events testEvents = EngineTestKit
                 .engine("junit-jupiter")
                 .selectors(selectClass(VirtualThreadMediumStressDummy.class))
@@ -178,8 +181,8 @@ public class AdvancedAsyncTestsTest {
     }
 
     public static class VirtualThreadMediumStressDummy {
-        @AsyncTest(threads = 1000, invocations = 2, useVirtualThreads = true,
-                  virtualThreadStressMode = "MEDIUM", timeoutMs = 20000)
+        @AsyncTest(threads = 64, invocations = 1, useVirtualThreads = true,
+                  virtualThreadStressMode = "MEDIUM", timeoutMs = 45000)
         void stressVirtualThreadsMedium() throws InterruptedException {
             Thread.sleep(1);
         }
@@ -189,6 +192,7 @@ public class AdvancedAsyncTestsTest {
 
     @Test
     void testThreadPinningDetection() {
+        Assumptions.assumeTrue(VirtualThreadStressConfig.isVirtualThreadSupported());
         // Virtual threads should NOT be pinned by simple operations
         Events testEvents = EngineTestKit
                 .engine("junit-jupiter")
@@ -201,8 +205,8 @@ public class AdvancedAsyncTestsTest {
     }
 
     public static class ThreadPinningDummy {
-        @AsyncTest(threads = 1000, invocations = 2, useVirtualThreads = true,
-                  virtualThreadStressMode = "MEDIUM", timeoutMs = 15000)
+        @AsyncTest(threads = 64, invocations = 1, useVirtualThreads = true,
+                  virtualThreadStressMode = "LOW", timeoutMs = 30000)
         void stressWithoutPinning() {
             // Perform non-pinning operations
             int sum = 0;

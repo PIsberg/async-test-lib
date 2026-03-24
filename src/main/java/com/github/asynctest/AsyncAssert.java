@@ -3,6 +3,9 @@ package com.github.asynctest;
 import java.time.Duration;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class AsyncAssert {
@@ -15,10 +18,9 @@ public class AsyncAssert {
     }
 
     public static void awaitUntil(Callable<Boolean> condition, Duration timeout, Duration pollInterval) {
-        long start = System.currentTimeMillis();
-        long max = start + timeout.toMillis();
+        long deadline = System.nanoTime() + timeout.toNanos();
 
-        while (System.currentTimeMillis() < max) {
+        while (System.nanoTime() < deadline) {
             try {
                 if (Boolean.TRUE.equals(condition.call())) {
                     return;
@@ -46,11 +48,13 @@ public class AsyncAssert {
     }
     
     public static class FutureCapture<T> {
+        private final CompletableFuture<T> future;
         private final AtomicReference<T> result = new AtomicReference<>();
         private final AtomicReference<Throwable> error = new AtomicReference<>();
         private volatile boolean complete = false;
 
         public FutureCapture(CompletableFuture<T> future) {
+            this.future = future;
             future.whenComplete((res, err) -> {
                 result.set(res);
                 error.set(err);
@@ -59,7 +63,19 @@ public class AsyncAssert {
         }
 
         public void awaitDone(Duration timeout) {
-            awaitUntil(() -> complete, timeout);
+            try {
+                future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                throw new AssertionError("Condition not met within " + timeout.toMillis() + " ms", e);
+            } catch (ExecutionException e) {
+                Throwable cause = e.getCause();
+                error.set(cause != null ? cause : e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError("Polling interrupted", e);
+            }
+
+            awaitUntil(() -> complete, timeout, Duration.ofMillis(1));
         }
 
         public T getResult() { return result.get(); }

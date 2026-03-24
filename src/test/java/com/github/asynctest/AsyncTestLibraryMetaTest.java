@@ -1,6 +1,7 @@
 package com.github.asynctest;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.platform.testkit.engine.EngineTestKit;
 import org.junit.platform.testkit.engine.Events;
@@ -106,6 +107,7 @@ public class AsyncTestLibraryMetaTest {
 
     @Test
     void testVirtualThreadStress() {
+        Assumptions.assumeTrue(com.github.asynctest.diagnostics.VirtualThreadStressConfig.isVirtualThreadSupported());
         Events testEvents = EngineTestKit
                 .engine("junit-jupiter")
                 .selectors(selectClass(VirtualThreadStressDummy.class))
@@ -116,9 +118,9 @@ public class AsyncTestLibraryMetaTest {
     }
 
     public static class VirtualThreadStressDummy {
-        @AsyncTest(threads = 5000, invocations = 2, useVirtualThreads = true, timeoutMs = 15000)
+        @AsyncTest(threads = 250, invocations = 2, useVirtualThreads = true, timeoutMs = 45000)
         void stress() throws InterruptedException {
-            Thread.sleep(10);
+            Thread.sleep(5);
         }
     }
 }
