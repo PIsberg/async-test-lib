@@ -67,14 +67,14 @@ jobs:
         run: ls -lah target/
       
       - name: Upload JAR artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: async-test-library-java-${{ matrix.java-version }}
           path: target/async-test-*.jar
           retention-days: 30
       
       - name: Upload test results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-reports-java-${{ matrix.java-version }}
@@ -112,7 +112,7 @@ jobs:
         run: ls -lah target/apidocs/ target/site/jacoco/
       
       - name: Upload Javadoc artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: javadoc-java-${{ matrix.java-version }}
           path: target/apidocs/
