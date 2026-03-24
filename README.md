@@ -14,7 +14,7 @@ Concurrency bugs are the most elusive and costly bugs in production systems. The
 **async-test** is an enterprise-grade testing framework that makes concurrency bugs **reproducible and detectable**. Rather than hoping random thread scheduling will expose bugs, `async-test` **forces them to happen** using synchronized barriers and then **diagnoses exactly what went wrong** using specialized detectors.
 
 ### Key Insight
-The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **20+ specialized detectors** identify the exact problem:
+The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **20 specialized detectors** identify the exact problem:
 
 - **Deadlocks** with lock chain analysis showing which threads are waiting for which locks
 - **Memory visibility issues** by tracking field values across invocations
@@ -78,7 +78,7 @@ Rather than deploying code hoping there are no concurrency bugs, `async-test` he
 
 ---
 
-A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **20+ specialized problem detectors**.
+A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **20 specialized problem detectors**.
 
 Catches race conditions, deadlocks, memory visibility issues, livelocks, false sharing, ABA problems, lock ordering violations, constructor safety issues, thread pool problems, and more.
 
@@ -92,15 +92,16 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 2. **Barrier Synchronization**: We spawn the requested number of threads (using traditional Platform threads or lightweight Virtual threads). Crucially, we place a `CyclicBarrier` exactly one CPU instruction before your test code executes.
 3. **Forced Collisions**: All threads are paused at the barrier. Once all threads are ready, the barrier is broken and they are released simultaneously. This guarantees intense thread contention and maximizes the probability of catching race conditions and memory visibility bugs.
 4. **Invocation Looping**: The entire concurrent barrage is repeated `invocations` times round-robin to ensure statistically significant stress testing.
-5. **Advanced Diagnostics**: If the execution exceeds the defined `timeoutMs`, we run 20+ specialized problem detectors:
+5. **Advanced Diagnostics**: If the execution exceeds the defined `timeoutMs`, we run specialized detectors:
    - **Phase 1**: Core issues (deadlocks, visibility, livelocks, JMM)
    - **Phase 2**: Advanced issues (false sharing, ABA, fairness, pipelines)
+   - **Phase 3**: Race access tracking, ThreadLocal leaks, spin loops, atomicity, interrupts
 
 ## Features
 
 ### Core Capabilities
 - ✅ **Race Condition Forcing**: CyclicBarrier synchronizes threads for maximum contention
-- ✅ **20+ Problem Detectors**: Comprehensive coverage of concurrency issues
+- ✅ **20 Problem Detectors**: Comprehensive coverage of concurrency issues
 - ✅ **Virtual Threads Support**: Native support for Project Loom (Java 21+)
 - ✅ **Rich Diagnostics**: Detailed reports with actionable fix suggestions
 - ✅ **Zero Default Overhead**: Advanced features are opt-in
@@ -127,6 +128,13 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 13. **Memory Ordering** - CPU reordering and stale reads
 14. **Async Pipelines** - Event flow and signal loss tracking
 15. **Read-Write Locks** - Fairness and writer starvation
+
+### Phase 3: Correctness Monitors (5)
+16. **Race Conditions** - Cross-thread field access tracking
+17. **ThreadLocal Leaks** - Missing `remove()` cleanup detection
+18. **Busy Waiting** - Spin loop and tight polling detection
+19. **Atomicity Violations** - Check-then-act and TOCTOU validation
+20. **Interrupt Mishandling** - Ignored `InterruptedException` monitoring
 
 ## Quick Start
 
@@ -208,6 +216,11 @@ void stressWithVirtualThreads() {
 | `detectMemoryOrderingViolations` | boolean | false | Detect reordering issues |
 | `monitorAsyncPipeline` | boolean | false | Track async event flow |
 | `monitorReadWriteLockFairness` | boolean | false | Monitor RWLock fairness |
+| `detectRaceConditions` | boolean | false | Track unsynchronized cross-thread field access |
+| `detectThreadLocalLeaks` | boolean | false | Detect ThreadLocal values that are not cleaned up |
+| `detectBusyWaiting` | boolean | false | Detect spin loops and tight polling |
+| `detectAtomicityViolations` | boolean | false | Detect non-atomic compound operations |
+| `detectInterruptMishandling` | boolean | false | Detect swallowed interrupts and missing restoration |
 
 ## Phase 1: Core Features
 
@@ -350,6 +363,43 @@ void testPipeline() { }
 ```java
 @AsyncTest(monitorReadWriteLockFairness = true)
 void testRWLockFairness() { }
+```
+
+## Phase 3: Runtime Misuse Detectors
+
+### 1. Race Condition Detection
+**Problem**: Multiple threads read and write the same field without coordination
+```java
+@AsyncTest(detectRaceConditions = true)
+void testSharedState() { }
+```
+
+### 2. ThreadLocal Leak Detection
+**Problem**: ThreadLocal values survive task completion and leak across reused workers
+```java
+@AsyncTest(detectThreadLocalLeaks = true)
+void testThreadLocalLifecycle() { }
+```
+
+### 3. Busy-Wait Detection
+**Problem**: Tight polling loops burn CPU instead of blocking
+```java
+@AsyncTest(detectBusyWaiting = true)
+void testSpinLoop() { }
+```
+
+### 4. Atomicity Violation Detection
+**Problem**: Compound operations such as check-then-act are split across unsynchronized steps
+```java
+@AsyncTest(detectAtomicityViolations = true)
+void testCompoundUpdate() { }
+```
+
+### 5. Interrupt Handling Monitoring
+**Problem**: `InterruptedException` is caught and ignored instead of being propagated or restored
+```java
+@AsyncTest(detectInterruptMishandling = true)
+void testCancellationPath() { }
 ```
 
 ## AsyncAssert: Side Effect Polling
@@ -611,7 +661,7 @@ Suspect: Missing 'volatile' keyword or insufficient synchronization.
 
 ## Project Statistics
 
-- **Total Detectors**: 15 (Phase 1: 5, Phase 2: 10)
+- **Total Detectors**: 20 (Phase 1: 5, Phase 2: 10, Phase 3: 5)
 - **Problem Categories Covered**: 20+
 - **Lines of Detector Code**: ~3,300
 - **Test Methods**: 35+

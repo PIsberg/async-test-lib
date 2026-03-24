@@ -21,11 +21,21 @@ public class ConcurrencyRunner {
                                boolean detectDeadlocks,
                                boolean detectVisibility,
                                boolean detectLivelocks,
-                               String virtualThreadStressMode) throws Throwable {
+                               String virtualThreadStressMode,
+                               boolean detectRaceConditions,
+                               boolean detectThreadLocalLeaks,
+                               boolean detectBusyWaiting,
+                               boolean detectAtomicityViolations,
+                               boolean detectInterruptMishandling) throws Throwable {
 
         // Initialize detectors
         VisibilityMonitor visibilityMonitor = detectVisibility ? new VisibilityMonitor() : null;
         LivelockDetector livelockDetector = detectLivelocks ? new LivelockDetector() : null;
+        RaceConditionDetector raceDetector = detectRaceConditions ? new RaceConditionDetector() : null;
+        ThreadLocalMonitor threadLocalMonitor = detectThreadLocalLeaks ? new ThreadLocalMonitor() : null;
+        BusyWaitDetector busyWaitDetector = detectBusyWaiting ? new BusyWaitDetector() : null;
+        AtomicityValidator atomicityValidator = detectAtomicityViolations ? new AtomicityValidator() : null;
+        InterruptMonitor interruptMonitor = detectInterruptMishandling ? new InterruptMonitor() : null;
         MemoryModelValidator jmmValidator = new MemoryModelValidator();
         
         // Validate JMM on test framework itself
@@ -72,23 +82,13 @@ public class ConcurrencyRunner {
                 if (detectDeadlocks) {
                     DeadlockDetector.printThreadDump();
                 }
-                
-                if (visibilityMonitor != null) {
-                    VisibilityMonitor.VisibilityReport visReport = visibilityMonitor.analyzeVisibility();
-                    if (visReport.hasIssues()) {
-                        System.err.println("\n" + visReport);
-                    }
-                }
-                
-                if (livelockDetector != null) {
-                    LivelockDetector.LivelockReport liveReport = livelockDetector.analyzeLivelocks();
-                    if (liveReport.hasIssues()) {
-                        System.err.println("\n" + liveReport);
-                    }
-                }
-                
+
+                printPhaseReports(visibilityMonitor, livelockDetector, raceDetector, threadLocalMonitor,
+                    busyWaitDetector, atomicityValidator, interruptMonitor);
                 throw new AssertionError("Test timed out after " + timeoutMs + "ms. Possible deadlock, starvation, or visibility issue.", e);
             } catch (ExecutionException e) {
+                printPhaseReports(visibilityMonitor, livelockDetector, raceDetector, threadLocalMonitor,
+                    busyWaitDetector, atomicityValidator, interruptMonitor);
                 throw unwrap(e.getCause());
             }
         } finally {
@@ -149,5 +149,62 @@ public class ConcurrencyRunner {
             return t.getCause() != null ? t.getCause() : t;
         }
         return t;
+    }
+
+    private static void printPhaseReports(VisibilityMonitor visibilityMonitor,
+                                          LivelockDetector livelockDetector,
+                                          RaceConditionDetector raceDetector,
+                                          ThreadLocalMonitor threadLocalMonitor,
+                                          BusyWaitDetector busyWaitDetector,
+                                          AtomicityValidator atomicityValidator,
+                                          InterruptMonitor interruptMonitor) {
+        if (visibilityMonitor != null) {
+            VisibilityMonitor.VisibilityReport report = visibilityMonitor.analyzeVisibility();
+            if (report.hasIssues()) {
+                System.err.println("\n" + report);
+            }
+        }
+
+        if (livelockDetector != null) {
+            LivelockDetector.LivelockReport report = livelockDetector.analyzeLivelocks();
+            if (report.hasIssues()) {
+                System.err.println("\n" + report);
+            }
+        }
+
+        if (raceDetector != null) {
+            RaceConditionDetector.RaceConditionReport report = raceDetector.analyzeRaceConditions();
+            if (report.hasIssues()) {
+                System.err.println("\n" + report);
+            }
+        }
+
+        if (threadLocalMonitor != null) {
+            ThreadLocalMonitor.ThreadLocalReport report = threadLocalMonitor.analyzeThreadLocalLeaks();
+            if (report.hasIssues()) {
+                System.err.println("\n" + report);
+            }
+        }
+
+        if (busyWaitDetector != null) {
+            BusyWaitDetector.BusyWaitReport report = busyWaitDetector.analyzeBusyWaiting();
+            if (report.hasIssues()) {
+                System.err.println("\n" + report);
+            }
+        }
+
+        if (atomicityValidator != null) {
+            AtomicityValidator.AtomicityReport report = atomicityValidator.analyzeAtomicity();
+            if (report.hasIssues()) {
+                System.err.println("\n" + report);
+            }
+        }
+
+        if (interruptMonitor != null) {
+            InterruptMonitor.InterruptReport report = interruptMonitor.analyzeInterruptHandling();
+            if (report.hasIssues()) {
+                System.err.println("\n" + report);
+            }
+        }
     }
 }

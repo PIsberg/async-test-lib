@@ -83,35 +83,44 @@ public class MyAsyncTests {
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `threads` | int | 5 | Number of threads to spawn |
-| `invocations` | int | 10 | Number of times each thread runs the test |
+| `threads` | int | 10 | Number of threads to spawn |
+| `invocations` | int | 100 | Number of times the concurrent round runs |
 | `timeoutMs` | long | 5000 | Test timeout in milliseconds |
-| `useVirtualThreads` | boolean | false | Use Java 21+ virtual threads |
-| `virtualThreadStressMode` | String | "OFF" | Virtual thread stress level (OFF, LIGHT, MEDIUM, HEAVY, EXTREME) |
+| `useVirtualThreads` | boolean | true | Use Java 21+ virtual threads |
+| `virtualThreadStressMode` | String | "OFF" | Virtual thread stress level (OFF, LOW, MEDIUM, HIGH, EXTREME) |
 
-### Phase 1 Detectors (Race Conditions & Synchronization)
+### Phase 1 Detectors
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `detectRaceConditions` | boolean | true | Detect concurrent access to shared state |
 | `detectDeadlocks` | boolean | true | Detect circular lock dependencies |
-| `detectThreadStarvation` | boolean | false | Detect threads being starved of CPU |
-| `detectLockOrdering` | boolean | false | Detect improper lock acquisition order |
+| `detectVisibility` | boolean | false | Detect missing volatile keywords |
+| `detectLivelocks` | boolean | false | Detect thread spinning and starvation |
 
-### Phase 2 Detectors (Memory Model & Advanced Issues)
+### Phase 2 Detectors
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `detectVisibility` | boolean | false | Detect missing volatile keywords |
 | `detectFalseSharing` | boolean | false | Detect cache line contention |
-| `detectLivelocks` | boolean | false | Detect livelock conditions |
 | `detectWakeupIssues` | boolean | false | Detect spurious/lost wakeups |
-| `detectABAProblems` | boolean | false | Detect ABA problems in lock-free code |
-| `detectMemoryOrdering` | boolean | false | Detect JMM happens-before violations |
-| `detectConstructorSafety` | boolean | false | Detect unsafe object publication |
-| `detectSynchronizerIssues` | boolean | false | Detect problems in synchronizers |
+| `validateConstructorSafety` | boolean | false | Detect unsafe object publication |
+| `detectABAProblem` | boolean | false | Detect ABA problems in lock-free code |
+| `validateLockOrder` | boolean | false | Detect improper lock acquisition order |
+| `monitorSynchronizers` | boolean | false | Detect problems in synchronizers |
 | `monitorThreadPool` | boolean | false | Monitor thread pool behavior |
-| `detectMemoryLeaks` | boolean | false | Detect memory leaks in concurrent code |
+| `detectMemoryOrderingViolations` | boolean | false | Detect JMM happens-before violations |
+| `monitorAsyncPipeline` | boolean | false | Monitor event flow through async pipelines |
+| `monitorReadWriteLockFairness` | boolean | false | Detect writer starvation and unfair locks |
+
+### Phase 3 Detectors
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `detectRaceConditions` | boolean | false | Track concurrent field access patterns |
+| `detectThreadLocalLeaks` | boolean | false | Detect ThreadLocal values not cleaned up |
+| `detectBusyWaiting` | boolean | false | Detect spin loops and tight polling |
+| `detectAtomicityViolations` | boolean | false | Detect non-atomic compound operations |
+| `detectInterruptMishandling` | boolean | false | Detect swallowed interrupts and missing restoration |
 
 ## Examples
 
@@ -199,7 +208,7 @@ public class VirtualThreadStressTest {
     
     @AsyncTest(
         useVirtualThreads = true,
-        virtualThreadStressMode = "HEAVY",
+        virtualThreadStressMode = "HIGH",
         threads = 100000,  // Create 100,000 virtual threads
         invocations = 10,
         timeoutMs = 10000
@@ -253,7 +262,7 @@ void basicConcurrency() { }
 @AsyncTest(threads = 50, invocations = 100)
 void stressTest() { }
 
-@AsyncTest(useVirtualThreads = true, virtualThreadStressMode = "HEAVY")
+@AsyncTest(useVirtualThreads = true, virtualThreadStressMode = "HIGH")
 void virtualThreadTest() { }
 ```
 

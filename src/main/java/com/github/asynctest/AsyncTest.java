@@ -145,5 +145,35 @@ public @interface AsyncTest {
      * Detects writer starvation and unfair lock distributions.
      */
     boolean monitorReadWriteLockFairness() default false;
+
+    /**
+     * Enable race condition detection.
+     * Detects concurrent field access patterns and unsynchronized mutations.
+     */
+    boolean detectRaceConditions() default false;
+
+    /**
+     * Enable ThreadLocal leak detection.
+     * Detects ThreadLocal values not cleaned up, causing memory leaks in thread pools.
+     */
+    boolean detectThreadLocalLeaks() default false;
+
+    /**
+     * Enable busy-waiting detection.
+     * Detects CPU-intensive spin loops and polling patterns without proper synchronization.
+     */
+    boolean detectBusyWaiting() default false;
+
+    /**
+     * Enable atomicity violation detection.
+     * Detects check-then-act patterns and compound operations that aren't properly synchronized.
+     */
+    boolean detectAtomicityViolations() default false;
+
+    /**
+     * Enable interrupt handling monitoring.
+     * Detects caught but ignored InterruptException and improper thread cancellation handling.
+     */
+    boolean detectInterruptMishandling() default false;
 }
 

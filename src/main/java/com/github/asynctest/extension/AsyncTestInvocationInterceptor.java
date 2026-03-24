@@ -31,7 +31,12 @@ public class AsyncTestInvocationInterceptor implements InvocationInterceptor {
                 asyncTest.detectDeadlocks(),
                 asyncTest.detectVisibility(),
                 asyncTest.detectLivelocks(),
-                asyncTest.virtualThreadStressMode()
+                asyncTest.virtualThreadStressMode(),
+                asyncTest.detectRaceConditions(),
+                asyncTest.detectThreadLocalLeaks(),
+                asyncTest.detectBusyWaiting(),
+                asyncTest.detectAtomicityViolations(),
+                asyncTest.detectInterruptMishandling()
         );
     }
 }
