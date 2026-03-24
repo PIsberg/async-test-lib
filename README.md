@@ -13,6 +13,9 @@ Concurrency bugs are the most elusive and costly bugs in production systems. The
 
 **async-test** is an enterprise-grade testing framework that makes concurrency bugs **reproducible and detectable**. Rather than hoping random thread scheduling will expose bugs, `async-test` **forces them to happen** using synchronized barriers and then **diagnoses exactly what went wrong** using specialized detectors.
 
+
+![async-test-lib-infographics](https://github.com/user-attachments/assets/b4badd39-8896-4d8c-a930-2b91214e8ee1)
+
 ### Key Insight
 The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **20 specialized detectors** identify the exact problem:
 
