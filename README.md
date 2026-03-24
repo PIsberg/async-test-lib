@@ -17,7 +17,7 @@ Concurrency bugs are the most elusive and costly bugs in production systems. The
 ![async-test-lib-infographics](https://github.com/user-attachments/assets/b4badd39-8896-4d8c-a930-2b91214e8ee1)
 
 ### Key Insight
-The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **20 specialized detectors** identify the exact problem:
+The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **25 specialized detectors** identify the exact problem:
 
 - **Deadlocks** with lock chain analysis showing which threads are waiting for which locks
 - **Memory visibility issues** by tracking field values across invocations
@@ -81,7 +81,7 @@ Rather than deploying code hoping there are no concurrency bugs, `async-test` he
 
 ---
 
-A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **20 specialized problem detectors**.
+A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **25 specialized problem detectors**.
 
 Catches race conditions, deadlocks, memory visibility issues, livelocks, false sharing, ABA problems, lock ordering violations, constructor safety issues, thread pool problems, and more.
 
@@ -104,7 +104,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 
 ### Core Capabilities
 - ✅ **Race Condition Forcing**: CyclicBarrier synchronizes threads for maximum contention
-- ✅ **20 Problem Detectors**: Comprehensive coverage of concurrency issues
+- ✅ **25 Problem Detectors**: Comprehensive coverage of concurrency issues
 - ✅ **Virtual Threads Support**: Native support for Project Loom (Java 21+)
 - ✅ **Rich Diagnostics**: Detailed reports with actionable fix suggestions
 - ✅ **Zero Default Overhead**: Advanced features are opt-in
@@ -138,6 +138,13 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 18. **Busy Waiting** - Spin loop and tight polling detection
 19. **Atomicity Violations** - Check-then-act and TOCTOU validation
 20. **Interrupt Mishandling** - Ignored `InterruptedException` monitoring
+
+### Legacy Java Async Patterns (5)
+21. **Notify vs NotifyAll** - Multi-waiter signal misuse
+22. **Lazy Initialization** - Unsafe singleton and DCL validation
+23. **Future Blocking** - Bounded-pool starvation from `get()`/`join()`
+24. **Executor Self-Deadlock** - Sibling task waits on the same executor
+25. **Latch Misuse** - Missing or extra `countDown()` tracking
 
 ## Quick Start
 
@@ -405,6 +412,18 @@ void testCompoundUpdate() { }
 void testCancellationPath() { }
 ```
 
+## Legacy Java Async Diagnostics
+
+These detectors are currently exposed as manual diagnostics you can instantiate inside tests when working with older `wait/notify`, `ExecutorService`, `Future`, and `CountDownLatch` code.
+
+```java
+NotifyAllValidator notifyValidator = new NotifyAllValidator();
+LazyInitValidator lazyInitValidator = new LazyInitValidator();
+FutureBlockingDetector futureBlockingDetector = new FutureBlockingDetector();
+ExecutorDeadlockDetector executorDeadlockDetector = new ExecutorDeadlockDetector();
+LatchMisuseDetector latchMisuseDetector = new LatchMisuseDetector();
+```
+
 ## AsyncAssert: Side Effect Polling
 
 Wait for async operations cleanly without blocking:
@@ -664,7 +683,7 @@ Suspect: Missing 'volatile' keyword or insufficient synchronization.
 
 ## Project Statistics
 
-- **Total Detectors**: 20 (Phase 1: 5, Phase 2: 10, Phase 3: 5)
+- **Total Detectors**: 25 (Phase 1: 5, Phase 2: 10, Phase 3: 5, Legacy: 5)
 - **Problem Categories Covered**: 20+
 - **Lines of Detector Code**: ~3,300
 - **Test Methods**: 35+

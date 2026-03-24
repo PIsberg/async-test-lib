@@ -122,6 +122,25 @@ public class MyAsyncTests {
 | `detectAtomicityViolations` | boolean | false | Detect non-atomic compound operations |
 | `detectInterruptMishandling` | boolean | false | Detect swallowed interrupts and missing restoration |
 
+## Manual Legacy Diagnostics
+
+For older Java async patterns that need explicit instrumentation, instantiate the diagnostics directly:
+
+```java
+NotifyAllValidator notifyValidator = new NotifyAllValidator();
+LazyInitValidator lazyInitValidator = new LazyInitValidator();
+FutureBlockingDetector futureBlockingDetector = new FutureBlockingDetector();
+ExecutorDeadlockDetector executorDeadlockDetector = new ExecutorDeadlockDetector();
+LatchMisuseDetector latchMisuseDetector = new LatchMisuseDetector();
+```
+
+Use these for:
+- `wait()`/`notify()` vs `notifyAll()` bugs
+- unsafe lazy initialization and broken double-checked locking
+- blocking on sibling futures inside bounded executors
+- single-thread or bounded executor self-deadlocks
+- missing `CountDownLatch.countDown()` paths
+
 ## Examples
 
 ### Example 1: Basic Race Condition Detection
