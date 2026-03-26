@@ -25,12 +25,18 @@ jobs:
           java-version: ${{ matrix.java-version }}
           distribution: 'temurin'
           cache: maven
+
+      - name: Prepare local Maven repository
+        run: mkdir -p .m2/repository
       
-      - name: Run tests
-        run: mvn clean test
+      - name: Run library tests and install artifact
+        run: mvn -Dmaven.repo.local=.m2/repository clean install
+
+      - name: Run consumer fixture tests
+        run: mvn -Dmaven.repo.local=.m2/repository -f consumer-fixture/pom.xml test
       
       - name: Generate coverage report
-        run: mvn jacoco:report
+        run: mvn -Dmaven.repo.local=.m2/repository jacoco:report
       
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
