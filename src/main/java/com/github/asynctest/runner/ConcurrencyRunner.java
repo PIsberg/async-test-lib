@@ -8,6 +8,8 @@ import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -101,7 +103,7 @@ public class ConcurrencyRunner {
                                                  long roundTimeoutMs) throws Throwable {
 
         CyclicBarrier barrier = new CyclicBarrier(threads);
-        AtomicReference<Throwable> failed = new AtomicReference<>();
+        List<Throwable> failures = new CopyOnWriteArrayList<>();
         CountDownLatch latch = new CountDownLatch(threads);
 
         Method method = context.getExecutable();
@@ -121,7 +123,7 @@ public class ConcurrencyRunner {
                         method.invoke(target, args);
                     }
                 } catch (Throwable ex) {
-                    failed.compareAndSet(null, unwrap(ex));
+                    failures.add(unwrap(ex));
                 } finally {
                     AsyncTestContext.uninstall();
                     latch.countDown();
@@ -144,9 +146,35 @@ public class ConcurrencyRunner {
                     + "A thread may be stuck before the test body (e.g. broken barrier).");
         }
 
-        if (failed.get() != null) {
-            throw failed.get();
+        if (!failures.isEmpty()) {
+            throw buildMultiFailureError(failures);
         }
+    }
+
+    private static AssertionError buildMultiFailureError(List<Throwable> failures) {
+        if (failures.size() == 1) {
+            Throwable single = failures.get(0);
+            if (single instanceof AssertionError ae) return ae;
+            AssertionError ae = new AssertionError(single.getMessage());
+            ae.initCause(single);
+            return ae;
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(failures.size()).append(" concurrent thread(s) failed:\n");
+        for (int i = 0; i < failures.size(); i++) {
+            Throwable t = failures.get(i);
+            sb.append("  [").append(i + 1).append("] ")
+              .append(t.getClass().getSimpleName()).append(": ")
+              .append(t.getMessage()).append('\n');
+        }
+        AssertionError combined = new AssertionError(sb.toString().trim());
+        // Attach the first failure as cause so stack traces appear in IDEs
+        combined.initCause(failures.get(0));
+        // Attach remaining as suppressed
+        for (int i = 1; i < failures.size(); i++) {
+            combined.addSuppressed(failures.get(i));
+        }
+        return combined;
     }
 
     private static Throwable unwrap(Throwable t) {
