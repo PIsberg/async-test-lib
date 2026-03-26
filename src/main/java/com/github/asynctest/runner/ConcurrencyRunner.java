@@ -69,46 +69,51 @@ public class ConcurrencyRunner {
         // means the test body is never double-executed and the AsyncTestContext
         // is always installed before the first line of test code runs.
 
-        try {
-            CompletableFuture<Void> executionFuture = CompletableFuture.runAsync(() -> {
-                try {
-                    for (int i = 0; i < config.invocations; i++) {
-                        if (visibilityMonitor != null) {
-                            visibilityMonitor.markInvocationStart();
-                        }
-                        invokeLifecycleMethods(testInstance, beforeInvocationMethods);
-                        try {
-                            runSingleInvocationRound(invocationContext, actualThreads,
-                                executor, livelockDetector, phase2Context,
-                                config.timeoutMs, testMethod);
-                        } finally {
-                            invokeLifecycleMethods(testInstance, afterInvocationMethods);
-                        }
-                    }
-                } catch (Throwable t) {
-                    throw new CompletionException(unwrap(t));
-                }
-            });
+        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(config.timeoutMs);
 
-            try {
-                executionFuture.get(config.timeoutMs, TimeUnit.MILLISECONDS);
-            } catch (TimeoutException e) {
-                if (config.detectDeadlocks) {
-                    DeadlockDetector.printThreadDump();
+        try {
+            for (int i = 0; i < config.invocations; i++) {
+                long remainingMs = remainingMillis(deadlineNanos);
+                if (remainingMs <= 0) {
+                    throw timeoutError(config.timeoutMs, null, visibilityMonitor, livelockDetector,
+                        raceDetector, threadLocalMonitor, busyWaitDetector, atomicityValidator,
+                        interruptMonitor, phase2Context, config.detectDeadlocks);
                 }
-                printPhase1Reports(visibilityMonitor, livelockDetector, raceDetector,
-                    threadLocalMonitor, busyWaitDetector, atomicityValidator, interruptMonitor);
-                printPhase2Reports(phase2Context);
-                throw new AssertionError(
-                    "Test timed out after " + config.timeoutMs + "ms. Possible deadlock, starvation, or visibility issue.", e);
-            } catch (ExecutionException e) {
-                printPhase1Reports(visibilityMonitor, livelockDetector, raceDetector,
-                    threadLocalMonitor, busyWaitDetector, atomicityValidator, interruptMonitor);
-                printPhase2Reports(phase2Context);
-                throw unwrap(e.getCause());
+
+                if (visibilityMonitor != null) {
+                    visibilityMonitor.markInvocationStart();
+                }
+                invokeLifecycleMethods(testInstance, beforeInvocationMethods);
+                try {
+                    runSingleInvocationRound(invocationContext, actualThreads,
+                        executor, livelockDetector, phase2Context,
+                        remainingMs, testMethod);
+                } finally {
+                    invokeLifecycleMethods(testInstance, afterInvocationMethods);
+                }
             }
+        } catch (AssertionError e) {
+            if (isTimeoutLike(e)) {
+                throw timeoutError(config.timeoutMs, e, visibilityMonitor, livelockDetector,
+                    raceDetector, threadLocalMonitor, busyWaitDetector, atomicityValidator,
+                    interruptMonitor, phase2Context, config.detectDeadlocks);
+            }
+            printPhase1Reports(visibilityMonitor, livelockDetector, raceDetector,
+                threadLocalMonitor, busyWaitDetector, atomicityValidator, interruptMonitor);
+            printPhase2Reports(phase2Context);
+            throw e;
+        } catch (Throwable t) {
+            printPhase1Reports(visibilityMonitor, livelockDetector, raceDetector,
+                threadLocalMonitor, busyWaitDetector, atomicityValidator, interruptMonitor);
+            printPhase2Reports(phase2Context);
+            throw unwrap(t);
         } finally {
             executor.shutdownNow();
+            try {
+                executor.awaitTermination(1, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 
@@ -147,15 +152,13 @@ public class ConcurrencyRunner {
             });
         }
 
-        // Use a bounded wait so a thread that gets stuck before latch.countDown()
-        // (e.g. due to BrokenBarrierException or an infinite loop before the test body)
-        // doesn't hang the entire suite forever. Add a generous slack on top of the
-        // configured timeout so normal tests are not affected.
-        boolean completed = latch.await(roundTimeoutMs + 5_000, TimeUnit.MILLISECONDS);
+        // Bound each round by the remaining time for the whole test run so we do not
+        // depend on a separate coordinator future or the common ForkJoinPool.
+        boolean completed = latch.await(roundTimeoutMs, TimeUnit.MILLISECONDS);
         if (!completed) {
             throw new AssertionError(
                 "Invocation round timed out: " + (threads - (int) latch.getCount()) + "/" + threads
-                    + " threads completed within " + (roundTimeoutMs + 5_000) + "ms. "
+                    + " threads completed within " + roundTimeoutMs + "ms. "
                     + "A thread may be stuck before the test body (e.g. broken barrier).");
         }
 
@@ -194,10 +197,41 @@ public class ConcurrencyRunner {
         if (t instanceof InvocationTargetException) {
             return t.getCause();
         }
-        if (t instanceof CompletionException) {
-            return t.getCause() != null ? t.getCause() : t;
-        }
         return t;
+    }
+
+    private static long remainingMillis(long deadlineNanos) {
+        return Math.max(0L, TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime()));
+    }
+
+    private static boolean isTimeoutLike(AssertionError e) {
+        String message = e.getMessage();
+        return message != null && message.contains("timed out");
+    }
+
+    private static AssertionError timeoutError(long timeoutMs,
+                                               Throwable cause,
+                                               VisibilityMonitor visibilityMonitor,
+                                               LivelockDetector livelockDetector,
+                                               RaceConditionDetector raceDetector,
+                                               ThreadLocalMonitor threadLocalMonitor,
+                                               BusyWaitDetector busyWaitDetector,
+                                               AtomicityValidator atomicityValidator,
+                                               InterruptMonitor interruptMonitor,
+                                               AsyncTestContext phase2Context,
+                                               boolean detectDeadlocks) {
+        if (detectDeadlocks) {
+            DeadlockDetector.printThreadDump();
+        }
+        printPhase1Reports(visibilityMonitor, livelockDetector, raceDetector,
+            threadLocalMonitor, busyWaitDetector, atomicityValidator, interruptMonitor);
+        printPhase2Reports(phase2Context);
+        AssertionError error = new AssertionError(
+            "Test timed out after " + timeoutMs + "ms. Possible deadlock, starvation, or visibility issue.");
+        if (cause != null) {
+            error.initCause(cause);
+        }
+        return error;
     }
 
     private static void printPhase1Reports(VisibilityMonitor visibilityMonitor,
