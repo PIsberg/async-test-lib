@@ -60,7 +60,8 @@ public class ConcurrencyRunner {
                             visibilityMonitor.markInvocationStart();
                         }
                         runSingleInvocationRound(invocation, invocationContext, actualThreads,
-                            executor, !proceedCalled.get(), livelockDetector, phase2Context);
+                            executor, !proceedCalled.get(), livelockDetector, phase2Context,
+                            config.timeoutMs);
                         proceedCalled.set(true);
                     }
                 } catch (Throwable t) {
@@ -96,7 +97,8 @@ public class ConcurrencyRunner {
                                                  ExecutorService executor,
                                                  boolean callProceed,
                                                  LivelockDetector livelockDetector,
-                                                 AsyncTestContext phase2Context) throws Throwable {
+                                                 AsyncTestContext phase2Context,
+                                                 long roundTimeoutMs) throws Throwable {
 
         CyclicBarrier barrier = new CyclicBarrier(threads);
         AtomicReference<Throwable> failed = new AtomicReference<>();
@@ -130,7 +132,17 @@ public class ConcurrencyRunner {
             });
         }
 
-        latch.await();
+        // Use a bounded wait so a thread that gets stuck before latch.countDown()
+        // (e.g. due to BrokenBarrierException or an infinite loop before the test body)
+        // doesn't hang the entire suite forever. Add a generous slack on top of the
+        // configured timeout so normal tests are not affected.
+        boolean completed = latch.await(roundTimeoutMs + 5_000, TimeUnit.MILLISECONDS);
+        if (!completed) {
+            throw new AssertionError(
+                "Invocation round timed out: " + (threads - (int) latch.getCount()) + "/" + threads
+                    + " threads completed within " + (roundTimeoutMs + 5_000) + "ms. "
+                    + "A thread may be stuck before the test body (e.g. broken barrier).");
+        }
 
         if (failed.get() != null) {
             throw failed.get();
