@@ -329,6 +329,34 @@ Stress levels:
 
 ## Phase 2: Advanced Detectors
 
+When a Phase 2 flag is set, the runner initialises the corresponding detector and makes it
+available to every worker thread via `AsyncTestContext`. Call the static accessor inside your
+test body to record events, then read the report from `@AfterEach` if needed.
+
+```java
+// Pattern for every Phase 2 detector
+@AsyncTest(threads = 4, detectFalseSharing = true)
+void myTest() {
+    AsyncTestContext.falseSharingDetector()   // returns the shared FalseSharingDetector
+        .recordFieldAccess(this, "counter", int.class);
+}
+```
+
+The runner automatically calls `analyzeAll()` after the test (or on timeout) and prints any
+reports that have issues to stderr.  You can also read detectors from `@AfterEach`:
+
+```java
+@AfterEach
+void checkReport() {
+    // Only available when the test ran (not null-safe outside @AsyncTest)
+    AsyncTestContext ctx = AsyncTestContext.get();
+    if (ctx != null && ctx.abaProblemDetector != null) {
+        ABAProblemDetector.ABAReport r = ctx.abaProblemDetector.analyzeABA();
+        assertFalse(r.hasIssues(), r.toString());
+    }
+}
+```
+
 ### 1. False Sharing Detection
 **Problem**: Multiple threads access adjacent memory in same cache line
 ```java
@@ -340,6 +368,8 @@ class FalseSharingTest {
     void testCacheContention() {
         a++;  // writes to a invalidate b's cache entry on other CPUs, and vice versa
         b++;  // cache line bounces between cores on every write
+        AsyncTestContext.falseSharingDetector()
+            .recordFieldAccess(this, "a", long.class);
     }
 }
 ```

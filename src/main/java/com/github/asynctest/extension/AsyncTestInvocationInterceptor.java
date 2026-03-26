@@ -1,6 +1,7 @@
 package com.github.asynctest.extension;
 
 import com.github.asynctest.AsyncTest;
+import com.github.asynctest.AsyncTestConfig;
 import com.github.asynctest.runner.ConcurrencyRunner;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.InvocationInterceptor;
@@ -20,23 +21,6 @@ public class AsyncTestInvocationInterceptor implements InvocationInterceptor {
     public void interceptTestTemplateMethod(Invocation<Void> invocation,
                                             ReflectiveInvocationContext<Method> invocationContext,
                                             ExtensionContext extensionContext) throws Throwable {
-
-        ConcurrencyRunner.execute(
-                invocation,
-                invocationContext,
-                asyncTest.threads(),
-                asyncTest.invocations(),
-                asyncTest.useVirtualThreads(),
-                asyncTest.timeoutMs(),
-                asyncTest.detectDeadlocks(),
-                asyncTest.detectVisibility(),
-                asyncTest.detectLivelocks(),
-                asyncTest.virtualThreadStressMode(),
-                asyncTest.detectRaceConditions(),
-                asyncTest.detectThreadLocalLeaks(),
-                asyncTest.detectBusyWaiting(),
-                asyncTest.detectAtomicityViolations(),
-                asyncTest.detectInterruptMishandling()
-        );
+        ConcurrencyRunner.execute(invocation, invocationContext, AsyncTestConfig.from(asyncTest));
     }
 }

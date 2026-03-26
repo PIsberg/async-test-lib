@@ -1,5 +1,7 @@
 package com.github.asynctest.runner;
 
+import com.github.asynctest.AsyncTestConfig;
+import com.github.asynctest.AsyncTestContext;
 import com.github.asynctest.diagnostics.*;
 import org.junit.jupiter.api.extension.InvocationInterceptor.Invocation;
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
@@ -14,61 +16,51 @@ public class ConcurrencyRunner {
 
     public static void execute(Invocation<Void> invocation,
                                ReflectiveInvocationContext<Method> invocationContext,
-                               int threads,
-                               int invocations,
-                               boolean useVirtualThreads,
-                               long timeoutMs,
-                               boolean detectDeadlocks,
-                               boolean detectVisibility,
-                               boolean detectLivelocks,
-                               String virtualThreadStressMode,
-                               boolean detectRaceConditions,
-                               boolean detectThreadLocalLeaks,
-                               boolean detectBusyWaiting,
-                               boolean detectAtomicityViolations,
-                               boolean detectInterruptMishandling) throws Throwable {
+                               AsyncTestConfig config) throws Throwable {
 
-        // Initialize detectors
-        VisibilityMonitor visibilityMonitor = detectVisibility ? new VisibilityMonitor() : null;
-        LivelockDetector livelockDetector = detectLivelocks ? new LivelockDetector() : null;
-        RaceConditionDetector raceDetector = detectRaceConditions ? new RaceConditionDetector() : null;
-        ThreadLocalMonitor threadLocalMonitor = detectThreadLocalLeaks ? new ThreadLocalMonitor() : null;
-        BusyWaitDetector busyWaitDetector = detectBusyWaiting ? new BusyWaitDetector() : null;
-        AtomicityValidator atomicityValidator = detectAtomicityViolations ? new AtomicityValidator() : null;
-        InterruptMonitor interruptMonitor = detectInterruptMishandling ? new InterruptMonitor() : null;
-        MemoryModelValidator jmmValidator = new MemoryModelValidator();
-        
-        // Validate JMM on test framework itself
+        // Phase 2 context — shared across all threads for this test run
+        AsyncTestContext phase2Context = new AsyncTestContext(config);
+
+        // Phase 1 + Phase 3 detectors
+        VisibilityMonitor  visibilityMonitor  = config.detectVisibility          ? new VisibilityMonitor()  : null;
+        LivelockDetector   livelockDetector   = config.detectLivelocks           ? new LivelockDetector()   : null;
+        RaceConditionDetector raceDetector    = config.detectRaceConditions      ? new RaceConditionDetector() : null;
+        ThreadLocalMonitor threadLocalMonitor = config.detectThreadLocalLeaks    ? new ThreadLocalMonitor() : null;
+        BusyWaitDetector   busyWaitDetector   = config.detectBusyWaiting         ? new BusyWaitDetector()   : null;
+        AtomicityValidator atomicityValidator = config.detectAtomicityViolations ? new AtomicityValidator() : null;
+        InterruptMonitor   interruptMonitor   = config.detectInterruptMishandling? new InterruptMonitor()   : null;
+        MemoryModelValidator jmmValidator     = new MemoryModelValidator();
+
+        // Validate JMM on the test framework itself
         MemoryModelValidator.ValidationResult jmmResult = jmmValidator.validate();
         if (!jmmResult.isValid()) {
             System.err.println("WARNING: JMM validation of test framework failed:");
             System.err.println(jmmResult);
         }
 
-        // Determine thread count based on stress mode
+        // Determine actual thread count (stress mode overrides threads param)
         final int actualThreads;
-        if (virtualThreadStressMode != null && !virtualThreadStressMode.equals("OFF")) {
-            VirtualThreadStressConfig.StressLevel stressLevel = 
-                VirtualThreadStressConfig.StressLevel.valueOf(virtualThreadStressMode);
-            actualThreads = stressLevel.threadCount;
+        if (config.virtualThreadStressMode != null && !config.virtualThreadStressMode.equals("OFF")) {
+            actualThreads = VirtualThreadStressConfig.StressLevel
+                .valueOf(config.virtualThreadStressMode).threadCount;
         } else {
-            actualThreads = threads;
+            actualThreads = config.threads;
         }
 
-        ExecutorService executor = useVirtualThreads
-                ? Executors.newVirtualThreadPerTaskExecutor()
-                : Executors.newFixedThreadPool(actualThreads);
+        ExecutorService executor = config.useVirtualThreads
+            ? Executors.newVirtualThreadPerTaskExecutor()
+            : Executors.newFixedThreadPool(actualThreads);
 
         try {
             CompletableFuture<Void> executionFuture = CompletableFuture.runAsync(() -> {
                 try {
                     AtomicBoolean proceedCalled = new AtomicBoolean(false);
-                    for (int i = 0; i < invocations; i++) {
+                    for (int i = 0; i < config.invocations; i++) {
                         if (visibilityMonitor != null) {
                             visibilityMonitor.markInvocationStart();
                         }
-                        runSingleInvocationRound(invocation, invocationContext, actualThreads, 
-                                                executor, !proceedCalled.get(), livelockDetector);
+                        runSingleInvocationRound(invocation, invocationContext, actualThreads,
+                            executor, !proceedCalled.get(), livelockDetector, phase2Context);
                         proceedCalled.set(true);
                     }
                 } catch (Throwable t) {
@@ -77,18 +69,20 @@ public class ConcurrencyRunner {
             });
 
             try {
-                executionFuture.get(timeoutMs, TimeUnit.MILLISECONDS);
+                executionFuture.get(config.timeoutMs, TimeUnit.MILLISECONDS);
             } catch (TimeoutException e) {
-                if (detectDeadlocks) {
+                if (config.detectDeadlocks) {
                     DeadlockDetector.printThreadDump();
                 }
-
-                printPhaseReports(visibilityMonitor, livelockDetector, raceDetector, threadLocalMonitor,
-                    busyWaitDetector, atomicityValidator, interruptMonitor);
-                throw new AssertionError("Test timed out after " + timeoutMs + "ms. Possible deadlock, starvation, or visibility issue.", e);
+                printPhase1Reports(visibilityMonitor, livelockDetector, raceDetector,
+                    threadLocalMonitor, busyWaitDetector, atomicityValidator, interruptMonitor);
+                printPhase2Reports(phase2Context);
+                throw new AssertionError(
+                    "Test timed out after " + config.timeoutMs + "ms. Possible deadlock, starvation, or visibility issue.", e);
             } catch (ExecutionException e) {
-                printPhaseReports(visibilityMonitor, livelockDetector, raceDetector, threadLocalMonitor,
-                    busyWaitDetector, atomicityValidator, interruptMonitor);
+                printPhase1Reports(visibilityMonitor, livelockDetector, raceDetector,
+                    threadLocalMonitor, busyWaitDetector, atomicityValidator, interruptMonitor);
+                printPhase2Reports(phase2Context);
                 throw unwrap(e.getCause());
             }
         } finally {
@@ -101,7 +95,8 @@ public class ConcurrencyRunner {
                                                  int threads,
                                                  ExecutorService executor,
                                                  boolean callProceed,
-                                                 LivelockDetector livelockDetector) throws Throwable {
+                                                 LivelockDetector livelockDetector,
+                                                 AsyncTestContext phase2Context) throws Throwable {
 
         CyclicBarrier barrier = new CyclicBarrier(threads);
         AtomicReference<Throwable> failed = new AtomicReference<>();
@@ -115,9 +110,9 @@ public class ConcurrencyRunner {
         for (int t = 0; t < threads; t++) {
             final boolean isFirstThread = (t == 0);
             executor.submit(() -> {
+                AsyncTestContext.install(phase2Context);
                 try {
-                    barrier.await(); // Sync threads right before execution
-                    
+                    barrier.await();
                     if (isFirstThread && callProceed) {
                         invocation.proceed();
                     } else {
@@ -126,6 +121,7 @@ public class ConcurrencyRunner {
                 } catch (Throwable ex) {
                     failed.compareAndSet(null, unwrap(ex));
                 } finally {
+                    AsyncTestContext.uninstall();
                     latch.countDown();
                     if (livelockDetector != null) {
                         livelockDetector.captureSnapshot();
@@ -151,60 +147,46 @@ public class ConcurrencyRunner {
         return t;
     }
 
-    private static void printPhaseReports(VisibilityMonitor visibilityMonitor,
-                                          LivelockDetector livelockDetector,
-                                          RaceConditionDetector raceDetector,
-                                          ThreadLocalMonitor threadLocalMonitor,
-                                          BusyWaitDetector busyWaitDetector,
-                                          AtomicityValidator atomicityValidator,
-                                          InterruptMonitor interruptMonitor) {
+    private static void printPhase1Reports(VisibilityMonitor visibilityMonitor,
+                                           LivelockDetector livelockDetector,
+                                           RaceConditionDetector raceDetector,
+                                           ThreadLocalMonitor threadLocalMonitor,
+                                           BusyWaitDetector busyWaitDetector,
+                                           AtomicityValidator atomicityValidator,
+                                           InterruptMonitor interruptMonitor) {
         if (visibilityMonitor != null) {
-            VisibilityMonitor.VisibilityReport report = visibilityMonitor.analyzeVisibility();
-            if (report.hasIssues()) {
-                System.err.println("\n" + report);
-            }
+            VisibilityMonitor.VisibilityReport r = visibilityMonitor.analyzeVisibility();
+            if (r.hasIssues()) System.err.println("\n" + r);
         }
-
         if (livelockDetector != null) {
-            LivelockDetector.LivelockReport report = livelockDetector.analyzeLivelocks();
-            if (report.hasIssues()) {
-                System.err.println("\n" + report);
-            }
+            LivelockDetector.LivelockReport r = livelockDetector.analyzeLivelocks();
+            if (r.hasIssues()) System.err.println("\n" + r);
         }
-
         if (raceDetector != null) {
-            RaceConditionDetector.RaceConditionReport report = raceDetector.analyzeRaceConditions();
-            if (report.hasIssues()) {
-                System.err.println("\n" + report);
-            }
+            RaceConditionDetector.RaceConditionReport r = raceDetector.analyzeRaceConditions();
+            if (r.hasIssues()) System.err.println("\n" + r);
         }
-
         if (threadLocalMonitor != null) {
-            ThreadLocalMonitor.ThreadLocalReport report = threadLocalMonitor.analyzeThreadLocalLeaks();
-            if (report.hasIssues()) {
-                System.err.println("\n" + report);
-            }
+            ThreadLocalMonitor.ThreadLocalReport r = threadLocalMonitor.analyzeThreadLocalLeaks();
+            if (r.hasIssues()) System.err.println("\n" + r);
         }
-
         if (busyWaitDetector != null) {
-            BusyWaitDetector.BusyWaitReport report = busyWaitDetector.analyzeBusyWaiting();
-            if (report.hasIssues()) {
-                System.err.println("\n" + report);
-            }
+            BusyWaitDetector.BusyWaitReport r = busyWaitDetector.analyzeBusyWaiting();
+            if (r.hasIssues()) System.err.println("\n" + r);
         }
-
         if (atomicityValidator != null) {
-            AtomicityValidator.AtomicityReport report = atomicityValidator.analyzeAtomicity();
-            if (report.hasIssues()) {
-                System.err.println("\n" + report);
-            }
+            AtomicityValidator.AtomicityReport r = atomicityValidator.analyzeAtomicity();
+            if (r.hasIssues()) System.err.println("\n" + r);
         }
-
         if (interruptMonitor != null) {
-            InterruptMonitor.InterruptReport report = interruptMonitor.analyzeInterruptHandling();
-            if (report.hasIssues()) {
-                System.err.println("\n" + report);
-            }
+            InterruptMonitor.InterruptReport r = interruptMonitor.analyzeInterruptHandling();
+            if (r.hasIssues()) System.err.println("\n" + r);
+        }
+    }
+
+    private static void printPhase2Reports(AsyncTestContext ctx) {
+        for (String report : ctx.analyzeAll()) {
+            System.err.println("\n" + report);
         }
     }
 }
