@@ -5,7 +5,6 @@ import com.github.asynctest.AsyncTestConfig;
 import com.github.asynctest.AsyncTestContext;
 import com.github.asynctest.BeforeEachInvocation;
 import com.github.asynctest.diagnostics.*;
-import org.junit.jupiter.api.extension.InvocationInterceptor.Invocation;
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 
 import java.lang.reflect.InvocationTargetException;
@@ -15,13 +14,10 @@ import java.util.stream.Collectors;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 public class ConcurrencyRunner {
 
-    public static void execute(Invocation<Void> invocation,
-                               ReflectiveInvocationContext<Method> invocationContext,
+    public static void execute(ReflectiveInvocationContext<Method> invocationContext,
                                AsyncTestConfig config) throws Throwable {
 
         // Phase 2 context — shared across all threads for this test run
@@ -66,23 +62,28 @@ public class ConcurrencyRunner {
         List<Method> beforeInvocationMethods = findLifecycleMethods(testInstance, BeforeEachInvocation.class);
         List<Method> afterInvocationMethods  = findLifecycleMethods(testInstance, AfterEachInvocation.class);
 
+        // Fix 6: every thread in every round uses method.invoke() for a uniform
+        // code path.  We do NOT call invocation.proceed() at all — as an
+        // InvocationInterceptor we are fully responsible for executing the test
+        // body, so JUnit does not require proceed() to be called.  Skipping it
+        // means the test body is never double-executed and the AsyncTestContext
+        // is always installed before the first line of test code runs.
+
         try {
             CompletableFuture<Void> executionFuture = CompletableFuture.runAsync(() -> {
                 try {
-                    AtomicBoolean proceedCalled = new AtomicBoolean(false);
                     for (int i = 0; i < config.invocations; i++) {
                         if (visibilityMonitor != null) {
                             visibilityMonitor.markInvocationStart();
                         }
                         invokeLifecycleMethods(testInstance, beforeInvocationMethods);
                         try {
-                            runSingleInvocationRound(invocation, invocationContext, actualThreads,
-                                executor, !proceedCalled.get(), livelockDetector, phase2Context,
+                            runSingleInvocationRound(invocationContext, actualThreads,
+                                executor, livelockDetector, phase2Context,
                                 config.timeoutMs, testMethod);
                         } finally {
                             invokeLifecycleMethods(testInstance, afterInvocationMethods);
                         }
-                        proceedCalled.set(true);
                     }
                 } catch (Throwable t) {
                     throw new CompletionException(unwrap(t));
@@ -111,11 +112,9 @@ public class ConcurrencyRunner {
         }
     }
 
-    private static void runSingleInvocationRound(Invocation<Void> invocation,
-                                                 ReflectiveInvocationContext<Method> context,
+    private static void runSingleInvocationRound(ReflectiveInvocationContext<Method> context,
                                                  int threads,
                                                  ExecutorService executor,
-                                                 boolean callProceed,
                                                  LivelockDetector livelockDetector,
                                                  AsyncTestContext phase2Context,
                                                  long roundTimeoutMs,
@@ -128,18 +127,14 @@ public class ConcurrencyRunner {
         Object target = context.getTarget().orElse(null);
         Object[] args = context.getArguments().toArray();
         // method.setAccessible() was already called once in execute() — no repeat here
+        // Every thread uses method.invoke() for a uniform code path (Fix 6)
 
         for (int t = 0; t < threads; t++) {
-            final boolean isFirstThread = (t == 0);
             executor.submit(() -> {
                 AsyncTestContext.install(phase2Context);
                 try {
                     barrier.await();
-                    if (isFirstThread && callProceed) {
-                        invocation.proceed();
-                    } else {
-                        method.invoke(target, args);
-                    }
+                    method.invoke(target, args);
                 } catch (Throwable ex) {
                     failures.add(unwrap(ex));
                 } finally {

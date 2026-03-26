@@ -21,6 +21,10 @@ public class AsyncTestInvocationInterceptor implements InvocationInterceptor {
     public void interceptTestTemplateMethod(Invocation<Void> invocation,
                                             ReflectiveInvocationContext<Method> invocationContext,
                                             ExtensionContext extensionContext) throws Throwable {
-        ConcurrencyRunner.execute(invocation, invocationContext, AsyncTestConfig.from(asyncTest));
+        // The runner drives all N×M executions via method.invoke() and never calls
+        // invocation.proceed() — as the sole InvocationInterceptor we own the execution.
+        // Skipping proceed() is valid per JUnit's contract (Fix 6).
+        invocation.skip();
+        ConcurrencyRunner.execute(invocationContext, AsyncTestConfig.from(asyncTest));
     }
 }
