@@ -53,6 +53,10 @@ public class ConcurrencyRunner {
             ? Executors.newVirtualThreadPerTaskExecutor()
             : Executors.newFixedThreadPool(actualThreads);
 
+        // setAccessible once per test, not once per invocation round (Fix 4)
+        Method testMethod = invocationContext.getExecutable();
+        testMethod.setAccessible(true);
+
         try {
             CompletableFuture<Void> executionFuture = CompletableFuture.runAsync(() -> {
                 try {
@@ -63,7 +67,7 @@ public class ConcurrencyRunner {
                         }
                         runSingleInvocationRound(invocation, invocationContext, actualThreads,
                             executor, !proceedCalled.get(), livelockDetector, phase2Context,
-                            config.timeoutMs);
+                            config.timeoutMs, testMethod);
                         proceedCalled.set(true);
                     }
                 } catch (Throwable t) {
@@ -100,16 +104,16 @@ public class ConcurrencyRunner {
                                                  boolean callProceed,
                                                  LivelockDetector livelockDetector,
                                                  AsyncTestContext phase2Context,
-                                                 long roundTimeoutMs) throws Throwable {
+                                                 long roundTimeoutMs,
+                                                 Method method) throws Throwable {
 
         CyclicBarrier barrier = new CyclicBarrier(threads);
         List<Throwable> failures = new CopyOnWriteArrayList<>();
         CountDownLatch latch = new CountDownLatch(threads);
 
-        Method method = context.getExecutable();
         Object target = context.getTarget().orElse(null);
         Object[] args = context.getArguments().toArray();
-        method.setAccessible(true);
+        // method.setAccessible() was already called once in execute() — no repeat here
 
         for (int t = 0; t < threads; t++) {
             final boolean isFirstThread = (t == 0);
