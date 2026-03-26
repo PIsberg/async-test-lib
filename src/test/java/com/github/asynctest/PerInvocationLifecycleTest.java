@@ -34,6 +34,7 @@ class PerInvocationLifecycleTest {
         }
 
         @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 5_000,
+                   useVirtualThreads = false,
                    detectDeadlocks = false)
         void increment() {
             counter++;
@@ -77,7 +78,8 @@ class PerInvocationLifecycleTest {
         @BeforeEachInvocation
         void before() { beforeCount.incrementAndGet(); }
 
-        @AsyncTest(threads = 2, invocations = 3, timeoutMs = 5_000, detectDeadlocks = false)
+        @AsyncTest(threads = 2, invocations = 3, timeoutMs = 5_000,
+                   useVirtualThreads = false, detectDeadlocks = false)
         void noOp() { /* nothing */ }
 
         @AfterEachInvocation
@@ -107,7 +109,8 @@ class PerInvocationLifecycleTest {
         private final AtomicInteger afterCount = new AtomicInteger(0);
         private final AtomicInteger rounds     = new AtomicInteger(0);
 
-        @AsyncTest(threads = 2, invocations = 2, timeoutMs = 5_000, detectDeadlocks = false)
+        @AsyncTest(threads = 2, invocations = 2, timeoutMs = 5_000,
+                   useVirtualThreads = false, detectDeadlocks = false)
         void alwaysFails() {
             throw new AssertionError("intentional");
         }

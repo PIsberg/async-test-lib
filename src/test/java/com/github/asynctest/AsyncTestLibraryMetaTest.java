@@ -58,7 +58,7 @@ public class AsyncTestLibraryMetaTest {
         private final Object lock2 = new Object();
         private final AtomicInteger threadAssigner = new AtomicInteger(0);
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 1500)
+        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 1500, useVirtualThreads = false)
         void testDeadlock() throws InterruptedException {
             int id = threadAssigner.getAndIncrement();
             if (id % 2 == 0) {
@@ -92,7 +92,7 @@ public class AsyncTestLibraryMetaTest {
         private boolean stopHolder = false;
         private final AtomicInteger assigner = new AtomicInteger();
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 2000)
+        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 2000, useVirtualThreads = false)
         void testVisibility() throws Exception {
             if (assigner.getAndIncrement() % 2 == 0) {
                 Thread.sleep(100);

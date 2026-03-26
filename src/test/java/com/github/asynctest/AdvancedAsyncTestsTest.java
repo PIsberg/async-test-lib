@@ -40,7 +40,8 @@ public class AdvancedAsyncTestsTest {
         private final Object lock2 = new Object();
         private final AtomicInteger threadId = new AtomicInteger(0);
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 1500, detectDeadlocks = true)
+        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 1500,
+                  detectDeadlocks = true, useVirtualThreads = false)
         void testClassicDeadlock() throws InterruptedException {
             int id = threadId.getAndIncrement();
             if (id % 2 == 0) {
@@ -79,7 +80,8 @@ public class AdvancedAsyncTestsTest {
         private boolean flag = false;
         private final AtomicInteger assigner = new AtomicInteger();
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 2000, detectVisibility = true)
+        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 2000,
+                  detectVisibility = true, useVirtualThreads = false)
         void testMissingVolatile() throws Exception {
             if (assigner.getAndIncrement() % 2 == 0) {
                 Thread.sleep(100);
@@ -312,10 +314,10 @@ public class AdvancedAsyncTestsTest {
 
     @Test
     void testDeadlockDetectorUtilities() {
-        // Test hasDeadlock method
-        boolean hasDeadlock = DeadlockDetector.hasDeadlock();
-        assertEquals(false, hasDeadlock, "Should have no deadlock in simple case");
-        
+        // Earlier tests in this class intentionally create deadlocked threads, so this
+        // utility check must not assume a pristine JVM state.
+        DeadlockDetector.hasDeadlock();
+
         // Test lock contention summary
         String summary = DeadlockDetector.getLockContentionSummary();
         assertEquals(true, summary.contains("Running:"), "Summary should contain thread state");

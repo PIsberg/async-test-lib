@@ -45,7 +45,8 @@ class LatchTimeoutTest {
      * Very short timeoutMs so the test suite finishes quickly.
      */
     static class HungThreadDummy {
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 300, detectDeadlocks = false)
+        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 300, detectDeadlocks = false,
+                   useVirtualThreads = false)
         void oneThreadHangsForever() throws InterruptedException {
             if (Thread.currentThread().getId() % 2 != 0) {
                 // spin — this thread never calls latch.countDown()

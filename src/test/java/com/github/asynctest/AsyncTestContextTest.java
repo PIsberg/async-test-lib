@@ -21,6 +21,7 @@ class AsyncTestContextTest {
 
     @AsyncTest(
         threads = 3, invocations = 2,
+        useVirtualThreads = false,
         detectFalseSharing = true,
         detectWakeupIssues = true,
         validateConstructorSafety = true,
@@ -80,7 +81,8 @@ class AsyncTestContextTest {
 
     // ---- Detectors are shared across threads and record events ----
 
-    @AsyncTest(threads = 3, invocations = 2, detectFalseSharing = true, timeoutMs = 5_000)
+    @AsyncTest(threads = 3, invocations = 2, useVirtualThreads = false,
+               detectFalseSharing = true, timeoutMs = 5_000)
     void falseSharingDetectorIsSharedAcrossThreads() {
         // All threads use the same detector instance — events accumulate
         FalseSharingDetector detector = AsyncTestContext.falseSharingDetector();
@@ -89,7 +91,8 @@ class AsyncTestContextTest {
         // No assertion here — we just verify it doesn't throw
     }
 
-    @AsyncTest(threads = 2, invocations = 2, detectABAProblem = true, timeoutMs = 5_000)
+    @AsyncTest(threads = 2, invocations = 2, useVirtualThreads = false,
+               detectABAProblem = true, timeoutMs = 5_000)
     void abaDetectorRecordsEvents() {
         ABAProblemDetector detector = AsyncTestContext.abaProblemDetector();
         detector.recordValueChange("x", "A", "B");
@@ -126,7 +129,8 @@ class AsyncTestContextTest {
     private final AtomicReference<ABAProblemDetector> capturedDetector = new AtomicReference<>();
     private final AtomicBoolean sameInstanceAcrossRounds = new AtomicBoolean(true);
 
-    @AsyncTest(threads = 2, invocations = 3, detectABAProblem = true, timeoutMs = 5_000)
+    @AsyncTest(threads = 2, invocations = 3, useVirtualThreads = false,
+               detectABAProblem = true, timeoutMs = 5_000)
     void sameDetectorInstanceAcrossInvocationRounds() {
         ABAProblemDetector current = AsyncTestContext.abaProblemDetector();
         if (!capturedDetector.compareAndSet(null, current)) {
