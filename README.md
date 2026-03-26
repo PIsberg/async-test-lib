@@ -235,8 +235,19 @@ void stressWithVirtualThreads() {
 
 ### 1. Enhanced Deadlock Detection
 ```java
-@AsyncTest(detectDeadlocks = true)
-void testWithDeadlockDetection() { }
+class TransferTest {
+    private final Object lock1 = new Object(), lock2 = new Object();
+
+    @AsyncTest(threads = 2, detectDeadlocks = true, timeoutMs = 2000)
+    void testWithDeadlockDetection() throws InterruptedException {
+        // Even threads: lock1→lock2; odd threads: lock2→lock1 — classic deadlock pattern
+        boolean even = Thread.currentThread().getId() % 2 == 0;
+        synchronized (even ? lock1 : lock2) {
+            Thread.sleep(1);
+            synchronized (even ? lock2 : lock1) { /* transfer */ }
+        }
+    }
+}
 ```
 **Detects**:
 - Circular lock dependencies
@@ -252,8 +263,14 @@ Thread-43: Waiting for lock@5678, held by Thread-42
 
 ### 2. Visibility Issue Detection
 ```java
-@AsyncTest(detectVisibility = true)
-void testMissingVolatile() { }
+class FlagTest {
+    private boolean flag = false;  // bug: not volatile — each CPU core may cache its own copy
+
+    @AsyncTest(threads = 10, invocations = 50, detectVisibility = true)
+    void testMissingVolatile() {
+        flag = !flag;  // writes may not be seen by other threads
+    }
+}
 ```
 **Detects**:
 - Missing `volatile` keywords
@@ -271,8 +288,18 @@ Suspect: Missing 'volatile' keyword
 
 ### 3. Livelock & Starvation Detection
 ```java
-@AsyncTest(detectLivelocks = true)
-void testLivelock() { }
+class LivelockTest {
+    private final AtomicBoolean turn = new AtomicBoolean(false);
+
+    @AsyncTest(threads = 4, detectLivelocks = true)
+    void testLivelock() {
+        // Threads keep backing off and retrying — CPU churns with no forward progress
+        while (!turn.compareAndSet(false, true)) {
+            turn.set(false);
+        }
+        turn.set(false);
+    }
+}
 ```
 **Detects**:
 - Threads rapidly changing state without progress
@@ -305,73 +332,157 @@ Stress levels:
 ### 1. False Sharing Detection
 **Problem**: Multiple threads access adjacent memory in same cache line
 ```java
-@AsyncTest(detectFalseSharing = true)
-void testCacheContention() { }
+class FalseSharingTest {
+    volatile long a = 0;
+    volatile long b = 0;  // a and b likely share one 64-byte cache line
+
+    @AsyncTest(threads = 4, detectFalseSharing = true)
+    void testCacheContention() {
+        a++;  // writes to a invalidate b's cache entry on other CPUs, and vice versa
+        b++;  // cache line bounces between cores on every write
+    }
+}
 ```
 **Output**: Reports fields on same cache line accessed by different threads
 
 ### 2. Wakeup Issue Detection
 **Problems**: Spurious wakeups, lost notifications
 ```java
-@AsyncTest(detectWakeupIssues = true)
-void testWaitNotify() { }
+class WakeupTest {
+    private final Object monitor = new Object();
+    private boolean ready = false;
+
+    @AsyncTest(threads = 4, detectWakeupIssues = true)
+    void testWaitNotify() throws InterruptedException {
+        synchronized (monitor) {
+            monitor.wait(50);   // missing condition loop — spurious wakeup not guarded
+            ready = true;
+            monitor.notify();   // should be notifyAll when multiple threads wait
+        }
+    }
+}
 ```
 
 ### 3. Constructor Safety Validation
 **Problem**: Object published before fully constructed
 ```java
-@AsyncTest(validateConstructorSafety = true)
-void testObjectInit() { }
+class ConstructorTest {
+    private final AtomicReference<Service> ref = new AtomicReference<>();
+
+    @AsyncTest(threads = 8, validateConstructorSafety = true)
+    void testObjectInit() {
+        // Service constructor does ref.set(this) before all fields are assigned
+        new Service(ref);  // 'this' escapes — other threads may see partial state
+    }
+}
 ```
 
 ### 4. ABA Problem Detection
 **Problem**: In lock-free code, CAS succeeds despite value modification
 ```java
-@AsyncTest(detectABAProblem = true)
-void testLockFreeCounter() { }
+class ABATest {
+    private final AtomicReference<String> value = new AtomicReference<>("A");
+
+    @AsyncTest(threads = 4, detectABAProblem = true)
+    void testLockFreeCounter() {
+        String snapshot = value.get();           // reads "A"
+        // another thread may change A→B→A here before CAS runs
+        value.compareAndSet(snapshot, "C");      // CAS succeeds despite A→B→A cycle
+    }
+}
 ```
 **Fix Suggestion**: Use `AtomicStampedReference` or `AtomicMarkableReference`
 
 ### 5. Lock Order Validation
 **Problem**: Different threads acquire locks in different orders
 ```java
-@AsyncTest(validateLockOrder = true)
-void testLockOrdering() { }
+class LockOrderTest {
+    private final Object lock1 = new Object(), lock2 = new Object();
+
+    @AsyncTest(threads = 2, validateLockOrder = true)
+    void testLockOrdering() {
+        // Even threads: lock1→lock2; odd threads: lock2→lock1 — inconsistent ordering
+        boolean even = Thread.currentThread().getId() % 2 == 0;
+        synchronized (even ? lock1 : lock2) {
+            synchronized (even ? lock2 : lock1) { /* work */ }
+        }
+    }
+}
 ```
 
 ### 6. Synchronizer Monitoring
 **Problem**: Barriers/phasers not advancing properly
 ```java
-@AsyncTest(monitorSynchronizers = true)
-void testBarrier() { }
+class BarrierTest {
+    private final CyclicBarrier barrier = new CyclicBarrier(3);
+
+    @AsyncTest(threads = 3, monitorSynchronizers = true, timeoutMs = 3000)
+    void testBarrier() throws Exception {
+        if (Thread.currentThread().getId() % 7 == 0) return;  // random early exit
+        barrier.await();  // remaining threads stall forever when a thread skips
+    }
+}
 ```
 
 ### 7. Thread Pool Monitoring
 **Problems**: Queue saturation, task rejection, worker starvation
 ```java
-@AsyncTest(monitorThreadPool = true)
-void testExecutor() { }
+class ThreadPoolTest {
+    private final ExecutorService pool = Executors.newFixedThreadPool(2);
+
+    @AsyncTest(threads = 4, monitorThreadPool = true)
+    void testExecutor() throws Exception {
+        // Inner task submitted to a pool that may already be full
+        Future<?> inner = pool.submit(() -> Thread.sleep(100));
+        pool.submit(() -> inner.get()).get();  // outer blocks on inner — deadlock when saturated
+    }
+}
 ```
 
 ### 8. Memory Ordering Detection
 **Problem**: Compiler/CPU reordering causes visibility issues
 ```java
-@AsyncTest(detectMemoryOrderingViolations = true)
-void testMemoryOrder() { }
+class MemoryOrderTest {
+    private int data   = 0;
+    private boolean ready = false;  // bug: not volatile
+
+    @AsyncTest(threads = 2, detectMemoryOrderingViolations = true)
+    void testMemoryOrder() {
+        data  = 42;     // write may be reordered past ready=true by compiler/CPU
+        ready = true;   // reader may observe ready=true but still see data=0
+    }
+}
 ```
 
 ### 9. Async Pipeline Monitoring
 **Problem**: Events lost in processing pipelines
 ```java
-@AsyncTest(monitorAsyncPipeline = true)
-void testPipeline() { }
+class PipelineTest {
+    private final BlockingQueue<String> queue = new ArrayBlockingQueue<>(1);
+
+    @AsyncTest(threads = 4, monitorAsyncPipeline = true)
+    void testPipeline() {
+        queue.offer("event");       // silently drops when queue is full
+        String e = queue.poll();
+        if (e != null) process(e); // poll() returns null when empty — silent signal loss
+    }
+}
 ```
 
 ### 10. Read-Write Lock Fairness
 **Problem**: Writers starved by constant readers
 ```java
-@AsyncTest(monitorReadWriteLockFairness = true)
-void testRWLockFairness() { }
+class RWLockTest {
+    private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
+
+    @AsyncTest(threads = 10, monitorReadWriteLockFairness = true)
+    void testRWLockFairness() {
+        rwLock.readLock().lock();
+        try { readSharedData(); }
+        finally { rwLock.readLock().unlock(); }
+        // Constant stream of readers holds the read lock — writer thread starves
+    }
+}
 ```
 
 ## Phase 3: Runtime Misuse Detectors
@@ -379,48 +490,136 @@ void testRWLockFairness() { }
 ### 1. Race Condition Detection
 **Problem**: Multiple threads read and write the same field without coordination
 ```java
-@AsyncTest(detectRaceConditions = true)
-void testSharedState() { }
+class RaceTest {
+    private final Map<String, Integer> stats = new HashMap<>();  // not thread-safe
+
+    @AsyncTest(threads = 10, detectRaceConditions = true)
+    void testSharedState() {
+        stats.put("hits", stats.getOrDefault("hits", 0) + 1);  // unsynchronized read-modify-write
+    }
+}
 ```
 
 ### 2. ThreadLocal Leak Detection
 **Problem**: ThreadLocal values survive task completion and leak across reused workers
 ```java
-@AsyncTest(detectThreadLocalLeaks = true)
-void testThreadLocalLifecycle() { }
+class ThreadLocalTest {
+    private static final ThreadLocal<String> REQUEST_CTX = new ThreadLocal<>();
+
+    @AsyncTest(threads = 5, detectThreadLocalLeaks = true)
+    void testThreadLocalLifecycle() {
+        REQUEST_CTX.set(UUID.randomUUID().toString());
+        handleRequest();
+        // Bug: missing REQUEST_CTX.remove() — value leaks into the next task on the same thread
+    }
+}
 ```
 
 ### 3. Busy-Wait Detection
 **Problem**: Tight polling loops burn CPU instead of blocking
 ```java
-@AsyncTest(detectBusyWaiting = true)
-void testSpinLoop() { }
+class BusyWaitTest {
+    private final AtomicBoolean done = new AtomicBoolean(false);
+
+    @AsyncTest(threads = 4, detectBusyWaiting = true)
+    void testSpinLoop() {
+        if (Thread.currentThread().getId() % 2 == 0) {
+            done.set(true);
+        } else {
+            while (!done.get()) { /* tight spin — burns CPU; use LockSupport.park() instead */ }
+        }
+    }
+}
 ```
 
 ### 4. Atomicity Violation Detection
 **Problem**: Compound operations such as check-then-act are split across unsynchronized steps
 ```java
-@AsyncTest(detectAtomicityViolations = true)
-void testCompoundUpdate() { }
+class AtomicityTest {
+    private final Map<String, String> cache = new ConcurrentHashMap<>();
+
+    @AsyncTest(threads = 10, detectAtomicityViolations = true)
+    void testCompoundUpdate() {
+        // Non-atomic: another thread may insert between containsKey() and put()
+        if (!cache.containsKey("result")) {
+            cache.put("result", compute());  // race window — use computeIfAbsent() instead
+        }
+    }
+}
 ```
 
 ### 5. Interrupt Handling Monitoring
 **Problem**: `InterruptedException` is caught and ignored instead of being propagated or restored
 ```java
-@AsyncTest(detectInterruptMishandling = true)
-void testCancellationPath() { }
+class InterruptTest {
+    @AsyncTest(threads = 4, detectInterruptMishandling = true)
+    void testCancellationPath() {
+        try {
+            Thread.sleep(10);
+        } catch (InterruptedException e) {
+            // Bug: interrupt status is cleared and swallowed — callers cannot detect cancellation
+            log("interrupted");
+            // Fix: add Thread.currentThread().interrupt();
+        }
+    }
+}
 ```
 
 ## Legacy Java Async Diagnostics
 
 These detectors are currently exposed as manual diagnostics you can instantiate inside tests when working with older `wait/notify`, `ExecutorService`, `Future`, and `CountDownLatch` code.
 
+**21. Notify vs NotifyAll** — `notify()` with multiple waiters wakes only one, leaving others stranded:
 ```java
-NotifyAllValidator notifyValidator = new NotifyAllValidator();
-LazyInitValidator lazyInitValidator = new LazyInitValidator();
-FutureBlockingDetector futureBlockingDetector = new FutureBlockingDetector();
-ExecutorDeadlockDetector executorDeadlockDetector = new ExecutorDeadlockDetector();
-LatchMisuseDetector latchMisuseDetector = new LatchMisuseDetector();
+NotifyAllValidator validator = new NotifyAllValidator();
+validator.recordWaiterAdded(monitor, "queue");
+validator.recordWaiterAdded(monitor, "queue");  // two threads waiting
+validator.recordNotify(monitor, false);          // notify() instead of notifyAll() — one thread left sleeping
+NotifyAllValidator.NotifyAllReport r = validator.analyze();
+assertTrue(r.hasIssues());
+```
+
+**22. Lazy Initialization** — double-checked locking without `volatile` allows partial initialization to be visible:
+```java
+LazyInitValidator validator = new LazyInitValidator();
+// Two threads simultaneously observe null and attempt initialization
+validator.recordAccess("Config", /*isNull=*/true, /*isWrite=*/true, /*isSynchronized=*/false, /*isVolatile=*/false);
+validator.recordAccess("Config", true, true, false, false);   // concurrent write — unsafe DCL
+LazyInitValidator.LazyInitReport r = validator.analyze();
+assertTrue(r.hasIssues());
+```
+
+**23. Future Blocking** — calling `future.get()` inside a bounded pool starves the executor:
+```java
+FutureBlockingDetector detector = new FutureBlockingDetector();
+detector.registerExecutor(pool, "boundedPool", 2);
+detector.recordTaskStarted(pool);
+detector.recordBlockingWait(pool);   // task blocks inside the same pool it was submitted to
+FutureBlockingDetector.FutureBlockingReport r = detector.analyze();
+assertTrue(r.hasIssues());
+```
+
+**24. Executor Self-Deadlock** — a task submits a sibling task and then waits for it on the same single-thread executor:
+```java
+ExecutorDeadlockDetector detector = new ExecutorDeadlockDetector();
+detector.registerExecutor(pool, "singleThread", 1);
+detector.recordTaskStarted(pool);
+detector.recordTaskSubmitted(pool);
+detector.recordWaitingOnSibling(pool);   // deadlock: sibling can never start — pool is full
+ExecutorDeadlockDetector.ExecutorDeadlockReport r = detector.analyze();
+assertTrue(r.hasIssues());
+```
+
+**25. Latch Misuse** — `countDown()` called more times than the latch count, or `await()` never unblocks:
+```java
+LatchMisuseDetector detector = new LatchMisuseDetector();
+detector.registerLatch(latch, "startupGate", 2);
+detector.recordAwait(latch);
+detector.recordCountDown(latch);
+detector.recordCountDown(latch);
+detector.recordCountDown(latch);   // 3rd countDown on a latch of 2 — misuse detected
+LatchMisuseDetector.LatchMisuseReport r = detector.analyze();
+assertTrue(r.hasIssues());
 ```
 
 ## AsyncAssert: Side Effect Polling
