@@ -1,13 +1,17 @@
 package com.github.asynctest.runner;
 
+import com.github.asynctest.AfterEachInvocation;
 import com.github.asynctest.AsyncTestConfig;
 import com.github.asynctest.AsyncTestContext;
+import com.github.asynctest.BeforeEachInvocation;
 import com.github.asynctest.diagnostics.*;
 import org.junit.jupiter.api.extension.InvocationInterceptor.Invocation;
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
@@ -57,6 +61,11 @@ public class ConcurrencyRunner {
         Method testMethod = invocationContext.getExecutable();
         testMethod.setAccessible(true);
 
+        // Discover @BeforeEachInvocation / @AfterEachInvocation methods once (Fix 5)
+        Object testInstance = invocationContext.getTarget().orElse(null);
+        List<Method> beforeInvocationMethods = findLifecycleMethods(testInstance, BeforeEachInvocation.class);
+        List<Method> afterInvocationMethods  = findLifecycleMethods(testInstance, AfterEachInvocation.class);
+
         try {
             CompletableFuture<Void> executionFuture = CompletableFuture.runAsync(() -> {
                 try {
@@ -65,9 +74,14 @@ public class ConcurrencyRunner {
                         if (visibilityMonitor != null) {
                             visibilityMonitor.markInvocationStart();
                         }
-                        runSingleInvocationRound(invocation, invocationContext, actualThreads,
-                            executor, !proceedCalled.get(), livelockDetector, phase2Context,
-                            config.timeoutMs, testMethod);
+                        invokeLifecycleMethods(testInstance, beforeInvocationMethods);
+                        try {
+                            runSingleInvocationRound(invocation, invocationContext, actualThreads,
+                                executor, !proceedCalled.get(), livelockDetector, phase2Context,
+                                config.timeoutMs, testMethod);
+                        } finally {
+                            invokeLifecycleMethods(testInstance, afterInvocationMethods);
+                        }
                         proceedCalled.set(true);
                     }
                 } catch (Throwable t) {
@@ -231,6 +245,44 @@ public class ConcurrencyRunner {
     private static void printPhase2Reports(AsyncTestContext ctx) {
         for (String report : ctx.analyzeAll()) {
             System.err.println("\n" + report);
+        }
+    }
+
+    // ---- Per-invocation lifecycle helpers (Fix 5) ----
+
+    private static <A extends java.lang.annotation.Annotation> List<Method> findLifecycleMethods(
+            Object target, Class<A> annotationType) {
+        if (target == null) return List.of();
+        List<Method> found = new ArrayList<>();
+        Class<?> klass = target.getClass();
+        while (klass != null && klass != Object.class) {
+            for (Method m : klass.getDeclaredMethods()) {
+                if (m.isAnnotationPresent(annotationType)
+                        && m.getParameterCount() == 0
+                        && m.getReturnType() == void.class) {
+                    m.setAccessible(true);
+                    found.add(m);
+                }
+            }
+            klass = klass.getSuperclass();
+        }
+        return found;
+    }
+
+    private static void invokeLifecycleMethods(Object target, List<Method> methods) {
+        if (target == null || methods.isEmpty()) return;
+        for (Method m : methods) {
+            try {
+                m.setAccessible(true);
+                m.invoke(target);
+            } catch (InvocationTargetException e) {
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                throw new RuntimeException("@" + (m.isAnnotationPresent(BeforeEachInvocation.class)
+                    ? "BeforeEachInvocation" : "AfterEachInvocation")
+                    + " method '" + m.getName() + "' threw: " + cause.getMessage(), cause);
+            } catch (IllegalAccessException e) {
+                throw new RuntimeException("Cannot invoke lifecycle method: " + m.getName(), e);
+            }
         }
     }
 }
