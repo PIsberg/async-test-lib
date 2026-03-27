@@ -183,5 +183,11 @@ public @interface AsyncTest {
      * Detects permit leaks, over-release, and unreleased permits at completion.
      */
     boolean monitorSemaphore() default false;
+
+    /**
+     * Enable CompletableFuture exception monitoring.
+     * Detects unhandled exceptions, missing handlers, and swallowed exceptions in async chains.
+     */
+    boolean detectCompletableFutureExceptions() default false;
 }
 

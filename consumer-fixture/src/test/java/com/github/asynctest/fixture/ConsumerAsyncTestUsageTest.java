@@ -8,6 +8,7 @@ import com.github.asynctest.diagnostics.FutureBlockingDetector;
 import com.github.asynctest.diagnostics.ExecutorDeadlockDetector;
 import com.github.asynctest.diagnostics.LatchMisuseDetector;
 import com.github.asynctest.diagnostics.SemaphoreMisuseDetector;
+import com.github.asynctest.diagnostics.CompletableFutureExceptionDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -58,6 +59,7 @@ class ConsumerAsyncTestUsageTest {
     private final ExecutorDeadlockDetector executorDeadlockDetector = new ExecutorDeadlockDetector();
     private final LatchMisuseDetector latchMisuseDetector = new LatchMisuseDetector();
     private final SemaphoreMisuseDetector semaphoreMisuseDetector = new SemaphoreMisuseDetector();
+    private final CompletableFutureExceptionDetector completableFutureExceptionDetector = new CompletableFutureExceptionDetector();
 
     // ============================================
     // PHASE 1: Core Detectors
@@ -461,6 +463,30 @@ class ConsumerAsyncTestUsageTest {
         // Analyze and report (for demonstration, we just print the report)
         var report = semaphoreMisuseDetector.analyze();
         // In real usage with a leak, you would assert: assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Phase 2.12: CompletableFuture exception handling — unhandled exceptions in async chains.
+     * When a CompletableFuture completes exceptionally without a handler, the exception is lost.
+     */
+    @AsyncTest(threads = 4, detectCompletableFutureExceptions = true, timeoutMs = 3000)
+    void testCompletableFutureExceptionHandling() {
+        java.util.concurrent.CompletableFuture<String> future = new java.util.concurrent.CompletableFuture<>();
+        completableFutureExceptionDetector.recordFutureCreated(future, "async-task");
+        
+        // Register exception handler
+        future.exceptionally(ex -> {
+            completableFutureExceptionDetector.recordExceptionHandled(future, "async-task", ex);
+            return "default";
+        });
+        
+        // Complete with exception
+        future.completeExceptionally(new RuntimeException("async error"));
+        completableFutureExceptionDetector.recordFutureCompleted(future, "async-task", false);
+        
+        // Analyze and report (for demonstration, we just print the report)
+        var report = completableFutureExceptionDetector.analyze();
+        // In real usage with unhandled exception, you would assert: assertTrue(report.hasIssues())
     }
 
     // Helper class for constructor safety tests

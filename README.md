@@ -19,7 +19,7 @@ Concurrency bugs are the most elusive and costly bugs in production systems. The
 
 
 ### Key Insight
-The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **26 specialized detectors** identify the exact problem:
+The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **27 specialized detectors** identify the exact problem:
 
 - **Deadlocks** with lock chain analysis showing which threads are waiting for which locks
 - **Memory visibility issues** by tracking field values across invocations
@@ -106,7 +106,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 
 ### Core Capabilities
 - ✅ **Race Condition Forcing**: CyclicBarrier synchronizes threads for maximum contention
-- ✅ **26 Problem Detectors**: Comprehensive coverage of concurrency issues
+- ✅ **27 Problem Detectors**: Comprehensive coverage of concurrency issues
 - ✅ **Virtual Threads Support**: Native support for Project Loom (Java 21+)
 - ✅ **Rich Diagnostics**: Detailed reports with actionable fix suggestions
 - ✅ **Zero Default Overhead**: Advanced features are opt-in
@@ -122,7 +122,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 4. **Livelock Detection** - Thread spinning and CPU starvation patterns
 5. **Virtual Thread Stress** - Massive thread counts (100k+) for pinning detection
 
-### Phase 2: Advanced Detectors (11)
+### Phase 2: Advanced Detectors (12)
 6. **False Sharing** - Cache line contention detection
 7. **Wakeup Issues** - Spurious wakeups and lost notifications
 8. **Constructor Safety** - Object initialization race detection
@@ -134,20 +134,21 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 14. **Async Pipelines** - Event flow and signal loss tracking
 15. **Read-Write Locks** - Fairness and writer starvation
 16. **Semaphore Misuse** - Permit leaks, over-release, and unreleased permits
+17. **CompletableFuture Exceptions** - Unhandled exceptions and missing handlers in async chains
 
 ### Phase 3: Correctness Monitors (5)
-17. **Race Conditions** - Cross-thread field access tracking
-18. **ThreadLocal Leaks** - Missing `remove()` cleanup detection
-19. **Busy Waiting** - Spin loop and tight polling detection
-20. **Atomicity Violations** - Check-then-act and TOCTOU validation
-21. **Interrupt Mishandling** - Ignored `InterruptedException` monitoring
+18. **Race Conditions** - Cross-thread field access tracking
+19. **ThreadLocal Leaks** - Missing `remove()` cleanup detection
+20. **Busy Waiting** - Spin loop and tight polling detection
+21. **Atomicity Violations** - Check-then-act and TOCTOU validation
+22. **Interrupt Mishandling** - Ignored `InterruptedException` monitoring
 
 ### Legacy Java Async Patterns (5)
-22. **Notify vs NotifyAll** - Multi-waiter signal misuse
-23. **Lazy Initialization** - Unsafe singleton and DCL validation
-24. **Future Blocking** - Bounded-pool starvation from `get()`/`join()`
-25. **Executor Self-Deadlock** - Sibling task waits on the same executor
-26. **Latch Misuse** - Missing or extra `countDown()` tracking
+23. **Notify vs NotifyAll** - Multi-waiter signal misuse
+24. **Lazy Initialization** - Unsafe singleton and DCL validation
+25. **Future Blocking** - Bounded-pool starvation from `get()`/`join()`
+26. **Executor Self-Deadlock** - Sibling task waits on the same executor
+27. **Latch Misuse** - Missing or extra `countDown()` tracking
 
 ## Quick Start
 
@@ -235,6 +236,7 @@ void stressWithVirtualThreads() {
 | `detectAtomicityViolations` | boolean | false | Detect non-atomic compound operations |
 | `detectInterruptMishandling` | boolean | false | Detect swallowed interrupts and missing restoration |
 | `monitorSemaphore` | boolean | false | Monitor semaphore permit leaks and over-release |
+| `detectCompletableFutureExceptions` | boolean | false | Detect unhandled exceptions in CompletableFuture chains |
 
 ## Phase 1: Core Features
 
@@ -554,6 +556,49 @@ class SemaphoreTest {
 SEMAPHORE MISUSE DETECTED:
   - resource-pool: acquired 4 times but released only 3 times (1 permits potentially leaked)
   Fix: ensure every acquire() has a matching release() in a finally block
+```
+
+### 12. CompletableFuture Exception Detection
+**Problem**: Unhandled exceptions in async chains, missing exception handlers
+```java
+class CompletableFutureTest {
+    @AsyncTest(threads = 4, detectCompletableFutureExceptions = true)
+    void testAsyncChain() {
+        CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
+            AsyncTestContext.completableFutureMonitor()
+                .recordFutureCreated(future, "async-task");
+            return computeResult();
+        });
+        
+        // Always register exception handler
+        future.exceptionally(ex -> {
+            AsyncTestContext.completableFutureMonitor()
+                .recordExceptionHandled(future, "async-task", ex);
+            return "default";
+        });
+        
+        try {
+            future.join();
+            AsyncTestContext.completableFutureMonitor()
+                .recordFutureCompleted(future, "async-task", true);
+        } catch (Exception e) {
+            AsyncTestContext.completableFutureMonitor()
+                .recordFutureCompleted(future, "async-task", false);
+        }
+    }
+}
+```
+**Detects**:
+- Unhandled exceptions (completes exceptionally without handler)
+- Missing handlers (no .exceptionally() or .handle() registered)
+- Swallowed exceptions (get/join throws but exception not captured)
+
+**Output Example**:
+```
+COMPLETABLEFUTURE EXCEPTION ISSUES DETECTED:
+  Unhandled Exceptions:
+    - async-task: completed exceptionally without exception handler
+  Fix: always register .exceptionally() or .handle() for async chains
 ```
 
 ## Phase 3: Runtime Misuse Detectors

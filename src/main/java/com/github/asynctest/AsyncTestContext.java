@@ -42,6 +42,7 @@ public final class AsyncTestContext {
     final PipelineMonitor            pipelineMonitor;
     final ReadWriteLockMonitor       readWriteLockMonitor;
     final SemaphoreMisuseDetector    semaphoreMisuseDetector;
+    final CompletableFutureExceptionDetector completableFutureExceptionDetector;
 
     public AsyncTestContext(AsyncTestConfig cfg) {
         falseSharingDetector       = cfg.detectFalseSharing             ? new FalseSharingDetector()       : null;
@@ -55,6 +56,7 @@ public final class AsyncTestContext {
         pipelineMonitor            = cfg.monitorAsyncPipeline           ? new PipelineMonitor()            : null;
         readWriteLockMonitor       = cfg.monitorReadWriteLockFairness   ? new ReadWriteLockMonitor()       : null;
         semaphoreMisuseDetector    = cfg.monitorSemaphore               ? new SemaphoreMisuseDetector()    : null;
+        completableFutureExceptionDetector = cfg.detectCompletableFutureExceptions ? new CompletableFutureExceptionDetector() : null;
     }
 
     // ---- Lifecycle (package-private, called by ConcurrencyRunner) ----
@@ -167,6 +169,14 @@ public final class AsyncTestContext {
         return require("monitorSemaphore", c -> c.semaphoreMisuseDetector);
     }
 
+    /**
+     * Returns the {@link CompletableFutureExceptionDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCompletableFutureExceptions = false}
+     */
+    public static CompletableFutureExceptionDetector completableFutureMonitor() {
+        return require("detectCompletableFutureExceptions", c -> c.completableFutureExceptionDetector);
+    }
+
     // ---- Internal reporting ----
 
     /**
@@ -219,6 +229,10 @@ public final class AsyncTestContext {
         }
         if (semaphoreMisuseDetector != null) {
             SemaphoreMisuseDetector.SemaphoreMisuseReport r = semaphoreMisuseDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
+        }
+        if (completableFutureExceptionDetector != null) {
+            CompletableFutureExceptionDetector.CompletableFutureExceptionReport r = completableFutureExceptionDetector.analyze();
             if (r.hasIssues()) out.add(r.toString());
         }
 

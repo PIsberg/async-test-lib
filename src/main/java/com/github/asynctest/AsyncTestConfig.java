@@ -40,6 +40,7 @@ public final class AsyncTestConfig {
 
     // ---- Phase 2 Additional ----
     public final boolean monitorSemaphore;
+    public final boolean detectCompletableFutureExceptions;
 
     private AsyncTestConfig(Builder b) {
         threads                        = b.threads;
@@ -66,6 +67,7 @@ public final class AsyncTestConfig {
         detectAtomicityViolations      = b.detectAtomicityViolations;
         detectInterruptMishandling     = b.detectInterruptMishandling;
         monitorSemaphore               = b.monitorSemaphore;
+        detectCompletableFutureExceptions = b.detectCompletableFutureExceptions;
     }
 
     /** Builds a config from an {@link AsyncTest} annotation instance. */
@@ -95,6 +97,7 @@ public final class AsyncTestConfig {
             .detectAtomicityViolations(ann.detectAtomicityViolations())
             .detectInterruptMishandling(ann.detectInterruptMishandling())
             .monitorSemaphore(ann.monitorSemaphore())
+            .detectCompletableFutureExceptions(ann.detectCompletableFutureExceptions())
             .build();
     }
 
@@ -127,6 +130,7 @@ public final class AsyncTestConfig {
         private boolean detectAtomicityViolations  = false;
         private boolean detectInterruptMishandling = false;
         private boolean monitorSemaphore           = false;
+        private boolean detectCompletableFutureExceptions = false;
 
         public Builder threads(int v)                        { threads = v; return this; }
         public Builder invocations(int v)                    { invocations = v; return this; }
@@ -152,6 +156,7 @@ public final class AsyncTestConfig {
         public Builder detectAtomicityViolations(boolean v)  { detectAtomicityViolations = v; return this; }
         public Builder detectInterruptMishandling(boolean v) { detectInterruptMishandling = v; return this; }
         public Builder monitorSemaphore(boolean v)           { monitorSemaphore = v; return this; }
+        public Builder detectCompletableFutureExceptions(boolean v) { detectCompletableFutureExceptions = v; return this; }
 
         public AsyncTestConfig build() {
             return new AsyncTestConfig(this);

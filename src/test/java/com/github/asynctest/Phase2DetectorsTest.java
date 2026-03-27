@@ -4,6 +4,7 @@ import com.github.asynctest.diagnostics.*;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -360,5 +361,37 @@ public class Phase2DetectorsTest {
             AsyncTestContext.semaphoreMonitor()
                 .recordRelease(semaphore, "clean-pool");
         }
+    }
+
+    // ============= CompletableFuture Exception Tests =============
+
+    @AsyncTest(threads = 4, detectCompletableFutureExceptions = true, timeoutMs = 3000)
+    void testCompletableFutureUnhandledException() {
+        CompletableFuture<String> future = new CompletableFuture<>();
+        AsyncTestContext.completableFutureMonitor()
+            .recordFutureCreated(future, "unhandled-async-task");
+        
+        // Complete exceptionally without handler
+        future.completeExceptionally(new RuntimeException("async error"));
+        AsyncTestContext.completableFutureMonitor()
+            .recordFutureCompleted(future, "unhandled-async-task", false);
+    }
+
+    @AsyncTest(threads = 2, detectCompletableFutureExceptions = true, timeoutMs = 3000)
+    void testCompletableFutureWithHandler() {
+        CompletableFuture<String> future = new CompletableFuture<>();
+        AsyncTestContext.completableFutureMonitor()
+            .recordFutureCreated(future, "handled-async-task");
+        
+        // Register exception handler
+        future.exceptionally(ex -> {
+            AsyncTestContext.completableFutureMonitor()
+                .recordExceptionHandled(future, "handled-async-task", ex);
+            return "default";
+        });
+        
+        future.completeExceptionally(new RuntimeException("async error"));
+        AsyncTestContext.completableFutureMonitor()
+            .recordFutureCompleted(future, "handled-async-task", false);
     }
 }
