@@ -19,7 +19,7 @@ Concurrency bugs are the most elusive and costly bugs in production systems. The
 
 
 ### Key Insight
-The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **41 specialized detectors** identify the exact problem:
+The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **47 specialized detectors** identify the exact problem:
 
 - **Deadlocks** with lock chain analysis showing which threads are waiting for which locks
 - **Memory visibility issues** by tracking field values across invocations
@@ -31,6 +31,12 @@ The problem with testing concurrent code is that most runs succeed randomly. `as
 - **Volatile array problems** where elements aren't actually volatile
 - **Broken double-checked locking** without volatile keyword
 - **Wait timeout issues** that could cause indefinite blocking
+- **Phaser/CyclicBarrier synchronization** with phase tracking
+- **StampedLock optimistic reads** without validation
+- **Exchanger timeouts** and missing partners
+- **ScheduledExecutorService** missing shutdown and long tasks
+- **ForkJoinPool** fork without join issues
+- **ThreadFactory** missing exception handlers and poor naming
 - And 20+ more specialized problem categories
 
 ### The async-test Difference
@@ -88,7 +94,7 @@ Rather than deploying code hoping there are no concurrency bugs, `async-test` he
 
 ---
 
-A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **41 specialized problem detectors**.
+A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **47 specialized problem detectors**.
 
 Catches race conditions, deadlocks, memory visibility issues, livelocks, false sharing, ABA problems, lock ordering violations, constructor safety issues, thread pool problems, and more.
 
@@ -127,7 +133,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 4. **Livelock Detection** - Thread spinning and CPU starvation patterns
 5. **Virtual Thread Stress** - Massive thread counts (100k+) for pinning detection
 
-### Phase 2: Advanced Detectors (26)
+### Phase 2: Advanced Detectors (32)
 6. **False Sharing** - Cache line contention detection
 7. **Wakeup Issues** - Spurious wakeups and lost notifications
 8. **Constructor Safety** - Object initialization race detection
@@ -154,6 +160,12 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 29. **Volatile Array Issues** - Multi-thread access to non-volatile elements
 30. **Double-Checked Locking** - Broken DCL patterns without volatile
 31. **Wait Timeout** - wait() calls without timeout (potential deadlock)
+32. **Phaser Issues** - Missing arrive(), timeout, termination
+33. **StampedLock Issues** - Unvalidated optimistic reads, stamp not released
+34. **Exchanger Issues** - Timeout, missing partner, null exchanges
+35. **ScheduledExecutor Issues** - Missing shutdown, long-running tasks
+36. **ForkJoinPool Issues** - Fork without join, task exceptions
+37. **ThreadFactory Issues** - Missing exception handler, poor naming
 
 ### Phase 3: Correctness Monitors (5)
 26. **Race Conditions** - Cross-thread field access tracking
@@ -279,6 +291,12 @@ void stressWithVirtualThreads() {
 | `detectVolatileArrayIssues` | boolean | false | Detect volatile array element visibility issues |
 | `detectDoubleCheckedLocking` | boolean | false | Detect broken double-checked locking patterns |
 | `detectWaitTimeout` | boolean | false | Detect wait() calls without timeout |
+| `detectPhaserIssues` | boolean | false | Detect Phaser missing arrive() and timeouts |
+| `detectStampedLockIssues` | boolean | false | Detect StampedLock unvalidated optimistic reads |
+| `detectExchangerIssues` | boolean | false | Detect Exchanger timeout and missing partners |
+| `detectScheduledExecutorIssues` | boolean | false | Detect ScheduledExecutor missing shutdown |
+| `detectForkJoinPoolIssues` | boolean | false | Detect ForkJoinPool fork without join |
+| `detectThreadFactoryIssues` | boolean | false | Detect ThreadFactory missing exception handler |
 
 ## Phase 1: Core Features
 

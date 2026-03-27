@@ -42,6 +42,14 @@ public enum DetectorType {
     DOUBLE_CHECKED_LOCKING,
     WAIT_TIMEOUT,
 
+    // Phase 2: Advanced Concurrency Utilities
+    PHASER,
+    STAMPED_LOCK,
+    EXCHANGER,
+    SCHEDULED_EXECUTOR,
+    FORK_JOIN_POOL,
+    THREAD_FACTORY,
+
     // Phase 3
     RACE_CONDITIONS,
     THREAD_LOCAL_LEAKS,

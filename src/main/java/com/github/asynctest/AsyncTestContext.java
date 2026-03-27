@@ -57,6 +57,12 @@ public final class AsyncTestContext {
     final VolatileArrayDetector volatileArrayDetector;
     final DoubleCheckedLockingDetector doubleCheckedLockingDetector;
     final WaitTimeoutDetector waitTimeoutDetector;
+    final PhaserDetector phaserDetector;
+    final StampedLockDetector stampedLockDetector;
+    final ExchangerDetector exchangerDetector;
+    final ScheduledExecutorDetector scheduledExecutorDetector;
+    final ForkJoinPoolDetector forkJoinPoolDetector;
+    final ThreadFactoryDetector threadFactoryDetector;
 
     public AsyncTestContext(AsyncTestConfig cfg) {
         falseSharingDetector       = cfg.detectFalseSharing             ? new FalseSharingDetector()       : null;
@@ -85,6 +91,12 @@ public final class AsyncTestContext {
         volatileArrayDetector      = cfg.detectVolatileArrayIssues      ? new VolatileArrayDetector()      : null;
         doubleCheckedLockingDetector = cfg.detectDoubleCheckedLocking   ? new DoubleCheckedLockingDetector() : null;
         waitTimeoutDetector        = cfg.detectWaitTimeout              ? new WaitTimeoutDetector()        : null;
+        phaserDetector             = cfg.detectPhaserIssues             ? new PhaserDetector()             : null;
+        stampedLockDetector        = cfg.detectStampedLockIssues        ? new StampedLockDetector()        : null;
+        exchangerDetector          = cfg.detectExchangerIssues          ? new ExchangerDetector()          : null;
+        scheduledExecutorDetector  = cfg.detectScheduledExecutorIssues  ? new ScheduledExecutorDetector()  : null;
+        forkJoinPoolDetector       = cfg.detectForkJoinPoolIssues       ? new ForkJoinPoolDetector()       : null;
+        threadFactoryDetector      = cfg.detectThreadFactoryIssues      ? new ThreadFactoryDetector()      : null;
     }
 
     // ---- Lifecycle (package-private, called by ConcurrencyRunner) ----
@@ -317,6 +329,54 @@ public final class AsyncTestContext {
         return require("detectWaitTimeout", c -> c.waitTimeoutDetector);
     }
 
+    /**
+     * Returns the {@link PhaserDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectPhaserIssues = false}
+     */
+    public static PhaserDetector phaserMonitor() {
+        return require("detectPhaserIssues", c -> c.phaserDetector);
+    }
+
+    /**
+     * Returns the {@link StampedLockDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectStampedLockIssues = false}
+     */
+    public static StampedLockDetector stampedLockMonitor() {
+        return require("detectStampedLockIssues", c -> c.stampedLockDetector);
+    }
+
+    /**
+     * Returns the {@link ExchangerDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectExchangerIssues = false}
+     */
+    public static ExchangerDetector exchangerMonitor() {
+        return require("detectExchangerIssues", c -> c.exchangerDetector);
+    }
+
+    /**
+     * Returns the {@link ScheduledExecutorDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectScheduledExecutorIssues = false}
+     */
+    public static ScheduledExecutorDetector scheduledExecutorMonitor() {
+        return require("detectScheduledExecutorIssues", c -> c.scheduledExecutorDetector);
+    }
+
+    /**
+     * Returns the {@link ForkJoinPoolDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectForkJoinPoolIssues = false}
+     */
+    public static ForkJoinPoolDetector forkJoinPoolMonitor() {
+        return require("detectForkJoinPoolIssues", c -> c.forkJoinPoolDetector);
+    }
+
+    /**
+     * Returns the {@link ThreadFactoryDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectThreadFactoryIssues = false}
+     */
+    public static ThreadFactoryDetector threadFactoryMonitor() {
+        return require("detectThreadFactoryIssues", c -> c.threadFactoryDetector);
+    }
+
     // ---- Internal reporting ----
 
     /**
@@ -429,6 +489,30 @@ public final class AsyncTestContext {
         }
         if (waitTimeoutDetector != null) {
             WaitTimeoutDetector.WaitTimeoutReport r = waitTimeoutDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
+        }
+        if (phaserDetector != null) {
+            PhaserDetector.PhaserReport r = phaserDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
+        }
+        if (stampedLockDetector != null) {
+            StampedLockDetector.StampedLockReport r = stampedLockDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
+        }
+        if (exchangerDetector != null) {
+            ExchangerDetector.ExchangerReport r = exchangerDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
+        }
+        if (scheduledExecutorDetector != null) {
+            ScheduledExecutorDetector.ScheduledExecutorReport r = scheduledExecutorDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
+        }
+        if (forkJoinPoolDetector != null) {
+            ForkJoinPoolDetector.ForkJoinPoolReport r = forkJoinPoolDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
+        }
+        if (threadFactoryDetector != null) {
+            ThreadFactoryDetector.ThreadFactoryReport r = threadFactoryDetector.analyze();
             if (r.hasIssues()) out.add(r.toString());
         }
 

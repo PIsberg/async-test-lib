@@ -292,6 +292,44 @@ public @interface AsyncTest {
      */
     boolean detectWaitTimeout() default false;
 
+    // ============= Phase 2: Advanced Concurrency Utilities =============
+
+    /**
+     * Enable Phaser misuse detection.
+     * Detects missing arrive() calls, timeouts, and termination issues.
+     */
+    boolean detectPhaserIssues() default false;
+
+    /**
+     * Enable StampedLock issue detection.
+     * Detects unvalidated optimistic reads and stamp release issues.
+     */
+    boolean detectStampedLockIssues() default false;
+
+    /**
+     * Enable Exchanger misuse detection.
+     * Detects exchange timeouts and missing partners.
+     */
+    boolean detectExchangerIssues() default false;
+
+    /**
+     * Enable ScheduledExecutorService issue detection.
+     * Detects missing shutdown, long-running tasks, and exceptions.
+     */
+    boolean detectScheduledExecutorIssues() default false;
+
+    /**
+     * Enable ForkJoinPool issue detection.
+     * Detects fork without join and task exceptions.
+     */
+    boolean detectForkJoinPoolIssues() default false;
+
+    /**
+     * Enable ThreadFactory issue detection.
+     * Detects missing exception handlers and poor thread naming.
+     */
+    boolean detectThreadFactoryIssues() default false;
+
     // ============= Benchmarking =============
 
     /**

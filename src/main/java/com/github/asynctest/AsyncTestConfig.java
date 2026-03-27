@@ -66,6 +66,14 @@ public final class AsyncTestConfig {
     public final boolean detectDoubleCheckedLocking;
     public final boolean detectWaitTimeout;
 
+    // ---- Phase 2: Advanced Concurrency Utilities ----
+    public final boolean detectPhaserIssues;
+    public final boolean detectStampedLockIssues;
+    public final boolean detectExchangerIssues;
+    public final boolean detectScheduledExecutorIssues;
+    public final boolean detectForkJoinPoolIssues;
+    public final boolean detectThreadFactoryIssues;
+
     // ---- Benchmarking ----
     public final boolean enableBenchmarking;
     public final double benchmarkRegressionThreshold;
@@ -112,6 +120,12 @@ public final class AsyncTestConfig {
         detectVolatileArrayIssues      = b.detectVolatileArrayIssues;
         detectDoubleCheckedLocking     = b.detectDoubleCheckedLocking;
         detectWaitTimeout              = b.detectWaitTimeout;
+        detectPhaserIssues             = b.detectPhaserIssues;
+        detectStampedLockIssues        = b.detectStampedLockIssues;
+        detectExchangerIssues          = b.detectExchangerIssues;
+        detectScheduledExecutorIssues  = b.detectScheduledExecutorIssues;
+        detectForkJoinPoolIssues       = b.detectForkJoinPoolIssues;
+        detectThreadFactoryIssues      = b.detectThreadFactoryIssues;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -163,6 +177,12 @@ public final class AsyncTestConfig {
             .detectVolatileArrayIssues(ann.detectVolatileArrayIssues())
             .detectDoubleCheckedLocking(ann.detectDoubleCheckedLocking())
             .detectWaitTimeout(ann.detectWaitTimeout())
+            .detectPhaserIssues(ann.detectPhaserIssues())
+            .detectStampedLockIssues(ann.detectStampedLockIssues())
+            .detectExchangerIssues(ann.detectExchangerIssues())
+            .detectScheduledExecutorIssues(ann.detectScheduledExecutorIssues())
+            .detectForkJoinPoolIssues(ann.detectForkJoinPoolIssues())
+            .detectThreadFactoryIssues(ann.detectThreadFactoryIssues())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -215,6 +235,12 @@ public final class AsyncTestConfig {
         private boolean detectVolatileArrayIssues = false;
         private boolean detectDoubleCheckedLocking = false;
         private boolean detectWaitTimeout = false;
+        private boolean detectPhaserIssues = false;
+        private boolean detectStampedLockIssues = false;
+        private boolean detectExchangerIssues = false;
+        private boolean detectScheduledExecutorIssues = false;
+        private boolean detectForkJoinPoolIssues = false;
+        private boolean detectThreadFactoryIssues = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -260,6 +286,12 @@ public final class AsyncTestConfig {
         public Builder detectVolatileArrayIssues(boolean v) { detectVolatileArrayIssues = v; return this; }
         public Builder detectDoubleCheckedLocking(boolean v) { detectDoubleCheckedLocking = v; return this; }
         public Builder detectWaitTimeout(boolean v) { detectWaitTimeout = v; return this; }
+        public Builder detectPhaserIssues(boolean v) { detectPhaserIssues = v; return this; }
+        public Builder detectStampedLockIssues(boolean v) { detectStampedLockIssues = v; return this; }
+        public Builder detectExchangerIssues(boolean v) { detectExchangerIssues = v; return this; }
+        public Builder detectScheduledExecutorIssues(boolean v) { detectScheduledExecutorIssues = v; return this; }
+        public Builder detectForkJoinPoolIssues(boolean v) { detectForkJoinPoolIssues = v; return this; }
+        public Builder detectThreadFactoryIssues(boolean v) { detectThreadFactoryIssues = v; return this; }
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
@@ -302,6 +334,12 @@ public final class AsyncTestConfig {
                 if (!excludes.contains(DetectorType.VOLATILE_ARRAY)) detectVolatileArrayIssues = true;
                 if (!excludes.contains(DetectorType.DOUBLE_CHECKED_LOCKING)) detectDoubleCheckedLocking = true;
                 if (!excludes.contains(DetectorType.WAIT_TIMEOUT)) detectWaitTimeout = true;
+                if (!excludes.contains(DetectorType.PHASER)) detectPhaserIssues = true;
+                if (!excludes.contains(DetectorType.STAMPED_LOCK)) detectStampedLockIssues = true;
+                if (!excludes.contains(DetectorType.EXCHANGER)) detectExchangerIssues = true;
+                if (!excludes.contains(DetectorType.SCHEDULED_EXECUTOR)) detectScheduledExecutorIssues = true;
+                if (!excludes.contains(DetectorType.FORK_JOIN_POOL)) detectForkJoinPoolIssues = true;
+                if (!excludes.contains(DetectorType.THREAD_FACTORY)) detectThreadFactoryIssues = true;
                 if (!excludes.contains(DetectorType.RACE_CONDITIONS)) detectRaceConditions = true;
                 if (!excludes.contains(DetectorType.THREAD_LOCAL_LEAKS)) detectThreadLocalLeaks = true;
                 if (!excludes.contains(DetectorType.BUSY_WAITING)) detectBusyWaiting = true;
