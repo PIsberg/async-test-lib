@@ -219,5 +219,11 @@ public @interface AsyncTest {
      * Detects lost signals, stuck waiters, and missing signals.
      */
     boolean detectConditionVariableIssues() default false;
+
+    /**
+     * Enable SimpleDateFormat misuse detection.
+     * Detects concurrent access to non-thread-safe date formatters.
+     */
+    boolean detectSimpleDateFormatIssues() default false;
 }
 

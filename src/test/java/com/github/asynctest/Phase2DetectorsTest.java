@@ -10,6 +10,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.text.SimpleDateFormat;
 import java.util.Random;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -548,5 +549,19 @@ public class Phase2DetectorsTest {
         } finally {
             lock.unlock();
         }
+    }
+
+    // ============= SimpleDateFormat Tests =============
+
+    @AsyncTest(threads = 4, detectSimpleDateFormatIssues = true, timeoutMs = 3000)
+    void testSimpleDateFormatUsage() {
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+        AsyncTestContext.simpleDateFormatMonitor()
+            .registerFormatter(sdf, "date-formatter");
+        
+        // Not thread-safe - will be detected
+        String formatted = sdf.format(new java.util.Date());
+        AsyncTestContext.simpleDateFormatMonitor()
+            .recordFormat(sdf, "date-formatter");
     }
 }

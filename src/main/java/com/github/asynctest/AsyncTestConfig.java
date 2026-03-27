@@ -46,6 +46,7 @@ public final class AsyncTestConfig {
     public final boolean detectSharedRandom;
     public final boolean detectBlockingQueueIssues;
     public final boolean detectConditionVariableIssues;
+    public final boolean detectSimpleDateFormatIssues;
 
     private AsyncTestConfig(Builder b) {
         threads                        = b.threads;
@@ -78,6 +79,7 @@ public final class AsyncTestConfig {
         detectSharedRandom             = b.detectSharedRandom;
         detectBlockingQueueIssues      = b.detectBlockingQueueIssues;
         detectConditionVariableIssues  = b.detectConditionVariableIssues;
+        detectSimpleDateFormatIssues   = b.detectSimpleDateFormatIssues;
     }
 
     /** Builds a config from an {@link AsyncTest} annotation instance. */
@@ -113,6 +115,7 @@ public final class AsyncTestConfig {
             .detectSharedRandom(ann.detectSharedRandom())
             .detectBlockingQueueIssues(ann.detectBlockingQueueIssues())
             .detectConditionVariableIssues(ann.detectConditionVariableIssues())
+            .detectSimpleDateFormatIssues(ann.detectSimpleDateFormatIssues())
             .build();
     }
 
@@ -151,6 +154,7 @@ public final class AsyncTestConfig {
         private boolean detectSharedRandom = false;
         private boolean detectBlockingQueueIssues = false;
         private boolean detectConditionVariableIssues = false;
+        private boolean detectSimpleDateFormatIssues = false;
 
         public Builder threads(int v)                        { threads = v; return this; }
         public Builder invocations(int v)                    { invocations = v; return this; }
@@ -182,6 +186,7 @@ public final class AsyncTestConfig {
         public Builder detectSharedRandom(boolean v) { detectSharedRandom = v; return this; }
         public Builder detectBlockingQueueIssues(boolean v) { detectBlockingQueueIssues = v; return this; }
         public Builder detectConditionVariableIssues(boolean v) { detectConditionVariableIssues = v; return this; }
+        public Builder detectSimpleDateFormatIssues(boolean v) { detectSimpleDateFormatIssues = v; return this; }
 
         public AsyncTestConfig build() {
             return new AsyncTestConfig(this);

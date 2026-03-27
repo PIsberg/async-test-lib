@@ -14,6 +14,7 @@ import com.github.asynctest.diagnostics.LockLeakDetector;
 import com.github.asynctest.diagnostics.SharedRandomDetector;
 import com.github.asynctest.diagnostics.BlockingQueueDetector;
 import com.github.asynctest.diagnostics.ConditionVariableDetector;
+import com.github.asynctest.diagnostics.SimpleDateFormatDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -70,6 +71,7 @@ class ConsumerAsyncTestUsageTest {
     private final SharedRandomDetector sharedRandomDetector = new SharedRandomDetector();
     private final BlockingQueueDetector blockingQueueDetector = new BlockingQueueDetector();
     private final ConditionVariableDetector conditionVariableDetector = new ConditionVariableDetector();
+    private final SimpleDateFormatDetector simpleDateFormatDetector = new SimpleDateFormatDetector();
 
     // ============================================
     // PHASE 1: Core Detectors
@@ -615,6 +617,27 @@ class ConsumerAsyncTestUsageTest {
         // Analyze and report (for demonstration, we just print the report)
         var report = conditionVariableDetector.analyze();
         // In real usage with condition issues, you would assert: assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Phase 2.18: SimpleDateFormat misuse detection — concurrent access to non-thread-safe formatter.
+     * SimpleDateFormat is NOT thread-safe; use DateTimeFormatter (Java 8+) or ThreadLocal instead.
+     */
+    @AsyncTest(threads = 4, detectSimpleDateFormatIssues = true, timeoutMs = 3000)
+    void testSimpleDateFormatUsage() {
+        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
+        simpleDateFormatDetector.registerFormatter(sdf, "date-formatter");
+        
+        // Bug: SimpleDateFormat is not thread-safe!
+        String formatted = sdf.format(new java.util.Date());
+        simpleDateFormatDetector.recordFormat(sdf, "date-formatter");
+        
+        // Fix: use DateTimeFormatter or ThreadLocal<SimpleDateFormat>
+        // String safe = java.time.format.DateTimeFormatter.ISO_LOCAL_DATE.format(java.time.LocalDate.now());
+        
+        // Analyze and report (for demonstration, we just print the report)
+        var report = simpleDateFormatDetector.analyze();
+        // In real usage with shared formatter, you would assert: assertTrue(report.hasIssues())
     }
 
     // Helper class for constructor safety tests

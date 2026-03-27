@@ -19,7 +19,7 @@ Concurrency bugs are the most elusive and costly bugs in production systems. The
 
 
 ### Key Insight
-The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **32 specialized detectors** identify the exact problem:
+The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **33 specialized detectors** identify the exact problem:
 
 - **Deadlocks** with lock chain analysis showing which threads are waiting for which locks
 - **Memory visibility issues** by tracking field values across invocations
@@ -106,7 +106,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 
 ### Core Capabilities
 - ✅ **Race Condition Forcing**: CyclicBarrier synchronizes threads for maximum contention
-- ✅ **32 Problem Detectors**: Comprehensive coverage of concurrency issues
+- ✅ **33 Problem Detectors**: Comprehensive coverage of concurrency issues
 - ✅ **Virtual Threads Support**: Native support for Project Loom (Java 21+)
 - ✅ **Rich Diagnostics**: Detailed reports with actionable fix suggestions
 - ✅ **Zero Default Overhead**: Advanced features are opt-in
@@ -122,7 +122,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 4. **Livelock Detection** - Thread spinning and CPU starvation patterns
 5. **Virtual Thread Stress** - Massive thread counts (100k+) for pinning detection
 
-### Phase 2: Advanced Detectors (17)
+### Phase 2: Advanced Detectors (18)
 6. **False Sharing** - Cache line contention detection
 7. **Wakeup Issues** - Spurious wakeups and lost notifications
 8. **Constructor Safety** - Object initialization race detection
@@ -140,20 +140,21 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 20. **Shared Random** - Concurrent access to non-thread-safe Random instances
 21. **BlockingQueue Misuse** - Silent failures, queue saturation, producer/consumer imbalance
 22. **Condition Variables** - Lost signals, stuck waiters, missing signals
+23. **SimpleDateFormat** - Concurrent access to non-thread-safe date formatters
 
 ### Phase 3: Correctness Monitors (5)
-23. **Race Conditions** - Cross-thread field access tracking
-24. **ThreadLocal Leaks** - Missing `remove()` cleanup detection
-25. **Busy Waiting** - Spin loop and tight polling detection
-26. **Atomicity Violations** - Check-then-act and TOCTOU validation
-27. **Interrupt Mishandling** - Ignored `InterruptedException` monitoring
+24. **Race Conditions** - Cross-thread field access tracking
+25. **ThreadLocal Leaks** - Missing `remove()` cleanup detection
+26. **Busy Waiting** - Spin loop and tight polling detection
+27. **Atomicity Violations** - Check-then-act and TOCTOU validation
+28. **Interrupt Mishandling** - Ignored `InterruptedException` monitoring
 
 ### Legacy Java Async Patterns (5)
-28. **Notify vs NotifyAll** - Multi-waiter signal misuse
-29. **Lazy Initialization** - Unsafe singleton and DCL validation
-30. **Future Blocking** - Bounded-pool starvation from `get()`/`join()`
-31. **Executor Self-Deadlock** - Sibling task waits on the same executor
-32. **Latch Misuse** - Missing or extra `countDown()` tracking
+29. **Notify vs NotifyAll** - Multi-waiter signal misuse
+30. **Lazy Initialization** - Unsafe singleton and DCL validation
+31. **Future Blocking** - Bounded-pool starvation from `get()`/`join()`
+32. **Executor Self-Deadlock** - Sibling task waits on the same executor
+33. **Latch Misuse** - Missing or extra `countDown()` tracking
 
 ## Quick Start
 
@@ -247,6 +248,7 @@ void stressWithVirtualThreads() {
 | `detectSharedRandom` | boolean | false | Detect concurrent access to shared Random instances |
 | `detectBlockingQueueIssues` | boolean | false | Detect BlockingQueue silent failures and saturation |
 | `detectConditionVariableIssues` | boolean | false | Detect Condition variable lost signals and stuck waiters |
+| `detectSimpleDateFormatIssues` | boolean | false | Detect concurrent SimpleDateFormat access |
 
 ## Phase 1: Core Features
 
@@ -791,6 +793,39 @@ CONDITION VARIABLE ISSUES DETECTED:
   Lost Signals (signal without waiters):
     - data-ready: signal() called 3 times without waiting threads (lost signals)
   Fix: use while-loop for await(), ensure signal() follows state change
+```
+
+### 18. SimpleDateFormat Misuse Detection
+**Problem**: SimpleDateFormat is NOT thread-safe; concurrent access causes data corruption
+```java
+class SimpleDateFormatTest {
+    @AsyncTest(threads = 4, detectSimpleDateFormatIssues = true)
+    void testDateFormatUsage() {
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+        AsyncTestContext.simpleDateFormatMonitor()
+            .registerFormatter(sdf, "date-formatter");
+        
+        // Bug: SimpleDateFormat is not thread-safe!
+        String formatted = sdf.format(new Date());
+        AsyncTestContext.simpleDateFormatMonitor()
+            .recordFormat(sdf, "date-formatter");
+        
+        // Fix: use DateTimeFormatter (Java 8+) or ThreadLocal<SimpleDateFormat>
+        String safe = DateTimeFormatter.ISO_LOCAL_DATE.format(LocalDate.now());
+    }
+}
+```
+**Detects**:
+- Shared formatter instances accessed by multiple threads
+- Formatting/parsing errors (potential data corruption)
+- Method breakdown (format vs parse operations)
+
+**Output Example**:
+```
+SIMPLE DATE FORMAT ISSUES DETECTED:
+  Shared Formatter Instances (NOT THREAD SAFE):
+    - date-formatter: accessed by 4 threads (format: 100, parse: 0)
+  Fix: use DateTimeFormatter (Java 8+) or ThreadLocal<SimpleDateFormat>
 ```
 
 ## Phase 3: Runtime Misuse Detectors
