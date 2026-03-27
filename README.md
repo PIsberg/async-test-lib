@@ -19,7 +19,7 @@ Concurrency bugs are the most elusive and costly bugs in production systems. The
 
 
 ### Key Insight
-The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **31 specialized detectors** identify the exact problem:
+The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **32 specialized detectors** identify the exact problem:
 
 - **Deadlocks** with lock chain analysis showing which threads are waiting for which locks
 - **Memory visibility issues** by tracking field values across invocations
@@ -106,7 +106,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 
 ### Core Capabilities
 - ✅ **Race Condition Forcing**: CyclicBarrier synchronizes threads for maximum contention
-- ✅ **31 Problem Detectors**: Comprehensive coverage of concurrency issues
+- ✅ **32 Problem Detectors**: Comprehensive coverage of concurrency issues
 - ✅ **Virtual Threads Support**: Native support for Project Loom (Java 21+)
 - ✅ **Rich Diagnostics**: Detailed reports with actionable fix suggestions
 - ✅ **Zero Default Overhead**: Advanced features are opt-in
@@ -122,7 +122,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 4. **Livelock Detection** - Thread spinning and CPU starvation patterns
 5. **Virtual Thread Stress** - Massive thread counts (100k+) for pinning detection
 
-### Phase 2: Advanced Detectors (16)
+### Phase 2: Advanced Detectors (17)
 6. **False Sharing** - Cache line contention detection
 7. **Wakeup Issues** - Spurious wakeups and lost notifications
 8. **Constructor Safety** - Object initialization race detection
@@ -139,20 +139,21 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 19. **Lock Leaks** - Locks acquired but never released, excessive hold times
 20. **Shared Random** - Concurrent access to non-thread-safe Random instances
 21. **BlockingQueue Misuse** - Silent failures, queue saturation, producer/consumer imbalance
+22. **Condition Variables** - Lost signals, stuck waiters, missing signals
 
 ### Phase 3: Correctness Monitors (5)
-22. **Race Conditions** - Cross-thread field access tracking
-23. **ThreadLocal Leaks** - Missing `remove()` cleanup detection
-24. **Busy Waiting** - Spin loop and tight polling detection
-25. **Atomicity Violations** - Check-then-act and TOCTOU validation
-26. **Interrupt Mishandling** - Ignored `InterruptedException` monitoring
+23. **Race Conditions** - Cross-thread field access tracking
+24. **ThreadLocal Leaks** - Missing `remove()` cleanup detection
+25. **Busy Waiting** - Spin loop and tight polling detection
+26. **Atomicity Violations** - Check-then-act and TOCTOU validation
+27. **Interrupt Mishandling** - Ignored `InterruptedException` monitoring
 
 ### Legacy Java Async Patterns (5)
-27. **Notify vs NotifyAll** - Multi-waiter signal misuse
-28. **Lazy Initialization** - Unsafe singleton and DCL validation
-29. **Future Blocking** - Bounded-pool starvation from `get()`/`join()`
-30. **Executor Self-Deadlock** - Sibling task waits on the same executor
-31. **Latch Misuse** - Missing or extra `countDown()` tracking
+28. **Notify vs NotifyAll** - Multi-waiter signal misuse
+29. **Lazy Initialization** - Unsafe singleton and DCL validation
+30. **Future Blocking** - Bounded-pool starvation from `get()`/`join()`
+31. **Executor Self-Deadlock** - Sibling task waits on the same executor
+32. **Latch Misuse** - Missing or extra `countDown()` tracking
 
 ## Quick Start
 
@@ -245,6 +246,7 @@ void stressWithVirtualThreads() {
 | `detectLockLeaks` | boolean | false | Detect locks acquired but never released |
 | `detectSharedRandom` | boolean | false | Detect concurrent access to shared Random instances |
 | `detectBlockingQueueIssues` | boolean | false | Detect BlockingQueue silent failures and saturation |
+| `detectConditionVariableIssues` | boolean | false | Detect Condition variable lost signals and stuck waiters |
 
 ## Phase 1: Core Features
 
@@ -752,6 +754,43 @@ BLOCKING QUEUE ISSUES DETECTED:
   Silent Failures (offer returned false):
     - work-queue: offer() failed 5 times (queue full, items silently dropped)
   Fix: check offer() return values, handle null from poll(), consider queue capacity
+```
+
+### 17. Condition Variable Misuse Detection
+**Problem**: Lost signals when signal() called without waiters, or threads stuck waiting
+```java
+class ConditionVariableTest {
+    @AsyncTest(threads = 4, detectConditionVariableIssues = true)
+    void testConditionUsage() throws InterruptedException {
+        ReentrantLock lock = new ReentrantLock();
+        Condition condition = lock.newCondition();
+        AsyncTestContext.conditionMonitor()
+            .registerCondition(condition, "data-ready");
+        
+        lock.lock();
+        try {
+            // Always signal AFTER state change
+            dataReady = true;
+            AsyncTestContext.conditionMonitor()
+                .recordSignal(condition, "data-ready", false);
+            condition.signal();
+        } finally {
+            lock.unlock();
+        }
+    }
+}
+```
+**Detects**:
+- Lost signals (signal() called without waiting threads)
+- Stuck waiters (threads waiting indefinitely)
+- Missing signals (await() without corresponding signal())
+
+**Output Example**:
+```
+CONDITION VARIABLE ISSUES DETECTED:
+  Lost Signals (signal without waiters):
+    - data-ready: signal() called 3 times without waiting threads (lost signals)
+  Fix: use while-loop for await(), ensure signal() follows state change
 ```
 
 ## Phase 3: Runtime Misuse Detectors

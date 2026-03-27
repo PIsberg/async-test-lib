@@ -7,6 +7,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.Random;
@@ -527,5 +528,25 @@ public class Phase2DetectorsTest {
         boolean added = queue.offer("item3");
         AsyncTestContext.blockingQueueMonitor()
             .recordOffer(queue, "small-queue", added);
+    }
+
+    // ============= Condition Variable Tests =============
+
+    @AsyncTest(threads = 4, detectConditionVariableIssues = true, timeoutMs = 3000)
+    void testConditionVariableUsage() throws InterruptedException {
+        ReentrantLock lock = new ReentrantLock();
+        Condition condition = lock.newCondition();
+        AsyncTestContext.conditionMonitor()
+            .registerCondition(condition, "data-ready");
+        
+        lock.lock();
+        try {
+            // Signal (may be lost if no waiters)
+            AsyncTestContext.conditionMonitor()
+                .recordSignal(condition, "data-ready", false);
+            condition.signal();
+        } finally {
+            lock.unlock();
+        }
     }
 }

@@ -13,6 +13,7 @@ import com.github.asynctest.diagnostics.ConcurrentModificationDetector;
 import com.github.asynctest.diagnostics.LockLeakDetector;
 import com.github.asynctest.diagnostics.SharedRandomDetector;
 import com.github.asynctest.diagnostics.BlockingQueueDetector;
+import com.github.asynctest.diagnostics.ConditionVariableDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -68,6 +69,7 @@ class ConsumerAsyncTestUsageTest {
     private final LockLeakDetector lockLeakDetector = new LockLeakDetector();
     private final SharedRandomDetector sharedRandomDetector = new SharedRandomDetector();
     private final BlockingQueueDetector blockingQueueDetector = new BlockingQueueDetector();
+    private final ConditionVariableDetector conditionVariableDetector = new ConditionVariableDetector();
 
     // ============================================
     // PHASE 1: Core Detectors
@@ -589,6 +591,30 @@ class ConsumerAsyncTestUsageTest {
         // Analyze and report (for demonstration, we just print the report)
         var report = blockingQueueDetector.analyze();
         // In real usage with queue issues, you would assert: assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Phase 2.17: Condition variable misuse detection — lost signals and stuck waiters.
+     * Using Condition with ReentrantLock for thread coordination.
+     */
+    @AsyncTest(threads = 4, detectConditionVariableIssues = true, timeoutMs = 3000)
+    void testConditionVariableUsage() throws InterruptedException {
+        java.util.concurrent.locks.ReentrantLock lock = new java.util.concurrent.locks.ReentrantLock();
+        java.util.concurrent.locks.Condition condition = lock.newCondition();
+        conditionVariableDetector.registerCondition(condition, "data-ready");
+        
+        lock.lock();
+        try {
+            // Signal (in real code, this should follow state change)
+            conditionVariableDetector.recordSignal(condition, "data-ready", false);
+            condition.signal();
+        } finally {
+            lock.unlock();
+        }
+        
+        // Analyze and report (for demonstration, we just print the report)
+        var report = conditionVariableDetector.analyze();
+        // In real usage with condition issues, you would assert: assertTrue(report.hasIssues())
     }
 
     // Helper class for constructor safety tests

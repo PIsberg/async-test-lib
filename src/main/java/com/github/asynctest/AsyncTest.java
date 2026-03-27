@@ -213,5 +213,11 @@ public @interface AsyncTest {
      * Detects silent failures, queue saturation, and producer/consumer imbalance.
      */
     boolean detectBlockingQueueIssues() default false;
+
+    /**
+     * Enable Condition variable misuse detection.
+     * Detects lost signals, stuck waiters, and missing signals.
+     */
+    boolean detectConditionVariableIssues() default false;
 }
 
