@@ -41,6 +41,7 @@ public final class AsyncTestContext {
     final MemoryOrderingMonitor      memoryOrderingMonitor;
     final PipelineMonitor            pipelineMonitor;
     final ReadWriteLockMonitor       readWriteLockMonitor;
+    final SemaphoreMisuseDetector    semaphoreMisuseDetector;
 
     public AsyncTestContext(AsyncTestConfig cfg) {
         falseSharingDetector       = cfg.detectFalseSharing             ? new FalseSharingDetector()       : null;
@@ -53,6 +54,7 @@ public final class AsyncTestContext {
         memoryOrderingMonitor      = cfg.detectMemoryOrderingViolations ? new MemoryOrderingMonitor()      : null;
         pipelineMonitor            = cfg.monitorAsyncPipeline           ? new PipelineMonitor()            : null;
         readWriteLockMonitor       = cfg.monitorReadWriteLockFairness   ? new ReadWriteLockMonitor()       : null;
+        semaphoreMisuseDetector    = cfg.monitorSemaphore               ? new SemaphoreMisuseDetector()    : null;
     }
 
     // ---- Lifecycle (package-private, called by ConcurrencyRunner) ----
@@ -157,6 +159,14 @@ public final class AsyncTestContext {
         return require("monitorReadWriteLockFairness", c -> c.readWriteLockMonitor);
     }
 
+    /**
+     * Returns the {@link SemaphoreMisuseDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code monitorSemaphore = false}
+     */
+    public static SemaphoreMisuseDetector semaphoreMonitor() {
+        return require("monitorSemaphore", c -> c.semaphoreMisuseDetector);
+    }
+
     // ---- Internal reporting ----
 
     /**
@@ -206,6 +216,10 @@ public final class AsyncTestContext {
         if (readWriteLockMonitor != null) {
             ReadWriteLockMonitor.ReadWriteLockReport r = readWriteLockMonitor.analyzeFairness();
             if (r.hasFairnessIssues()) out.add(r.toString());
+        }
+        if (semaphoreMisuseDetector != null) {
+            SemaphoreMisuseDetector.SemaphoreMisuseReport r = semaphoreMisuseDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
         }
 
         return out;

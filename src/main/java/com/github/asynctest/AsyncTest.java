@@ -175,5 +175,13 @@ public @interface AsyncTest {
      * Detects caught but ignored InterruptException and improper thread cancellation handling.
      */
     boolean detectInterruptMishandling() default false;
+
+    // ============= Phase 2: Additional Monitors =============
+
+    /**
+     * Enable semaphore misuse monitoring.
+     * Detects permit leaks, over-release, and unreleased permits at completion.
+     */
+    boolean monitorSemaphore() default false;
 }
 

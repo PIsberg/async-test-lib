@@ -19,7 +19,7 @@ Concurrency bugs are the most elusive and costly bugs in production systems. The
 
 
 ### Key Insight
-The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **25 specialized detectors** identify the exact problem:
+The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **26 specialized detectors** identify the exact problem:
 
 - **Deadlocks** with lock chain analysis showing which threads are waiting for which locks
 - **Memory visibility issues** by tracking field values across invocations
@@ -106,7 +106,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 
 ### Core Capabilities
 - ✅ **Race Condition Forcing**: CyclicBarrier synchronizes threads for maximum contention
-- ✅ **25 Problem Detectors**: Comprehensive coverage of concurrency issues
+- ✅ **26 Problem Detectors**: Comprehensive coverage of concurrency issues
 - ✅ **Virtual Threads Support**: Native support for Project Loom (Java 21+)
 - ✅ **Rich Diagnostics**: Detailed reports with actionable fix suggestions
 - ✅ **Zero Default Overhead**: Advanced features are opt-in
@@ -122,7 +122,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 4. **Livelock Detection** - Thread spinning and CPU starvation patterns
 5. **Virtual Thread Stress** - Massive thread counts (100k+) for pinning detection
 
-### Phase 2: Advanced Detectors (10)
+### Phase 2: Advanced Detectors (11)
 6. **False Sharing** - Cache line contention detection
 7. **Wakeup Issues** - Spurious wakeups and lost notifications
 8. **Constructor Safety** - Object initialization race detection
@@ -133,20 +133,21 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 13. **Memory Ordering** - CPU reordering and stale reads
 14. **Async Pipelines** - Event flow and signal loss tracking
 15. **Read-Write Locks** - Fairness and writer starvation
+16. **Semaphore Misuse** - Permit leaks, over-release, and unreleased permits
 
 ### Phase 3: Correctness Monitors (5)
-16. **Race Conditions** - Cross-thread field access tracking
-17. **ThreadLocal Leaks** - Missing `remove()` cleanup detection
-18. **Busy Waiting** - Spin loop and tight polling detection
-19. **Atomicity Violations** - Check-then-act and TOCTOU validation
-20. **Interrupt Mishandling** - Ignored `InterruptedException` monitoring
+17. **Race Conditions** - Cross-thread field access tracking
+18. **ThreadLocal Leaks** - Missing `remove()` cleanup detection
+19. **Busy Waiting** - Spin loop and tight polling detection
+20. **Atomicity Violations** - Check-then-act and TOCTOU validation
+21. **Interrupt Mishandling** - Ignored `InterruptedException` monitoring
 
 ### Legacy Java Async Patterns (5)
-21. **Notify vs NotifyAll** - Multi-waiter signal misuse
-22. **Lazy Initialization** - Unsafe singleton and DCL validation
-23. **Future Blocking** - Bounded-pool starvation from `get()`/`join()`
-24. **Executor Self-Deadlock** - Sibling task waits on the same executor
-25. **Latch Misuse** - Missing or extra `countDown()` tracking
+22. **Notify vs NotifyAll** - Multi-waiter signal misuse
+23. **Lazy Initialization** - Unsafe singleton and DCL validation
+24. **Future Blocking** - Bounded-pool starvation from `get()`/`join()`
+25. **Executor Self-Deadlock** - Sibling task waits on the same executor
+26. **Latch Misuse** - Missing or extra `countDown()` tracking
 
 ## Quick Start
 
@@ -233,6 +234,7 @@ void stressWithVirtualThreads() {
 | `detectBusyWaiting` | boolean | false | Detect spin loops and tight polling |
 | `detectAtomicityViolations` | boolean | false | Detect non-atomic compound operations |
 | `detectInterruptMishandling` | boolean | false | Detect swallowed interrupts and missing restoration |
+| `monitorSemaphore` | boolean | false | Monitor semaphore permit leaks and over-release |
 
 ## Phase 1: Core Features
 
@@ -516,6 +518,42 @@ class RWLockTest {
         // Constant stream of readers holds the read lock — writer thread starves
     }
 }
+```
+
+### 11. Semaphore Misuse Detection
+**Problem**: Permit leaks, over-release, and unreleased permits at completion
+```java
+class SemaphoreTest {
+    private final Semaphore semaphore = new Semaphore(3);
+
+    @AsyncTest(threads = 4, monitorSemaphore = true)
+    void testPermitLeak() throws InterruptedException {
+        AsyncTestContext.semaphoreMonitor()
+            .registerSemaphore(semaphore, "resource-pool", 3);
+        
+        try {
+            semaphore.acquire();
+            AsyncTestContext.semaphoreMonitor()
+                .recordAcquire(semaphore, "resource-pool");
+            // work with resource
+        } finally {
+            semaphore.release();
+            AsyncTestContext.semaphoreMonitor()
+                .recordRelease(semaphore, "resource-pool");
+        }
+    }
+}
+```
+**Detects**:
+- Permit leaks (acquire without matching release)
+- Over-release (more releases than acquires)
+- Unreleased permits at test completion
+
+**Output Example**:
+```
+SEMAPHORE MISUSE DETECTED:
+  - resource-pool: acquired 4 times but released only 3 times (1 permits potentially leaked)
+  Fix: ensure every acquire() has a matching release() in a finally block
 ```
 
 ## Phase 3: Runtime Misuse Detectors

@@ -38,6 +38,9 @@ public final class AsyncTestConfig {
     public final boolean detectAtomicityViolations;
     public final boolean detectInterruptMishandling;
 
+    // ---- Phase 2 Additional ----
+    public final boolean monitorSemaphore;
+
     private AsyncTestConfig(Builder b) {
         threads                        = b.threads;
         invocations                    = b.invocations;
@@ -62,6 +65,7 @@ public final class AsyncTestConfig {
         detectBusyWaiting              = b.detectBusyWaiting;
         detectAtomicityViolations      = b.detectAtomicityViolations;
         detectInterruptMishandling     = b.detectInterruptMishandling;
+        monitorSemaphore               = b.monitorSemaphore;
     }
 
     /** Builds a config from an {@link AsyncTest} annotation instance. */
@@ -90,6 +94,7 @@ public final class AsyncTestConfig {
             .detectBusyWaiting(ann.detectBusyWaiting())
             .detectAtomicityViolations(ann.detectAtomicityViolations())
             .detectInterruptMishandling(ann.detectInterruptMishandling())
+            .monitorSemaphore(ann.monitorSemaphore())
             .build();
     }
 
@@ -121,6 +126,7 @@ public final class AsyncTestConfig {
         private boolean detectBusyWaiting          = false;
         private boolean detectAtomicityViolations  = false;
         private boolean detectInterruptMishandling = false;
+        private boolean monitorSemaphore           = false;
 
         public Builder threads(int v)                        { threads = v; return this; }
         public Builder invocations(int v)                    { invocations = v; return this; }
@@ -145,6 +151,7 @@ public final class AsyncTestConfig {
         public Builder detectBusyWaiting(boolean v)          { detectBusyWaiting = v; return this; }
         public Builder detectAtomicityViolations(boolean v)  { detectAtomicityViolations = v; return this; }
         public Builder detectInterruptMishandling(boolean v) { detectInterruptMishandling = v; return this; }
+        public Builder monitorSemaphore(boolean v)           { monitorSemaphore = v; return this; }
 
         public AsyncTestConfig build() {
             return new AsyncTestConfig(this);

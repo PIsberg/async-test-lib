@@ -3,6 +3,7 @@ package com.github.asynctest;
 import com.github.asynctest.diagnostics.*;
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -328,5 +329,36 @@ public class Phase2DetectorsTest {
         FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
         // Should be empty or minimal
         assertNotNull(report);
+    }
+
+    // ============= Semaphore Misuse Tests =============
+
+    @AsyncTest(threads = 4, monitorSemaphore = true, timeoutMs = 3000)
+    void testSemaphorePermitLeak() throws InterruptedException {
+        Semaphore semaphore = new Semaphore(2);
+        AsyncTestContext.semaphoreMonitor()
+            .registerSemaphore(semaphore, "resource-pool", 2);
+        
+        semaphore.acquire();
+        AsyncTestContext.semaphoreMonitor()
+            .recordAcquire(semaphore, "resource-pool");
+        // Intentional: not releasing - simulates permit leak
+    }
+
+    @AsyncTest(threads = 2, monitorSemaphore = true, timeoutMs = 3000)
+    void testSemaphoreNormalUsage() throws InterruptedException {
+        Semaphore semaphore = new Semaphore(2);
+        AsyncTestContext.semaphoreMonitor()
+            .registerSemaphore(semaphore, "clean-pool", 2);
+        
+        try {
+            semaphore.acquire();
+            AsyncTestContext.semaphoreMonitor()
+                .recordAcquire(semaphore, "clean-pool");
+        } finally {
+            semaphore.release();
+            AsyncTestContext.semaphoreMonitor()
+                .recordRelease(semaphore, "clean-pool");
+        }
     }
 }

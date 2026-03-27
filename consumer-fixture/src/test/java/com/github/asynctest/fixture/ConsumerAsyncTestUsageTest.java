@@ -7,6 +7,7 @@ import com.github.asynctest.diagnostics.LazyInitValidator;
 import com.github.asynctest.diagnostics.FutureBlockingDetector;
 import com.github.asynctest.diagnostics.ExecutorDeadlockDetector;
 import com.github.asynctest.diagnostics.LatchMisuseDetector;
+import com.github.asynctest.diagnostics.SemaphoreMisuseDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -56,6 +57,7 @@ class ConsumerAsyncTestUsageTest {
     private final FutureBlockingDetector futureBlockingDetector = new FutureBlockingDetector();
     private final ExecutorDeadlockDetector executorDeadlockDetector = new ExecutorDeadlockDetector();
     private final LatchMisuseDetector latchMisuseDetector = new LatchMisuseDetector();
+    private final SemaphoreMisuseDetector semaphoreMisuseDetector = new SemaphoreMisuseDetector();
 
     // ============================================
     // PHASE 1: Core Detectors
@@ -435,6 +437,30 @@ class ConsumerAsyncTestUsageTest {
         // Analyze and report (for demonstration, we just print the report)
         var report = latchMisuseDetector.analyze();
         // In real usage, you would assert: assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Phase 2.11: Semaphore misuse — permit leak detection.
+     * When acquire() is not matched with release(), permits are leaked.
+     */
+    @AsyncTest(threads = 4, monitorSemaphore = true, timeoutMs = 3000)
+    void testSemaphorePermitLeak() throws Exception {
+        java.util.concurrent.Semaphore semaphore = new java.util.concurrent.Semaphore(2);
+        semaphoreMisuseDetector.registerSemaphore(semaphore, "resource-pool", 2);
+        
+        try {
+            semaphore.acquire();
+            semaphoreMisuseDetector.recordAcquire(semaphore, "resource-pool");
+            // Simulate work with the resource
+            Thread.sleep(1);
+        } finally {
+            semaphore.release();
+            semaphoreMisuseDetector.recordRelease(semaphore, "resource-pool");
+        }
+        
+        // Analyze and report (for demonstration, we just print the report)
+        var report = semaphoreMisuseDetector.analyze();
+        // In real usage with a leak, you would assert: assertTrue(report.hasIssues())
     }
 
     // Helper class for constructor safety tests
