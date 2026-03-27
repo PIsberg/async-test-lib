@@ -4,6 +4,8 @@ import com.github.asynctest.AfterEachInvocation;
 import com.github.asynctest.AsyncTestConfig;
 import com.github.asynctest.AsyncTestContext;
 import com.github.asynctest.BeforeEachInvocation;
+import com.github.asynctest.benchmark.BenchmarkComparisonResult;
+import com.github.asynctest.benchmark.BenchmarkRecorder;
 import com.github.asynctest.diagnostics.*;
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 
@@ -19,6 +21,15 @@ public class ConcurrencyRunner {
 
     public static void execute(ReflectiveInvocationContext<Method> invocationContext,
                                AsyncTestConfig config) throws Throwable {
+
+        // Benchmarking setup
+        BenchmarkRecorder benchmarkRecorder = null;
+        if (config.enableBenchmarking) {
+            Object testInstance = invocationContext.getTarget().orElse(null);
+            String testClass = testInstance != null ? testInstance.getClass().getName() : "unknown";
+            String testMethod = invocationContext.getExecutable().getName();
+            benchmarkRecorder = new BenchmarkRecorder(config, testClass, testMethod);
+        }
 
         // Phase 2 context — shared across all threads for this test run
         AsyncTestContext phase2Context = new AsyncTestContext(config);
@@ -80,6 +91,12 @@ public class ConcurrencyRunner {
                         interruptMonitor, phase2Context, config.detectDeadlocks);
                 }
 
+                // Record benchmark invocation start
+                long benchmarkStart = 0;
+                if (benchmarkRecorder != null) {
+                    benchmarkStart = benchmarkRecorder.recordInvocationStart();
+                }
+
                 if (visibilityMonitor != null) {
                     visibilityMonitor.markInvocationStart();
                 }
@@ -90,6 +107,11 @@ public class ConcurrencyRunner {
                         remainingMs, testMethod);
                 } finally {
                     invokeLifecycleMethods(testInstance, afterInvocationMethods);
+                }
+
+                // Record benchmark invocation end
+                if (benchmarkRecorder != null) {
+                    benchmarkRecorder.recordInvocationEnd(benchmarkStart);
                 }
             }
         } catch (AssertionError e) {
@@ -113,6 +135,16 @@ public class ConcurrencyRunner {
                 executor.awaitTermination(1, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+            }
+
+            // Complete benchmarking and compare with baseline
+            if (benchmarkRecorder != null) {
+                try {
+                    benchmarkRecorder.complete();
+                } catch (Exception e) {
+                    // Don't let benchmark failures break the test
+                    System.err.println("Warning: Benchmark completion failed: " + e.getMessage());
+                }
             }
         }
     }

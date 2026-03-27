@@ -83,19 +83,19 @@ class ConsumerAsyncTestUsageTest {
     // ============================================
 
     /**
-     * Phase 1.1: Basic race condition detection.
+     * Phase 1.1: Basic race condition detection with benchmarking.
      * Multiple threads increment an unsynchronized counter without atomicity.
      */
-    @AsyncTest(threads = 10, invocations = 50, detectAll = true)
+    @AsyncTest(threads = 10, invocations = 50, detectAll = true, enableBenchmarking = true)
     void testRaceCondition() {
         unsafeCounter++;
     }
 
     /**
-     * Phase 1.3: Visibility issue detection.
+     * Phase 1.3: Visibility issue detection with benchmarking.
      * Non-volatile field updated across threads and invocations.
      */
-    @AsyncTest(threads = 8, invocations = 50, detectAll = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = true, enableBenchmarking = true)
     void testVisibilityIssue() {
         volatileFlag = !volatileFlag;
     }
@@ -142,10 +142,10 @@ class ConsumerAsyncTestUsageTest {
     // ============================================
 
     /**
-     * Phase 2.1: False sharing detection.
+     * Phase 2.1: False sharing detection with benchmarking.
      * Two volatile fields accessed by different threads on same cache line.
      */
-    @AsyncTest(threads = 4, detectAll = true)
+    @AsyncTest(threads = 4, detectAll = true, enableBenchmarking = true)
     void testFalseSharing() {
         falseShareA++;
         falseShareB++;
@@ -166,10 +166,10 @@ class ConsumerAsyncTestUsageTest {
     }
 
     /**
-     * Phase 2.5: Lock ordering violation detection.
+     * Phase 2.5: Lock ordering violation detection with benchmarking.
      * Different threads acquire locks in different orders — classic deadlock setup.
      */
-    @AsyncTest(threads = 2, detectAll = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, detectAll = true, timeoutMs = 3000, enableBenchmarking = true)
     void testLockOrderingViolation() throws InterruptedException {
         Object lockA = new Object();
         Object lockB = new Object();

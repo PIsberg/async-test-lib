@@ -253,5 +253,28 @@ public @interface AsyncTest {
      * Detects AutoCloseable resources not properly closed.
      */
     boolean detectResourceLeaks() default false;
+
+    // ============= Benchmarking =============
+
+    /**
+     * Enable benchmarking for this test method.
+     * When true, execution times are recorded and compared against baselines.
+     */
+    boolean enableBenchmarking() default false;
+
+    /**
+     * Regression threshold percentage.
+     * If execution time increases by more than this percentage compared to baseline,
+     * a regression is detected.
+     * Default is 20% (0.2 = 20%).
+     */
+    double benchmarkRegressionThreshold() default 0.2;
+
+    /**
+     * Fail the test on benchmark regression.
+     * If true, a regression exceeding the threshold will cause test failure.
+     * If false, only a warning is logged.
+     */
+    boolean failOnBenchmarkRegression() default false;
 }
 

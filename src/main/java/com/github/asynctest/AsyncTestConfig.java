@@ -58,6 +58,11 @@ public final class AsyncTestConfig {
     public final boolean detectParallelStreamIssues;
     public final boolean detectResourceLeaks;
 
+    // ---- Benchmarking ----
+    public final boolean enableBenchmarking;
+    public final double benchmarkRegressionThreshold;
+    public final boolean failOnBenchmarkRegression;
+
     private AsyncTestConfig(Builder b) {
         threads                        = b.threads;
         invocations                    = b.invocations;
@@ -93,6 +98,9 @@ public final class AsyncTestConfig {
         detectSimpleDateFormatIssues   = b.detectSimpleDateFormatIssues;
         detectParallelStreamIssues     = b.detectParallelStreamIssues;
         detectResourceLeaks            = b.detectResourceLeaks;
+        enableBenchmarking             = b.enableBenchmarking;
+        benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
+        failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
     }
 
     /** Builds a config from an {@link AsyncTest} annotation instance. */
@@ -132,6 +140,9 @@ public final class AsyncTestConfig {
             .detectSimpleDateFormatIssues(ann.detectSimpleDateFormatIssues())
             .detectParallelStreamIssues(ann.detectParallelStreamIssues())
             .detectResourceLeaks(ann.detectResourceLeaks())
+            .enableBenchmarking(ann.enableBenchmarking())
+            .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
+            .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
             .excludes(ann.excludes())
             .build();
     }
@@ -175,6 +186,9 @@ public final class AsyncTestConfig {
         private boolean detectSimpleDateFormatIssues = false;
         private boolean detectParallelStreamIssues = false;
         private boolean detectResourceLeaks = false;
+        private boolean enableBenchmarking = false;
+        private double benchmarkRegressionThreshold = 0.2;
+        private boolean failOnBenchmarkRegression = false;
         private Set<DetectorType> excludes = EnumSet.noneOf(DetectorType.class);
 
         public Builder threads(int v)                        { threads = v; return this; }
@@ -211,6 +225,9 @@ public final class AsyncTestConfig {
         public Builder detectSimpleDateFormatIssues(boolean v) { detectSimpleDateFormatIssues = v; return this; }
         public Builder detectParallelStreamIssues(boolean v) { detectParallelStreamIssues = v; return this; }
         public Builder detectResourceLeaks(boolean v) { detectResourceLeaks = v; return this; }
+        public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
+        public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
+        public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
 
         public Builder excludes(DetectorType[] v) {
             if (v != null && v.length > 0) {
