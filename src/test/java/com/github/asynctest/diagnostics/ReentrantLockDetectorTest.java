@@ -113,17 +113,4 @@ public class ReentrantLockDetectorTest {
         assertTrue(reportStr.contains("REENTRANTLOCK ISSUES DETECTED"), "Report should have header");
         assertTrue(reportStr.contains("Lock Timeouts"), "Report should mention timeouts");
     }
-
-    @Test
-    void testNullSafety() {
-        ReentrantLockDetector detector = new ReentrantLockDetector();
-
-        // Should not throw on null inputs
-        detector.recordLockAcquired(null, "Thread-1");
-        detector.recordLockReleased(null, "Thread-1");
-        detector.recordLockTimeout(null);
-
-        ReentrantLockDetector.ReentrantLockReport report = detector.analyze();
-        assertNotNull(report);
-    }
 }

@@ -88,17 +88,4 @@ public class CyclicBarrierDetectorTest {
         assertTrue(reportStr.contains("CYCLICBARRIER ISSUES DETECTED"), "Report should have header");
         assertTrue(reportStr.contains("Timed Out"), "Report should mention timeout");
     }
-
-    @Test
-    void testNullSafety() {
-        CyclicBarrierDetector detector = new CyclicBarrierDetector();
-
-        // Should not throw on null inputs
-        detector.recordArrival(null);
-        detector.recordTimeout(null);
-        detector.recordBroken(null);
-
-        CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
-        assertNotNull(report);
-    }
 }

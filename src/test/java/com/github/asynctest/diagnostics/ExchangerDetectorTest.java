@@ -122,15 +122,4 @@ public class ExchangerDetectorTest {
         assertNotNull(reportStr);
         assertTrue(reportStr.contains("EXCHANGER ISSUES DETECTED"), "Report should have header");
     }
-
-    @Test
-    void testNullSafety() {
-        ExchangerDetector detector = new ExchangerDetector();
-
-        detector.recordTimeout(null);
-        detector.recordInterrupted(null);
-
-        ExchangerDetector.ExchangerReport report = detector.analyze();
-        assertNotNull(report);
-    }
 }

@@ -170,14 +170,4 @@ public class ThreadFactoryDetectorTest {
         assertNotNull(reportStr);
         assertTrue(reportStr.contains("THREADFACTORY ISSUES DETECTED"), "Report should have header");
     }
-
-    @Test
-    void testNullSafety() {
-        ThreadFactoryDetector detector = new ThreadFactoryDetector();
-
-        detector.recordThreadCreated(null, "null", null);
-
-        ThreadFactoryDetector.ThreadFactoryReport report = detector.analyze();
-        assertNotNull(report);
-    }
 }

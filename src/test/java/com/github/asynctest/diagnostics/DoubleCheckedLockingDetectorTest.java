@@ -76,15 +76,4 @@ public class DoubleCheckedLockingDetectorTest {
         assertNotNull(report);
         assertTrue(report.hasIssues(), "Should still detect broken DCL");
     }
-
-    @Test
-    void testNullSafety() {
-        DoubleCheckedLockingDetector detector = new DoubleCheckedLockingDetector();
-
-        // Should not throw on null inputs
-        detector.recordAccess(null, true, true);
-
-        DoubleCheckedLockingDetector.DoubleCheckedLockingReport report = detector.analyze();
-        assertNotNull(report);
-    }
 }

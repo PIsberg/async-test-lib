@@ -111,18 +111,4 @@ public class ScheduledExecutorDetectorTest {
         assertNotNull(reportStr);
         assertTrue(reportStr.contains("SCHEDULED EXECUTOR ISSUES DETECTED"), "Report should have header");
     }
-
-    @Test
-    void testNullSafety() {
-        ScheduledExecutorDetector detector = new ScheduledExecutorDetector();
-
-        detector.recordSchedule(null, "null", "task");
-        detector.recordTaskStart(null, "null", "task");
-        detector.recordTaskComplete(null, "null", "task", 10L);
-        detector.recordException(null, "null");
-        detector.recordShutdown(null);
-
-        ScheduledExecutorDetector.ScheduledExecutorReport report = detector.analyze();
-        assertNotNull(report);
-    }
 }

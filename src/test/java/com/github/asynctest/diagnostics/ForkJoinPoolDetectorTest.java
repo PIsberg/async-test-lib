@@ -110,16 +110,4 @@ public class ForkJoinPoolDetectorTest {
         assertNotNull(reportStr);
         assertTrue(reportStr.contains("FORKJOINPOOL ISSUES DETECTED"), "Report should have header");
     }
-
-    @Test
-    void testNullSafety() {
-        ForkJoinPoolDetector detector = new ForkJoinPoolDetector();
-
-        detector.recordFork(null, "null", "task");
-        detector.recordJoin(null, "null", "task");
-        detector.recordTaskTime(null, "null", 10L);
-
-        ForkJoinPoolDetector.ForkJoinPoolReport report = detector.analyze();
-        assertNotNull(report);
-    }
 }

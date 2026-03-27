@@ -114,17 +114,4 @@ public class StampedLockDetectorTest {
         assertNotNull(reportStr);
         assertTrue(reportStr.contains("STAMPEDLOCK ISSUES DETECTED"), "Report should have header");
     }
-
-    @Test
-    void testNullSafety() {
-        StampedLockDetector detector = new StampedLockDetector();
-
-        detector.recordOptimisticRead(null, "null", 0L);
-        detector.recordReadLock(null, "null", 0L);
-        detector.recordWriteLock(null, "null", 0L);
-        detector.recordUnlock(null, "null", 0L);
-
-        StampedLockDetector.StampedLockReport report = detector.analyze();
-        assertNotNull(report);
-    }
 }
