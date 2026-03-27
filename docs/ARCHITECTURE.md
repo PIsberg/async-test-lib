@@ -22,164 +22,36 @@ This document provides a comprehensive architectural overview of the async-test 
 
 Shows the high-level system architecture and external dependencies.
 
-```plantuml
-@startuml SystemContext
-title Async Test Library - System Context Diagram
-
-rectangle "JUnit 5 Platform" as JUnit5 {
-  [JUnit Jupiter API] as JupiterAPI
-  [JUnit Platform Engine] as Platform
-}
-
-rectangle "Async Test Library" as AsyncTest {
-  [AsyncTest Annotation] as Annotation
-  [AsyncTest Extension] as Extension
-  [Concurrency Runner] as Runner
-  [Detectors (35+)] as Detectors
-  [Benchmark Module] as Benchmark
-}
-
-rectangle "User Test Code" as UserTest {
-  [Test Methods] as TestMethods
-  [Test Assertions] as Assertions
-}
-
-database "Benchmark Storage" as BenchmarkStore {
-  [Baseline Data] as Baseline
-}
-
-JupiterAPI --> Extension : "Discovers @AsyncTest"
-Extension --> Runner : "Intercepts test execution"
-Runner --> Detectors : "Activates detectors"
-Runner --> Benchmark : "Records execution times"
-TestMethods --> Annotation : "Annotated with @AsyncTest"
-Runner --> TestMethods : "Executes concurrently"
-Detectors --> TestMethods : "Monitors for issues"
-Benchmark --> BenchmarkStore : "Stores/compares baselines"
-Runner --> Assertions : "Reports failures"
-
-note right of AsyncTest
-  **Core Capabilities:**
-  - Forces thread collisions
-  - 35+ concurrency detectors
-  - Performance benchmarking
-  - Virtual thread support
-end note
-@enduml
-```
+**Key Components:**
+- **JUnit 5 Platform**: Discovers and executes @AsyncTest methods
+- **Async Test Library**: Core testing framework with 35+ detectors
+- **User Test Code**: Tests annotated with @AsyncTest
+- **Benchmark Storage**: Persistent baseline data for performance comparison
 
 ![System Context Diagram](../docs/diagrams/SystemContext.png)
+
+**Source:** [`system-context.puml`](../docs/diagrams/system-context.puml)
 
 ---
 
 ## Container Diagram
 
-Shows the main containers/components within the async-test library.
+Shows the main containers/components within the async-test library JAR.
 
-```plantuml
-@startuml ContainerDiagram
-title Async Test Library - Container Diagram
-
-package "async-test-1.1.0.jar" {
-  
-  rectangle "Extension Layer" as ExtensionLayer {
-    [AsyncTestExtension\n(TestTemplateInvocationContextProvider)] as Ext
-    [AsyncTestInvocationInterceptor\n(InvocationInterceptor)] as Interceptor
-  }
-  
-  rectangle "Configuration" as Config {
-    [AsyncTest\n(Annotation)] as Annotation
-    [AsyncTestConfig\n(Configuration)] as ConfigObj
-    [DetectorType\n(Enum)] as DetectorType
-  }
-  
-  rectangle "Runner Core" as RunnerCore {
-    [ConcurrencyRunner\n(Static Executor)] as Runner
-    [AsyncTestContext\n(ThreadLocal Context)] as Context
-    [VirtualThreadStressConfig] as VThreadConfig
-  }
-  
-  rectangle "Detector Modules" as Detectors {
-    package "Phase 1: Core" as Phase1 {
-      [DeadlockDetector] as Deadlock
-      [VisibilityMonitor] as Visibility
-      [LivelockDetector] as Livelock
-      [MemoryModelValidator] as JMM
-      [RaceConditionDetector] as Race
-      [ThreadLocalMonitor] as ThreadLocal
-      [BusyWaitDetector] as BusyWait
-      [AtomicityValidator] as Atomicity
-      [InterruptMonitor] as Interrupt
-    }
-    
-    package "Phase 2: Advanced" as Phase2 {
-      [FalseSharingDetector] as FalseSharing
-      [WakeupDetector] as Wakeup
-      [ConstructorSafetyValidator] as Constructor
-      [ABAProblemDetector] as ABA
-      [LockOrderValidator] as LockOrder
-      [SynchronizerMonitor] as Sync
-      [ThreadPoolMonitor] as ThreadPool
-      [MemoryOrderingMonitor] as MemOrder
-      [PipelineMonitor] as Pipeline
-      [ReadWriteLockMonitor] as RWLock
-      [SemaphoreMisuseDetector] as Semaphore
-      [CompletableFutureExceptionDetector] as CFException
-      [ConcurrentModificationDetector] as ConcurrentMod
-      [LockLeakDetector] as LockLeak
-      [SharedRandomDetector] as SharedRandom
-      [BlockingQueueDetector] as BlockingQueue
-      [ConditionVariableDetector] as Condition
-      [SimpleDateFormatDetector] as SimpleDateFormat
-      [ParallelStreamDetector] as ParallelStream
-      [ResourceLeakDetector] as ResourceLeak
-    }
-    
-    package "Phase 3: Runtime" as Phase3 {
-      [NotifyAllValidator] as NotifyAll
-      [LazyInitValidator] as LazyInit
-      [FutureBlockingDetector] as FutureBlock
-      [ExecutorDeadlockDetector] as ExecDeadlock
-      [LatchMisuseDetector] as Latch
-    }
-  }
-  
-  rectangle "Benchmark Module" as Benchmark {
-    [BenchmarkRecorder] as Recorder
-    [BenchmarkComparator] as Comparator
-    [BenchmarkResult] as Result
-    [BenchmarkComparisonResult] as Comparison
-    [BenchmarkRegressionException] as Regression
-  }
-  
-  package "Lifecycle Annotations" as Lifecycle {
-    [BeforeEachInvocation] as BeforeEach
-    [AfterEachInvocation] as AfterEach
-  }
-}
-
-Ext --> Interceptor : "Provides"
-Interceptor --> Runner : "Calls execute()"
-Annotation --> ConfigObj : "Converted to"
-Runner --> Context : "Installs per thread"
-Runner --> VThreadConfig : "Configures stress level"
-Runner --> Phase1 : "Activates"
-Runner --> Phase2 : "Activates"
-Runner --> Phase3 : "Activates"
-Runner --> Benchmark : "Records times"
-Context --> Phase2 : "Provides static accessors"
-Runner --> Lifecycle : "Invokes callbacks"
-Comparator --> Result : "Compares with baseline"
-Comparator --> Regression : "Throws on regression"
-
-note bottom of Detectors
-  **35 Specialized Detectors**
-  Phase 1: Core (9 detectors)\nPhase 2: Advanced (20 detectors)\nPhase 3: Runtime (5 detectors)\nBenchmarking: (5 classes)
-end note
-@enduml
-```
+**Main Containers:**
+- **Extension Layer**: JUnit 5 integration (AsyncTestExtension, AsyncTestInvocationInterceptor)
+- **Configuration**: AsyncTest annotation and AsyncTestConfig
+- **Runner Core**: ConcurrencyRunner, AsyncTestContext, VirtualThreadStressConfig
+- **Detector Modules**: 
+  - Phase 1: Core (9 detectors)
+  - Phase 2: Advanced (20 detectors)
+  - Phase 3: Runtime (5 detectors)
+- **Benchmark Module**: 5 classes for performance tracking
+- **Lifecycle Annotations**: BeforeEachInvocation, AfterEachInvocation
 
 ![Container Diagram](../docs/diagrams/ContainerDiagram.png)
+
+**Source:** [`container.puml`](../docs/diagrams/container.puml)
 
 ---
 
@@ -187,90 +59,18 @@ end note
 
 Shows how the JUnit 5 extension intercepts and executes tests.
 
-```plantuml
-@startuml ComponentFlow
-title Async Test - Extension & Runner Flow
-
-participant "JUnit Platform" as JUnit
-participant "AsyncTestExtension" as Ext
-participant "AsyncTestInvocationInterceptor" as Interceptor
-participant "ConcurrencyRunner" as Runner
-participant "AsyncTestContext" as Context
-participant "Test Method" as Test
-participant "Detectors" as Detectors
-participant "BenchmarkRecorder" as Benchmark
-
-JUnit -> Ext : supportsTestTemplate()
-activate Ext
-Ext --> JUnit : true (if @AsyncTest)
-deactivate Ext
-
-JUnit -> Ext : provideTestTemplateInvocationContexts()
-activate Ext
-Ext --> JUnit : TestTemplateInvocationContext
-note right: Contains AsyncTestInvocationInterceptor
-deactivate Ext
-
-JUnit -> Interceptor : interceptTestTemplateMethod()
-activate Interceptor
-Interceptor -> Interceptor : invocation.skip()
-Interceptor -> Runner : execute(invocationContext, config)
-activate Runner
-
-Runner -> Runner : Create detectors\n(Phase 1, 2, 3)
-Runner -> Context : new AsyncTestContext(config)
-activate Context
-Runner --> Context : Install per thread
-
-loop For each invocation (N times)
-  Runner -> Benchmark : recordInvocationStart()
-  activate Benchmark
-  Benchmark --> Runner : start time
-  
-  Runner -> Runner : Run M threads concurrently
-  loop For each thread (M threads)
-    Runner -> Context : AsyncTestContext.install()
-    Context -> Test : testMethod.invoke()
-    activate Test
-    Test -> Detectors : Record events\n(e.g., lock acquired)
-    Test --> Context : Complete
-    deactivate Test
-    Runner -> Context : AsyncTestContext.uninstall()
-  end
-  
-  Runner -> Benchmark : recordInvocationEnd(start time)
-  activate Benchmark
-  Benchmark --> Runner : Store elapsed time
-end
-
-Runner -> Benchmark : complete()
-activate Benchmark
-Benchmark -> Benchmark : Calculate statistics
-Benchmark --> Runner : Comparison result
-deactivate Benchmark
-
-Runner -> Detectors : analyzeAll()
-activate Detectors
-Detectors --> Runner : Reports (if issues)
-deactivate Detectors
-
-Runner --> Interceptor : Complete or throw
-deactivate Runner
-Interceptor --> JUnit : Test complete
-deactivate Interceptor
-
-note over Runner, Benchmark
-  **Benchmarking Flow:**
-  1. Record start time per invocation
-  2. Record end time per invocation
-  3. Calculate avg/min/max/stddev
-  4. Compare with baseline
-  5. Report regression if > threshold
-end note
-@enduml
-```
+**Flow:**
+1. JUnit discovers @AsyncTest method
+2. AsyncTestExtension provides invocation context
+3. AsyncTestInvocationInterceptor skips standard execution
+4. ConcurrencyRunner creates detectors and context
+5. N×M execution loop (N invocations × M threads)
+6. Benchmarking records execution times
+7. Detector analysis and reporting
 
 ![Component Flow Diagram](../docs/diagrams/ComponentFlow.png)
+
+**Source:** [`component-flow.puml`](../docs/diagrams/component-flow.puml)
 
 ---
 
@@ -278,96 +78,25 @@ end note
 
 Detailed sequence showing the N×M execution pattern.
 
-```plantuml
-@startuml SequenceExecution
-title Async Test - N×M Execution Sequence
-
-participant "JUnit 5\nPlatform" as JUnit
-participant "AsyncTest\nExtension" as Ext
-participant "Concurrency\nRunner" as Runner
-participant "Executor\nService" as Executor
-participant "Thread 1" as T1
-participant "Thread 2" as T2
-participant "Thread M" as TM
-participant "AsyncTest\nContext" as Context
-participant "Detectors" as Detectors
-participant "Benchmark\nRecorder" as Benchmark
-
-JUnit -> Ext : Test method detected\n(@AsyncTest)
-Ext -> Runner : ConcurrencyRunner.execute()
-
-activate Runner
-Runner -> Runner : Parse config\n(threads=M, invocations=N)
-Runner -> Runner : Create detectors\n(Phase 1, 2, 3)
-Runner -> Benchmark : new BenchmarkRecorder()
-activate Benchmark
-
-loop Invocation Round (1 to N)
-  note over Runner: Barrier setup for\nthis invocation
-  Runner -> Executor : Submit M tasks
-  
-  par Thread Execution (M concurrent threads)
-    Executor -> T1 : Run test
-    Executor -> T2 : Run test
-    Executor -> TM : Run test
-    
-    T1 -> Context : Install context\n(ThreadLocal)
-    T2 -> Context : Install context\n(ThreadLocal)
-    TM -> Context : Install context\n(ThreadLocal)
-    
-    T1 -> T1 : Wait at CyclicBarrier
-    T2 -> T2 : Wait at CyclicBarrier
-    TM -> TM : Wait at CyclicBarrier
-    
-    note over T1, TM: All threads synchronized\nat barrier
-    
-    T1 -> T1 : Execute test body
-    T2 -> T2 : Execute test body
-    TM -> TM : Execute test body
-    
-    T1 -> Detectors : Record events\n(lock, field access, etc)
-    T2 -> Detectors : Record events
-    TM -> Detectors : Record events
-    
-    T1 -> Context : Uninstall context
-    T2 -> Context : Uninstall context
-    TM -> Context : Uninstall context
-  end
-  
-  Runner -> Benchmark : Record invocation\ntime
-end
-
-Runner -> Benchmark : Complete and compare
-Benchmark -> Benchmark : Calculate:\n- avg, min, max\n- standard deviation\n- % change vs baseline
-alt Has baseline
-  Benchmark -> Benchmark : Compare with baseline
-  alt Regression detected
-    Benchmark --> Runner : BenchmarkRegressionException\n(if failOnRegression=true)
-  else Within threshold
-    Benchmark --> Runner : Comparison result\n(stable/improvement)
-  end
-else First run
-  Benchmark --> Runner : Baseline created
-end
-
-Runner -> Detectors : analyzeAll()
-activate Detectors
-Detectors --> Runner : Reports\n(if issues detected)
-deactivate Detectors
-
-Runner --> Ext : Complete or throw error
-deactivate Runner
-
-note over Benchmark
-  **Benchmark Output:**
-  - First run: "Baseline created"
-  - Subsequent: "STABLE/REGRESSION/\nIMPROVEMENT"
-  - Detailed report on regression
-end note
-@enduml
-```
+**Key Steps:**
+1. JUnit 5 detects @AsyncTest method
+2. ConcurrencyRunner.execute() is called
+3. Detectors and BenchmarkRecorder are created
+4. For each invocation (N times):
+   - M threads are submitted to ExecutorService
+   - All threads wait at CyclicBarrier
+   - Barrier releases all threads simultaneously
+   - Each thread executes test body concurrently
+   - Events are recorded to detectors
+   - Benchmark times are recorded
+5. After all invocations:
+   - Benchmark comparison with baseline
+   - Detector analysis
+   - Reports printed if issues detected
 
 ![Sequence Execution Diagram](../docs/diagrams/SequenceExecution.png)
+
+**Source:** [`sequence-execution.puml`](../docs/diagrams/sequence-execution.puml)
 
 ---
 
@@ -375,307 +104,26 @@ end note
 
 Shows the main classes and their relationships.
 
-```plantuml
-@startuml ClassDiagram
-title Async Test Library - Core Class Diagram
+**Core Classes:**
+- **AsyncTest**: Main annotation with 35+ configuration parameters
+- **AsyncTestConfig**: Immutable configuration object
+- **AsyncTestExtension**: JUnit 5 TestTemplateInvocationContextProvider
+- **AsyncTestInvocationInterceptor**: InvocationInterceptor that intercepts test execution
+- **ConcurrencyRunner**: Static executor that orchestrates test execution
+- **AsyncTestContext**: ThreadLocal context providing detector accessors
+- **DetectorType**: Enumeration of all detector types
+- **Benchmark Classes**: BenchmarkRecorder, BenchmarkComparator, BenchmarkResult, BenchmarkComparisonResult, BenchmarkRegressionException
 
-set namespaceSeparator ::
-
-class AsyncTest <<Annotation>> {
-  +threads: int
-  +invocations: int
-  +useVirtualThreads: boolean
-  +timeoutMs: long
-  +detectAll: boolean
-  +enableBenchmarking: boolean
-  +benchmarkRegressionThreshold: double
-  +failOnBenchmarkRegression: boolean
-  +detectDeadlocks: boolean
-  +detectVisibility: boolean
-  +detectFalseSharing: boolean
-  +detectWakeupIssues: boolean
-  +detectABAProblem: boolean
-  +validateLockOrder: boolean
-  +monitorSemaphore: boolean
-  +detectCompletableFutureExceptions: boolean
-  +detectConcurrentModifications: boolean
-  +detectLockLeaks: boolean
-  +detectSharedRandom: boolean
-  +detectBlockingQueueIssues: boolean
-  +detectConditionVariableIssues: boolean
-  +detectSimpleDateFormatIssues: boolean
-  +detectParallelStreamIssues: boolean
-  +detectResourceLeaks: boolean
-  +detectRaceConditions: boolean
-  +detectThreadLocalLeaks: boolean
-  +detectBusyWaiting: boolean
-  +detectAtomicityViolations: boolean
-  +detectInterruptMishandling: boolean
-  +excludes: DetectorType[]
-}
-
-class AsyncTestConfig {
-  +threads: int
-  +invocations: int
-  +useVirtualThreads: boolean
-  +timeoutMs: long
-  +detectAll: boolean
-  +enableBenchmarking: boolean
-  +benchmarkRegressionThreshold: double
-  +failOnBenchmarkRegression: boolean
-  +detectDeadlocks: boolean
-  +detectVisibility: boolean
-  +detectLivelocks: boolean
-  +detectFalseSharing: boolean
-  +detectWakeupIssues: boolean
-  +validateConstructorSafety: boolean
-  +detectABAProblem: boolean
-  +validateLockOrder: boolean
-  +monitorSynchronizers: boolean
-  +monitorThreadPool: boolean
-  +detectMemoryOrderingViolations: boolean
-  +monitorAsyncPipeline: boolean
-  +monitorReadWriteLockFairness: boolean
-  +monitorSemaphore: boolean
-  +detectCompletableFutureExceptions: boolean
-  +detectConcurrentModifications: boolean
-  +detectLockLeaks: boolean
-  +detectSharedRandom: boolean
-  +detectBlockingQueueIssues: boolean
-  +detectConditionVariableIssues: boolean
-  +detectSimpleDateFormatIssues: boolean
-  +detectParallelStreamIssues: boolean
-  +detectResourceLeaks: boolean
-  +detectRaceConditions: boolean
-  +detectThreadLocalLeaks: boolean
-  +detectBusyWaiting: boolean
-  +detectAtomicityViolations: boolean
-  +detectInterruptMishandling: boolean
-  +static from(AsyncTest): AsyncTestConfig
-  +static builder(): Builder
-}
-
-class AsyncTestExtension {
-  -supportsTestTemplate(Context): boolean
-  -provideTestTemplateInvocationContexts(Context): Stream<TestTemplateInvocationContext>
-}
-
-class AsyncTestInvocationInterceptor {
-  -asyncTest: AsyncTest
-  +interceptTestTemplateMethod(Invocation, Context, ExtensionContext): void
-}
-
-class ConcurrencyRunner {
-  +static execute(InvocationContext, AsyncTestConfig): void
-  -runSingleInvocationRound(Context, int, Executor, LivelockDetector, AsyncTestContext, long, Method): void
-  -printPhase1Reports(...): void
-  -printPhase2Reports(AsyncTestContext): void
-  -findLifecycleMethods(Object, Class): List<Method>
-  -invokeLifecycleMethods(Object, List<Method>): void
-}
-
-class AsyncTestContext {
-  -CURRENT: ThreadLocal<AsyncTestContext>
-  -falseSharingDetector: FalseSharingDetector
-  -wakeupDetector: WakeupDetector
-  -constructorSafetyValidator: ConstructorSafetyValidator
-  -abaProblemDetector: ABAProblemDetector
-  -lockOrderValidator: LockOrderValidator
-  -synchronizerMonitor: SynchronizerMonitor
-  -threadPoolMonitor: ThreadPoolMonitor
-  -memoryOrderingMonitor: MemoryOrderingMonitor
-  -pipelineMonitor: PipelineMonitor
-  -readWriteLockMonitor: ReadWriteLockMonitor
-  -semaphoreMisuseDetector: SemaphoreMisuseDetector
-  -completableFutureExceptionDetector: CompletableFutureExceptionDetector
-  -concurrentModificationDetector: ConcurrentModificationDetector
-  -lockLeakDetector: LockLeakDetector
-  -sharedRandomDetector: SharedRandomDetector
-  -blockingQueueDetector: BlockingQueueDetector
-  -conditionVariableDetector: ConditionVariableDetector
-  -simpleDateFormatDetector: SimpleDateFormatDetector
-  -parallelStreamDetector: ParallelStreamDetector
-  -resourceLeakDetector: ResourceLeakDetector
-  +static install(AsyncTestContext): void
-  +static uninstall(): void
-  +static get(): AsyncTestContext
-  +static falseSharingDetector(): FalseSharingDetector
-  +static wakeupDetector(): WakeupDetector
-  +static constructorSafetyValidator(): ConstructorSafetyValidator
-  +static abaProblemDetector(): ABAProblemDetector
-  +static lockOrderValidator(): LockOrderValidator
-  +static synchronizerMonitor(): SynchronizerMonitor
-  +static threadPoolMonitor(): ThreadPoolMonitor
-  +static memoryOrderingMonitor(): MemoryOrderingMonitor
-  +static pipelineMonitor(): PipelineMonitor
-  +static readWriteLockMonitor(): ReadWriteLockMonitor
-  +static semaphoreMonitor(): SemaphoreMisuseDetector
-  +static completableFutureMonitor(): CompletableFutureExceptionDetector
-  +static concurrentModificationMonitor(): ConcurrentModificationDetector
-  +static lockLeakMonitor(): LockLeakDetector
-  +static sharedRandomMonitor(): SharedRandomDetector
-  +static blockingQueueMonitor(): BlockingQueueDetector
-  +static conditionMonitor(): ConditionVariableDetector
-  +static simpleDateFormatMonitor(): SimpleDateFormatDetector
-  +static parallelStreamMonitor(): ParallelStreamDetector
-  +static resourceLeakMonitor(): ResourceLeakDetector
-  +analyzeAll(): List<String>
-}
-
-class DetectorType <<Enumeration>> {
-  +DEADLOCKS
-  +VISIBILITY
-  +LIVELOCKS
-  +FALSE_SHARING
-  +WAKEUP_ISSUES
-  +CONSTRUCTOR_SAFETY
-  +ABA_PROBLEM
-  +LOCK_ORDER
-  +SYNCHRONIZERS
-  +THREAD_POOL
-  +MEMORY_ORDERING
-  +ASYNC_PIPELINE
-  +READ_WRITE_LOCK_FAIRNESS
-  +SEMAPHORE
-  +COMPLETABLE_FUTURE_EXCEPTIONS
-  +CONCURRENT_MODIFICATIONS
-  +LOCK_LEAKS
-  +SHARED_RANDOM
-  +BLOCKING_QUEUE
-  +CONDITION_VARIABLES
-  +SIMPLE_DATE_FORMAT
-  +PARALLEL_STREAMS
-  +RESOURCE_LEAKS
-  +RACE_CONDITIONS
-  +THREAD_LOCAL_LEAKS
-  +BUSY_WAITING
-  +ATOMICITY_VIOLATIONS
-  +INTERRUPT_MISHANDLING
-}
-
-class BeforeEachInvocation <<Annotation>> {
-}
-
-class AfterEachInvocation <<Annotation>> {
-}
-
-' Benchmark Classes
-package benchmark {
-  class BenchmarkRecorder {
-    -config: AsyncTestConfig
-    -testClass: String
-    -testMethod: String
-    -invocationTimesNanos: List<Long>
-    -startTimeNanos: long
-    -comparator: BenchmarkComparator
-    -benchmarkingEnabled: boolean
-    +isBenchmarkingEnabled(): boolean
-    +recordInvocationStart(): long
-    +recordInvocationEnd(long): void
-    +complete(): BenchmarkComparisonResult
-    +getTotalExecutionTimeNanos(): long
-    +getInvocationCount(): int
-  }
-  
-  class BenchmarkComparator {
-    -benchmarkStorePath: Path
-    -regressionThresholdPercent: double
-    -failOnRegression: boolean
-    +compare(BenchmarkResult): BenchmarkComparisonResult
-    +saveBaseline(BenchmarkResult): void
-    +loadBaseline(String): Optional<BenchmarkResult>
-    +clearAllBaselines(): void
-  }
-  
-  class BenchmarkResult {
-    -testClass: String
-    -testMethod: String
-    -timestamp: LocalDateTime
-    -threads: int
-    -invocations: int
-    -totalExecutionTimeNanos: long
-    -avgTimePerInvocationNanos: long
-    -minTimePerInvocationNanos: long
-    -maxTimePerInvocationNanos: long
-    -invocationTimesNanos: List<Long>
-    +getBenchmarkKey(): String
-    +getStandardDeviation(): double
-    +static formatTime(long): String
-    +static builder(): Builder
-  }
-  
-  class BenchmarkComparisonResult {
-    -currentResult: BenchmarkResult
-    -baselineResult: BenchmarkResult
-    -percentChange: double
-    -isRegression: boolean
-    -isImprovement: boolean
-    -isFirstRun: boolean
-    -thresholdPercent: double
-    +isWithinThreshold(): boolean
-    +static firstRun(BenchmarkResult): BenchmarkComparisonResult
-    +static builder(): Builder
-  }
-  
-  class BenchmarkRegressionException {
-    -comparisonResult: BenchmarkComparisonResult
-    +getComparisonResult(): BenchmarkComparisonResult
-  }
-}
-
-' Relationships
-AsyncTestExtension --|> TestTemplateInvocationContextProvider
-AsyncTestInvocationInterceptor --|> InvocationInterceptor
-AsyncTestInvocationInterceptor --> AsyncTest : "Uses"
-AsyncTestInvocationInterceptor --> ConcurrencyRunner : "Calls"
-ConcurrencyRunner --> AsyncTestConfig : "Uses"
-ConcurrencyRunner --> AsyncTestContext : "Creates & installs"
-AsyncTestConfig --> AsyncTest : "Built from"
-AsyncTestConfig --> DetectorType : "Uses excludes"
-AsyncTestContext --> FalseSharingDetector : "Contains"
-AsyncTestContext --> WakeupDetector : "Contains"
-AsyncTestContext --> ConstructorSafetyValidator : "Contains"
-AsyncTestContext --> ABAProblemDetector : "Contains"
-AsyncTestContext --> LockOrderValidator : "Contains"
-AsyncTestContext --> SynchronizerMonitor : "Contains"
-AsyncTestContext --> ThreadPoolMonitor : "Contains"
-AsyncTestContext --> MemoryOrderingMonitor : "Contains"
-AsyncTestContext --> PipelineMonitor : "Contains"
-AsyncTestContext --> ReadWriteLockMonitor : "Contains"
-AsyncTestContext --> SemaphoreMisuseDetector : "Contains"
-AsyncTestContext --> CompletableFutureExceptionDetector : "Contains"
-AsyncTestContext --> ConcurrentModificationDetector : "Contains"
-AsyncTestContext --> LockLeakDetector : "Contains"
-AsyncTestContext --> SharedRandomDetector : "Contains"
-AsyncTestContext --> BlockingQueueDetector : "Contains"
-AsyncTestContext --> ConditionVariableDetector : "Contains"
-AsyncTestContext --> SimpleDateFormatDetector : "Contains"
-AsyncTestContext --> ParallelStreamDetector : "Contains"
-AsyncTestContext --> ResourceLeakDetector : "Contains"
-
-' Benchmark relationships
-BenchmarkRecorder --> AsyncTestConfig : "Uses config"
-BenchmarkRecorder --> BenchmarkComparator : "Uses"
-BenchmarkRecorder --> BenchmarkComparisonResult : "Returns"
-BenchmarkComparator --> BenchmarkResult : "Compares"
-BenchmarkComparator --> BenchmarkRegressionException : "Throws"
-BenchmarkComparisonResult --> BenchmarkResult : "Contains current & baseline"
-
-note top of AsyncTest
-  **Main annotation**\nApplied to test methods\nConfigures all detectors\nand benchmarking
-end note
-
-note right of AsyncTestContext
-  **ThreadLocal context**\nProvides static accessors\nto Phase 2 detectors\nInstalled per worker thread
-end note
-
-note bottom of BenchmarkRecorder
-  **Benchmarking**\nRecords execution times\nCompares with baselines\nDetects regressions
-end note
-@enduml
-```
+**Relationships:**
+- AsyncTestExtension provides AsyncTestInvocationInterceptor
+- AsyncTestInvocationInterceptor calls ConcurrencyRunner.execute()
+- ConcurrencyRunner creates and installs AsyncTestContext per thread
+- AsyncTestContext contains all Phase 2 detector instances
+- BenchmarkRecorder uses BenchmarkComparator to compare with baselines
 
 ![Class Diagram](../docs/diagrams/ClassDiagram.png)
+
+**Source:** [`class-diagram.puml`](../docs/diagrams/class-diagram.puml)
 
 ---
 
@@ -683,88 +131,28 @@ end note
 
 Shows how benchmarking integrates with test execution.
 
-```plantuml
-@startuml BenchmarkSequence
-title Benchmarking Flow - Sequence Diagram
+**First Run (Baseline Creation):**
+1. BenchmarkRecorder created
+2. For each invocation: record start/end times
+3. Calculate statistics (avg, min, max, stddev)
+4. No baseline exists → save current as baseline
+5. Print "Baseline created" message
 
-participant "Test\nMethod" as Test
-participant "Concurrency\nRunner" as Runner
-participant "Benchmark\nRecorder" as Recorder
-participant "Benchmark\nComparator" as Comparator
-participant "Baseline\nStorage" as Storage
-participant "Console" as Console
-
-note over Test, Storage: **First Run (Baseline Creation)**
-
-Runner -> Recorder : new BenchmarkRecorder(config)
-activate Recorder
-
-loop For each invocation
-  Recorder -> Recorder : recordInvocationStart()
-  Test -> Test : Execute test\n(M threads concurrently)
-  Recorder -> Recorder : recordInvocationEnd(start)
-end
-
-Runner -> Recorder : complete()
-Recorder -> Recorder : Calculate statistics\n(avg, min, max, stddev)
-Recorder -> Comparator : compare(currentResult)
-activate Comparator
-Comparator -> Storage : loadBaseline(key)
-Storage --> Comparator : null (no baseline)
-Comparator --> Recorder : isFirstRun = true
-Recorder -> Storage : saveBaseline(currentResult)
-Recorder --> Console : "[BENCHMARK] Baseline created\navg=X.XX ms"
-deactivate Comparator
-deactivate Recorder
-
-note over Test, Storage: **Subsequent Run (Comparison)**
-
-Runner -> Recorder : new BenchmarkRecorder(config)
-activate Recorder
-
-loop For each invocation
-  Recorder -> Recorder : recordInvocationStart()
-  Test -> Test : Execute test\n(M threads concurrently)
-  Recorder -> Recorder : recordInvocationEnd(start)
-end
-
-Runner -> Recorder : complete()
-Recorder -> Recorder : Calculate statistics
-Recorder -> Comparator : compare(currentResult)
-activate Comparator
-Comparator -> Storage : loadBaseline(key)
-Storage --> Comparator : baselineResult
-Comparator -> Comparator : Calculate % change
-alt Change > threshold (e.g., +25%)
-  Comparator -> Comparator : isRegression = true
-  alt failOnRegression = true
-    Comparator --> Recorder : BenchmarkRegressionException
-    Recorder --> Runner : Throw exception
-    Runner --> Console : Test FAILED
-  else failOnRegression = false
-    Comparator --> Recorder : Comparison result
-    Recorder --> Console : "⚠️ REGRESSION DETECTED"\n+ detailed report
-  end
-else Change < -threshold (e.g., -15%)
-  Comparator --> Recorder : isImprovement = true
-  Recorder --> Console : "✓ IMPROVEMENT"\nchange: -X.XX%
-else Within threshold
-  Comparator --> Recorder : isWithinThreshold = true
-  Recorder --> Console : "✓ STABLE"\nchange: +X.XX%
-end
-deactivate Comparator
-deactivate Recorder
-
-note right of Recorder
-  **System Properties:**
-  -Dbenchmark.update=true\n  → Force baseline update
-  -Dbenchmark.store.path=<path>\n  → Custom storage location
-  -Dbenchmark.regression.threshold=0.X\n  → Override threshold
-end note
-@enduml
-```
+**Subsequent Runs (Comparison):**
+1. BenchmarkRecorder created
+2. For each invocation: record start/end times
+3. Calculate statistics
+4. Load baseline from storage
+5. Calculate % change
+6. If change > threshold: regression detected
+   - If failOnRegression=true: throw BenchmarkRegressionException
+   - Else: log warning
+7. If change < -threshold: improvement detected
+8. Else: stable performance
 
 ![Benchmark Sequence Diagram](../docs/diagrams/BenchmarkSequence.png)
+
+**Source:** [`benchmark-sequence.puml`](../docs/diagrams/benchmark-sequence.puml)
 
 ---
 
@@ -772,132 +160,37 @@ end note
 
 Shows the decision flow during test execution.
 
-```plantuml
-@startuml ActivityDiagram
-title Async Test Execution - Activity Diagram
-
-start
-:JUnit 5 discovers\n@AsyncTest method;
-
-partition "Extension Layer" {
-  :AsyncTestExtension.supportsTestTemplate();
-  if (has @AsyncTest?) then (yes)
-    :Provide TestTemplateInvocationContext;
-    :Register AsyncTestInvocationInterceptor;
-  else (no)
-    :Skip (standard JUnit execution);
-    stop
-  endif
-}
-
-partition "Interceptor" {
-  :interceptTestTemplateMethod();
-  :invocation.skip();
-  :AsyncTestConfig.from(annotation);
-}
-
-partition "Runner Setup" {
-  :Create Phase 1 detectors;
-  :Create Phase 2 detectors;
-  :Create Phase 3 detectors;
-  
-  if (enableBenchmarking?) then (yes)
-    :Create BenchmarkRecorder;
-  else (no)
-  endif
-  
-  :Create AsyncTestContext;
-  :Determine thread count\n(from stress mode or threads param);
-  :Create ExecutorService\n(virtual or platform threads);
-}
-
-partition "Execution Loop" {
-  :invocationIndex = 0;
-  repeat :invocationIndex++;
-  :Record benchmark start time;
-  :Invoke @BeforeEachInvocation methods;
-  
-  fork
-    :Thread 1: await barrier;
-    :Thread 2: await barrier;
-    :Thread M: await barrier;
-  end fork
-  
-  :All threads released\nsimultaneously;
-  
-  fork
-    :Thread 1: execute test body;
-    :Thread 2: execute test body;
-    :Thread M: execute test body;
-  end fork
-  
-  :Record detectors events\n(lock ops, field access, etc);
-  :Record benchmark end time;
-  :Invoke @AfterEachInvocation methods;
-  
-  repeat while (invocationIndex < invocations) is (yes) then (no)
-}
-
-partition "Benchmarking" {
-  if (benchmarking enabled?) then (yes)
-    :BenchmarkRecorder.complete();
-    :Calculate statistics\n(avg, min, max, stddev);
-    :Comparator.compare(currentResult);
-    
-    if (has baseline?) then (yes)
-      :Calculate % change;
-      
-      if (change > threshold?) then (yes - Regression)
-        :Print regression report;
-        
-        if (failOnRegression?) then (yes)
-          :Throw BenchmarkRegressionException;
-        else (no)
-          :Log warning only;
-        endif
-      elseif (change < -threshold?) then (yes - Improvement)
-        :Print improvement message;
-      else (within threshold)
-        :Print stable message;
-      endif
-    else (no - First run)
-      :Save baseline;
-      :Print "Baseline created";
-    endif
-  endif
-}
-
-partition "Analysis" {
-  :Call analyzeAll() on Phase 2 detectors;
-  
-  if (any issues detected?) then (yes)
-    :Print detector reports;
-  endif
-  
-  :Shutdown ExecutorService;
-}
-
-if (test failed?) then (yes)
-  :Print Phase 1 reports\n(visibility, livelock, etc);
-  :Print Phase 2 reports;
-  :Throw AssertionError;
-else (no)
-  :Test completed successfully;
-endif
-
-stop
-
-note right of **All threads released**
-  **CyclicBarrier ensures**
-  All threads start test body
-  at exactly the same time,
-  maximizing thread contention
-  and race condition probability
-end note
-@enduml
-```
+**Main Flow:**
+1. JUnit 5 discovers @AsyncTest method
+2. Extension layer checks for annotation
+3. Interceptor skips standard execution
+4. Runner setup:
+   - Create Phase 1, 2, 3 detectors
+   - Create BenchmarkRecorder (if enabled)
+   - Create AsyncTestContext
+   - Determine thread count
+   - Create ExecutorService
+5. Execution loop (N invocations):
+   - Record benchmark start time
+   - Invoke @BeforeEachInvocation methods
+   - Fork M threads to barrier
+   - All threads released simultaneously
+   - Fork M threads to execute test body
+   - Record detector events
+   - Record benchmark end time
+   - Invoke @AfterEachInvocation methods
+6. Benchmarking:
+   - Calculate statistics
+   - Compare with baseline
+   - Report regression/improvement/stable
+7. Analysis:
+   - Call analyzeAll() on detectors
+   - Print reports if issues detected
+   - Shutdown ExecutorService
 
 ![Activity Diagram](../docs/diagrams/ActivityDiagram.png)
+
+**Source:** [`activity-diagram.puml`](../docs/diagrams/activity-diagram.puml)
 
 ---
 
@@ -905,120 +198,24 @@ end note
 
 Shows how the library is deployed and used.
 
-```plantuml
-@startuml DeploymentDiagram
-title Async Test Library - Deployment Diagram
+**Artifacts:**
+- **async-test-1.1.0.jar**: Main library (~150 KB)
+  - Extension layer classes
+  - Runner classes
+  - 35 detector classes
+  - 5 benchmark classes
+  - META-INF/services (JUnit extension registration)
+- **async-test-1.1.0-sources.jar**: Source code (~350 KB)
+- **async-test-1.1.0-javadoc.jar**: API documentation (~450 KB)
 
-artifact "async-test-1.1.0.jar" as Jar {
-  folder "com/github/asynctest" {
-    file "AsyncTest.class" as Annotation
-    file "AsyncTestExtension.class" as Ext
-    file "AsyncTestInvocationInterceptor.class" as Interceptor
-    file "ConcurrencyRunner.class" as Runner
-    file "AsyncTestContext.class" as Context
-    file "DetectorType.class" as DType
-  }
-  
-  folder "com/github/asynctest/runner" {
-    file "ConcurrencyRunner.class" as Runner2
-  }
-  
-  folder "com/github/asynctest/diagnostics" {
-    file "DeadlockDetector.class" as Deadlock
-    file "FalseSharingDetector.class" as FalseSharing
-    file "VisibilityMonitor.class" as Visibility
-    file "RaceConditionDetector.class" as Race
-    file "LivelockDetector.class" as Livelock
-    file "WakeupDetector.class" as Wakeup
-    file "ABAProblemDetector.class" as ABA
-    file "LockOrderValidator.class" as LockOrder
-    file "ConstructorSafetyValidator.class" as Constructor
-    file "SynchronizerMonitor.class" as Sync
-    file "ThreadPoolMonitor.class" as ThreadPool
-    file "MemoryOrderingMonitor.class" as MemOrder
-    file "PipelineMonitor.class" as Pipeline
-    file "ReadWriteLockMonitor.class" as RWLock
-    file "SemaphoreMisuseDetector.class" as Semaphore
-    file "CompletableFutureExceptionDetector.class" as CF
-    file "ConcurrentModificationDetector.class" as ConcurrentMod
-    file "LockLeakDetector.class" as LockLeak
-    file "SharedRandomDetector.class" as SharedRandom
-    file "BlockingQueueDetector.class" as BlockingQueue
-    file "ConditionVariableDetector.class" as Condition
-    file "SimpleDateFormatDetector.class" as SimpleDateFormat
-    file "ParallelStreamDetector.class" as ParallelStream
-    file "ResourceLeakDetector.class" as ResourceLeak
-  }
-  
-  folder "com/github/asynctest/benchmark" {
-    file "BenchmarkRecorder.class" as BenchRecorder
-    file "BenchmarkComparator.class" as BenchComparator
-    file "BenchmarkResult.class" as BenchResult
-    file "BenchmarkComparisonResult.class" as BenchCompare
-    file "BenchmarkRegressionException.class" as BenchException
-  }
-  
-  folder "META-INF/services" {
-    file "org.junit.jupiter.api.extension.Extension" as Service
-  }
-}
-
-artifact "async-test-1.1.0-sources.jar" as Sources {
-  folder "src/main/java" {
-    file "*.java (all source files)" as JavaSources
-  }
-}
-
-artifact "async-test-1.1.0-javadoc.jar" as Javadoc {
-  folder "api/" {
-    file "*.html (API documentation)" as HtmlDocs
-  }
-}
-
-database "Maven Repository" as Maven {
-  folder "com/github/asynctest/async-test/1.1.0/" {
-    file "async-test-1.1.0.jar"
-    file "async-test-1.1.0-sources.jar"
-    file "async-test-1.1.0-javadoc.jar"
-    file "async-test-1.1.0.pom"
-  }
-}
-
-folder "User Project" as UserProject {
-  folder "src/test/java" {
-    file "MyConcurrentTest.java" as UserTest
-  }
-  
-  folder "target/benchmark-data/" {
-    file "baseline-store.dat" as Baseline
-  }
-}
-
-Jar --> Maven : "Deployed to"
-Sources --> Maven : "Deployed to"
-Javadoc --> Maven : "Deployed to"
-
-UserTest ..> Annotation : "@AsyncTest"
-UserTest ..> Runner : "Executed by"
-UserTest ..> BenchRecorder : "Records times"
-BenchRecorder --> Baseline : "Stores/reads"
-
-note bottom of UserProject
-  **User's Test Project**
-  Adds async-test as test dependency\n
-  Runs tests with Maven/Gradle\n
-  Benchmark data stored locally
-end note
-
-note right of Service
-  **Service Provider**
-  Registers AsyncTestExtension\n
-  Auto-discovered by JUnit 5
-end note
-@enduml
-```
+**Deployment:**
+- Published to Maven repository (GitHub Packages)
+- User projects add as test dependency
+- Benchmark data stored in `target/benchmark-data/`
 
 ![Deployment Diagram](../docs/diagrams/DeploymentDiagram.png)
+
+**Source:** [`deployment-diagram.puml`](../docs/diagrams/deployment-diagram.puml)
 
 ---
 
@@ -1026,130 +223,38 @@ end note
 
 Shows the structure and common pattern of all 35 detectors.
 
-```plantuml
-@startuml DetectorArchitecture
-title Detector Architecture - Common Pattern
+**Phase 1: Core Detectors (9 classes)**
+- DeadlockDetector, VisibilityMonitor, LivelockDetector
+- RaceConditionDetector, ThreadLocalMonitor, BusyWaitDetector
+- AtomicityValidator, InterruptMonitor, MemoryModelValidator
+- Run automatically on timeout
+- Detect core concurrency issues
 
-package "Phase 1: Core Detectors" {
-  abstract class "Base Detector" as Base1 {
-    +analyze*(): Report
-    #hasIssues*: boolean
-  }
-  
-  class DeadlockDetector
-  class VisibilityMonitor
-  class LivelockDetector
-  class RaceConditionDetector
-  class ThreadLocalMonitor
-  class BusyWaitDetector
-  class AtomicityValidator
-  class InterruptMonitor
-  class MemoryModelValidator
-}
+**Phase 2: Advanced Detectors (20 classes)**
+- FalseSharingDetector, WakeupDetector, ConstructorSafetyValidator
+- ABAProblemDetector, LockOrderValidator, SynchronizerMonitor
+- ThreadPoolMonitor, MemoryOrderingMonitor, PipelineMonitor
+- ReadWriteLockMonitor, SemaphoreMisuseDetector
+- CompletableFutureExceptionDetector, ConcurrentModificationDetector
+- LockLeakDetector, SharedRandomDetector, BlockingQueueDetector
+- ConditionVariableDetector, SimpleDateFormatDetector
+- ParallelStreamDetector, ResourceLeakDetector
+- Opt-in via annotation flags
+- Record events during test execution
 
-package "Phase 2: Advanced Detectors" {
-  abstract class "Base Detector" as Base2 {
-    +analyze*(): Report
-    #hasIssues*: boolean
-  }
-  
-  class FalseSharingDetector {
-    +recordFieldAccess(Object, String, Class): void
-    +analyzeFalseSharing(): FalseSharingReport
-  }
-  
-  class WakeupDetector
-  class ConstructorSafetyValidator
-  class ABAProblemDetector
-  class LockOrderValidator
-  class SynchronizerMonitor
-  class ThreadPoolMonitor
-  class MemoryOrderingMonitor
-  class PipelineMonitor
-  class ReadWriteLockMonitor
-  class SemaphoreMisuseDetector
-  class CompletableFutureExceptionDetector
-  class ConcurrentModificationDetector
-  class LockLeakDetector
-  class SharedRandomDetector
-  class BlockingQueueDetector
-  class ConditionVariableDetector
-  class SimpleDateFormatDetector
-  class ParallelStreamDetector
-  class ResourceLeakDetector
-}
+**Phase 3: Runtime Validators (5 classes)**
+- NotifyAllValidator, LazyInitValidator, FutureBlockingDetector
+- ExecutorDeadlockDetector, LatchMisuseDetector
+- Manual validator pattern for legacy Java async patterns
 
-package "Phase 3: Runtime Validators" {
-  class NotifyAllValidator
-  class LazyInitValidator
-  class FutureBlockingDetector
-  class ExecutorDeadlockDetector
-  class LatchMisuseDetector
-}
+**Common Pattern:**
+- Abstract base with `analyze*(): Report` and `hasIssues: boolean`
+- Concrete detectors implement analysis logic
+- Return specific report types (e.g., FalseSharingReport)
 
-package "Report Classes" {
-  interface "Report Interface" as Report {
-    +hasIssues(): boolean
-    +toString(): String
-  }
-}
+![Detector Architecture Diagram](../docs/diagrams/DetectorArchitecture.png)
 
-Base1 <|-- DeadlockDetector
-Base1 <|-- VisibilityMonitor
-Base1 <|-- LivelockDetector
-Base1 <|-- RaceConditionDetector
-Base1 <|-- ThreadLocalMonitor
-Base1 <|-- BusyWaitDetector
-Base1 <|-- AtomicityValidator
-Base1 <|-- InterruptMonitor
-Base1 <|-- MemoryModelValidator
-
-Base2 <|-- FalseSharingDetector
-Base2 <|-- WakeupDetector
-Base2 <|-- ConstructorSafetyValidator
-Base2 <|-- ABAProblemDetector
-Base2 <|-- LockOrderValidator
-Base2 <|-- SynchronizerMonitor
-Base2 <|-- ThreadPoolMonitor
-Base2 <|-- MemoryOrderingMonitor
-Base2 <|-- PipelineMonitor
-Base2 <|-- ReadWriteLockMonitor
-Base2 <|-- SemaphoreMisuseDetector
-Base2 <|-- CompletableFutureExceptionDetector
-Base2 <|-- ConcurrentModificationDetector
-Base2 <|-- LockLeakDetector
-Base2 <|-- SharedRandomDetector
-Base2 <|-- BlockingQueueDetector
-Base2 <|-- ConditionVariableDetector
-Base2 <|-- SimpleDateFormatDetector
-Base2 <|-- ParallelStreamDetector
-Base2 <|-- ResourceLeakDetector
-
-note right of Base1
-  **Phase 1 Detectors**
-  Run automatically on timeout\n
-  Detect core concurrency issues:\n
-  - Deadlocks\n  - Visibility\n  - Livelocks\n  - Race conditions
-end note
-
-note right of Base2
-  **Phase 2 Detectors**
-  Opt-in via annotation flags\n
-  Record events during test execution\n
-  Analyze at completion:\n
-  - False sharing\n  - ABA problems\n  - Lock ordering\n  - etc.
-end note
-
-note right of Phase3
-  **Phase 3 Validators**
-  Manual validator pattern\n
-  For legacy Java async patterns:\n
-  - notify/notifyAll\n  - Lazy initialization\n  - Future blocking\n  - Executor deadlock\n  - Latch misuse
-end note
-@enduml
-```
-
-![Detector Architecture](../docs/diagrams/DetectorArchitecture.png)
+**Source:** [`detector-architecture.puml`](../docs/diagrams/detector-architecture.puml)
 
 ---
 
@@ -1157,122 +262,37 @@ end note
 
 ### 1. ThreadLocal Context Pattern
 
-```plantuml
-@startuml ThreadLocalPattern
-title ThreadLocal Context Pattern
+**Purpose:** Share detector instances across all worker threads while maintaining thread-safe access.
 
-rectangle "Main Thread" as Main {
-  component "AsyncTestContext" as Context1
-}
-
-rectangle "Worker Thread 1" as Worker1 {
-  component "AsyncTestContext" as Context2
-}
-
-rectangle "Worker Thread 2" as Worker2 {
-  component "AsyncTestContext" as Context3
-}
-
-rectangle "Worker Thread M" as WorkerM {
-  component "AsyncTestContext" as Context4
-}
-
-note top of Main
-  **Before Execution**
-  Runner creates single\nAsyncTestContext instance\nwith all detectors
-end note
-
-note top of Worker1
-  **During Execution**\n  Each thread installs\n  same context via\n  AsyncTestContext.install()
-end note
-
-note top of Worker2
-  **Shared State**\n  All threads access\n  same detector instances\n  for concurrent event recording
-end note
-
-note top of WorkerM
-  **After Execution**\n  Each thread uninstalls\n  via AsyncTestContext.uninstall()
-end note
-
-Main --> Worker1 : Context shared\nvia ThreadLocal
-Main --> Worker2 : Context shared\nvia ThreadLocal
-Main --> WorkerM : Context shared\nvia ThreadLocal
-@enduml
-```
+**Implementation:**
+- Runner creates single AsyncTestContext with all detectors
+- Each worker thread installs context via `AsyncTestContext.install()`
+- All threads access same detector instances concurrently
+- Each thread uninstalls via `AsyncTestContext.uninstall()` after completion
 
 ### 2. Detector Recording Pattern
 
-```plantuml
-@startuml DetectorPattern
-title Detector Recording Pattern
+**Purpose:** Allow test code to record events for later analysis.
 
-participant "Test Code" as Test
-participant "Static Accessor" as Accessor
-participant "AsyncTestContext" as Context
-participant "Detector" as Detector
-participant "Event Store" as Store
-
-Test -> Accessor : AsyncTestContext.falseSharingDetector()
-Accessor -> Context : get() from ThreadLocal
-Context --> Accessor : Detector instance
-Accessor --> Test : Detector
-
-Test -> Detector : recordFieldAccess(this, "counter", long.class)
-Detector -> Store : Add event\n(thread, field, timestamp)
-
-note right of Store
-  **Event Accumulation**
-  All threads record events\n
-  concurrently to shared store\n
-  Analyzed after test completes
-end note
-@enduml
-```
+**Implementation:**
+- Test code calls static accessor: `AsyncTestContext.falseSharingDetector()`
+- Accessor gets context from ThreadLocal
+- Returns detector instance
+- Test code calls recording method: `recordFieldAccess(this, "counter", long.class)`
+- Detector adds event to shared store (thread-safe)
+- After test completes, `analyzeAll()` processes all recorded events
 
 ### 3. Barrier Synchronization Pattern
 
-```plantuml
-@startuml BarrierPattern
-title CyclicBarrier Synchronization Pattern
+**Purpose:** Force all threads to start test body simultaneously for maximum contention.
 
-participant "Runner" as Runner
-participant "Thread 1" as T1
-participant "Thread 2" as T2
-participant "Thread M" as TM
-participant "CyclicBarrier" as Barrier
-
-Runner -> Barrier : new CyclicBarrier(M)
-
-par Launch M threads
-  Runner -> T1 : Submit task
-  Runner -> T2 : Submit task
-  Runner -> TM : Submit task
-  
-  T1 -> Barrier : await()
-  T1 -> T1 : **BLOCKED**
-  
-  T2 -> Barrier : await()
-  T2 -> T2 : **BLOCKED**
-  
-  TM -> Barrier : await()
-  TM -> TM : **BLOCKED**
-end
-
-note over T1, TM: All threads waiting\nat barrier
-
-Barrier -> T1 : Release
-Barrier -> T2 : Release
-Barrier -> TM : Release
-
-par Simultaneous execution
-  T1 -> T1 : Execute test body
-  T2 -> T2 : Execute test body
-  TM -> TM : Execute test body
-end
-
-note over T1, TM: **Maximum contention**\nAll threads execute\nconcurrently
-@enduml
-```
+**Implementation:**
+- Runner creates CyclicBarrier with M threads
+- Each thread submits task to ExecutorService
+- Task calls `barrier.await()` before test body
+- All threads block at barrier until last thread arrives
+- Barrier releases all threads simultaneously
+- Maximum thread contention achieved
 
 ---
 
@@ -1296,7 +316,7 @@ note over T1, TM: **Maximum contention**\nAll threads execute\nconcurrently
 - Phase 1: Always on (core detectors)
 - Phase 2: Opt-in via flags (advanced detectors)
 - Phase 3: Manual validators (legacy patterns)
-- Benchmarking: Opt-in via flag
+- Benchmarking: Opt-in via flag or system property
 
 ### 4. Zero Overhead Default
 
@@ -1334,6 +354,26 @@ src/main/java/com/github/asynctest/
     ├── BenchmarkComparisonResult.java
     └── BenchmarkRegressionException.java
 ```
+
+---
+
+## Diagram Source Files
+
+All PlantUML source files are located in [`docs/diagrams/`](../docs/diagrams/):
+
+| Diagram | Source File | PNG File |
+|---------|-------------|----------|
+| System Context | `system-context.puml` | `SystemContext.png` |
+| Container | `container.puml` | `ContainerDiagram.png` |
+| Component Flow | `component-flow.puml` | `ComponentFlow.png` |
+| Sequence Execution | `sequence-execution.puml` | `SequenceExecution.png` |
+| Class Diagram | `class-diagram.puml` | `ClassDiagram.png` |
+| Benchmark Sequence | `benchmark-sequence.puml` | `BenchmarkSequence.png` |
+| Activity | `activity-diagram.puml` | `ActivityDiagram.png` |
+| Deployment | `deployment-diagram.puml` | `DeploymentDiagram.png` |
+| Detector Architecture | `detector-architecture.puml` | `DetectorArchitecture.png` |
+
+To regenerate diagrams, see [`docs/diagrams/README.md`](../docs/diagrams/README.md).
 
 ---
 
