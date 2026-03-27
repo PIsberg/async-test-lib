@@ -6,7 +6,7 @@
 
     <groupId>com.github.asynctest.fixtures</groupId>
     <artifactId>consumer-fixture</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <packaging>jar</packaging>
 
     <name>Async Test Consumer Fixture</name>
@@ -16,7 +16,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <async-test.version>1.0.0</async-test.version>
+        <async-test.version>1.1.0</async-test.version>
         <junit.jupiter.version>5.14.3</junit.jupiter.version>
     </properties>
 

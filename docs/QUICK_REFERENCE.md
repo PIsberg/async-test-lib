@@ -25,7 +25,7 @@ Making your library available for others to install and use via Maven/Gradle wit
 <dependency>
     <groupId>com.github.asynctest</groupId>
     <artifactId>async-test</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -36,35 +36,35 @@ repositories {
     maven { url = uri("https://maven.pkg.github.com/yourusername/async-test-lib") }
 }
 dependencies {
-    testImplementation 'com.github.asynctest:async-test:1.0.0'
+    testImplementation 'com.github.asynctest:async-test:1.1.0'
 }
 ```
 
 ### Artifacts Created Per Release
 ```
-async-test-1.0.0.jar          (150 KB)  → Main library
-async-test-1.0.0-sources.jar  (350 KB)  → Source code
-async-test-1.0.0-javadoc.jar  (450 KB)  → API docs
+async-test-1.1.0.jar          (150 KB)  → Main library
+async-test-1.1.0-sources.jar  (350 KB)  → Source code
+async-test-1.1.0-javadoc.jar  (450 KB)  → API docs
 ```
 
 ### Release Process (4 Steps)
 ```bash
 # 1. Update version in pom.xml
-sed -i 's/1.0.0/1.0.1/' pom.xml
+sed -i 's/1.1.0/1.1.0/' pom.xml
 
 # 2. Commit
-git commit -am "Release 1.0.1"
+git commit -am "Release 1.1.0"
 
 # 3. Tag (this triggers GitHub Actions!)
-git tag -a v1.0.1 -m "Release 1.0.1"
+git tag -a v1.1.0 -m "Release 1.1.0"
 
 # 4. Push
-git push origin main && git push origin v1.0.1
+git push origin main && git push origin v1.1.0
 ```
 
 ### GitHub Actions Automation
 ```
-Tag push detected (v1.0.0)
+Tag push detected (v1.1.0)
     ↓
 Workflow starts (publish.yml)
     ↓
@@ -98,7 +98,7 @@ Created:
 ### Before First Release: 3 Tasks
 1. Replace `yourusername` with your GitHub username in pom.xml and .github/workflows/
 2. Run `mvn clean package` to verify build works locally
-3. Create tag: `git tag -a v1.0.0 -m "Initial release"`
+3. Create tag: `git tag -a v1.1.0 -m "Initial release"`
 
 ### Verify Release Succeeded
 ```
@@ -108,18 +108,18 @@ Check 1: GitHub Actions
 
 Check 2: GitHub Packages
   https://github.com/yourusername/async-test-lib/packages
-  Look for: async-test v1.0.0
+  Look for: async-test v1.1.0
 
 Check 3: GitHub Releases
   https://github.com/yourusername/async-test-lib/releases
-  Look for: v1.0.0 with download links
+  Look for: v1.1.0 with download links
 ```
 
 ### Maven Configuration Summary
 ```
 Group ID:     com.github.asynctest
 Artifact ID:  async-test
-Version:      1.0.0
+Version:      1.1.0
 Scope:        test
 License:      MIT
 URL:          https://github.com/yourusername/async-test-lib
@@ -128,8 +128,8 @@ Repository:   https://maven.pkg.github.com/yourusername/async-test-lib
 
 ### Dependency Coordinates
 ```
-Maven:   com.github.asynctest:async-test:1.0.0
-Gradle:  'com.github.asynctest:async-test:1.0.0'
+Maven:   com.github.asynctest:async-test:1.1.0
+Gradle:  'com.github.asynctest:async-test:1.1.0'
 ```
 
 ### pom.xml Key Sections
@@ -157,19 +157,19 @@ Gradle:  'com.github.asynctest:async-test:1.0.0'
 ```yaml
 # publish.yml triggers on ANY tag matching v*
 # Examples that trigger:
-git tag -a v1.0.0 -m "..."     ✅ Triggers
-git tag -a v1.0.1 -m "..."     ✅ Triggers
+git tag -a v1.1.0 -m "..."     ✅ Triggers
+git tag -a v1.1.0 -m "..."     ✅ Triggers
 git tag -a v2.0.0 -m "..."     ✅ Triggers
 git tag -a myversion -m "..."  ❌ Does NOT trigger
 ```
 
 ### Semantic Versioning
 ```
-1.0.0 (Major . Minor . Patch)
+1.1.0 (Major . Minor . Patch)
 
-1.0.0 → 1.0.1  (Patch)  - Bug fixes only
-1.0.0 → 1.1.0  (Minor)  - New features, backward compatible
-1.0.0 → 2.0.0  (Major)  - Breaking changes
+1.1.0 → 1.1.0  (Patch)  - Bug fixes only
+1.1.0 → 1.1.0  (Minor)  - New features, backward compatible
+1.1.0 → 2.0.0  (Major)  - Breaking changes
 ```
 
 ### Documentation Files
@@ -254,8 +254,8 @@ mvn clean
 mvn deploy
 
 # Release tag
-git tag -a v1.0.0 -m "Description"
-git push origin v1.0.0
+git tag -a v1.1.0 -m "Description"
+git push origin v1.1.0
 ```
 
 ### Verify Everything
@@ -278,27 +278,27 @@ ls -lah target/async-test-*.jar
 
 Expected results:
 ```
-async-test-1.0.0.jar                 ~150 KB ✅
-async-test-1.0.0-sources.jar         ~350 KB ✅
-async-test-1.0.0-javadoc.jar         ~450 KB ✅
+async-test-1.1.0.jar                 ~150 KB ✅
+async-test-1.1.0-sources.jar         ~350 KB ✅
+async-test-1.1.0-javadoc.jar         ~450 KB ✅
 BUILD SUCCESS                             ✅
 ```
 
 ### What Users See
 ```
 GitHub Releases page:
-  v1.0.0 release
-  ├── async-test-1.0.0.jar (download)
-  ├── async-test-1.0.0-sources.jar (download)
-  ├── async-test-1.0.0-javadoc.jar (download)
+  v1.1.0 release
+  ├── async-test-1.1.0.jar (download)
+  ├── async-test-1.1.0-sources.jar (download)
+  ├── async-test-1.1.0-javadoc.jar (download)
   └── Release notes
 
 GitHub Packages:
   async-test package
-  └── 1.0.0 version
+  └── 1.1.0 version
 
 Maven Central (in future):
-  com.github.asynctest:async-test:1.0.0
+  com.github.asynctest:async-test:1.1.0
   └── Available with no special configuration
 ```
 
@@ -346,8 +346,8 @@ Question: Is it ready?
 ```
 1. Replace yourusername in pom.xml (5 min)
 2. Test build locally: mvn clean package (5 min)
-3. Commit and tag: git tag -a v1.0.0 (1 min)
-4. Push: git push origin v1.0.0 (1 min)
+3. Commit and tag: git tag -a v1.1.0 (1 min)
+4. Push: git push origin v1.1.0 (1 min)
 5. Wait for automation (5-10 min)
 6. Verify release on GitHub (2 min)
 

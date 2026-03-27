@@ -11,25 +11,25 @@ The project uses GitHub Actions to automatically publish releases when you push 
 Before releasing, update the version in `pom.xml`:
 
 ```xml
-<version>1.0.1</version>  <!-- Change from 1.0.0 -->
+<version>1.1.0</version>  <!-- Change from 1.1.0 -->
 ```
 
 Follow semantic versioning:
-- MAJOR.MINOR.PATCH (e.g., 1.0.0, 1.1.0, 2.0.0)
+- MAJOR.MINOR.PATCH (e.g., 1.1.0, 1.1.0, 2.0.0)
 
 #### 2. Commit and Tag
 
 ```bash
 # Commit version change
 git add pom.xml
-git commit -m "Release version 1.0.1"
+git commit -m "Release version 1.1.0"
 
 # Create annotated tag (required for release)
-git tag -a v1.0.1 -m "Release version 1.0.1"
+git tag -a v1.1.0 -m "Release version 1.1.0"
 
 # Push both commits and tags
 git push origin main
-git push origin v1.0.1
+git push origin v1.1.0
 ```
 
 #### 3. Automatic Publishing
@@ -39,9 +39,9 @@ The GitHub Actions workflow (`.github/workflows/publish.yml`) will:
 2. Build and test the project
 3. Publish the JAR to GitHub Packages
 4. Create a GitHub Release with:
-   - async-test-1.0.1.jar (main library)
-   - async-test-1.0.1-sources.jar (source code)
-   - async-test-1.0.1-javadoc.jar (API documentation)
+   - async-test-1.1.0.jar (main library)
+   - async-test-1.1.0-sources.jar (source code)
+   - async-test-1.1.0-javadoc.jar (API documentation)
 
 #### 4. Verify the Release
 
@@ -93,7 +93,7 @@ Users add to their `pom.xml`:
 <dependency>
     <groupId>com.github.asynctest</groupId>
     <artifactId>async-test</artifactId>
-    <version>1.0.1</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
@@ -113,20 +113,20 @@ These services are being sunset. Focus on Maven Central and GitHub Packages.
 
 ## Artifact Contents
 
-### async-test-1.0.1.jar
+### async-test-1.1.0.jar
 
 - Compiled library classes
 - All 20+ detectors
 - JUnit 5 extension
 - Manifest with version info
 
-### async-test-1.0.1-sources.jar
+### async-test-1.1.0-sources.jar
 
 - Complete Java source code
 - Includes JavaDoc comments
 - Easy IDE integration (download sources)
 
-### async-test-1.0.1-javadoc.jar
+### async-test-1.1.0-javadoc.jar
 
 - Full API documentation
 - Parameter descriptions
@@ -196,18 +196,18 @@ Before pushing a release tag:
 mvn clean test
 
 # 2. Update version
-sed -i 's/<version>1.0.0<\/version>/<version>1.0.1<\/version>/' pom.xml
+sed -i 's/<version>1.1.0<\/version>/<version>1.1.0<\/version>/' pom.xml
 
 # 3. Commit version
 git add pom.xml
-git commit -m "Prepare release 1.0.1"
+git commit -m "Prepare release 1.1.0"
 
 # 4. Tag release
-git tag -a v1.0.1 -m "Release 1.0.1 - Bug fixes for deadlock detection"
+git tag -a v1.1.0 -m "Release 1.1.0 - Bug fixes for deadlock detection"
 
 # 5. Push to trigger CI/CD
 git push origin main
-git push origin v1.0.1
+git push origin v1.1.0
 
 # 6. Monitor build at: https://github.com/yourusername/async-test-lib/actions
 
@@ -220,14 +220,14 @@ If a release has critical issues:
 
 ```bash
 # Remove the tag
-git tag -d v1.0.1
-git push origin :refs/tags/v1.0.1
+git tag -d v1.1.0
+git push origin :refs/tags/v1.1.0
 
 # Delete the release on GitHub (manually)
 # Re-run the automated process with fixes
 
 # Or create a patch release
-# v1.0.1 -> v1.0.2
+# v1.1.0 -> v1.0.2
 ```
 
 ## FAQ
@@ -236,7 +236,7 @@ git push origin :refs/tags/v1.0.1
 A: See "Maven Central (Future)" section above. Requires SONATYPE account and additional configuration.
 
 **Q: Can I publish snapshots for testing?**
-A: Yes, update version to `1.0.1-SNAPSHOT` and run `mvn deploy`. Snapshots go to separate repository.
+A: Yes, update version to `1.1.0-SNAPSHOT` and run `mvn deploy`. Snapshots go to separate repository.
 
 **Q: What if the GitHub Actions workflow fails?**
 A: Check the workflow run logs. Common issues:

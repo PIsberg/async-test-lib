@@ -66,7 +66,7 @@ mvn clean test
 mvn javadoc:javadoc
 
 # Check artifact was created
-ls -lah target/async-test-1.0.0.jar
+ls -lah target/async-test-1.1.0.jar
 ```
 
 Expected output:
@@ -74,9 +74,9 @@ Expected output:
 BUILD SUCCESS
 
 ...artifacts created in target/:
-- async-test-1.0.0.jar (~150KB)
-- async-test-1.0.0-sources.jar (~350KB)
-- async-test-1.0.0-javadoc.jar (~450KB)
+- async-test-1.1.0.jar (~150KB)
+- async-test-1.1.0-sources.jar (~350KB)
+- async-test-1.1.0-javadoc.jar (~450KB)
 ```
 
 ### Action 3: Create First Release Tag
@@ -93,7 +93,7 @@ git add pom.xml .github/
 git commit -m "Configure distribution: GitHub Packages, Maven artifacts, and automated releases"
 
 # Create release tag (important: must be annotated tag)
-git tag -a v1.0.0 -m "Initial release: Async Test Library
+git tag -a v1.1.0 -m "Initial release: Async Test Library
 - 20+ concurrency problem detectors
 - JUnit 5 integration
 - Deadlock, visibility, race condition detection
@@ -103,19 +103,19 @@ git tag -a v1.0.0 -m "Initial release: Async Test Library
 
 # Push to trigger automated release
 git push origin main
-git push origin v1.0.0
+git push origin v1.1.0
 ```
 
 ## 🚀 After Tag Push: What Happens Automatically
 
-1. **GitHub detects tag** (v1.0.0)
+1. **GitHub detects tag** (v1.1.0)
 2. **Workflow starts** (.github/workflows/publish.yml)
 3. **Build runs** (Java 21, Maven)
 4. **Tests run** (all 49+ tests must pass)
 5. **Artifacts created**:
-   - async-test-1.0.0.jar
-   - async-test-1.0.0-sources.jar
-   - async-test-1.0.0-javadoc.jar
+   - async-test-1.1.0.jar
+   - async-test-1.1.0-sources.jar
+   - async-test-1.1.0-javadoc.jar
 6. **Published** to GitHub Packages
 7. **GitHub Release created** with download links
 8. **Available** for users to install
@@ -137,14 +137,14 @@ https://github.com/yourusername/async-test-lib/actions
 ```
 https://github.com/yourusername/async-test-lib/packages
 - Should show: async-test package
-- With version: 1.0.0
+- With version: 1.1.0
 - 3 artifacts available
 ```
 
 ### Check 3: GitHub Releases
 ```
 https://github.com/yourusername/async-test-lib/releases
-- Should show: v1.0.0 release
+- Should show: v1.1.0 release
 - With download links
 - With release notes
 ```
@@ -184,7 +184,7 @@ Edit `pom.xml`:
     <dependency>
         <groupId>com.github.asynctest</groupId>
         <artifactId>async-test</artifactId>
-        <version>1.0.0</version>
+        <version>1.1.0</version>
         <scope>test</scope>
     </dependency>
 </dependencies>
@@ -216,21 +216,21 @@ Expected: ✅ Test passes, library loads successfully
 
 ## 📈 Version Progression
 
-After first 1.0.0 release:
+After first 1.1.0 release:
 
 | Version | When | What |
 |---------|------|------|
-| 1.0.0 | Initial | Initial release |
-| 1.0.1 | 2 weeks | Bug fix (patch) |
+| 1.1.0 | Initial | Initial release |
+| 1.1.0 | 2 weeks | Bug fix (patch) |
 | 1.1.0 | 1 month | New detector (minor) |
 | 1.1.1 | 1.5 months | Bug fix (patch) |
 | 2.0.0 | 6 months | Major redesign (breaking) |
 
 For each release, repeat:
 1. Update pom.xml version
-2. Commit: `git commit -m "Release 1.0.1"`
-3. Tag: `git tag -a v1.0.1 -m "..."`
-4. Push: `git push origin v1.0.1`
+2. Commit: `git commit -m "Release 1.1.0"`
+3. Tag: `git tag -a v1.1.0 -m "..."`
+4. Push: `git push origin v1.1.0`
 5. Automatic publishing starts
 
 ## 📚 Distribution Documentation Summary
@@ -248,21 +248,21 @@ For each release, repeat:
 
 ## ✨ What Users Get
 
-When users install async-test-1.0.0:
+When users install async-test-1.1.0:
 
 ```xml
 <dependency>
     <groupId>com.github.asynctest</groupId>
     <artifactId>async-test</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <scope>test</scope>
 </dependency>
 ```
 
 They receive:
-- ✅ Compiled library (async-test-1.0.0.jar)
-- ✅ Source code (async-test-1.0.0-sources.jar)
-- ✅ JavaDoc (async-test-1.0.0-javadoc.jar)
+- ✅ Compiled library (async-test-1.1.0.jar)
+- ✅ Source code (async-test-1.1.0-sources.jar)
+- ✅ JavaDoc (async-test-1.1.0-javadoc.jar)
 - ✅ Full access to 20+ detectors
 - ✅ JUnit 5 integration (@AsyncTest annotation)
 - ✅ All documentation (GitHub wiki, USAGE.md)
@@ -282,7 +282,7 @@ They receive:
 1. Replace `yourusername` with actual GitHub username (5 min)
 2. Verify local build works (5 min)
 3. Commit configuration changes (1 min)
-4. Create and push v1.0.0 tag (1 min)
+4. Create and push v1.1.0 tag (1 min)
 5. Verify GitHub Actions ran successfully (10 min)
 6. Test installation in another project (5 min)
 
@@ -290,7 +290,7 @@ They receive:
 - Monitor GitHub Actions runs
 - Track artifact downloads
 - Get feedback from early users
-- Plan 1.0.1 patch release (bug fixes)
+- Plan 1.1.0 patch release (bug fixes)
 - Plan 1.1.0 minor release (new detectors)
 - Migrate to Maven Central (optional, long-term)
 
@@ -299,7 +299,7 @@ They receive:
 ### If Tests Fail During Release
 1. Check GitHub Actions logs (Actions tab)
 2. Run `mvn clean test` locally
-3. Fix issue, commit, create new tag (v1.0.1)
+3. Fix issue, commit, create new tag (v1.1.0)
 
 ### If Users Can't Find Package
 1. Verify they added repository in pom.xml
@@ -309,8 +309,8 @@ They receive:
 ### If You Need to Rollback
 ```bash
 # Delete tag locally and remotely
-git tag -d v1.0.0
-git push origin :refs/tags/v1.0.0
+git tag -d v1.1.0
+git push origin :refs/tags/v1.1.0
 
 # Delete GitHub Release manually (GitHub UI)
 # Fix issue and create new tag
@@ -331,11 +331,11 @@ git add pom.xml .github/workflows/
 git commit -m "Configure distribution for public release"
 
 # 4. Tag (this triggers automatic release!)
-git tag -a v1.0.0 -m "Initial release"
+git tag -a v1.1.0 -m "Initial release"
 
 # 5. Push
 git push origin main
-git push origin v1.0.0
+git push origin v1.1.0
 
 # 6. Wait 10 minutes and check:
 #    https://github.com/YOUR_GITHUB_USERNAME/async-test-lib/releases

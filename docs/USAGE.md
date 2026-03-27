@@ -10,7 +10,7 @@ Add to your `pom.xml`:
 <dependency>
     <groupId>com.github.asynctest</groupId>
     <artifactId>async-test</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -47,7 +47,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation 'com.github.asynctest:async-test:1.0.0'
+    testImplementation 'com.github.asynctest:async-test:1.1.0'
 }
 ```
 

@@ -25,7 +25,7 @@ Created 6 comprehensive guides totaling **46,000+ words**:
 
 **pom.xml** enhancements:
 ```
-✅ Version: 1.0.0 (changed from 1.0-SNAPSHOT)
+✅ Version: 1.1.0 (changed from 1.0-SNAPSHOT)
 ✅ Metadata: name, description, URL, license
 ✅ Plugins: compiler, source, javadoc, surefire, jacoco, gpg
 ✅ Distribution: GitHub Packages configured
@@ -34,7 +34,7 @@ Created 6 comprehensive guides totaling **46,000+ words**:
 
 **.github/workflows/publish.yml** (new):
 ```
-✅ Triggers on version tag (v1.0.0)
+✅ Triggers on version tag (v1.1.0)
 ✅ Builds and tests code
 ✅ Publishes to GitHub Packages
 ✅ Creates GitHub Release
@@ -43,13 +43,13 @@ Created 6 comprehensive guides totaling **46,000+ words**:
 
 ## 📦 Three Artifacts Per Release
 
-When you release v1.0.0:
+When you release v1.1.0:
 
 | Artifact | Size | Contains |
 |----------|------|----------|
-| async-test-1.0.0.jar | 150 KB | Compiled library + detectors |
-| async-test-1.0.0-sources.jar | 350 KB | Source code for IDE |
-| async-test-1.0.0-javadoc.jar | 450 KB | API documentation |
+| async-test-1.1.0.jar | 150 KB | Compiled library + detectors |
+| async-test-1.1.0-sources.jar | 350 KB | Source code for IDE |
+| async-test-1.1.0-javadoc.jar | 450 KB | API documentation |
 
 **Total download**: ~950 KB per release
 
@@ -65,7 +65,7 @@ When you release v1.0.0:
 <dependency>
     <groupId>com.github.asynctest</groupId>
     <artifactId>async-test</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -76,7 +76,7 @@ repositories {
     maven { url = uri("https://maven.pkg.github.com/yourusername/async-test-lib") }
 }
 dependencies {
-    testImplementation 'com.github.asynctest:async-test:1.0.0'
+    testImplementation 'com.github.asynctest:async-test:1.1.0'
 }
 ```
 
@@ -84,9 +84,9 @@ dependencies {
 
 ```
 1. Update pom.xml version
-2. Commit: git commit -m "Release 1.0.0"
-3. Tag:    git tag -a v1.0.0 -m "Release message"
-4. Push:   git push origin v1.0.0
+2. Commit: git commit -m "Release 1.1.0"
+3. Tag:    git tag -a v1.1.0 -m "Release message"
+4. Push:   git push origin v1.1.0
 5. GitHub Actions automatically:
    ✅ Builds and tests
    ✅ Creates 3 artifacts
@@ -152,9 +152,9 @@ mvn clean package
 ```bash
 git add pom.xml .github/workflows/publish.yml
 git commit -m "Configure distribution"
-git tag -a v1.0.0 -m "Initial release"
+git tag -a v1.1.0 -m "Initial release"
 git push origin main
-git push origin v1.0.0
+git push origin v1.1.0
 ```
 
 **Done!** Artifacts automatically publish in 5-10 minutes.
@@ -168,7 +168,7 @@ git push origin v1.0.0
 - ✅ No manual steps during release
 
 ### Professional
-- ✅ Semantic versioning (1.0.0)
+- ✅ Semantic versioning (1.1.0)
 - ✅ Multiple artifact types (binary, source, javadoc)
 - ✅ MIT License
 - ✅ Comprehensive documentation
@@ -217,16 +217,16 @@ If you're a maintainer:
 ### Creating a Release
 ```bash
 # 1. Update version
-vim pom.xml  # Change <version>1.0.0</version>
+vim pom.xml  # Change <version>1.1.0</version>
 
 # 2. Commit and tag
 git add pom.xml
-git commit -m "Release 1.0.1"
-git tag -a v1.0.1 -m "Release 1.0.1"
+git commit -m "Release 1.1.0"
+git tag -a v1.1.0 -m "Release 1.1.0"
 
 # 3. Push (triggers automatic build!)
 git push origin main
-git push origin v1.0.1
+git push origin v1.1.0
 
 # 4. Wait 10 minutes and check:
 # https://github.com/yourusername/async-test-lib/releases
@@ -240,7 +240,7 @@ git push origin v1.0.1
 ### Troubleshooting
 - Tests failing? Run `mvn clean test` locally
 - Artifact not found? Clear Maven cache: `rm -rf ~/.m2/repository`
-- Workflow not running? Check tag format (must be v1.0.0, not 1.0.0)
+- Workflow not running? Check tag format (must be v1.1.0, not 1.1.0)
 
 ## 🏆 Summary
 

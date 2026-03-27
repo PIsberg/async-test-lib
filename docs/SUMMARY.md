@@ -40,9 +40,9 @@ A **production-ready, fully automated, world-class library distribution system**
 
 ### Per Release (3 Artifacts)
 ```
-async-test-1.0.0.jar              (150 KB)   Compiled library
-async-test-1.0.0-sources.jar      (350 KB)   Source code
-async-test-1.0.0-javadoc.jar      (450 KB)   API documentation
+async-test-1.1.0.jar              (150 KB)   Compiled library
+async-test-1.1.0-sources.jar      (350 KB)   Source code
+async-test-1.1.0-javadoc.jar      (450 KB)   API documentation
 ```
 
 ### Installation
@@ -51,12 +51,12 @@ async-test-1.0.0-javadoc.jar      (450 KB)   API documentation
 <dependency>
     <groupId>com.github.asynctest</groupId>
     <artifactId>async-test</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <scope>test</scope>
 </dependency>
 
 <!-- Gradle -->
-testImplementation 'com.github.asynctest:async-test:1.0.0'
+testImplementation 'com.github.asynctest:async-test:1.1.0'
 ```
 
 ---
@@ -65,10 +65,10 @@ testImplementation 'com.github.asynctest:async-test:1.0.0'
 
 ### Release Process (4 Steps)
 ```bash
-1. Update version: sed -i 's/1.0.0/1.0.1/' pom.xml
-2. Commit:        git commit -am "Release 1.0.1"
-3. Tag:           git tag -a v1.0.1 -m "Release message"
-4. Push:          git push origin v1.0.1
+1. Update version: sed -i 's/1.1.0/1.1.0/' pom.xml
+2. Commit:        git commit -am "Release 1.1.0"
+3. Tag:           git tag -a v1.1.0 -m "Release message"
+4. Push:          git push origin v1.1.0
 ```
 
 ### Automation
@@ -147,8 +147,8 @@ mvn clean package
 # 3. Create release (1 min)
 git add pom.xml .github/
 git commit -m "Configure distribution"
-git tag -a v1.0.0 -m "Initial release"
-git push origin v1.0.0
+git tag -a v1.1.0 -m "Initial release"
+git push origin v1.1.0
 
 # 4. Wait for automation (5-10 min)
 # Visit: https://github.com/YOUR_USERNAME/async-test-lib/releases
@@ -179,7 +179,7 @@ git push origin v1.0.0
 <dependency>
     <groupId>com.github.asynctest</groupId>
     <artifactId>async-test</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -325,4 +325,4 @@ You now have:
 
 **Date**: 2026-03-24  
 **Status**: ✅ COMPLETE & READY TO DISTRIBUTE  
-**Next Action**: Create v1.0.0 tag (see PRE_RELEASE_CHECKLIST.md)
+**Next Action**: Create v1.1.0 tag (see PRE_RELEASE_CHECKLIST.md)

@@ -46,7 +46,7 @@
 3. Follow the release steps
 4. Verify on GitHub
 
-### "I'm the maintainer and want to create a patch release (1.0.0 → 1.0.1)"
+### "I'm the maintainer and want to create a patch release (1.1.0 → 1.1.0)"
 1. Read: [RELEASE.md](RELEASE.md)
 2. Update version in pom.xml
 3. Commit, tag, and push
@@ -134,7 +134,7 @@ TOTAL ....................... ~69,000 words
 ### Files That Were Modified
 ```
 pom.xml
-├── Version updated: 1.0-SNAPSHOT → 1.0.0
+├── Version updated: 1.0-SNAPSHOT → 1.1.0
 ├── Metadata added: name, description, URL, license, developers, SCM
 ├── Plugins added: maven-source, maven-javadoc, maven-gpg
 ├── Distribution config added: GitHub Packages URLs
@@ -172,7 +172,7 @@ Documentation/
 1. Read [PRE_RELEASE_CHECKLIST.md](PRE_RELEASE_CHECKLIST.md) - Overview
 2. Replace username in pom.xml
 3. Follow Pre-Release Checklist
-4. Create v1.0.0 tag
+4. Create v1.1.0 tag
 5. Watch GitHub Actions
 
 ### Path 3: "I'm creating a patch release" (10 minutes)

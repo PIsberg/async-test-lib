@@ -6,7 +6,7 @@ This document explains how the Async Test Library is packaged and distributed fo
 
 When you release a version, three artifacts are created:
 
-### 1. **async-test-1.0.0.jar** (Main Library)
+### 1. **async-test-1.1.0.jar** (Main Library)
 - **Contents**: Compiled Java classes + metadata
 - **Size**: ~150-200 KB
 - **What it includes**:
@@ -16,7 +16,7 @@ When you release a version, three artifacts are created:
   - Thread utilities
 - **Used for**: Runtime dependency in tests
 
-### 2. **async-test-1.0.0-sources.jar** (Source Code)
+### 2. **async-test-1.1.0-sources.jar** (Source Code)
 - **Contents**: Complete Java source code + JavaDoc comments
 - **Size**: ~300-400 KB
 - **What it includes**:
@@ -25,7 +25,7 @@ When you release a version, three artifacts are created:
   - No compiled classes
 - **Used for**: IDE integration, reading source in debugger, understanding implementation
 
-### 3. **async-test-1.0.0-javadoc.jar** (API Documentation)
+### 3. **async-test-1.1.0-javadoc.jar** (API Documentation)
 - **Contents**: Generated HTML API documentation
 - **Size**: ~400-500 KB
 - **What it includes**:
@@ -54,7 +54,7 @@ When you release a version, three artifacts are created:
 <dependency>
     <groupId>com.github.asynctest</groupId>
     <artifactId>async-test</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -76,7 +76,7 @@ When you release a version, three artifacts are created:
 <dependency>
     <groupId>com.github.asynctest</groupId>
     <artifactId>async-test</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -96,7 +96,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation 'com.github.asynctest:async-test:1.0.0'
+    testImplementation 'com.github.asynctest:async-test:1.1.0'
 }
 ```
 
@@ -106,10 +106,10 @@ Each version produces:
 
 ```
 GitHub Releases Page (yourusername/async-test-lib/releases)
-├── v1.0.0 (Release)
-│   ├── async-test-1.0.0.jar (Primary artifact)
-│   ├── async-test-1.0.0-sources.jar (Source code)
-│   ├── async-test-1.0.0-javadoc.jar (Documentation)
+├── v1.1.0 (Release)
+│   ├── async-test-1.1.0.jar (Primary artifact)
+│   ├── async-test-1.1.0-sources.jar (Source code)
+│   ├── async-test-1.1.0-javadoc.jar (Documentation)
 │   └── Release notes with installation instructions
 │
 └── Maven Repository (GitHub Packages)
@@ -139,7 +139,7 @@ Maven automatically pulls in JUnit dependencies. Users don't need to configure t
 ## File Structure in Distribution
 
 ```
-async-test-1.0.0.jar
+async-test-1.1.0.jar
 ├── com/github/asynctest/
 │   ├── AsyncTest.class
 │   ├── AsyncTestExtension.class
@@ -157,13 +157,13 @@ async-test-1.0.0.jar
 │           (Contains: com.github.asynctest.AsyncTestExtension)
 └── ... (resources)
 
-async-test-1.0.0-sources.jar
+async-test-1.1.0-sources.jar
 └── com/github/asynctest/
     ├── AsyncTest.java
     ├── AsyncTestExtension.java
     └── ... (all .java files)
 
-async-test-1.0.0-javadoc.jar
+async-test-1.1.0-javadoc.jar
 ├── index.html
 ├── com/
 │   └── github/
@@ -180,8 +180,8 @@ async-test-1.0.0-javadoc.jar
 
 ### Semantic Versioning (https://semver.org/)
 
-- **1.0.0** - Initial release
-- **1.0.1** - Bug fixes (patch)
+- **1.1.0** - Initial release
+- **1.1.0** - Bug fixes (patch)
 - **1.1.0** - New features, backward compatible (minor)
 - **2.0.0** - Breaking changes (major)
 
@@ -189,8 +189,8 @@ async-test-1.0.0-javadoc.jar
 
 | Version | Type | Changes |
 |---------|------|---------|
-| 1.0.0 → 1.0.1 | Patch | Bug fix in deadlock detection |
-| 1.0.1 → 1.1.0 | Minor | Add new detector for memory leaks |
+| 1.1.0 → 1.1.0 | Patch | Bug fix in deadlock detection |
+| 1.1.0 → 1.1.0 | Minor | Add new detector for memory leaks |
 | 1.1.0 → 2.0.0 | Major | Change @AsyncTest parameter names |
 
 ### LTS (Long Term Support)
@@ -205,24 +205,24 @@ async-test-1.0.0-javadoc.jar
 <dependency>
     <groupId>com.github.asynctest</groupId>
     <artifactId>async-test</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <scope>test</scope>
 </dependency>
 ```
 
 ### Method 2: Gradle
 ```gradle
-testImplementation 'com.github.asynctest:async-test:1.0.0'
+testImplementation 'com.github.asynctest:async-test:1.1.0'
 ```
 
 ### Method 3: Gradle Kotlin DSL
 ```kotlin
-testImplementation("com.github.asynctest:async-test:1.0.0")
+testImplementation("com.github.asynctest:async-test:1.1.0")
 ```
 
 ### Method 4: Manual JAR Download
 1. Visit: https://github.com/yourusername/async-test-lib/releases
-2. Download: async-test-1.0.0.jar
+2. Download: async-test-1.1.0.jar
 3. Add to classpath manually
 4. (Not recommended - use Maven/Gradle instead)
 
@@ -236,7 +236,7 @@ Each artifact includes:
 
 Users can verify:
 ```bash
-sha256sum async-test-1.0.0.jar
+sha256sum async-test-1.1.0.jar
 # Verify against published checksum
 ```
 
@@ -300,7 +300,7 @@ export GITHUB_TOKEN=ghp_xxxxxxxxxxxx
 <dependency>
     <groupId>com.github.asynctest</groupId>
     <artifactId>async-test</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <exclusions>
         <exclusion>
             <groupId>org.junit.jupiter</groupId>

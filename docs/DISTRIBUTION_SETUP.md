@@ -5,7 +5,7 @@ This document summarizes the artifact distribution configuration for the Async T
 ## ✅ What's Been Set Up
 
 ### 1. Maven Artifact Configuration (pom.xml)
-- **Version**: 1.0.0 (changed from 1.0-SNAPSHOT)
+- **Version**: 1.1.0 (changed from 1.0-SNAPSHOT)
 - **Packaging**: JAR format
 - **Metadata**:
   - Name: "Async Test Library"
@@ -38,8 +38,8 @@ This document summarizes the artifact distribution configuration for the Async T
 Creates automatic releases when you push version tags:
 
 ```bash
-git tag -a v1.0.0 -m "Release 1.0.0"
-git push origin v1.0.0
+git tag -a v1.1.0 -m "Release 1.1.0"
+git push origin v1.1.0
 ```
 
 **Workflow does**:
@@ -61,30 +61,30 @@ When released, three artifacts are created:
 
 | Artifact | Size | Purpose |
 |----------|------|---------|
-| async-test-1.0.0.jar | ~150KB | Runtime library (main) |
-| async-test-1.0.0-sources.jar | ~350KB | Source code for IDE |
-| async-test-1.0.0-javadoc.jar | ~450KB | API documentation |
+| async-test-1.1.0.jar | ~150KB | Runtime library (main) |
+| async-test-1.1.0-sources.jar | ~350KB | Source code for IDE |
+| async-test-1.1.0-javadoc.jar | ~450KB | API documentation |
 
 ## 🚀 How to Create a Release
 
 ### Step 1: Update Version
 ```bash
-# Edit pom.xml - change version from 1.0.0 to 1.0.1
+# Edit pom.xml - change version from 1.1.0 to 1.1.0
 vim pom.xml
-# <version>1.0.1</version>
+# <version>1.1.0</version>
 ```
 
 ### Step 2: Commit and Tag
 ```bash
 git add pom.xml
-git commit -m "Release version 1.0.1"
-git tag -a v1.0.1 -m "Release 1.0.1: Bug fixes and improvements"
+git commit -m "Release version 1.1.0"
+git tag -a v1.1.0 -m "Release 1.1.0: Bug fixes and improvements"
 ```
 
 ### Step 3: Push to GitHub
 ```bash
 git push origin main
-git push origin v1.0.1
+git push origin v1.1.0
 ```
 
 ### Step 4: Automatic Publication
@@ -113,7 +113,7 @@ GitHub Actions will:
 <dependency>
     <groupId>com.github.asynctest</groupId>
     <artifactId>async-test</artifactId>
-    <version>1.0.1</version>
+    <version>1.1.0</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -127,7 +127,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation 'com.github.asynctest:async-test:1.0.1'
+    testImplementation 'com.github.asynctest:async-test:1.1.0'
 }
 ```
 
@@ -148,7 +148,7 @@ Two workflows in `.github/workflows/`:
 ## 📊 What's Packaged in JAR
 
 ```
-async-test-1.0.0.jar
+async-test-1.1.0.jar
 ├── com/github/asynctest/
 │   ├── AsyncTest.class (Main annotation)
 │   ├── AsyncTestExtension.class (JUnit integration)
@@ -179,8 +179,8 @@ Before first release:
 - [ ] Replace `yourusername` in pom.xml (lines 14, 26, 31-32, 38, 164, 170)
 - [ ] Verify Maven Central URLs (optional, for future)
 - [ ] Test local build: `mvn clean package`
-- [ ] Create initial release tag: `git tag -a v1.0.0 -m "Initial release"`
-- [ ] Push tag: `git push origin v1.0.0`
+- [ ] Create initial release tag: `git tag -a v1.1.0 -m "Initial release"`
+- [ ] Push tag: `git push origin v1.1.0`
 - [ ] Verify workflow runs: Check Actions tab
 - [ ] Check GitHub Packages: https://github.com/yourusername/async-test-lib/packages
 - [ ] Verify GitHub Release created
@@ -194,7 +194,7 @@ Before first release:
 - [ ] Replace `yourusername` placeholders
 
 ### Medium Term (Month 1)
-- [ ] Create first release tag (v1.0.0)
+- [ ] Create first release tag (v1.1.0)
 - [ ] Verify artifact downloads work
 - [ ] Test installation in another project
 - [ ] Update README with "Installation" section
@@ -221,7 +221,7 @@ Before first release:
 ### "Artifact not found" error
 - Verify correct groupId: `com.github.asynctest`
 - Verify correct artifactId: `async-test`
-- Check version matches release (e.g., v1.0.0 → 1.0.0)
+- Check version matches release (e.g., v1.1.0 → 1.1.0)
 
 ### Workflow fails
 - Check GitHub Actions logs: Settings → Actions
@@ -234,7 +234,7 @@ Before first release:
 
 ## 💡 Tips
 
-1. **Always use semantic versioning**: 1.0.0, 1.0.1, 1.1.0, 2.0.0
+1. **Always use semantic versioning**: 1.1.0, 1.1.0, 1.1.0, 2.0.0
 2. **Tag commits**: Each release should be a git tag
 3. **Test locally first**: `mvn clean test` before tagging
 4. **Document changes**: Include in tag message, release notes
