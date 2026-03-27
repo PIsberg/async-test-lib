@@ -105,6 +105,9 @@ public final class AsyncTestConfig {
 
     /** Builds a config from an {@link AsyncTest} annotation instance. */
     public static AsyncTestConfig from(AsyncTest ann) {
+        // Check for global benchmarking system property
+        boolean globalBenchmarkingEnabled = Boolean.getBoolean("async-test.benchmarking.enabled");
+        
         return builder()
             .threads(ann.threads())
             .invocations(ann.invocations())
@@ -140,7 +143,7 @@ public final class AsyncTestConfig {
             .detectSimpleDateFormatIssues(ann.detectSimpleDateFormatIssues())
             .detectParallelStreamIssues(ann.detectParallelStreamIssues())
             .detectResourceLeaks(ann.detectResourceLeaks())
-            .enableBenchmarking(ann.enableBenchmarking())
+            .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
             .excludes(ann.excludes())

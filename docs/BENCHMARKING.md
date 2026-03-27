@@ -10,9 +10,9 @@ The async-test library now includes built-in benchmarking capabilities that allo
 
 ## Quick Start
 
-### Enable Benchmarking
+### Option 1: Enable Per-Test (Fine-Grained Control)
 
-Add `enableBenchmarking = true` to your `@AsyncTest` annotation:
+Add `enableBenchmarking = true` to specific `@AsyncTest` annotations:
 
 ```java
 @AsyncTest(threads = 10, invocations = 50, enableBenchmarking = true)
@@ -20,6 +20,32 @@ void testMyConcurrentCode() {
     // your concurrent test code
 }
 ```
+
+### Option 2: Enable Globally via System Property (All Tests)
+
+Enable benchmarking for ALL tests in your project via a system property:
+
+```bash
+# Command line
+mvn test -Dasync-test.benchmarking.enabled=true
+```
+
+Or in your `pom.xml`:
+
+```xml
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-surefire-plugin</artifactId>
+    <version>3.5.4</version>
+    <configuration>
+        <systemPropertyVariables>
+            <async-test.benchmarking.enabled>true</async-test.benchmarking.enabled>
+        </systemPropertyVariables>
+    </configuration>
+</plugin>
+```
+
+**Note:** The annotation parameter `enableBenchmarking` takes precedence if both are set.
 
 ### Configure Regression Threshold
 
@@ -109,10 +135,25 @@ Suggested actions:
 
 ### System Properties
 
-| Property | Description |
-|----------|-------------|
-| `-Dbenchmark.store.path=<path>` | Custom path for baseline storage |
-| `-Dbenchmark.update=true` | Force update baseline with current results |
+| Property | Description | Default |
+|----------|-------------|---------|
+| `-Dasync-test.benchmarking.enabled` | Enable benchmarking for all @AsyncTest tests | false |
+| `-Dbenchmark.store.path=<path>` | Custom path for baseline storage | `target/benchmark-data/baseline-store.dat` |
+| `-Dbenchmark.update=true` | Force update baseline with current results | false |
+| `-Dbenchmark.regression.threshold=<value>` | Override regression threshold (decimal) | 0.20 (20%) |
+| `-Dbenchmark.fail.on.regression=true` | Fail tests on regression | false |
+
+**Example usage:**
+```bash
+# Enable benchmarking and set custom threshold
+mvn test -Dasync-test.benchmarking.enabled=true -Dbenchmark.regression.threshold=0.15
+
+# Update all baselines
+mvn test -Dasync-test.benchmarking.enabled=true -Dbenchmark.update=true
+
+# Custom storage location for CI/CD
+mvn test -Dasync-test.benchmarking.enabled=true -Dbenchmark.store.path=/shared/benchmarks/baseline-store.dat
+```
 
 ## Usage Examples
 
@@ -122,6 +163,43 @@ Suggested actions:
 @AsyncTest(threads = 10, invocations = 50, enableBenchmarking = true)
 void testRaceCondition() {
     counter++;  // Test with built-in performance tracking
+}
+```
+
+### Enable Benchmarking for All Tests in Module
+
+If you want to enable benchmarking for all tests in a specific module (e.g., `consumer-fixture`), configure it in the module's `pom.xml`:
+
+```xml
+<project>
+    ...
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.4</version>
+                <configuration>
+                    <systemPropertyVariables>
+                        <!-- Enable benchmarking for all @AsyncTest tests -->
+                        <async-test.benchmarking.enabled>true</async-test.benchmarking.enabled>
+                        <!-- Optional: Set regression threshold -->
+                        <benchmark.regression.threshold>0.20</benchmark.regression.threshold>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+```
+
+Now all `@AsyncTest` tests in this module will have benchmarking enabled without needing `enableBenchmarking = true` on each test:
+
+```java
+// No need for enableBenchmarking = true - it's enabled globally for this module
+@AsyncTest(threads = 10, invocations = 50, detectAll = true)
+void testRaceCondition() {
+    counter++;
 }
 ```
 

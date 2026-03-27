@@ -22,10 +22,15 @@ This folder contains PlantUML source files and generated PNG diagrams for the as
 
 ### Quick Regeneration
 
-```bash
-cd docs/diagrams
-java -jar plantuml-1.2024.7.jar -tpng *.puml
-```
+1. Download PlantUML JAR:
+   ```bash
+   curl -L https://github.com/plantuml/plantuml/releases/download/v1.2024.7/plantuml-1.2024.7.jar -o plantuml.jar
+   ```
+
+2. Generate all diagrams:
+   ```bash
+   java -jar plantuml.jar -tpng *.puml
+   ```
 
 ### Using PowerShell Script
 
@@ -33,10 +38,12 @@ java -jar plantuml-1.2024.7.jar -tpng *.puml
 .\generate-diagrams.ps1
 ```
 
+The script will automatically download PlantUML if not present.
+
 ### Requirements
 
 - Java 21+ (for PlantUML)
-- PlantUML JAR (included: `plantuml-1.2024.7.jar`)
+- PlantUML JAR (download from GitHub Releases)
 
 ## Diagram Descriptions
 

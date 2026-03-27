@@ -3,7 +3,7 @@
 
 $ErrorActionPreference = "Stop"
 $plantumlVersion = "1.2024.7"
-$plantumlJar = "plantuml-$plantumlVersion.jar"
+$plantumlJar = "plantuml.jar"
 $downloadUrl = "https://github.com/plantuml/plantuml/releases/download/v$plantumlVersion/plantuml-$plantumlVersion.jar"
 $diagramsDir = $PSScriptRoot
 
