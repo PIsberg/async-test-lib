@@ -43,6 +43,7 @@ public final class AsyncTestContext {
     final ReadWriteLockMonitor       readWriteLockMonitor;
     final SemaphoreMisuseDetector    semaphoreMisuseDetector;
     final CompletableFutureExceptionDetector completableFutureExceptionDetector;
+    final ConcurrentModificationDetector concurrentModificationDetector;
 
     public AsyncTestContext(AsyncTestConfig cfg) {
         falseSharingDetector       = cfg.detectFalseSharing             ? new FalseSharingDetector()       : null;
@@ -57,6 +58,7 @@ public final class AsyncTestContext {
         readWriteLockMonitor       = cfg.monitorReadWriteLockFairness   ? new ReadWriteLockMonitor()       : null;
         semaphoreMisuseDetector    = cfg.monitorSemaphore               ? new SemaphoreMisuseDetector()    : null;
         completableFutureExceptionDetector = cfg.detectCompletableFutureExceptions ? new CompletableFutureExceptionDetector() : null;
+        concurrentModificationDetector = cfg.detectConcurrentModifications ? new ConcurrentModificationDetector() : null;
     }
 
     // ---- Lifecycle (package-private, called by ConcurrencyRunner) ----
@@ -177,6 +179,14 @@ public final class AsyncTestContext {
         return require("detectCompletableFutureExceptions", c -> c.completableFutureExceptionDetector);
     }
 
+    /**
+     * Returns the {@link ConcurrentModificationDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectConcurrentModifications = false}
+     */
+    public static ConcurrentModificationDetector concurrentModificationMonitor() {
+        return require("detectConcurrentModifications", c -> c.concurrentModificationDetector);
+    }
+
     // ---- Internal reporting ----
 
     /**
@@ -233,6 +243,10 @@ public final class AsyncTestContext {
         }
         if (completableFutureExceptionDetector != null) {
             CompletableFutureExceptionDetector.CompletableFutureExceptionReport r = completableFutureExceptionDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
+        }
+        if (concurrentModificationDetector != null) {
+            ConcurrentModificationDetector.ConcurrentModificationReport r = concurrentModificationDetector.analyze();
             if (r.hasIssues()) out.add(r.toString());
         }
 

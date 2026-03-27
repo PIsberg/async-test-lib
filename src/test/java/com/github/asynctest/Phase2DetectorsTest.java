@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -393,5 +395,40 @@ public class Phase2DetectorsTest {
         future.completeExceptionally(new RuntimeException("async error"));
         AsyncTestContext.completableFutureMonitor()
             .recordFutureCompleted(future, "handled-async-task", false);
+    }
+
+    // ============= Concurrent Modification Tests =============
+
+    @AsyncTest(threads = 4, detectConcurrentModifications = true, timeoutMs = 3000)
+    void testConcurrentCollectionModification() {
+        List<String> list = new CopyOnWriteArrayList<>();
+        AsyncTestContext.concurrentModificationMonitor()
+            .registerCollection(list, "concurrent-list");
+        
+        // Safe iteration with CopyOnWriteArrayList
+        AsyncTestContext.concurrentModificationMonitor()
+            .recordIterationStarted(list, "concurrent-list");
+        for (String item : list) {
+            // Read-only iteration
+        }
+        AsyncTestContext.concurrentModificationMonitor()
+            .recordIterationEnded(list, "concurrent-list");
+        
+        // Safe modification
+        list.add("new-item");
+        AsyncTestContext.concurrentModificationMonitor()
+            .recordModification(list, "concurrent-list", "add");
+    }
+
+    @AsyncTest(threads = 2, detectConcurrentModifications = true, timeoutMs = 3000)
+    void testConcurrentCollectionMutation() {
+        List<String> list = new CopyOnWriteArrayList<>();
+        AsyncTestContext.concurrentModificationMonitor()
+            .registerCollection(list, "mutated-list");
+        
+        // Multiple threads modifying same collection
+        list.add("item-" + Thread.currentThread().getId());
+        AsyncTestContext.concurrentModificationMonitor()
+            .recordModification(list, "mutated-list", "add");
     }
 }

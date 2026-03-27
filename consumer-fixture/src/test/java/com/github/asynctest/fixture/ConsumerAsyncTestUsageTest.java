@@ -9,6 +9,7 @@ import com.github.asynctest.diagnostics.ExecutorDeadlockDetector;
 import com.github.asynctest.diagnostics.LatchMisuseDetector;
 import com.github.asynctest.diagnostics.SemaphoreMisuseDetector;
 import com.github.asynctest.diagnostics.CompletableFutureExceptionDetector;
+import com.github.asynctest.diagnostics.ConcurrentModificationDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -60,6 +61,7 @@ class ConsumerAsyncTestUsageTest {
     private final LatchMisuseDetector latchMisuseDetector = new LatchMisuseDetector();
     private final SemaphoreMisuseDetector semaphoreMisuseDetector = new SemaphoreMisuseDetector();
     private final CompletableFutureExceptionDetector completableFutureExceptionDetector = new CompletableFutureExceptionDetector();
+    private final ConcurrentModificationDetector concurrentModificationDetector = new ConcurrentModificationDetector();
 
     // ============================================
     // PHASE 1: Core Detectors
@@ -487,6 +489,31 @@ class ConsumerAsyncTestUsageTest {
         // Analyze and report (for demonstration, we just print the report)
         var report = completableFutureExceptionDetector.analyze();
         // In real usage with unhandled exception, you would assert: assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Phase 2.13: Concurrent modification detection — safe collection iteration.
+     * Using CopyOnWriteArrayList to avoid ConcurrentModificationException during iteration.
+     */
+    @AsyncTest(threads = 4, detectConcurrentModifications = true, timeoutMs = 3000)
+    void testConcurrentModificationSafe() {
+        java.util.List<String> list = new java.util.concurrent.CopyOnWriteArrayList<>();
+        concurrentModificationDetector.registerCollection(list, "safe-list");
+        
+        // Safe iteration
+        concurrentModificationDetector.recordIterationStarted(list, "safe-list");
+        for (String item : list) {
+            // read-only access
+        }
+        concurrentModificationDetector.recordIterationEnded(list, "safe-list");
+        
+        // Safe modification (outside iteration)
+        list.add("item-" + Thread.currentThread().getId());
+        concurrentModificationDetector.recordModification(list, "safe-list", "add");
+        
+        // Analyze and report (for demonstration, we just print the report)
+        var report = concurrentModificationDetector.analyze();
+        // In real usage with concurrent modifications, you would assert: assertTrue(report.hasIssues())
     }
 
     // Helper class for constructor safety tests

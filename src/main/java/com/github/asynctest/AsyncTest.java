@@ -189,5 +189,11 @@ public @interface AsyncTest {
      * Detects unhandled exceptions, missing handlers, and swallowed exceptions in async chains.
      */
     boolean detectCompletableFutureExceptions() default false;
+
+    /**
+     * Enable concurrent modification detection.
+     * Detects collection modifications during iteration and concurrent mutations.
+     */
+    boolean detectConcurrentModifications() default false;
 }
 

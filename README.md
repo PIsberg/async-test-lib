@@ -19,7 +19,7 @@ Concurrency bugs are the most elusive and costly bugs in production systems. The
 
 
 ### Key Insight
-The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **27 specialized detectors** identify the exact problem:
+The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **28 specialized detectors** identify the exact problem:
 
 - **Deadlocks** with lock chain analysis showing which threads are waiting for which locks
 - **Memory visibility issues** by tracking field values across invocations
@@ -106,7 +106,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 
 ### Core Capabilities
 - ✅ **Race Condition Forcing**: CyclicBarrier synchronizes threads for maximum contention
-- ✅ **27 Problem Detectors**: Comprehensive coverage of concurrency issues
+- ✅ **28 Problem Detectors**: Comprehensive coverage of concurrency issues
 - ✅ **Virtual Threads Support**: Native support for Project Loom (Java 21+)
 - ✅ **Rich Diagnostics**: Detailed reports with actionable fix suggestions
 - ✅ **Zero Default Overhead**: Advanced features are opt-in
@@ -122,7 +122,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 4. **Livelock Detection** - Thread spinning and CPU starvation patterns
 5. **Virtual Thread Stress** - Massive thread counts (100k+) for pinning detection
 
-### Phase 2: Advanced Detectors (12)
+### Phase 2: Advanced Detectors (13)
 6. **False Sharing** - Cache line contention detection
 7. **Wakeup Issues** - Spurious wakeups and lost notifications
 8. **Constructor Safety** - Object initialization race detection
@@ -135,20 +135,21 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 15. **Read-Write Locks** - Fairness and writer starvation
 16. **Semaphore Misuse** - Permit leaks, over-release, and unreleased permits
 17. **CompletableFuture Exceptions** - Unhandled exceptions and missing handlers in async chains
+18. **Concurrent Modifications** - Collection modifications during iteration and concurrent mutations
 
 ### Phase 3: Correctness Monitors (5)
-18. **Race Conditions** - Cross-thread field access tracking
-19. **ThreadLocal Leaks** - Missing `remove()` cleanup detection
-20. **Busy Waiting** - Spin loop and tight polling detection
-21. **Atomicity Violations** - Check-then-act and TOCTOU validation
-22. **Interrupt Mishandling** - Ignored `InterruptedException` monitoring
+19. **Race Conditions** - Cross-thread field access tracking
+20. **ThreadLocal Leaks** - Missing `remove()` cleanup detection
+21. **Busy Waiting** - Spin loop and tight polling detection
+22. **Atomicity Violations** - Check-then-act and TOCTOU validation
+23. **Interrupt Mishandling** - Ignored `InterruptedException` monitoring
 
 ### Legacy Java Async Patterns (5)
-23. **Notify vs NotifyAll** - Multi-waiter signal misuse
-24. **Lazy Initialization** - Unsafe singleton and DCL validation
-25. **Future Blocking** - Bounded-pool starvation from `get()`/`join()`
-26. **Executor Self-Deadlock** - Sibling task waits on the same executor
-27. **Latch Misuse** - Missing or extra `countDown()` tracking
+24. **Notify vs NotifyAll** - Multi-waiter signal misuse
+25. **Lazy Initialization** - Unsafe singleton and DCL validation
+26. **Future Blocking** - Bounded-pool starvation from `get()`/`join()`
+27. **Executor Self-Deadlock** - Sibling task waits on the same executor
+28. **Latch Misuse** - Missing or extra `countDown()` tracking
 
 ## Quick Start
 
@@ -237,6 +238,7 @@ void stressWithVirtualThreads() {
 | `detectInterruptMishandling` | boolean | false | Detect swallowed interrupts and missing restoration |
 | `monitorSemaphore` | boolean | false | Monitor semaphore permit leaks and over-release |
 | `detectCompletableFutureExceptions` | boolean | false | Detect unhandled exceptions in CompletableFuture chains |
+| `detectConcurrentModifications` | boolean | false | Detect collection modifications during iteration |
 
 ## Phase 1: Core Features
 
@@ -599,6 +601,45 @@ COMPLETABLEFUTURE EXCEPTION ISSUES DETECTED:
   Unhandled Exceptions:
     - async-task: completed exceptionally without exception handler
   Fix: always register .exceptionally() or .handle() for async chains
+```
+
+### 13. Concurrent Modification Detection
+**Problem**: Collection modified while being iterated, causing ConcurrentModificationException
+```java
+class ConcurrentModificationTest {
+    @AsyncTest(threads = 4, detectConcurrentModifications = true)
+    void testSafeIteration() {
+        List<String> list = new CopyOnWriteArrayList<>();
+        AsyncTestContext.concurrentModificationMonitor()
+            .registerCollection(list, "shared-list");
+        
+        // Safe iteration
+        AsyncTestContext.concurrentModificationMonitor()
+            .recordIterationStarted(list, "shared-list");
+        for (String item : list) {
+            // read-only access
+        }
+        AsyncTestContext.concurrentModificationMonitor()
+            .recordIterationEnded(list, "shared-list");
+        
+        // Safe modification (outside iteration)
+        list.add("new-item");
+        AsyncTestContext.concurrentModificationMonitor()
+            .recordModification(list, "shared-list", "add");
+    }
+}
+```
+**Detects**:
+- Modifications during active iteration (fail-fast violations)
+- Concurrent iterations by multiple threads
+- Concurrent mutations by multiple threads
+
+**Output Example**:
+```
+CONCURRENT MODIFICATION ISSUES DETECTED:
+  Modifications During Iteration:
+    - shared-list: 2 modifications occurred during active iteration (last: add)
+  Fix: use Iterator.remove() for safe removal during iteration, or use thread-safe collections
 ```
 
 ## Phase 3: Runtime Misuse Detectors
