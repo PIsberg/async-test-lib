@@ -42,6 +42,7 @@ public final class AsyncTestConfig {
     public final boolean monitorSemaphore;
     public final boolean detectCompletableFutureExceptions;
     public final boolean detectConcurrentModifications;
+    public final boolean detectLockLeaks;
 
     private AsyncTestConfig(Builder b) {
         threads                        = b.threads;
@@ -70,6 +71,7 @@ public final class AsyncTestConfig {
         monitorSemaphore               = b.monitorSemaphore;
         detectCompletableFutureExceptions = b.detectCompletableFutureExceptions;
         detectConcurrentModifications  = b.detectConcurrentModifications;
+        detectLockLeaks                = b.detectLockLeaks;
     }
 
     /** Builds a config from an {@link AsyncTest} annotation instance. */
@@ -101,6 +103,7 @@ public final class AsyncTestConfig {
             .monitorSemaphore(ann.monitorSemaphore())
             .detectCompletableFutureExceptions(ann.detectCompletableFutureExceptions())
             .detectConcurrentModifications(ann.detectConcurrentModifications())
+            .detectLockLeaks(ann.detectLockLeaks())
             .build();
     }
 
@@ -135,6 +138,7 @@ public final class AsyncTestConfig {
         private boolean monitorSemaphore           = false;
         private boolean detectCompletableFutureExceptions = false;
         private boolean detectConcurrentModifications = false;
+        private boolean detectLockLeaks = false;
 
         public Builder threads(int v)                        { threads = v; return this; }
         public Builder invocations(int v)                    { invocations = v; return this; }
@@ -162,6 +166,7 @@ public final class AsyncTestConfig {
         public Builder monitorSemaphore(boolean v)           { monitorSemaphore = v; return this; }
         public Builder detectCompletableFutureExceptions(boolean v) { detectCompletableFutureExceptions = v; return this; }
         public Builder detectConcurrentModifications(boolean v) { detectConcurrentModifications = v; return this; }
+        public Builder detectLockLeaks(boolean v) { detectLockLeaks = v; return this; }
 
         public AsyncTestConfig build() {
             return new AsyncTestConfig(this);

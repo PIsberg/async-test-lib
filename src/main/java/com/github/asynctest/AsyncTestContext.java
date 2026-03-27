@@ -44,6 +44,7 @@ public final class AsyncTestContext {
     final SemaphoreMisuseDetector    semaphoreMisuseDetector;
     final CompletableFutureExceptionDetector completableFutureExceptionDetector;
     final ConcurrentModificationDetector concurrentModificationDetector;
+    final LockLeakDetector lockLeakDetector;
 
     public AsyncTestContext(AsyncTestConfig cfg) {
         falseSharingDetector       = cfg.detectFalseSharing             ? new FalseSharingDetector()       : null;
@@ -59,6 +60,7 @@ public final class AsyncTestContext {
         semaphoreMisuseDetector    = cfg.monitorSemaphore               ? new SemaphoreMisuseDetector()    : null;
         completableFutureExceptionDetector = cfg.detectCompletableFutureExceptions ? new CompletableFutureExceptionDetector() : null;
         concurrentModificationDetector = cfg.detectConcurrentModifications ? new ConcurrentModificationDetector() : null;
+        lockLeakDetector           = cfg.detectLockLeaks                ? new LockLeakDetector()           : null;
     }
 
     // ---- Lifecycle (package-private, called by ConcurrencyRunner) ----
@@ -187,6 +189,14 @@ public final class AsyncTestContext {
         return require("detectConcurrentModifications", c -> c.concurrentModificationDetector);
     }
 
+    /**
+     * Returns the {@link LockLeakDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLockLeaks = false}
+     */
+    public static LockLeakDetector lockLeakMonitor() {
+        return require("detectLockLeaks", c -> c.lockLeakDetector);
+    }
+
     // ---- Internal reporting ----
 
     /**
@@ -247,6 +257,10 @@ public final class AsyncTestContext {
         }
         if (concurrentModificationDetector != null) {
             ConcurrentModificationDetector.ConcurrentModificationReport r = concurrentModificationDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
+        }
+        if (lockLeakDetector != null) {
+            LockLeakDetector.LockLeakReport r = lockLeakDetector.analyze();
             if (r.hasIssues()) out.add(r.toString());
         }
 

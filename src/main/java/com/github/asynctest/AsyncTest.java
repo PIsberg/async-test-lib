@@ -195,5 +195,11 @@ public @interface AsyncTest {
      * Detects collection modifications during iteration and concurrent mutations.
      */
     boolean detectConcurrentModifications() default false;
+
+    /**
+     * Enable lock leak detection.
+     * Detects locks acquired but never released and excessive hold times.
+     */
+    boolean detectLockLeaks() default false;
 }
 

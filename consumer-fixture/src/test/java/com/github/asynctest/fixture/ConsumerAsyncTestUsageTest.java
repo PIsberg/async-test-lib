@@ -10,6 +10,7 @@ import com.github.asynctest.diagnostics.LatchMisuseDetector;
 import com.github.asynctest.diagnostics.SemaphoreMisuseDetector;
 import com.github.asynctest.diagnostics.CompletableFutureExceptionDetector;
 import com.github.asynctest.diagnostics.ConcurrentModificationDetector;
+import com.github.asynctest.diagnostics.LockLeakDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -62,6 +63,7 @@ class ConsumerAsyncTestUsageTest {
     private final SemaphoreMisuseDetector semaphoreMisuseDetector = new SemaphoreMisuseDetector();
     private final CompletableFutureExceptionDetector completableFutureExceptionDetector = new CompletableFutureExceptionDetector();
     private final ConcurrentModificationDetector concurrentModificationDetector = new ConcurrentModificationDetector();
+    private final LockLeakDetector lockLeakDetector = new LockLeakDetector();
 
     // ============================================
     // PHASE 1: Core Detectors
@@ -514,6 +516,32 @@ class ConsumerAsyncTestUsageTest {
         // Analyze and report (for demonstration, we just print the report)
         var report = concurrentModificationDetector.analyze();
         // In real usage with concurrent modifications, you would assert: assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Phase 2.14: Lock leak detection — proper lock usage with try-finally.
+     * Using try-finally ensures lock is always released even if exception occurs.
+     */
+    @AsyncTest(threads = 4, detectLockLeaks = true, timeoutMs = 3000)
+    void testLockLeakProperUsage() {
+        java.util.concurrent.locks.ReentrantLock lock = new java.util.concurrent.locks.ReentrantLock();
+        lockLeakDetector.registerLock(lock, "proper-lock");
+        
+        lock.lock();
+        lockLeakDetector.recordLockAcquired(lock, "proper-lock");
+        try {
+            // critical section - simulate work
+            Thread.sleep(1);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            lock.unlock();
+            lockLeakDetector.recordLockReleased(lock, "proper-lock");
+        }
+        
+        // Analyze and report (for demonstration, we just print the report)
+        var report = lockLeakDetector.analyze();
+        // In real usage with a leak, you would assert: assertTrue(report.hasIssues())
     }
 
     // Helper class for constructor safety tests

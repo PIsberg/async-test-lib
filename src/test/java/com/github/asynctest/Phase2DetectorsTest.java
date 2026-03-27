@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -430,5 +431,38 @@ public class Phase2DetectorsTest {
         list.add("item-" + Thread.currentThread().getId());
         AsyncTestContext.concurrentModificationMonitor()
             .recordModification(list, "mutated-list", "add");
+    }
+
+    // ============= Lock Leak Tests =============
+
+    @AsyncTest(threads = 4, detectLockLeaks = true, timeoutMs = 3000)
+    void testLockNormalUsage() {
+        ReentrantLock lock = new ReentrantLock();
+        AsyncTestContext.lockLeakMonitor()
+            .registerLock(lock, "proper-lock");
+        
+        lock.lock();
+        AsyncTestContext.lockLeakMonitor()
+            .recordLockAcquired(lock, "proper-lock");
+        try {
+            // critical section
+        } finally {
+            lock.unlock();
+            AsyncTestContext.lockLeakMonitor()
+                .recordLockReleased(lock, "proper-lock");
+        }
+    }
+
+    @AsyncTest(threads = 2, detectLockLeaks = true, timeoutMs = 3000)
+    void testLockLeakScenario() {
+        ReentrantLock lock = new ReentrantLock();
+        AsyncTestContext.lockLeakMonitor()
+            .registerLock(lock, "leaky-lock");
+        
+        lock.lock();
+        AsyncTestContext.lockLeakMonitor()
+            .recordLockAcquired(lock, "leaky-lock");
+        // Intentional: not releasing - simulates lock leak
+        // In real code this would be: } finally { lock.unlock(); }
     }
 }
