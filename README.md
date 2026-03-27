@@ -5,7 +5,7 @@
 [![Java 21+](https://img.shields.io/badge/Java-21%2B-blue)]()
 [![JUnit 5](https://img.shields.io/badge/JUnit-5-green)]()
 [![Maven Central](https://img.shields.io/badge/Maven-Available-brightgreen)]()
-[![MIT License](https://img.shields.io/badge/License-MIT-yellow)]()
+
 
 ## Introduction
 
@@ -14,6 +14,9 @@ Concurrency bugs are the most elusive and costly bugs in production systems. The
 **async-test** is an enterprise-grade testing framework that makes concurrency bugs **reproducible and detectable**. Rather than hoping random thread scheduling will expose bugs, `async-test` **forces them to happen** using synchronized barriers and then **diagnoses exactly what went wrong** using specialized detectors.
 
 ![async-test-lib-infographics-v2](https://github.com/user-attachments/assets/76dedc07-5afd-4d40-a98c-226070952d9a)
+
+**License:** Free for personal and hobby use ([PolyForm Noncommercial](LICENSE)). Commercial use requires a license — contact [Peter Isberg](mailto:isberg.peter+atl@gmail.com).
+
 
 ### Key Insight
 The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **25 specialized detectors** identify the exact problem:
