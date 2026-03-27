@@ -34,6 +34,14 @@ public enum DetectorType {
     PARALLEL_STREAMS,
     RESOURCE_LEAKS,
 
+    // Phase 2: Additional Concurrency
+    COUNTDOWN_LATCH,
+    CYCLIC_BARRIER,
+    REENTRANT_LOCK,
+    VOLATILE_ARRAY,
+    DOUBLE_CHECKED_LOCKING,
+    WAIT_TIMEOUT,
+
     // Phase 3
     RACE_CONDITIONS,
     THREAD_LOCAL_LEAKS,

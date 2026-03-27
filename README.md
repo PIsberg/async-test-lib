@@ -19,14 +19,19 @@ Concurrency bugs are the most elusive and costly bugs in production systems. The
 
 
 ### Key Insight
-The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **35 specialized detectors** identify the exact problem:
+The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **41 specialized detectors** identify the exact problem:
 
 - **Deadlocks** with lock chain analysis showing which threads are waiting for which locks
 - **Memory visibility issues** by tracking field values across invocations
 - **False sharing** by detecting cache line contention patterns
 - **ABA problems** in lock-free code
 - **Lock ordering violations** that could cause future deadlocks
-- And 15+ more specialized problem categories
+- **CountDownLatch/CyclicBarrier misuse** with timeout and participation tracking
+- **ReentrantLock issues** including starvation and unfair acquisition
+- **Volatile array problems** where elements aren't actually volatile
+- **Broken double-checked locking** without volatile keyword
+- **Wait timeout issues** that could cause indefinite blocking
+- And 20+ more specialized problem categories
 
 ### The async-test Difference
 
@@ -83,7 +88,7 @@ Rather than deploying code hoping there are no concurrency bugs, `async-test` he
 
 ---
 
-A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **25 specialized problem detectors**.
+A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **41 specialized problem detectors**.
 
 Catches race conditions, deadlocks, memory visibility issues, livelocks, false sharing, ABA problems, lock ordering violations, constructor safety issues, thread pool problems, and more.
 
@@ -122,7 +127,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 4. **Livelock Detection** - Thread spinning and CPU starvation patterns
 5. **Virtual Thread Stress** - Massive thread counts (100k+) for pinning detection
 
-### Phase 2: Advanced Detectors (20)
+### Phase 2: Advanced Detectors (26)
 6. **False Sharing** - Cache line contention detection
 7. **Wakeup Issues** - Spurious wakeups and lost notifications
 8. **Constructor Safety** - Object initialization race detection
@@ -143,6 +148,12 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 23. **SimpleDateFormat** - Concurrent access to non-thread-safe date formatters
 24. **Parallel Streams** - Stateful lambdas, non-thread-safe collectors, side effects
 25. **Resource Leaks** - AutoCloseable resources not properly closed
+26. **CountDownLatch Issues** - Timeout, missing countDown, extra countDown
+27. **CyclicBarrier Issues** - Timeout, broken barriers, missing participants
+28. **ReentrantLock Issues** - Starvation, unfair acquisition, timeouts
+29. **Volatile Array Issues** - Multi-thread access to non-volatile elements
+30. **Double-Checked Locking** - Broken DCL patterns without volatile
+31. **Wait Timeout** - wait() calls without timeout (potential deadlock)
 
 ### Phase 3: Correctness Monitors (5)
 26. **Race Conditions** - Cross-thread field access tracking
@@ -262,6 +273,12 @@ void stressWithVirtualThreads() {
 | `detectSimpleDateFormatIssues` | boolean | false | Detect concurrent SimpleDateFormat access |
 | `detectParallelStreamIssues` | boolean | false | Detect stateful lambdas in parallel streams |
 | `detectResourceLeaks` | boolean | false | Detect AutoCloseable resources not closed |
+| `detectCountDownLatchIssues` | boolean | false | Detect CountDownLatch timeout and misuse |
+| `detectCyclicBarrierIssues` | boolean | false | Detect CyclicBarrier timeout and broken barriers |
+| `detectReentrantLockIssues` | boolean | false | Detect ReentrantLock starvation and timeouts |
+| `detectVolatileArrayIssues` | boolean | false | Detect volatile array element visibility issues |
+| `detectDoubleCheckedLocking` | boolean | false | Detect broken double-checked locking patterns |
+| `detectWaitTimeout` | boolean | false | Detect wait() calls without timeout |
 
 ## Phase 1: Core Features
 

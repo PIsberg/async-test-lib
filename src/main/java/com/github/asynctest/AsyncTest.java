@@ -254,6 +254,44 @@ public @interface AsyncTest {
      */
     boolean detectResourceLeaks() default false;
 
+    // ============= Phase 2: Additional Concurrency Detectors =============
+
+    /**
+     * Enable CountDownLatch misuse detection.
+     * Detects latch timeout, missing countDown, and extra countDown calls.
+     */
+    boolean detectCountDownLatchIssues() default false;
+
+    /**
+     * Enable CyclicBarrier misuse detection.
+     * Detects barrier timeout, broken barriers, and missing participants.
+     */
+    boolean detectCyclicBarrierIssues() default false;
+
+    /**
+     * Enable ReentrantLock issue detection.
+     * Detects lock starvation, unfair acquisition, and lock timeouts.
+     */
+    boolean detectReentrantLockIssues() default false;
+
+    /**
+     * Enable volatile array issue detection.
+     * Detects multi-thread access to volatile array elements (which are not volatile).
+     */
+    boolean detectVolatileArrayIssues() default false;
+
+    /**
+     * Enable broken double-checked locking detection.
+     * Detects DCL patterns without volatile keyword.
+     */
+    boolean detectDoubleCheckedLocking() default false;
+
+    /**
+     * Enable wait timeout detection.
+     * Detects wait() calls without timeout (potential deadlock).
+     */
+    boolean detectWaitTimeout() default false;
+
     // ============= Benchmarking =============
 
     /**

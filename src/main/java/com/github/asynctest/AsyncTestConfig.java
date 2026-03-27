@@ -58,6 +58,14 @@ public final class AsyncTestConfig {
     public final boolean detectParallelStreamIssues;
     public final boolean detectResourceLeaks;
 
+    // ---- Phase 2: Additional Concurrency ----
+    public final boolean detectCountDownLatchIssues;
+    public final boolean detectCyclicBarrierIssues;
+    public final boolean detectReentrantLockIssues;
+    public final boolean detectVolatileArrayIssues;
+    public final boolean detectDoubleCheckedLocking;
+    public final boolean detectWaitTimeout;
+
     // ---- Benchmarking ----
     public final boolean enableBenchmarking;
     public final double benchmarkRegressionThreshold;
@@ -98,6 +106,12 @@ public final class AsyncTestConfig {
         detectSimpleDateFormatIssues   = b.detectSimpleDateFormatIssues;
         detectParallelStreamIssues     = b.detectParallelStreamIssues;
         detectResourceLeaks            = b.detectResourceLeaks;
+        detectCountDownLatchIssues     = b.detectCountDownLatchIssues;
+        detectCyclicBarrierIssues      = b.detectCyclicBarrierIssues;
+        detectReentrantLockIssues      = b.detectReentrantLockIssues;
+        detectVolatileArrayIssues      = b.detectVolatileArrayIssues;
+        detectDoubleCheckedLocking     = b.detectDoubleCheckedLocking;
+        detectWaitTimeout              = b.detectWaitTimeout;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -143,6 +157,12 @@ public final class AsyncTestConfig {
             .detectSimpleDateFormatIssues(ann.detectSimpleDateFormatIssues())
             .detectParallelStreamIssues(ann.detectParallelStreamIssues())
             .detectResourceLeaks(ann.detectResourceLeaks())
+            .detectCountDownLatchIssues(ann.detectCountDownLatchIssues())
+            .detectCyclicBarrierIssues(ann.detectCyclicBarrierIssues())
+            .detectReentrantLockIssues(ann.detectReentrantLockIssues())
+            .detectVolatileArrayIssues(ann.detectVolatileArrayIssues())
+            .detectDoubleCheckedLocking(ann.detectDoubleCheckedLocking())
+            .detectWaitTimeout(ann.detectWaitTimeout())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -189,6 +209,12 @@ public final class AsyncTestConfig {
         private boolean detectSimpleDateFormatIssues = false;
         private boolean detectParallelStreamIssues = false;
         private boolean detectResourceLeaks = false;
+        private boolean detectCountDownLatchIssues = false;
+        private boolean detectCyclicBarrierIssues = false;
+        private boolean detectReentrantLockIssues = false;
+        private boolean detectVolatileArrayIssues = false;
+        private boolean detectDoubleCheckedLocking = false;
+        private boolean detectWaitTimeout = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -228,6 +254,12 @@ public final class AsyncTestConfig {
         public Builder detectSimpleDateFormatIssues(boolean v) { detectSimpleDateFormatIssues = v; return this; }
         public Builder detectParallelStreamIssues(boolean v) { detectParallelStreamIssues = v; return this; }
         public Builder detectResourceLeaks(boolean v) { detectResourceLeaks = v; return this; }
+        public Builder detectCountDownLatchIssues(boolean v) { detectCountDownLatchIssues = v; return this; }
+        public Builder detectCyclicBarrierIssues(boolean v) { detectCyclicBarrierIssues = v; return this; }
+        public Builder detectReentrantLockIssues(boolean v) { detectReentrantLockIssues = v; return this; }
+        public Builder detectVolatileArrayIssues(boolean v) { detectVolatileArrayIssues = v; return this; }
+        public Builder detectDoubleCheckedLocking(boolean v) { detectDoubleCheckedLocking = v; return this; }
+        public Builder detectWaitTimeout(boolean v) { detectWaitTimeout = v; return this; }
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
@@ -264,6 +296,12 @@ public final class AsyncTestConfig {
                 if (!excludes.contains(DetectorType.SIMPLE_DATE_FORMAT)) detectSimpleDateFormatIssues = true;
                 if (!excludes.contains(DetectorType.PARALLEL_STREAMS)) detectParallelStreamIssues = true;
                 if (!excludes.contains(DetectorType.RESOURCE_LEAKS)) detectResourceLeaks = true;
+                if (!excludes.contains(DetectorType.COUNTDOWN_LATCH)) detectCountDownLatchIssues = true;
+                if (!excludes.contains(DetectorType.CYCLIC_BARRIER)) detectCyclicBarrierIssues = true;
+                if (!excludes.contains(DetectorType.REENTRANT_LOCK)) detectReentrantLockIssues = true;
+                if (!excludes.contains(DetectorType.VOLATILE_ARRAY)) detectVolatileArrayIssues = true;
+                if (!excludes.contains(DetectorType.DOUBLE_CHECKED_LOCKING)) detectDoubleCheckedLocking = true;
+                if (!excludes.contains(DetectorType.WAIT_TIMEOUT)) detectWaitTimeout = true;
                 if (!excludes.contains(DetectorType.RACE_CONDITIONS)) detectRaceConditions = true;
                 if (!excludes.contains(DetectorType.THREAD_LOCAL_LEAKS)) detectThreadLocalLeaks = true;
                 if (!excludes.contains(DetectorType.BUSY_WAITING)) detectBusyWaiting = true;

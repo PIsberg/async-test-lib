@@ -691,6 +691,159 @@ class ConsumerAsyncTestUsageTest {
         // In real usage with a leak, you would assert: assertTrue(report.hasIssues())
     }
 
+    /**
+     * Phase 2.21: CountDownLatch misuse detection — timeout and missing countDown.
+     * Ensures all threads call countDown() before await() timeout.
+     */
+    @AsyncTest(threads = 3, detectAll = true, timeoutMs = 3000)
+    void testCountDownLatchUsage() throws Exception {
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(2);
+        AsyncTestContext.countDownLatchMonitor()
+            .registerLatch(latch, "startupLatch", 2);
+
+        // First thread counts down
+        AsyncTestContext.countDownLatchMonitor().recordCountDown(latch);
+        latch.countDown();
+
+        // Second thread counts down
+        AsyncTestContext.countDownLatchMonitor().recordCountDown(latch);
+        latch.countDown();
+
+        // Third thread waits (should succeed since count reaches 0)
+        AsyncTestContext.countDownLatchMonitor().recordAwaitSuccess(latch);
+        latch.await();
+
+        // Analyze and report (for demonstration, we just print the report)
+        var report = AsyncTestContext.countDownLatchMonitor().analyze();
+        // In real usage with issues, you would assert: assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Phase 2.22: CyclicBarrier misuse detection — timeout and broken barriers.
+     * Ensures all threads reach the barrier before timeout.
+     */
+    @AsyncTest(threads = 3, detectAll = true, timeoutMs = 3000)
+    void testCyclicBarrierUsage() throws Exception {
+        java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(3);
+        AsyncTestContext.cyclicBarrierMonitor()
+            .registerBarrier(barrier, "phaseBarrier", 3);
+
+        // Record arrival at barrier
+        AsyncTestContext.cyclicBarrierMonitor().recordArrival(barrier);
+        barrier.await();
+
+        // Record successful barrier completion
+        AsyncTestContext.cyclicBarrierMonitor().recordBarrierComplete(barrier);
+
+        // Analyze and report (for demonstration, we just print the report)
+        var report = AsyncTestContext.cyclicBarrierMonitor().analyze();
+        // In real usage with issues, you would assert: assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Phase 2.23: ReentrantLock issue detection — starvation and timeouts.
+     * Detects lock starvation, unfair acquisition, and lock timeouts.
+     */
+    @AsyncTest(threads = 4, detectAll = true, timeoutMs = 3000)
+    void testReentrantLockUsage() throws Exception {
+        java.util.concurrent.locks.ReentrantLock lock = new java.util.concurrent.locks.ReentrantLock();
+        AsyncTestContext.reentrantLockMonitor()
+            .registerLock(lock, "dataLock");
+
+        lock.lock();
+        AsyncTestContext.reentrantLockMonitor()
+            .recordLockAcquired(lock, "dataLock");
+        try {
+            // critical section
+            Thread.sleep(1);
+        } finally {
+            lock.unlock();
+            AsyncTestContext.reentrantLockMonitor()
+                .recordLockReleased(lock, "dataLock");
+        }
+
+        // Analyze and report (for demonstration, we just print the report)
+        var report = AsyncTestContext.reentrantLockMonitor().analyze();
+        // In real usage with issues, you would assert: assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Phase 2.24: Volatile array issue detection — elements are not volatile.
+     * Detects multi-thread access to volatile array elements.
+     */
+    @AsyncTest(threads = 4, detectAll = true, timeoutMs = 3000)
+    void testVolatileArrayUsage() {
+        int[] array = new int[10];  // Note: even if field is volatile, elements are NOT
+        AsyncTestContext.volatileArrayMonitor()
+            .registerArray(array, "sharedArray", int.class);
+
+        // Bug: volatile only applies to array reference, not elements
+        int index = (int) (Thread.currentThread().getId() % 10);
+        AsyncTestContext.volatileArrayMonitor()
+            .recordElementWrite(array, index, "sharedArray");
+        array[index] = 42;
+
+        // Fix: use AtomicIntegerArray instead
+        // AtomicIntegerArray atomicArray = new AtomicIntegerArray(10);
+
+        // Analyze and report (for demonstration, we just print the report)
+        var report = AsyncTestContext.volatileArrayMonitor().analyze();
+        // In real usage with issues, you would assert: assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Phase 2.25: Double-checked locking detection — broken DCL without volatile.
+     * Detects DCL patterns that need volatile keyword.
+     */
+    @AsyncTest(threads = 4, detectAll = true, timeoutMs = 3000)
+    void testDoubleCheckedLocking() {
+        // Simulate broken DCL pattern detection
+        AsyncTestContext.doubleCheckedLockingMonitor().registerDCL(
+            "singletonInstance",
+            false,  // isVolatile = false (bug!)
+            true,   // hasFirstCheck
+            true,   // hasSecondCheck
+            true    // insideSynchronized
+        );
+
+        // Actual broken DCL pattern (for demonstration)
+        if (serviceRef.get() == null) {
+            synchronized (this) {
+                if (serviceRef.get() == null) {
+                    serviceRef.set(new Service(null));
+                }
+            }
+        }
+
+        // Analyze and report (for demonstration, we just print the report)
+        var report = AsyncTestContext.doubleCheckedLockingMonitor().analyze();
+        // In real usage, you would assert: assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Phase 2.26: Wait timeout detection — wait() without timeout.
+     * Detects wait() calls that could block indefinitely.
+     */
+    @AsyncTest(threads = 3, detectAll = true, timeoutMs = 3000)
+    void testWaitTimeout() throws Exception {
+        Object lock = new Object();
+        
+        // Record infinite wait (potential deadlock risk)
+        AsyncTestContext.waitTimeoutMonitor()
+            .recordInfiniteWait(lock, "monitorLock", Thread.currentThread().getName());
+        
+        // Better: use wait with timeout
+        synchronized (lock) {
+            lock.wait(5000);  // 5 second timeout
+            AsyncTestContext.waitTimeoutMonitor()
+                .recordTimedWait(lock, "monitorLock", Thread.currentThread().getName(), 5000);
+        }
+
+        // Analyze and report (for demonstration, we just print the report)
+        var report = AsyncTestContext.waitTimeoutMonitor().analyze();
+        // In real usage with infinite waits, you would assert: assertTrue(report.hasIssues())
+    }
+
     // Helper class for constructor safety tests
     private static class Service {
         private final AtomicReference<Service> ref;

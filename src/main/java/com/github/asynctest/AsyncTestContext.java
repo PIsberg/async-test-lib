@@ -51,6 +51,12 @@ public final class AsyncTestContext {
     final SimpleDateFormatDetector simpleDateFormatDetector;
     final ParallelStreamDetector parallelStreamDetector;
     final ResourceLeakDetector resourceLeakDetector;
+    final CountDownLatchDetector countDownLatchDetector;
+    final CyclicBarrierDetector cyclicBarrierDetector;
+    final ReentrantLockDetector reentrantLockDetector;
+    final VolatileArrayDetector volatileArrayDetector;
+    final DoubleCheckedLockingDetector doubleCheckedLockingDetector;
+    final WaitTimeoutDetector waitTimeoutDetector;
 
     public AsyncTestContext(AsyncTestConfig cfg) {
         falseSharingDetector       = cfg.detectFalseSharing             ? new FalseSharingDetector()       : null;
@@ -73,6 +79,12 @@ public final class AsyncTestContext {
         simpleDateFormatDetector   = cfg.detectSimpleDateFormatIssues   ? new SimpleDateFormatDetector()   : null;
         parallelStreamDetector     = cfg.detectParallelStreamIssues     ? new ParallelStreamDetector()     : null;
         resourceLeakDetector       = cfg.detectResourceLeaks            ? new ResourceLeakDetector()       : null;
+        countDownLatchDetector     = cfg.detectCountDownLatchIssues     ? new CountDownLatchDetector()     : null;
+        cyclicBarrierDetector      = cfg.detectCyclicBarrierIssues      ? new CyclicBarrierDetector()      : null;
+        reentrantLockDetector      = cfg.detectReentrantLockIssues      ? new ReentrantLockDetector()      : null;
+        volatileArrayDetector      = cfg.detectVolatileArrayIssues      ? new VolatileArrayDetector()      : null;
+        doubleCheckedLockingDetector = cfg.detectDoubleCheckedLocking   ? new DoubleCheckedLockingDetector() : null;
+        waitTimeoutDetector        = cfg.detectWaitTimeout              ? new WaitTimeoutDetector()        : null;
     }
 
     // ---- Lifecycle (package-private, called by ConcurrencyRunner) ----
@@ -257,6 +269,54 @@ public final class AsyncTestContext {
         return require("detectResourceLeaks", c -> c.resourceLeakDetector);
     }
 
+    /**
+     * Returns the {@link CountDownLatchDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCountDownLatchIssues = false}
+     */
+    public static CountDownLatchDetector countDownLatchMonitor() {
+        return require("detectCountDownLatchIssues", c -> c.countDownLatchDetector);
+    }
+
+    /**
+     * Returns the {@link CyclicBarrierDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCyclicBarrierIssues = false}
+     */
+    public static CyclicBarrierDetector cyclicBarrierMonitor() {
+        return require("detectCyclicBarrierIssues", c -> c.cyclicBarrierDetector);
+    }
+
+    /**
+     * Returns the {@link ReentrantLockDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectReentrantLockIssues = false}
+     */
+    public static ReentrantLockDetector reentrantLockMonitor() {
+        return require("detectReentrantLockIssues", c -> c.reentrantLockDetector);
+    }
+
+    /**
+     * Returns the {@link VolatileArrayDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVolatileArrayIssues = false}
+     */
+    public static VolatileArrayDetector volatileArrayMonitor() {
+        return require("detectVolatileArrayIssues", c -> c.volatileArrayDetector);
+    }
+
+    /**
+     * Returns the {@link DoubleCheckedLockingDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectDoubleCheckedLocking = false}
+     */
+    public static DoubleCheckedLockingDetector doubleCheckedLockingMonitor() {
+        return require("detectDoubleCheckedLocking", c -> c.doubleCheckedLockingDetector);
+    }
+
+    /**
+     * Returns the {@link WaitTimeoutDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectWaitTimeout = false}
+     */
+    public static WaitTimeoutDetector waitTimeoutMonitor() {
+        return require("detectWaitTimeout", c -> c.waitTimeoutDetector);
+    }
+
     // ---- Internal reporting ----
 
     /**
@@ -345,6 +405,30 @@ public final class AsyncTestContext {
         }
         if (resourceLeakDetector != null) {
             ResourceLeakDetector.ResourceLeakReport r = resourceLeakDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
+        }
+        if (countDownLatchDetector != null) {
+            CountDownLatchDetector.CountDownLatchReport r = countDownLatchDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
+        }
+        if (cyclicBarrierDetector != null) {
+            CyclicBarrierDetector.CyclicBarrierReport r = cyclicBarrierDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
+        }
+        if (reentrantLockDetector != null) {
+            ReentrantLockDetector.ReentrantLockReport r = reentrantLockDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
+        }
+        if (volatileArrayDetector != null) {
+            VolatileArrayDetector.VolatileArrayReport r = volatileArrayDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
+        }
+        if (doubleCheckedLockingDetector != null) {
+            DoubleCheckedLockingDetector.DoubleCheckedLockingReport r = doubleCheckedLockingDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
+        }
+        if (waitTimeoutDetector != null) {
+            WaitTimeoutDetector.WaitTimeoutReport r = waitTimeoutDetector.analyze();
             if (r.hasIssues()) out.add(r.toString());
         }
 
