@@ -2,6 +2,7 @@ package com.github.asynctest.fixture;
 
 import com.github.asynctest.AsyncTest;
 import com.github.asynctest.AsyncTestContext;
+import com.github.asynctest.DetectorType;
 import com.github.asynctest.diagnostics.NotifyAllValidator;
 import com.github.asynctest.diagnostics.LazyInitValidator;
 import com.github.asynctest.diagnostics.FutureBlockingDetector;
@@ -85,7 +86,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 1.1: Basic race condition detection.
      * Multiple threads increment an unsynchronized counter without atomicity.
      */
-    @AsyncTest(threads = 10, invocations = 50)
+    @AsyncTest(threads = 10, invocations = 50, detectAll = true)
     void testRaceCondition() {
         unsafeCounter++;
     }
@@ -94,7 +95,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 1.3: Visibility issue detection.
      * Non-volatile field updated across threads and invocations.
      */
-    @AsyncTest(threads = 8, invocations = 50, detectVisibility = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = true)
     void testVisibilityIssue() {
         volatileFlag = !volatileFlag;
     }
@@ -103,7 +104,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 1.5: Virtual thread stress testing.
      * Tests with many virtual threads to detect pinning issues.
      */
-    @AsyncTest(useVirtualThreads = true, virtualThreadStressMode = "LOW", detectFalseSharing = true)
+    @AsyncTest(useVirtualThreads = true, virtualThreadStressMode = "LOW", detectAll = true)
     void testVirtualThreadStress() {
         // Work that exercises virtual thread scheduling
         int sum = 0;
@@ -117,7 +118,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 1.2: Livelock detection.
      * Threads keep changing state without making progress.
      */
-    @AsyncTest(threads = 4, detectLivelocks = true, timeoutMs = 3000)
+    @AsyncTest(threads = 4, detectAll = true, timeoutMs = 3000)
     void testLivelock() {
         // Threads keep backing off when they collide — CPU churns but no work completes
         while (!livelockTurn.compareAndSet(false, true)) {
@@ -129,7 +130,7 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Phase 1.4: Memory model validation - JMM happens-before violations.
      */
-    @AsyncTest(threads = 2, detectMemoryOrderingViolations = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, detectAll = true, timeoutMs = 3000)
     void testMemoryModelValidation() {
         // Non-volatile write may be reordered or not visible
         data = 42;
@@ -144,7 +145,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 2.1: False sharing detection.
      * Two volatile fields accessed by different threads on same cache line.
      */
-    @AsyncTest(threads = 4, detectFalseSharing = true)
+    @AsyncTest(threads = 4, detectAll = true)
     void testFalseSharing() {
         falseShareA++;
         falseShareB++;
@@ -155,7 +156,7 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Phase 2.2: Wakeup issues - spurious wakeup and lost notifications.
      */
-    @AsyncTest(threads = 4, detectWakeupIssues = true, timeoutMs = 5000)
+    @AsyncTest(threads = 4, detectAll = true, timeoutMs = 5000)
     void testWakeupIssues() throws InterruptedException {
         synchronized (monitor) {
             monitor.wait(10);
@@ -168,7 +169,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 2.5: Lock ordering violation detection.
      * Different threads acquire locks in different orders — classic deadlock setup.
      */
-    @AsyncTest(threads = 2, validateLockOrder = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, detectAll = true, timeoutMs = 3000)
     void testLockOrderingViolation() throws InterruptedException {
         Object lockA = new Object();
         Object lockB = new Object();
@@ -185,7 +186,7 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Phase 2.3: Constructor safety - object published before fully constructed.
      */
-    @AsyncTest(threads = 4, validateConstructorSafety = true)
+    @AsyncTest(threads = 4, detectAll = true)
     void testConstructorSafety() {
         new Service(serviceRef);
     }
@@ -193,7 +194,7 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Phase 2.4: ABA problem detection in lock-free code.
      */
-    @AsyncTest(threads = 4, detectABAProblem = true)
+    @AsyncTest(threads = 4, detectAll = true)
     void testABAProblem() {
         String snapshot = abaValue.get();
         abaValue.compareAndSet(snapshot, "C");
@@ -202,7 +203,7 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Phase 2.6: Synchronizer monitoring - all threads correctly participate in a barrier.
      */
-    @AsyncTest(threads = 3, monitorSynchronizers = true, timeoutMs = 3000)
+    @AsyncTest(threads = 3, detectAll = true, timeoutMs = 3000)
     void testSynchronizerMonitor() throws Exception {
         // All threads participate — correct use triggers the monitor
     }
@@ -210,7 +211,7 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Phase 2.7: Thread pool monitoring - executor saturation and deadlock.
      */
-    @AsyncTest(threads = 2, invocations = 5, monitorThreadPool = true, timeoutMs = 5000)
+    @AsyncTest(threads = 2, invocations = 5, detectAll = true, timeoutMs = 5000)
     void testThreadPoolDeadlock() throws Exception {
         ExecutorService pool = Executors.newFixedThreadPool(1);
         try {
@@ -230,7 +231,7 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Phase 2.8: Memory ordering violation detection.
      */
-    @AsyncTest(threads = 2, detectMemoryOrderingViolations = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, detectAll = true, timeoutMs = 3000)
     void testMemoryOrderingViolation() {
         int data = 42;
         volatileFlag = true;
@@ -239,7 +240,7 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Phase 2.9: Async pipeline signal loss monitoring.
      */
-    @AsyncTest(threads = 2, monitorAsyncPipeline = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, detectAll = true, timeoutMs = 3000)
     void testAsyncPipelineSignalLoss() throws Exception {
         asyncQueue.offer("event");
         String e = asyncQueue.poll();
@@ -251,7 +252,7 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Phase 2.10: Read-write lock fairness monitoring.
      */
-    @AsyncTest(threads = 5, monitorReadWriteLockFairness = true, timeoutMs = 3000)
+    @AsyncTest(threads = 5, detectAll = true, timeoutMs = 3000)
     void testReadWriteLockFairness() {
         rwLock.readLock().lock();
         try {
@@ -269,7 +270,7 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Phase 3.1: Race condition detection (Phase 3 monitor).
      */
-    @AsyncTest(threads = 8, detectRaceConditions = true)
+    @AsyncTest(threads = 8, detectAll = true)
     void testRaceConditionDetection() {
         int current = unsafeMap.getOrDefault("count", 0);
         unsafeMap.put("count", current + 1);
@@ -278,7 +279,7 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Phase 3.2: ThreadLocal leak detection.
      */
-    @AsyncTest(threads = 5, detectThreadLocalLeaks = true)
+    @AsyncTest(threads = 5, detectAll = true)
     void testThreadLocalLeak() {
         REQUEST_CTX.set(UUID.randomUUID().toString());
         // Intentional: not calling REQUEST_CTX.remove()
@@ -287,7 +288,7 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Phase 3.3: Busy-wait detection (spin loops).
      */
-    @AsyncTest(threads = 2, detectBusyWaiting = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, detectAll = true, timeoutMs = 3000)
     void testBusyWaiting() {
         if (Thread.currentThread().getId() % 2 == 0) {
             busyWaitDone.set(true);
@@ -302,7 +303,7 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Phase 3.4: Atomicity violation detection.
      */
-    @AsyncTest(threads = 8, detectAtomicityViolations = true)
+    @AsyncTest(threads = 8, detectAll = true)
     void testAtomicityViolation() {
         if (!cache.containsKey("result")) {
             cache.put("result", "computed");
@@ -312,7 +313,7 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Phase 3.5: Interrupt mishandling monitoring.
      */
-    @AsyncTest(threads = 4, detectInterruptMishandling = true)
+    @AsyncTest(threads = 4, detectAll = true)
     void testInterruptMishandling() {
         try {
             Thread.sleep(10);
@@ -461,7 +462,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 2.11: Semaphore misuse — permit leak detection.
      * When acquire() is not matched with release(), permits are leaked.
      */
-    @AsyncTest(threads = 4, monitorSemaphore = true, timeoutMs = 3000)
+    @AsyncTest(threads = 4, detectAll = true, timeoutMs = 3000)
     void testSemaphorePermitLeak() throws Exception {
         java.util.concurrent.Semaphore semaphore = new java.util.concurrent.Semaphore(2);
         semaphoreMisuseDetector.registerSemaphore(semaphore, "resource-pool", 2);
@@ -485,7 +486,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 2.12: CompletableFuture exception handling — unhandled exceptions in async chains.
      * When a CompletableFuture completes exceptionally without a handler, the exception is lost.
      */
-    @AsyncTest(threads = 4, detectCompletableFutureExceptions = true, timeoutMs = 3000)
+    @AsyncTest(threads = 4, detectAll = true, timeoutMs = 3000)
     void testCompletableFutureExceptionHandling() {
         java.util.concurrent.CompletableFuture<String> future = new java.util.concurrent.CompletableFuture<>();
         completableFutureExceptionDetector.recordFutureCreated(future, "async-task");
@@ -509,7 +510,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 2.13: Concurrent modification detection — safe collection iteration.
      * Using CopyOnWriteArrayList to avoid ConcurrentModificationException during iteration.
      */
-    @AsyncTest(threads = 4, detectConcurrentModifications = true, timeoutMs = 3000)
+    @AsyncTest(threads = 4, detectAll = true, timeoutMs = 3000)
     void testConcurrentModificationSafe() {
         java.util.List<String> list = new java.util.concurrent.CopyOnWriteArrayList<>();
         concurrentModificationDetector.registerCollection(list, "safe-list");
@@ -534,7 +535,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 2.14: Lock leak detection — proper lock usage with try-finally.
      * Using try-finally ensures lock is always released even if exception occurs.
      */
-    @AsyncTest(threads = 4, detectLockLeaks = true, timeoutMs = 3000)
+    @AsyncTest(threads = 4, detectAll = true, timeoutMs = 3000)
     void testLockLeakProperUsage() {
         java.util.concurrent.locks.ReentrantLock lock = new java.util.concurrent.locks.ReentrantLock();
         lockLeakDetector.registerLock(lock, "proper-lock");
@@ -560,7 +561,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 2.15: Shared Random detection — detecting concurrent Random access.
      * Using ThreadLocalRandom instead of shared Random for thread-safe random generation.
      */
-    @AsyncTest(threads = 4, detectSharedRandom = true, timeoutMs = 3000)
+    @AsyncTest(threads = 4, detectAll = true, timeoutMs = 3000)
     void testSharedRandomDetection() {
         java.util.Random random = new java.util.Random();
         sharedRandomDetector.registerRandom(random, "shared-random");
@@ -581,7 +582,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 2.16: BlockingQueue misuse detection — silent failures and saturation.
      * Using offer() without checking return value can silently drop items.
      */
-    @AsyncTest(threads = 4, detectBlockingQueueIssues = true, timeoutMs = 3000)
+    @AsyncTest(threads = 4, detectAll = true, timeoutMs = 3000)
     void testBlockingQueueUsage() throws InterruptedException {
         java.util.concurrent.BlockingQueue<String> queue = new java.util.concurrent.ArrayBlockingQueue<>(10);
         blockingQueueDetector.registerQueue(queue, "work-queue", 10);
@@ -603,7 +604,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 2.17: Condition variable misuse detection — lost signals and stuck waiters.
      * Using Condition with ReentrantLock for thread coordination.
      */
-    @AsyncTest(threads = 4, detectConditionVariableIssues = true, timeoutMs = 3000)
+    @AsyncTest(threads = 4, detectAll = true, timeoutMs = 3000)
     void testConditionVariableUsage() throws InterruptedException {
         java.util.concurrent.locks.ReentrantLock lock = new java.util.concurrent.locks.ReentrantLock();
         java.util.concurrent.locks.Condition condition = lock.newCondition();
@@ -627,7 +628,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 2.18: SimpleDateFormat misuse detection — concurrent access to non-thread-safe formatter.
      * SimpleDateFormat is NOT thread-safe; use DateTimeFormatter (Java 8+) or ThreadLocal instead.
      */
-    @AsyncTest(threads = 4, detectSimpleDateFormatIssues = true, timeoutMs = 3000)
+    @AsyncTest(threads = 4, detectAll = true, timeoutMs = 3000)
     void testSimpleDateFormatUsage() {
         java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
         simpleDateFormatDetector.registerFormatter(sdf, "date-formatter");
@@ -648,7 +649,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 2.19: Parallel stream misuse detection — stateful lambdas and side effects.
      * Parallel streams require stateless, non-interfering operations.
      */
-    @AsyncTest(threads = 4, detectParallelStreamIssues = true, timeoutMs = 3000)
+    @AsyncTest(threads = 4, detectAll = true, timeoutMs = 3000)
     void testParallelStreamUsage() {
         java.util.List<Integer> list = java.util.Arrays.asList(1, 2, 3, 4, 5);
         java.util.concurrent.atomic.AtomicInteger counter = new java.util.concurrent.atomic.AtomicInteger();
@@ -671,7 +672,8 @@ class ConsumerAsyncTestUsageTest {
      * Phase 2.20: Resource leak detection — AutoCloseable resources not properly closed.
      * Always use try-with-resources or close in finally block.
      */
-    @AsyncTest(threads = 4, detectResourceLeaks = true, timeoutMs = 3000)
+    // Example of using 'excludes' to skip a detector in a specific test
+    @AsyncTest(threads = 4, detectAll = true, excludes = {com.github.asynctest.DetectorType.RESOURCE_LEAKS}, timeoutMs = 3000)
     void testResourceLeakProperUsage() throws Exception {
         java.io.StringReader reader = new java.io.StringReader("test data");
         resourceLeakDetector.registerResource(reader, "proper-resource", "StringReader");

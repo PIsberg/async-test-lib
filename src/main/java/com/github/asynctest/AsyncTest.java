@@ -83,6 +83,22 @@ public @interface AsyncTest {
      */
     String virtualThreadStressMode() default "OFF";
 
+    /**
+     * Enable ALL detectors in one shot.
+     * When {@code true}, every individual {@code detect*} / {@code validate*} / {@code monitor*}
+     * flag is treated as enabled, regardless of its own default value.
+     * Individual flags can still be set to {@code false} to opt out of specific detectors.
+     * <p>Example: {@code @AsyncTest(detectAll = true)} — no further flags needed.
+     */
+    boolean detectAll() default false;
+
+    /**
+     * Specific detectors to exclude when {@code detectAll = true}.
+     * Use {@link DetectorType} to specify which detectors to skip.
+     * <p>Example: {@code @AsyncTest(detectAll = true, excludes = {DetectorType.BUSY_WAITING})}
+     */
+    DetectorType[] excludes() default {};
+
     // ============= Phase 2: Advanced Detectors =============
 
     /**

@@ -362,7 +362,8 @@ public final class AsyncTestContext {
         T val = fn.apply(ctx);
         if (val == null) {
             throw new IllegalStateException(
-                "Detector not active: set " + flag + " = true on @AsyncTest to enable it.");
+                "Detector not active: set " + flag + " = true on @AsyncTest to enable it," +
+                " or use detectAll = true to enable every detector at once.");
         }
         return val;
     }

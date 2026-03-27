@@ -16,8 +16,8 @@
 | Document | Length | Purpose | Read If... |
 |----------|--------|---------|-----------|
 | [README.md](README.md) | 2,000 words | Project overview | You're new to the library |
-| [USAGE.md](USAGE.md) | 8,800 words | Complete user guide | You want to install and use it |
-| [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | 3,000 words | One-page cheatsheet | You need quick answers |
+| [USAGE.md](docs/USAGE.md) | 8,800 words | Complete user guide | You want to install and use it |
+| [QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) | 3,000 words | One-page cheatsheet | You need quick answers |
 
 ### For Library Maintainers (Releasing & Distributing)
 

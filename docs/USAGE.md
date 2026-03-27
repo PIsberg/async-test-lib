@@ -57,6 +57,7 @@ dependencies {
 
 ```java
 import com.github.asynctest.AsyncTest;
+import com.github.asynctest.DetectorType;
 ```
 
 ### 2. Annotate your test method
@@ -67,12 +68,10 @@ public class MyAsyncTests {
     @AsyncTest(
         threads = 10,
         invocations = 100,
-        detectDeadlocks = true,
-        detectVisibility = true
+        detectAll = true
     )
     void testConcurrentAccess() {
-        // Your test code here
-        // Runs 100 times across 10 threads
+        // All 35+ detectors are enabled!
     }
 }
 ```
@@ -88,8 +87,10 @@ public class MyAsyncTests {
 | `timeoutMs` | long | 5000 | Test timeout in milliseconds |
 | `useVirtualThreads` | boolean | true | Use Java 21+ virtual threads |
 | `virtualThreadStressMode` | String | "OFF" | Virtual thread stress level (OFF, LOW, MEDIUM, HIGH, EXTREME) |
+| `detectAll` | boolean | false | **Enable ALL detectors in one shot (Recommended)** |
+| `excludes` | DetectorType[] | {} | Detectors to skip when `detectAll = true` |
 
-### Phase 1 Detectors
+### Phase 1 Detectors (Enabled by default if detectAll=true)
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -97,7 +98,7 @@ public class MyAsyncTests {
 | `detectVisibility` | boolean | false | Detect missing volatile keywords |
 | `detectLivelocks` | boolean | false | Detect thread spinning and starvation |
 
-### Phase 2 Detectors
+### Phase 2 Detectors (Enabled by default if detectAll=true)
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -112,7 +113,7 @@ public class MyAsyncTests {
 | `monitorAsyncPipeline` | boolean | false | Monitor event flow through async pipelines |
 | `monitorReadWriteLockFairness` | boolean | false | Detect writer starvation and unfair locks |
 
-### Phase 3 Detectors
+### Phase 3 Detectors (Enabled by default if detectAll=true)
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -149,41 +150,23 @@ Use these for:
 public class AtomicCounterTest {
     private int counter = 0;
     
-    @AsyncTest(threads = 20, invocations = 100)
+    @AsyncTest(threads = 20, invocations = 100, detectAll = true)
     void testRaceCondition() {
         counter++;  // Race condition: unsynchronized increment
     }
 }
 ```
 
-The library will:
-- Run the test 100 times across 20 threads
-- Detect that counter doesn't reach expected value (20 * 100)
-- Report the race condition with detailed diagnostics
-
-### Example 2: Detecting Missing Volatile
+### Example 2: Opting out of expensive detectors
 
 ```java
-public class VisibilityTest {
-    private boolean flag = false;  // Should be volatile!
-    
+public class PerformanceSensitiveTest {
     @AsyncTest(
-        threads = 10,
-        invocations = 50,
-        detectVisibility = true,
-        timeoutMs = 2000
+        detectAll = true,
+        excludes = { DetectorType.FALSE_SHARING, DetectorType.VISIBILITY }
     )
-    void testMissingVolatile() throws Exception {
-        if (Random.nextBoolean()) {
-            Thread.sleep(10);
-            flag = true;
-        } else {
-            // May spin endlessly without volatile
-            int spinCount = 0;
-            while (!flag && spinCount < 10000) {
-                spinCount++;
-            }
-        }
+    void testHighThroughput() {
+        // Enables everything EXCEPT false sharing and visibility detection
     }
 }
 ```
@@ -195,7 +178,7 @@ public class DeadlockTest {
     private final Object lock1 = new Object();
     private final Object lock2 = new Object();
     
-    @AsyncTest(threads = 5, invocations = 50, detectDeadlocks = true)
+    @AsyncTest(threads = 5, invocations = 50, detectAll = true)
     void testDeadlock() {
         if (System.nanoTime() % 2 == 0) {
             synchronized (lock1) {
@@ -213,11 +196,6 @@ public class DeadlockTest {
     }
 }
 ```
-
-The library will:
-- Timeout on deadlock
-- Generate thread dump showing which threads hold which locks
-- Identify the circular dependency
 
 ### Example 4: Virtual Thread Stress Testing
 
@@ -237,11 +215,6 @@ public class VirtualThreadStressTest {
     }
 }
 ```
-
-This tests for:
-- Thread pinning issues (virtual thread blocking carrier thread)
-- Scale to millions of lightweight threads
-- Memory efficiency compared to OS threads
 
 ## Analyzing Results
 
@@ -267,79 +240,24 @@ When a test fails, the library provides detailed diagnostics:
 
 ## Best Practices
 
-### 1. Start Simple
+### 1. Use detectAll = true
+For most application code, `detectAll = true` is the best starting point. It provides maximum coverage with zero boilerplate.
+
+### 2. Use excludes selectively
+If a specific detector (like `FALSE_SHARING`) causes too much overhead in a large test suite, exclude it rather than turning off everything.
+
+### 3. Start Simple
 ```java
-@AsyncTest  // Uses defaults
+@AsyncTest(detectAll = true)
 void simpleTest() { }
 ```
 
-### 2. Gradually Increase Complexity
+### 4. Provide Sufficient Timeout
+Stress tests with many threads or all detectors enabled may need more time.
 ```java
-@AsyncTest(threads = 2, invocations = 10)
-void basicConcurrency() { }
-
-@AsyncTest(threads = 50, invocations = 100)
-void stressTest() { }
-
-@AsyncTest(useVirtualThreads = true, virtualThreadStressMode = "HIGH")
-void virtualThreadTest() { }
+@AsyncTest(detectAll = true, timeoutMs = 10000)
+void deepStressTest() { }
 ```
-
-### 3. Enable Specific Detectors for Known Issues
-```java
-@AsyncTest(
-    threads = 20,
-    detectDeadlocks = true,      // You suspect deadlock issues
-    detectVisibility = false      // Not relevant for this code
-)
-void testSpecificIssue() { }
-```
-
-### 4. Use Appropriate Timeouts
-```java
-@AsyncTest(
-    threads = 10,
-    timeoutMs = 1000    // Short timeout for quick feedback
-)
-void fastTest() { }
-
-@AsyncTest(
-    threads = 1000,
-    timeoutMs = 30000   // Longer timeout for stress tests
-)
-void stressTest() { }
-```
-
-## Troubleshooting
-
-### Test Hangs (Timeout)
-- Increase `timeoutMs`
-- Check for deadlocks in test code
-- Enable `detectDeadlocks = true`
-
-### False Positives
-- Reduce `threads` or `invocations`
-- Check test isolation (ensure no shared state)
-- Use proper synchronization in test fixtures
-
-### Memory Usage
-- Reduce thread count
-- Reduce invocations
-- Avoid accumulating results in memory
-
-## Integration with CI/CD
-
-The library integrates seamlessly with GitHub Actions:
-
-```yaml
-- name: Run async tests
-  run: mvn clean test
-  
-- name: Check test coverage
-  run: mvn jacoco:report
-```
-
-Generate coverage reports in `target/site/jacoco/`.
 
 ## Support
 

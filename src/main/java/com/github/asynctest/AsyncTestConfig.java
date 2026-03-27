@@ -1,5 +1,9 @@
 package com.github.asynctest;
 
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.Set;
+
 /**
  * Immutable snapshot of all {@link AsyncTest} parameters.
  * Passed to {@link com.github.asynctest.runner.ConcurrencyRunner} as a single object
@@ -13,6 +17,10 @@ public final class AsyncTestConfig {
     public final boolean useVirtualThreads;
     public final long timeoutMs;
     public final String virtualThreadStressMode;
+
+    // ---- Umbrella flag ----
+    /** When {@code true}, every detector is treated as enabled. */
+    public final boolean detectAll;
 
     // ---- Phase 1 ----
     public final boolean detectDeadlocks;
@@ -56,6 +64,7 @@ public final class AsyncTestConfig {
         useVirtualThreads              = b.useVirtualThreads;
         timeoutMs                      = b.timeoutMs;
         virtualThreadStressMode        = b.virtualThreadStressMode;
+        detectAll                      = b.detectAll;
         detectDeadlocks                = b.detectDeadlocks;
         detectVisibility               = b.detectVisibility;
         detectLivelocks                = b.detectLivelocks;
@@ -94,6 +103,7 @@ public final class AsyncTestConfig {
             .useVirtualThreads(ann.useVirtualThreads())
             .timeoutMs(ann.timeoutMs())
             .virtualThreadStressMode(ann.virtualThreadStressMode())
+            .detectAll(ann.detectAll())
             .detectDeadlocks(ann.detectDeadlocks())
             .detectVisibility(ann.detectVisibility())
             .detectLivelocks(ann.detectLivelocks())
@@ -122,6 +132,7 @@ public final class AsyncTestConfig {
             .detectSimpleDateFormatIssues(ann.detectSimpleDateFormatIssues())
             .detectParallelStreamIssues(ann.detectParallelStreamIssues())
             .detectResourceLeaks(ann.detectResourceLeaks())
+            .excludes(ann.excludes())
             .build();
     }
 
@@ -135,6 +146,7 @@ public final class AsyncTestConfig {
         private boolean useVirtualThreads          = true;
         private long timeoutMs                     = 5_000;
         private String virtualThreadStressMode     = "OFF";
+        private boolean detectAll                  = false;
         private boolean detectDeadlocks            = true;
         private boolean detectVisibility           = false;
         private boolean detectLivelocks            = false;
@@ -163,12 +175,14 @@ public final class AsyncTestConfig {
         private boolean detectSimpleDateFormatIssues = false;
         private boolean detectParallelStreamIssues = false;
         private boolean detectResourceLeaks = false;
+        private Set<DetectorType> excludes = EnumSet.noneOf(DetectorType.class);
 
         public Builder threads(int v)                        { threads = v; return this; }
         public Builder invocations(int v)                    { invocations = v; return this; }
         public Builder useVirtualThreads(boolean v)          { useVirtualThreads = v; return this; }
         public Builder timeoutMs(long v)                     { timeoutMs = v; return this; }
         public Builder virtualThreadStressMode(String v)     { virtualThreadStressMode = v; return this; }
+        public Builder detectAll(boolean v)                  { detectAll = v; return this; }
         public Builder detectDeadlocks(boolean v)            { detectDeadlocks = v; return this; }
         public Builder detectVisibility(boolean v)           { detectVisibility = v; return this; }
         public Builder detectLivelocks(boolean v)            { detectLivelocks = v; return this; }
@@ -198,7 +212,75 @@ public final class AsyncTestConfig {
         public Builder detectParallelStreamIssues(boolean v) { detectParallelStreamIssues = v; return this; }
         public Builder detectResourceLeaks(boolean v) { detectResourceLeaks = v; return this; }
 
+        public Builder excludes(DetectorType[] v) {
+            if (v != null && v.length > 0) {
+                this.excludes.addAll(Arrays.asList(v));
+            }
+            return this;
+        }
+
         public AsyncTestConfig build() {
+            if (detectAll) {
+                if (!excludes.contains(DetectorType.DEADLOCKS)) detectDeadlocks = true;
+                if (!excludes.contains(DetectorType.VISIBILITY)) detectVisibility = true;
+                if (!excludes.contains(DetectorType.LIVELOCKS)) detectLivelocks = true;
+                if (!excludes.contains(DetectorType.FALSE_SHARING)) detectFalseSharing = true;
+                if (!excludes.contains(DetectorType.WAKEUP_ISSUES)) detectWakeupIssues = true;
+                if (!excludes.contains(DetectorType.CONSTRUCTOR_SAFETY)) validateConstructorSafety = true;
+                if (!excludes.contains(DetectorType.ABA_PROBLEM)) detectABAProblem = true;
+                if (!excludes.contains(DetectorType.LOCK_ORDER)) validateLockOrder = true;
+                if (!excludes.contains(DetectorType.SYNCHRONIZERS)) monitorSynchronizers = true;
+                if (!excludes.contains(DetectorType.THREAD_POOL)) monitorThreadPool = true;
+                if (!excludes.contains(DetectorType.MEMORY_ORDERING)) detectMemoryOrderingViolations = true;
+                if (!excludes.contains(DetectorType.ASYNC_PIPELINE)) monitorAsyncPipeline = true;
+                if (!excludes.contains(DetectorType.READ_WRITE_LOCK_FAIRNESS)) monitorReadWriteLockFairness = true;
+                if (!excludes.contains(DetectorType.SEMAPHORE)) monitorSemaphore = true;
+                if (!excludes.contains(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS)) detectCompletableFutureExceptions = true;
+                if (!excludes.contains(DetectorType.CONCURRENT_MODIFICATIONS)) detectConcurrentModifications = true;
+                if (!excludes.contains(DetectorType.LOCK_LEAKS)) detectLockLeaks = true;
+                if (!excludes.contains(DetectorType.SHARED_RANDOM)) detectSharedRandom = true;
+                if (!excludes.contains(DetectorType.BLOCKING_QUEUE)) detectBlockingQueueIssues = true;
+                if (!excludes.contains(DetectorType.CONDITION_VARIABLES)) detectConditionVariableIssues = true;
+                if (!excludes.contains(DetectorType.SIMPLE_DATE_FORMAT)) detectSimpleDateFormatIssues = true;
+                if (!excludes.contains(DetectorType.PARALLEL_STREAMS)) detectParallelStreamIssues = true;
+                if (!excludes.contains(DetectorType.RESOURCE_LEAKS)) detectResourceLeaks = true;
+                if (!excludes.contains(DetectorType.RACE_CONDITIONS)) detectRaceConditions = true;
+                if (!excludes.contains(DetectorType.THREAD_LOCAL_LEAKS)) detectThreadLocalLeaks = true;
+                if (!excludes.contains(DetectorType.BUSY_WAITING)) detectBusyWaiting = true;
+                if (!excludes.contains(DetectorType.ATOMICITY_VIOLATIONS)) detectAtomicityViolations = true;
+                if (!excludes.contains(DetectorType.INTERRUPT_MISHANDLING)) detectInterruptMishandling = true;
+            } else {
+                // If detectAll is false, we still respect explicit enables, 
+                // but we also apply excludes for consistency.
+                if (excludes.contains(DetectorType.DEADLOCKS)) detectDeadlocks = false;
+                if (excludes.contains(DetectorType.VISIBILITY)) detectVisibility = false;
+                if (excludes.contains(DetectorType.LIVELOCKS)) detectLivelocks = false;
+                if (excludes.contains(DetectorType.FALSE_SHARING)) detectFalseSharing = false;
+                if (excludes.contains(DetectorType.WAKEUP_ISSUES)) detectWakeupIssues = false;
+                if (excludes.contains(DetectorType.CONSTRUCTOR_SAFETY)) validateConstructorSafety = false;
+                if (excludes.contains(DetectorType.ABA_PROBLEM)) detectABAProblem = false;
+                if (excludes.contains(DetectorType.LOCK_ORDER)) validateLockOrder = false;
+                if (excludes.contains(DetectorType.SYNCHRONIZERS)) monitorSynchronizers = false;
+                if (excludes.contains(DetectorType.THREAD_POOL)) monitorThreadPool = false;
+                if (excludes.contains(DetectorType.MEMORY_ORDERING)) detectMemoryOrderingViolations = false;
+                if (excludes.contains(DetectorType.ASYNC_PIPELINE)) monitorAsyncPipeline = false;
+                if (excludes.contains(DetectorType.READ_WRITE_LOCK_FAIRNESS)) monitorReadWriteLockFairness = false;
+                if (excludes.contains(DetectorType.SEMAPHORE)) monitorSemaphore = false;
+                if (excludes.contains(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS)) detectCompletableFutureExceptions = false;
+                if (excludes.contains(DetectorType.CONCURRENT_MODIFICATIONS)) detectConcurrentModifications = false;
+                if (excludes.contains(DetectorType.LOCK_LEAKS)) detectLockLeaks = false;
+                if (excludes.contains(DetectorType.SHARED_RANDOM)) detectSharedRandom = false;
+                if (excludes.contains(DetectorType.BLOCKING_QUEUE)) detectBlockingQueueIssues = false;
+                if (excludes.contains(DetectorType.CONDITION_VARIABLES)) detectConditionVariableIssues = false;
+                if (excludes.contains(DetectorType.SIMPLE_DATE_FORMAT)) detectSimpleDateFormatIssues = false;
+                if (excludes.contains(DetectorType.PARALLEL_STREAMS)) detectParallelStreamIssues = false;
+                if (excludes.contains(DetectorType.RESOURCE_LEAKS)) detectResourceLeaks = false;
+                if (excludes.contains(DetectorType.RACE_CONDITIONS)) detectRaceConditions = false;
+                if (excludes.contains(DetectorType.THREAD_LOCAL_LEAKS)) detectThreadLocalLeaks = false;
+                if (excludes.contains(DetectorType.BUSY_WAITING)) detectBusyWaiting = false;
+                if (excludes.contains(DetectorType.ATOMICITY_VIOLATIONS)) detectAtomicityViolations = false;
+                if (excludes.contains(DetectorType.INTERRUPT_MISHANDLING)) detectInterruptMishandling = false;
+            }
             return new AsyncTestConfig(this);
         }
     }

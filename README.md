@@ -175,7 +175,7 @@ void verify() {
 
 ### 2. Deadlock Detection
 ```java
-@AsyncTest(threads = 2, timeoutMs = 2000, detectDeadlocks = true)
+@AsyncTest(threads = 2, timeoutMs = 2000, detectAll = true)
 void testPotentialDeadlock() {
     synchronized(lock1) {
         Thread.sleep(10);
@@ -184,21 +184,28 @@ void testPotentialDeadlock() {
 }
 ```
 
-### 3. Advanced Multi-Detector Test
+### 3. Advanced Multi-Detector Test (Simplified)
 ```java
 @AsyncTest(
     threads = 100,
     invocations = 50,
     useVirtualThreads = true,
-    detectDeadlocks = true,
-    detectVisibility = true,
-    detectFalseSharing = true,
-    validateLockOrder = true,
-    monitorThreadPool = true,
+    detectAll = true,
     timeoutMs = 20000
 )
 void comprehensiveStress() {
-    // Your concurrent code here
+    // All 35 detectors are automatically active!
+}
+```
+
+### 4. Opting Out of Expensive Detectors
+```java
+@AsyncTest(
+    detectAll = true,
+    excludes = { DetectorType.FALSE_SHARING, DetectorType.VISIBILITY }
+)
+void fastStressTest() {
+    // Enables everything EXCEPT false sharing and visibility
 }
 ```
 
@@ -224,6 +231,8 @@ void stressWithVirtualThreads() {
 | `invocations` | int | 100 | Repetitions of the test |
 | `useVirtualThreads` | boolean | true | Use Project Loom virtual threads |
 | `timeoutMs` | long | 5000 | Max execution time before timeout |
+| `detectAll` | boolean | false | Enable ALL detectors in one shot |
+| `excludes` | DetectorType[] | {} | Specific detectors to skip when detectAll=true |
 | `detectDeadlocks` | boolean | true | Detect circular lock dependencies |
 | `detectVisibility` | boolean | false | Detect missing volatiles |
 | `detectLivelocks` | boolean | false | Detect thread spinning/starvation |
