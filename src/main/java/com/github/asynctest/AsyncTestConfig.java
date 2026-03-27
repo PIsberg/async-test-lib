@@ -44,6 +44,7 @@ public final class AsyncTestConfig {
     public final boolean detectConcurrentModifications;
     public final boolean detectLockLeaks;
     public final boolean detectSharedRandom;
+    public final boolean detectBlockingQueueIssues;
 
     private AsyncTestConfig(Builder b) {
         threads                        = b.threads;
@@ -74,6 +75,7 @@ public final class AsyncTestConfig {
         detectConcurrentModifications  = b.detectConcurrentModifications;
         detectLockLeaks                = b.detectLockLeaks;
         detectSharedRandom             = b.detectSharedRandom;
+        detectBlockingQueueIssues      = b.detectBlockingQueueIssues;
     }
 
     /** Builds a config from an {@link AsyncTest} annotation instance. */
@@ -107,6 +109,7 @@ public final class AsyncTestConfig {
             .detectConcurrentModifications(ann.detectConcurrentModifications())
             .detectLockLeaks(ann.detectLockLeaks())
             .detectSharedRandom(ann.detectSharedRandom())
+            .detectBlockingQueueIssues(ann.detectBlockingQueueIssues())
             .build();
     }
 
@@ -143,6 +146,7 @@ public final class AsyncTestConfig {
         private boolean detectConcurrentModifications = false;
         private boolean detectLockLeaks = false;
         private boolean detectSharedRandom = false;
+        private boolean detectBlockingQueueIssues = false;
 
         public Builder threads(int v)                        { threads = v; return this; }
         public Builder invocations(int v)                    { invocations = v; return this; }
@@ -172,6 +176,7 @@ public final class AsyncTestConfig {
         public Builder detectConcurrentModifications(boolean v) { detectConcurrentModifications = v; return this; }
         public Builder detectLockLeaks(boolean v) { detectLockLeaks = v; return this; }
         public Builder detectSharedRandom(boolean v) { detectSharedRandom = v; return this; }
+        public Builder detectBlockingQueueIssues(boolean v) { detectBlockingQueueIssues = v; return this; }
 
         public AsyncTestConfig build() {
             return new AsyncTestConfig(this);

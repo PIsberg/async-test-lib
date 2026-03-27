@@ -207,5 +207,11 @@ public @interface AsyncTest {
      * Detects concurrent access to non-thread-safe Random instances.
      */
     boolean detectSharedRandom() default false;
+
+    /**
+     * Enable BlockingQueue misuse detection.
+     * Detects silent failures, queue saturation, and producer/consumer imbalance.
+     */
+    boolean detectBlockingQueueIssues() default false;
 }
 

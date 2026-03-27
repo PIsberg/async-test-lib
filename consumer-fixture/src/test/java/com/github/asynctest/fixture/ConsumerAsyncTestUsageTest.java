@@ -12,6 +12,7 @@ import com.github.asynctest.diagnostics.CompletableFutureExceptionDetector;
 import com.github.asynctest.diagnostics.ConcurrentModificationDetector;
 import com.github.asynctest.diagnostics.LockLeakDetector;
 import com.github.asynctest.diagnostics.SharedRandomDetector;
+import com.github.asynctest.diagnostics.BlockingQueueDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -66,6 +67,7 @@ class ConsumerAsyncTestUsageTest {
     private final ConcurrentModificationDetector concurrentModificationDetector = new ConcurrentModificationDetector();
     private final LockLeakDetector lockLeakDetector = new LockLeakDetector();
     private final SharedRandomDetector sharedRandomDetector = new SharedRandomDetector();
+    private final BlockingQueueDetector blockingQueueDetector = new BlockingQueueDetector();
 
     // ============================================
     // PHASE 1: Core Detectors
@@ -565,6 +567,28 @@ class ConsumerAsyncTestUsageTest {
         // Analyze and report (for demonstration, we just print the report)
         var report = sharedRandomDetector.analyze();
         // In real usage with shared random, you would assert: assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Phase 2.16: BlockingQueue misuse detection — silent failures and saturation.
+     * Using offer() without checking return value can silently drop items.
+     */
+    @AsyncTest(threads = 4, detectBlockingQueueIssues = true, timeoutMs = 3000)
+    void testBlockingQueueUsage() throws InterruptedException {
+        java.util.concurrent.BlockingQueue<String> queue = new java.util.concurrent.ArrayBlockingQueue<>(10);
+        blockingQueueDetector.registerQueue(queue, "work-queue", 10);
+        
+        // Producer - check return value!
+        boolean added = queue.offer("item-" + Thread.currentThread().getId());
+        blockingQueueDetector.recordOffer(queue, "work-queue", added);
+        
+        // Consumer - check for null!
+        String item = queue.poll();
+        blockingQueueDetector.recordPoll(queue, "work-queue", item != null);
+        
+        // Analyze and report (for demonstration, we just print the report)
+        var report = blockingQueueDetector.analyze();
+        // In real usage with queue issues, you would assert: assertTrue(report.hasIssues())
     }
 
     // Helper class for constructor safety tests

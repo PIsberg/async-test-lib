@@ -7,6 +7,8 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.Random;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -486,5 +488,44 @@ public class Phase2DetectorsTest {
         // Proper way: use ThreadLocalRandom for concurrent access
         int value = java.util.concurrent.ThreadLocalRandom.current().nextInt();
         // ThreadLocalRandom doesn't need monitoring - it's thread-safe by design
+    }
+
+    // ============= Blocking Queue Tests =============
+
+    @AsyncTest(threads = 4, detectBlockingQueueIssues = true, timeoutMs = 3000)
+    void testBlockingQueueUsage() throws InterruptedException {
+        BlockingQueue<String> queue = new ArrayBlockingQueue<>(10);
+        AsyncTestContext.blockingQueueMonitor()
+            .registerQueue(queue, "work-queue", 10);
+        
+        // Producer
+        boolean added = queue.offer("item-" + Thread.currentThread().getId());
+        AsyncTestContext.blockingQueueMonitor()
+            .recordOffer(queue, "work-queue", added);
+        
+        // Consumer
+        String item = queue.poll();
+        AsyncTestContext.blockingQueueMonitor()
+            .recordPoll(queue, "work-queue", item != null);
+    }
+
+    @AsyncTest(threads = 2, detectBlockingQueueIssues = true, timeoutMs = 3000)
+    void testBlockingQueueSaturation() throws InterruptedException {
+        BlockingQueue<String> queue = new ArrayBlockingQueue<>(2);
+        AsyncTestContext.blockingQueueMonitor()
+            .registerQueue(queue, "small-queue", 2);
+        
+        // Fill the queue
+        queue.offer("item1");
+        AsyncTestContext.blockingQueueMonitor()
+            .recordOffer(queue, "small-queue", true);
+        queue.offer("item2");
+        AsyncTestContext.blockingQueueMonitor()
+            .recordOffer(queue, "small-queue", true);
+        
+        // This will fail (queue full)
+        boolean added = queue.offer("item3");
+        AsyncTestContext.blockingQueueMonitor()
+            .recordOffer(queue, "small-queue", added);
     }
 }
