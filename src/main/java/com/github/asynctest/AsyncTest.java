@@ -225,5 +225,11 @@ public @interface AsyncTest {
      * Detects concurrent access to non-thread-safe date formatters.
      */
     boolean detectSimpleDateFormatIssues() default false;
+
+    /**
+     * Enable parallel stream misuse detection.
+     * Detects stateful lambdas, non-thread-safe collectors, and side effects.
+     */
+    boolean detectParallelStreamIssues() default false;
 }
 

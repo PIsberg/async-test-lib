@@ -49,6 +49,7 @@ public final class AsyncTestContext {
     final BlockingQueueDetector blockingQueueDetector;
     final ConditionVariableDetector conditionVariableDetector;
     final SimpleDateFormatDetector simpleDateFormatDetector;
+    final ParallelStreamDetector parallelStreamDetector;
 
     public AsyncTestContext(AsyncTestConfig cfg) {
         falseSharingDetector       = cfg.detectFalseSharing             ? new FalseSharingDetector()       : null;
@@ -69,6 +70,7 @@ public final class AsyncTestContext {
         blockingQueueDetector      = cfg.detectBlockingQueueIssues      ? new BlockingQueueDetector()      : null;
         conditionVariableDetector  = cfg.detectConditionVariableIssues  ? new ConditionVariableDetector()  : null;
         simpleDateFormatDetector   = cfg.detectSimpleDateFormatIssues   ? new SimpleDateFormatDetector()   : null;
+        parallelStreamDetector     = cfg.detectParallelStreamIssues     ? new ParallelStreamDetector()     : null;
     }
 
     // ---- Lifecycle (package-private, called by ConcurrencyRunner) ----
@@ -237,6 +239,14 @@ public final class AsyncTestContext {
         return require("detectSimpleDateFormatIssues", c -> c.simpleDateFormatDetector);
     }
 
+    /**
+     * Returns the {@link ParallelStreamDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectParallelStreamIssues = false}
+     */
+    public static ParallelStreamDetector parallelStreamMonitor() {
+        return require("detectParallelStreamIssues", c -> c.parallelStreamDetector);
+    }
+
     // ---- Internal reporting ----
 
     /**
@@ -317,6 +327,10 @@ public final class AsyncTestContext {
         }
         if (simpleDateFormatDetector != null) {
             SimpleDateFormatDetector.SimpleDateFormatReport r = simpleDateFormatDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
+        }
+        if (parallelStreamDetector != null) {
+            ParallelStreamDetector.ParallelStreamReport r = parallelStreamDetector.analyze();
             if (r.hasIssues()) out.add(r.toString());
         }
 

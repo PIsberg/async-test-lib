@@ -15,6 +15,7 @@ import com.github.asynctest.diagnostics.SharedRandomDetector;
 import com.github.asynctest.diagnostics.BlockingQueueDetector;
 import com.github.asynctest.diagnostics.ConditionVariableDetector;
 import com.github.asynctest.diagnostics.SimpleDateFormatDetector;
+import com.github.asynctest.diagnostics.ParallelStreamDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -72,6 +73,7 @@ class ConsumerAsyncTestUsageTest {
     private final BlockingQueueDetector blockingQueueDetector = new BlockingQueueDetector();
     private final ConditionVariableDetector conditionVariableDetector = new ConditionVariableDetector();
     private final SimpleDateFormatDetector simpleDateFormatDetector = new SimpleDateFormatDetector();
+    private final ParallelStreamDetector parallelStreamDetector = new ParallelStreamDetector();
 
     // ============================================
     // PHASE 1: Core Detectors
@@ -638,6 +640,29 @@ class ConsumerAsyncTestUsageTest {
         // Analyze and report (for demonstration, we just print the report)
         var report = simpleDateFormatDetector.analyze();
         // In real usage with shared formatter, you would assert: assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Phase 2.19: Parallel stream misuse detection — stateful lambdas and side effects.
+     * Parallel streams require stateless, non-interfering operations.
+     */
+    @AsyncTest(threads = 4, detectParallelStreamIssues = true, timeoutMs = 3000)
+    void testParallelStreamUsage() {
+        java.util.List<Integer> list = java.util.Arrays.asList(1, 2, 3, 4, 5);
+        java.util.concurrent.atomic.AtomicInteger counter = new java.util.concurrent.atomic.AtomicInteger();
+        
+        parallelStreamDetector.recordParallelStream("test-stream");
+        
+        // Bug: stateful lambda modifying external state in parallel stream
+        list.parallelStream().forEach(i -> counter.incrementAndGet());
+        parallelStreamDetector.recordStatefulOperation("test-stream", "forEach");
+        
+        // Fix: use stateless operations or synchronized counters
+        // int sum = list.parallelStream().mapToInt(i -> i).sum();
+        
+        // Analyze and report (for demonstration, we just print the report)
+        var report = parallelStreamDetector.analyze();
+        // In real usage with stateful operations, you would assert: assertTrue(report.hasIssues())
     }
 
     // Helper class for constructor safety tests

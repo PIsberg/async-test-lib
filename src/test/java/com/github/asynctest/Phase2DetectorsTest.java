@@ -11,8 +11,10 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.text.SimpleDateFormat;
+import java.util.stream.Collectors;
 import java.util.Random;
 import java.util.List;
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -563,5 +565,42 @@ public class Phase2DetectorsTest {
         String formatted = sdf.format(new java.util.Date());
         AsyncTestContext.simpleDateFormatMonitor()
             .recordFormat(sdf, "date-formatter");
+    }
+
+    // ============= Parallel Stream Tests =============
+
+    @AsyncTest(threads = 4, detectParallelStreamIssues = true, timeoutMs = 3000)
+    void testParallelStreamStatefulLambda() {
+        List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
+        AtomicInteger counter = new AtomicInteger();
+        
+        AsyncTestContext.parallelStreamMonitor()
+            .recordParallelStream("stateful-stream");
+        
+        // Bug: stateful lambda modifying external state
+        list.parallelStream().forEach(i -> counter.incrementAndGet());
+        AsyncTestContext.parallelStreamMonitor()
+            .recordStatefulOperation("stateful-stream", "forEach");
+    }
+
+    @AsyncTest(threads = 4, detectParallelStreamIssues = true, timeoutMs = 3000)
+    void testParallelStreamSafeUsage() {
+        List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
+        
+        AsyncTestContext.parallelStreamMonitor()
+            .recordParallelStream("safe-stream");
+        
+        // Safe: stateless operations
+        int sum = list.parallelStream()
+            .map(i -> i * 2)
+            .filter(i -> i > 5)
+            .reduce(0, Integer::sum);
+        
+        AsyncTestContext.parallelStreamMonitor()
+            .recordStatelessOperation("safe-stream", "map");
+        AsyncTestContext.parallelStreamMonitor()
+            .recordStatelessOperation("safe-stream", "filter");
+        AsyncTestContext.parallelStreamMonitor()
+            .recordStatelessOperation("safe-stream", "reduce");
     }
 }
