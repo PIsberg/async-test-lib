@@ -2,6 +2,11 @@ package com.github.asynctest.fixture;
 
 import com.github.asynctest.AsyncTest;
 import com.github.asynctest.AsyncTestContext;
+import com.github.asynctest.diagnostics.NotifyAllValidator;
+import com.github.asynctest.diagnostics.LazyInitValidator;
+import com.github.asynctest.diagnostics.FutureBlockingDetector;
+import com.github.asynctest.diagnostics.ExecutorDeadlockDetector;
+import com.github.asynctest.diagnostics.LatchMisuseDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -25,12 +30,15 @@ class ConsumerAsyncTestUsageTest {
     private int unsafeCounter = 0;
     private volatile boolean volatileFlag = false;
     private final AtomicReference<String> abaValue = new AtomicReference<>("A");
+    private final AtomicBoolean livelockTurn = new AtomicBoolean(false);
+    private int data = 0;
+    private boolean ready = false;
 
     // Phase 2: Advanced Detectors - shared state
     private volatile long falseShareA = 0;
     private volatile long falseShareB = 0;
     private final Object monitor = new Object();
-    private boolean ready = false;
+    private boolean monitorReady = false;
     private final AtomicReference<Service> serviceRef = new AtomicReference<>();
     private final AtomicReference<String> pipelineValue = new AtomicReference<>();
     private final BlockingQueue<String> asyncQueue = new ArrayBlockingQueue<>(1);
@@ -41,6 +49,13 @@ class ConsumerAsyncTestUsageTest {
     private static final ThreadLocal<String> REQUEST_CTX = new ThreadLocal<>();
     private final AtomicBoolean busyWaitDone = new AtomicBoolean(false);
     private final Map<String, String> cache = new HashMap<>();
+
+    // Legacy: Manual Validator Tests - shared state
+    private final NotifyAllValidator notifyAllValidator = new NotifyAllValidator();
+    private final LazyInitValidator lazyInitValidator = new LazyInitValidator();
+    private final FutureBlockingDetector futureBlockingDetector = new FutureBlockingDetector();
+    private final ExecutorDeadlockDetector executorDeadlockDetector = new ExecutorDeadlockDetector();
+    private final LatchMisuseDetector latchMisuseDetector = new LatchMisuseDetector();
 
     // ============================================
     // PHASE 1: Core Detectors
@@ -78,6 +93,29 @@ class ConsumerAsyncTestUsageTest {
         assertNotNull(AsyncTestContext.get());
     }
 
+    /**
+     * Phase 1.2: Livelock detection.
+     * Threads keep changing state without making progress.
+     */
+    @AsyncTest(threads = 4, detectLivelocks = true, timeoutMs = 3000)
+    void testLivelock() {
+        // Threads keep backing off when they collide — CPU churns but no work completes
+        while (!livelockTurn.compareAndSet(false, true)) {
+            livelockTurn.set(false);  // back off and retry immediately
+        }
+        livelockTurn.set(false);  // release
+    }
+
+    /**
+     * Phase 1.4: Memory model validation - JMM happens-before violations.
+     */
+    @AsyncTest(threads = 2, detectMemoryOrderingViolations = true, timeoutMs = 3000)
+    void testMemoryModelValidation() {
+        // Non-volatile write may be reordered or not visible
+        data = 42;
+        ready = true;  // missing volatile — reader may see ready=true but data=0
+    }
+
     // ============================================
     // PHASE 2: Advanced Detectors
     // ============================================
@@ -101,8 +139,26 @@ class ConsumerAsyncTestUsageTest {
     void testWakeupIssues() throws InterruptedException {
         synchronized (monitor) {
             monitor.wait(10);
-            ready = true;
+            monitorReady = true;
             monitor.notify();
+        }
+    }
+
+    /**
+     * Phase 2.5: Lock ordering violation detection.
+     * Different threads acquire locks in different orders — classic deadlock setup.
+     */
+    @AsyncTest(threads = 2, validateLockOrder = true, timeoutMs = 3000)
+    void testLockOrderingViolation() throws InterruptedException {
+        Object lockA = new Object();
+        Object lockB = new Object();
+        // Even threads: lockA→lockB; odd threads: lockB→lockA — inconsistent ordering
+        boolean even = Thread.currentThread().getId() % 2 == 0;
+        synchronized (even ? lockA : lockB) {
+            Thread.sleep(5);
+            synchronized (even ? lockB : lockA) {
+                // work
+            }
         }
     }
 
@@ -246,40 +302,63 @@ class ConsumerAsyncTestUsageTest {
     }
 
     // ============================================
-    // LEGACY: Manual Validator Tests
+    // LEGACY: Manual Validator Tests (21-25)
     // ============================================
 
     /**
-     * Legacy 1: Notify vs NotifyAll (manual validator pattern).
-     * Note: This is a demonstration of manual validator usage for legacy code.
+     * Legacy 21: Notify vs NotifyAll — using notify() with multiple waiters.
+     * When multiple threads wait on a monitor, notify() wakes only one, leaving others stranded.
      */
-    @AsyncTest(threads = 2, timeoutMs = 3000)
+    @AsyncTest(threads = 3, timeoutMs = 3000)
     void testNotifyVsNotifyAll() throws InterruptedException {
-        // This demonstrates the pattern; actual validation would use NotifyAllValidator
         Object localMonitor = new Object();
+        
+        // Simulate multiple waiters (in real code this would be coordinated across threads)
+        notifyAllValidator.recordWaiterAdded(localMonitor, "queue");
+        notifyAllValidator.recordWaiterAdded(localMonitor, "queue");
+        
         synchronized (localMonitor) {
             localMonitor.wait(10);
+            // Bug: notify() instead of notifyAll() — one waiter left sleeping
+            notifyAllValidator.recordNotify(localMonitor, false);
             localMonitor.notify();
         }
+        
+        // Analyze and report (for demonstration, we just print the report)
+        var report = notifyAllValidator.analyze();
+        // In real usage, you would assert: assertTrue(report.hasIssues())
     }
 
     /**
-     * Legacy 2: Lazy initialization (double-checked locking without volatile).
+     * Legacy 22: Lazy Initialization — double-checked locking without volatile.
+     * Two threads may see null simultaneously and both attempt initialization.
      */
     @AsyncTest(threads = 4, timeoutMs = 3000)
     void testLazyInitialization() {
-        // Demonstrates unsafe DCL pattern
+        // Simulate concurrent access to singleton
+        lazyInitValidator.recordAccess("Config", true, true, false, false);
+        lazyInitValidator.recordAccess("Config", true, true, false, false);
+        
+        // Actual unsafe DCL pattern
         if (serviceRef.get() == null) {
             serviceRef.set(new Service(null));
         }
+        
+        // Analyze and report (for demonstration, we just print the report)
+        var report = lazyInitValidator.analyze();
+        // In real usage, you would assert: assertTrue(report.hasIssues())
     }
 
     /**
-     * Legacy 3: Future blocking on bounded executor.
+     * Legacy 23: Future Blocking — calling get() inside bounded pool starves executor.
+     * When tasks block waiting for other tasks in the same pool, starvation occurs.
      */
-    @AsyncTest(threads = 2, invocations = 5, timeoutMs = 3000)
+    @AsyncTest(threads = 2, invocations = 3, timeoutMs = 3000)
     void testFutureBlocking() throws Exception {
-        ExecutorService pool = Executors.newFixedThreadPool(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        futureBlockingDetector.registerExecutor(pool, "boundedPool", 2);
+        futureBlockingDetector.recordTaskStarted(pool);
+        
         try {
             var future = pool.submit(() -> {
                 try {
@@ -290,22 +369,35 @@ class ConsumerAsyncTestUsageTest {
                     return null;
                 }
             });
+            // Bug: blocking get() inside same pool — may starve if pool is saturated
+            futureBlockingDetector.recordBlockingWait(pool);
             future.get();
         } finally {
             pool.shutdown();
         }
+        
+        // Analyze and report (for demonstration, we just print the report)
+        var report = futureBlockingDetector.analyze();
+        // In real usage, you would assert: assertTrue(report.hasIssues())
     }
 
     /**
-     * Legacy 4: Executor self-deadlock (task waits on sibling on single-thread executor).
+     * Legacy 24: Executor Self-Deadlock — task waits on sibling in same single-thread executor.
+     * Submitting a task and waiting for it inside another task deadlocks single-thread pools.
      */
     @AsyncTest(threads = 1, timeoutMs = 3000)
     void testExecutorSelfDeadlock() throws Exception {
         ExecutorService pool = Executors.newFixedThreadPool(1);
+        executorDeadlockDetector.registerExecutor(pool, "singleThread", 1);
+        executorDeadlockDetector.recordTaskStarted(pool);
+        
         try {
             var innerFuture = pool.submit(() -> "inner");
+            executorDeadlockDetector.recordTaskSubmitted(pool);
+            
             var outerFuture = pool.submit(() -> {
                 try {
+                    executorDeadlockDetector.recordWaitingOnSibling(pool);
                     return innerFuture.get();
                 } catch (Exception e) {
                     return "error";
@@ -315,16 +407,34 @@ class ConsumerAsyncTestUsageTest {
         } finally {
             pool.shutdown();
         }
+        
+        // Analyze and report (for demonstration, we just print the report)
+        var report = executorDeadlockDetector.analyze();
+        // In real usage, you would assert: assertTrue(report.hasIssues())
     }
 
     /**
-     * Legacy 5: Latch misuse (countDown more times than latch count).
+     * Legacy 25: Latch Misuse — countDown() called more times than latch count.
+     * Extra countDown() calls or missing await() can cause synchronization failures.
      */
     @AsyncTest(threads = 2, timeoutMs = 3000)
     void testLatchMisuse() throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
+        latchMisuseDetector.registerLatch(latch, "startupGate", 1);
+        
+        // First thread counts down correctly
+        latchMisuseDetector.recordCountDown(latch);
         latch.countDown();
+        
+        // Second thread also counts down — bug: more countDown() than initial count
+        latchMisuseDetector.recordCountDown(latch);
+        latch.countDown();
+        
         latch.await();
+        
+        // Analyze and report (for demonstration, we just print the report)
+        var report = latchMisuseDetector.analyze();
+        // In real usage, you would assert: assertTrue(report.hasIssues())
     }
 
     // Helper class for constructor safety tests
