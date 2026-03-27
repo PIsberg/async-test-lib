@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     
     permissions:
-      contents: read
+      contents: write
       packages: write
     
     steps:
@@ -22,6 +22,9 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
           cache: maven
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
       
       - name: Build and test
         run: mvn clean verify
@@ -29,42 +32,47 @@ jobs:
       - name: Publish to GitHub Packages
         run: mvn deploy
         env:
+          GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Create Release
-        uses: actions/create-release@v1
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release with artifacts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref_name }}
-          body: |
-            ## Async Test Library Release ${{ github.ref_name }}
-            
-            ### What's included:
-            - async-test-${{ github.ref_name }}.jar - Main library
-            - async-test-${{ github.ref_name }}-sources.jar - Source code
-            - async-test-${{ github.ref_name }}-javadoc.jar - API Documentation
-            
-            ### Installation via Maven:
-            ```xml
-            <dependency>
-              <groupId>com.github.asynctest</groupId>
-              <artifactId>async-test</artifactId>
-              <version>${{ github.ref_name }}</version>
-              <scope>test</scope>
-            </dependency>
-            ```
-            
-            For GitHub Packages, add to your `pom.xml`:
-            ```xml
-            <repository>
-              <id>github</id>
-              <name>GitHub Packages</name>
-              <url>https://maven.pkg.github.com/yourusername/async-test-lib</url>
-            </repository>
-            ```
-            
-            See documentation at: https://github.com/yourusername/async-test-lib
-          draft: false
-          prerelease: false
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          gh release create "${{ github.ref_name }}" \
+            target/async-test-${VERSION}.jar \
+            target/async-test-${VERSION}-sources.jar \
+            target/async-test-${VERSION}-javadoc.jar \
+            --title "Release ${{ github.ref_name }}" \
+            --notes "## Async Test Library Release ${{ github.ref_name }}
+
+          ### What's included:
+          - \`async-test-${VERSION}.jar\` - Main library
+          - \`async-test-${VERSION}-sources.jar\` - Source code
+          - \`async-test-${VERSION}-javadoc.jar\` - API Documentation
+
+          ### Installation via Maven:
+          \`\`\`xml
+          <dependency>
+            <groupId>com.github.asynctest</groupId>
+            <artifactId>async-test</artifactId>
+            <version>${VERSION}</version>
+            <scope>test</scope>
+          </dependency>
+          \`\`\`
+
+          For GitHub Packages, add to your \`pom.xml\`:
+          \`\`\`xml
+          <repository>
+            <id>github</id>
+            <name>GitHub Packages</name>
+            <url>https://maven.pkg.github.com/PIsberg/async-test-lib</url>
+          </repository>
+          \`\`\`
+
+          See documentation at: https://github.com/PIsberg/async-test-lib"

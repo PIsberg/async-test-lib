@@ -11,7 +11,7 @@
 
     <name>Async Test Library</name>
     <description>Enterprise-grade JUnit 5 concurrency testing library with 20+ problem detectors for detecting deadlocks, visibility issues, false sharing, livelocks, and other subtle concurrency bugs</description>
-    <url>https://github.com/yourusername/async-test-lib</url>
+    <url>https://github.com/PIsberg/async-test-lib</url>
 
     <licenses>
         <license>
@@ -23,19 +23,19 @@
     <developers>
         <developer>
             <name>Async Test Contributors</name>
-            <url>https://github.com/yourusername/async-test-lib</url>
+            <url>https://github.com/PIsberg/async-test-lib</url>
         </developer>
     </developers>
 
     <scm>
-        <url>https://github.com/yourusername/async-test-lib</url>
-        <connection>scm:git:https://github.com/yourusername/async-test-lib.git</connection>
-        <developerConnection>scm:git:https://github.com/yourusername/async-test-lib.git</developerConnection>
+        <url>https://github.com/PIsberg/async-test-lib</url>
+        <connection>scm:git:https://github.com/PIsberg/async-test-lib.git</connection>
+        <developerConnection>scm:git:https://github.com/PIsberg/async-test-lib.git</developerConnection>
     </scm>
 
     <issueManagement>
         <system>GitHub</system>
-        <url>https://github.com/yourusername/async-test-lib/issues</url>
+        <url>https://github.com/PIsberg/async-test-lib/issues</url>
     </issueManagement>
 
     <properties>
@@ -166,13 +166,13 @@
         <repository>
             <id>github</id>
             <name>GitHub Packages</name>
-            <url>https://maven.pkg.github.com/yourusername/async-test-lib</url>
+            <url>https://maven.pkg.github.com/PIsberg/async-test-lib</url>
         </repository>
         <!-- Snapshots -->
         <snapshotRepository>
             <id>github</id>
             <name>GitHub Packages Snapshots</name>
-            <url>https://maven.pkg.github.com/yourusername/async-test-lib</url>
+            <url>https://maven.pkg.github.com/PIsberg/async-test-lib</url>
         </snapshotRepository>
     </distributionManagement>
 </project>
