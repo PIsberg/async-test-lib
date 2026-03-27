@@ -11,6 +11,7 @@ import com.github.asynctest.diagnostics.SemaphoreMisuseDetector;
 import com.github.asynctest.diagnostics.CompletableFutureExceptionDetector;
 import com.github.asynctest.diagnostics.ConcurrentModificationDetector;
 import com.github.asynctest.diagnostics.LockLeakDetector;
+import com.github.asynctest.diagnostics.SharedRandomDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -64,6 +65,7 @@ class ConsumerAsyncTestUsageTest {
     private final CompletableFutureExceptionDetector completableFutureExceptionDetector = new CompletableFutureExceptionDetector();
     private final ConcurrentModificationDetector concurrentModificationDetector = new ConcurrentModificationDetector();
     private final LockLeakDetector lockLeakDetector = new LockLeakDetector();
+    private final SharedRandomDetector sharedRandomDetector = new SharedRandomDetector();
 
     // ============================================
     // PHASE 1: Core Detectors
@@ -542,6 +544,27 @@ class ConsumerAsyncTestUsageTest {
         // Analyze and report (for demonstration, we just print the report)
         var report = lockLeakDetector.analyze();
         // In real usage with a leak, you would assert: assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Phase 2.15: Shared Random detection — detecting concurrent Random access.
+     * Using ThreadLocalRandom instead of shared Random for thread-safe random generation.
+     */
+    @AsyncTest(threads = 4, detectSharedRandom = true, timeoutMs = 3000)
+    void testSharedRandomDetection() {
+        java.util.Random random = new java.util.Random();
+        sharedRandomDetector.registerRandom(random, "shared-random");
+        
+        // This will be detected as shared access (not recommended)
+        int value = random.nextInt();
+        sharedRandomDetector.recordRandomAccess(random, "shared-random", "nextInt");
+        
+        // Better approach: use ThreadLocalRandom
+        int betterValue = java.util.concurrent.ThreadLocalRandom.current().nextInt();
+        
+        // Analyze and report (for demonstration, we just print the report)
+        var report = sharedRandomDetector.analyze();
+        // In real usage with shared random, you would assert: assertTrue(report.hasIssues())
     }
 
     // Helper class for constructor safety tests

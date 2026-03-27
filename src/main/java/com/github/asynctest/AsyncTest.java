@@ -201,5 +201,11 @@ public @interface AsyncTest {
      * Detects locks acquired but never released and excessive hold times.
      */
     boolean detectLockLeaks() default false;
+
+    /**
+     * Enable shared Random detection.
+     * Detects concurrent access to non-thread-safe Random instances.
+     */
+    boolean detectSharedRandom() default false;
 }
 

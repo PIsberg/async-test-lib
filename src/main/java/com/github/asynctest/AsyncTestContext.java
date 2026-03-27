@@ -45,6 +45,7 @@ public final class AsyncTestContext {
     final CompletableFutureExceptionDetector completableFutureExceptionDetector;
     final ConcurrentModificationDetector concurrentModificationDetector;
     final LockLeakDetector lockLeakDetector;
+    final SharedRandomDetector sharedRandomDetector;
 
     public AsyncTestContext(AsyncTestConfig cfg) {
         falseSharingDetector       = cfg.detectFalseSharing             ? new FalseSharingDetector()       : null;
@@ -61,6 +62,7 @@ public final class AsyncTestContext {
         completableFutureExceptionDetector = cfg.detectCompletableFutureExceptions ? new CompletableFutureExceptionDetector() : null;
         concurrentModificationDetector = cfg.detectConcurrentModifications ? new ConcurrentModificationDetector() : null;
         lockLeakDetector           = cfg.detectLockLeaks                ? new LockLeakDetector()           : null;
+        sharedRandomDetector       = cfg.detectSharedRandom             ? new SharedRandomDetector()       : null;
     }
 
     // ---- Lifecycle (package-private, called by ConcurrencyRunner) ----
@@ -197,6 +199,14 @@ public final class AsyncTestContext {
         return require("detectLockLeaks", c -> c.lockLeakDetector);
     }
 
+    /**
+     * Returns the {@link SharedRandomDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedRandom = false}
+     */
+    public static SharedRandomDetector sharedRandomMonitor() {
+        return require("detectSharedRandom", c -> c.sharedRandomDetector);
+    }
+
     // ---- Internal reporting ----
 
     /**
@@ -261,6 +271,10 @@ public final class AsyncTestContext {
         }
         if (lockLeakDetector != null) {
             LockLeakDetector.LockLeakReport r = lockLeakDetector.analyze();
+            if (r.hasIssues()) out.add(r.toString());
+        }
+        if (sharedRandomDetector != null) {
+            SharedRandomDetector.SharedRandomReport r = sharedRandomDetector.analyze();
             if (r.hasIssues()) out.add(r.toString());
         }
 

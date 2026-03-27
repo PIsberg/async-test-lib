@@ -7,6 +7,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.Random;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -464,5 +465,26 @@ public class Phase2DetectorsTest {
             .recordLockAcquired(lock, "leaky-lock");
         // Intentional: not releasing - simulates lock leak
         // In real code this would be: } finally { lock.unlock(); }
+    }
+
+    // ============= Shared Random Tests =============
+
+    @AsyncTest(threads = 4, detectSharedRandom = true, timeoutMs = 3000)
+    void testSharedRandomDetection() {
+        Random random = new Random();
+        AsyncTestContext.sharedRandomMonitor()
+            .registerRandom(random, "shared-random");
+        
+        // Multiple threads accessing same Random - not recommended
+        int value = random.nextInt();
+        AsyncTestContext.sharedRandomMonitor()
+            .recordRandomAccess(random, "shared-random", "nextInt");
+    }
+
+    @AsyncTest(threads = 4, detectSharedRandom = true, timeoutMs = 3000)
+    void testThreadLocalRandomUsage() {
+        // Proper way: use ThreadLocalRandom for concurrent access
+        int value = java.util.concurrent.ThreadLocalRandom.current().nextInt();
+        // ThreadLocalRandom doesn't need monitoring - it's thread-safe by design
     }
 }
