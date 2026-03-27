@@ -231,5 +231,11 @@ public @interface AsyncTest {
      * Detects stateful lambdas, non-thread-safe collectors, and side effects.
      */
     boolean detectParallelStreamIssues() default false;
+
+    /**
+     * Enable resource leak detection.
+     * Detects AutoCloseable resources not properly closed.
+     */
+    boolean detectResourceLeaks() default false;
 }
 

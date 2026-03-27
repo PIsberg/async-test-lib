@@ -16,6 +16,7 @@ import com.github.asynctest.diagnostics.BlockingQueueDetector;
 import com.github.asynctest.diagnostics.ConditionVariableDetector;
 import com.github.asynctest.diagnostics.SimpleDateFormatDetector;
 import com.github.asynctest.diagnostics.ParallelStreamDetector;
+import com.github.asynctest.diagnostics.ResourceLeakDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -74,6 +75,7 @@ class ConsumerAsyncTestUsageTest {
     private final ConditionVariableDetector conditionVariableDetector = new ConditionVariableDetector();
     private final SimpleDateFormatDetector simpleDateFormatDetector = new SimpleDateFormatDetector();
     private final ParallelStreamDetector parallelStreamDetector = new ParallelStreamDetector();
+    private final ResourceLeakDetector resourceLeakDetector = new ResourceLeakDetector();
 
     // ============================================
     // PHASE 1: Core Detectors
@@ -663,6 +665,28 @@ class ConsumerAsyncTestUsageTest {
         // Analyze and report (for demonstration, we just print the report)
         var report = parallelStreamDetector.analyze();
         // In real usage with stateful operations, you would assert: assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Phase 2.20: Resource leak detection — AutoCloseable resources not properly closed.
+     * Always use try-with-resources or close in finally block.
+     */
+    @AsyncTest(threads = 4, detectResourceLeaks = true, timeoutMs = 3000)
+    void testResourceLeakProperUsage() throws Exception {
+        java.io.StringReader reader = new java.io.StringReader("test data");
+        resourceLeakDetector.registerResource(reader, "proper-resource", "StringReader");
+        
+        try {
+            reader.read();
+            resourceLeakDetector.recordResourceOpened(reader, "proper-resource");
+        } finally {
+            reader.close();
+            resourceLeakDetector.recordResourceClosed(reader, "proper-resource");
+        }
+        
+        // Analyze and report (for demonstration, we just print the report)
+        var report = resourceLeakDetector.analyze();
+        // In real usage with a leak, you would assert: assertTrue(report.hasIssues())
     }
 
     // Helper class for constructor safety tests

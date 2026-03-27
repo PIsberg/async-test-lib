@@ -12,6 +12,8 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.text.SimpleDateFormat;
 import java.util.stream.Collectors;
+import java.io.StringReader;
+import java.io.BufferedReader;
 import java.util.Random;
 import java.util.List;
 import java.util.Arrays;
@@ -602,5 +604,36 @@ public class Phase2DetectorsTest {
             .recordStatelessOperation("safe-stream", "filter");
         AsyncTestContext.parallelStreamMonitor()
             .recordStatelessOperation("safe-stream", "reduce");
+    }
+
+    // ============= Resource Leak Tests =============
+
+    @AsyncTest(threads = 4, detectResourceLeaks = true, timeoutMs = 3000)
+    void testResourceLeakProperUsage() throws Exception {
+        java.io.StringReader reader = new java.io.StringReader("test data");
+        AsyncTestContext.resourceLeakMonitor()
+            .registerResource(reader, "proper-resource", "StringReader");
+        
+        try {
+            reader.read();
+            AsyncTestContext.resourceLeakMonitor()
+                .recordResourceOpened(reader, "proper-resource");
+        } finally {
+            reader.close();
+            AsyncTestContext.resourceLeakMonitor()
+                .recordResourceClosed(reader, "proper-resource");
+        }
+    }
+
+    @AsyncTest(threads = 2, detectResourceLeaks = true, timeoutMs = 3000)
+    void testResourceLeakScenario() throws Exception {
+        java.io.StringReader reader = new java.io.StringReader("test data");
+        AsyncTestContext.resourceLeakMonitor()
+            .registerResource(reader, "leaky-resource", "StringReader");
+        
+        AsyncTestContext.resourceLeakMonitor()
+            .recordResourceOpened(reader, "leaky-resource");
+        // Intentional: not closing - simulates resource leak
+        // In real code this would be: } finally { reader.close(); }
     }
 }

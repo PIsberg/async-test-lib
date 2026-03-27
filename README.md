@@ -19,7 +19,7 @@ Concurrency bugs are the most elusive and costly bugs in production systems. The
 
 
 ### Key Insight
-The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **34 specialized detectors** identify the exact problem:
+The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **35 specialized detectors** identify the exact problem:
 
 - **Deadlocks** with lock chain analysis showing which threads are waiting for which locks
 - **Memory visibility issues** by tracking field values across invocations
@@ -106,7 +106,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 
 ### Core Capabilities
 - ✅ **Race Condition Forcing**: CyclicBarrier synchronizes threads for maximum contention
-- ✅ **34 Problem Detectors**: Comprehensive coverage of concurrency issues
+- ✅ **35 Problem Detectors**: Comprehensive coverage of concurrency issues
 - ✅ **Virtual Threads Support**: Native support for Project Loom (Java 21+)
 - ✅ **Rich Diagnostics**: Detailed reports with actionable fix suggestions
 - ✅ **Zero Default Overhead**: Advanced features are opt-in
@@ -122,7 +122,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 4. **Livelock Detection** - Thread spinning and CPU starvation patterns
 5. **Virtual Thread Stress** - Massive thread counts (100k+) for pinning detection
 
-### Phase 2: Advanced Detectors (19)
+### Phase 2: Advanced Detectors (20)
 6. **False Sharing** - Cache line contention detection
 7. **Wakeup Issues** - Spurious wakeups and lost notifications
 8. **Constructor Safety** - Object initialization race detection
@@ -142,20 +142,21 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 22. **Condition Variables** - Lost signals, stuck waiters, missing signals
 23. **SimpleDateFormat** - Concurrent access to non-thread-safe date formatters
 24. **Parallel Streams** - Stateful lambdas, non-thread-safe collectors, side effects
+25. **Resource Leaks** - AutoCloseable resources not properly closed
 
 ### Phase 3: Correctness Monitors (5)
-25. **Race Conditions** - Cross-thread field access tracking
-26. **ThreadLocal Leaks** - Missing `remove()` cleanup detection
-27. **Busy Waiting** - Spin loop and tight polling detection
-28. **Atomicity Violations** - Check-then-act and TOCTOU validation
-29. **Interrupt Mishandling** - Ignored `InterruptedException` monitoring
+26. **Race Conditions** - Cross-thread field access tracking
+27. **ThreadLocal Leaks** - Missing `remove()` cleanup detection
+28. **Busy Waiting** - Spin loop and tight polling detection
+29. **Atomicity Violations** - Check-then-act and TOCTOU validation
+30. **Interrupt Mishandling** - Ignored `InterruptedException` monitoring
 
 ### Legacy Java Async Patterns (5)
-30. **Notify vs NotifyAll** - Multi-waiter signal misuse
-31. **Lazy Initialization** - Unsafe singleton and DCL validation
-32. **Future Blocking** - Bounded-pool starvation from `get()`/`join()`
-33. **Executor Self-Deadlock** - Sibling task waits on the same executor
-34. **Latch Misuse** - Missing or extra `countDown()` tracking
+31. **Notify vs NotifyAll** - Multi-waiter signal misuse
+32. **Lazy Initialization** - Unsafe singleton and DCL validation
+33. **Future Blocking** - Bounded-pool starvation from `get()`/`join()`
+34. **Executor Self-Deadlock** - Sibling task waits on the same executor
+35. **Latch Misuse** - Missing or extra `countDown()` tracking
 
 ## Quick Start
 
@@ -251,6 +252,7 @@ void stressWithVirtualThreads() {
 | `detectConditionVariableIssues` | boolean | false | Detect Condition variable lost signals and stuck waiters |
 | `detectSimpleDateFormatIssues` | boolean | false | Detect concurrent SimpleDateFormat access |
 | `detectParallelStreamIssues` | boolean | false | Detect stateful lambdas in parallel streams |
+| `detectResourceLeaks` | boolean | false | Detect AutoCloseable resources not closed |
 
 ## Phase 1: Core Features
 
@@ -863,6 +865,44 @@ PARALLEL STREAM ISSUES DETECTED:
   Stateful Lambdas:
     - counter-stream: stateful lambda detected (captures/modifies external state)
   Fix: use stateless lambdas, thread-safe collectors, avoid side effects
+```
+
+### 20. Resource Leak Detection
+**Problem**: AutoCloseable resources not properly closed, causing resource exhaustion
+```java
+class ResourceLeakTest {
+    @AsyncTest(threads = 4, detectResourceLeaks = true)
+    void testResourceUsage() throws IOException {
+        FileReader reader = new FileReader("data.txt");
+        AsyncTestContext.resourceLeakMonitor()
+            .registerResource(reader, "file-reader", "FileReader");
+        
+        try {
+            reader.read();
+            AsyncTestContext.resourceLeakMonitor()
+                .recordResourceOpened(reader, "file-reader");
+        } finally {
+            reader.close();
+            AsyncTestContext.resourceLeakMonitor()
+                .recordResourceClosed(reader, "file-reader");
+        }
+        
+        // Better: use try-with-resources
+        // try (FileReader reader = new FileReader("data.txt")) { ... }
+    }
+}
+```
+**Detects**:
+- Resource leaks (opened more times than closed)
+- Resources still open at test completion
+- Thread participation in resource open/close
+
+**Output Example**:
+```
+RESOURCE LEAK ISSUES DETECTED:
+  Resource Leaks:
+    - file-reader (FileReader): opened 4 times but closed only 3 times (1 potential leaks)
+  Fix: use try-with-resources or close in finally block
 ```
 
 ## Phase 3: Runtime Misuse Detectors

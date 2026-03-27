@@ -48,6 +48,7 @@ public final class AsyncTestConfig {
     public final boolean detectConditionVariableIssues;
     public final boolean detectSimpleDateFormatIssues;
     public final boolean detectParallelStreamIssues;
+    public final boolean detectResourceLeaks;
 
     private AsyncTestConfig(Builder b) {
         threads                        = b.threads;
@@ -82,6 +83,7 @@ public final class AsyncTestConfig {
         detectConditionVariableIssues  = b.detectConditionVariableIssues;
         detectSimpleDateFormatIssues   = b.detectSimpleDateFormatIssues;
         detectParallelStreamIssues     = b.detectParallelStreamIssues;
+        detectResourceLeaks            = b.detectResourceLeaks;
     }
 
     /** Builds a config from an {@link AsyncTest} annotation instance. */
@@ -119,6 +121,7 @@ public final class AsyncTestConfig {
             .detectConditionVariableIssues(ann.detectConditionVariableIssues())
             .detectSimpleDateFormatIssues(ann.detectSimpleDateFormatIssues())
             .detectParallelStreamIssues(ann.detectParallelStreamIssues())
+            .detectResourceLeaks(ann.detectResourceLeaks())
             .build();
     }
 
@@ -159,6 +162,7 @@ public final class AsyncTestConfig {
         private boolean detectConditionVariableIssues = false;
         private boolean detectSimpleDateFormatIssues = false;
         private boolean detectParallelStreamIssues = false;
+        private boolean detectResourceLeaks = false;
 
         public Builder threads(int v)                        { threads = v; return this; }
         public Builder invocations(int v)                    { invocations = v; return this; }
@@ -192,6 +196,7 @@ public final class AsyncTestConfig {
         public Builder detectConditionVariableIssues(boolean v) { detectConditionVariableIssues = v; return this; }
         public Builder detectSimpleDateFormatIssues(boolean v) { detectSimpleDateFormatIssues = v; return this; }
         public Builder detectParallelStreamIssues(boolean v) { detectParallelStreamIssues = v; return this; }
+        public Builder detectResourceLeaks(boolean v) { detectResourceLeaks = v; return this; }
 
         public AsyncTestConfig build() {
             return new AsyncTestConfig(this);
