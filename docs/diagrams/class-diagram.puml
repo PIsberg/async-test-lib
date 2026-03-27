@@ -1,0 +1,297 @@
+@startuml ClassDiagram
+title Async Test Library - Core Class Diagram
+
+set namespaceSeparator ::
+
+class AsyncTest <<Annotation>> {
+  +threads: int
+  +invocations: int
+  +useVirtualThreads: boolean
+  +timeoutMs: long
+  +detectAll: boolean
+  +enableBenchmarking: boolean
+  +benchmarkRegressionThreshold: double
+  +failOnBenchmarkRegression: boolean
+  +detectDeadlocks: boolean
+  +detectVisibility: boolean
+  +detectFalseSharing: boolean
+  +detectWakeupIssues: boolean
+  +detectABAProblem: boolean
+  +validateLockOrder: boolean
+  +monitorSemaphore: boolean
+  +detectCompletableFutureExceptions: boolean
+  +detectConcurrentModifications: boolean
+  +detectLockLeaks: boolean
+  +detectSharedRandom: boolean
+  +detectBlockingQueueIssues: boolean
+  +detectConditionVariableIssues: boolean
+  +detectSimpleDateFormatIssues: boolean
+  +detectParallelStreamIssues: boolean
+  +detectResourceLeaks: boolean
+  +detectRaceConditions: boolean
+  +detectThreadLocalLeaks: boolean
+  +detectBusyWaiting: boolean
+  +detectAtomicityViolations: boolean
+  +detectInterruptMishandling: boolean
+  +excludes: DetectorType[]
+}
+
+class AsyncTestConfig {
+  +threads: int
+  +invocations: int
+  +useVirtualThreads: boolean
+  +timeoutMs: long
+  +detectAll: boolean
+  +enableBenchmarking: boolean
+  +benchmarkRegressionThreshold: double
+  +failOnBenchmarkRegression: boolean
+  +detectDeadlocks: boolean
+  +detectVisibility: boolean
+  +detectLivelocks: boolean
+  +detectFalseSharing: boolean
+  +detectWakeupIssues: boolean
+  +validateConstructorSafety: boolean
+  +detectABAProblem: boolean
+  +validateLockOrder: boolean
+  +monitorSynchronizers: boolean
+  +monitorThreadPool: boolean
+  +detectMemoryOrderingViolations: boolean
+  +monitorAsyncPipeline: boolean
+  +monitorReadWriteLockFairness: boolean
+  +monitorSemaphore: boolean
+  +detectCompletableFutureExceptions: boolean
+  +detectConcurrentModifications: boolean
+  +detectLockLeaks: boolean
+  +detectSharedRandom: boolean
+  +detectBlockingQueueIssues: boolean
+  +detectConditionVariableIssues: boolean
+  +detectSimpleDateFormatIssues: boolean
+  +detectParallelStreamIssues: boolean
+  +detectResourceLeaks: boolean
+  +detectRaceConditions: boolean
+  +detectThreadLocalLeaks: boolean
+  +detectBusyWaiting: boolean
+  +detectAtomicityViolations: boolean
+  +detectInterruptMishandling: boolean
+  +static from(AsyncTest): AsyncTestConfig
+  +static builder(): Builder
+}
+
+class AsyncTestExtension {
+  -supportsTestTemplate(Context): boolean
+  -provideTestTemplateInvocationContexts(Context): Stream<TestTemplateInvocationContext>
+}
+
+class AsyncTestInvocationInterceptor {
+  -asyncTest: AsyncTest
+  +interceptTestTemplateMethod(Invocation, Context, ExtensionContext): void
+}
+
+class ConcurrencyRunner {
+  +static execute(InvocationContext, AsyncTestConfig): void
+  -runSingleInvocationRound(Context, int, Executor, LivelockDetector, AsyncTestContext, long, Method): void
+  -printPhase1Reports(...): void
+  -printPhase2Reports(AsyncTestContext): void
+  -findLifecycleMethods(Object, Class): List<Method>
+  -invokeLifecycleMethods(Object, List<Method>): void
+}
+
+class AsyncTestContext {
+  -CURRENT: ThreadLocal<AsyncTestContext>
+  -falseSharingDetector: FalseSharingDetector
+  -wakeupDetector: WakeupDetector
+  -constructorSafetyValidator: ConstructorSafetyValidator
+  -abaProblemDetector: ABAProblemDetector
+  -lockOrderValidator: LockOrderValidator
+  -synchronizerMonitor: SynchronizerMonitor
+  -threadPoolMonitor: ThreadPoolMonitor
+  -memoryOrderingMonitor: MemoryOrderingMonitor
+  -pipelineMonitor: PipelineMonitor
+  -readWriteLockMonitor: ReadWriteLockMonitor
+  -semaphoreMisuseDetector: SemaphoreMisuseDetector
+  -completableFutureExceptionDetector: CompletableFutureExceptionDetector
+  -concurrentModificationDetector: ConcurrentModificationDetector
+  -lockLeakDetector: LockLeakDetector
+  -sharedRandomDetector: SharedRandomDetector
+  -blockingQueueDetector: BlockingQueueDetector
+  -conditionVariableDetector: ConditionVariableDetector
+  -simpleDateFormatDetector: SimpleDateFormatDetector
+  -parallelStreamDetector: ParallelStreamDetector
+  -resourceLeakDetector: ResourceLeakDetector
+  +static install(AsyncTestContext): void
+  +static uninstall(): void
+  +static get(): AsyncTestContext
+  +static falseSharingDetector(): FalseSharingDetector
+  +static wakeupDetector(): WakeupDetector
+  +static constructorSafetyValidator(): ConstructorSafetyValidator
+  +static abaProblemDetector(): ABAProblemDetector
+  +static lockOrderValidator(): LockOrderValidator
+  +static synchronizerMonitor(): SynchronizerMonitor
+  +static threadPoolMonitor(): ThreadPoolMonitor
+  +static memoryOrderingMonitor(): MemoryOrderingMonitor
+  +static pipelineMonitor(): PipelineMonitor
+  +static readWriteLockMonitor(): ReadWriteLockMonitor
+  +static semaphoreMonitor(): SemaphoreMisuseDetector
+  +static completableFutureMonitor(): CompletableFutureExceptionDetector
+  +static concurrentModificationMonitor(): ConcurrentModificationDetector
+  +static lockLeakMonitor(): LockLeakDetector
+  +static sharedRandomMonitor(): SharedRandomDetector
+  +static blockingQueueMonitor(): BlockingQueueDetector
+  +static conditionMonitor(): ConditionVariableDetector
+  +static simpleDateFormatMonitor(): SimpleDateFormatDetector
+  +static parallelStreamMonitor(): ParallelStreamDetector
+  +static resourceLeakMonitor(): ResourceLeakDetector
+  +analyzeAll(): List<String>
+}
+
+class DetectorType <<Enumeration>> {
+  +DEADLOCKS
+  +VISIBILITY
+  +LIVELOCKS
+  +FALSE_SHARING
+  +WAKEUP_ISSUES
+  +CONSTRUCTOR_SAFETY
+  +ABA_PROBLEM
+  +LOCK_ORDER
+  +SYNCHRONIZERS
+  +THREAD_POOL
+  +MEMORY_ORDERING
+  +ASYNC_PIPELINE
+  +READ_WRITE_LOCK_FAIRNESS
+  +SEMAPHORE
+  +COMPLETABLE_FUTURE_EXCEPTIONS
+  +CONCURRENT_MODIFICATIONS
+  +LOCK_LEAKS
+  +SHARED_RANDOM
+  +BLOCKING_QUEUE
+  +CONDITION_VARIABLES
+  +SIMPLE_DATE_FORMAT
+  +PARALLEL_STREAMS
+  +RESOURCE_LEAKS
+  +RACE_CONDITIONS
+  +THREAD_LOCAL_LEAKS
+  +BUSY_WAITING
+  +ATOMICITY_VIOLATIONS
+  +INTERRUPT_MISHANDLING
+}
+
+class BeforeEachInvocation <<Annotation>> {
+}
+
+class AfterEachInvocation <<Annotation>> {
+}
+
+' Benchmark Classes
+package benchmark {
+  class BenchmarkRecorder {
+    -config: AsyncTestConfig
+    -testClass: String
+    -testMethod: String
+    -invocationTimesNanos: List<Long>
+    -startTimeNanos: long
+    -comparator: BenchmarkComparator
+    -benchmarkingEnabled: boolean
+    +isBenchmarkingEnabled(): boolean
+    +recordInvocationStart(): long
+    +recordInvocationEnd(long): void
+    +complete(): BenchmarkComparisonResult
+    +getTotalExecutionTimeNanos(): long
+    +getInvocationCount(): int
+  }
+  
+  class BenchmarkComparator {
+    -benchmarkStorePath: Path
+    -regressionThresholdPercent: double
+    -failOnRegression: boolean
+    +compare(BenchmarkResult): BenchmarkComparisonResult
+    +saveBaseline(BenchmarkResult): void
+    +loadBaseline(String): Optional<BenchmarkResult>
+    +clearAllBaselines(): void
+  }
+  
+  class BenchmarkResult {
+    -testClass: String
+    -testMethod: String
+    -timestamp: LocalDateTime
+    -threads: int
+    -invocations: int
+    -totalExecutionTimeNanos: long
+    -avgTimePerInvocationNanos: long
+    -minTimePerInvocationNanos: long
+    -maxTimePerInvocationNanos: long
+    -invocationTimesNanos: List<Long>
+    +getBenchmarkKey(): String
+    +getStandardDeviation(): double
+    +static formatTime(long): String
+    +static builder(): Builder
+  }
+  
+  class BenchmarkComparisonResult {
+    -currentResult: BenchmarkResult
+    -baselineResult: BenchmarkResult
+    -percentChange: double
+    -isRegression: boolean
+    -isImprovement: boolean
+    -isFirstRun: boolean
+    -thresholdPercent: double
+    +isWithinThreshold(): boolean
+    +static firstRun(BenchmarkResult): BenchmarkComparisonResult
+    +static builder(): Builder
+  }
+  
+  class BenchmarkRegressionException {
+    -comparisonResult: BenchmarkComparisonResult
+    +getComparisonResult(): BenchmarkComparisonResult
+  }
+}
+
+' Relationships
+AsyncTestExtension --|> TestTemplateInvocationContextProvider
+AsyncTestInvocationInterceptor --|> InvocationInterceptor
+AsyncTestInvocationInterceptor --> AsyncTest : "Uses"
+AsyncTestInvocationInterceptor --> ConcurrencyRunner : "Calls"
+ConcurrencyRunner --> AsyncTestConfig : "Uses"
+ConcurrencyRunner --> AsyncTestContext : "Creates & installs"
+AsyncTestConfig --> AsyncTest : "Built from"
+AsyncTestConfig --> DetectorType : "Uses excludes"
+AsyncTestContext --> FalseSharingDetector : "Contains"
+AsyncTestContext --> WakeupDetector : "Contains"
+AsyncTestContext --> ConstructorSafetyValidator : "Contains"
+AsyncTestContext --> ABAProblemDetector : "Contains"
+AsyncTestContext --> LockOrderValidator : "Contains"
+AsyncTestContext --> SynchronizerMonitor : "Contains"
+AsyncTestContext --> ThreadPoolMonitor : "Contains"
+AsyncTestContext --> MemoryOrderingMonitor : "Contains"
+AsyncTestContext --> PipelineMonitor : "Contains"
+AsyncTestContext --> ReadWriteLockMonitor : "Contains"
+AsyncTestContext --> SemaphoreMisuseDetector : "Contains"
+AsyncTestContext --> CompletableFutureExceptionDetector : "Contains"
+AsyncTestContext --> ConcurrentModificationDetector : "Contains"
+AsyncTestContext --> LockLeakDetector : "Contains"
+AsyncTestContext --> SharedRandomDetector : "Contains"
+AsyncTestContext --> BlockingQueueDetector : "Contains"
+AsyncTestContext --> ConditionVariableDetector : "Contains"
+AsyncTestContext --> SimpleDateFormatDetector : "Contains"
+AsyncTestContext --> ParallelStreamDetector : "Contains"
+AsyncTestContext --> ResourceLeakDetector : "Contains"
+
+' Benchmark relationships
+BenchmarkRecorder --> AsyncTestConfig : "Uses config"
+BenchmarkRecorder --> BenchmarkComparator : "Uses"
+BenchmarkRecorder --> BenchmarkComparisonResult : "Returns"
+BenchmarkComparator --> BenchmarkResult : "Compares"
+BenchmarkComparator --> BenchmarkRegressionException : "Throws"
+BenchmarkComparisonResult --> BenchmarkResult : "Contains current & baseline"
+
+note top of AsyncTest
+  **Main annotation**\nApplied to test methods\nConfigures all detectors\nand benchmarking
+end note
+
+note right of AsyncTestContext
+  **ThreadLocal context**\nProvides static accessors\nto Phase 2 detectors\nInstalled per worker thread
+end note
+
+note bottom of BenchmarkRecorder
+  **Benchmarking**\nRecords execution times\nCompares with baselines\nDetects regressions
+end note
+@enduml

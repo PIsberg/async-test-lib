@@ -1,0 +1,120 @@
+@startuml DetectorArchitecture
+title Detector Architecture - Common Pattern
+
+package "Phase 1: Core Detectors" {
+  abstract class "Base Detector" as Base1 {
+    +analyze*(): Report
+    #hasIssues*: boolean
+  }
+  
+  class DeadlockDetector
+  class VisibilityMonitor
+  class LivelockDetector
+  class RaceConditionDetector
+  class ThreadLocalMonitor
+  class BusyWaitDetector
+  class AtomicityValidator
+  class InterruptMonitor
+  class MemoryModelValidator
+}
+
+package "Phase 2: Advanced Detectors" {
+  abstract class "Base Detector" as Base2 {
+    +analyze*(): Report
+    #hasIssues*: boolean
+  }
+  
+  class FalseSharingDetector {
+    +recordFieldAccess(Object, String, Class): void
+    +analyzeFalseSharing(): FalseSharingReport
+  }
+  
+  class WakeupDetector
+  class ConstructorSafetyValidator
+  class ABAProblemDetector
+  class LockOrderValidator
+  class SynchronizerMonitor
+  class ThreadPoolMonitor
+  class MemoryOrderingMonitor
+  class PipelineMonitor
+  class ReadWriteLockMonitor
+  class SemaphoreMisuseDetector
+  class CompletableFutureExceptionDetector
+  class ConcurrentModificationDetector
+  class LockLeakDetector
+  class SharedRandomDetector
+  class BlockingQueueDetector
+  class ConditionVariableDetector
+  class SimpleDateFormatDetector
+  class ParallelStreamDetector
+  class ResourceLeakDetector
+}
+
+package "Phase 3: Runtime Validators" {
+  class NotifyAllValidator
+  class LazyInitValidator
+  class FutureBlockingDetector
+  class ExecutorDeadlockDetector
+  class LatchMisuseDetector
+}
+
+package "Report Classes" {
+  interface "Report Interface" as Report {
+    +hasIssues(): boolean
+    +toString(): String
+  }
+}
+
+Base1 <|-- DeadlockDetector
+Base1 <|-- VisibilityMonitor
+Base1 <|-- LivelockDetector
+Base1 <|-- RaceConditionDetector
+Base1 <|-- ThreadLocalMonitor
+Base1 <|-- BusyWaitDetector
+Base1 <|-- AtomicityValidator
+Base1 <|-- InterruptMonitor
+Base1 <|-- MemoryModelValidator
+
+Base2 <|-- FalseSharingDetector
+Base2 <|-- WakeupDetector
+Base2 <|-- ConstructorSafetyValidator
+Base2 <|-- ABAProblemDetector
+Base2 <|-- LockOrderValidator
+Base2 <|-- SynchronizerMonitor
+Base2 <|-- ThreadPoolMonitor
+Base2 <|-- MemoryOrderingMonitor
+Base2 <|-- PipelineMonitor
+Base2 <|-- ReadWriteLockMonitor
+Base2 <|-- SemaphoreMisuseDetector
+Base2 <|-- CompletableFutureExceptionDetector
+Base2 <|-- ConcurrentModificationDetector
+Base2 <|-- LockLeakDetector
+Base2 <|-- SharedRandomDetector
+Base2 <|-- BlockingQueueDetector
+Base2 <|-- ConditionVariableDetector
+Base2 <|-- SimpleDateFormatDetector
+Base2 <|-- ParallelStreamDetector
+Base2 <|-- ResourceLeakDetector
+
+note right of Base1
+  **Phase 1 Detectors**
+  Run automatically on timeout\n
+  Detect core concurrency issues:\n
+  - Deadlocks\n  - Visibility\n  - Livelocks\n  - Race conditions
+end note
+
+note right of Base2
+  **Phase 2 Detectors**
+  Opt-in via annotation flags\n
+  Record events during test execution\n
+  Analyze at completion:\n
+  - False sharing\n  - ABA problems\n  - Lock ordering\n  - etc.
+end note
+
+note right
+  **Phase 3 Validators**
+  Manual validator pattern\n
+  For legacy Java async patterns:\n
+  - notify/notifyAll\n  - Lazy initialization\n  - Future blocking\n  - Executor deadlock\n  - Latch misuse
+end note
+@enduml

@@ -1,0 +1,43 @@
+@startuml SystemContext
+title Async Test Library - System Context Diagram
+
+rectangle "JUnit 5 Platform" as JUnit5 {
+  [JUnit Jupiter API] as JupiterAPI
+  [JUnit Platform Engine] as Platform
+}
+
+rectangle "Async Test Library" as AsyncTest {
+  [AsyncTest Annotation] as Annotation
+  [AsyncTest Extension] as Extension
+  [Concurrency Runner] as Runner
+  [Detectors (35+)] as Detectors
+  [Benchmark Module] as Benchmark
+}
+
+rectangle "User Test Code" as UserTest {
+  [Test Methods] as TestMethods
+  [Test Assertions] as Assertions
+}
+
+database "Benchmark Storage" as BenchmarkStore {
+  [Baseline Data] as Baseline
+}
+
+JupiterAPI --> Extension : "Discovers @AsyncTest"
+Extension --> Runner : "Intercepts test execution"
+Runner --> Detectors : "Activates detectors"
+Runner --> Benchmark : "Records execution times"
+TestMethods --> Annotation : "Annotated with @AsyncTest"
+Runner --> TestMethods : "Executes concurrently"
+Detectors --> TestMethods : "Monitors for issues"
+Benchmark --> BenchmarkStore : "Stores/compares baselines"
+Runner --> Assertions : "Reports failures"
+
+note right of AsyncTest
+  **Core Capabilities:**
+  - Forces thread collisions
+  - 35+ concurrency detectors
+  - Performance benchmarking
+  - Virtual thread support
+end note
+@enduml

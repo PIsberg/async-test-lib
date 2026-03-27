@@ -1,0 +1,86 @@
+@startuml SequenceExecution
+title Async Test - N×M Execution Sequence
+
+participant "JUnit 5\nPlatform" as JUnit
+participant "AsyncTest\nExtension" as Ext
+participant "Concurrency\nRunner" as Runner
+participant "Executor\nService" as Executor
+participant "Thread 1" as T1
+participant "Thread 2" as T2
+participant "Thread M" as TM
+participant "AsyncTest\nContext" as Context
+participant "Detectors" as Detectors
+participant "Benchmark\nRecorder" as Benchmark
+
+JUnit -> Ext : Test method detected\n(@AsyncTest)
+Ext -> Runner : ConcurrencyRunner.execute()
+
+activate Runner
+Runner -> Runner : Parse config\n(threads=M, invocations=N)
+Runner -> Runner : Create detectors\n(Phase 1, 2, 3)
+Runner -> Benchmark : new BenchmarkRecorder()
+activate Benchmark
+
+loop Invocation Round (1 to N)
+  note over Runner: Barrier setup for\nthis invocation
+  Runner -> Executor : Submit M tasks
+  
+  par Thread Execution (M concurrent threads)
+    Executor -> T1 : Run test
+    Executor -> T2 : Run test
+    Executor -> TM : Run test
+    
+    T1 -> Context : Install context\n(ThreadLocal)
+    T2 -> Context : Install context\n(ThreadLocal)
+    TM -> Context : Install context\n(ThreadLocal)
+    
+    T1 -> T1 : Wait at CyclicBarrier
+    T2 -> T2 : Wait at CyclicBarrier
+    TM -> TM : Wait at CyclicBarrier
+    
+    note over T1, TM: All threads synchronized\nat barrier
+    
+    T1 -> T1 : Execute test body
+    T2 -> T2 : Execute test body
+    TM -> TM : Execute test body
+    
+    T1 -> Detectors : Record events\n(lock, field access, etc)
+    T2 -> Detectors : Record events
+    TM -> Detectors : Record events
+    
+    T1 -> Context : Uninstall context
+    T2 -> Context : Uninstall context
+    TM -> Context : Uninstall context
+  end
+  
+  Runner -> Benchmark : Record invocation\ntime
+end
+
+Runner -> Benchmark : Complete and compare
+Benchmark -> Benchmark : Calculate:\n- avg, min, max\n- standard deviation\n- % change vs baseline
+alt Has baseline
+  Benchmark -> Benchmark : Compare with baseline
+  alt Regression detected
+    Benchmark --> Runner : BenchmarkRegressionException\n(if failOnRegression=true)
+  else Within threshold
+    Benchmark --> Runner : Comparison result\n(stable/improvement)
+  end
+else First run
+  Benchmark --> Runner : Baseline created
+end
+
+Runner -> Detectors : analyzeAll()
+activate Detectors
+Detectors --> Runner : Reports\n(if issues detected)
+deactivate Detectors
+
+Runner --> Ext : Complete or throw error
+deactivate Runner
+
+note over Benchmark
+  **Benchmark Output:**
+  - First run: "Baseline created"
+  - Subsequent: "STABLE/REGRESSION/\nIMPROVEMENT"
+  - Detailed report on regression
+end note
+@enduml

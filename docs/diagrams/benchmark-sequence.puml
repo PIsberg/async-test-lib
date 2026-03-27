@@ -1,0 +1,78 @@
+@startuml BenchmarkSequence
+title Benchmarking Flow - Sequence Diagram
+
+participant "Test\nMethod" as Test
+participant "Concurrency\nRunner" as Runner
+participant "Benchmark\nRecorder" as Recorder
+participant "Benchmark\nComparator" as Comparator
+participant "Baseline\nStorage" as Storage
+participant "Console" as Console
+
+note over Test, Storage: **First Run (Baseline Creation)**
+
+Runner -> Recorder : new BenchmarkRecorder(config)
+activate Recorder
+
+loop For each invocation
+  Recorder -> Recorder : recordInvocationStart()
+  Test -> Test : Execute test\n(M threads concurrently)
+  Recorder -> Recorder : recordInvocationEnd(start)
+end
+
+Runner -> Recorder : complete()
+Recorder -> Recorder : Calculate statistics\n(avg, min, max, stddev)
+Recorder -> Comparator : compare(currentResult)
+activate Comparator
+Comparator -> Storage : loadBaseline(key)
+Storage --> Comparator : null (no baseline)
+Comparator --> Recorder : isFirstRun = true
+Recorder -> Storage : saveBaseline(currentResult)
+Recorder --> Console : "[BENCHMARK] Baseline created\navg=X.XX ms"
+deactivate Comparator
+deactivate Recorder
+
+note over Test, Storage: **Subsequent Run (Comparison)**
+
+Runner -> Recorder : new BenchmarkRecorder(config)
+activate Recorder
+
+loop For each invocation
+  Recorder -> Recorder : recordInvocationStart()
+  Test -> Test : Execute test\n(M threads concurrently)
+  Recorder -> Recorder : recordInvocationEnd(start)
+end
+
+Runner -> Recorder : complete()
+Recorder -> Recorder : Calculate statistics
+Recorder -> Comparator : compare(currentResult)
+activate Comparator
+Comparator -> Storage : loadBaseline(key)
+Storage --> Comparator : baselineResult
+Comparator -> Comparator : Calculate % change
+alt Change > threshold (e.g., +25%)
+  Comparator -> Comparator : isRegression = true
+  alt failOnRegression = true
+    Comparator --> Recorder : BenchmarkRegressionException
+    Recorder --> Runner : Throw exception
+    Runner --> Console : Test FAILED
+  else failOnRegression = false
+    Comparator --> Recorder : Comparison result
+    Recorder --> Console : "⚠️ REGRESSION DETECTED"\n+ detailed report
+  end
+else Change < -threshold (e.g., -15%)
+  Comparator --> Recorder : isImprovement = true
+  Recorder --> Console : "✓ IMPROVEMENT"\nchange: -X.XX%
+else Within threshold
+  Comparator --> Recorder : isWithinThreshold = true
+  Recorder --> Console : "✓ STABLE"\nchange: +X.XX%
+end
+deactivate Comparator
+deactivate Recorder
+
+note right of Recorder
+  **System Properties:**
+  -Dbenchmark.update=true\n  → Force baseline update
+  -Dbenchmark.store.path=<path>\n  → Custom storage location
+  -Dbenchmark.regression.threshold=0.X\n  → Override threshold
+end note
+@enduml

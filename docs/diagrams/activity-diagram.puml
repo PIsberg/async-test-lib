@@ -1,0 +1,122 @@
+@startuml ActivityDiagram
+title Async Test Execution - Activity Diagram
+
+start
+:JUnit 5 discovers\n@AsyncTest method;
+
+partition "Extension Layer" {
+  :AsyncTestExtension.supportsTestTemplate();
+  if (has @AsyncTest?) then (yes)
+    :Provide TestTemplateInvocationContext;
+    :Register AsyncTestInvocationInterceptor;
+  else (no)
+    :Skip (standard JUnit execution);
+    stop
+  endif
+}
+
+partition "Interceptor" {
+  :interceptTestTemplateMethod();
+  :invocation.skip();
+  :AsyncTestConfig.from(annotation);
+}
+
+partition "Runner Setup" {
+  :Create Phase 1 detectors;
+  :Create Phase 2 detectors;
+  :Create Phase 3 detectors;
+  
+  if (enableBenchmarking?) then (yes)
+    :Create BenchmarkRecorder;
+  else (no)
+  endif
+  
+  :Create AsyncTestContext;
+  :Determine thread count\n(from stress mode or threads param);
+  :Create ExecutorService\n(virtual or platform threads);
+}
+
+partition "Execution Loop" {
+  :invocationIndex = 0;
+  repeat :invocationIndex++;
+  :Record benchmark start time;
+  :Invoke @BeforeEachInvocation methods;
+  
+  fork
+    :Thread 1: await barrier;
+    :Thread 2: await barrier;
+    :Thread M: await barrier;
+  end fork
+  
+  :All threads released\nsimultaneously;
+  
+  fork
+    :Thread 1: execute test body;
+    :Thread 2: execute test body;
+    :Thread M: execute test body;
+  end fork
+  
+  :Record detectors events\n(lock ops, field access, etc);
+  :Record benchmark end time;
+  :Invoke @AfterEachInvocation methods;
+  
+  repeat while (invocationIndex < invocations) is (yes) then (no)
+}
+
+partition "Benchmarking" {
+  if (benchmarking enabled?) then (yes)
+    :BenchmarkRecorder.complete();
+    :Calculate statistics\n(avg, min, max, stddev);
+    :Comparator.compare(currentResult);
+    
+    if (has baseline?) then (yes)
+      :Calculate % change;
+      
+      if (change > threshold?) then (yes - Regression)
+        :Print regression report;
+        
+        if (failOnRegression?) then (yes)
+          :Throw BenchmarkRegressionException;
+        else (no)
+          :Log warning only;
+        endif
+      elseif (change < -threshold?) then (yes - Improvement)
+        :Print improvement message;
+      else (within threshold)
+        :Print stable message;
+      endif
+    else (no - First run)
+      :Save baseline;
+      :Print "Baseline created";
+    endif
+  endif
+}
+
+partition "Analysis" {
+  :Call analyzeAll() on Phase 2 detectors;
+  
+  if (any issues detected?) then (yes)
+    :Print detector reports;
+  endif
+  
+  :Shutdown ExecutorService;
+}
+
+if (test failed?) then (yes)
+  :Print Phase 1 reports\n(visibility, livelock, etc);
+  :Print Phase 2 reports;
+  :Throw AssertionError;
+else (no)
+  :Test completed successfully;
+endif
+
+stop
+
+note right
+  **CyclicBarrier ensures**
+  All threads start test body
+  at exactly the same time,
+  maximizing thread contention
+  and race condition probability
+end note
+@enduml

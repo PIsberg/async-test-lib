@@ -1,0 +1,110 @@
+@startuml DeploymentDiagram
+title Async Test Library - Deployment Diagram
+
+artifact "async-test-1.1.0.jar" as Jar {
+  folder "com/github/asynctest" {
+    file "AsyncTest.class" as Annotation
+    file "AsyncTestExtension.class" as Ext
+    file "AsyncTestInvocationInterceptor.class" as Interceptor
+    file "ConcurrencyRunner.class" as Runner
+    file "AsyncTestContext.class" as Context
+    file "DetectorType.class" as DType
+  }
+  
+  folder "com/github/asynctest/runner" {
+    file "ConcurrencyRunner.class" as Runner2
+  }
+  
+  folder "com/github/asynctest/diagnostics" {
+    file "DeadlockDetector.class" as Deadlock
+    file "FalseSharingDetector.class" as FalseSharing
+    file "VisibilityMonitor.class" as Visibility
+    file "RaceConditionDetector.class" as Race
+    file "LivelockDetector.class" as Livelock
+    file "WakeupDetector.class" as Wakeup
+    file "ABAProblemDetector.class" as ABA
+    file "LockOrderValidator.class" as LockOrder
+    file "ConstructorSafetyValidator.class" as Constructor
+    file "SynchronizerMonitor.class" as Sync
+    file "ThreadPoolMonitor.class" as ThreadPool
+    file "MemoryOrderingMonitor.class" as MemOrder
+    file "PipelineMonitor.class" as Pipeline
+    file "ReadWriteLockMonitor.class" as RWLock
+    file "SemaphoreMisuseDetector.class" as Semaphore
+    file "CompletableFutureExceptionDetector.class" as CF
+    file "ConcurrentModificationDetector.class" as ConcurrentMod
+    file "LockLeakDetector.class" as LockLeak
+    file "SharedRandomDetector.class" as SharedRandom
+    file "BlockingQueueDetector.class" as BlockingQueue
+    file "ConditionVariableDetector.class" as Condition
+    file "SimpleDateFormatDetector.class" as SimpleDateFormat
+    file "ParallelStreamDetector.class" as ParallelStream
+    file "ResourceLeakDetector.class" as ResourceLeak
+  }
+  
+  folder "com/github/asynctest/benchmark" {
+    file "BenchmarkRecorder.class" as BenchRecorder
+    file "BenchmarkComparator.class" as BenchComparator
+    file "BenchmarkResult.class" as BenchResult
+    file "BenchmarkComparisonResult.class" as BenchCompare
+    file "BenchmarkRegressionException.class" as BenchException
+  }
+  
+  folder "META-INF/services" {
+    file "org.junit.jupiter.api.extension.Extension" as Service
+  }
+}
+
+artifact "async-test-1.1.0-sources.jar" as Sources {
+  folder "src/main/java" {
+    file "*.java (all source files)" as JavaSources
+  }
+}
+
+artifact "async-test-1.1.0-javadoc.jar" as Javadoc {
+  folder "api/" {
+    file "*.html (API documentation)" as HtmlDocs
+  }
+}
+
+database "Maven Repository" as Maven {
+  folder "com/github/asynctest/async-test/1.1.0/" {
+    file "async-test-1.1.0.jar"
+    file "async-test-1.1.0-sources.jar"
+    file "async-test-1.1.0-javadoc.jar"
+    file "async-test-1.1.0.pom"
+  }
+}
+
+folder "User Project" as UserProject {
+  folder "src/test/java" {
+    file "MyConcurrentTest.java" as UserTest
+  }
+  
+  folder "target/benchmark-data/" {
+    file "baseline-store.dat" as Baseline
+  }
+}
+
+Jar --> Maven : "Deployed to"
+Sources --> Maven : "Deployed to"
+Javadoc --> Maven : "Deployed to"
+
+UserTest ..> Annotation : "@AsyncTest"
+UserTest ..> Runner : "Executed by"
+UserTest ..> BenchRecorder : "Records times"
+BenchRecorder --> Baseline : "Stores/reads"
+
+note bottom of UserProject
+  **User's Test Project**
+  Adds async-test as test dependency\n
+  Runs tests with Maven/Gradle\n
+  Benchmark data stored locally
+end note
+
+note right of Service
+  **Service Provider**
+  Registers AsyncTestExtension\n
+  Auto-discovered by JUnit 5
+end note
+@enduml

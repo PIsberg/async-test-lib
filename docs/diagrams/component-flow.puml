@@ -1,0 +1,80 @@
+@startuml ComponentFlow
+title Async Test - Extension & Runner Flow
+
+participant "JUnit Platform" as JUnit
+participant "AsyncTestExtension" as Ext
+participant "AsyncTestInvocationInterceptor" as Interceptor
+participant "ConcurrencyRunner" as Runner
+participant "AsyncTestContext" as Context
+participant "Test Method" as Test
+participant "Detectors" as Detectors
+participant "BenchmarkRecorder" as Benchmark
+
+JUnit -> Ext : supportsTestTemplate()
+activate Ext
+Ext --> JUnit : true (if @AsyncTest)
+deactivate Ext
+
+JUnit -> Ext : provideTestTemplateInvocationContexts()
+activate Ext
+Ext --> JUnit : TestTemplateInvocationContext
+note right: Contains AsyncTestInvocationInterceptor
+deactivate Ext
+
+JUnit -> Interceptor : interceptTestTemplateMethod()
+activate Interceptor
+Interceptor -> Interceptor : invocation.skip()
+Interceptor -> Runner : execute(invocationContext, config)
+activate Runner
+
+Runner -> Runner : Create detectors\n(Phase 1, 2, 3)
+Runner -> Context : new AsyncTestContext(config)
+activate Context
+Runner --> Context : Install per thread
+
+loop For each invocation (N times)
+  Runner -> Benchmark : recordInvocationStart()
+  activate Benchmark
+  Benchmark --> Runner : start time
+  
+  Runner -> Runner : Run M threads concurrently
+  loop For each thread (M threads)
+    Runner -> Context : AsyncTestContext.install()
+    Context -> Test : testMethod.invoke()
+    activate Test
+    Test -> Detectors : Record events\n(e.g., lock acquired)
+    Test --> Context : Complete
+    deactivate Test
+    Runner -> Context : AsyncTestContext.uninstall()
+  end
+  
+  Runner -> Benchmark : recordInvocationEnd(start time)
+  activate Benchmark
+  Benchmark --> Runner : Store elapsed time
+end
+
+Runner -> Benchmark : complete()
+activate Benchmark
+Benchmark -> Benchmark : Calculate statistics
+Benchmark --> Runner : Comparison result
+deactivate Benchmark
+
+Runner -> Detectors : analyzeAll()
+activate Detectors
+Detectors --> Runner : Reports (if issues)
+deactivate Detectors
+
+Runner --> Interceptor : Complete or throw
+deactivate Runner
+Interceptor --> JUnit : Test complete
+deactivate Interceptor
+
+note over Runner, Benchmark
+  **Benchmarking Flow:**
+  1. Record start time per invocation
+  2. Record end time per invocation
+  3. Calculate avg/min/max/stddev
+  4. Compare with baseline
+  5. Report regression if > threshold
+end note
+@enduml
