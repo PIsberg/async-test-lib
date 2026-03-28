@@ -1509,3 +1509,6 @@ Inspired by:
 - Java Memory Model documentation
 - Project Loom (Virtual Threads)
 - JUnit 5 Extension Framework
+
+
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/PIsberg/async-test-lib/badge)](https://scorecard.dev/viewer/?uri=github.com/PIsberg/async-test-lib/)
