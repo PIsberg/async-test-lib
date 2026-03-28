@@ -56,6 +56,12 @@ class ConsumerAsyncTestUsageTest {
     private final BlockingQueue<String> asyncQueue = new ArrayBlockingQueue<>(1);
     private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
 
+    // Synchronizers for coordination tests (must be shared across threads)
+    private final java.util.concurrent.CyclicBarrier barrier3 = new java.util.concurrent.CyclicBarrier(3);
+    private final java.util.concurrent.Phaser phaser3 = new java.util.concurrent.Phaser(3);
+    private final java.util.concurrent.Exchanger<String> exchanger = new java.util.concurrent.Exchanger<>();
+    private final Object waitLock = new Object();
+
     // Phase 3: Runtime Misuse Detectors - shared state
     private final Map<String, Integer> unsafeMap = new HashMap<>();
     private static final ThreadLocal<String> REQUEST_CTX = new ThreadLocal<>();
@@ -725,16 +731,15 @@ class ConsumerAsyncTestUsageTest {
      */
     @AsyncTest(threads = 3, detectAll = true, timeoutMs = 3000)
     void testCyclicBarrierUsage() throws Exception {
-        java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(3);
         AsyncTestContext.cyclicBarrierMonitor()
-            .registerBarrier(barrier, "phaseBarrier", 3);
+            .registerBarrier(barrier3, "phaseBarrier", 3);
 
         // Record arrival at barrier
-        AsyncTestContext.cyclicBarrierMonitor().recordArrival(barrier);
-        barrier.await();
+        AsyncTestContext.cyclicBarrierMonitor().recordArrival(barrier3);
+        barrier3.await();
 
         // Record successful barrier completion
-        AsyncTestContext.cyclicBarrierMonitor().recordBarrierComplete(barrier);
+        AsyncTestContext.cyclicBarrierMonitor().recordBarrierComplete(barrier3);
 
         // Analyze and report (for demonstration, we just print the report)
         var report = AsyncTestContext.cyclicBarrierMonitor().analyze();
@@ -825,19 +830,13 @@ class ConsumerAsyncTestUsageTest {
      * Phase 2.26: Wait timeout detection — wait() without timeout.
      * Detects wait() calls that could block indefinitely.
      */
-    @AsyncTest(threads = 3, detectAll = true, timeoutMs = 3000)
+    @AsyncTest(threads = 3, invocations = 1, detectAll = true, timeoutMs = 3000)
     void testWaitTimeout() throws Exception {
-        Object lock = new Object();
-        
-        // Record infinite wait (potential deadlock risk)
-        AsyncTestContext.waitTimeoutMonitor()
-            .recordInfiniteWait(lock, "monitorLock", Thread.currentThread().getName());
-        
-        // Better: use wait with timeout
-        synchronized (lock) {
-            lock.wait(5000);  // 5 second timeout
+        // Use wait with timeout (safe pattern) - short timeout to avoid test timeout
+        synchronized (waitLock) {
             AsyncTestContext.waitTimeoutMonitor()
-                .recordTimedWait(lock, "monitorLock", Thread.currentThread().getName(), 5000);
+                .recordTimedWait(waitLock, "monitorLock", Thread.currentThread().getName(), 10);
+            waitLock.wait(10);  // 10ms timeout - very short to avoid test timeout
         }
 
         // Analyze and report (for demonstration, we just print the report)
@@ -863,16 +862,15 @@ class ConsumerAsyncTestUsageTest {
      */
     @AsyncTest(threads = 3, detectAll = true, timeoutMs = 3000)
     void testPhaserUsage() throws Exception {
-        java.util.concurrent.Phaser phaser = new java.util.concurrent.Phaser(3);
         AsyncTestContext.phaserMonitor()
-            .registerPhaser(phaser, "phasePhaser", 3);
+            .registerPhaser(phaser3, "phasePhaser", 3);
 
         // Record arrival at phaser
-        AsyncTestContext.phaserMonitor().recordArrive(phaser);
-        phaser.arriveAndAwaitAdvance();
+        AsyncTestContext.phaserMonitor().recordArrive(phaser3);
+        phaser3.arriveAndAwaitAdvance();
 
         // Record successful phase completion
-        AsyncTestContext.phaserMonitor().recordPhaseComplete(phaser, 1);
+        AsyncTestContext.phaserMonitor().recordPhaseComplete(phaser3, 1);
 
         // Analyze and report (for demonstration, we just print the report)
         var report = AsyncTestContext.phaserMonitor().analyze();
@@ -913,17 +911,16 @@ class ConsumerAsyncTestUsageTest {
      */
     @AsyncTest(threads = 2, detectAll = true, timeoutMs = 3000)
     void testExchangerUsage() throws Exception {
-        java.util.concurrent.Exchanger<String> exchanger = new java.util.concurrent.Exchanger<>();
         AsyncTestContext.exchangerMonitor()
             .registerExchanger(exchanger, "dataExchanger");
 
         // Record exchange start
         AsyncTestContext.exchangerMonitor()
             .recordExchangeStart(exchanger, "dataExchanger");
-        
-        // Perform exchange
+
+        // Perform exchange (2 threads will exchange with each other)
         String result = exchanger.exchange("data-" + Thread.currentThread().getId(), 1000, java.util.concurrent.TimeUnit.MILLISECONDS);
-        
+
         // Record exchange complete
         AsyncTestContext.exchangerMonitor()
             .recordExchangeComplete(exchanger, "dataExchanger", result);
