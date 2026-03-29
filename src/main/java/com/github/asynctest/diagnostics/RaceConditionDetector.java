@@ -37,6 +37,7 @@ public class RaceConditionDetector {
     }
 
     private final Map<Integer, ObjectFieldState> objects = new ConcurrentHashMap<>();
+    private final IssueDeduplicator<RaceConditionEvent> deduplicator = new IssueDeduplicator<>();
     private volatile boolean enabled = true;
 
     public void recordFieldRead(Object object, String fieldName) {
@@ -93,6 +94,19 @@ public class RaceConditionDetector {
                 }
 
                 String fieldRef = String.format("%s@%x.%s", state.className, state.objectId, fieldName);
+                
+                // Record events for deduplication
+                for (FieldAccess access : accesses) {
+                    if (access.write) {
+                        deduplicator.record(new RaceConditionEvent(
+                            "RaceCondition",
+                            fieldRef,
+                            -1, // Line number unknown in this detector
+                            access.threadId
+                        ));
+                    }
+                }
+                
                 if (writeCount > 1) {
                     report.potentialRaces.add(String.format(
                         "%s: %d writes observed across %d threads",
@@ -129,6 +143,7 @@ public class RaceConditionDetector {
 
     public void reset() {
         objects.clear();
+        deduplicator.clear();
     }
 
     public void disable() {
@@ -137,6 +152,57 @@ public class RaceConditionDetector {
 
     public void enable() {
         enabled = true;
+    }
+
+    /**
+     * Get the deduplicator for this detector.
+     * @return the issue deduplicator
+     */
+    public IssueDeduplicator<RaceConditionEvent> getDeduplicator() {
+        return deduplicator;
+    }
+
+    /**
+     * Race condition event for deduplication.
+     */
+    public static class RaceConditionEvent implements DeduplicatableEvent {
+        private final String type;
+        private final String location;
+        private final int lineNumber;
+        private final long threadId;
+
+        public RaceConditionEvent(String type, String location, int lineNumber, long threadId) {
+            this.type = type;
+            this.location = location;
+            this.lineNumber = lineNumber;
+            this.threadId = threadId;
+        }
+
+        @Override
+        public String getFingerprint() {
+            // Same location = same issue (regardless of thread)
+            return type + ":" + location;
+        }
+
+        @Override
+        public long getThreadId() {
+            return threadId;
+        }
+
+        @Override
+        public String getLocation() {
+            return location;
+        }
+
+        @Override
+        public int getLineNumber() {
+            return lineNumber;
+        }
+
+        @Override
+        public String getType() {
+            return type;
+        }
     }
 
     public static class RaceConditionReport {
@@ -153,20 +219,30 @@ public class RaceConditionDetector {
                 return "No race conditions detected.";
             }
 
-            StringBuilder sb = new StringBuilder("POTENTIAL RACE CONDITIONS DETECTED:\n");
+            StringBuilder sb = new StringBuilder();
+            sb.append(IssueSeverity.HIGH.format())
+              .append(": Potential race conditions detected\n\n");
+
+            if (!potentialRaces.isEmpty()) {
+                sb.append("Concurrent write hotspots:\n");
+                for (String race : potentialRaces) {
+                    sb.append("  - ").append(race).append('\n');
+                }
+            }
+
             if (!unsafeAccesses.isEmpty()) {
                 sb.append("\nUnsynchronized access sequences:\n");
                 for (String access : unsafeAccesses) {
                     sb.append("  - ").append(access).append('\n');
                 }
             }
-            if (!potentialRaces.isEmpty()) {
-                sb.append("\nConcurrent write hotspots:\n");
-                for (String race : potentialRaces) {
-                    sb.append("  - ").append(race).append('\n');
-                }
-            }
-            sb.append("\nFix: guard shared state with synchronization or atomic types");
+
+            // Add deduplication summary
+            sb.append("\n").append("=".repeat(60));
+            sb.append("\n").append(LearningContent.getRaceConditionExplanation());
+            sb.append(AutoFix.getRaceConditionFix());
+            sb.append("=".repeat(60));
+
             return sb.toString();
         }
     }
