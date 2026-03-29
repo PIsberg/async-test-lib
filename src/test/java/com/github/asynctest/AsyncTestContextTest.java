@@ -3,6 +3,8 @@ package com.github.asynctest;
 import com.github.asynctest.diagnostics.*;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -148,5 +150,93 @@ class AsyncTestContextTest {
             assertTrue(sameInstanceAcrossRounds.get(),
                 "Phase 2 detectors must be the same instance across all threads and invocation rounds");
         }
+    }
+
+    // ---- analyzeAll() returns empty list when no detectors are enabled ----
+
+    @Test
+    void analyzeAllReturnsEmptyWhenNoDetectorsEnabled() {
+        AsyncTestConfig cfg = AsyncTestConfig.builder().build(); // everything disabled except deadlocks (Phase 1)
+        AsyncTestContext ctx = new AsyncTestContext(cfg);
+        List<String> reports = ctx.analyzeAll();
+        assertNotNull(reports, "analyzeAll must never return null");
+        assertTrue(reports.isEmpty(),
+            "No Phase 2 detectors enabled => analyzeAll must return empty list");
+    }
+
+    // ---- analyzeAll() collects reports from enabled detectors ----
+
+    @Test
+    void analyzeAllCollectsReportsFromEnabledDetectors() {
+        // Enable LockLeak detector and simulate an unreleased lock so the report has issues.
+        // LockLeakDetector.hasIssues() is true when any lock was acquired but never released.
+        AsyncTestConfig cfg = AsyncTestConfig.builder().detectLockLeaks(true).build();
+        AsyncTestContext ctx = new AsyncTestContext(cfg);
+
+        java.util.concurrent.locks.ReentrantLock lock = new java.util.concurrent.locks.ReentrantLock();
+        ctx.lockLeakDetector.registerLock(lock, "leaky");
+        lock.lock();
+        ctx.lockLeakDetector.recordLockAcquired(lock, "leaky");
+        // Intentionally NOT releasing — simulates a lock leak
+
+        List<String> reports = ctx.analyzeAll();
+        assertFalse(reports.isEmpty(),
+            "LockLeak detector with unreleased lock must produce at least one report");
+    }
+
+    // ---- install / uninstall isolates context per thread ----
+
+    @Test
+    void installAndUninstallIsolateContextPerThread() throws InterruptedException {
+        AsyncTestConfig cfg = AsyncTestConfig.builder().build();
+        AsyncTestContext ctxA = new AsyncTestContext(cfg);
+        AsyncTestContext ctxB = new AsyncTestContext(cfg);
+
+        AtomicReference<AsyncTestContext> seenInThread = new AtomicReference<>();
+        CountDownLatch latch = new CountDownLatch(1);
+
+        // Main thread installs ctxA
+        AsyncTestContext.install(ctxA);
+        try {
+            // Spawn a thread that installs ctxB and records what it sees
+            Thread t = new Thread(() -> {
+                AsyncTestContext.install(ctxB);
+                seenInThread.set(AsyncTestContext.get());
+                AsyncTestContext.uninstall();
+                latch.countDown();
+            });
+            t.start();
+            latch.await();
+
+            // Main thread must still see ctxA (ThreadLocal isolation)
+            assertSame(ctxA, AsyncTestContext.get(),
+                "Main thread context must not be affected by other thread's install");
+            assertSame(ctxB, seenInThread.get(),
+                "Spawned thread must see its own installed context");
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+
+        assertNull(AsyncTestContext.get(), "After uninstall, context must be null");
+    }
+
+    @Test
+    void uninstallLeavesNoThreadLocalTrace() throws InterruptedException {
+        AsyncTestConfig cfg = AsyncTestConfig.builder().build();
+        AsyncTestContext ctx = new AsyncTestContext(cfg);
+        AtomicBoolean leakDetected = new AtomicBoolean(false);
+        CountDownLatch latch = new CountDownLatch(1);
+
+        Thread t = new Thread(() -> {
+            AsyncTestContext.install(ctx);
+            AsyncTestContext.uninstall();
+            // After uninstall the ThreadLocal must be absent
+            if (AsyncTestContext.get() != null) leakDetected.set(true);
+            latch.countDown();
+        });
+        t.start();
+        latch.await();
+
+        assertFalse(leakDetected.get(), "ThreadLocal must be cleaned up after uninstall");
     }
 }

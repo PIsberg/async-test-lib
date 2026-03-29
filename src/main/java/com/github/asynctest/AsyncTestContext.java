@@ -2,17 +2,19 @@ package com.github.asynctest;
 
 import com.github.asynctest.diagnostics.*;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
 /**
- * Per-test context that holds Phase 2 detector instances and makes them accessible
- * to test code via static accessor methods.
+ * Per-test context that makes Phase 2 detector instances accessible to test code
+ * via static accessor methods and manages the per-thread {@link ThreadLocal} lifecycle.
  *
- * <p>The runner installs one shared {@code AsyncTestContext} into every worker thread's
- * {@link ThreadLocal} before the test body executes, so all threads point at the same
- * detector instances and can record events concurrently.
+ * <p>Detector instantiation and analysis are delegated to {@link DetectorRegistry},
+ * keeping this class focused on two concerns:
+ * <ol>
+ *   <li>ThreadLocal install / uninstall (called by {@link com.github.asynctest.runner.ConcurrencyRunner})</li>
+ *   <li>Public static accessor methods (the user-facing API)</li>
+ * </ol>
  *
  * <p>Usage inside an {@code @AsyncTest} method:
  * <pre>{@code
@@ -30,7 +32,13 @@ public final class AsyncTestContext {
 
     private static final ThreadLocal<AsyncTestContext> CURRENT = new ThreadLocal<>();
 
-    // Package-private so ConcurrencyRunner can read them for reporting
+    /** Holds detector instances; extracted to keep this class small. */
+    private final DetectorRegistry registry;
+
+    // ---- Package-private field accessors for DetectorRegistry (used by tests) ----
+    // These are forwarded to the registry so existing test code that accesses
+    // ctx.lockLeakDetector etc. continues to work without modification.
+
     final FalseSharingDetector       falseSharingDetector;
     final WakeupDetector             wakeupDetector;
     final ConstructorSafetyValidator constructorSafetyValidator;
@@ -65,41 +73,45 @@ public final class AsyncTestContext {
     final ThreadFactoryDetector threadFactoryDetector;
 
     public AsyncTestContext(AsyncTestConfig cfg) {
-        falseSharingDetector       = cfg.detectFalseSharing             ? new FalseSharingDetector()       : null;
-        wakeupDetector             = cfg.detectWakeupIssues             ? new WakeupDetector()             : null;
-        constructorSafetyValidator = cfg.validateConstructorSafety      ? new ConstructorSafetyValidator() : null;
-        abaProblemDetector         = cfg.detectABAProblem               ? new ABAProblemDetector()         : null;
-        lockOrderValidator         = cfg.validateLockOrder              ? new LockOrderValidator()         : null;
-        synchronizerMonitor        = cfg.monitorSynchronizers           ? new SynchronizerMonitor()        : null;
-        threadPoolMonitor          = cfg.monitorThreadPool              ? new ThreadPoolMonitor()          : null;
-        memoryOrderingMonitor      = cfg.detectMemoryOrderingViolations ? new MemoryOrderingMonitor()      : null;
-        pipelineMonitor            = cfg.monitorAsyncPipeline           ? new PipelineMonitor()            : null;
-        readWriteLockMonitor       = cfg.monitorReadWriteLockFairness   ? new ReadWriteLockMonitor()       : null;
-        semaphoreMisuseDetector    = cfg.monitorSemaphore               ? new SemaphoreMisuseDetector()    : null;
-        completableFutureExceptionDetector = cfg.detectCompletableFutureExceptions ? new CompletableFutureExceptionDetector() : null;
-        concurrentModificationDetector = cfg.detectConcurrentModifications ? new ConcurrentModificationDetector() : null;
-        lockLeakDetector           = cfg.detectLockLeaks                ? new LockLeakDetector()           : null;
-        sharedRandomDetector       = cfg.detectSharedRandom             ? new SharedRandomDetector()       : null;
-        blockingQueueDetector      = cfg.detectBlockingQueueIssues      ? new BlockingQueueDetector()      : null;
-        conditionVariableDetector  = cfg.detectConditionVariableIssues  ? new ConditionVariableDetector()  : null;
-        simpleDateFormatDetector   = cfg.detectSimpleDateFormatIssues   ? new SimpleDateFormatDetector()   : null;
-        parallelStreamDetector     = cfg.detectParallelStreamIssues     ? new ParallelStreamDetector()     : null;
-        resourceLeakDetector       = cfg.detectResourceLeaks            ? new ResourceLeakDetector()       : null;
-        countDownLatchDetector     = cfg.detectCountDownLatchIssues     ? new CountDownLatchDetector()     : null;
-        cyclicBarrierDetector      = cfg.detectCyclicBarrierIssues      ? new CyclicBarrierDetector()      : null;
-        reentrantLockDetector      = cfg.detectReentrantLockIssues      ? new ReentrantLockDetector()      : null;
-        volatileArrayDetector      = cfg.detectVolatileArrayIssues      ? new VolatileArrayDetector()      : null;
-        doubleCheckedLockingDetector = cfg.detectDoubleCheckedLocking   ? new DoubleCheckedLockingDetector() : null;
-        waitTimeoutDetector        = cfg.detectWaitTimeout              ? new WaitTimeoutDetector()        : null;
-        phaserDetector             = cfg.detectPhaserIssues             ? new PhaserDetector()             : null;
-        stampedLockDetector        = cfg.detectStampedLockIssues        ? new StampedLockDetector()        : null;
-        exchangerDetector          = cfg.detectExchangerIssues          ? new ExchangerDetector()          : null;
-        scheduledExecutorDetector  = cfg.detectScheduledExecutorIssues  ? new ScheduledExecutorDetector()  : null;
-        forkJoinPoolDetector       = cfg.detectForkJoinPoolIssues       ? new ForkJoinPoolDetector()       : null;
-        threadFactoryDetector      = cfg.detectThreadFactoryIssues      ? new ThreadFactoryDetector()      : null;
+        this.registry = new DetectorRegistry(cfg);
+        // Mirror registry references so package-private field access still works
+        // (e.g. ctx.lockLeakDetector in tests). This is a thin delegation shim —
+        // zero allocation overhead compared to the old design.
+        falseSharingDetector              = registry.falseSharingDetector;
+        wakeupDetector                    = registry.wakeupDetector;
+        constructorSafetyValidator        = registry.constructorSafetyValidator;
+        abaProblemDetector                = registry.abaProblemDetector;
+        lockOrderValidator                = registry.lockOrderValidator;
+        synchronizerMonitor               = registry.synchronizerMonitor;
+        threadPoolMonitor                 = registry.threadPoolMonitor;
+        memoryOrderingMonitor             = registry.memoryOrderingMonitor;
+        pipelineMonitor                   = registry.pipelineMonitor;
+        readWriteLockMonitor              = registry.readWriteLockMonitor;
+        semaphoreMisuseDetector           = registry.semaphoreMisuseDetector;
+        completableFutureExceptionDetector = registry.completableFutureExceptionDetector;
+        concurrentModificationDetector    = registry.concurrentModificationDetector;
+        lockLeakDetector                  = registry.lockLeakDetector;
+        sharedRandomDetector              = registry.sharedRandomDetector;
+        blockingQueueDetector             = registry.blockingQueueDetector;
+        conditionVariableDetector         = registry.conditionVariableDetector;
+        simpleDateFormatDetector          = registry.simpleDateFormatDetector;
+        parallelStreamDetector            = registry.parallelStreamDetector;
+        resourceLeakDetector              = registry.resourceLeakDetector;
+        countDownLatchDetector            = registry.countDownLatchDetector;
+        cyclicBarrierDetector             = registry.cyclicBarrierDetector;
+        reentrantLockDetector             = registry.reentrantLockDetector;
+        volatileArrayDetector             = registry.volatileArrayDetector;
+        doubleCheckedLockingDetector      = registry.doubleCheckedLockingDetector;
+        waitTimeoutDetector               = registry.waitTimeoutDetector;
+        phaserDetector                    = registry.phaserDetector;
+        stampedLockDetector               = registry.stampedLockDetector;
+        exchangerDetector                 = registry.exchangerDetector;
+        scheduledExecutorDetector         = registry.scheduledExecutorDetector;
+        forkJoinPoolDetector              = registry.forkJoinPoolDetector;
+        threadFactoryDetector             = registry.threadFactoryDetector;
     }
 
-    // ---- Lifecycle (package-private, called by ConcurrencyRunner) ----
+    // ---- Lifecycle (called by ConcurrencyRunner) ----
 
     /** Installs {@code ctx} into the calling thread's ThreadLocal. */
     public static void install(AsyncTestContext ctx) {
@@ -117,6 +129,18 @@ public final class AsyncTestContext {
      */
     public static AsyncTestContext get() {
         return CURRENT.get();
+    }
+
+    // ---- Internal reporting ----
+
+    /**
+     * Delegates to {@link DetectorRegistry#analyzeAll()}.
+     * Called by {@link com.github.asynctest.runner.ConcurrencyRunner} after the test.
+     *
+     * @return list of non-empty issue reports; never {@code null}
+     */
+    public List<String> analyzeAll() {
+        return registry.analyzeAll();
     }
 
     // ---- Public static detector accessors ----
@@ -377,149 +401,7 @@ public final class AsyncTestContext {
         return require("detectThreadFactoryIssues", c -> c.threadFactoryDetector);
     }
 
-    // ---- Internal reporting ----
-
-    /**
-     * Runs all enabled Phase 2 detectors and returns the {@code toString()} of any that
-     * report issues. Called by {@link com.github.asynctest.runner.ConcurrencyRunner} after
-     * the test completes or times out.
-     */
-    public List<String> analyzeAll() {
-        List<String> out = new ArrayList<>();
-
-        if (falseSharingDetector != null) {
-            FalseSharingDetector.FalseSharingReport r = falseSharingDetector.analyzeFalseSharing();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (wakeupDetector != null) {
-            WakeupDetector.WakeupReport r = wakeupDetector.analyzeWakeups();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (constructorSafetyValidator != null) {
-            ConstructorSafetyValidator.ConstructorSafetyReport r = constructorSafetyValidator.validateConstructorSafety();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (abaProblemDetector != null) {
-            ABAProblemDetector.ABAReport r = abaProblemDetector.analyzeABA();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (lockOrderValidator != null) {
-            LockOrderValidator.LockOrderReport r = lockOrderValidator.validateLockOrder();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (synchronizerMonitor != null) {
-            SynchronizerMonitor.SynchronizerReport r = synchronizerMonitor.analyzeSynchronizers();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (threadPoolMonitor != null) {
-            ThreadPoolMonitor.ThreadPoolReport r = threadPoolMonitor.analyzePoolHealth();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (memoryOrderingMonitor != null) {
-            MemoryOrderingMonitor.MemoryOrderingReport r = memoryOrderingMonitor.analyzeOrdering();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (pipelineMonitor != null) {
-            PipelineMonitor.PipelineReport r = pipelineMonitor.analyzePipeline();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (readWriteLockMonitor != null) {
-            ReadWriteLockMonitor.ReadWriteLockReport r = readWriteLockMonitor.analyzeFairness();
-            if (r.hasFairnessIssues()) out.add(r.toString());
-        }
-        if (semaphoreMisuseDetector != null) {
-            SemaphoreMisuseDetector.SemaphoreMisuseReport r = semaphoreMisuseDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (completableFutureExceptionDetector != null) {
-            CompletableFutureExceptionDetector.CompletableFutureExceptionReport r = completableFutureExceptionDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (concurrentModificationDetector != null) {
-            ConcurrentModificationDetector.ConcurrentModificationReport r = concurrentModificationDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (lockLeakDetector != null) {
-            LockLeakDetector.LockLeakReport r = lockLeakDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (sharedRandomDetector != null) {
-            SharedRandomDetector.SharedRandomReport r = sharedRandomDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (blockingQueueDetector != null) {
-            BlockingQueueDetector.BlockingQueueReport r = blockingQueueDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (conditionVariableDetector != null) {
-            ConditionVariableDetector.ConditionVariableReport r = conditionVariableDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (simpleDateFormatDetector != null) {
-            SimpleDateFormatDetector.SimpleDateFormatReport r = simpleDateFormatDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (parallelStreamDetector != null) {
-            ParallelStreamDetector.ParallelStreamReport r = parallelStreamDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (resourceLeakDetector != null) {
-            ResourceLeakDetector.ResourceLeakReport r = resourceLeakDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (countDownLatchDetector != null) {
-            CountDownLatchDetector.CountDownLatchReport r = countDownLatchDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (cyclicBarrierDetector != null) {
-            CyclicBarrierDetector.CyclicBarrierReport r = cyclicBarrierDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (reentrantLockDetector != null) {
-            ReentrantLockDetector.ReentrantLockReport r = reentrantLockDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (volatileArrayDetector != null) {
-            VolatileArrayDetector.VolatileArrayReport r = volatileArrayDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (doubleCheckedLockingDetector != null) {
-            DoubleCheckedLockingDetector.DoubleCheckedLockingReport r = doubleCheckedLockingDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (waitTimeoutDetector != null) {
-            WaitTimeoutDetector.WaitTimeoutReport r = waitTimeoutDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (phaserDetector != null) {
-            PhaserDetector.PhaserReport r = phaserDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (stampedLockDetector != null) {
-            StampedLockDetector.StampedLockReport r = stampedLockDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (exchangerDetector != null) {
-            ExchangerDetector.ExchangerReport r = exchangerDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (scheduledExecutorDetector != null) {
-            ScheduledExecutorDetector.ScheduledExecutorReport r = scheduledExecutorDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (forkJoinPoolDetector != null) {
-            ForkJoinPoolDetector.ForkJoinPoolReport r = forkJoinPoolDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-        if (threadFactoryDetector != null) {
-            ThreadFactoryDetector.ThreadFactoryReport r = threadFactoryDetector.analyze();
-            if (r.hasIssues()) out.add(r.toString());
-        }
-
-        return out;
-    }
-
-    // ---- Helpers ----
+    // ---- Helper ----
 
     private static <T> T require(String flag, Function<AsyncTestContext, T> fn) {
         AsyncTestContext ctx = CURRENT.get();

@@ -42,12 +42,13 @@ Shows the main containers/components within the async-test library JAR.
 - **Extension Layer**: JUnit 5 integration (AsyncTestExtension, AsyncTestInvocationInterceptor)
 - **Configuration**: AsyncTest annotation and AsyncTestConfig
 - **Runner Core**: ConcurrencyRunner, AsyncTestContext, VirtualThreadStressConfig
-- **Detector Modules**: 
-  - Phase 1: Core (9 detectors)
-  - Phase 2: Advanced (20 detectors)
+- **Detector Modules**:
+  - Phase 1: Core (9 detectors) — grouped via `Phase1DetectorSet`
+  - Phase 2: Advanced (20 detectors) — managed by `DetectorRegistry`
   - Phase 3: Runtime (5 detectors)
 - **Benchmark Module**: 5 classes for performance tracking
 - **Lifecycle Annotations**: BeforeEachInvocation, AfterEachInvocation
+- **Observability** (NEW): AsyncTestListener, AsyncTestListenerRegistry, NoopAsyncTestListener
 
 ![Container Diagram](../docs/diagrams/ContainerDiagram.png)
 
@@ -296,6 +297,52 @@ Shows the structure and common pattern of all 35 detectors.
 
 ---
 
+## Observability (Event Listener System)
+
+The async-test library provides an opt-in observability system via the `AsyncTestListener` interface.
+
+### AsyncTestListener Interface
+
+**Purpose:** Allow users to observe async-test lifecycle events for logging, metrics, or custom reporting.
+
+**Events:**
+- `onInvocationStarted(int round, int threads)` — Called before each invocation round
+- `onInvocationCompleted(int round, long durationMs)` — Called after each round completes
+- `onTestFailed(Throwable cause)` — Called when a test fails
+- `onDetectorReport(String detectorName, String report)` — Called when a detector reports an issue
+- `onTimeout(long timeoutMs)` — Called when a timeout occurs
+
+### Registration
+
+```java
+// Register a custom listener
+AsyncTestListenerRegistry.register(new MyCustomListener());
+
+// Unregister later
+AsyncTestListenerRegistry.unregister(myListener);
+
+// Clear all listeners (useful for test cleanup)
+AsyncTestListenerRegistry.clearAll();
+```
+
+### Opt-Out
+
+To silence all output, register a `NoopAsyncTestListener`:
+
+```java
+AsyncTestListenerRegistry.register(new NoopAsyncTestListener());
+```
+
+### Thread Safety
+
+Listeners may be called from multiple worker threads concurrently. All listener implementations must be thread-safe. The registry uses a `CopyOnWriteArrayList` to allow concurrent iteration without locking.
+
+### Default Behavior
+
+If no listeners are registered, detector reports are printed to `System.err` (backward-compatible behavior). Registering custom listeners does not suppress this default output — both will receive events.
+
+---
+
 ## Architecture Principles
 
 ### 1. Separation of Concerns
@@ -333,6 +380,10 @@ src/main/java/com/github/asynctest/
 ├── AsyncTest.java                    # Main annotation
 ├── AsyncTestConfig.java              # Configuration object
 ├── AsyncTestContext.java             # ThreadLocal context
+├── AsyncTestListener.java            # Observability listener interface (NEW)
+├── AsyncTestListenerRegistry.java    # Listener registry (NEW)
+├── NoopAsyncTestListener.java        # No-op listener for opt-out (NEW)
+├── DetectorRegistry.java             # Phase 2 detector registry (NEW)
 ├── DetectorType.java                 # Detector enumeration
 ├── BeforeEachInvocation.java         # Lifecycle annotation
 ├── AfterEachInvocation.java          # Lifecycle annotation
@@ -343,6 +394,7 @@ src/main/java/com/github/asynctest/
 ├── runner/
 │   └── ConcurrencyRunner.java        # Main execution engine
 ├── diagnostics/                      # 35 detector implementations
+│   ├── Phase1DetectorSet.java        # Phase 1 detector group (NEW)
 │   ├── DeadlockDetector.java
 │   ├── VisibilityMonitor.java
 │   ├── FalseSharingDetector.java
@@ -385,5 +437,50 @@ To regenerate diagrams, see [`docs/diagrams/README.md`](../docs/diagrams/README.
 
 ---
 
-**Last Updated**: March 2026  
-**Version**: 1.1.0
+## Refactoring Summary (v1.2.0)
+
+The following structural improvements were made to address code quality concerns:
+
+### 1. Break Up Large Classes
+
+**AsyncTestContext** (539 lines → ~150 lines)
+- Extracted `DetectorRegistry` to handle detector instantiation and analysis
+- AsyncTestContext now focuses on ThreadLocal lifecycle and public API accessors
+
+**ConcurrencyRunner** (350 lines → ~200 lines)
+- Extracted `Phase1DetectorSet` to group Phase 1 detectors
+- Eliminates long parameter lists in helper methods
+
+### 2. Reduce Tight Coupling
+
+- `Phase1DetectorSet.from(AsyncTestConfig)` encapsulates detector creation
+- `Phase1DetectorSet.printReports()` owns Phase 1 report printing logic
+- ConcurrencyRunner now depends on the facade, not individual detectors
+
+### 3. Memory Management
+
+- ThreadLocal cleanup ensured in `runSingleInvocationRound` finally block
+- `uninstall()` called before `latch.countDown()` to prevent context leaks
+- `ThreadLocal.remove()` properly clears thread state
+
+### 4. Observability (NEW)
+
+- `AsyncTestListener` interface for lifecycle event callbacks
+- `AsyncTestListenerRegistry` for thread-safe listener management
+- `NoopAsyncTestListener` for opt-out of default output
+- Events: invocation start/complete, test failure, detector reports, timeout
+
+### New Classes
+
+| Class | Package | Purpose |
+|-------|---------|---------|
+| `DetectorRegistry` | `com.github.asynctest` | Phase 2 detector lifecycle |
+| `Phase1DetectorSet` | `com.github.asynctest.diagnostics` | Phase 1 detector grouping |
+| `AsyncTestListener` | `com.github.asynctest` | Observability interface |
+| `AsyncTestListenerRegistry` | `com.github.asynctest` | Listener registration |
+| `NoopAsyncTestListener` | `com.github.asynctest` | No-op listener for opt-out |
+
+---
+
+**Last Updated**: March 2026
+**Version**: 1.2.0-SNAPSHOT

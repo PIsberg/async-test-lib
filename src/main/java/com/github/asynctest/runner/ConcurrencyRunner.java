@@ -3,20 +3,39 @@ package com.github.asynctest.runner;
 import com.github.asynctest.AfterEachInvocation;
 import com.github.asynctest.AsyncTestConfig;
 import com.github.asynctest.AsyncTestContext;
+import com.github.asynctest.AsyncTestListenerRegistry;
 import com.github.asynctest.BeforeEachInvocation;
-import com.github.asynctest.benchmark.BenchmarkComparisonResult;
 import com.github.asynctest.benchmark.BenchmarkRecorder;
-import com.github.asynctest.diagnostics.*;
+import com.github.asynctest.diagnostics.DeadlockDetector;
+import com.github.asynctest.diagnostics.MemoryModelValidator;
+import com.github.asynctest.diagnostics.Phase1DetectorSet;
+import com.github.asynctest.diagnostics.VirtualThreadStressConfig;
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.stream.Collectors;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 
+/**
+ * Orchestrates the N-invocations × M-threads test execution pattern for
+ * {@code @AsyncTest} methods.
+ *
+ * <p><strong>Responsibilities:</strong>
+ * <ul>
+ *   <li>Set up Phase 1 (via {@link Phase1DetectorSet}) and Phase 2 (via
+ *       {@link AsyncTestContext}) detectors for the test run</li>
+ *   <li>Run the test body N×M times using a {@link CyclicBarrier} to force
+ *       maximum thread contention on each invocation</li>
+ *   <li>Collect and report failures from all threads</li>
+ *   <li>Print detector reports on failure or timeout</li>
+ *   <li>Manage optional benchmarking</li>
+ * </ul>
+ *
+ * <p>This class is intentionally stateless — all state lives in the per-call
+ * local variables of {@link #execute}.
+ */
 public class ConcurrencyRunner {
 
     public static void execute(ReflectiveInvocationContext<Method> invocationContext,
@@ -34,17 +53,12 @@ public class ConcurrencyRunner {
         // Phase 2 context — shared across all threads for this test run
         AsyncTestContext phase2Context = new AsyncTestContext(config);
 
-        // Phase 1 + Phase 3 detectors
-        VisibilityMonitor  visibilityMonitor  = config.detectVisibility          ? new VisibilityMonitor()  : null;
-        LivelockDetector   livelockDetector   = config.detectLivelocks           ? new LivelockDetector()   : null;
-        RaceConditionDetector raceDetector    = config.detectRaceConditions      ? new RaceConditionDetector() : null;
-        ThreadLocalMonitor threadLocalMonitor = config.detectThreadLocalLeaks    ? new ThreadLocalMonitor() : null;
-        BusyWaitDetector   busyWaitDetector   = config.detectBusyWaiting         ? new BusyWaitDetector()   : null;
-        AtomicityValidator atomicityValidator = config.detectAtomicityViolations ? new AtomicityValidator() : null;
-        InterruptMonitor   interruptMonitor   = config.detectInterruptMishandling? new InterruptMonitor()   : null;
-        MemoryModelValidator jmmValidator     = new MemoryModelValidator();
+        // Phase 1 + Phase 3 detectors — grouped in a value-holder to avoid
+        // long parameter lists in helper methods
+        Phase1DetectorSet phase1 = Phase1DetectorSet.from(config);
 
         // Validate JMM on the test framework itself
+        MemoryModelValidator jmmValidator = new MemoryModelValidator();
         MemoryModelValidator.ValidationResult jmmResult = jmmValidator.validate();
         if (!jmmResult.isValid()) {
             System.err.println("WARNING: JMM validation of test framework failed:");
@@ -64,21 +78,14 @@ public class ConcurrencyRunner {
             ? Executors.newVirtualThreadPerTaskExecutor()
             : Executors.newFixedThreadPool(actualThreads);
 
-        // setAccessible once per test, not once per invocation round (Fix 4)
+        // setAccessible once per test, not once per invocation round
         Method testMethod = invocationContext.getExecutable();
         testMethod.setAccessible(true);
 
-        // Discover @BeforeEachInvocation / @AfterEachInvocation methods once (Fix 5)
+        // Discover @BeforeEachInvocation / @AfterEachInvocation methods once
         Object testInstance = invocationContext.getTarget().orElse(null);
         List<Method> beforeInvocationMethods = findLifecycleMethods(testInstance, BeforeEachInvocation.class);
         List<Method> afterInvocationMethods  = findLifecycleMethods(testInstance, AfterEachInvocation.class);
-
-        // Fix 6: every thread in every round uses method.invoke() for a uniform
-        // code path.  We do NOT call invocation.proceed() at all — as an
-        // InvocationInterceptor we are fully responsible for executing the test
-        // body, so JUnit does not require proceed() to be called.  Skipping it
-        // means the test body is never double-executed and the AsyncTestContext
-        // is always installed before the first line of test code runs.
 
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(config.timeoutMs);
 
@@ -86,47 +93,46 @@ public class ConcurrencyRunner {
             for (int i = 0; i < config.invocations; i++) {
                 long remainingMs = remainingMillis(deadlineNanos);
                 if (remainingMs <= 0) {
-                    throw timeoutError(config.timeoutMs, null, visibilityMonitor, livelockDetector,
-                        raceDetector, threadLocalMonitor, busyWaitDetector, atomicityValidator,
-                        interruptMonitor, phase2Context, config.detectDeadlocks);
+                    throw timeoutError(config.timeoutMs, null, phase1, phase2Context,
+                            config.detectDeadlocks);
                 }
 
-                // Record benchmark invocation start
                 long benchmarkStart = 0;
                 if (benchmarkRecorder != null) {
                     benchmarkStart = benchmarkRecorder.recordInvocationStart();
                 }
 
-                if (visibilityMonitor != null) {
-                    visibilityMonitor.markInvocationStart();
+                if (phase1.visibility != null) {
+                    phase1.visibility.markInvocationStart();
                 }
+                AsyncTestListenerRegistry.fireInvocationStarted(i, actualThreads);
+                long roundStartNanos = System.nanoTime();
                 invokeLifecycleMethods(testInstance, beforeInvocationMethods);
                 try {
                     runSingleInvocationRound(invocationContext, actualThreads,
-                        executor, livelockDetector, phase2Context,
-                        remainingMs, testMethod);
+                        executor, phase1, phase2Context, remainingMs, testMethod);
                 } finally {
                     invokeLifecycleMethods(testInstance, afterInvocationMethods);
                 }
+                long roundDurationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - roundStartNanos);
+                AsyncTestListenerRegistry.fireInvocationCompleted(i, roundDurationMs);
 
-                // Record benchmark invocation end
                 if (benchmarkRecorder != null) {
                     benchmarkRecorder.recordInvocationEnd(benchmarkStart);
                 }
             }
         } catch (AssertionError e) {
             if (isTimeoutLike(e)) {
-                throw timeoutError(config.timeoutMs, e, visibilityMonitor, livelockDetector,
-                    raceDetector, threadLocalMonitor, busyWaitDetector, atomicityValidator,
-                    interruptMonitor, phase2Context, config.detectDeadlocks);
+                throw timeoutError(config.timeoutMs, e, phase1, phase2Context,
+                        config.detectDeadlocks);
             }
-            printPhase1Reports(visibilityMonitor, livelockDetector, raceDetector,
-                threadLocalMonitor, busyWaitDetector, atomicityValidator, interruptMonitor);
+            AsyncTestListenerRegistry.fireTestFailed(e);
+            phase1.printReports();
             printPhase2Reports(phase2Context);
             throw e;
         } catch (Throwable t) {
-            printPhase1Reports(visibilityMonitor, livelockDetector, raceDetector,
-                threadLocalMonitor, busyWaitDetector, atomicityValidator, interruptMonitor);
+            AsyncTestListenerRegistry.fireTestFailed(t);
+            phase1.printReports();
             printPhase2Reports(phase2Context);
             throw unwrap(t);
         } finally {
@@ -137,12 +143,10 @@ public class ConcurrencyRunner {
                 Thread.currentThread().interrupt();
             }
 
-            // Complete benchmarking and compare with baseline
             if (benchmarkRecorder != null) {
                 try {
                     benchmarkRecorder.complete();
                 } catch (Exception e) {
-                    // Don't let benchmark failures break the test
                     System.err.println("Warning: Benchmark completion failed: " + e.getMessage());
                 }
             }
@@ -152,7 +156,7 @@ public class ConcurrencyRunner {
     private static void runSingleInvocationRound(ReflectiveInvocationContext<Method> context,
                                                  int threads,
                                                  ExecutorService executor,
-                                                 LivelockDetector livelockDetector,
+                                                 Phase1DetectorSet phase1,
                                                  AsyncTestContext phase2Context,
                                                  long roundTimeoutMs,
                                                  Method method) throws Throwable {
@@ -163,8 +167,6 @@ public class ConcurrencyRunner {
 
         Object target = context.getTarget().orElse(null);
         Object[] args = context.getArguments().toArray();
-        // method.setAccessible() was already called once in execute() — no repeat here
-        // Every thread uses method.invoke() for a uniform code path (Fix 6)
 
         for (int t = 0; t < threads; t++) {
             executor.submit(() -> {
@@ -175,17 +177,17 @@ public class ConcurrencyRunner {
                 } catch (Throwable ex) {
                     failures.add(unwrap(ex));
                 } finally {
+                    // Uninstall before counting down so the runner cannot proceed
+                    // past latch.await() while any thread still holds the context.
                     AsyncTestContext.uninstall();
                     latch.countDown();
-                    if (livelockDetector != null) {
-                        livelockDetector.captureSnapshot();
+                    if (phase1.livelock != null) {
+                        phase1.livelock.captureSnapshot();
                     }
                 }
             });
         }
 
-        // Bound each round by the remaining time for the whole test run so we do not
-        // depend on a separate coordinator future or the common ForkJoinPool.
         boolean completed = latch.await(roundTimeoutMs, TimeUnit.MILLISECONDS);
         if (!completed) {
             throw new AssertionError(
@@ -216,9 +218,7 @@ public class ConcurrencyRunner {
               .append(t.getMessage()).append('\n');
         }
         AssertionError combined = new AssertionError(sb.toString().trim());
-        // Attach the first failure as cause so stack traces appear in IDEs
         combined.initCause(failures.get(0));
-        // Attach remaining as suppressed
         for (int i = 1; i < failures.size(); i++) {
             combined.addSuppressed(failures.get(i));
         }
@@ -243,20 +243,14 @@ public class ConcurrencyRunner {
 
     private static AssertionError timeoutError(long timeoutMs,
                                                Throwable cause,
-                                               VisibilityMonitor visibilityMonitor,
-                                               LivelockDetector livelockDetector,
-                                               RaceConditionDetector raceDetector,
-                                               ThreadLocalMonitor threadLocalMonitor,
-                                               BusyWaitDetector busyWaitDetector,
-                                               AtomicityValidator atomicityValidator,
-                                               InterruptMonitor interruptMonitor,
+                                               Phase1DetectorSet phase1,
                                                AsyncTestContext phase2Context,
                                                boolean detectDeadlocks) {
+        AsyncTestListenerRegistry.fireTimeout(timeoutMs);
         if (detectDeadlocks) {
             DeadlockDetector.printThreadDump();
         }
-        printPhase1Reports(visibilityMonitor, livelockDetector, raceDetector,
-            threadLocalMonitor, busyWaitDetector, atomicityValidator, interruptMonitor);
+        phase1.printReports();
         printPhase2Reports(phase2Context);
         AssertionError error = new AssertionError(
             "Test timed out after " + timeoutMs + "ms. Possible deadlock, starvation, or visibility issue.");
@@ -266,50 +260,30 @@ public class ConcurrencyRunner {
         return error;
     }
 
-    private static void printPhase1Reports(VisibilityMonitor visibilityMonitor,
-                                           LivelockDetector livelockDetector,
-                                           RaceConditionDetector raceDetector,
-                                           ThreadLocalMonitor threadLocalMonitor,
-                                           BusyWaitDetector busyWaitDetector,
-                                           AtomicityValidator atomicityValidator,
-                                           InterruptMonitor interruptMonitor) {
-        if (visibilityMonitor != null) {
-            VisibilityMonitor.VisibilityReport r = visibilityMonitor.analyzeVisibility();
-            if (r.hasIssues()) System.err.println("\n" + r);
-        }
-        if (livelockDetector != null) {
-            LivelockDetector.LivelockReport r = livelockDetector.analyzeLivelocks();
-            if (r.hasIssues()) System.err.println("\n" + r);
-        }
-        if (raceDetector != null) {
-            RaceConditionDetector.RaceConditionReport r = raceDetector.analyzeRaceConditions();
-            if (r.hasIssues()) System.err.println("\n" + r);
-        }
-        if (threadLocalMonitor != null) {
-            ThreadLocalMonitor.ThreadLocalReport r = threadLocalMonitor.analyzeThreadLocalLeaks();
-            if (r.hasIssues()) System.err.println("\n" + r);
-        }
-        if (busyWaitDetector != null) {
-            BusyWaitDetector.BusyWaitReport r = busyWaitDetector.analyzeBusyWaiting();
-            if (r.hasIssues()) System.err.println("\n" + r);
-        }
-        if (atomicityValidator != null) {
-            AtomicityValidator.AtomicityReport r = atomicityValidator.analyzeAtomicity();
-            if (r.hasIssues()) System.err.println("\n" + r);
-        }
-        if (interruptMonitor != null) {
-            InterruptMonitor.InterruptReport r = interruptMonitor.analyzeInterruptHandling();
-            if (r.hasIssues()) System.err.println("\n" + r);
-        }
-    }
-
     private static void printPhase2Reports(AsyncTestContext ctx) {
         for (String report : ctx.analyzeAll()) {
             System.err.println("\n" + report);
+            // Extract detector name from report (first line before newline)
+            String detectorName = extractDetectorName(report);
+            AsyncTestListenerRegistry.fireDetectorReport(detectorName, report);
         }
     }
 
-    // ---- Per-invocation lifecycle helpers (Fix 5) ----
+    private static String extractDetectorName(String report) {
+        // Report format is typically "DetectorName: ..." or starts with detector name
+        int newlineIdx = report.indexOf('\n');
+        if (newlineIdx > 0) {
+            String firstLine = report.substring(0, newlineIdx);
+            int colonIdx = firstLine.indexOf(':');
+            if (colonIdx > 0) {
+                return firstLine.substring(0, colonIdx).trim();
+            }
+            return firstLine.trim();
+        }
+        return report.trim();
+    }
+
+    // ---- Per-invocation lifecycle helpers ----
 
     private static <A extends java.lang.annotation.Annotation> List<Method> findLifecycleMethods(
             Object target, Class<A> annotationType) {
