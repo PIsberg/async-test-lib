@@ -39,6 +39,7 @@ final class DetectorRegistry {
     final SemaphoreMisuseDetector              semaphoreMisuseDetector;
     final CompletableFutureExceptionDetector   completableFutureExceptionDetector;
     final CompletableFutureCompletionLeakDetector completableFutureCompletionLeakDetector;
+    final VirtualThreadPinningDetector         virtualThreadPinningDetector;
     final ConcurrentModificationDetector       concurrentModificationDetector;
     final LockLeakDetector                     lockLeakDetector;
     final SharedRandomDetector                 sharedRandomDetector;
@@ -85,6 +86,8 @@ final class DetectorRegistry {
                 ? new CompletableFutureExceptionDetector() : null;
         completableFutureCompletionLeakDetector = cfg.detectCompletableFutureCompletionLeaks
                 ? new CompletableFutureCompletionLeakDetector() : null;
+        virtualThreadPinningDetector = cfg.detectVirtualThreadPinning
+                ? new VirtualThreadPinningDetector() : null;
         concurrentModificationDetector = cfg.detectConcurrentModifications
                 ? new ConcurrentModificationDetector() : null;
         lockLeakDetector           = cfg.detectLockLeaks                ? new LockLeakDetector()           : null;
@@ -163,6 +166,11 @@ final class DetectorRegistry {
             CompletableFutureCompletionLeakDetector.CompletionLeakReport r = 
                 completableFutureCompletionLeakDetector.analyze();
             if (r.hasLeaks()) out.add(r.toString());
+        }
+        if (virtualThreadPinningDetector != null) {
+            VirtualThreadPinningDetector.PinningReport r = 
+                virtualThreadPinningDetector.analyzePinning();
+            if (r.hasPinningIssues()) out.add(r.toString());
         }
         ifIssue(concurrentModificationDetector,
                 d -> d.analyze(),

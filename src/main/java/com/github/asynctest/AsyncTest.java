@@ -214,6 +214,14 @@ public @interface AsyncTest {
     boolean detectCompletableFutureCompletionLeaks() default false;
 
     /**
+     * Enable virtual thread pinning detection.
+     * Detects virtual threads pinned to carrier threads by synchronized blocks or native calls.
+     * Requires Java 21+ with virtual thread support.
+     * @since 1.2.0
+     */
+    boolean detectVirtualThreadPinning() default false;
+
+    /**
      * Enable concurrent modification detection.
      * Detects collection modifications during iteration and concurrent mutations.
      */

@@ -52,6 +52,7 @@ public final class AsyncTestContext {
     final SemaphoreMisuseDetector    semaphoreMisuseDetector;
     final CompletableFutureExceptionDetector completableFutureExceptionDetector;
     final CompletableFutureCompletionLeakDetector completableFutureCompletionLeakDetector;
+    final VirtualThreadPinningDetector virtualThreadPinningDetector;
     final ConcurrentModificationDetector concurrentModificationDetector;
     final LockLeakDetector lockLeakDetector;
     final SharedRandomDetector sharedRandomDetector;
@@ -91,6 +92,7 @@ public final class AsyncTestContext {
         semaphoreMisuseDetector           = registry.semaphoreMisuseDetector;
         completableFutureExceptionDetector = registry.completableFutureExceptionDetector;
         completableFutureCompletionLeakDetector = registry.completableFutureCompletionLeakDetector;
+        virtualThreadPinningDetector      = registry.virtualThreadPinningDetector;
         concurrentModificationDetector    = registry.concurrentModificationDetector;
         lockLeakDetector                  = registry.lockLeakDetector;
         sharedRandomDetector              = registry.sharedRandomDetector;
@@ -250,6 +252,15 @@ public final class AsyncTestContext {
      */
     public static CompletableFutureCompletionLeakDetector completableFutureCompletionLeakDetector() {
         return require("detectCompletableFutureCompletionLeaks", c -> c.completableFutureCompletionLeakDetector);
+    }
+
+    /**
+     * Returns the {@link VirtualThreadPinningDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVirtualThreadPinning = false}
+     * @since 1.2.0
+     */
+    public static VirtualThreadPinningDetector virtualThreadPinningDetector() {
+        return require("detectVirtualThreadPinning", c -> c.virtualThreadPinningDetector);
     }
 
     /**

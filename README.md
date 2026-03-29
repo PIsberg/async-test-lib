@@ -1458,14 +1458,191 @@ void test2() { }
 void test3() { }
 
 // Phase 2: Comprehensive
-@AsyncTest(threads = 50, invocations = 100, 
-           validateLockOrder = true, 
+@AsyncTest(threads = 50, invocations = 100,
+           validateLockOrder = true,
            detectFalseSharing = true,
            detectABAProblem = true,
            validateConstructorSafety = true,
            monitorThreadPool = true)
 void test4() { }
 ```
+
+---
+
+## Observability: Event Listeners (v1.2.0+)
+
+The async-test library provides an **opt-in observability system** via the `AsyncTestListener` interface. This allows you to integrate test events with your logging, metrics, or CI/CD reporting systems.
+
+### Built-in Listener Events
+
+Listeners receive callbacks for:
+- **Invocation started/completed** — Track test execution timing
+- **Test failed** — Capture failures for reporting
+- **Detector report** — Get notified when a detector finds an issue
+- **Timeout** — Handle timeout events
+
+### Creating a Custom Listener
+
+```java
+import com.github.asynctest.AsyncTestListener;
+
+public class MyCustomListener implements AsyncTestListener {
+    
+    @Override
+    public void onInvocationStarted(int round, int threads) {
+        System.out.println("Starting round " + round + " with " + threads + " threads");
+    }
+    
+    @Override
+    public void onInvocationCompleted(int round, long durationMs) {
+        System.out.println("Round " + round + " completed in " + durationMs + "ms");
+    }
+    
+    @Override
+    public void onTestFailed(Throwable cause) {
+        System.err.println("Test failed: " + cause.getMessage());
+        // Send to Slack, Teams, or logging system
+    }
+    
+    @Override
+    public void onDetectorReport(String detectorName, String report) {
+        System.out.println("[" + detectorName + "] " + report);
+        // Log detector findings to your monitoring system
+    }
+    
+    @Override
+    public void onTimeout(long timeoutMs) {
+        System.err.println("Test timed out after " + timeoutMs + "ms");
+    }
+}
+```
+
+### Registering Listeners
+
+```java
+import com.github.asynctest.AsyncTestListenerRegistry;
+
+@BeforeAll
+static void setUp() {
+    // Register custom listener
+    AsyncTestListenerRegistry.register(new MyCustomListener());
+}
+
+@AfterAll
+static void tearDown() {
+    // Clean up listeners
+    AsyncTestListenerRegistry.clearAll();
+}
+```
+
+### Opt-Out: Silencing Default Output
+
+To suppress all default output, register a `NoopAsyncTestListener`:
+
+```java
+AsyncTestListenerRegistry.register(new NoopAsyncTestListener());
+```
+
+### Thread Safety
+
+Listeners may be called from multiple worker threads concurrently. Ensure your implementation is thread-safe:
+
+```java
+public class ThreadSafeListener implements AsyncTestListener {
+    private final ConcurrentLinkedQueue<String> events = new ConcurrentLinkedQueue<>();
+    
+    @Override
+    public void onDetectorReport(String detectorName, String report) {
+        events.add(detectorName + ": " + report);
+        // Thread-safe collection for later processing
+    }
+}
+```
+
+### Use Cases
+
+| Use Case | Implementation |
+|----------|---------------|
+| **CI/CD Integration** | Send detector reports to GitHub Actions, Jenkins |
+| **Metrics Collection** | Track invocation times, failure rates |
+| **Custom Logging** | Route output to Log4j, SLF4J, or file |
+| **Alerting** | Send Slack/Teams notifications on failures |
+| **Test Reporting** | Generate custom HTML/PDF reports |
+
+---
+
+## New Detectors (v1.2.0+)
+
+### CompletableFuture Completion Leaks
+
+Detects `CompletableFuture` instances that are created but never completed — a common source of hangs.
+
+```java
+@AsyncTest(threads = 4, detectCompletableFutureCompletionLeaks = true)
+void testCompletableFuture() {
+    CompletableFuture<String> future = new CompletableFuture<>();
+    
+    // Track creation
+    AsyncTestContext.completableFutureCompletionLeakDetector()
+        .recordFutureCreated(future, "user-lookup");
+    
+    try {
+        String result = doWork();
+        future.complete(result);
+        // Track completion
+        AsyncTestContext.completableFutureCompletionLeakDetector()
+            .recordFutureCompleted(future, "user-lookup");
+    } catch (Exception e) {
+        future.completeExceptionally(e);
+        AsyncTestContext.completableFutureCompletionLeakDetector()
+            .recordFutureCompleted(future, "user-lookup", "completeExceptionally");
+    }
+}
+```
+
+**Report example:**
+```
+CompletableFutureCompletionLeakReport: 1 uncompleted CompletableFuture(s) detected:
+
+  [1] user-lookup
+      Created by thread #15 5000ms ago
+      Creation stack trace:
+        at com.example.MyTest.testCompletableFuture(MyTest.java:25)
+        ...
+
+  Possible causes:
+    - CompletableFuture created but never completed
+    - Exception path skipped completion
+    - Completion called on wrong object instance
+```
+
+### Virtual Thread Pinning Detection
+
+Detects virtual threads pinned to carrier threads by `synchronized` blocks or native calls (Java 21+).
+
+```java
+@AsyncTest(threads = 10, useVirtualThreads = true, detectVirtualThreadPinning = true)
+void testVirtualThreadPinning() {
+    AsyncTestContext.virtualThreadPinningDetector().startMonitoring();
+    
+    // Code that may cause pinning
+    synchronized(lock) {
+        Thread.sleep(100); // Pins virtual thread!
+    }
+    
+    var report = AsyncTestContext.virtualThreadPinningDetector().analyzePinning();
+    if (report.hasPinningIssues()) {
+        System.err.println(report); // Shows pinning events
+    }
+}
+```
+
+**Recommendations from report:**
+- Replace `synchronized` with `ReentrantLock`
+- Use `LockSupport.park()` instead of `Thread.sleep()` in virtual threads
+- Consider platform threads for I/O-bound synchronized code
+
+---
 
 ## Troubleshooting
 
