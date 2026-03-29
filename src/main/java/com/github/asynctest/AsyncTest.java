@@ -207,6 +207,13 @@ public @interface AsyncTest {
     boolean detectCompletableFutureExceptions() default false;
 
     /**
+     * Enable CompletableFuture completion leak monitoring.
+     * Detects CompletableFutures created but never completed (completable future leaks).
+     * @since 1.2.0
+     */
+    boolean detectCompletableFutureCompletionLeaks() default false;
+
+    /**
      * Enable concurrent modification detection.
      * Detects collection modifications during iteration and concurrent mutations.
      */

@@ -51,6 +51,7 @@ public final class AsyncTestContext {
     final ReadWriteLockMonitor       readWriteLockMonitor;
     final SemaphoreMisuseDetector    semaphoreMisuseDetector;
     final CompletableFutureExceptionDetector completableFutureExceptionDetector;
+    final CompletableFutureCompletionLeakDetector completableFutureCompletionLeakDetector;
     final ConcurrentModificationDetector concurrentModificationDetector;
     final LockLeakDetector lockLeakDetector;
     final SharedRandomDetector sharedRandomDetector;
@@ -89,6 +90,7 @@ public final class AsyncTestContext {
         readWriteLockMonitor              = registry.readWriteLockMonitor;
         semaphoreMisuseDetector           = registry.semaphoreMisuseDetector;
         completableFutureExceptionDetector = registry.completableFutureExceptionDetector;
+        completableFutureCompletionLeakDetector = registry.completableFutureCompletionLeakDetector;
         concurrentModificationDetector    = registry.concurrentModificationDetector;
         lockLeakDetector                  = registry.lockLeakDetector;
         sharedRandomDetector              = registry.sharedRandomDetector;
@@ -239,6 +241,15 @@ public final class AsyncTestContext {
      */
     public static CompletableFutureExceptionDetector completableFutureMonitor() {
         return require("detectCompletableFutureExceptions", c -> c.completableFutureExceptionDetector);
+    }
+
+    /**
+     * Returns the {@link CompletableFutureCompletionLeakDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCompletableFutureCompletionLeaks = false}
+     * @since 1.2.0
+     */
+    public static CompletableFutureCompletionLeakDetector completableFutureCompletionLeakDetector() {
+        return require("detectCompletableFutureCompletionLeaks", c -> c.completableFutureCompletionLeakDetector);
     }
 
     /**

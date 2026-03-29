@@ -38,6 +38,7 @@ final class DetectorRegistry {
     // ---- Phase 2: Additional monitors ----
     final SemaphoreMisuseDetector              semaphoreMisuseDetector;
     final CompletableFutureExceptionDetector   completableFutureExceptionDetector;
+    final CompletableFutureCompletionLeakDetector completableFutureCompletionLeakDetector;
     final ConcurrentModificationDetector       concurrentModificationDetector;
     final LockLeakDetector                     lockLeakDetector;
     final SharedRandomDetector                 sharedRandomDetector;
@@ -82,6 +83,8 @@ final class DetectorRegistry {
         semaphoreMisuseDetector    = cfg.monitorSemaphore               ? new SemaphoreMisuseDetector()    : null;
         completableFutureExceptionDetector = cfg.detectCompletableFutureExceptions
                 ? new CompletableFutureExceptionDetector() : null;
+        completableFutureCompletionLeakDetector = cfg.detectCompletableFutureCompletionLeaks
+                ? new CompletableFutureCompletionLeakDetector() : null;
         concurrentModificationDetector = cfg.detectConcurrentModifications
                 ? new ConcurrentModificationDetector() : null;
         lockLeakDetector           = cfg.detectLockLeaks                ? new LockLeakDetector()           : null;
@@ -156,6 +159,11 @@ final class DetectorRegistry {
         ifIssue(completableFutureExceptionDetector,
                 d -> d.analyze(),
                 CompletableFutureExceptionDetector.CompletableFutureExceptionReport::hasIssues, out);
+        if (completableFutureCompletionLeakDetector != null) {
+            CompletableFutureCompletionLeakDetector.CompletionLeakReport r = 
+                completableFutureCompletionLeakDetector.analyze();
+            if (r.hasLeaks()) out.add(r.toString());
+        }
         ifIssue(concurrentModificationDetector,
                 d -> d.analyze(),
                 ConcurrentModificationDetector.ConcurrentModificationReport::hasIssues, out);

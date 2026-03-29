@@ -10,6 +10,7 @@ import com.github.asynctest.diagnostics.ExecutorDeadlockDetector;
 import com.github.asynctest.diagnostics.LatchMisuseDetector;
 import com.github.asynctest.diagnostics.SemaphoreMisuseDetector;
 import com.github.asynctest.diagnostics.CompletableFutureExceptionDetector;
+import com.github.asynctest.diagnostics.CompletableFutureCompletionLeakDetector;
 import com.github.asynctest.diagnostics.ConcurrentModificationDetector;
 import com.github.asynctest.diagnostics.LockLeakDetector;
 import com.github.asynctest.diagnostics.SharedRandomDetector;
@@ -27,6 +28,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -35,6 +37,9 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ConsumerAsyncTestUsageTest {
 
@@ -1045,5 +1050,51 @@ class ConsumerAsyncTestUsageTest {
         // Analyze and report (for demonstration, we just print the report)
         var report = AsyncTestContext.threadFactoryMonitor().analyze();
         // In real usage with issues, you would assert: assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Phase 2.33: CompletableFuture completion leak detection.
+     * Detects CompletableFutures created but never completed.
+     * 
+     * This test demonstrates proper usage: track creation and completion.
+     */
+    @AsyncTest(threads = 1, detectCompletableFutureCompletionLeaks = true, timeoutMs = 3000)
+    void testCompletableFutureCompletionLeak() throws Exception {
+        CompletableFuture<String> future = new CompletableFuture<>();
+        
+        // Track creation
+        AsyncTestContext.completableFutureCompletionLeakDetector()
+            .recordFutureCreated(future, "user-lookup-future");
+        
+        // Complete the future synchronously in this test
+        future.complete("user-data");
+        
+        // Track completion
+        AsyncTestContext.completableFutureCompletionLeakDetector()
+            .recordFutureCompleted(future, "user-lookup-future");
+        
+        // Analyze - should have no leaks since we completed
+        var report = AsyncTestContext.completableFutureCompletionLeakDetector().analyze();
+        assertFalse(report.hasLeaks(), "Completed future should not leak");
+    }
+    
+    /**
+     * Demonstrates a CompletableFuture leak - future created but never completed.
+     * This test intentionally creates a leak to show detector behavior.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectCompletableFutureCompletionLeaks = true, timeoutMs = 3000)
+    void testCompletableFutureCompletionLeak_detected() {
+        CompletableFuture<String> future = new CompletableFuture<>();
+        
+        // Track creation
+        AsyncTestContext.completableFutureCompletionLeakDetector()
+            .recordFutureCreated(future, "leaked-future");
+        
+        // Intentionally NOT completing - simulates bug where completion is skipped
+        
+        // Analyze - should detect the leak
+        var report = AsyncTestContext.completableFutureCompletionLeakDetector().analyze();
+        assertTrue(report.hasLeaks(), "Uncompleted future should be detected as leak");
+        assertEquals(1, report.getLeakCount());
     }
 }

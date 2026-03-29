@@ -49,6 +49,7 @@ public final class AsyncTestConfig {
     // ---- Phase 2 Additional ----
     public final boolean monitorSemaphore;
     public final boolean detectCompletableFutureExceptions;
+    public final boolean detectCompletableFutureCompletionLeaks;
     public final boolean detectConcurrentModifications;
     public final boolean detectLockLeaks;
     public final boolean detectSharedRandom;
@@ -106,6 +107,7 @@ public final class AsyncTestConfig {
         detectInterruptMishandling     = b.detectInterruptMishandling;
         monitorSemaphore               = b.monitorSemaphore;
         detectCompletableFutureExceptions = b.detectCompletableFutureExceptions;
+        detectCompletableFutureCompletionLeaks = b.detectCompletableFutureCompletionLeaks;
         detectConcurrentModifications  = b.detectConcurrentModifications;
         detectLockLeaks                = b.detectLockLeaks;
         detectSharedRandom             = b.detectSharedRandom;
@@ -163,6 +165,7 @@ public final class AsyncTestConfig {
             .detectInterruptMishandling(ann.detectInterruptMishandling())
             .monitorSemaphore(ann.monitorSemaphore())
             .detectCompletableFutureExceptions(ann.detectCompletableFutureExceptions())
+            .detectCompletableFutureCompletionLeaks(ann.detectCompletableFutureCompletionLeaks())
             .detectConcurrentModifications(ann.detectConcurrentModifications())
             .detectLockLeaks(ann.detectLockLeaks())
             .detectSharedRandom(ann.detectSharedRandom())
@@ -221,6 +224,7 @@ public final class AsyncTestConfig {
         private boolean detectInterruptMishandling = false;
         private boolean monitorSemaphore           = false;
         private boolean detectCompletableFutureExceptions = false;
+        private boolean detectCompletableFutureCompletionLeaks = false;
         private boolean detectConcurrentModifications = false;
         private boolean detectLockLeaks = false;
         private boolean detectSharedRandom = false;
@@ -272,6 +276,7 @@ public final class AsyncTestConfig {
         public Builder detectInterruptMishandling(boolean v) { detectInterruptMishandling = v; return this; }
         public Builder monitorSemaphore(boolean v)           { monitorSemaphore = v; return this; }
         public Builder detectCompletableFutureExceptions(boolean v) { detectCompletableFutureExceptions = v; return this; }
+        public Builder detectCompletableFutureCompletionLeaks(boolean v) { detectCompletableFutureCompletionLeaks = v; return this; }
         public Builder detectConcurrentModifications(boolean v) { detectConcurrentModifications = v; return this; }
         public Builder detectLockLeaks(boolean v) { detectLockLeaks = v; return this; }
         public Builder detectSharedRandom(boolean v) { detectSharedRandom = v; return this; }
@@ -335,6 +340,8 @@ public final class AsyncTestConfig {
                     else monitorSemaphore = false;
                 if (!excludes.contains(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS)) detectCompletableFutureExceptions = true;
                     else detectCompletableFutureExceptions = false;
+                if (!excludes.contains(DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS)) detectCompletableFutureCompletionLeaks = true;
+                    else detectCompletableFutureCompletionLeaks = false;
                 if (!excludes.contains(DetectorType.CONCURRENT_MODIFICATIONS)) detectConcurrentModifications = true;
                     else detectConcurrentModifications = false;
                 if (!excludes.contains(DetectorType.LOCK_LEAKS)) detectLockLeaks = true;
@@ -403,6 +410,7 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.READ_WRITE_LOCK_FAIRNESS)) monitorReadWriteLockFairness = false;
                 if (excludes.contains(DetectorType.SEMAPHORE)) monitorSemaphore = false;
                 if (excludes.contains(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS)) detectCompletableFutureExceptions = false;
+                if (excludes.contains(DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS)) detectCompletableFutureCompletionLeaks = false;
                 if (excludes.contains(DetectorType.CONCURRENT_MODIFICATIONS)) detectConcurrentModifications = false;
                 if (excludes.contains(DetectorType.LOCK_LEAKS)) detectLockLeaks = false;
                 if (excludes.contains(DetectorType.SHARED_RANDOM)) detectSharedRandom = false;
