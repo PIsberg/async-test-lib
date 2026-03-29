@@ -1,27 +1,29 @@
 @startuml ContainerDiagram
 title Async Test Library - Container Diagram
 
-package "async-test-1.1.0.jar" {
-  
+package "async-test-1.2.0.jar" {
+
   rectangle "Extension Layer" as ExtensionLayer {
     [AsyncTestExtension\n(TestTemplateInvocationContextProvider)] as Ext
     [AsyncTestInvocationInterceptor\n(InvocationInterceptor)] as Interceptor
   }
-  
+
   rectangle "Configuration" as Config {
     [AsyncTest\n(Annotation)] as Annotation
     [AsyncTestConfig\n(Configuration)] as ConfigObj
     [DetectorType\n(Enum)] as DetectorType
   }
-  
+
   rectangle "Runner Core" as RunnerCore {
     [ConcurrencyRunner\n(Static Executor)] as Runner
     [AsyncTestContext\n(ThreadLocal Context)] as Context
+    [DetectorRegistry\n(Phase 2 Registry)] as DetectorReg
     [VirtualThreadStressConfig] as VThreadConfig
   }
-  
+
   rectangle "Detector Modules" as Detectors {
     package "Phase 1: Core" as Phase1 {
+      [Phase1DetectorSet\n(Facade)] as Phase1Set
       [DeadlockDetector] as Deadlock
       [VisibilityMonitor] as Visibility
       [LivelockDetector] as Livelock
@@ -32,7 +34,7 @@ package "async-test-1.1.0.jar" {
       [AtomicityValidator] as Atomicity
       [InterruptMonitor] as Interrupt
     }
-    
+
     package "Phase 2: Advanced" as Phase2 {
       [FalseSharingDetector] as FalseSharing
       [WakeupDetector] as Wakeup
@@ -55,7 +57,7 @@ package "async-test-1.1.0.jar" {
       [ParallelStreamDetector] as ParallelStream
       [ResourceLeakDetector] as ResourceLeak
     }
-    
+
     package "Phase 3: Runtime" as Phase3 {
       [NotifyAllValidator] as NotifyAll
       [LazyInitValidator] as LazyInit
@@ -64,7 +66,7 @@ package "async-test-1.1.0.jar" {
       [LatchMisuseDetector] as Latch
     }
   }
-  
+
   rectangle "Benchmark Module" as Benchmark {
     [BenchmarkRecorder] as Recorder
     [BenchmarkComparator] as Comparator
@@ -72,7 +74,13 @@ package "async-test-1.1.0.jar" {
     [BenchmarkComparisonResult] as Comparison
     [BenchmarkRegressionException] as Regression
   }
-  
+
+  rectangle "Observability (NEW)" as Observability {
+    [AsyncTestListener\n(Interface)] as Listener
+    [AsyncTestListenerRegistry] as ListenerReg
+    [NoopAsyncTestListener] as NoopListener
+  }
+
   package "Lifecycle Annotations" as Lifecycle {
     [BeforeEachInvocation] as BeforeEach
     [AfterEachInvocation] as AfterEach
@@ -83,12 +91,18 @@ Ext --> Interceptor : "Provides"
 Interceptor --> Runner : "Calls execute()"
 Annotation --> ConfigObj : "Converted to"
 Runner --> Context : "Installs per thread"
+Runner --> DetectorReg : "Creates"
 Runner --> VThreadConfig : "Configures stress level"
-Runner --> Phase1 : "Activates"
-Runner --> Phase2 : "Activates"
+Runner --> Phase1Set : "Creates from config"
+Phase1Set --> Phase1 : "Groups detectors"
+Runner --> Phase2 : "Activates via registry"
 Runner --> Phase3 : "Activates"
 Runner --> Benchmark : "Records times"
-Context --> Phase2 : "Provides static accessors"
+Runner --> ListenerReg : "Fires events"
+ListenerReg --> Listener : "Notifies"
+NoopListener ..|> Listener : "Implements"
+Context --> DetectorReg : "Delegates to"
+DetectorReg --> Phase2 : "Manages lifecycle"
 Runner --> Lifecycle : "Invokes callbacks"
 Comparator --> Result : "Compares with baseline"
 Comparator --> Regression : "Throws on regression"
@@ -96,5 +110,10 @@ Comparator --> Regression : "Throws on regression"
 note bottom of Detectors
   **35 Specialized Detectors**
   Phase 1: Core (9 detectors)\nPhase 2: Advanced (20 detectors)\nPhase 3: Runtime (5 detectors)\nBenchmarking: (5 classes)
+end note
+
+note right of Observability
+  **NEW in v1.2.0**
+  Opt-in event listeners\nfor logging, metrics,\nor custom reporting
 end note
 @enduml

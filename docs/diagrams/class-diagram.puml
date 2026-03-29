@@ -98,6 +98,7 @@ class ConcurrencyRunner {
 
 class AsyncTestContext {
   -CURRENT: ThreadLocal<AsyncTestContext>
+  -registry: DetectorRegistry
   -falseSharingDetector: FalseSharingDetector
   -wakeupDetector: WakeupDetector
   -constructorSafetyValidator: ConstructorSafetyValidator
@@ -142,6 +143,56 @@ class AsyncTestContext {
   +static parallelStreamMonitor(): ParallelStreamDetector
   +static resourceLeakMonitor(): ResourceLeakDetector
   +analyzeAll(): List<String>
+}
+
+class DetectorRegistry {
+  -falseSharingDetector: FalseSharingDetector
+  -wakeupDetector: WakeupDetector
+  -constructorSafetyValidator: ConstructorSafetyValidator
+  -... (20 Phase 2 detectors)
+  +DetectorRegistry(AsyncTestConfig)
+  +analyzeAll(): List<String>
+}
+
+class AsyncTestListener <<Interface>> {
+  +onInvocationStarted(int, int): void
+  +onInvocationCompleted(int, long): void
+  +onTestFailed(Throwable): void
+  +onDetectorReport(String, String): void
+  +onTimeout(long): void
+}
+
+class AsyncTestListenerRegistry {
+  -LISTENERS: List<AsyncTestListener>
+  +static register(AsyncTestListener): void
+  +static unregister(AsyncTestListener): boolean
+  +static clearAll(): void
+  +static fireInvocationStarted(int, int): void
+  +static fireInvocationCompleted(int, long): void
+  +static fireTestFailed(Throwable): void
+  +static fireDetectorReport(String, String): void
+  +static fireTimeout(long): void
+}
+
+class NoopAsyncTestListener {
+  +NoopAsyncTestListener()
+  +onInvocationStarted(int, int): void
+  +onInvocationCompleted(int, long): void
+  +onTestFailed(Throwable): void
+  +onDetectorReport(String, String): void
+  +onTimeout(long): void
+}
+
+class Phase1DetectorSet {
+  +visibility: VisibilityMonitor
+  +livelock: LivelockDetector
+  +race: RaceConditionDetector
+  +threadLocal: ThreadLocalMonitor
+  +busyWait: BusyWaitDetector
+  +atomicity: AtomicityValidator
+  +interrupt: InterruptMonitor
+  +static from(AsyncTestConfig): Phase1DetectorSet
+  +printReports(): void
 }
 
 class DetectorType <<Enumeration>> {
@@ -252,28 +303,41 @@ AsyncTestInvocationInterceptor --> AsyncTest : "Uses"
 AsyncTestInvocationInterceptor --> ConcurrencyRunner : "Calls"
 ConcurrencyRunner --> AsyncTestConfig : "Uses"
 ConcurrencyRunner --> AsyncTestContext : "Creates & installs"
+ConcurrencyRunner --> DetectorRegistry : "Creates"
+ConcurrencyRunner --> Phase1DetectorSet : "Creates from config"
+ConcurrencyRunner --> AsyncTestListenerRegistry : "Fires events"
 AsyncTestConfig --> AsyncTest : "Built from"
 AsyncTestConfig --> DetectorType : "Uses excludes"
-AsyncTestContext --> FalseSharingDetector : "Contains"
-AsyncTestContext --> WakeupDetector : "Contains"
-AsyncTestContext --> ConstructorSafetyValidator : "Contains"
-AsyncTestContext --> ABAProblemDetector : "Contains"
-AsyncTestContext --> LockOrderValidator : "Contains"
-AsyncTestContext --> SynchronizerMonitor : "Contains"
-AsyncTestContext --> ThreadPoolMonitor : "Contains"
-AsyncTestContext --> MemoryOrderingMonitor : "Contains"
-AsyncTestContext --> PipelineMonitor : "Contains"
-AsyncTestContext --> ReadWriteLockMonitor : "Contains"
-AsyncTestContext --> SemaphoreMisuseDetector : "Contains"
-AsyncTestContext --> CompletableFutureExceptionDetector : "Contains"
-AsyncTestContext --> ConcurrentModificationDetector : "Contains"
-AsyncTestContext --> LockLeakDetector : "Contains"
-AsyncTestContext --> SharedRandomDetector : "Contains"
-AsyncTestContext --> BlockingQueueDetector : "Contains"
-AsyncTestContext --> ConditionVariableDetector : "Contains"
-AsyncTestContext --> SimpleDateFormatDetector : "Contains"
-AsyncTestContext --> ParallelStreamDetector : "Contains"
-AsyncTestContext --> ResourceLeakDetector : "Contains"
+AsyncTestContext --> DetectorRegistry : "Delegates to"
+DetectorRegistry --> FalseSharingDetector : "Contains"
+DetectorRegistry --> WakeupDetector : "Contains"
+DetectorRegistry --> ConstructorSafetyValidator : "Contains"
+DetectorRegistry --> ABAProblemDetector : "Contains"
+DetectorRegistry --> LockOrderValidator : "Contains"
+DetectorRegistry --> SynchronizerMonitor : "Contains"
+DetectorRegistry --> ThreadPoolMonitor : "Contains"
+DetectorRegistry --> MemoryOrderingMonitor : "Contains"
+DetectorRegistry --> PipelineMonitor : "Contains"
+DetectorRegistry --> ReadWriteLockMonitor : "Contains"
+DetectorRegistry --> SemaphoreMisuseDetector : "Contains"
+DetectorRegistry --> CompletableFutureExceptionDetector : "Contains"
+DetectorRegistry --> ConcurrentModificationDetector : "Contains"
+DetectorRegistry --> LockLeakDetector : "Contains"
+DetectorRegistry --> SharedRandomDetector : "Contains"
+DetectorRegistry --> BlockingQueueDetector : "Contains"
+DetectorRegistry --> ConditionVariableDetector : "Contains"
+DetectorRegistry --> SimpleDateFormatDetector : "Contains"
+DetectorRegistry --> ParallelStreamDetector : "Contains"
+DetectorRegistry --> ResourceLeakDetector : "Contains"
+Phase1DetectorSet --> VisibilityMonitor : "Contains"
+Phase1DetectorSet --> LivelockDetector : "Contains"
+Phase1DetectorSet --> RaceConditionDetector : "Contains"
+Phase1DetectorSet --> ThreadLocalMonitor : "Contains"
+Phase1DetectorSet --> BusyWaitDetector : "Contains"
+Phase1DetectorSet --> AtomicityValidator : "Contains"
+Phase1DetectorSet --> InterruptMonitor : "Contains"
+NoopAsyncTestListener ..|> AsyncTestListener : "Implements"
+AsyncTestListenerRegistry --> AsyncTestListener : "Notifies"
 
 ' Benchmark relationships
 BenchmarkRecorder --> AsyncTestConfig : "Uses config"
