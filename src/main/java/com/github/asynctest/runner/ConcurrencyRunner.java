@@ -249,6 +249,7 @@ public class ConcurrencyRunner {
         AsyncTestListenerRegistry.fireTimeout(timeoutMs);
         if (detectDeadlocks) {
             DeadlockDetector.printThreadDump();
+            DeadlockDetector.printLearningAndFix();
         }
         phase1.printReports();
         printPhase2Reports(phase2Context);

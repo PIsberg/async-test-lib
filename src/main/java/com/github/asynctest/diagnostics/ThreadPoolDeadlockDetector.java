@@ -274,7 +274,8 @@ public class ThreadPoolDeadlockDetector {
             }
 
             StringBuilder sb = new StringBuilder();
-            sb.append("ThreadPoolDeadlockReport: ")
+            sb.append(IssueSeverity.HIGH.format())
+              .append(": ")
               .append(risks.size())
               .append(" pool(s) with potential deadlock scenarios\n");
 
@@ -303,12 +304,11 @@ public class ThreadPoolDeadlockDetector {
                 }
             }
 
-            sb.append("\n\n  Recommendations:");
-            sb.append("\n    - Avoid submitting tasks to the same pool from within pool tasks");
-            sb.append("\n    - Use a separate executor for nested task submissions");
-            sb.append("\n    - Consider using a cached thread pool for nested submissions");
-            sb.append("\n    - Use CompletableFuture.supplyAsync() with a different executor");
-            sb.append("\n    - Increase pool size if nested submissions are unavoidable");
+            // Add learning content and auto-fix
+            sb.append("\n\n").append("=".repeat(60));
+            sb.append("\n").append(LearningContent.getThreadPoolDeadlockExplanation());
+            sb.append(AutoFix.getThreadPoolDeadlockFix());
+            sb.append("=".repeat(60));
 
             return sb.toString();
         }

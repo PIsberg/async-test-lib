@@ -241,7 +241,8 @@ public class CompletableFutureCompletionLeakDetector {
             }
 
             StringBuilder sb = new StringBuilder();
-            sb.append("CompletableFutureCompletionLeakReport: ")
+            sb.append(IssueSeverity.HIGH.format())
+              .append(": ")
               .append(leakedFutures.size())
               .append(" uncompleted CompletableFuture(s) detected:\n");
 
@@ -267,6 +268,12 @@ public class CompletableFutureCompletionLeakDetector {
             sb.append("\n    - Exception path skipped completion (missing completeExceptionally)");
             sb.append("\n    - Completion called on wrong object instance");
             sb.append("\n    - Race condition: completion happens after test timeout");
+
+            // Add learning content and auto-fix
+            sb.append("\n\n").append("=".repeat(60));
+            sb.append("\n").append(LearningContent.getCompletableFutureLeakExplanation());
+            sb.append(AutoFix.getCompletableFutureLeakFix());
+            sb.append("=".repeat(60));
 
             return sb.toString();
         }

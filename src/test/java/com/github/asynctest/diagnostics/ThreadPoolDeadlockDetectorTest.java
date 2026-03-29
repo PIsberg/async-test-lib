@@ -131,14 +131,15 @@ class ThreadPoolDeadlockDetectorTest {
         
         detector.registerPool(pool, "test-pool");
         detector.recordNestedSubmission(pool, "test-pool");
-        
+
         ThreadPoolDeadlockDetector.ThreadPoolDeadlockReport report = detector.analyze();
         String reportStr = report.toString();
-        
+
         assertTrue(reportStr.contains("test-pool"));
         assertTrue(reportStr.contains("Nested submissions"));
-        assertTrue(reportStr.contains("Recommendations"));
-        
+        assertTrue(reportStr.contains("LEARNING"));
+        assertTrue(reportStr.contains("AUTO-FIX"));
+
         pool.shutdown();
     }
 

@@ -268,7 +268,8 @@ public class VirtualThreadPinningDetector {
             }
 
             StringBuilder sb = new StringBuilder();
-            sb.append("VirtualThreadPinningReport: ")
+            sb.append(IssueSeverity.MEDIUM.format())
+              .append(": ")
               .append(events.size())
               .append(" pinning event(s) detected (max concurrent: ")
               .append(maxPinnedCount)
@@ -294,10 +295,11 @@ public class VirtualThreadPinningDetector {
                 sb.append("\n  ... and ").append(events.size() - 5).append(" more events");
             }
 
-            sb.append("\n\n  Recommendations:");
-            sb.append("\n    - Replace synchronized blocks with ReentrantLock");
-            sb.append("\n    - Use LockSupport.park() instead of Thread.sleep() in virtual threads");
-            sb.append("\n    - Consider using platform threads for I/O-bound synchronized code");
+            // Add learning content and auto-fix
+            sb.append("\n\n").append("=".repeat(60));
+            sb.append("\n").append(LearningContent.getVirtualThreadPinningExplanation());
+            sb.append(AutoFix.getVirtualThreadPinningFix());
+            sb.append("=".repeat(60));
 
             return sb.toString();
         }

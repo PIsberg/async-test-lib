@@ -17,36 +17,41 @@ public class DeadlockDetector {
 
     public static void printThreadDump() {
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
-        
+
         System.err.println("\n=======================================================");
         System.err.println("   ASYNC-TEST DEADLOCK / TIMEOUT DETECTED");
         System.err.println("   ENHANCED THREAD DUMP WITH LOCK ANALYSIS");
         System.err.println("=======================================================\n");
-        
+
         // Get detailed thread info with locks
         ThreadInfo[] threadInfos = threadMXBean.dumpAllThreads(true, true);
-        
+
+        // Print severity
+        System.err.println(IssueSeverity.CRITICAL.format() + ": Application threads are deadlocked");
+        System.err.println("Impact: " + IssueSeverity.CRITICAL.getDescription());
+        System.err.println();
+
         // Print raw thread dump first
         System.err.println("=== RAW THREAD DUMP ===\n");
         for (ThreadInfo threadInfo : threadInfos) {
             System.err.println(threadInfo.toString());
         }
-        
+
         System.err.println("\n=== LOCK ANALYSIS ===\n");
-        
+
         // Analyze deadlocks and lock chains
         long[] deadlockedThreads = threadMXBean.findDeadlockedThreads();
         if (deadlockedThreads != null && deadlockedThreads.length > 0) {
             System.err.println("*** CIRCULAR DEADLOCK DETECTED ***");
             System.err.println("Deadlocked threads: " + Arrays.toString(deadlockedThreads));
             System.err.println();
-            
+
             // Get detailed info on deadlocked threads
             Map<Long, ThreadInfo> threadMap = new HashMap<>();
             for (ThreadInfo ti : threadInfos) {
                 threadMap.put(ti.getThreadId(), ti);
             }
-            
+
             for (long threadId : deadlockedThreads) {
                 ThreadInfo ti = threadMap.get(threadId);
                 if (ti != null) {
@@ -134,5 +139,15 @@ public class DeadlockDetector {
         }
         
         return String.format("Running: %d, Waiting: %d, Blocked: %d", running, waiting, blocked);
+    }
+
+    /**
+     * Print learning content and auto-fix suggestions for deadlocks.
+     */
+    public static void printLearningAndFix() {
+        System.err.println("\n" + "=".repeat(60));
+        System.err.println(LearningContent.getDeadlockExplanation());
+        System.err.println(AutoFix.getDeadlockFix());
+        System.err.println("=".repeat(60) + "\n");
     }
 }
