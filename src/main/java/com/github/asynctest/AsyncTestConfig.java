@@ -51,6 +51,7 @@ public final class AsyncTestConfig {
     public final boolean detectCompletableFutureExceptions;
     public final boolean detectCompletableFutureCompletionLeaks;
     public final boolean detectVirtualThreadPinning;
+    public final boolean detectThreadPoolDeadlocks;
     public final boolean detectConcurrentModifications;
     public final boolean detectLockLeaks;
     public final boolean detectSharedRandom;
@@ -110,6 +111,7 @@ public final class AsyncTestConfig {
         detectCompletableFutureExceptions = b.detectCompletableFutureExceptions;
         detectCompletableFutureCompletionLeaks = b.detectCompletableFutureCompletionLeaks;
         detectVirtualThreadPinning     = b.detectVirtualThreadPinning;
+        detectThreadPoolDeadlocks      = b.detectThreadPoolDeadlocks;
         detectConcurrentModifications  = b.detectConcurrentModifications;
         detectLockLeaks                = b.detectLockLeaks;
         detectSharedRandom             = b.detectSharedRandom;
@@ -169,6 +171,7 @@ public final class AsyncTestConfig {
             .detectCompletableFutureExceptions(ann.detectCompletableFutureExceptions())
             .detectCompletableFutureCompletionLeaks(ann.detectCompletableFutureCompletionLeaks())
             .detectVirtualThreadPinning(ann.detectVirtualThreadPinning())
+            .detectThreadPoolDeadlocks(ann.detectThreadPoolDeadlocks())
             .detectConcurrentModifications(ann.detectConcurrentModifications())
             .detectLockLeaks(ann.detectLockLeaks())
             .detectSharedRandom(ann.detectSharedRandom())
@@ -229,6 +232,7 @@ public final class AsyncTestConfig {
         private boolean detectCompletableFutureExceptions = false;
         private boolean detectCompletableFutureCompletionLeaks = false;
         private boolean detectVirtualThreadPinning = false;
+        private boolean detectThreadPoolDeadlocks = false;
         private boolean detectConcurrentModifications = false;
         private boolean detectLockLeaks = false;
         private boolean detectSharedRandom = false;
@@ -282,6 +286,7 @@ public final class AsyncTestConfig {
         public Builder detectCompletableFutureExceptions(boolean v) { detectCompletableFutureExceptions = v; return this; }
         public Builder detectCompletableFutureCompletionLeaks(boolean v) { detectCompletableFutureCompletionLeaks = v; return this; }
         public Builder detectVirtualThreadPinning(boolean v) { detectVirtualThreadPinning = v; return this; }
+        public Builder detectThreadPoolDeadlocks(boolean v) { detectThreadPoolDeadlocks = v; return this; }
         public Builder detectConcurrentModifications(boolean v) { detectConcurrentModifications = v; return this; }
         public Builder detectLockLeaks(boolean v) { detectLockLeaks = v; return this; }
         public Builder detectSharedRandom(boolean v) { detectSharedRandom = v; return this; }
@@ -349,6 +354,8 @@ public final class AsyncTestConfig {
                     else detectCompletableFutureCompletionLeaks = false;
                 if (!excludes.contains(DetectorType.VIRTUAL_THREAD_PINNING)) detectVirtualThreadPinning = true;
                     else detectVirtualThreadPinning = false;
+                if (!excludes.contains(DetectorType.THREAD_POOL_DEADLOCK)) detectThreadPoolDeadlocks = true;
+                    else detectThreadPoolDeadlocks = false;
                 if (!excludes.contains(DetectorType.CONCURRENT_MODIFICATIONS)) detectConcurrentModifications = true;
                     else detectConcurrentModifications = false;
                 if (!excludes.contains(DetectorType.LOCK_LEAKS)) detectLockLeaks = true;
@@ -419,6 +426,7 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS)) detectCompletableFutureExceptions = false;
                 if (excludes.contains(DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS)) detectCompletableFutureCompletionLeaks = false;
                 if (excludes.contains(DetectorType.VIRTUAL_THREAD_PINNING)) detectVirtualThreadPinning = false;
+                if (excludes.contains(DetectorType.THREAD_POOL_DEADLOCK)) detectThreadPoolDeadlocks = false;
                 if (excludes.contains(DetectorType.CONCURRENT_MODIFICATIONS)) detectConcurrentModifications = false;
                 if (excludes.contains(DetectorType.LOCK_LEAKS)) detectLockLeaks = false;
                 if (excludes.contains(DetectorType.SHARED_RANDOM)) detectSharedRandom = false;

@@ -222,6 +222,13 @@ public @interface AsyncTest {
     boolean detectVirtualThreadPinning() default false;
 
     /**
+     * Enable thread pool deadlock detection.
+     * Detects tasks submitting nested tasks to the same pool, which can cause deadlock.
+     * @since 1.2.0
+     */
+    boolean detectThreadPoolDeadlocks() default false;
+
+    /**
      * Enable concurrent modification detection.
      * Detects collection modifications during iteration and concurrent mutations.
      */

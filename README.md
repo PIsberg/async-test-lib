@@ -1642,6 +1642,56 @@ void testVirtualThreadPinning() {
 - Use `LockSupport.park()` instead of `Thread.sleep()` in virtual threads
 - Consider platform threads for I/O-bound synchronized code
 
+### Thread Pool Deadlock Detection
+
+Detects tasks that submit nested tasks to the same thread pool — a common cause of deadlocks with fixed-size pools.
+
+```java
+@AsyncTest(threads = 4, detectThreadPoolDeadlocks = true)
+void testThreadPoolDeadlock() {
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    
+    // Register pool for monitoring
+    AsyncTestContext.threadPoolDeadlockDetector()
+        .registerPool(pool, "worker-pool");
+    
+    pool.submit(() -> {
+        // Nested submission to same pool - DEADLOCK RISK!
+        AsyncTestContext.threadPoolDeadlockDetector()
+            .recordNestedSubmission(pool, "worker-pool");
+        
+        Future<?> nested = pool.submit(() -> { });
+        try {
+            nested.get(); // May wait forever if pool is exhausted
+        } catch (Exception e) {
+            // Handle exception
+        }
+    });
+    
+    var report = AsyncTestContext.threadPoolDeadlockDetector().analyze();
+    if (report.hasDeadlockRisk()) {
+        System.err.println(report); // Shows deadlock scenarios
+    }
+    
+    pool.shutdown();
+}
+```
+
+**Report example:**
+```
+ThreadPoolDeadlockReport: 1 pool(s) with potential deadlock scenarios
+
+  [1] Pool: worker-pool
+      Pool size: 2
+      Nested submissions: 1
+      Peak active tasks: 2 ⚠️  DEADLOCK RISK - active tasks reached pool capacity!
+
+  Recommendations:
+    - Avoid submitting tasks to the same pool from within pool tasks
+    - Use a separate executor for nested task submissions
+    - Consider using a cached thread pool for nested submissions
+```
+
 ---
 
 ## Troubleshooting

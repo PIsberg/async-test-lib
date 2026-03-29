@@ -40,6 +40,7 @@ final class DetectorRegistry {
     final CompletableFutureExceptionDetector   completableFutureExceptionDetector;
     final CompletableFutureCompletionLeakDetector completableFutureCompletionLeakDetector;
     final VirtualThreadPinningDetector         virtualThreadPinningDetector;
+    final ThreadPoolDeadlockDetector           threadPoolDeadlockDetector;
     final ConcurrentModificationDetector       concurrentModificationDetector;
     final LockLeakDetector                     lockLeakDetector;
     final SharedRandomDetector                 sharedRandomDetector;
@@ -88,6 +89,8 @@ final class DetectorRegistry {
                 ? new CompletableFutureCompletionLeakDetector() : null;
         virtualThreadPinningDetector = cfg.detectVirtualThreadPinning
                 ? new VirtualThreadPinningDetector() : null;
+        threadPoolDeadlockDetector = cfg.detectThreadPoolDeadlocks
+                ? new ThreadPoolDeadlockDetector() : null;
         concurrentModificationDetector = cfg.detectConcurrentModifications
                 ? new ConcurrentModificationDetector() : null;
         lockLeakDetector           = cfg.detectLockLeaks                ? new LockLeakDetector()           : null;
@@ -171,6 +174,11 @@ final class DetectorRegistry {
             VirtualThreadPinningDetector.PinningReport r = 
                 virtualThreadPinningDetector.analyzePinning();
             if (r.hasPinningIssues()) out.add(r.toString());
+        }
+        if (threadPoolDeadlockDetector != null) {
+            ThreadPoolDeadlockDetector.ThreadPoolDeadlockReport r = 
+                threadPoolDeadlockDetector.analyze();
+            if (r.hasDeadlockRisk()) out.add(r.toString());
         }
         ifIssue(concurrentModificationDetector,
                 d -> d.analyze(),

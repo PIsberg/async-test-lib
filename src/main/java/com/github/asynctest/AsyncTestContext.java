@@ -53,6 +53,7 @@ public final class AsyncTestContext {
     final CompletableFutureExceptionDetector completableFutureExceptionDetector;
     final CompletableFutureCompletionLeakDetector completableFutureCompletionLeakDetector;
     final VirtualThreadPinningDetector virtualThreadPinningDetector;
+    final ThreadPoolDeadlockDetector threadPoolDeadlockDetector;
     final ConcurrentModificationDetector concurrentModificationDetector;
     final LockLeakDetector lockLeakDetector;
     final SharedRandomDetector sharedRandomDetector;
@@ -93,6 +94,7 @@ public final class AsyncTestContext {
         completableFutureExceptionDetector = registry.completableFutureExceptionDetector;
         completableFutureCompletionLeakDetector = registry.completableFutureCompletionLeakDetector;
         virtualThreadPinningDetector      = registry.virtualThreadPinningDetector;
+        threadPoolDeadlockDetector        = registry.threadPoolDeadlockDetector;
         concurrentModificationDetector    = registry.concurrentModificationDetector;
         lockLeakDetector                  = registry.lockLeakDetector;
         sharedRandomDetector              = registry.sharedRandomDetector;
@@ -261,6 +263,15 @@ public final class AsyncTestContext {
      */
     public static VirtualThreadPinningDetector virtualThreadPinningDetector() {
         return require("detectVirtualThreadPinning", c -> c.virtualThreadPinningDetector);
+    }
+
+    /**
+     * Returns the {@link ThreadPoolDeadlockDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectThreadPoolDeadlocks = false}
+     * @since 1.2.0
+     */
+    public static ThreadPoolDeadlockDetector threadPoolDeadlockDetector() {
+        return require("detectThreadPoolDeadlocks", c -> c.threadPoolDeadlockDetector);
     }
 
     /**

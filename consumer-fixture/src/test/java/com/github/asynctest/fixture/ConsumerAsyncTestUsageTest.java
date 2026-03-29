@@ -11,6 +11,7 @@ import com.github.asynctest.diagnostics.LatchMisuseDetector;
 import com.github.asynctest.diagnostics.SemaphoreMisuseDetector;
 import com.github.asynctest.diagnostics.CompletableFutureExceptionDetector;
 import com.github.asynctest.diagnostics.CompletableFutureCompletionLeakDetector;
+import com.github.asynctest.diagnostics.ThreadPoolDeadlockDetector;
 import com.github.asynctest.diagnostics.ConcurrentModificationDetector;
 import com.github.asynctest.diagnostics.LockLeakDetector;
 import com.github.asynctest.diagnostics.SharedRandomDetector;
@@ -1096,5 +1097,48 @@ class ConsumerAsyncTestUsageTest {
         var report = AsyncTestContext.completableFutureCompletionLeakDetector().analyze();
         assertTrue(report.hasLeaks(), "Uncompleted future should be detected as leak");
         assertEquals(1, report.getLeakCount());
+    }
+    
+    /**
+     * Phase 2.34: Thread pool deadlock detection.
+     * Detects tasks submitting nested tasks to the same pool, which can cause deadlock.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectThreadPoolDeadlocks = true, timeoutMs = 3000)
+    void testThreadPoolDeadlockDetection() {
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        
+        // Register pool for monitoring
+        AsyncTestContext.threadPoolDeadlockDetector()
+            .registerPool(pool, "test-pool");
+        
+        // Simulate a nested submission scenario (potential deadlock)
+        AsyncTestContext.threadPoolDeadlockDetector()
+            .recordNestedSubmission(pool, "test-pool");
+        
+        // Analyze - should detect the nested submission as a risk
+        var report = AsyncTestContext.threadPoolDeadlockDetector().analyze();
+        assertTrue(report.hasDeadlockRisk(), "Nested submission should be detected as deadlock risk");
+        
+        pool.shutdown();
+    }
+    
+    /**
+     * Demonstrates safe thread pool usage - no nested submissions.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectThreadPoolDeadlocks = true, timeoutMs = 3000)
+    void testThreadPoolNoDeadlock() {
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        
+        // Register pool for monitoring
+        AsyncTestContext.threadPoolDeadlockDetector()
+            .registerPool(pool, "safe-pool");
+        
+        // No nested submissions - safe usage
+        
+        // Analyze - should have no risks
+        var report = AsyncTestContext.threadPoolDeadlockDetector().analyze();
+        assertFalse(report.hasDeadlockRisk(), "No nested submissions means no deadlock risk");
+        
+        pool.shutdown();
     }
 }
