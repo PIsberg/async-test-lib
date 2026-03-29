@@ -88,9 +88,11 @@ public @interface AsyncTest {
      * When {@code true}, every individual {@code detect*} / {@code validate*} / {@code monitor*}
      * flag is treated as enabled, regardless of its own default value.
      * Individual flags can still be set to {@code false} to opt out of specific detectors.
-     * <p>Example: {@code @AsyncTest(detectAll = true)} — no further flags needed.
+     * <p><strong>Default is {@code true}</strong> — {@code @AsyncTest} alone enables all detectors.
+     * <p>Example: {@code @AsyncTest} — all detectors enabled automatically.
+     * <p>Example: {@code @AsyncTest(detectAll = false, detectDeadlocks = true)} — only deadlock detection.
      */
-    boolean detectAll() default false;
+    boolean detectAll() default true;
 
     /**
      * Specific detectors to exclude when {@code detectAll = true}.
@@ -106,91 +108,91 @@ public @interface AsyncTest {
      * Detects when multiple threads access adjacent memory locations in the same cache line,
      * causing excessive cache coherency traffic.
      */
-    boolean detectFalseSharing() default false;
+    boolean detectFalseSharing() default true;
 
     /**
      * Enable wait/notify issue detection.
      * Detects spurious wakeups, lost notifications, and improper wait/notify coordination.
      */
-    boolean detectWakeupIssues() default false;
+    boolean detectWakeupIssues() default true;
 
     /**
      * Enable constructor safety validation.
      * Verifies objects are fully constructed before being shared across threads.
      */
-    boolean validateConstructorSafety() default false;
+    boolean validateConstructorSafety() default true;
 
     /**
      * Enable ABA problem detection.
      * Detects ABA scenarios in atomic operations and CAS loops that can cause data corruption.
      */
-    boolean detectABAProblem() default false;
+    boolean detectABAProblem() default true;
 
     /**
      * Enable lock order validation.
      * Detects inconsistent lock orderings across threads that can cause deadlocks.
      */
-    boolean validateLockOrder() default false;
+    boolean validateLockOrder() default true;
 
     /**
      * Enable synchronizer monitoring (barriers, phasers, latches).
      * Detects synchronization issues like incomplete barrier advances.
      */
-    boolean monitorSynchronizers() default false;
+    boolean monitorSynchronizers() default true;
 
     /**
      * Enable thread pool health monitoring.
      * Detects queue saturation, task rejection, worker starvation.
      */
-    boolean monitorThreadPool() default false;
+    boolean monitorThreadPool() default true;
 
     /**
      * Enable memory ordering violation detection.
      * Detects compiler/CPU reordering that causes incorrect synchronization.
      */
-    boolean detectMemoryOrderingViolations() default false;
+    boolean detectMemoryOrderingViolations() default true;
 
     /**
      * Enable async pipeline monitoring.
      * Detects signal loss, missing events, and processing failures in event pipelines.
      */
-    boolean monitorAsyncPipeline() default false;
+    boolean monitorAsyncPipeline() default true;
 
     /**
      * Enable read-write lock fairness monitoring.
      * Detects writer starvation and unfair lock distributions.
      */
-    boolean monitorReadWriteLockFairness() default false;
+    boolean monitorReadWriteLockFairness() default true;
 
     /**
      * Enable race condition detection.
      * Detects concurrent field access patterns and unsynchronized mutations.
      */
-    boolean detectRaceConditions() default false;
+    boolean detectRaceConditions() default true;
 
     /**
      * Enable ThreadLocal leak detection.
      * Detects ThreadLocal values not cleaned up, causing memory leaks in thread pools.
      */
-    boolean detectThreadLocalLeaks() default false;
+    boolean detectThreadLocalLeaks() default true;
 
     /**
      * Enable busy-waiting detection.
      * Detects CPU-intensive spin loops and polling patterns without proper synchronization.
      */
-    boolean detectBusyWaiting() default false;
+    boolean detectBusyWaiting() default true;
 
     /**
      * Enable atomicity violation detection.
      * Detects check-then-act patterns and compound operations that aren't properly synchronized.
      */
-    boolean detectAtomicityViolations() default false;
+    boolean detectAtomicityViolations() default true;
 
     /**
      * Enable interrupt handling monitoring.
      * Detects caught but ignored InterruptException and improper thread cancellation handling.
      */
-    boolean detectInterruptMishandling() default false;
+    boolean detectInterruptMishandling() default true;
 
     // ============= Phase 2: Additional Monitors =============
 
@@ -198,20 +200,20 @@ public @interface AsyncTest {
      * Enable semaphore misuse monitoring.
      * Detects permit leaks, over-release, and unreleased permits at completion.
      */
-    boolean monitorSemaphore() default false;
+    boolean monitorSemaphore() default true;
 
     /**
      * Enable CompletableFuture exception monitoring.
      * Detects unhandled exceptions, missing handlers, and swallowed exceptions in async chains.
      */
-    boolean detectCompletableFutureExceptions() default false;
+    boolean detectCompletableFutureExceptions() default true;
 
     /**
      * Enable CompletableFuture completion leak monitoring.
      * Detects CompletableFutures created but never completed (completable future leaks).
      * @since 1.2.0
      */
-    boolean detectCompletableFutureCompletionLeaks() default false;
+    boolean detectCompletableFutureCompletionLeaks() default true;
 
     /**
      * Enable virtual thread pinning detection.
@@ -219,62 +221,62 @@ public @interface AsyncTest {
      * Requires Java 21+ with virtual thread support.
      * @since 1.2.0
      */
-    boolean detectVirtualThreadPinning() default false;
+    boolean detectVirtualThreadPinning() default true;
 
     /**
      * Enable thread pool deadlock detection.
      * Detects tasks submitting nested tasks to the same pool, which can cause deadlock.
      * @since 1.2.0
      */
-    boolean detectThreadPoolDeadlocks() default false;
+    boolean detectThreadPoolDeadlocks() default true;
 
     /**
      * Enable concurrent modification detection.
      * Detects collection modifications during iteration and concurrent mutations.
      */
-    boolean detectConcurrentModifications() default false;
+    boolean detectConcurrentModifications() default true;
 
     /**
      * Enable lock leak detection.
      * Detects locks acquired but never released and excessive hold times.
      */
-    boolean detectLockLeaks() default false;
+    boolean detectLockLeaks() default true;
 
     /**
      * Enable shared Random detection.
      * Detects concurrent access to non-thread-safe Random instances.
      */
-    boolean detectSharedRandom() default false;
+    boolean detectSharedRandom() default true;
 
     /**
      * Enable BlockingQueue misuse detection.
      * Detects silent failures, queue saturation, and producer/consumer imbalance.
      */
-    boolean detectBlockingQueueIssues() default false;
+    boolean detectBlockingQueueIssues() default true;
 
     /**
      * Enable Condition variable misuse detection.
      * Detects lost signals, stuck waiters, and missing signals.
      */
-    boolean detectConditionVariableIssues() default false;
+    boolean detectConditionVariableIssues() default true;
 
     /**
      * Enable SimpleDateFormat misuse detection.
      * Detects concurrent access to non-thread-safe date formatters.
      */
-    boolean detectSimpleDateFormatIssues() default false;
+    boolean detectSimpleDateFormatIssues() default true;
 
     /**
      * Enable parallel stream misuse detection.
      * Detects stateful lambdas, non-thread-safe collectors, and side effects.
      */
-    boolean detectParallelStreamIssues() default false;
+    boolean detectParallelStreamIssues() default true;
 
     /**
      * Enable resource leak detection.
      * Detects AutoCloseable resources not properly closed.
      */
-    boolean detectResourceLeaks() default false;
+    boolean detectResourceLeaks() default true;
 
     // ============= Phase 2: Additional Concurrency Detectors =============
 
@@ -282,37 +284,37 @@ public @interface AsyncTest {
      * Enable CountDownLatch misuse detection.
      * Detects latch timeout, missing countDown, and extra countDown calls.
      */
-    boolean detectCountDownLatchIssues() default false;
+    boolean detectCountDownLatchIssues() default true;
 
     /**
      * Enable CyclicBarrier misuse detection.
      * Detects barrier timeout, broken barriers, and missing participants.
      */
-    boolean detectCyclicBarrierIssues() default false;
+    boolean detectCyclicBarrierIssues() default true;
 
     /**
      * Enable ReentrantLock issue detection.
      * Detects lock starvation, unfair acquisition, and lock timeouts.
      */
-    boolean detectReentrantLockIssues() default false;
+    boolean detectReentrantLockIssues() default true;
 
     /**
      * Enable volatile array issue detection.
      * Detects multi-thread access to volatile array elements (which are not volatile).
      */
-    boolean detectVolatileArrayIssues() default false;
+    boolean detectVolatileArrayIssues() default true;
 
     /**
      * Enable broken double-checked locking detection.
      * Detects DCL patterns without volatile keyword.
      */
-    boolean detectDoubleCheckedLocking() default false;
+    boolean detectDoubleCheckedLocking() default true;
 
     /**
      * Enable wait timeout detection.
      * Detects wait() calls without timeout (potential deadlock).
      */
-    boolean detectWaitTimeout() default false;
+    boolean detectWaitTimeout() default true;
 
     // ============= Phase 2: Advanced Concurrency Utilities =============
 
@@ -320,37 +322,37 @@ public @interface AsyncTest {
      * Enable Phaser misuse detection.
      * Detects missing arrive() calls, timeouts, and termination issues.
      */
-    boolean detectPhaserIssues() default false;
+    boolean detectPhaserIssues() default true;
 
     /**
      * Enable StampedLock issue detection.
      * Detects unvalidated optimistic reads and stamp release issues.
      */
-    boolean detectStampedLockIssues() default false;
+    boolean detectStampedLockIssues() default true;
 
     /**
      * Enable Exchanger misuse detection.
      * Detects exchange timeouts and missing partners.
      */
-    boolean detectExchangerIssues() default false;
+    boolean detectExchangerIssues() default true;
 
     /**
      * Enable ScheduledExecutorService issue detection.
      * Detects missing shutdown, long-running tasks, and exceptions.
      */
-    boolean detectScheduledExecutorIssues() default false;
+    boolean detectScheduledExecutorIssues() default true;
 
     /**
      * Enable ForkJoinPool issue detection.
      * Detects fork without join and task exceptions.
      */
-    boolean detectForkJoinPoolIssues() default false;
+    boolean detectForkJoinPoolIssues() default true;
 
     /**
      * Enable ThreadFactory issue detection.
      * Detects missing exception handlers and poor thread naming.
      */
-    boolean detectThreadFactoryIssues() default false;
+    boolean detectThreadFactoryIssues() default true;
 
     // ============= Benchmarking =============
 

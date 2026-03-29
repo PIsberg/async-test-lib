@@ -198,7 +198,7 @@ void verify() {
 
 ### 2. Deadlock Detection
 ```java
-@AsyncTest(threads = 2, timeoutMs = 2000, detectAll = true)
+@AsyncTest(threads = 2, timeoutMs = 2000)
 void testPotentialDeadlock() {
     synchronized(lock1) {
         Thread.sleep(10);
@@ -213,18 +213,16 @@ void testPotentialDeadlock() {
     threads = 100,
     invocations = 50,
     useVirtualThreads = true,
-    detectAll = true,
     timeoutMs = 20000
 )
 void comprehensiveStress() {
-    // All 35 detectors are automatically active!
+    // All 50+ detectors are automatically active by default!
 }
 ```
 
 ### 4. Opting Out of Expensive Detectors
 ```java
 @AsyncTest(
-    detectAll = true,
     excludes = { DetectorType.FALSE_SHARING, DetectorType.VISIBILITY }
 )
 void fastStressTest() {
@@ -232,7 +230,19 @@ void fastStressTest() {
 }
 ```
 
-### 4. Virtual Thread Stress Testing
+### 5. Opt-Out Mode: Enable Only Specific Detectors
+```java
+@AsyncTest(
+    detectAll = false,
+    detectDeadlocks = true,
+    detectRaceConditions = true
+)
+void minimalTesting() {
+    // Only deadlock and race condition detection
+}
+```
+
+### 6. Virtual Thread Stress Testing
 ```java
 @AsyncTest(
     useVirtualThreads = true,
@@ -254,49 +264,52 @@ void stressWithVirtualThreads() {
 | `invocations` | int | 100 | Repetitions of the test |
 | `useVirtualThreads` | boolean | true | Use Project Loom virtual threads |
 | `timeoutMs` | long | 5000 | Max execution time before timeout |
-| `detectAll` | boolean | false | Enable ALL detectors in one shot |
+| `detectAll` | boolean | true | Enable ALL detectors in one shot |
 | `excludes` | DetectorType[] | {} | Specific detectors to skip when detectAll=true |
 | `detectDeadlocks` | boolean | true | Detect circular lock dependencies |
-| `detectVisibility` | boolean | false | Detect missing volatiles |
-| `detectLivelocks` | boolean | false | Detect thread spinning/starvation |
+| `detectVisibility` | boolean | true | Detect missing volatiles |
+| `detectLivelocks` | boolean | true | Detect thread spinning/starvation |
 | `virtualThreadStressMode` | String | OFF | Stress level (LOW/MEDIUM/HIGH/EXTREME) |
-| `detectFalseSharing` | boolean | false | Detect cache line contention |
-| `detectWakeupIssues` | boolean | false | Detect spurious/lost wakeups |
-| `validateConstructorSafety` | boolean | false | Validate object initialization |
-| `detectABAProblem` | boolean | false | Detect ABA in lock-free code |
-| `validateLockOrder` | boolean | false | Validate lock ordering |
-| `monitorSynchronizers` | boolean | false | Monitor barriers/phasers |
-| `monitorThreadPool` | boolean | false | Monitor executor health |
-| `detectMemoryOrderingViolations` | boolean | false | Detect reordering issues |
-| `monitorAsyncPipeline` | boolean | false | Track async event flow |
-| `monitorReadWriteLockFairness` | boolean | false | Monitor RWLock fairness |
-| `detectRaceConditions` | boolean | false | Track unsynchronized cross-thread field access |
-| `detectThreadLocalLeaks` | boolean | false | Detect ThreadLocal values that are not cleaned up |
-| `detectBusyWaiting` | boolean | false | Detect spin loops and tight polling |
-| `detectAtomicityViolations` | boolean | false | Detect non-atomic compound operations |
-| `detectInterruptMishandling` | boolean | false | Detect swallowed interrupts and missing restoration |
-| `monitorSemaphore` | boolean | false | Monitor semaphore permit leaks and over-release |
-| `detectCompletableFutureExceptions` | boolean | false | Detect unhandled exceptions in CompletableFuture chains |
-| `detectConcurrentModifications` | boolean | false | Detect collection modifications during iteration |
-| `detectLockLeaks` | boolean | false | Detect locks acquired but never released |
-| `detectSharedRandom` | boolean | false | Detect concurrent access to shared Random instances |
-| `detectBlockingQueueIssues` | boolean | false | Detect BlockingQueue silent failures and saturation |
-| `detectConditionVariableIssues` | boolean | false | Detect Condition variable lost signals and stuck waiters |
-| `detectSimpleDateFormatIssues` | boolean | false | Detect concurrent SimpleDateFormat access |
-| `detectParallelStreamIssues` | boolean | false | Detect stateful lambdas in parallel streams |
-| `detectResourceLeaks` | boolean | false | Detect AutoCloseable resources not closed |
-| `detectCountDownLatchIssues` | boolean | false | Detect CountDownLatch timeout and misuse |
-| `detectCyclicBarrierIssues` | boolean | false | Detect CyclicBarrier timeout and broken barriers |
-| `detectReentrantLockIssues` | boolean | false | Detect ReentrantLock starvation and timeouts |
-| `detectVolatileArrayIssues` | boolean | false | Detect volatile array element visibility issues |
-| `detectDoubleCheckedLocking` | boolean | false | Detect broken double-checked locking patterns |
-| `detectWaitTimeout` | boolean | false | Detect wait() calls without timeout |
-| `detectPhaserIssues` | boolean | false | Detect Phaser missing arrive() and timeouts |
-| `detectStampedLockIssues` | boolean | false | Detect StampedLock unvalidated optimistic reads |
-| `detectExchangerIssues` | boolean | false | Detect Exchanger timeout and missing partners |
-| `detectScheduledExecutorIssues` | boolean | false | Detect ScheduledExecutor missing shutdown |
-| `detectForkJoinPoolIssues` | boolean | false | Detect ForkJoinPool fork without join |
-| `detectThreadFactoryIssues` | boolean | false | Detect ThreadFactory missing exception handler |
+| `detectFalseSharing` | boolean | true | Detect cache line contention |
+| `detectWakeupIssues` | boolean | true | Detect spurious/lost wakeups |
+| `validateConstructorSafety` | boolean | true | Validate object initialization |
+| `detectABAProblem` | boolean | true | Detect ABA in lock-free code |
+| `validateLockOrder` | boolean | true | Validate lock ordering |
+| `monitorSynchronizers` | boolean | true | Monitor barriers/phasers |
+| `monitorThreadPool` | boolean | true | Monitor executor health |
+| `detectMemoryOrderingViolations` | boolean | true | Detect reordering issues |
+| `monitorAsyncPipeline` | boolean | true | Track async event flow |
+| `monitorReadWriteLockFairness` | boolean | true | Monitor RWLock fairness |
+| `detectRaceConditions` | boolean | true | Track unsynchronized cross-thread field access |
+| `detectThreadLocalLeaks` | boolean | true | Detect ThreadLocal values that are not cleaned up |
+| `detectBusyWaiting` | boolean | true | Detect spin loops and tight polling |
+| `detectAtomicityViolations` | boolean | true | Detect non-atomic compound operations |
+| `detectInterruptMishandling` | boolean | true | Detect swallowed interrupts and missing restoration |
+| `monitorSemaphore` | boolean | true | Monitor semaphore permit leaks and over-release |
+| `detectCompletableFutureExceptions` | boolean | true | Detect unhandled exceptions in CompletableFuture chains |
+| `detectCompletableFutureCompletionLeaks` | boolean | true | Detect CompletableFuture completion leaks (v1.2.0) |
+| `detectVirtualThreadPinning` | boolean | true | Detect virtual thread pinning (v1.2.0) |
+| `detectThreadPoolDeadlocks` | boolean | true | Detect thread pool deadlock risks (v1.2.0) |
+| `detectConcurrentModifications` | boolean | true | Detect collection modifications during iteration |
+| `detectLockLeaks` | boolean | true | Detect locks acquired but never released |
+| `detectSharedRandom` | boolean | true | Detect concurrent access to shared Random instances |
+| `detectBlockingQueueIssues` | boolean | true | Detect BlockingQueue silent failures and saturation |
+| `detectConditionVariableIssues` | boolean | true | Detect Condition variable lost signals and stuck waiters |
+| `detectSimpleDateFormatIssues` | boolean | true | Detect concurrent SimpleDateFormat access |
+| `detectParallelStreamIssues` | boolean | true | Detect stateful lambdas in parallel streams |
+| `detectResourceLeaks` | boolean | true | Detect AutoCloseable resources not closed |
+| `detectCountDownLatchIssues` | boolean | true | Detect CountDownLatch timeout and misuse |
+| `detectCyclicBarrierIssues` | boolean | true | Detect CyclicBarrier timeout and broken barriers |
+| `detectReentrantLockIssues` | boolean | true | Detect ReentrantLock starvation and timeouts |
+| `detectVolatileArrayIssues` | boolean | true | Detect volatile array element visibility issues |
+| `detectDoubleCheckedLocking` | boolean | true | Detect broken double-checked locking patterns |
+| `detectWaitTimeout` | boolean | true | Detect wait() calls without timeout |
+| `detectPhaserIssues` | boolean | true | Detect Phaser missing arrive() and timeouts |
+| `detectStampedLockIssues` | boolean | true | Detect StampedLock unvalidated optimistic reads |
+| `detectExchangerIssues` | boolean | true | Detect Exchanger timeout and missing partners |
+| `detectScheduledExecutorIssues` | boolean | true | Detect ScheduledExecutor missing shutdown |
+| `detectForkJoinPoolIssues` | boolean | true | Detect ForkJoinPool fork without join |
+| `detectThreadFactoryIssues` | boolean | true | Detect ThreadFactory missing exception handler |
 
 ## Phase 1: Core Features
 
