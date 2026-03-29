@@ -2,3 +2,4 @@ target/
 .m2/
 .claude/settings.local.json
 .qwen/
+docs/diagrams/plantuml.jar
