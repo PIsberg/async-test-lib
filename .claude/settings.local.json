@@ -9,7 +9,8 @@
       "Bash(mvn -B test -Dtest=UniformInvocationPathTest)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(mvn clean:*)"
+      "Bash(mvn clean:*)",
+      "Bash(curl:*)"
     ]
   }
 }
