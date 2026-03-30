@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.github.asynctest.fixtures</groupId>
+    <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>consumer-fixture</artifactId>
     <version>1.1.0</version>
     <packaging>jar</packaging>
@@ -18,12 +18,15 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <async-test.version>1.1.0</async-test.version>
         <junit.jupiter.version>6.0.3</junit.jupiter.version>
+        <!-- Plugin versions -->
+        <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
+        <maven-surefire-plugin.version>3.5.4</maven-surefire-plugin.version>
     </properties>
 
     <dependencies>
         <dependency>
-            <groupId>com.github.asynctest</groupId>
-            <artifactId>async-test</artifactId>
+            <groupId>se.deversity.async-test-lib</groupId>
+            <artifactId>async-test-lib</artifactId>
             <version>${async-test.version}</version>
             <scope>test</scope>
         </dependency>
@@ -46,7 +49,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.15.0</version>
+                <version>${maven-compiler-plugin.version}</version>
                 <configuration>
                     <source>21</source>
                     <target>21</target>
@@ -56,7 +59,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.5.4</version>
+                <version>${maven-surefire-plugin.version}</version>
                 <configuration>
                     <systemPropertyVariables>
                         <!-- Enable benchmarking for all @AsyncTest tests in this module -->
