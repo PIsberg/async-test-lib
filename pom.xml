@@ -37,7 +37,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.jupiter.version>6.0.3</junit.jupiter.version>
         <junit.platform.version>6.0.3</junit.platform.version>
-        <jazzer.version>0.22.1</jazzer.version>
+        <jazzer.version>0.30.0</jazzer.version>
         <!-- Plugin versions -->
         <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.5</maven-surefire-plugin.version>
