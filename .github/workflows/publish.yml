@@ -15,6 +15,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      id-token: write  # required for keyless cosign signing via OIDC
     
     steps:
       - name: Harden the runner (Block unexpected outbound calls)
@@ -55,36 +56,56 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload SBOM to Release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: target/bom.xml
-          asset_name: bom.xml
-          asset_content_type: application/xml
-
       - name: Extract version
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
-      - name: Create GitHub Release with artifacts
+      - name: Install cosign
+        uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3.8.2
+
+      - name: Sign release artifacts with cosign (keyless / OIDC)
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          for artifact in \
+            target/async-test-${VERSION}.jar \
+            target/async-test-${VERSION}-sources.jar \
+            target/async-test-${VERSION}-javadoc.jar \
+            target/bom.xml; do
+            cosign sign-blob --yes \
+              --bundle "${artifact}.bundle" \
+              "${artifact}"
+          done
+
+      - name: Create GitHub Release with artifacts and signatures
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=${{ steps.version.outputs.VERSION }}
           gh release create "${{ github.ref_name }}" \
             target/async-test-${VERSION}.jar \
+            target/async-test-${VERSION}.jar.bundle \
             target/async-test-${VERSION}-sources.jar \
+            target/async-test-${VERSION}-sources.jar.bundle \
             target/async-test-${VERSION}-javadoc.jar \
+            target/async-test-${VERSION}-javadoc.jar.bundle \
+            target/bom.xml \
+            target/bom.xml.bundle \
             --title "Release ${{ github.ref_name }}" \
             --notes "## Async Test Library Release ${{ github.ref_name }}
 
           ### What's included:
-          - \`async-test-${VERSION}.jar\` - Main library
-          - \`async-test-${VERSION}-sources.jar\` - Source code
-          - \`async-test-${VERSION}-javadoc.jar\` - API Documentation
+          - \`async-test-${VERSION}.jar\` — Main library (+ \`.bundle\` cosign signature)
+          - \`async-test-${VERSION}-sources.jar\` — Source code (+ \`.bundle\` cosign signature)
+          - \`async-test-${VERSION}-javadoc.jar\` — API Documentation (+ \`.bundle\` cosign signature)
+          - \`bom.xml\` — CycloneDX SBOM (+ \`.bundle\` cosign signature)
+
+          ### Verify a signature
+          \`\`\`bash
+          cosign verify-blob --bundle async-test-${VERSION}.jar.bundle \
+            --certificate-identity-regexp 'https://github.com/PIsberg/async-test-lib' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            async-test-${VERSION}.jar
+          \`\`\`
 
           ### Installation via Maven:
           \`\`\`xml
