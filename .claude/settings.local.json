@@ -10,7 +10,16 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(mvn clean:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(gh repo:*)",
+      "Bash(git remote:*)",
+      "Bash(where gh:*)",
+      "Bash(winget list:*)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/dev/private/async-test-lib/$LOCALAPPDATA/Programs/**)",
+      "Bash(python3 -c \":*)",
+      "Bash(node -e \":*)",
+      "Bash(git ls-remote:*)"
     ]
   }
 }

@@ -1736,9 +1736,6 @@ The async-test library is extensible. You can:
 2. Implement new diagnostic strategies
 3. Create detector plugins for specific domains
 
-## License
-
-MIT
 
 ## Acknowledgments
 
