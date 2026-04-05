@@ -5,7 +5,17 @@ Codecov badge shows "unknown" status instead of coverage percentage.
 
 ## Root Causes Identified
 
-### 1. **Coverage File Not Generated** (Most Likely)
+### 1. **Network Blocked by step-security/harden-runner** (FIXED ✅)
+The `step-security/harden-runner` action with `egress-policy: block` was preventing the Codecov action from downloading its CLI tool from `cli.codecov.io`.
+
+**Error:**
+```
+curl: (7) Failed to connect to cli.codecov.io port 443 after 1 ms: Couldn't connect to server
+```
+
+**Fix Applied:** Added `cli.codecov.io:443` to the `allowed-endpoints` list in the harden-runner step.
+
+### 2. **Coverage File Not Generated**
 The JaCoCo plugin should generate `./target/site/jacoco/jacoco.xml` during `mvn clean install`, but this might fail if:
 - Tests are skipped (`-DskipTests`)
 - JaCoCo plugin isn't properly configured
@@ -13,12 +23,12 @@ The JaCoCo plugin should generate `./target/site/jacoco/jacoco.xml` during `mvn 
 
 **Fix Applied:** Added debug step to verify file exists before upload.
 
-### 2. **Silent Upload Failures** 
+### 3. **Silent Upload Failures** 
 With `fail_ci_if_error: false`, upload failures were silent.
 
 **Fix Applied:** Changed to `fail_ci_if_error: true` to surface errors.
 
-### 3. **Missing Codecov Token**
+### 4. **Missing Codecov Token**
 The `CODECOV_TOKEN` secret must be configured in GitHub repository settings.
 
 **Setup Required:**
@@ -26,14 +36,14 @@ The `CODECOV_TOKEN` secret must be configured in GitHub repository settings.
 2. Copy your upload token
 3. Add to GitHub: Settings → Secrets and variables → Actions → `CODECOV_TOKEN`
 
-### 4. **Fork PR Limitations**
+### 5. **Fork PR Limitations**
 GitHub Actions don't expose secrets to fork PRs. Codecov will show "unknown" for PRs from forks.
 
 **Workaround:** 
 - Contributors should push branches to the main repo
 - Or use `pull_request_target` (requires security review)
 
-### 5. **Repository Not Registered on Codecov**
+### 6. **Repository Not Registered on Codecov**
 The repository must be registered and activated on Codecov.
 
 **Setup:**
