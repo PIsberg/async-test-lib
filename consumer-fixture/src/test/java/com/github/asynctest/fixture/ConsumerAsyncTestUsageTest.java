@@ -20,6 +20,10 @@ import com.github.asynctest.diagnostics.ConditionVariableDetector;
 import com.github.asynctest.diagnostics.SimpleDateFormatDetector;
 import com.github.asynctest.diagnostics.ParallelStreamDetector;
 import com.github.asynctest.diagnostics.ResourceLeakDetector;
+import com.github.asynctest.diagnostics.ThreadLeakDetector;
+import com.github.asynctest.diagnostics.SleepInLockDetector;
+import com.github.asynctest.diagnostics.UnboundedQueueDetector;
+import com.github.asynctest.diagnostics.ThreadStarvationDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -1140,5 +1144,101 @@ class ConsumerAsyncTestUsageTest {
         assertFalse(report.hasDeadlockRisk(), "No nested submissions means no deadlock risk");
         
         pool.shutdown();
+    }
+
+    // ========================================================================
+    // Phase 4: Infrastructure & Resource Management
+    // ========================================================================
+
+    /**
+     * Demonstrates thread leak detection.
+     * Shows how to track thread creation and termination.
+     */
+    @AsyncTest(threads = 2, invocations = 2, detectThreadLeaks = true, timeoutMs = 5000)
+    void testThreadLeakDetection() {
+        Thread backgroundThread = new Thread(() -> {
+            try { Thread.sleep(1000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        }, "background-worker");
+        
+        AsyncTestContext.threadLeakDetector()
+            .recordThreadStart(backgroundThread, "background-task");
+        backgroundThread.start();
+        
+        // Simulate work
+        try { Thread.sleep(50); } catch (InterruptedException e) {}
+        
+        // Properly terminate the thread
+        backgroundThread.interrupt();
+        AsyncTestContext.threadLeakDetector()
+            .recordThreadEnd(backgroundThread);
+    }
+
+    /**
+     * Demonstrates sleep-in-lock detection.
+     * Shows the anti-pattern of sleeping while holding a lock.
+     */
+    @AsyncTest(threads = 2, invocations = 2, detectSleepInLock = true, timeoutMs = 5000)
+    void testSleepInLockDetection() {
+        final Object lock = new Object();
+        
+        // Bad pattern: sleeping while holding a lock
+        // In real code, this would cause unnecessary contention
+        synchronized (lock) {
+            // Simulating work that mistakenly includes sleep
+            // Note: Actual detection requires running test logic, this is usage example
+            try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        }
+    }
+
+    /**
+     * Demonstrates unbounded queue detection.
+     * Shows the risk of using queues without capacity bounds.
+     */
+    @AsyncTest(threads = 2, invocations = 2, detectUnboundedQueue = true, timeoutMs = 5000)
+    void testUnboundedQueueDetection() {
+        // Bad: unbounded queue can grow indefinitely
+        java.util.concurrent.LinkedBlockingQueue<String> unboundedQueue = new java.util.concurrent.LinkedBlockingQueue<>();
+        
+        AsyncTestContext.unboundedQueueDetector()
+            .recordQueueCreation(unboundedQueue, "task-queue", -1);
+        
+        // Good: bounded queue with rejection policy
+        BlockingQueue<String> boundedQueue = new ArrayBlockingQueue<>(100);
+        AsyncTestContext.unboundedQueueDetector()
+            .recordQueueCreation(boundedQueue, "bounded-task-queue", 100);
+    }
+
+    /**
+     * Demonstrates thread starvation detection.
+     * Shows how to monitor executor thread pools for task starvation.
+     */
+    @AsyncTest(threads = 2, invocations = 2, detectThreadStarvation = true, timeoutMs = 10000)
+    void testThreadStarvationDetection() {
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        
+        AsyncTestContext.threadStarvationDetector()
+            .registerExecutor(executor, "worker-pool", 2);
+        
+        // Submit tasks and monitor wait times
+        for (int i = 0; i < 5; i++) {
+            long submitTime = AsyncTestContext.threadStarvationDetector()
+                .recordTaskSubmission(executor);
+            
+            executor.submit(() -> {
+                AsyncTestContext.threadStarvationDetector()
+                    .recordTaskStart("worker-pool", submitTime);
+                try {
+                    // Simulate work
+                    Thread.sleep(10);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    AsyncTestContext.threadStarvationDetector()
+                        .recordTaskEnd("worker-pool");
+                }
+            });
+        }
+        
+        executor.shutdown();
     }
 }
