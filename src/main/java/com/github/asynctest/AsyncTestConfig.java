@@ -76,6 +76,10 @@ public final class AsyncTestConfig {
     public final boolean detectScheduledExecutorIssues;
     public final boolean detectForkJoinPoolIssues;
     public final boolean detectThreadFactoryIssues;
+    public final boolean detectThreadLeaks;
+    public final boolean detectSleepInLock;
+    public final boolean detectUnboundedQueue;
+    public final boolean detectThreadStarvation;
 
     // ---- Benchmarking ----
     public final boolean enableBenchmarking;
@@ -132,6 +136,10 @@ public final class AsyncTestConfig {
         detectScheduledExecutorIssues  = b.detectScheduledExecutorIssues;
         detectForkJoinPoolIssues       = b.detectForkJoinPoolIssues;
         detectThreadFactoryIssues      = b.detectThreadFactoryIssues;
+        detectThreadLeaks              = b.detectThreadLeaks;
+        detectSleepInLock              = b.detectSleepInLock;
+        detectUnboundedQueue           = b.detectUnboundedQueue;
+        detectThreadStarvation         = b.detectThreadStarvation;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -192,6 +200,10 @@ public final class AsyncTestConfig {
             .detectScheduledExecutorIssues(ann.detectScheduledExecutorIssues())
             .detectForkJoinPoolIssues(ann.detectForkJoinPoolIssues())
             .detectThreadFactoryIssues(ann.detectThreadFactoryIssues())
+            .detectThreadLeaks(ann.detectThreadLeaks())
+            .detectSleepInLock(ann.detectSleepInLock())
+            .detectUnboundedQueue(ann.detectUnboundedQueue())
+            .detectThreadStarvation(ann.detectThreadStarvation())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -253,6 +265,10 @@ public final class AsyncTestConfig {
         private boolean detectScheduledExecutorIssues = false;
         private boolean detectForkJoinPoolIssues = false;
         private boolean detectThreadFactoryIssues = false;
+        private boolean detectThreadLeaks = false;
+        private boolean detectSleepInLock = false;
+        private boolean detectUnboundedQueue = false;
+        private boolean detectThreadStarvation = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -307,6 +323,10 @@ public final class AsyncTestConfig {
         public Builder detectScheduledExecutorIssues(boolean v) { detectScheduledExecutorIssues = v; return this; }
         public Builder detectForkJoinPoolIssues(boolean v) { detectForkJoinPoolIssues = v; return this; }
         public Builder detectThreadFactoryIssues(boolean v) { detectThreadFactoryIssues = v; return this; }
+        public Builder detectThreadLeaks(boolean v) { detectThreadLeaks = v; return this; }
+        public Builder detectSleepInLock(boolean v) { detectSleepInLock = v; return this; }
+        public Builder detectUnboundedQueue(boolean v) { detectUnboundedQueue = v; return this; }
+        public Builder detectThreadStarvation(boolean v) { detectThreadStarvation = v; return this; }
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
@@ -396,6 +416,14 @@ public final class AsyncTestConfig {
                     else detectForkJoinPoolIssues = false;
                 if (!excludes.contains(DetectorType.THREAD_FACTORY)) detectThreadFactoryIssues = true;
                     else detectThreadFactoryIssues = false;
+                if (!excludes.contains(DetectorType.THREAD_LEAKS)) detectThreadLeaks = true;
+                    else detectThreadLeaks = false;
+                if (!excludes.contains(DetectorType.SLEEP_IN_LOCK)) detectSleepInLock = true;
+                    else detectSleepInLock = false;
+                if (!excludes.contains(DetectorType.UNBOUNDED_QUEUE)) detectUnboundedQueue = true;
+                    else detectUnboundedQueue = false;
+                if (!excludes.contains(DetectorType.THREAD_STARVATION)) detectThreadStarvation = true;
+                    else detectThreadStarvation = false;
                 if (!excludes.contains(DetectorType.RACE_CONDITIONS)) detectRaceConditions = true;
                     else detectRaceConditions = false;
                 if (!excludes.contains(DetectorType.THREAD_LOCAL_LEAKS)) detectThreadLocalLeaks = true;
@@ -447,6 +475,10 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.SCHEDULED_EXECUTOR)) detectScheduledExecutorIssues = false;
                 if (excludes.contains(DetectorType.FORK_JOIN_POOL)) detectForkJoinPoolIssues = false;
                 if (excludes.contains(DetectorType.THREAD_FACTORY)) detectThreadFactoryIssues = false;
+                if (excludes.contains(DetectorType.THREAD_LEAKS)) detectThreadLeaks = false;
+                if (excludes.contains(DetectorType.SLEEP_IN_LOCK)) detectSleepInLock = false;
+                if (excludes.contains(DetectorType.UNBOUNDED_QUEUE)) detectUnboundedQueue = false;
+                if (excludes.contains(DetectorType.THREAD_STARVATION)) detectThreadStarvation = false;
                 if (excludes.contains(DetectorType.RACE_CONDITIONS)) detectRaceConditions = false;
                 if (excludes.contains(DetectorType.THREAD_LOCAL_LEAKS)) detectThreadLocalLeaks = false;
                 if (excludes.contains(DetectorType.BUSY_WAITING)) detectBusyWaiting = false;

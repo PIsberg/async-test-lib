@@ -20,7 +20,7 @@ Concurrency bugs are the most elusive and costly bugs in production systems. The
 
 
 ### Key Insight
-The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **47 specialized detectors** identify the exact problem:
+The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **51 specialized detectors** identify the exact problem:
 
 - **Deadlocks** with lock chain analysis showing which threads are waiting for which locks
 - **Memory visibility issues** by tracking field values across invocations
@@ -95,7 +95,7 @@ Rather than deploying code hoping there are no concurrency bugs, `async-test` he
 
 ---
 
-A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **47 specialized problem detectors**.
+A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **51 specialized problem detectors**.
 
 Catches race conditions, deadlocks, memory visibility issues, livelocks, false sharing, ABA problems, lock ordering violations, constructor safety issues, thread pool problems, and more.
 
@@ -181,6 +181,12 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 33. **Future Blocking** - Bounded-pool starvation from `get()`/`join()`
 34. **Executor Self-Deadlock** - Sibling task waits on the same executor
 35. **Latch Misuse** - Missing or extra `countDown()` tracking
+
+### Phase 4: Infrastructure & Resource Management (4) — NEW
+36. **Thread Leaks** - Threads created but never terminated
+37. **Sleep in Lock** - `Thread.sleep()` while holding locks
+38. **Unbounded Queues** - `BlockingQueue` without capacity bounds
+39. **Thread Starvation** - Tasks waiting excessively before execution
 
 ## Quick Start
 
@@ -311,6 +317,12 @@ void stressWithVirtualThreads() {
 | `detectScheduledExecutorIssues` | boolean | true | Detect ScheduledExecutor missing shutdown |
 | `detectForkJoinPoolIssues` | boolean | true | Detect ForkJoinPool fork without join |
 | `detectThreadFactoryIssues` | boolean | true | Detect ThreadFactory missing exception handler |
+
+### Phase 4: Infrastructure & Resource Management (v1.3.0)
+| `detectThreadLeaks` | boolean | true | Detect threads created but never terminated |
+| `detectSleepInLock` | boolean | true | Detect Thread.sleep() while holding locks |
+| `detectUnboundedQueue` | boolean | true | Detect unbounded BlockingQueue usage |
+| `detectThreadStarvation` | boolean | true | Detect task starvation in thread pools |
 
 ## Phase 1: Core Features
 

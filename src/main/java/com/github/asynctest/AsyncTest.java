@@ -354,6 +354,32 @@ public @interface AsyncTest {
      */
     boolean detectThreadFactoryIssues() default true;
 
+    // ============= Phase 4: Infrastructure & Resource Management =============
+
+    /**
+     * Enable thread leak detection.
+     * Detects threads created but never terminated, leading to resource exhaustion.
+     */
+    boolean detectThreadLeaks() default true;
+
+    /**
+     * Enable sleep-in-lock detection.
+     * Detects Thread.sleep() calls while holding locks.
+     */
+    boolean detectSleepInLock() default true;
+
+    /**
+     * Enable unbounded queue detection.
+     * Detects BlockingQueue instances without capacity bounds.
+     */
+    boolean detectUnboundedQueue() default true;
+
+    /**
+     * Enable thread starvation detection.
+     * Detects tasks waiting excessively long before execution.
+     */
+    boolean detectThreadStarvation() default true;
+
     // ============= Benchmarking =============
 
     /**
