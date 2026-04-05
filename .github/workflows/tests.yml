@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java-version: [ '17', '21', '25' ]
+        java-version: [ '21', '25' ]
 
     steps:
       - name: Harden the runner (Block unexpected outbound calls)
@@ -98,7 +98,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java-version: [ '17', '21', '25' ]
+        java-version: [ '21', '25' ]
 
     steps:
       - name: Harden the runner (Block unexpected outbound calls)
