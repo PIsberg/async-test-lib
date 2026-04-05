@@ -87,21 +87,20 @@ public class AsyncTestLibraryMetaTest {
                 .testEvents();
 
         long failed = testEvents.failed().count();
-        long timedOut = testEvents.timedOut().count();
         
         // Log the result for debugging
-        System.out.println("Visibility meta-test: failed=" + failed + ", timedOut=" + timedOut);
+        System.out.println("Visibility meta-test: failed=" + failed);
         
         // Accept either failure or timeout (both indicate the detector caught the issue)
         // If test passed (0 failures), it means JVM happened to flush the cache - log warning
-        if (failed == 0 && timedOut == 0) {
+        if (failed == 0) {
             System.err.println("WARNING: Visibility test passed unexpectedly. " +
                 "This is non-deterministic and may vary by JVM/hardware. " +
                 "The visibility detector may not have triggered, but the test completing is still valid.");
         }
         
         // Don't assert - this is a best-effort validation
-        // assertEquals(1, failed + timedOut, "Expected visibility test to fail or timeout");
+        // assertEquals(1, failed, "Expected visibility test to fail or timeout");
     }
 
     public static class VisibilityDummy {
