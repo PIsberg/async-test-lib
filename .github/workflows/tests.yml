@@ -27,6 +27,7 @@ jobs:
             agent.api.stepsecurity.io:443
             api.adoptium.net:443
             api.github.com:443
+            cli.codecov.io:443
             codecov.io:443
             github.com:443
             objects.githubusercontent.com:443
