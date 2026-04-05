@@ -30,6 +30,7 @@ jobs:
             cli.codecov.io:443
             codecov.io:443
             github.com:443
+            ingest.codecov.io:443
             keys.openpgp.org:443
             keyserver.ubuntu.com:443
             objects.githubusercontent.com:443
@@ -83,7 +84,7 @@ jobs:
           files: ./target/site/jacoco/jacoco.xml
           flags: unittests
           name: codecov-umbrella
-          fail_ci_if_error: true
+          fail_ci_if_error: false
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
 
