@@ -58,5 +58,11 @@ public enum DetectorType {
     THREAD_LOCAL_LEAKS,
     BUSY_WAITING,
     ATOMICITY_VIOLATIONS,
-    INTERRUPT_MISHANDLING
+    INTERRUPT_MISHANDLING,
+
+    // Phase 4: Infrastructure & Resource Management
+    THREAD_LEAKS,
+    SLEEP_IN_LOCK,
+    UNBOUNDED_QUEUE,
+    THREAD_STARVATION
 }
