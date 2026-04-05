@@ -6,6 +6,7 @@
 [![JUnit 5](https://img.shields.io/badge/JUnit-5-green)]()
 [![Maven Central](https://img.shields.io/badge/Maven-Available-brightgreen)]()
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/PIsberg/async-test-lib/badge)](https://scorecard.dev/viewer/?uri=github.com/PIsberg/async-test-lib/)
+[![codecov](https://codecov.io/gh/PIsberg/async-test-lib/graph/badge.svg)](https://codecov.io/gh/PIsberg/async-test-lib)
 
 ## Introduction
 
