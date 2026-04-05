@@ -2,7 +2,7 @@
 
 > **Detect and diagnose concurrency bugs that standard testing misses**
 
-[![Java 21+](https://img.shields.io/badge/Java-21%2B-blue)]()
+[![Java 17+](https://img.shields.io/badge/Java-17%2B-blue)]()
 [![JUnit 5](https://img.shields.io/badge/JUnit-5-green)]()
 [![Maven Central](https://img.shields.io/badge/Maven-Available-brightgreen)]()
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/PIsberg/async-test-lib/badge)](https://scorecard.dev/viewer/?uri=github.com/PIsberg/async-test-lib/)

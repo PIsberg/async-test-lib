@@ -74,9 +74,21 @@ public class ConcurrencyRunner {
             actualThreads = config.threads;
         }
 
-        ExecutorService executor = config.useVirtualThreads
-            ? Executors.newVirtualThreadPerTaskExecutor()
-            : Executors.newFixedThreadPool(actualThreads);
+        ExecutorService executor;
+        if (config.useVirtualThreads) {
+            try {
+                // Java 21+: use virtual threads
+                executor = (ExecutorService) Executors.class
+                    .getMethod("newVirtualThreadPerTaskExecutor")
+                    .invoke(null);
+            } catch (NoSuchMethodException e) {
+                // Java 17: fall back to platform threads
+                System.err.println("WARNING: Virtual threads require Java 21+. Using platform threads instead.");
+                executor = Executors.newFixedThreadPool(actualThreads);
+            }
+        } else {
+            executor = Executors.newFixedThreadPool(actualThreads);
+        }
 
         // setAccessible once per test, not once per invocation round
         Method testMethod = invocationContext.getExecutable();

@@ -19,7 +19,9 @@
       "Read(//c/dev/private/async-test-lib/$LOCALAPPDATA/Programs/**)",
       "Bash(python3 -c \":*)",
       "Bash(node -e \":*)",
-      "Bash(git ls-remote:*)"
+      "Bash(git ls-remote:*)",
+      "Bash(git tag:*)",
+      "Bash(git push:*)"
     ]
   }
 }
