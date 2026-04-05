@@ -66,6 +66,12 @@ final class DetectorRegistry {
     final ForkJoinPoolDetector       forkJoinPoolDetector;
     final ThreadFactoryDetector      threadFactoryDetector;
 
+    // ---- Phase 4: Infrastructure & Resource Management ----
+    final ThreadLeakDetector         threadLeakDetector;
+    final SleepInLockDetector        sleepInLockDetector;
+    final UnboundedQueueDetector     unboundedQueueDetector;
+    final ThreadStarvationDetector   threadStarvationDetector;
+
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
      * Detectors whose flag is {@code false} are set to {@code null} and incur
@@ -112,6 +118,10 @@ final class DetectorRegistry {
         scheduledExecutorDetector  = cfg.detectScheduledExecutorIssues  ? new ScheduledExecutorDetector()  : null;
         forkJoinPoolDetector       = cfg.detectForkJoinPoolIssues       ? new ForkJoinPoolDetector()       : null;
         threadFactoryDetector      = cfg.detectThreadFactoryIssues      ? new ThreadFactoryDetector()      : null;
+        threadLeakDetector         = cfg.detectThreadLeaks              ? new ThreadLeakDetector()         : null;
+        sleepInLockDetector        = cfg.detectSleepInLock              ? new SleepInLockDetector()        : null;
+        unboundedQueueDetector     = cfg.detectUnboundedQueue           ? new UnboundedQueueDetector()     : null;
+        threadStarvationDetector   = cfg.detectThreadStarvation         ? new ThreadStarvationDetector()   : null;
     }
 
     /**
@@ -240,6 +250,20 @@ final class DetectorRegistry {
         ifIssue(threadFactoryDetector,
                 d -> d.analyze(),
                 ThreadFactoryDetector.ThreadFactoryReport::hasIssues, out);
+
+        // ---- Phase 4: Infrastructure & Resource Management ----
+        ifIssue(threadLeakDetector,
+                d -> d.analyzeLeaks(),
+                ThreadLeakDetector.ThreadLeakReport::hasIssues, out);
+        ifIssue(sleepInLockDetector,
+                d -> d.analyze(),
+                SleepInLockDetector.SleepInLockReport::hasIssues, out);
+        ifIssue(unboundedQueueDetector,
+                d -> d.analyze(),
+                UnboundedQueueDetector.UnboundedQueueReport::hasIssues, out);
+        ifIssue(threadStarvationDetector,
+                d -> d.analyze(),
+                ThreadStarvationDetector.ThreadStarvationReport::hasIssues, out);
 
         return out;
     }

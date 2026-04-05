@@ -74,6 +74,10 @@ public final class AsyncTestContext {
     final ScheduledExecutorDetector scheduledExecutorDetector;
     final ForkJoinPoolDetector forkJoinPoolDetector;
     final ThreadFactoryDetector threadFactoryDetector;
+    final ThreadLeakDetector threadLeakDetector;
+    final SleepInLockDetector sleepInLockDetector;
+    final UnboundedQueueDetector unboundedQueueDetector;
+    final ThreadStarvationDetector threadStarvationDetector;
 
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
@@ -115,6 +119,10 @@ public final class AsyncTestContext {
         scheduledExecutorDetector         = registry.scheduledExecutorDetector;
         forkJoinPoolDetector              = registry.forkJoinPoolDetector;
         threadFactoryDetector             = registry.threadFactoryDetector;
+        threadLeakDetector                = registry.threadLeakDetector;
+        sleepInLockDetector               = registry.sleepInLockDetector;
+        unboundedQueueDetector            = registry.unboundedQueueDetector;
+        threadStarvationDetector          = registry.threadStarvationDetector;
     }
 
     // ---- Lifecycle (called by ConcurrencyRunner) ----
@@ -432,6 +440,40 @@ public final class AsyncTestContext {
      */
     public static ThreadFactoryDetector threadFactoryMonitor() {
         return require("detectThreadFactoryIssues", c -> c.threadFactoryDetector);
+    }
+
+    // ---- Phase 4: Infrastructure & Resource Management ----
+
+    /**
+     * Returns the {@link ThreadLeakDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectThreadLeaks = false}
+     */
+    public static ThreadLeakDetector threadLeakDetector() {
+        return require("detectThreadLeaks", c -> c.threadLeakDetector);
+    }
+
+    /**
+     * Returns the {@link SleepInLockDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSleepInLock = false}
+     */
+    public static SleepInLockDetector sleepInLockDetector() {
+        return require("detectSleepInLock", c -> c.sleepInLockDetector);
+    }
+
+    /**
+     * Returns the {@link UnboundedQueueDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectUnboundedQueue = false}
+     */
+    public static UnboundedQueueDetector unboundedQueueDetector() {
+        return require("detectUnboundedQueue", c -> c.unboundedQueueDetector);
+    }
+
+    /**
+     * Returns the {@link ThreadStarvationDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectThreadStarvation = false}
+     */
+    public static ThreadStarvationDetector threadStarvationDetector() {
+        return require("detectThreadStarvation", c -> c.threadStarvationDetector);
     }
 
     // ---- Helper ----
