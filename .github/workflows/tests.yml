@@ -53,17 +53,28 @@ jobs:
 
       - name: Run consumer fixture tests
         run: mvn -Dmaven.repo.local=.m2/repository -f consumer-fixture/pom.xml test
-      
-      - name: Generate coverage report
-        run: mvn -Dmaven.repo.local=.m2/repository jacoco:report
-      
+
+      - name: Check coverage file exists
+        run: |
+          if [ -f ./target/site/jacoco/jacoco.xml ]; then
+            echo "✓ Coverage file found"
+            wc -c ./target/site/jacoco/jacoco.xml
+          else
+            echo "✗ Coverage file NOT found at ./target/site/jacoco/jacoco.xml"
+            echo "Checking target directory structure:"
+            ls -la ./target/ || echo "target/ directory not found"
+            ls -la ./target/site/ || echo "target/site/ directory not found"
+            ls -la ./target/site/jacoco/ || echo "target/site/jacoco/ directory not found"
+            exit 1
+          fi
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
           files: ./target/site/jacoco/jacoco.xml
           flags: unittests
           name: codecov-umbrella
-          fail_ci_if_error: false
+          fail_ci_if_error: true
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
 
