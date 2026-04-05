@@ -27,8 +27,12 @@ jobs:
             agent.api.stepsecurity.io:443
             api.adoptium.net:443
             api.github.com:443
+            cli.codecov.io:443
             codecov.io:443
             github.com:443
+            ingest.codecov.io:443
+            keys.openpgp.org:443
+            keyserver.ubuntu.com:443
             objects.githubusercontent.com:443
             repo.maven.apache.org:443
             repo1.maven.org:443
@@ -53,10 +57,27 @@ jobs:
 
       - name: Run consumer fixture tests
         run: mvn -Dmaven.repo.local=.m2/repository -f consumer-fixture/pom.xml test
-      
-      - name: Generate coverage report
-        run: mvn -Dmaven.repo.local=.m2/repository jacoco:report
-      
+
+      - name: Check coverage file exists
+        run: |
+          if [ -f ./target/site/jacoco/jacoco.xml ]; then
+            echo "✓ Coverage file found"
+            wc -c ./target/site/jacoco/jacoco.xml
+          else
+            echo "✗ Coverage file NOT found at ./target/site/jacoco/jacoco.xml"
+            echo "Checking target directory structure:"
+            ls -la ./target/ || echo "target/ directory not found"
+            ls -la ./target/site/ || echo "target/site/ directory not found"
+            ls -la ./target/site/jacoco/ || echo "target/site/jacoco/ directory not found"
+            exit 1
+          fi
+
+      - name: Import Codecov GPG key
+        run: |
+          gpg --keyserver hkps://keys.openpgp.org --recv-keys 27034E7FDB850E0BBC2C62FF806BB28AED779869 || \
+          gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys 27034E7FDB850E0BBC2C62FF806BB28AED779869 || \
+          echo "WARNING: Could not import GPG key, proceeding without verification"
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
