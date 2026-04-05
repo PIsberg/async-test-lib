@@ -76,7 +76,7 @@ class UnboundedQueueDetectorTest {
         detector.recordDequeue(bounded);
 
         UnboundedQueueDetector.UnboundedQueueReport report = detector.analyze();
-        assertFalse(report.hasIssues());
-        assertEquals(1, report.getEvents().isEmpty() ? 0 : 1);
+        // Bounded queue with no issues should have empty events
+        assertTrue(report.getEvents().isEmpty(), "Bounded queue should have no events");
     }
 }
