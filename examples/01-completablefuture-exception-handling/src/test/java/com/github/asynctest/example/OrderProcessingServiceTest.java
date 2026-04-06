@@ -132,37 +132,32 @@ class OrderProcessingServiceTest {
 
     /**
      * DEMONSTRATION: Run this with @AsyncTest to see the bug
-     * 
+     *
      * This test is DISABLED by default because it will fail in CI.
-     * Uncomment the @Disabled annotation to see the problem manually.
-     * 
+     * Uncomment the annotations to see the problem manually.
+     *
      * When enabled with @AsyncTest, this demonstrates:
-     * - Data loss: "Processed: 0, Failed: 0" 
+     * - Data loss: "Processed: 0, Failed: 0"
      * - All orders disappear due to unhandled CompletableFuture exceptions
      * - 8+ concurrent threads fail simultaneously
      */
     // @Test  // <-- Uncomment to enable this test
+    // @AsyncTest(threads = 10, invocations = 50, detectAll = true)  // <-- Use @AsyncTest to see the bug
     // @Disabled("Demonstrates the bug - fails with @AsyncTest")
     // void testProcessMultipleOrders_Concurrent_WITH_ASYNC_TEST() {
-    //     // To see the problem:
-    //     // 1. Uncomment this test method
-    //     // 2. Change @Test above to: @AsyncTest(threads = 10, invocations = 50, detectAll = true)
-    //     // 3. Run: mvn test
-    //     // 4. Watch it fail with: "Processed: 0, Failed: 0 ==> expected: <5> but was: <0>"
-    //     
     //     var orderIds = List.of("ORD-001", "ORD-002", "ORD-003", "ORD-004", "ORD-005");
-    //     
+    //
     //     Map<String, OrderProcessingService.OrderResult> results;
     //     try {
     //         results = service.processMultipleOrders(orderIds);
     //     } catch (Exception e) {
     //         results = Map.of();
     //     }
-    //     
+    //
     //     int totalAccounted = results.size() + service.getFailedOrders().size();
-    //     
+    //
     //     // This WILL FAIL with @AsyncTest because orders are lost
-    //     assertEquals(orderIds.size(), totalAccounted, 
+    //     assertEquals(orderIds.size(), totalAccounted,
     //         "All orders should be accounted for, but unhandled exceptions cause data loss. " +
     //         "Processed: " + results.size() + ", Failed: " + service.getFailedOrders().size());
     // }
@@ -180,15 +175,15 @@ class OrderProcessingServiceTest {
     //     var fixedService = new OrderProcessingServiceWithFix();
     //     var orderIds = List.of("ORD-001", "ORD-002", "ORD-003", "ORD-004", "ORD-005");
     //
-    //     Map<String, OrderProcessingServiceWithFix.OrderResult> results = 
+    //     Map<String, OrderProcessingServiceWithFix.OrderResult> results =
     //         fixedService.processMultipleOrders(orderIds);
     //
     //     // With proper exception handling, ALL orders are accounted for
     //     // (either in processedOrders or failedOrders)
     //     int total = results.size() + fixedService.getFailedOrders().size();
-    //     assertEquals(orderIds.size(), total, 
+    //     assertEquals(orderIds.size(), total,
     //         "All orders should be accounted for (processed or failed)");
-    //     
+    //
     //     fixedService.shutdown();
     // }
 }
