@@ -4,6 +4,7 @@ import com.github.asynctest.AsyncTest;
 import com.github.asynctest.example.service.OrderProcessingService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -141,26 +142,27 @@ class OrderProcessingServiceTest {
      * - All orders disappear due to unhandled CompletableFuture exceptions
      * - 8+ concurrent threads fail simultaneously
      */
-    // @Test  // <-- Uncomment to enable this test
-    // @AsyncTest(threads = 10, invocations = 50, detectAll = true)  // <-- Use @AsyncTest to see the bug
-    // @Disabled("Demonstrates the bug - fails with @AsyncTest")
-    // void testProcessMultipleOrders_Concurrent_WITH_ASYNC_TEST() {
-    //     var orderIds = List.of("ORD-001", "ORD-002", "ORD-003", "ORD-004", "ORD-005");
-    //
-    //     Map<String, OrderProcessingService.OrderResult> results;
-    //     try {
-    //         results = service.processMultipleOrders(orderIds);
-    //     } catch (Exception e) {
-    //         results = Map.of();
-    //     }
-    //
-    //     int totalAccounted = results.size() + service.getFailedOrders().size();
-    //
-    //     // This WILL FAIL with @AsyncTest because orders are lost
-    //     assertEquals(orderIds.size(), totalAccounted,
-    //         "All orders should be accounted for, but unhandled exceptions cause data loss. " +
-    //         "Processed: " + results.size() + ", Failed: " + service.getFailedOrders().size());
-    // }
+
+     //@AsyncTest(threads = 10, invocations = 50, detectAll = true)  // <-- Use @AsyncTest to see the bug
+     @Disabled("Demonstrates the bug - fails with @AsyncTest")
+     void testProcessMultipleOrders_Concurrent_WITH_ASYNC_TEST() {
+         var orderIds = List.of("ORD-001", "ORD-002", "ORD-003", "ORD-004", "ORD-005");
+
+         Map<String, OrderProcessingService.OrderResult> results;
+         try {
+             results = service.processMultipleOrders(orderIds);
+         } catch (Exception e) {
+             results = Map.of();
+         }
+
+         int totalAccounted = results.size() + service.getFailedOrders().size();
+
+         // This WILL FAIL with @AsyncTest because orders are lost
+         assertEquals(orderIds.size(), totalAccounted,
+             "All orders should be accounted for, but unhandled exceptions cause data loss. " +
+             "Processed: " + results.size() + ", Failed: " + service.getFailedOrders().size());
+     }
+
 
     /**
      * SOLUTION TEST - This PASSES with @AsyncTest

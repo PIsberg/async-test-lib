@@ -16,9 +16,24 @@ Each example is a standalone Maven project that:
 - ❌ **Fails** with `@AsyncTest` (concurrent stress - exposes the real bug)
 - 📖 Includes detailed comments explaining the problem and solution
 
+### Running in IntelliJ
+
+**⚠️ Important**: If you get `NoSuchMethodError: methodParameterTypes` when running tests directly in IntelliJ:
+
+This is because **IntelliJ's bundled JUnit runner is older** than JUnit 6.0.3 used by the examples.
+
+**Solution - Run tests via Maven:**
+1. Right-click the test class → `Run 'OrderProcessingServiceTest' via Maven`
+2. Or use the Maven tool window → example module → `test` lifecycle
+3. Or run from terminal: `mvn clean test`
+
+**Alternative**: Update IntelliJ to the latest version which supports JUnit 6.x
+
+### Running from Command Line
+
 ```bash
 # Run all examples (they pass with @Test)
-for dir in example-*/; do
+for dir in examples/*/; do
   mvn -f "$dir/pom.xml" clean test
 done
 
