@@ -5,43 +5,55 @@ import java.util.List;
 
 /**
  * Real-world task processing service that uses a flag to signal shutdown.
- * 
+ *
  * This is production-grade code that could exist in any background worker,
  * message consumer, or scheduled task processor.
- * 
+ *
+ * ========================================================================
+ * DETECTED BY: VisibilityMonitor
+ * ========================================================================
+ *
  * COMMON ASYNC PROBLEM: Memory Visibility / Missing volatile Keyword
- * 
+ *
  * THE BUG: The `running` flag is not declared as `volatile`.
- * 
+ *
  * In Java, without the volatile keyword:
  * - Each thread may cache the variable in its own CPU cache/register
  * - Changes made by one thread are NOT guaranteed to be visible to other threads
  * - The JIT compiler may optimize reads/writes, assuming the value doesn't change
- * 
+ *
  * In production, this manifests as:
  * - Worker threads don't stop when shutdown() is called
  * - Graceful shutdown hangs
  * - Resources (connections, file handles) are never released
  * - Application doesn't terminate cleanly
- * 
+ *
  * WHY @Test PASSES:
  * - Single-threaded execution means the same thread reads/writes the flag
  * - No CPU cache coherence issues on a single core
  * - The JIT compiler doesn't optimize away the read in simple loops
- * 
+ *
  * WHY @AsyncTest FAILS:
  * - Multiple worker threads cache the `running` flag independently
  * - When main thread sets running=false, workers may never see it
  * - VisibilityMonitor detector flags the non-volatile field being accessed
  *   by multiple threads
  * - Test times out because workers never terminate
- * 
+ *
+ * DETECTORS TRIGGERED:
+ * 1. VisibilityMonitor - Primary detector for this example
+ *    Flags: "Field 'running' accessed by multiple threads without volatile keyword"
+ * 2. BusyWaitDetector - Secondary detector
+ *    Flags: Workers spinning indefinitely without seeing the flag change
+ * 3. ThreadLeakDetector - Tertiary detector
+ *    Flags: Workers that never terminate due to invisible flag
+ *
  * ROOT CAUSE:
  * private boolean running = true;  // BUG: Not volatile!
- * 
+ *
  * SOLUTION:
  * private volatile boolean running = true;  // FIX: Ensures visibility across threads
- * 
+ *
  * The volatile keyword establishes a "happens-before" relationship:
  * - Writes to volatile fields are immediately flushed to main memory
  * - Reads from volatile fields always fetch from main memory

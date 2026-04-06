@@ -13,21 +13,25 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Test for OrderProcessingService
- * 
+ *
+ * ========================================================================
+ * DETECTOR: CompletableFutureExceptionDetector
+ * ========================================================================
+ *
  * This test demonstrates a common pattern where:
  * - A sequential @Test PASSES (but gives false confidence)
  * - The same test with @AsyncTest FAILS (exposing the real concurrent bug)
- * 
+ *
  * THE BUG:
  * OrderProcessingService has unhandled exceptions in its CompletableFuture chains.
  * When any async step fails (e.g., inventory timeout every 3rd call), the exception
  * propagates unhandled, and the order is never recorded in processedOrders or failedOrders.
- * 
+ *
  * WHY @Test PASSES:
  * With single-threaded execution, we process orders one at a time. The 3rd order fails,
  * .join() throws CompletionException, and the test catches it or the assertion sees
  * fewer processed orders than expected - but it's somewhat deterministic.
- * 
+ *
  * WHY @AsyncTest FAILS:
  * With 10+ concurrent threads hitting the service simultaneously:
  * - Many more orders fail due to race conditions on callCount
@@ -35,6 +39,11 @@ import static org.junit.jupiter.api.Assertions.*;
  * - processedOrders map ends up with inconsistent state
  * - CompletableFutureExceptionDetector flags multiple unhandled async exceptions
  * - The test fails with CompletionException or assertion errors
+ *
+ * DETECTORS TRIGGERED:
+ * ✅ CompletableFutureExceptionDetector - Primary detector for this example
+ * ✅ RaceConditionDetector - Secondary detector for unsynchronized callCount
+ * ✅ VisibilityMonitor - Tertiary detector for inconsistent state
  */
 class OrderProcessingServiceTest {
 

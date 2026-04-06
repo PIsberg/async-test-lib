@@ -9,33 +9,42 @@ import java.util.Map;
 /**
  * Real-world order processing service that asynchronously fetches order details
  * from multiple downstream services (inventory, payment, shipping).
- * 
+ *
  * This is production-grade code that could exist in any e-commerce system.
- * 
+ *
+ * ========================================================================
+ * DETECTED BY: CompletableFutureExceptionDetector
+ * ========================================================================
+ *
  * COMMON ASYNC PROBLEM: Unhandled exceptions in CompletableFuture chains
- * 
+ *
  * The bug: When any async step fails, the exception is silently swallowed
  * because we use .thenApply() without .exceptionally() or .handle().
  * The CompletableFuture completes exceptionally, but the caller never knows
  * because .join() at the end rethrows it as CompletionException.
- * 
+ *
  * Under sequential test execution (@Test), this might work "fine" because:
  * - The test runs single-threaded
  * - Failures happen deterministically and are caught
  * - The .join() throws immediately
- * 
+ *
  * Under concurrent stress testing (@AsyncTest), the problem becomes severe:
  * - Multiple threads trigger exceptions simultaneously
  * - Unhandled exceptions propagate as CompletionException
  * - The shared state (processedOrders) may end up inconsistent
  * - CompletableFutureExceptionDetector will flag unhandled exceptions
- * 
+ *
+ * DETECTORS TRIGGERED:
+ * 1. CompletableFutureExceptionDetector - Flags unhandled exceptions in async chains
+ * 2. RaceConditionDetector - Unsynchronized access to shared state under concurrent load
+ * 3. VisibilityMonitor - May flag inconsistent state visibility across threads
+ *
  * ROOT CAUSE:
  * The composeAsyncChain() method chains async operations without error handling.
  * When validateOrder() or processPayment() throws an exception, it propagates
  * through the entire chain without being caught, leaving the future in an
  * exceptional state.
- * 
+ *
  * SOLUTION (see comments in code):
  * Add .handle() or .exceptionally() to each async stage to catch and handle
  * exceptions gracefully, returning a fallback value or error state instead

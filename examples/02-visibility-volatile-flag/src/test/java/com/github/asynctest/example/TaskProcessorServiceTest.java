@@ -17,25 +17,34 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Test for TaskProcessorService
- * 
+ *
+ * ========================================================================
+ * DETECTOR: VisibilityMonitor
+ * ========================================================================
+ *
  * This test demonstrates a classic Java concurrency bug:
  * **Memory visibility issue - missing volatile keyword**
- * 
+ *
  * THE BUG:
  * TaskProcessorService uses a non-volatile `running` flag to control worker loops.
  * Without volatile, the Java Memory Model doesn't guarantee that changes made by
  * one thread (calling shutdown()) will be visible to other threads (worker loops).
- * 
+ *
  * WHY @Test PASSES:
  * - Single-threaded or simple multi-threaded tests often "work" by coincidence
  * - The JVM happens to flush the cache or the timing works out
  * - This gives false confidence that the code is correct
- * 
+ *
  * WHY @AsyncTest FAILS:
  * - Forces maximum thread contention with barrier synchronization
  * - Multiple workers spin on the cached flag value simultaneously
  * - VisibilityMonitor detector flags non-volatile field accessed by multiple threads
  * - Workers may never see the shutdown signal, causing timeout
+ *
+ * DETECTORS TRIGGERED:
+ * ✅ VisibilityMonitor - Primary detector for this example
+ * ✅ BusyWaitDetector - Secondary detector for infinite spinning
+ * ✅ ThreadLeakDetector - Tertiary detector for non-terminating workers
  */
 class TaskProcessorServiceTest {
 

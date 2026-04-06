@@ -4,10 +4,10 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 
 ## Available Examples
 
-| # | Example | Async Problem | Severity |
-|---|---------|---------------|----------|
-| 01 | [CompletableFuture Exception Handling](example-01-completablefuture-exception-handling/) | Unhandled exceptions in async chains cause silent data loss | 🔴 Critical |
-| 02 | [Visibility/Volatile Flag](example-02-visibility-volatile-flag/) | Missing `volatile` on shared flags causes threads to never see shutdown signals | 🔴 Critical |
+| # | Example | Primary Detector | Async Problem | Severity |
+|---|---------|------------------|---------------|----------|
+| 01 | [CompletableFuture Exception Handling](01-completablefuture-exception-handling/) | `CompletableFutureExceptionDetector` | Unhandled exceptions in async chains cause silent data loss | 🔴 Critical |
+| 02 | [Visibility/Volatile Flag](02-visibility-volatile-flag/) | `VisibilityMonitor` | Missing `volatile` on shared flags causes threads to never see shutdown signals | 🔴 Critical |
 
 ## Quick Start
 
@@ -51,14 +51,26 @@ examples/
 
 **Impact**: Orders/messages disappear without trace. No error logging, no retries, no fallback.
 
-**Detection**: `CompletableFutureExceptionDetector` flags unhandled async exceptions.
+**Primary Detector**: `CompletableFutureExceptionDetector`
+- Flags: "Unhandled exception in CompletableFuture chain"
+- Detects: Exceptions that propagate without being caught
+
+**Secondary Detectors**: 
+- `RaceConditionDetector` - Unsynchronized access to shared state
+- `VisibilityMonitor` - Inconsistent state visibility across threads
 
 ### 2. Memory Visibility / Missing volatile (Example 02)
 **What**: Non-volatile shared fields cause threads to cache stale values and never see updates.
 
 **Impact**: Graceful shutdown hangs, workers run indefinitely, resources leak.
 
-**Detection**: `VisibilityMonitor` flags non-volatile fields accessed by multiple threads.
+**Primary Detector**: `VisibilityMonitor`
+- Flags: "Field 'running' accessed by multiple threads without volatile keyword"
+- Detects: Non-volatile fields read/written by multiple threads
+
+**Secondary Detectors**: 
+- `BusyWaitDetector` - Workers spinning indefinitely
+- `ThreadLeakDetector` - Workers that never terminate
 
 ## How to Use These Examples
 
