@@ -4,4 +4,4 @@ target/
 .qwen/
 docs/diagrams/plantuml.jar
 bom.xml
-bom.json
+bom.json.idea/  
