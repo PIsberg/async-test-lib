@@ -45,7 +45,7 @@ class TaskProcessorServiceTest {
     @BeforeEach
     void setUp() {
         service = new TaskProcessorService();
-        executor = Executors.newVirtualThreadPerTaskExecutor();
+        executor = Executors.newCachedThreadPool();
     }
 
     @AfterEach

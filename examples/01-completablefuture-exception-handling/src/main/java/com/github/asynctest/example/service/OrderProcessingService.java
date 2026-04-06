@@ -59,7 +59,7 @@ public class OrderProcessingService {
         this.inventoryService = new InventoryService();
         this.paymentService = new PaymentService();
         this.shippingService = new ShippingService();
-        this.executor = Executors.newVirtualThreadPerTaskExecutor();
+        this.executor = Executors.newCachedThreadPool();
     }
 
     /**
