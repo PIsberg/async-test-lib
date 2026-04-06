@@ -37,6 +37,5 @@ ignore:
   - "**/tests/**"
   - "**/*Test.java"
   - "**/*Tests.java"
-  - "example-*/**"
-  - "consumer-fixture/**"
   - "examples/**"
+  - "consumer-fixture/**"

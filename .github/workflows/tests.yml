@@ -61,7 +61,7 @@ jobs:
 
       - name: Run all example tests
         run: |
-          for dir in example-*/; do
+          for dir in examples/*/; do
             if [ -f "$dir/pom.xml" ]; then
               echo "Running tests in $dir"
               mvn -Dmaven.repo.local=.m2/repository -f "$dir/pom.xml" test
