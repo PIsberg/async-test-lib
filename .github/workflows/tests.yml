@@ -59,6 +59,9 @@ jobs:
       - name: Run consumer fixture tests
         run: mvn -Dmaven.repo.local=.m2/repository -f consumer-fixture/pom.xml test
 
+      - name: Run example tests
+        run: mvn -Dmaven.repo.local=.m2/repository -f example/pom.xml test
+
       - name: Check coverage file exists
         run: |
           if [ -f ./target/site/jacoco/jacoco.xml ]; then
