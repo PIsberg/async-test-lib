@@ -59,6 +59,15 @@ jobs:
       - name: Run consumer fixture tests
         run: mvn -Dmaven.repo.local=.m2/repository -f consumer-fixture/pom.xml test
 
+      - name: Run all example tests
+        run: |
+          for dir in examples/*/; do
+            if [ -f "$dir/pom.xml" ]; then
+              echo "Running tests in $dir"
+              mvn -Dmaven.repo.local=.m2/repository -f "$dir/pom.xml" test
+            fi
+          done
+
       - name: Check coverage file exists
         run: |
           if [ -f ./target/site/jacoco/jacoco.xml ]; then

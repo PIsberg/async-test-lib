@@ -5,3 +5,4 @@ target/
 docs/diagrams/plantuml.jar
 bom.xml
 bom.json
+.idea/  
