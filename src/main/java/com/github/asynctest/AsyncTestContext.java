@@ -78,6 +78,11 @@ public final class AsyncTestContext {
     final SleepInLockDetector sleepInLockDetector;
     final UnboundedQueueDetector unboundedQueueDetector;
     final ThreadStarvationDetector threadStarvationDetector;
+    final CalendarDetector calendarDetector;
+    final SharedCollectionDetector sharedCollectionDetector;
+    final TimerDetector timerDetector;
+    final CopyOnWriteCollectionDetector copyOnWriteCollectionDetector;
+    final StringBuilderDetector stringBuilderDetector;
 
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
@@ -123,6 +128,11 @@ public final class AsyncTestContext {
         sleepInLockDetector               = registry.sleepInLockDetector;
         unboundedQueueDetector            = registry.unboundedQueueDetector;
         threadStarvationDetector          = registry.threadStarvationDetector;
+        calendarDetector                  = registry.calendarDetector;
+        sharedCollectionDetector          = registry.sharedCollectionDetector;
+        timerDetector                     = registry.timerDetector;
+        copyOnWriteCollectionDetector     = registry.copyOnWriteCollectionDetector;
+        stringBuilderDetector             = registry.stringBuilderDetector;
     }
 
     // ---- Lifecycle (called by ConcurrencyRunner) ----
@@ -474,6 +484,48 @@ public final class AsyncTestContext {
      */
     public static ThreadStarvationDetector threadStarvationDetector() {
         return require("detectThreadStarvation", c -> c.threadStarvationDetector);
+    }
+
+    // ---- Phase 5: Thread-Safety of Common Types ----
+
+    /**
+     * Returns the {@link CalendarDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCalendarIssues = false}
+     */
+    public static CalendarDetector calendarMonitor() {
+        return require("detectCalendarIssues", c -> c.calendarDetector);
+    }
+
+    /**
+     * Returns the {@link SharedCollectionDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedCollections = false}
+     */
+    public static SharedCollectionDetector sharedCollectionMonitor() {
+        return require("detectSharedCollections", c -> c.sharedCollectionDetector);
+    }
+
+    /**
+     * Returns the {@link TimerDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectTimerIssues = false}
+     */
+    public static TimerDetector timerMonitor() {
+        return require("detectTimerIssues", c -> c.timerDetector);
+    }
+
+    /**
+     * Returns the {@link CopyOnWriteCollectionDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCopyOnWriteCollectionIssues = false}
+     */
+    public static CopyOnWriteCollectionDetector copyOnWriteMonitor() {
+        return require("detectCopyOnWriteCollectionIssues", c -> c.copyOnWriteCollectionDetector);
+    }
+
+    /**
+     * Returns the {@link StringBuilderDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectStringBuilderIssues = false}
+     */
+    public static StringBuilderDetector stringBuilderMonitor() {
+        return require("detectStringBuilderIssues", c -> c.stringBuilderDetector);
     }
 
     // ---- Helper ----

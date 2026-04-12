@@ -24,6 +24,11 @@ import com.github.asynctest.diagnostics.ThreadLeakDetector;
 import com.github.asynctest.diagnostics.SleepInLockDetector;
 import com.github.asynctest.diagnostics.UnboundedQueueDetector;
 import com.github.asynctest.diagnostics.ThreadStarvationDetector;
+import com.github.asynctest.diagnostics.CalendarDetector;
+import com.github.asynctest.diagnostics.SharedCollectionDetector;
+import com.github.asynctest.diagnostics.TimerDetector;
+import com.github.asynctest.diagnostics.CopyOnWriteCollectionDetector;
+import com.github.asynctest.diagnostics.StringBuilderDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -1240,5 +1245,108 @@ class ConsumerAsyncTestUsageTest {
         }
         
         executor.shutdown();
+    }
+
+    // ============================================
+    // PHASE 5: Thread-Safety of Common Types
+    // ============================================
+
+    /**
+     * Demonstrates Calendar sharing detection.
+     * java.util.Calendar is not thread-safe — multiple threads sharing one instance
+     * can produce silently corrupted date values.
+     */
+    @AsyncTest(threads = 4, invocations = 20, detectCalendarIssues = true, timeoutMs = 5000)
+    void testCalendarSharingDetection() {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+
+        AsyncTestContext.calendarMonitor()
+            .registerCalendar(cal, "shared-calendar");
+
+        // Simulate set + get cycle (data race without synchronisation)
+        cal.set(java.util.Calendar.YEAR, 2024);
+        AsyncTestContext.calendarMonitor()
+            .recordSet(cal, "shared-calendar");
+
+        cal.get(java.util.Calendar.YEAR);
+        AsyncTestContext.calendarMonitor()
+            .recordGet(cal, "shared-calendar");
+    }
+
+    /**
+     * Demonstrates shared collection detection.
+     * ArrayList and HashMap accessed by multiple threads without synchronisation.
+     */
+    @AsyncTest(threads = 4, invocations = 20, detectSharedCollections = true, timeoutMs = 5000)
+    void testSharedCollectionDetection() {
+        java.util.List<String> sharedList = new java.util.ArrayList<>();
+
+        AsyncTestContext.sharedCollectionMonitor()
+            .registerCollection(sharedList, "event-list", "ArrayList");
+
+        sharedList.add("event-" + Thread.currentThread().getId());
+        AsyncTestContext.sharedCollectionMonitor()
+            .recordWrite(sharedList, "event-list", "add");
+    }
+
+    /**
+     * Demonstrates Timer misuse detection.
+     * java.util.Timer exception in one task kills the timer thread, silently
+     * cancelling all remaining tasks.
+     */
+    @AsyncTest(threads = 2, invocations = 5, detectTimerIssues = true, timeoutMs = 10000)
+    void testTimerMisuseDetection() {
+        java.util.Timer timer = new java.util.Timer("demo-timer");
+
+        AsyncTestContext.timerMonitor()
+            .registerTimer(timer, "demo-timer");
+
+        AsyncTestContext.timerMonitor()
+            .recordTaskSchedule(timer, "demo-timer", "periodic-task");
+        AsyncTestContext.timerMonitor()
+            .recordTaskRun(timer, "demo-timer", "periodic-task");
+        AsyncTestContext.timerMonitor()
+            .recordTaskComplete(timer, "demo-timer", "periodic-task");
+
+        timer.cancel();
+    }
+
+    /**
+     * Demonstrates CopyOnWriteArrayList write-heavy detection.
+     * High write ratio makes copy-on-write collections a performance bottleneck.
+     */
+    @AsyncTest(threads = 4, invocations = 20, detectCopyOnWriteCollectionIssues = true, timeoutMs = 5000)
+    void testCopyOnWriteCollectionDetection() {
+        java.util.concurrent.CopyOnWriteArrayList<String> cowList = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+        AsyncTestContext.copyOnWriteMonitor()
+            .registerCollection(cowList, "cow-event-list");
+
+        // Simulate write-heavy usage
+        for (int i = 0; i < 10; i++) {
+            cowList.add("entry-" + i);
+            AsyncTestContext.copyOnWriteMonitor()
+                .recordWrite(cowList, "cow-event-list");
+        }
+        // Only one read — ~90% write ratio triggers the detector
+        cowList.size();
+        AsyncTestContext.copyOnWriteMonitor()
+            .recordRead(cowList, "cow-event-list");
+    }
+
+    /**
+     * Demonstrates StringBuilder sharing detection.
+     * StringBuilder mutated by multiple threads produces garbled output.
+     */
+    @AsyncTest(threads = 4, invocations = 20, detectStringBuilderIssues = true, timeoutMs = 5000)
+    void testStringBuilderSharingDetection() {
+        StringBuilder sharedSb = new StringBuilder();
+
+        AsyncTestContext.stringBuilderMonitor()
+            .registerBuilder(sharedSb, "log-builder");
+
+        sharedSb.append("thread-").append(Thread.currentThread().getId()).append("|");
+        AsyncTestContext.stringBuilderMonitor()
+            .recordAppend(sharedSb, "log-builder");
     }
 }

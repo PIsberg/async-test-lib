@@ -72,6 +72,13 @@ final class DetectorRegistry {
     final UnboundedQueueDetector     unboundedQueueDetector;
     final ThreadStarvationDetector   threadStarvationDetector;
 
+    // ---- Phase 5: Thread-Safety of Common Types ----
+    final CalendarDetector              calendarDetector;
+    final SharedCollectionDetector      sharedCollectionDetector;
+    final TimerDetector                 timerDetector;
+    final CopyOnWriteCollectionDetector copyOnWriteCollectionDetector;
+    final StringBuilderDetector         stringBuilderDetector;
+
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
      * Detectors whose flag is {@code false} are set to {@code null} and incur
@@ -122,6 +129,12 @@ final class DetectorRegistry {
         sleepInLockDetector        = cfg.detectSleepInLock              ? new SleepInLockDetector()        : null;
         unboundedQueueDetector     = cfg.detectUnboundedQueue           ? new UnboundedQueueDetector()     : null;
         threadStarvationDetector   = cfg.detectThreadStarvation         ? new ThreadStarvationDetector()   : null;
+        calendarDetector           = cfg.detectCalendarIssues           ? new CalendarDetector()           : null;
+        sharedCollectionDetector   = cfg.detectSharedCollections        ? new SharedCollectionDetector()   : null;
+        timerDetector              = cfg.detectTimerIssues              ? new TimerDetector()              : null;
+        copyOnWriteCollectionDetector = cfg.detectCopyOnWriteCollectionIssues
+                ? new CopyOnWriteCollectionDetector() : null;
+        stringBuilderDetector      = cfg.detectStringBuilderIssues      ? new StringBuilderDetector()      : null;
     }
 
     /**
@@ -264,6 +277,23 @@ final class DetectorRegistry {
         ifIssue(threadStarvationDetector,
                 d -> d.analyze(),
                 ThreadStarvationDetector.ThreadStarvationReport::hasIssues, out);
+
+        // ---- Phase 5: Thread-Safety of Common Types ----
+        ifIssue(calendarDetector,
+                d -> d.analyze(),
+                CalendarDetector.CalendarReport::hasIssues, out);
+        ifIssue(sharedCollectionDetector,
+                d -> d.analyze(),
+                SharedCollectionDetector.SharedCollectionReport::hasIssues, out);
+        ifIssue(timerDetector,
+                d -> d.analyze(),
+                TimerDetector.TimerReport::hasIssues, out);
+        ifIssue(copyOnWriteCollectionDetector,
+                d -> d.analyze(),
+                CopyOnWriteCollectionDetector.CopyOnWriteReport::hasIssues, out);
+        ifIssue(stringBuilderDetector,
+                d -> d.analyze(),
+                StringBuilderDetector.StringBuilderReport::hasIssues, out);
 
         return out;
     }
