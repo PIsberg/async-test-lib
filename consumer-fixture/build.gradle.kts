@@ -23,6 +23,10 @@ dependencies {
     testImplementation("se.deversity.async-test-lib:async-test-lib:$asyncTestVersion")
     testImplementation("org.junit.jupiter:junit-jupiter-api:$junitVersion")
     testImplementation("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
+    // Gradle bundles its own junit-platform-launcher (JUnit 5.x). The library brings in
+    // junit-jupiter-engine 6.x, so we must pin the launcher to the same version to avoid
+    // "OutputDirectoryCreator not available" failures at test discovery time.
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:$junitVersion")
 }
 
 tasks.test {
