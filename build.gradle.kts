@@ -59,9 +59,11 @@ tasks.withType<Javadoc> {
 mavenPublishing {
     publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL, automaticRelease = true)
 
-    // Signing is activated when ORG_GRADLE_PROJECT_signingInMemoryKey is set (CI only).
-    // For local builds without that env var, signing is skipped automatically.
-    signAllPublications()
+    // Only sign when the in-memory key is present (set via ORG_GRADLE_PROJECT_signingInMemoryKey
+    // in the release workflow). Skipped for local builds and the test workflow's publishToMavenLocal.
+    if (providers.gradleProperty("signingInMemoryKey").isPresent) {
+        signAllPublications()
+    }
 
     coordinates(
         groupId = project.group.toString(),
