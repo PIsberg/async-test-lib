@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -108,11 +109,11 @@ public class BenchmarkResult implements Serializable {
         if (nanos < 1_000) {
             return nanos + " ns";
         } else if (nanos < 1_000_000) {
-            return String.format("%.2f µs", nanos / 1_000.0);
+            return String.format(Locale.ROOT, "%.2f µs", nanos / 1_000.0);
         } else if (nanos < 1_000_000_000) {
-            return String.format("%.2f ms", nanos / 1_000_000.0);
+            return String.format(Locale.ROOT, "%.2f ms", nanos / 1_000_000.0);
         } else {
-            return String.format("%.2f s", nanos / 1_000_000_000.0);
+            return String.format(Locale.ROOT, "%.2f s", nanos / 1_000_000_000.0);
         }
     }
 
