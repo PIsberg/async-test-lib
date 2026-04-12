@@ -1190,15 +1190,21 @@ ABA PROBLEM DETECTED:
 
 ## Get Started
 
-Add the maven dependency:
+Add the dependency — available on [Maven Central](https://central.sonatype.com/artifact/se.deversity.async-test-lib/async-test-lib):
 
+**Maven**
 ```xml
 <dependency>
-    <groupId>com.github.asynctest</groupId>
-    <artifactId>async-test</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <groupId>se.deversity.async-test-lib</groupId>
+    <artifactId>async-test-lib</artifactId>
+    <version>0.5.0</version>
     <scope>test</scope>
 </dependency>
+```
+
+**Gradle (Kotlin DSL)**
+```kotlin
+testImplementation("se.deversity.async-test-lib:async-test-lib:0.5.0")
 ```
 
 ### 1. Catching a Race Condition

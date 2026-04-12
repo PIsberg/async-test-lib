@@ -10,13 +10,13 @@ permissions:
 
 jobs:
   publish:
+    name: Publish to Maven Central
     runs-on: ubuntu-latest
-    
+
     permissions:
       contents: write
-      packages: write
       id-token: write  # required for keyless cosign signing via OIDC
-    
+
     steps:
       - name: Harden the runner (Block unexpected outbound calls)
         uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176 # v2.17.0
@@ -26,37 +26,48 @@ jobs:
             agent.api.stepsecurity.io:443
             api.adoptium.net:443
             api.github.com:443
+            central.sonatype.com:443
             fulcio.sigstore.dev:443
             github.com:443
-            maven.pkg.github.com:443
+            keys.openpgp.org:443
+            keyserver.ubuntu.com:443
             objects.githubusercontent.com:443
             rekor.sigstore.dev:443
+            repo.maven.apache.org:443
             repo1.maven.org:443
             tuf-repo-cdn.sigstore.dev:443
             uploads.github.com:443
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
       - name: Set up JDK 21
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
         with:
           java-version: '21'
           distribution: 'temurin'
           cache: maven
-          server-id: github
-          server-username: GITHUB_ACTOR
-          server-password: GITHUB_TOKEN
-      
-      - name: Build and test
-        run: mvn clean verify
-      
-      - name: Publish to GitHub Packages
-        run: mvn deploy
-        env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Generates ~/.m2/settings.xml with a <server id="central"> entry
+          # used by central-publishing-maven-plugin to authenticate with the portal
+          server-id: central
+          server-username: MAVEN_CENTRAL_USERNAME
+          server-password: MAVEN_CENTRAL_PASSWORD
 
-      - name: Extract version
+      - name: Import GPG key
+        run: |
+          echo "$MAVEN_GPG_PRIVATE_KEY" | gpg --batch --import
+          gpg --list-secret-keys --keyid-format LONG
+        env:
+          MAVEN_GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+
+      - name: Build, test and publish to Maven Central
+        run: mvn --batch-mode clean deploy -P release
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+
+      - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
@@ -67,13 +78,15 @@ jobs:
         run: |
           VERSION=${{ steps.version.outputs.VERSION }}
           for artifact in \
-            target/async-test-${VERSION}.jar \
-            target/async-test-${VERSION}-sources.jar \
-            target/async-test-${VERSION}-javadoc.jar \
+            target/async-test-lib-${VERSION}.jar \
+            target/async-test-lib-${VERSION}-sources.jar \
+            target/async-test-lib-${VERSION}-javadoc.jar \
             target/bom.xml; do
-            cosign sign-blob --yes \
-              --bundle "${artifact}.bundle" \
-              "${artifact}"
+            if [ -f "$artifact" ]; then
+              cosign sign-blob --yes \
+                --bundle "${artifact}.bundle" \
+                "${artifact}"
+            fi
           done
 
       - name: Create GitHub Release with artifacts and signatures
@@ -82,48 +95,38 @@ jobs:
         run: |
           VERSION=${{ steps.version.outputs.VERSION }}
           gh release create "${{ github.ref_name }}" \
-            target/async-test-${VERSION}.jar \
-            target/async-test-${VERSION}.jar.bundle \
-            target/async-test-${VERSION}-sources.jar \
-            target/async-test-${VERSION}-sources.jar.bundle \
-            target/async-test-${VERSION}-javadoc.jar \
-            target/async-test-${VERSION}-javadoc.jar.bundle \
+            target/async-test-lib-${VERSION}.jar \
+            target/async-test-lib-${VERSION}.jar.bundle \
+            target/async-test-lib-${VERSION}-sources.jar \
+            target/async-test-lib-${VERSION}-sources.jar.bundle \
+            target/async-test-lib-${VERSION}-javadoc.jar \
+            target/async-test-lib-${VERSION}-javadoc.jar.bundle \
             target/bom.xml \
             target/bom.xml.bundle \
             --title "Release ${{ github.ref_name }}" \
-            --notes "## Async Test Library Release ${{ github.ref_name }}
+            --notes "## Async Test Library ${{ github.ref_name }}
 
-          ### What's included:
-          - \`async-test-${VERSION}.jar\` — Main library (+ \`.bundle\` cosign signature)
-          - \`async-test-${VERSION}-sources.jar\` — Source code (+ \`.bundle\` cosign signature)
-          - \`async-test-${VERSION}-javadoc.jar\` — API Documentation (+ \`.bundle\` cosign signature)
-          - \`bom.xml\` — CycloneDX SBOM (+ \`.bundle\` cosign signature)
+          See [CHANGELOG.md](https://github.com/PIsberg/async-test-lib/blob/main/CHANGELOG.md) for what's new.
 
-          ### Verify a signature
-          \`\`\`bash
-          cosign verify-blob --bundle async-test-${VERSION}.jar.bundle \
-            --certificate-identity-regexp 'https://github.com/PIsberg/async-test-lib' \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            async-test-${VERSION}.jar
-          \`\`\`
-
-          ### Installation via Maven:
+          ### Maven
           \`\`\`xml
           <dependency>
-            <groupId>com.github.asynctest</groupId>
-            <artifactId>async-test</artifactId>
+            <groupId>se.deversity.async-test-lib</groupId>
+            <artifactId>async-test-lib</artifactId>
             <version>${VERSION}</version>
             <scope>test</scope>
           </dependency>
           \`\`\`
 
-          For GitHub Packages, add to your \`pom.xml\`:
-          \`\`\`xml
-          <repository>
-            <id>github</id>
-            <name>GitHub Packages</name>
-            <url>https://maven.pkg.github.com/PIsberg/async-test-lib</url>
-          </repository>
+          ### Gradle
+          \`\`\`kotlin
+          testImplementation(\"se.deversity.async-test-lib:async-test-lib:${VERSION}\")
           \`\`\`
 
-          See documentation at: https://github.com/PIsberg/async-test-lib"
+          ### Verify a cosign signature
+          \`\`\`bash
+          cosign verify-blob --bundle async-test-lib-${VERSION}.jar.bundle \\
+            --certificate-identity-regexp 'https://github.com/PIsberg/async-test-lib' \\
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \\
+            async-test-lib-${VERSION}.jar
+          \`\`\`"
