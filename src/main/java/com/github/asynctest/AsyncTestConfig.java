@@ -81,6 +81,13 @@ public final class AsyncTestConfig {
     public final boolean detectUnboundedQueue;
     public final boolean detectThreadStarvation;
 
+    // ---- Phase 5: Thread-Safety of Common Types ----
+    public final boolean detectCalendarIssues;
+    public final boolean detectSharedCollections;
+    public final boolean detectTimerIssues;
+    public final boolean detectCopyOnWriteCollectionIssues;
+    public final boolean detectStringBuilderIssues;
+
     // ---- Benchmarking ----
     public final boolean enableBenchmarking;
     public final double benchmarkRegressionThreshold;
@@ -140,6 +147,11 @@ public final class AsyncTestConfig {
         detectSleepInLock              = b.detectSleepInLock;
         detectUnboundedQueue           = b.detectUnboundedQueue;
         detectThreadStarvation         = b.detectThreadStarvation;
+        detectCalendarIssues           = b.detectCalendarIssues;
+        detectSharedCollections        = b.detectSharedCollections;
+        detectTimerIssues              = b.detectTimerIssues;
+        detectCopyOnWriteCollectionIssues = b.detectCopyOnWriteCollectionIssues;
+        detectStringBuilderIssues      = b.detectStringBuilderIssues;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -204,6 +216,11 @@ public final class AsyncTestConfig {
             .detectSleepInLock(ann.detectSleepInLock())
             .detectUnboundedQueue(ann.detectUnboundedQueue())
             .detectThreadStarvation(ann.detectThreadStarvation())
+            .detectCalendarIssues(ann.detectCalendarIssues())
+            .detectSharedCollections(ann.detectSharedCollections())
+            .detectTimerIssues(ann.detectTimerIssues())
+            .detectCopyOnWriteCollectionIssues(ann.detectCopyOnWriteCollectionIssues())
+            .detectStringBuilderIssues(ann.detectStringBuilderIssues())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -269,6 +286,11 @@ public final class AsyncTestConfig {
         private boolean detectSleepInLock = false;
         private boolean detectUnboundedQueue = false;
         private boolean detectThreadStarvation = false;
+        private boolean detectCalendarIssues = false;
+        private boolean detectSharedCollections = false;
+        private boolean detectTimerIssues = false;
+        private boolean detectCopyOnWriteCollectionIssues = false;
+        private boolean detectStringBuilderIssues = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -327,6 +349,11 @@ public final class AsyncTestConfig {
         public Builder detectSleepInLock(boolean v) { detectSleepInLock = v; return this; }
         public Builder detectUnboundedQueue(boolean v) { detectUnboundedQueue = v; return this; }
         public Builder detectThreadStarvation(boolean v) { detectThreadStarvation = v; return this; }
+        public Builder detectCalendarIssues(boolean v) { detectCalendarIssues = v; return this; }
+        public Builder detectSharedCollections(boolean v) { detectSharedCollections = v; return this; }
+        public Builder detectTimerIssues(boolean v) { detectTimerIssues = v; return this; }
+        public Builder detectCopyOnWriteCollectionIssues(boolean v) { detectCopyOnWriteCollectionIssues = v; return this; }
+        public Builder detectStringBuilderIssues(boolean v) { detectStringBuilderIssues = v; return this; }
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
@@ -424,6 +451,16 @@ public final class AsyncTestConfig {
                     else detectUnboundedQueue = false;
                 if (!excludes.contains(DetectorType.THREAD_STARVATION)) detectThreadStarvation = true;
                     else detectThreadStarvation = false;
+                if (!excludes.contains(DetectorType.CALENDAR)) detectCalendarIssues = true;
+                    else detectCalendarIssues = false;
+                if (!excludes.contains(DetectorType.SHARED_COLLECTIONS)) detectSharedCollections = true;
+                    else detectSharedCollections = false;
+                if (!excludes.contains(DetectorType.TIMER)) detectTimerIssues = true;
+                    else detectTimerIssues = false;
+                if (!excludes.contains(DetectorType.COPY_ON_WRITE_COLLECTIONS)) detectCopyOnWriteCollectionIssues = true;
+                    else detectCopyOnWriteCollectionIssues = false;
+                if (!excludes.contains(DetectorType.STRING_BUILDER)) detectStringBuilderIssues = true;
+                    else detectStringBuilderIssues = false;
                 if (!excludes.contains(DetectorType.RACE_CONDITIONS)) detectRaceConditions = true;
                     else detectRaceConditions = false;
                 if (!excludes.contains(DetectorType.THREAD_LOCAL_LEAKS)) detectThreadLocalLeaks = true;
@@ -479,6 +516,11 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.SLEEP_IN_LOCK)) detectSleepInLock = false;
                 if (excludes.contains(DetectorType.UNBOUNDED_QUEUE)) detectUnboundedQueue = false;
                 if (excludes.contains(DetectorType.THREAD_STARVATION)) detectThreadStarvation = false;
+                if (excludes.contains(DetectorType.CALENDAR)) detectCalendarIssues = false;
+                if (excludes.contains(DetectorType.SHARED_COLLECTIONS)) detectSharedCollections = false;
+                if (excludes.contains(DetectorType.TIMER)) detectTimerIssues = false;
+                if (excludes.contains(DetectorType.COPY_ON_WRITE_COLLECTIONS)) detectCopyOnWriteCollectionIssues = false;
+                if (excludes.contains(DetectorType.STRING_BUILDER)) detectStringBuilderIssues = false;
                 if (excludes.contains(DetectorType.RACE_CONDITIONS)) detectRaceConditions = false;
                 if (excludes.contains(DetectorType.THREAD_LOCAL_LEAKS)) detectThreadLocalLeaks = false;
                 if (excludes.contains(DetectorType.BUSY_WAITING)) detectBusyWaiting = false;

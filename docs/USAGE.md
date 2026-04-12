@@ -123,6 +123,110 @@ public class MyAsyncTests {
 | `detectAtomicityViolations` | boolean | false | Detect non-atomic compound operations |
 | `detectInterruptMishandling` | boolean | false | Detect swallowed interrupts and missing restoration |
 
+### Phase 5 Detectors — Thread-Safety of Common Types (Enabled by default if detectAll=true)
+
+These detectors catch misuse of common Java standard-library types that are **not thread-safe**
+but are frequently shared across threads by mistake.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `detectCalendarIssues` | boolean | true | Detect `java.util.Calendar` shared across threads (not thread-safe; use `java.time.*`) |
+| `detectSharedCollections` | boolean | true | Detect `ArrayList`/`HashMap`/`HashSet` etc. written by multiple threads without synchronization |
+| `detectTimerIssues` | boolean | true | Detect `java.util.Timer` thread failures (uncaught exception kills all tasks) and long-running tasks |
+| `detectCopyOnWriteCollectionIssues` | boolean | true | Detect `CopyOnWriteArrayList`/`CopyOnWriteArraySet` with high write ratio (O(n) copy per write) |
+| `detectStringBuilderIssues` | boolean | true | Detect `StringBuilder` mutated by multiple threads (not thread-safe; use `StringBuffer` or `ThreadLocal`) |
+
+#### Context accessors for Phase 5 detectors
+
+```java
+AsyncTestContext.calendarMonitor()           // CalendarDetector
+AsyncTestContext.sharedCollectionMonitor()   // SharedCollectionDetector
+AsyncTestContext.timerMonitor()              // TimerDetector
+AsyncTestContext.copyOnWriteMonitor()        // CopyOnWriteCollectionDetector
+AsyncTestContext.stringBuilderMonitor()      // StringBuilderDetector
+```
+
+#### CalendarDetector example
+
+```java
+@AsyncTest(threads = 4, detectCalendarIssues = true)
+void testCalendarSharing() {
+    Calendar cal = Calendar.getInstance();
+    AsyncTestContext.calendarMonitor()
+        .registerCalendar(cal, "shared-calendar");
+
+    cal.set(Calendar.YEAR, 2024);
+    AsyncTestContext.calendarMonitor()
+        .recordSet(cal, "shared-calendar");
+}
+// Fix: use LocalDate/ZonedDateTime from java.time.* (immutable, thread-safe)
+```
+
+#### SharedCollectionDetector example
+
+```java
+@AsyncTest(threads = 4, detectSharedCollections = true)
+void testSharedList() {
+    List<String> list = new ArrayList<>();   // BUG: not thread-safe
+    AsyncTestContext.sharedCollectionMonitor()
+        .registerCollection(list, "item-list", "ArrayList");
+
+    list.add("item");
+    AsyncTestContext.sharedCollectionMonitor()
+        .recordWrite(list, "item-list", "add");
+}
+// Fix: use ConcurrentHashMap, CopyOnWriteArrayList, or Collections.synchronizedList()
+```
+
+#### TimerDetector example
+
+```java
+@AsyncTest(threads = 2, detectTimerIssues = true)
+void testTimerUsage() {
+    Timer timer = new Timer("my-timer");
+    AsyncTestContext.timerMonitor()
+        .registerTimer(timer, "my-timer");
+
+    AsyncTestContext.timerMonitor()
+        .recordTaskRun(timer, "my-timer", "task-1");
+    AsyncTestContext.timerMonitor()
+        .recordTaskComplete(timer, "my-timer", "task-1");
+}
+// Fix: replace java.util.Timer with ScheduledExecutorService
+```
+
+#### CopyOnWriteCollectionDetector example
+
+```java
+@AsyncTest(threads = 4, detectCopyOnWriteCollectionIssues = true)
+void testWriteHeavyCopyOnWrite() {
+    CopyOnWriteArrayList<String> list = new CopyOnWriteArrayList<>();
+    AsyncTestContext.copyOnWriteMonitor()
+        .registerCollection(list, "event-list");
+
+    list.add("event");
+    AsyncTestContext.copyOnWriteMonitor()
+        .recordWrite(list, "event-list");
+}
+// Fix: use ConcurrentHashMap.newKeySet() or ConcurrentLinkedQueue for write-heavy workloads
+```
+
+#### StringBuilderDetector example
+
+```java
+@AsyncTest(threads = 4, detectStringBuilderIssues = true)
+void testSharedStringBuilder() {
+    StringBuilder sb = new StringBuilder();   // BUG: not thread-safe
+    AsyncTestContext.stringBuilderMonitor()
+        .registerBuilder(sb, "log-builder");
+
+    sb.append("entry");
+    AsyncTestContext.stringBuilderMonitor()
+        .recordAppend(sb, "log-builder");
+}
+// Fix: use ThreadLocal<StringBuilder> or build strings per-thread and join at the end
+```
+
 ## Manual Legacy Diagnostics
 
 For older Java async patterns that need explicit instrumentation, instantiate the diagnostics directly:

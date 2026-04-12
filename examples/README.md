@@ -8,6 +8,7 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 |---|---------|------------------|---------------|----------|
 | 01 | [CompletableFuture Exception Handling](01-completablefuture-exception-handling/) | `CompletableFutureExceptionDetector` | Unhandled exceptions in async chains cause silent data loss | 🔴 Critical |
 | 02 | [Visibility/Volatile Flag](02-visibility-volatile-flag/) | `VisibilityMonitor` | Missing `volatile` on shared flags causes threads to never see shutdown signals | 🔴 Critical |
+| 03 | [Shared Non-Thread-Safe Collection](03-shared-collection/) | `SharedCollectionDetector` | ArrayList/HashMap shared across threads causes data loss and corruption | 🔴 Critical |
 
 ## Quick Start
 
@@ -56,6 +57,11 @@ examples/
 │   └── src/
 │       ├── main/java/.../TaskProcessorService.java        # Buggy production code
 │       └── test/java/.../TaskProcessorServiceTest.java    # Tests + solution
+├── 03-shared-collection/
+│   ├── pom.xml
+│   └── src/
+│       ├── main/java/.../EventAggregatorService.java      # Buggy production code (ArrayList + HashMap)
+│       └── test/java/.../EventAggregatorServiceTest.java  # Tests + solution
 └── ... (more examples)
 ```
 
@@ -86,6 +92,21 @@ examples/
 **Secondary Detectors**: 
 - `BusyWaitDetector` - Workers spinning indefinitely
 - `ThreadLeakDetector` - Workers that never terminate
+
+### 3. Shared Non-Thread-Safe Collection (Example 03)
+**What**: `ArrayList` and `HashMap` shared across threads without synchronization.
+
+**Impact**: Events are silently dropped, counts are wrong, and the application produces corrupted data without throwing any exception.
+
+**Primary Detector**: `SharedCollectionDetector`
+- Flags: "ArrayList: write operations from N threads — DATA CORRUPTION RISK!"
+- Detects: Writes to non-thread-safe collections from multiple threads
+
+**Secondary Detectors**:
+- `ConcurrentModificationDetector` - Reads during concurrent writes
+- `RaceConditionDetector` - Unsynchronized compound read-modify-write in `merge()`
+
+**Fix**: Use `ConcurrentHashMap`, `CopyOnWriteArrayList`, or `Collections.synchronizedList()`
 
 ## How to Use These Examples
 

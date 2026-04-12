@@ -64,5 +64,12 @@ public enum DetectorType {
     THREAD_LEAKS,
     SLEEP_IN_LOCK,
     UNBOUNDED_QUEUE,
-    THREAD_STARVATION
+    THREAD_STARVATION,
+
+    // Phase 5: Thread-Safety of Common Types
+    CALENDAR,
+    SHARED_COLLECTIONS,
+    TIMER,
+    COPY_ON_WRITE_COLLECTIONS,
+    STRING_BUILDER
 }

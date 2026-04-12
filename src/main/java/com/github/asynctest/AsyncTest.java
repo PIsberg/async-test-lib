@@ -380,6 +380,41 @@ public @interface AsyncTest {
      */
     boolean detectThreadStarvation() default true;
 
+    // ============= Phase 5: Thread-Safety of Common Types =============
+
+    /**
+     * Enable {@code java.util.Calendar} misuse detection.
+     * Detects shared Calendar instances accessed by multiple threads (not thread-safe).
+     */
+    boolean detectCalendarIssues() default true;
+
+    /**
+     * Enable non-thread-safe collection sharing detection.
+     * Detects ArrayList, HashMap, HashSet, LinkedList, etc. accessed concurrently
+     * without synchronization.
+     */
+    boolean detectSharedCollections() default true;
+
+    /**
+     * Enable {@code java.util.Timer} misuse detection.
+     * Detects timer thread failures (uncaught exceptions kill all tasks) and
+     * long-running tasks that starve subsequent tasks.
+     */
+    boolean detectTimerIssues() default true;
+
+    /**
+     * Enable Copy-on-Write collection performance detection.
+     * Detects CopyOnWriteArrayList / CopyOnWriteArraySet used in write-heavy scenarios
+     * where the O(n) copy-per-write overhead is significant.
+     */
+    boolean detectCopyOnWriteCollectionIssues() default true;
+
+    /**
+     * Enable {@code StringBuilder} sharing detection.
+     * Detects StringBuilder instances mutated by multiple threads (not thread-safe).
+     */
+    boolean detectStringBuilderIssues() default true;
+
     // ============= Benchmarking =============
 
     /**
