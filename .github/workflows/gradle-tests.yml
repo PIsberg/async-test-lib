@@ -17,7 +17,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java-version: [ '21', '25' ]
+        # Gradle 8.13 requires Java 21 or earlier as the daemon JVM.
+        # Java 25 compatibility is already covered by the Maven workflow.
+        java-version: [ '21' ]
 
     steps:
       - name: Harden the runner (Block unexpected outbound calls)
@@ -99,7 +101,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java-version: [ '21', '25' ]
+        # Gradle 8.13 requires Java 21 or earlier as the daemon JVM.
+        # Java 25 compatibility is already covered by the Maven workflow.
+        java-version: [ '21' ]
 
     steps:
       - name: Harden the runner (Block unexpected outbound calls)
