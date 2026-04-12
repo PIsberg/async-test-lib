@@ -5,4 +5,7 @@ target/
 docs/diagrams/plantuml.jar
 bom.xml
 bom.json
-.idea/  
+.idea/
+# Gradle build output and caches
+build/
+.gradle/

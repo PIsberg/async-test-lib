@@ -1,0 +1,150 @@
+name: Gradle Tests & Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+permissions:
+  contents: read
+
+jobs:
+  gradle-test:
+    name: Gradle Test Suite
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Gradle 8.13 requires Java 21 or earlier as the daemon JVM.
+        # Java 25 compatibility is already covered by the Maven workflow.
+        java-version: [ '21' ]
+
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176 # v2.17.0
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            downloads.gradle-dn.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            plugins.gradle.org:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+            services.gradle.org:443
+
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Java
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # Uses the version declared in gradle/wrapper/gradle-wrapper.properties
+          # gradle-wrapper.jar is generated locally via: gradle wrapper --gradle-version 8.13
+          gradle-version: wrapper
+
+      - name: Run library tests and generate coverage report
+        run: ./gradlew test jacocoTestReport
+
+      - name: Publish library to local Maven repository
+        run: ./gradlew publishToMavenLocal
+
+      - name: Run consumer fixture tests
+        run: ./gradlew -p consumer-fixture test
+
+      - name: Run all example tests
+        run: |
+          for dir in examples/*/; do
+            if [ -f "$dir/build.gradle.kts" ]; then
+              echo "Running Gradle tests in $dir"
+              ./gradlew -p "$dir" test
+            fi
+          done
+
+      - name: Check coverage file exists
+        run: |
+          if [ -f ./build/reports/jacoco/test/jacocoTestReport.xml ]; then
+            echo "✓ Coverage file found"
+            wc -c ./build/reports/jacoco/test/jacocoTestReport.xml
+          else
+            echo "✗ Coverage file NOT found at ./build/reports/jacoco/test/jacocoTestReport.xml"
+            echo "Checking build directory structure:"
+            ls -la ./build/ || echo "build/ directory not found"
+            ls -la ./build/reports/ || echo "build/reports/ directory not found"
+            exit 1
+          fi
+
+      - name: Upload test results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: gradle-test-reports-java-${{ matrix.java-version }}
+          path: build/reports/tests/
+          retention-days: 7
+
+  gradle-build:
+    name: Build Gradle Project
+    runs-on: ubuntu-latest
+    needs: gradle-test
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Gradle 8.13 requires Java 21 or earlier as the daemon JVM.
+        # Java 25 compatibility is already covered by the Maven workflow.
+        java-version: [ '21' ]
+
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176 # v2.17.0
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            downloads.gradle-dn.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            plugins.gradle.org:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+            services.gradle.org:443
+
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Java
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: wrapper
+
+      - name: Compile and assemble artifacts
+        run: ./gradlew assemble -x test
+
+      - name: Display build output
+        run: ls -lah build/libs/
+
+      - name: Upload JAR artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: async-test-library-gradle-java-${{ matrix.java-version }}
+          path: build/libs/async-test-*.jar
+          retention-days: 30
