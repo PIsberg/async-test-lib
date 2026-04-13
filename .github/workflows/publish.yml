@@ -82,8 +82,7 @@ jobs:
           for artifact in \
             target/async-test-lib-${VERSION}.jar \
             target/async-test-lib-${VERSION}-sources.jar \
-            target/async-test-lib-${VERSION}-javadoc.jar \
-            target/bom.xml; do
+            target/async-test-lib-${VERSION}-javadoc.jar; do
             if [ -f "$artifact" ]; then
               cosign sign-blob --yes \
                 --bundle "${artifact}.bundle" \
@@ -103,8 +102,6 @@ jobs:
             target/async-test-lib-${VERSION}-sources.jar.bundle \
             target/async-test-lib-${VERSION}-javadoc.jar \
             target/async-test-lib-${VERSION}-javadoc.jar.bundle \
-            target/bom.xml \
-            target/bom.xml.bundle \
             --title "Release ${{ github.ref_name }}" \
             --notes "## Async Test Library ${{ github.ref_name }}
 
