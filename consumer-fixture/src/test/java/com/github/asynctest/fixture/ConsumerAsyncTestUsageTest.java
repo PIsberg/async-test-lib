@@ -29,6 +29,9 @@ import com.github.asynctest.diagnostics.SharedCollectionDetector;
 import com.github.asynctest.diagnostics.TimerDetector;
 import com.github.asynctest.diagnostics.CopyOnWriteCollectionDetector;
 import com.github.asynctest.diagnostics.StringBuilderDetector;
+import com.github.asynctest.diagnostics.StructuredConcurrencyMisuseDetector;
+import com.github.asynctest.diagnostics.VirtualThreadContextLeakDetector;
+import com.github.asynctest.diagnostics.ScopedValueMisuseDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -1348,5 +1351,68 @@ class ConsumerAsyncTestUsageTest {
         sharedSb.append("thread-").append(Thread.currentThread().getId()).append("|");
         AsyncTestContext.stringBuilderMonitor()
             .recordAppend(sharedSb, "log-builder");
+    }
+
+    // ============================================
+    // PHASE 6: Virtual Thread Concurrency (Java 21+)
+    // ============================================
+
+    /**
+     * Demonstrates correct StructuredTaskScope usage tracking.
+     * Every scope is opened, joined, and closed properly.
+     */
+    @AsyncTest(threads = 4, invocations = 10,
+               useVirtualThreads = true,
+               detectStructuredConcurrencyIssues = true,
+               timeoutMs = 10000)
+    void testStructuredConcurrencyProperUsage() {
+        var detector = AsyncTestContext.structuredConcurrencyMisuseDetector();
+        String scopeId = detector.recordScopeOpened("ShutdownOnFailure");
+        detector.recordSubtaskForked(scopeId);
+        detector.recordJoinCalled(scopeId);
+        detector.recordResultAccessed(scopeId);
+        detector.recordScopeClosed(scopeId);
+    }
+
+    /**
+     * Demonstrates virtual thread context leak tracking.
+     * ThreadLocal is properly set and removed within each virtual-thread task.
+     */
+    @AsyncTest(threads = 8, invocations = 20,
+               useVirtualThreads = true,
+               detectVirtualThreadContextLeaks = true,
+               timeoutMs = 10000)
+    void testVirtualThreadContextLeakDetection() {
+        var detector = AsyncTestContext.virtualThreadContextLeakDetector();
+        String key = "REQUEST_ID";
+        Thread current = Thread.currentThread();
+
+        detector.recordThreadLocalSet(key, current);
+        try {
+            // simulate request processing
+            String requestId = "req-" + current.threadId();
+            assertNotNull(requestId);
+        } finally {
+            detector.recordThreadLocalRemoved(key, current);
+        }
+    }
+
+    /**
+     * Demonstrates ScopedValue correct usage tracking.
+     * get() is only called within an active binding.
+     */
+    @AsyncTest(threads = 6, invocations = 20,
+               useVirtualThreads = true,
+               detectScopedValueMisuse = true,
+               timeoutMs = 10000)
+    void testScopedValueCorrectUsage() {
+        var detector = AsyncTestContext.scopedValueMisuseDetector();
+        Thread current = Thread.currentThread();
+        String svName = "USER_CONTEXT";
+
+        detector.recordBindingEntered(svName, current);
+        // Simulate ScopedValue.where(USER_CONTEXT, ctx).run(() -> { ... })
+        detector.recordGetCalled(svName, current); // safe — inside binding
+        detector.recordBindingExited(svName, current);
     }
 }

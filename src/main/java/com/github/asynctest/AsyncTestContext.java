@@ -83,6 +83,9 @@ public final class AsyncTestContext {
     final TimerDetector timerDetector;
     final CopyOnWriteCollectionDetector copyOnWriteCollectionDetector;
     final StringBuilderDetector stringBuilderDetector;
+    final StructuredConcurrencyMisuseDetector structuredConcurrencyMisuseDetector;
+    final VirtualThreadContextLeakDetector    virtualThreadContextLeakDetector;
+    final ScopedValueMisuseDetector           scopedValueMisuseDetector;
 
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
@@ -131,8 +134,11 @@ public final class AsyncTestContext {
         calendarDetector                  = registry.calendarDetector;
         sharedCollectionDetector          = registry.sharedCollectionDetector;
         timerDetector                     = registry.timerDetector;
-        copyOnWriteCollectionDetector     = registry.copyOnWriteCollectionDetector;
-        stringBuilderDetector             = registry.stringBuilderDetector;
+        copyOnWriteCollectionDetector          = registry.copyOnWriteCollectionDetector;
+        stringBuilderDetector                  = registry.stringBuilderDetector;
+        structuredConcurrencyMisuseDetector    = registry.structuredConcurrencyMisuseDetector;
+        virtualThreadContextLeakDetector       = registry.virtualThreadContextLeakDetector;
+        scopedValueMisuseDetector              = registry.scopedValueMisuseDetector;
     }
 
     // ---- Lifecycle (called by ConcurrencyRunner) ----
@@ -526,6 +532,32 @@ public final class AsyncTestContext {
      */
     public static StringBuilderDetector stringBuilderMonitor() {
         return require("detectStringBuilderIssues", c -> c.stringBuilderDetector);
+    }
+
+    // ---- Phase 6: Virtual Thread Concurrency (Java 21+) ----
+
+    /**
+     * Returns the {@link StructuredConcurrencyMisuseDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectStructuredConcurrencyIssues = false}
+     */
+    public static StructuredConcurrencyMisuseDetector structuredConcurrencyMisuseDetector() {
+        return require("detectStructuredConcurrencyIssues", c -> c.structuredConcurrencyMisuseDetector);
+    }
+
+    /**
+     * Returns the {@link VirtualThreadContextLeakDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVirtualThreadContextLeaks = false}
+     */
+    public static VirtualThreadContextLeakDetector virtualThreadContextLeakDetector() {
+        return require("detectVirtualThreadContextLeaks", c -> c.virtualThreadContextLeakDetector);
+    }
+
+    /**
+     * Returns the {@link ScopedValueMisuseDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectScopedValueMisuse = false}
+     */
+    public static ScopedValueMisuseDetector scopedValueMisuseDetector() {
+        return require("detectScopedValueMisuse", c -> c.scopedValueMisuseDetector);
     }
 
     // ---- Helper ----

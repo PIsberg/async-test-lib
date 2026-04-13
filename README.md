@@ -189,6 +189,18 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 38. **Unbounded Queues** - `BlockingQueue` without capacity bounds
 39. **Thread Starvation** - Tasks waiting excessively before execution
 
+### Phase 5: Thread-Safety of Common Types (5)
+40. **Calendar** - `java.util.Calendar` shared across threads (not thread-safe)
+41. **Shared Collections** - `ArrayList`/`HashMap` mutated concurrently without synchronization
+42. **Timer** - `java.util.Timer` task failures that cancel all subsequent tasks
+43. **CopyOnWrite** - `CopyOnWriteArrayList` used in write-heavy loops (O(n) copy-per-write)
+44. **StringBuilder** - `StringBuilder` mutated by multiple threads (not thread-safe)
+
+### Phase 6: Virtual Thread Concurrency (Java 21+) (3) — NEW
+45. **Structured Concurrency Misuse** - Unclosed `StructuredTaskScope`, skipped `join()`, or result accessed before `join()`
+46. **Virtual Thread Context Leaks** - `ThreadLocal` set in virtual threads but never removed; `InheritableThreadLocal` misuse
+47. **ScopedValue Misuse** - `ScopedValue.get()` called outside an active binding; unintentional re-binding in nested scopes
+
 ## Quick Start
 
 ### 1. Basic Race Condition Test
@@ -324,6 +336,18 @@ void stressWithVirtualThreads() {
 | `detectSleepInLock` | boolean | true | Detect Thread.sleep() while holding locks |
 | `detectUnboundedQueue` | boolean | true | Detect unbounded BlockingQueue usage |
 | `detectThreadStarvation` | boolean | true | Detect task starvation in thread pools |
+
+### Phase 5: Thread-Safety of Common Types (v1.3.0)
+| `detectCalendarIssues` | boolean | true | Detect shared Calendar instances (not thread-safe) |
+| `detectSharedCollections` | boolean | true | Detect ArrayList/HashMap mutated concurrently |
+| `detectTimerIssues` | boolean | true | Detect Timer task failures and starvation |
+| `detectCopyOnWriteCollectionIssues` | boolean | true | Detect CopyOnWriteArrayList in write-heavy loops |
+| `detectStringBuilderIssues` | boolean | true | Detect StringBuilder mutated by multiple threads |
+
+### Phase 6: Virtual Thread Concurrency (Java 21+) (v0.7.0)
+| `detectStructuredConcurrencyIssues` | boolean | true | Detect StructuredTaskScope misuse — unclosed scopes, skipped join(), result accessed before join() |
+| `detectVirtualThreadContextLeaks` | boolean | true | Detect ThreadLocal leaks in virtual threads and InheritableThreadLocal misuse |
+| `detectScopedValueMisuse` | boolean | true | Detect ScopedValue.get() outside a binding and unintentional re-binding |
 
 ## Phase 1: Core Features
 
@@ -1724,6 +1748,106 @@ ThreadPoolDeadlockReport: 1 pool(s) with potential deadlock scenarios
     - Use a separate executor for nested task submissions
     - Consider using a cached thread pool for nested submissions
 ```
+
+---
+
+## Phase 6: Virtual Thread Concurrency (Java 21+)
+
+Java 21's Project Loom introduces virtual threads, structured concurrency, and scoped values.
+These new APIs are powerful but come with new failure modes that traditional detectors miss.
+
+### Structured Concurrency Misuse
+
+`StructuredTaskScope` enforces that subtasks cannot outlive their enclosing scope.
+Forgetting `join()` or not using try-with-resources causes silent task leaks.
+
+```java
+@AsyncTest(
+    threads = 4,
+    useVirtualThreads = true,
+    detectStructuredConcurrencyIssues = true
+)
+void testWithStructuredConcurrency() {
+    var detector = AsyncTestContext.structuredConcurrencyMisuseDetector();
+
+    // Simulate: try (var scope = new StructuredTaskScope.ShutdownOnFailure()) { ... }
+    String scopeId = detector.recordScopeOpened("ShutdownOnFailure");
+    detector.recordSubtaskForked(scopeId);
+    detector.recordSubtaskForked(scopeId);
+    detector.recordJoinCalled(scopeId);       // MUST call before accessing results
+    detector.recordResultAccessed(scopeId);
+    detector.recordScopeClosed(scopeId);      // try-with-resources ensures this
+}
+```
+
+**Issues detected:**
+- Scope never closed (resource leak)
+- `join()` skipped before accessing subtask results
+- Subtask result accessed before `join()` (undefined behavior)
+- Scope opened but no subtasks forked (dead code)
+
+### Virtual Thread ThreadLocal Context Leaks
+
+Virtual threads are designed to be lightweight and numerous. When a `ThreadLocal` is set
+but not removed, its value may "leak" into subsequent tasks on the same thread — a
+security and correctness risk in multi-tenant server applications.
+
+```java
+@AsyncTest(
+    threads = 20,
+    useVirtualThreads = true,
+    detectVirtualThreadContextLeaks = true
+)
+void testRequestContextHandling() {
+    var detector = AsyncTestContext.virtualThreadContextLeakDetector();
+    Thread current = Thread.currentThread();
+
+    // Track every ThreadLocal set/remove pair
+    detector.recordThreadLocalSet("REQUEST_ID", current);
+    try {
+        processRequest();
+    } finally {
+        // ← Without this finally block, the detector reports a context leak
+        detector.recordThreadLocalRemoved("REQUEST_ID", current);
+    }
+}
+```
+
+**Issues detected:**
+- `ThreadLocal` set in a virtual thread but `remove()` never called
+- `InheritableThreadLocal` used inside virtual threads (not inherited by default — use `ScopedValue`)
+- Excessive number of distinct ThreadLocals per virtual thread (design smell)
+
+### ScopedValue Misuse
+
+`ScopedValue` is the recommended successor to `ThreadLocal` for virtual threads.
+It is immutable, automatically scoped to the duration of a `where().run()` call,
+and cannot leak. Common mistakes include calling `get()` outside a binding.
+
+```java
+@AsyncTest(
+    threads = 10,
+    useVirtualThreads = true,
+    detectScopedValueMisuse = true
+)
+void testScopedValueUsage() {
+    var detector = AsyncTestContext.scopedValueMisuseDetector();
+    Thread current = Thread.currentThread();
+
+    // Simulate: ScopedValue.where(USER_ID, "alice").run(() -> { ... })
+    detector.recordBindingEntered("USER_ID", current);
+    detector.recordGetCalled("USER_ID", current);  // safe — inside binding
+    detector.recordBindingExited("USER_ID", current);
+
+    // After exit: get() would throw NoSuchElementException — detector catches this
+    // detector.recordGetCalled("USER_ID", current); // ← CRITICAL violation
+}
+```
+
+**Issues detected:**
+- `ScopedValue.get()` called outside an active `where().run()` binding (throws `NoSuchElementException` at runtime)
+- Same `ScopedValue` re-bound in a nested scope (inner shadows outer — may be unintentional)
+- Excessive simultaneous binding count per thread (design smell — consider a context record)
 
 ---
 

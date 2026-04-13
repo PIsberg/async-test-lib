@@ -222,7 +222,7 @@ Shows how the library is deployed and used.
 
 ## Detector Architecture
 
-Shows the structure and common pattern of all 35 detectors.
+Shows the structure and common pattern of all detectors.
 
 **Phase 1: Core Detectors (9 classes)**
 - DeadlockDetector, VisibilityMonitor, LivelockDetector
@@ -247,6 +247,21 @@ Shows the structure and common pattern of all 35 detectors.
 - NotifyAllValidator, LazyInitValidator, FutureBlockingDetector
 - ExecutorDeadlockDetector, LatchMisuseDetector
 - Manual validator pattern for legacy Java async patterns
+
+**Phase 4: Infrastructure & Resource Management (4 classes)**
+- ThreadLeakDetector, SleepInLockDetector, UnboundedQueueDetector, ThreadStarvationDetector
+- Detect operational / infrastructure-level concurrency hazards
+
+**Phase 5: Thread-Safety of Common Types (5 classes)**
+- CalendarDetector, SharedCollectionDetector, TimerDetector
+- CopyOnWriteCollectionDetector, StringBuilderDetector
+- Detect misuse of JDK types that are not thread-safe
+
+**Phase 6: Virtual Thread Concurrency — Java 21+ (3 classes)**
+- StructuredConcurrencyMisuseDetector — unclosed scopes, skipped join(), unsafe result access
+- VirtualThreadContextLeakDetector — ThreadLocal values set but not removed in virtual threads,
+  InheritableThreadLocal misuse, excessive ThreadLocal count per virtual thread
+- ScopedValueMisuseDetector — ScopedValue.get() outside a binding, unintentional re-binding
 
 **Common Pattern:**
 - Abstract base with `analyze*(): Report` and `hasIssues: boolean`
