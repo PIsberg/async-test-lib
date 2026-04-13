@@ -415,6 +415,34 @@ public @interface AsyncTest {
      */
     boolean detectStringBuilderIssues() default true;
 
+    // ============= Phase 6: Virtual Thread Concurrency (Java 21+) =============
+
+    /**
+     * Enable Structured Concurrency misuse detection (Java 21+).
+     * Detects unclosed {@code StructuredTaskScope}, skipped {@code join()} calls,
+     * subtask results accessed before {@code join()}, and empty scopes.
+     * @since 0.7.0
+     */
+    boolean detectStructuredConcurrencyIssues() default true;
+
+    /**
+     * Enable virtual thread ThreadLocal context leak detection (Java 21+).
+     * Detects {@code ThreadLocal} values set in virtual threads but never removed,
+     * {@code InheritableThreadLocal} misuse inside virtual threads, and excessive
+     * per-thread ThreadLocal usage (prefer {@code ScopedValue}).
+     * @since 0.7.0
+     */
+    boolean detectVirtualThreadContextLeaks() default true;
+
+    /**
+     * Enable {@code ScopedValue} misuse detection (Java 21+).
+     * Detects {@code get()} calls outside an active binding (will throw
+     * {@code NoSuchElementException} at runtime), unintentional re-binding in
+     * nested scopes, and excessive simultaneous binding counts.
+     * @since 0.7.0
+     */
+    boolean detectScopedValueMisuse() default true;
+
     // ============= Benchmarking =============
 
     /**

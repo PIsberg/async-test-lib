@@ -79,6 +79,11 @@ final class DetectorRegistry {
     final CopyOnWriteCollectionDetector copyOnWriteCollectionDetector;
     final StringBuilderDetector         stringBuilderDetector;
 
+    // ---- Phase 6: Virtual Thread Concurrency (Java 21+) ----
+    final StructuredConcurrencyMisuseDetector structuredConcurrencyMisuseDetector;
+    final VirtualThreadContextLeakDetector    virtualThreadContextLeakDetector;
+    final ScopedValueMisuseDetector           scopedValueMisuseDetector;
+
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
      * Detectors whose flag is {@code false} are set to {@code null} and incur
@@ -134,7 +139,12 @@ final class DetectorRegistry {
         timerDetector              = cfg.detectTimerIssues              ? new TimerDetector()              : null;
         copyOnWriteCollectionDetector = cfg.detectCopyOnWriteCollectionIssues
                 ? new CopyOnWriteCollectionDetector() : null;
-        stringBuilderDetector      = cfg.detectStringBuilderIssues      ? new StringBuilderDetector()      : null;
+        stringBuilderDetector      = cfg.detectStringBuilderIssues               ? new StringBuilderDetector()               : null;
+        structuredConcurrencyMisuseDetector = cfg.detectStructuredConcurrencyIssues
+                ? new StructuredConcurrencyMisuseDetector() : null;
+        virtualThreadContextLeakDetector = cfg.detectVirtualThreadContextLeaks
+                ? new VirtualThreadContextLeakDetector() : null;
+        scopedValueMisuseDetector  = cfg.detectScopedValueMisuse                 ? new ScopedValueMisuseDetector()           : null;
     }
 
     /**
@@ -294,6 +304,17 @@ final class DetectorRegistry {
         ifIssue(stringBuilderDetector,
                 d -> d.analyze(),
                 StringBuilderDetector.StringBuilderReport::hasIssues, out);
+
+        // ---- Phase 6: Virtual Thread Concurrency ----
+        ifIssue(structuredConcurrencyMisuseDetector,
+                d -> d.analyze(),
+                StructuredConcurrencyMisuseDetector.StructuredConcurrencyReport::hasIssues, out);
+        ifIssue(virtualThreadContextLeakDetector,
+                d -> d.analyze(),
+                VirtualThreadContextLeakDetector.VirtualThreadContextLeakReport::hasIssues, out);
+        ifIssue(scopedValueMisuseDetector,
+                d -> d.analyze(),
+                ScopedValueMisuseDetector.ScopedValueMisuseReport::hasIssues, out);
 
         return out;
     }

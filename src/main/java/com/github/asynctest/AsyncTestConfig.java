@@ -88,6 +88,11 @@ public final class AsyncTestConfig {
     public final boolean detectCopyOnWriteCollectionIssues;
     public final boolean detectStringBuilderIssues;
 
+    // ---- Phase 6: Virtual Thread Concurrency (Java 21+) ----
+    public final boolean detectStructuredConcurrencyIssues;
+    public final boolean detectVirtualThreadContextLeaks;
+    public final boolean detectScopedValueMisuse;
+
     // ---- Benchmarking ----
     public final boolean enableBenchmarking;
     public final double benchmarkRegressionThreshold;
@@ -151,7 +156,10 @@ public final class AsyncTestConfig {
         detectSharedCollections        = b.detectSharedCollections;
         detectTimerIssues              = b.detectTimerIssues;
         detectCopyOnWriteCollectionIssues = b.detectCopyOnWriteCollectionIssues;
-        detectStringBuilderIssues      = b.detectStringBuilderIssues;
+        detectStringBuilderIssues        = b.detectStringBuilderIssues;
+        detectStructuredConcurrencyIssues = b.detectStructuredConcurrencyIssues;
+        detectVirtualThreadContextLeaks  = b.detectVirtualThreadContextLeaks;
+        detectScopedValueMisuse          = b.detectScopedValueMisuse;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -221,6 +229,9 @@ public final class AsyncTestConfig {
             .detectTimerIssues(ann.detectTimerIssues())
             .detectCopyOnWriteCollectionIssues(ann.detectCopyOnWriteCollectionIssues())
             .detectStringBuilderIssues(ann.detectStringBuilderIssues())
+            .detectStructuredConcurrencyIssues(ann.detectStructuredConcurrencyIssues())
+            .detectVirtualThreadContextLeaks(ann.detectVirtualThreadContextLeaks())
+            .detectScopedValueMisuse(ann.detectScopedValueMisuse())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -291,6 +302,9 @@ public final class AsyncTestConfig {
         private boolean detectTimerIssues = false;
         private boolean detectCopyOnWriteCollectionIssues = false;
         private boolean detectStringBuilderIssues = false;
+        private boolean detectStructuredConcurrencyIssues = false;
+        private boolean detectVirtualThreadContextLeaks = false;
+        private boolean detectScopedValueMisuse = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -353,7 +367,10 @@ public final class AsyncTestConfig {
         public Builder detectSharedCollections(boolean v) { detectSharedCollections = v; return this; }
         public Builder detectTimerIssues(boolean v) { detectTimerIssues = v; return this; }
         public Builder detectCopyOnWriteCollectionIssues(boolean v) { detectCopyOnWriteCollectionIssues = v; return this; }
-        public Builder detectStringBuilderIssues(boolean v) { detectStringBuilderIssues = v; return this; }
+        public Builder detectStringBuilderIssues(boolean v)           { detectStringBuilderIssues = v; return this; }
+        public Builder detectStructuredConcurrencyIssues(boolean v)    { detectStructuredConcurrencyIssues = v; return this; }
+        public Builder detectVirtualThreadContextLeaks(boolean v)      { detectVirtualThreadContextLeaks = v; return this; }
+        public Builder detectScopedValueMisuse(boolean v)              { detectScopedValueMisuse = v; return this; }
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
@@ -461,6 +478,12 @@ public final class AsyncTestConfig {
                     else detectCopyOnWriteCollectionIssues = false;
                 if (!excludes.contains(DetectorType.STRING_BUILDER)) detectStringBuilderIssues = true;
                     else detectStringBuilderIssues = false;
+                if (!excludes.contains(DetectorType.STRUCTURED_CONCURRENCY)) detectStructuredConcurrencyIssues = true;
+                    else detectStructuredConcurrencyIssues = false;
+                if (!excludes.contains(DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS)) detectVirtualThreadContextLeaks = true;
+                    else detectVirtualThreadContextLeaks = false;
+                if (!excludes.contains(DetectorType.SCOPED_VALUE)) detectScopedValueMisuse = true;
+                    else detectScopedValueMisuse = false;
                 if (!excludes.contains(DetectorType.RACE_CONDITIONS)) detectRaceConditions = true;
                     else detectRaceConditions = false;
                 if (!excludes.contains(DetectorType.THREAD_LOCAL_LEAKS)) detectThreadLocalLeaks = true;
@@ -521,6 +544,9 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.TIMER)) detectTimerIssues = false;
                 if (excludes.contains(DetectorType.COPY_ON_WRITE_COLLECTIONS)) detectCopyOnWriteCollectionIssues = false;
                 if (excludes.contains(DetectorType.STRING_BUILDER)) detectStringBuilderIssues = false;
+                if (excludes.contains(DetectorType.STRUCTURED_CONCURRENCY)) detectStructuredConcurrencyIssues = false;
+                if (excludes.contains(DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS)) detectVirtualThreadContextLeaks = false;
+                if (excludes.contains(DetectorType.SCOPED_VALUE)) detectScopedValueMisuse = false;
                 if (excludes.contains(DetectorType.RACE_CONDITIONS)) detectRaceConditions = false;
                 if (excludes.contains(DetectorType.THREAD_LOCAL_LEAKS)) detectThreadLocalLeaks = false;
                 if (excludes.contains(DetectorType.BUSY_WAITING)) detectBusyWaiting = false;

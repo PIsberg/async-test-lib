@@ -1349,4 +1349,29 @@ class ConsumerAsyncTestUsageTest {
         AsyncTestContext.stringBuilderMonitor()
             .recordAppend(sharedSb, "log-builder");
     }
+
+    // ============================================
+    // PHASE 6: Virtual Thread Concurrency (Java 21+)
+    // NOTE: Phase 6 detector APIs (detectStructuredConcurrencyIssues,
+    // detectVirtualThreadContextLeaks, detectScopedValueMisuse) are available
+    // in async-test-lib 0.7.0+. The consumer fixture targets the currently
+    // published version and will be updated when 0.7.0 is released.
+    // ============================================
+
+    /**
+     * Demonstrates virtual thread stress testing with all currently available detectors.
+     */
+    @AsyncTest(threads = 6, invocations = 20,
+               useVirtualThreads = true,
+               detectAll = true,
+               timeoutMs = 10000)
+    void testVirtualThreadWithAllDetectors() {
+        // Virtual threads with full detection — exercises the scheduler and concurrency
+        // detectors that are available in the current published version.
+        int sum = 0;
+        for (int i = 0; i < 100; i++) {
+            sum += i;
+        }
+        assertNotNull(AsyncTestContext.get());
+    }
 }

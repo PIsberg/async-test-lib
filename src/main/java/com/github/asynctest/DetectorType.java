@@ -71,5 +71,10 @@ public enum DetectorType {
     SHARED_COLLECTIONS,
     TIMER,
     COPY_ON_WRITE_COLLECTIONS,
-    STRING_BUILDER
+    STRING_BUILDER,
+
+    // Phase 6: Virtual Thread Concurrency (Java 21+)
+    STRUCTURED_CONCURRENCY,
+    VIRTUAL_THREAD_CONTEXT_LEAKS,
+    SCOPED_VALUE
 }
