@@ -443,6 +443,44 @@ public @interface AsyncTest {
      */
     boolean detectScopedValueMisuse() default true;
 
+    // ============= Phase 7: High-Level Concurrency Patterns =============
+
+    /**
+     * Enable HTTP client concurrency issue detection (Java 11+).
+     * Detects unclosed HTTP responses, connection pool exhaustion,
+     * concurrent access to shared HttpClient instances, and requests
+     * initiated but never awaited/completed.
+     * @since 0.7.0
+     */
+    boolean detectHttpClientIssues() default true;
+
+    /**
+     * Enable I/O stream closing detection.
+     * Detects InputStream/OutputStream/Reader/Writer instances that are
+     * opened but never closed, streams closed in different threads,
+     * and too many concurrently open streams (resource exhaustion risk).
+     * @since 0.7.0
+     */
+    boolean detectStreamClosing() default true;
+
+    /**
+     * Enable cache concurrency issue detection.
+     * Detects HashMap/LinkedHashMap used as cache without synchronization,
+     * concurrent read/write on non-thread-safe caches, iteration during
+     * modification, and cache stampede scenarios.
+     * @since 0.7.0
+     */
+    boolean detectCacheConcurrency() default true;
+
+    /**
+     * Enable CompletableFuture chain issue detection.
+     * Detects missing .exceptionally()/.handle() in async chains,
+     * CompletableFuture created but never joined, and chained operations
+     * without proper exception handling.
+     * @since 0.7.0
+     */
+    boolean detectCompletableFutureChainIssues() default true;
+
     // ============= Benchmarking =============
 
     /**

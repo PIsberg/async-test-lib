@@ -84,6 +84,12 @@ final class DetectorRegistry {
     final VirtualThreadContextLeakDetector    virtualThreadContextLeakDetector;
     final ScopedValueMisuseDetector           scopedValueMisuseDetector;
 
+    // ---- Phase 7: High-Level Concurrency Patterns ----
+    final HttpClientConcurrencyDetector       httpClientConcurrencyDetector;
+    final StreamClosingDetector               streamClosingDetector;
+    final CacheConcurrencyDetector            cacheConcurrencyDetector;
+    final CompletableFutureChainDetector      completableFutureChainDetector;
+
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
      * Detectors whose flag is {@code false} are set to {@code null} and incur
@@ -145,6 +151,16 @@ final class DetectorRegistry {
         virtualThreadContextLeakDetector = cfg.detectVirtualThreadContextLeaks
                 ? new VirtualThreadContextLeakDetector() : null;
         scopedValueMisuseDetector  = cfg.detectScopedValueMisuse                 ? new ScopedValueMisuseDetector()           : null;
+        
+        // ---- Phase 7: High-Level Concurrency Patterns ----
+        httpClientConcurrencyDetector = cfg.detectHttpClientIssues
+                ? new HttpClientConcurrencyDetector() : null;
+        streamClosingDetector = cfg.detectStreamClosing
+                ? new StreamClosingDetector() : null;
+        cacheConcurrencyDetector = cfg.detectCacheConcurrency
+                ? new CacheConcurrencyDetector() : null;
+        completableFutureChainDetector = cfg.detectCompletableFutureChainIssues
+                ? new CompletableFutureChainDetector() : null;
     }
 
     /**
@@ -315,6 +331,20 @@ final class DetectorRegistry {
         ifIssue(scopedValueMisuseDetector,
                 d -> d.analyze(),
                 ScopedValueMisuseDetector.ScopedValueMisuseReport::hasIssues, out);
+
+        // ---- Phase 7: High-Level Concurrency Patterns ----
+        ifIssue(httpClientConcurrencyDetector,
+                d -> d.analyze(),
+                HttpClientConcurrencyDetector.HttpClientConcurrencyReport::hasIssues, out);
+        ifIssue(streamClosingDetector,
+                d -> d.analyze(),
+                StreamClosingDetector.StreamClosingReport::hasIssues, out);
+        ifIssue(cacheConcurrencyDetector,
+                d -> d.analyze(),
+                CacheConcurrencyDetector.CacheConcurrencyReport::hasIssues, out);
+        ifIssue(completableFutureChainDetector,
+                d -> d.analyze(),
+                CompletableFutureChainDetector.CompletableFutureChainReport::hasIssues, out);
 
         return out;
     }

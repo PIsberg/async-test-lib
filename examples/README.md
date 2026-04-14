@@ -9,6 +9,95 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 | 01 | [CompletableFuture Exception Handling](01-completablefuture-exception-handling/) | `CompletableFutureExceptionDetector` | Unhandled exceptions in async chains cause silent data loss | 🔴 Critical |
 | 02 | [Visibility/Volatile Flag](02-visibility-volatile-flag/) | `VisibilityMonitor` | Missing `volatile` on shared flags causes threads to never see shutdown signals | 🔴 Critical |
 | 03 | [Shared Non-Thread-Safe Collection](03-shared-collection/) | `SharedCollectionDetector` | ArrayList/HashMap shared across threads causes data loss and corruption | 🔴 Critical |
+| 04 | [Virtual Thread Context Leak](04-virtual-thread-context-leak/) | `VirtualThreadContextLeakDetector` | ThreadLocal leaks in virtual threads cause memory leaks | 🟡 High |
+
+## Phase 7: High-Level Concurrency Patterns (New!)
+
+The library now includes 4 new important detectors for common concurrency patterns:
+
+### 1. HttpClientConcurrencyDetector
+**What**: Detects unclosed HTTP responses, connection pool exhaustion, and incomplete async HTTP operations.
+
+**Impact**: Resource leaks, connection pool starvation, silent request failures.
+
+**Usage**:
+```java
+@AsyncTest(threads = 10, detectHttpClientIssues = true)
+void testHttpClient() {
+    AsyncTestContext.httpClientDetector()
+        .recordClientCreated(client, "api-client");
+    AsyncTestContext.httpClientDetector()
+        .recordRequestSent(request, "api-call");
+    AsyncTestContext.httpClientDetector()
+        .recordResponseReceived(response, "api-call");
+}
+```
+
+### 2. StreamClosingDetector
+**What**: Detects InputStream/OutputStream/Reader/Writer instances not properly closed in concurrent code.
+
+**Impact**: File descriptor leaks, resource exhaustion, locked files.
+
+**Usage**:
+```java
+@AsyncTest(threads = 10, detectStreamClosing = true)
+void testStreams() throws IOException {
+    InputStream is = new FileInputStream("data.txt");
+    AsyncTestContext.streamClosingDetector()
+        .recordStreamOpened(is, "data-input");
+    try {
+        // use stream
+    } finally {
+        is.close();
+        AsyncTestContext.streamClosingDetector()
+            .recordStreamClosed(is, "data-input");
+    }
+}
+```
+
+### 3. CacheConcurrencyDetector
+**What**: Detects HashMap/LinkedHashMap used as cache without synchronization, concurrent read/write issues.
+
+**Impact**: Data corruption, ConcurrentModificationException, cache stampede.
+
+**Usage**:
+```java
+@AsyncTest(threads = 10, detectCacheConcurrency = true)
+void testCache() {
+    Map<String, Object> cache = new HashMap<>();
+    AsyncTestContext.cacheConcurrencyDetector()
+        .registerCache(cache, "user-cache");
+    AsyncTestContext.cacheConcurrencyDetector()
+        .recordPut(cache, "user-cache", "key", value);
+    AsyncTestContext.cacheConcurrencyDetector()
+        .recordGet(cache, "user-cache", "key");
+}
+```
+
+### 4. CompletableFutureChainDetector
+**What**: Detects missing exception handlers, unjoined futures, and improper CompletableFuture chain usage.
+
+**Impact**: Swallowed exceptions, resource leaks, incomplete async operations.
+
+**Usage**:
+```java
+@AsyncTest(threads = 10, detectCompletableFutureChainIssues = true)
+void testCFChain() {
+    CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> "result");
+    AsyncTestContext.cfChainDetector()
+        .recordFutureCreated(future, "async-operation");
+    
+    CompletableFuture<String> chained = future.thenApply(s -> s.toUpperCase());
+    AsyncTestContext.cfChainDetector()
+        .recordChainOperation(future, chained, "thenApply");
+    AsyncTestContext.cfChainDetector()
+        .recordExceptionally(future);
+    
+    String result = chained.join();
+    AsyncTestContext.cfChainDetector()
+        .recordFutureJoined(chained, "async-operation");
+}
+```
 
 ## Quick Start
 
