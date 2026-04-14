@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "se.deversity.async-test-lib"
-version = "0.6.0"
+version = "0.6.2"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_21
@@ -11,12 +11,14 @@ java {
 }
 
 repositories {
-    mavenCentral()
-    // Resolves the locally published async-test-lib artifact (run publishToMavenLocal first)
+    // Prefer the freshly published local artifact over Maven Central when the same
+    // version exists in both places. The consumer fixture is meant to validate the
+    // build produced earlier in CI, not the last released artifact.
     mavenLocal()
+    mavenCentral()
 }
 
-val asyncTestVersion = "0.6.0"
+val asyncTestVersion = "0.6.2"
 val junitVersion = "6.0.3"
 
 dependencies {

@@ -76,5 +76,11 @@ public enum DetectorType {
     // Phase 6: Virtual Thread Concurrency (Java 21+)
     STRUCTURED_CONCURRENCY,
     VIRTUAL_THREAD_CONTEXT_LEAKS,
-    SCOPED_VALUE
+    SCOPED_VALUE,
+
+    // Phase 7: High-Level Concurrency Patterns
+    HTTP_CLIENT,
+    STREAM_CLOSING,
+    CACHE_CONCURRENCY,
+    COMPLETABLEFUTURE_CHAIN
 }

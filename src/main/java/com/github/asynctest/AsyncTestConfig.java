@@ -93,6 +93,12 @@ public final class AsyncTestConfig {
     public final boolean detectVirtualThreadContextLeaks;
     public final boolean detectScopedValueMisuse;
 
+    // ---- Phase 7: High-Level Concurrency Patterns ----
+    public final boolean detectHttpClientIssues;
+    public final boolean detectStreamClosing;
+    public final boolean detectCacheConcurrency;
+    public final boolean detectCompletableFutureChainIssues;
+
     // ---- Benchmarking ----
     public final boolean enableBenchmarking;
     public final double benchmarkRegressionThreshold;
@@ -160,6 +166,10 @@ public final class AsyncTestConfig {
         detectStructuredConcurrencyIssues = b.detectStructuredConcurrencyIssues;
         detectVirtualThreadContextLeaks  = b.detectVirtualThreadContextLeaks;
         detectScopedValueMisuse          = b.detectScopedValueMisuse;
+        detectHttpClientIssues           = b.detectHttpClientIssues;
+        detectStreamClosing              = b.detectStreamClosing;
+        detectCacheConcurrency           = b.detectCacheConcurrency;
+        detectCompletableFutureChainIssues = b.detectCompletableFutureChainIssues;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -232,6 +242,10 @@ public final class AsyncTestConfig {
             .detectStructuredConcurrencyIssues(ann.detectStructuredConcurrencyIssues())
             .detectVirtualThreadContextLeaks(ann.detectVirtualThreadContextLeaks())
             .detectScopedValueMisuse(ann.detectScopedValueMisuse())
+            .detectHttpClientIssues(ann.detectHttpClientIssues())
+            .detectStreamClosing(ann.detectStreamClosing())
+            .detectCacheConcurrency(ann.detectCacheConcurrency())
+            .detectCompletableFutureChainIssues(ann.detectCompletableFutureChainIssues())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -305,6 +319,10 @@ public final class AsyncTestConfig {
         private boolean detectStructuredConcurrencyIssues = false;
         private boolean detectVirtualThreadContextLeaks = false;
         private boolean detectScopedValueMisuse = false;
+        private boolean detectHttpClientIssues = false;
+        private boolean detectStreamClosing = false;
+        private boolean detectCacheConcurrency = false;
+        private boolean detectCompletableFutureChainIssues = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -371,6 +389,10 @@ public final class AsyncTestConfig {
         public Builder detectStructuredConcurrencyIssues(boolean v)    { detectStructuredConcurrencyIssues = v; return this; }
         public Builder detectVirtualThreadContextLeaks(boolean v)      { detectVirtualThreadContextLeaks = v; return this; }
         public Builder detectScopedValueMisuse(boolean v)              { detectScopedValueMisuse = v; return this; }
+        public Builder detectHttpClientIssues(boolean v)               { detectHttpClientIssues = v; return this; }
+        public Builder detectStreamClosing(boolean v)                  { detectStreamClosing = v; return this; }
+        public Builder detectCacheConcurrency(boolean v)               { detectCacheConcurrency = v; return this; }
+        public Builder detectCompletableFutureChainIssues(boolean v)   { detectCompletableFutureChainIssues = v; return this; }
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
@@ -494,6 +516,14 @@ public final class AsyncTestConfig {
                     else detectAtomicityViolations = false;
                 if (!excludes.contains(DetectorType.INTERRUPT_MISHANDLING)) detectInterruptMishandling = true;
                     else detectInterruptMishandling = false;
+                if (!excludes.contains(DetectorType.HTTP_CLIENT)) detectHttpClientIssues = true;
+                    else detectHttpClientIssues = false;
+                if (!excludes.contains(DetectorType.STREAM_CLOSING)) detectStreamClosing = true;
+                    else detectStreamClosing = false;
+                if (!excludes.contains(DetectorType.CACHE_CONCURRENCY)) detectCacheConcurrency = true;
+                    else detectCacheConcurrency = false;
+                if (!excludes.contains(DetectorType.COMPLETABLEFUTURE_CHAIN)) detectCompletableFutureChainIssues = true;
+                    else detectCompletableFutureChainIssues = false;
             } else {
                 // If detectAll is false, we still respect explicit enables,
                 // but we also apply excludes for consistency.
@@ -547,6 +577,10 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.STRUCTURED_CONCURRENCY)) detectStructuredConcurrencyIssues = false;
                 if (excludes.contains(DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS)) detectVirtualThreadContextLeaks = false;
                 if (excludes.contains(DetectorType.SCOPED_VALUE)) detectScopedValueMisuse = false;
+                if (excludes.contains(DetectorType.HTTP_CLIENT)) detectHttpClientIssues = false;
+                if (excludes.contains(DetectorType.STREAM_CLOSING)) detectStreamClosing = false;
+                if (excludes.contains(DetectorType.CACHE_CONCURRENCY)) detectCacheConcurrency = false;
+                if (excludes.contains(DetectorType.COMPLETABLEFUTURE_CHAIN)) detectCompletableFutureChainIssues = false;
                 if (excludes.contains(DetectorType.RACE_CONDITIONS)) detectRaceConditions = false;
                 if (excludes.contains(DetectorType.THREAD_LOCAL_LEAKS)) detectThreadLocalLeaks = false;
                 if (excludes.contains(DetectorType.BUSY_WAITING)) detectBusyWaiting = false;

@@ -86,6 +86,10 @@ public final class AsyncTestContext {
     final StructuredConcurrencyMisuseDetector structuredConcurrencyMisuseDetector;
     final VirtualThreadContextLeakDetector    virtualThreadContextLeakDetector;
     final ScopedValueMisuseDetector           scopedValueMisuseDetector;
+    final HttpClientConcurrencyDetector       httpClientConcurrencyDetector;
+    final StreamClosingDetector               streamClosingDetector;
+    final CacheConcurrencyDetector            cacheConcurrencyDetector;
+    final CompletableFutureChainDetector      completableFutureChainDetector;
 
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
@@ -139,6 +143,10 @@ public final class AsyncTestContext {
         structuredConcurrencyMisuseDetector    = registry.structuredConcurrencyMisuseDetector;
         virtualThreadContextLeakDetector       = registry.virtualThreadContextLeakDetector;
         scopedValueMisuseDetector              = registry.scopedValueMisuseDetector;
+        httpClientConcurrencyDetector          = registry.httpClientConcurrencyDetector;
+        streamClosingDetector                  = registry.streamClosingDetector;
+        cacheConcurrencyDetector               = registry.cacheConcurrencyDetector;
+        completableFutureChainDetector         = registry.completableFutureChainDetector;
     }
 
     // ---- Lifecycle (called by ConcurrencyRunner) ----
@@ -558,6 +566,44 @@ public final class AsyncTestContext {
      */
     public static ScopedValueMisuseDetector scopedValueMisuseDetector() {
         return require("detectScopedValueMisuse", c -> c.scopedValueMisuseDetector);
+    }
+
+    // ---- Phase 7: High-Level Concurrency Patterns ----
+
+    /**
+     * Returns the {@link HttpClientConcurrencyDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectHttpClientIssues = false}
+     * @since 0.7.0
+     */
+    public static HttpClientConcurrencyDetector httpClientDetector() {
+        return require("detectHttpClientIssues", c -> c.httpClientConcurrencyDetector);
+    }
+
+    /**
+     * Returns the {@link StreamClosingDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectStreamClosing = false}
+     * @since 0.7.0
+     */
+    public static StreamClosingDetector streamClosingDetector() {
+        return require("detectStreamClosing", c -> c.streamClosingDetector);
+    }
+
+    /**
+     * Returns the {@link CacheConcurrencyDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCacheConcurrency = false}
+     * @since 0.7.0
+     */
+    public static CacheConcurrencyDetector cacheConcurrencyDetector() {
+        return require("detectCacheConcurrency", c -> c.cacheConcurrencyDetector);
+    }
+
+    /**
+     * Returns the {@link CompletableFutureChainDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCompletableFutureChainIssues = false}
+     * @since 0.7.0
+     */
+    public static CompletableFutureChainDetector cfChainDetector() {
+        return require("detectCompletableFutureChainIssues", c -> c.completableFutureChainDetector);
     }
 
     // ---- Helper ----

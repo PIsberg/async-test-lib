@@ -29,6 +29,10 @@ import com.github.asynctest.diagnostics.SharedCollectionDetector;
 import com.github.asynctest.diagnostics.TimerDetector;
 import com.github.asynctest.diagnostics.CopyOnWriteCollectionDetector;
 import com.github.asynctest.diagnostics.StringBuilderDetector;
+import com.github.asynctest.diagnostics.HttpClientConcurrencyDetector;
+import com.github.asynctest.diagnostics.StreamClosingDetector;
+import com.github.asynctest.diagnostics.CacheConcurrencyDetector;
+import com.github.asynctest.diagnostics.CompletableFutureChainDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -45,6 +49,9 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.io.Closeable;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -1351,11 +1358,96 @@ class ConsumerAsyncTestUsageTest {
     }
 
     // ============================================
+    // PHASE 7: High-Level Concurrency Patterns
+    // ============================================
+
+    /**
+     * Demonstrates HTTP client concurrency issue detection.
+     * Detects unclosed HTTP responses and connection pool exhaustion.
+     */
+    @AsyncTest(threads = 4, invocations = 10, detectHttpClientIssues = true, timeoutMs = 5000)
+    void testHttpClientConcurrencyDetection() {
+        Object httpClient = new Object();
+        Object httpRequest = new Object();
+        Object httpResponse = new Object();
+
+        AsyncTestContext.httpClientDetector()
+            .recordClientCreated(httpClient, "api-client");
+
+        AsyncTestContext.httpClientDetector()
+            .recordRequestSent(httpRequest, "api-call");
+
+        AsyncTestContext.httpClientDetector()
+            .recordResponseReceived(httpResponse, "api-call");
+    }
+
+    /**
+     * Demonstrates stream closing detection.
+     * Detects InputStream/OutputStream instances not properly closed.
+     */
+    @AsyncTest(threads = 4, invocations = 10, detectStreamClosing = true, timeoutMs = 5000)
+    void testStreamClosingDetection() throws Exception {
+        InputStream inputStream = new ByteArrayInputStream(new byte[0]);
+
+        AsyncTestContext.streamClosingDetector()
+            .recordStreamOpened(inputStream, "data-input");
+
+        try {
+            // Simulate using the stream
+            int data = inputStream.read();
+        } finally {
+            inputStream.close();
+            AsyncTestContext.streamClosingDetector()
+                .recordStreamClosed(inputStream, "data-input");
+        }
+    }
+
+    /**
+     * Demonstrates cache concurrency issue detection.
+     * Detects HashMap used as cache without synchronization.
+     */
+    @AsyncTest(threads = 4, invocations = 10, detectCacheConcurrency = true, timeoutMs = 5000)
+    void testCacheConcurrencyDetection() {
+        Map<String, String> cache = new HashMap<>();
+
+        AsyncTestContext.cacheConcurrencyDetector()
+            .registerCache(cache, "user-cache");
+
+        cache.put("user-" + Thread.currentThread().threadId(), "data");
+        AsyncTestContext.cacheConcurrencyDetector()
+            .recordPut(cache, "user-cache", 
+                      "user-" + Thread.currentThread().threadId(), "data");
+
+        String value = cache.get("key");
+        AsyncTestContext.cacheConcurrencyDetector()
+            .recordGet(cache, "user-cache", "key");
+    }
+
+    /**
+     * Demonstrates CompletableFuture chain issue detection.
+     * Detects missing exception handlers and unjoined futures.
+     */
+    @AsyncTest(threads = 4, invocations = 10, detectCompletableFutureChainIssues = true, timeoutMs = 5000)
+    void testCompletableFutureChainDetection() {
+        CompletableFuture<String> future = CompletableFuture.completedFuture("test");
+        CompletableFuture<String> chained = future.thenApply(s -> s.toUpperCase());
+
+        AsyncTestContext.cfChainDetector()
+            .recordFutureCreated(future, "async-operation");
+
+        AsyncTestContext.cfChainDetector()
+            .recordChainOperation(future, chained, "thenApply");
+
+        AsyncTestContext.cfChainDetector()
+            .recordExceptionally(future);
+
+        String result = chained.join();
+        AsyncTestContext.cfChainDetector()
+            .recordFutureJoined(chained, "async-operation");
+    }
+
+    // ============================================
     // PHASE 6: Virtual Thread Concurrency (Java 21+)
-    // NOTE: Phase 6 detector APIs (detectStructuredConcurrencyIssues,
-    // detectVirtualThreadContextLeaks, detectScopedValueMisuse) are available
-    // in async-test-lib 0.7.0+. The consumer fixture targets the currently
-    // published version and will be updated when 0.7.0 is released.
     // ============================================
 
     /**

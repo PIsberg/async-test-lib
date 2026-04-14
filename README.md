@@ -349,6 +349,12 @@ void stressWithVirtualThreads() {
 | `detectVirtualThreadContextLeaks` | boolean | true | Detect ThreadLocal leaks in virtual threads and InheritableThreadLocal misuse |
 | `detectScopedValueMisuse` | boolean | true | Detect ScopedValue.get() outside a binding and unintentional re-binding |
 
+### Phase 7: High-Level Concurrency Patterns (v0.7.0) — NEW
+| `detectHttpClientIssues` | boolean | true | Detect unclosed HTTP responses, connection pool exhaustion, incomplete HTTP operations |
+| `detectStreamClosing` | boolean | true | Detect InputStream/OutputStream not properly closed in concurrent code |
+| `detectCacheConcurrency` | boolean | true | Detect HashMap/LinkedHashMap used as cache without synchronization |
+| `detectCompletableFutureChainIssues` | boolean | true | Detect missing exception handlers, unjoined futures, improper CF chain usage |
+
 ## Phase 1: Core Features
 
 ### 1. Enhanced Deadlock Detection
@@ -1844,10 +1850,172 @@ void testScopedValueUsage() {
 }
 ```
 
+---
+
+## Phase 7: High-Level Concurrency Patterns (v0.7.0) — NEW
+
+Phase 7 introduces detectors for common high-level concurrency patterns that are prevalent
+in modern Java applications. These detectors focus on practical, real-world issues that
+developers encounter daily.
+
+### HTTP Client Concurrency Issues
+
+Modern Java applications use `java.net.http.HttpClient` (Java 11+) extensively. Concurrent
+HTTP operations can lead to resource leaks and connection pool exhaustion.
+
+```java
+@AsyncTest(
+    threads = 10,
+    invocations = 50,
+    detectHttpClientIssues = true
+)
+void testConcurrentHttpClient() throws Exception {
+    HttpClient client = HttpClient.newBuilder()
+        .executor(Executors.newVirtualThreadPerTaskExecutor())
+        .build();
+    
+    AsyncTestContext.httpClientDetector()
+        .recordClientCreated(client, "api-client");
+    
+    HttpRequest request = HttpRequest.newBuilder()
+        .uri(URI.create("https://api.example.com/data"))
+        .GET()
+        .build();
+    
+    AsyncTestContext.httpClientDetector()
+        .recordRequestSent(request, "api-call");
+    
+    HttpResponse<String> response = client.send(request, 
+        HttpResponse.BodyHandlers.ofString());
+    
+    AsyncTestContext.httpClientDetector()
+        .recordResponseReceived(response, "api-call");
+}
+```
+
 **Issues detected:**
-- `ScopedValue.get()` called outside an active `where().run()` binding (throws `NoSuchElementException` at runtime)
-- Same `ScopedValue` re-bound in a nested scope (inner shadows outer — may be unintentional)
-- Excessive simultaneous binding count per thread (design smell — consider a context record)
+- HTTP requests sent but never completed (missing response recording)
+- Connection pool exhaustion risk (too many concurrent requests)
+- Mismatched request/response counts
+- High thread activity on HTTP operations
+
+### Stream Closing Detection
+
+I/O streams (InputStream, OutputStream, Reader, Writer) must be properly closed to prevent
+resource leaks. In concurrent code, it's easy to lose track of which streams are closed.
+
+```java
+@AsyncTest(
+    threads = 10,
+    invocations = 50,
+    detectStreamClosing = true
+)
+void testStreamHandling() throws IOException {
+    InputStream is = new FileInputStream("data.txt");
+    
+    AsyncTestContext.streamClosingDetector()
+        .recordStreamOpened(is, "data-input");
+    
+    try {
+        // Process the stream
+        int data;
+        while ((data = is.read()) != -1) {
+            // process data
+        }
+    } finally {
+        is.close();
+        AsyncTestContext.streamClosingDetector()
+            .recordStreamClosed(is, "data-input");
+    }
+}
+```
+
+**Issues detected:**
+- Streams opened but never closed (resource leak)
+- Streams closed by different thread than opened (potential leak)
+- Too many concurrently open streams (resource exhaustion risk)
+- Summary statistics: opened vs closed counts, max concurrent
+
+### Cache Concurrency Issues
+
+Using `HashMap` or `LinkedHashMap` as a cache in concurrent code is a common mistake.
+These detectors find race conditions in cache operations.
+
+```java
+@AsyncTest(
+    threads = 10,
+    invocations = 50,
+    detectCacheConcurrency = true
+)
+void testConcurrentCache() {
+    Map<String, String> cache = new HashMap<>(); // Bug: should be ConcurrentHashMap
+    
+    AsyncTestContext.cacheConcurrencyDetector()
+        .registerCache(cache, "user-cache");
+    
+    // Write to cache
+    cache.put("user-123", userData);
+    AsyncTestContext.cacheConcurrencyDetector()
+        .recordPut(cache, "user-cache", "user-123", userData);
+    
+    // Read from cache
+    String value = cache.get("user-123");
+    AsyncTestContext.cacheConcurrencyDetector()
+        .recordGet(cache, "user-cache", "user-123");
+}
+```
+
+**Issues detected:**
+- Concurrent read/write on non-thread-safe cache (HashMap, LinkedHashMap)
+- Iteration during modification (ConcurrentModificationException risk)
+- Cache stampede (too many threads accessing simultaneously)
+- Thread activity tracking (readers vs writers)
+
+**Fix**: Use `ConcurrentHashMap` or `Collections.synchronizedMap()` for concurrent access.
+
+### CompletableFuture Chain Issues
+
+CompletableFuture chains are powerful but error-prone. Missing exception handlers cause
+silent failures, and unjoined futures indicate resource leaks.
+
+```java
+@AsyncTest(
+    threads = 10,
+    invocations = 50,
+    detectCompletableFutureChainIssues = true
+)
+void testCompletableFutureChain() {
+    CompletableFuture<String> future = CompletableFuture
+        .supplyAsync(() -> fetchData());
+    
+    AsyncTestContext.cfChainDetector()
+        .recordFutureCreated(future, "fetch-operation");
+    
+    CompletableFuture<String> processed = future
+        .thenApply(data -> transform(data))
+        .thenApply(result -> format(result));
+    
+    AsyncTestContext.cfChainDetector()
+        .recordChainOperation(future, processed, "thenApply");
+    
+    // Add exception handling (required!)
+    AsyncTestContext.cfChainDetector()
+        .recordExceptionally(future);
+    
+    // Join the final result
+    String result = processed.join();
+    AsyncTestContext.cfChainDetector()
+        .recordFutureJoined(processed, "fetch-operation");
+}
+```
+
+**Issues detected:**
+- Futures created but never joined (resource leak)
+- Chain operations without `.exceptionally()` or `.handle()` (swallowed exceptions)
+- Unused futures (created but never awaited)
+- Detailed chain operation tracking
+
+**Fix**: Always add `.exceptionally()` or `.handle()` to CompletableFuture chains, and ensure all futures are joined.
 
 ---
 
