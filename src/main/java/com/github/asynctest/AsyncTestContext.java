@@ -83,10 +83,12 @@ public final class AsyncTestContext {
     final TimerDetector timerDetector;
     final CopyOnWriteCollectionDetector copyOnWriteCollectionDetector;
     final StringBuilderDetector stringBuilderDetector;
-    final StructuredConcurrencyMisuseDetector structuredConcurrencyMisuseDetector;
-    final VirtualThreadContextLeakDetector    virtualThreadContextLeakDetector;
-    final ScopedValueMisuseDetector           scopedValueMisuseDetector;
-    final HttpClientConcurrencyDetector       httpClientConcurrencyDetector;
+    final StructuredConcurrencyMisuseDetector    structuredConcurrencyMisuseDetector;
+    final VirtualThreadContextLeakDetector       virtualThreadContextLeakDetector;
+    final ScopedValueMisuseDetector              scopedValueMisuseDetector;
+    final VirtualThreadCpuBoundTaskDetector      virtualThreadCpuBoundTaskDetector;
+    final VirtualThreadCarrierExhaustionDetector virtualThreadCarrierExhaustionDetector;
+    final HttpClientConcurrencyDetector          httpClientConcurrencyDetector;
     final StreamClosingDetector               streamClosingDetector;
     final CacheConcurrencyDetector            cacheConcurrencyDetector;
     final CompletableFutureChainDetector      completableFutureChainDetector;
@@ -140,10 +142,12 @@ public final class AsyncTestContext {
         timerDetector                     = registry.timerDetector;
         copyOnWriteCollectionDetector          = registry.copyOnWriteCollectionDetector;
         stringBuilderDetector                  = registry.stringBuilderDetector;
-        structuredConcurrencyMisuseDetector    = registry.structuredConcurrencyMisuseDetector;
-        virtualThreadContextLeakDetector       = registry.virtualThreadContextLeakDetector;
-        scopedValueMisuseDetector              = registry.scopedValueMisuseDetector;
-        httpClientConcurrencyDetector          = registry.httpClientConcurrencyDetector;
+        structuredConcurrencyMisuseDetector      = registry.structuredConcurrencyMisuseDetector;
+        virtualThreadContextLeakDetector         = registry.virtualThreadContextLeakDetector;
+        scopedValueMisuseDetector                = registry.scopedValueMisuseDetector;
+        virtualThreadCpuBoundTaskDetector        = registry.virtualThreadCpuBoundTaskDetector;
+        virtualThreadCarrierExhaustionDetector   = registry.virtualThreadCarrierExhaustionDetector;
+        httpClientConcurrencyDetector            = registry.httpClientConcurrencyDetector;
         streamClosingDetector                  = registry.streamClosingDetector;
         cacheConcurrencyDetector               = registry.cacheConcurrencyDetector;
         completableFutureChainDetector         = registry.completableFutureChainDetector;
@@ -566,6 +570,24 @@ public final class AsyncTestContext {
      */
     public static ScopedValueMisuseDetector scopedValueMisuseDetector() {
         return require("detectScopedValueMisuse", c -> c.scopedValueMisuseDetector);
+    }
+
+    /**
+     * Returns the {@link VirtualThreadCpuBoundTaskDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVirtualThreadCpuBoundTasks = false}
+     * @since 0.8.0
+     */
+    public static VirtualThreadCpuBoundTaskDetector virtualThreadCpuBoundTaskDetector() {
+        return require("detectVirtualThreadCpuBoundTasks", c -> c.virtualThreadCpuBoundTaskDetector);
+    }
+
+    /**
+     * Returns the {@link VirtualThreadCarrierExhaustionDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVirtualThreadCarrierExhaustion = false}
+     * @since 0.8.0
+     */
+    public static VirtualThreadCarrierExhaustionDetector virtualThreadCarrierExhaustionDetector() {
+        return require("detectVirtualThreadCarrierExhaustion", c -> c.virtualThreadCarrierExhaustionDetector);
     }
 
     // ---- Phase 7: High-Level Concurrency Patterns ----

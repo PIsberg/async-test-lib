@@ -196,10 +196,12 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 43. **CopyOnWrite** - `CopyOnWriteArrayList` used in write-heavy loops (O(n) copy-per-write)
 44. **StringBuilder** - `StringBuilder` mutated by multiple threads (not thread-safe)
 
-### Phase 6: Virtual Thread Concurrency (Java 21+) (3) — NEW
+### Phase 6: Virtual Thread Concurrency (Java 21+) (5)
 45. **Structured Concurrency Misuse** - Unclosed `StructuredTaskScope`, skipped `join()`, or result accessed before `join()`
 46. **Virtual Thread Context Leaks** - `ThreadLocal` set in virtual threads but never removed; `InheritableThreadLocal` misuse
 47. **ScopedValue Misuse** - `ScopedValue.get()` called outside an active binding; unintentional re-binding in nested scopes
+48. **Virtual Thread CPU-Bound Tasks** - CPU-intensive tasks running on virtual threads without yielding, monopolizing carrier threads
+49. **Virtual Thread Carrier Exhaustion** - Concurrent blocking of virtual threads approaching or exceeding carrier thread count
 
 ## Quick Start
 
@@ -344,10 +346,12 @@ void stressWithVirtualThreads() {
 | `detectCopyOnWriteCollectionIssues` | boolean | true | Detect CopyOnWriteArrayList in write-heavy loops |
 | `detectStringBuilderIssues` | boolean | true | Detect StringBuilder mutated by multiple threads |
 
-### Phase 6: Virtual Thread Concurrency (Java 21+) (v0.7.0)
+### Phase 6: Virtual Thread Concurrency (Java 21+) (v0.7.0 / v0.8.0)
 | `detectStructuredConcurrencyIssues` | boolean | true | Detect StructuredTaskScope misuse — unclosed scopes, skipped join(), result accessed before join() |
 | `detectVirtualThreadContextLeaks` | boolean | true | Detect ThreadLocal leaks in virtual threads and InheritableThreadLocal misuse |
 | `detectScopedValueMisuse` | boolean | true | Detect ScopedValue.get() outside a binding and unintentional re-binding |
+| `detectVirtualThreadCpuBoundTasks` | boolean | true | Detect CPU-intensive tasks on virtual threads running beyond the 50ms threshold without a yield point |
+| `detectVirtualThreadCarrierExhaustion` | boolean | true | Detect concurrent blocking that approaches or exceeds the carrier thread count, causing scheduler starvation |
 
 ### Phase 7: High-Level Concurrency Patterns (v0.7.0) — NEW
 | `detectHttpClientIssues` | boolean | true | Detect unclosed HTTP responses, connection pool exhaustion, incomplete HTTP operations |
@@ -1850,9 +1854,77 @@ void testScopedValueUsage() {
 }
 ```
 
+### Virtual Thread CPU-Bound Task Detection (v0.8.0)
+
+Virtual threads are designed for I/O-bound work. CPU-intensive tasks that run without
+yielding monopolize carrier platform threads and reduce scalability.
+
+```java
+@AsyncTest(
+    threads = 8,
+    useVirtualThreads = true,
+    detectVirtualThreadCpuBoundTasks = true
+)
+void testMixedWorkload() throws InterruptedException {
+    var detector = AsyncTestContext.virtualThreadCpuBoundTaskDetector();
+
+    // Record a task and call recordYieldPoint before any I/O / blocking operation
+    String taskId = detector.recordTaskStart("fetch-and-process");
+    try {
+        detector.recordYieldPoint(taskId);  // about to do I/O — resets the CPU timer
+        Thread.sleep(5);                    // simulates network call
+        // Short CPU burst after I/O — well within threshold
+    } finally {
+        detector.recordTaskEnd(taskId);
+    }
+}
+```
+
+**What is detected:**
+- A virtual thread task running longer than 50 ms (configurable) without a `recordYieldPoint` call
+- High average task duration across all recorded tasks
+
+**When to call `recordYieldPoint`:** before any operation that parks the virtual thread
+(file I/O, network calls, `Thread.sleep`, `LockSupport.park`, lock acquisition via
+`ReentrantLock`, etc.).
+
+### Virtual Thread Carrier Exhaustion Detection (v0.8.0)
+
+Carrier thread exhaustion occurs when all platform threads in the virtual thread scheduler
+pool are simultaneously blocked by pinned or stuck virtual threads. No virtual thread can
+run until a carrier is freed, causing apparent deadlock.
+
+```java
+@AsyncTest(
+    threads = 16,
+    useVirtualThreads = true,
+    detectVirtualThreadCarrierExhaustion = true
+)
+void testConcurrentBlocking() throws InterruptedException {
+    var detector = AsyncTestContext.virtualThreadCarrierExhaustionDetector();
+
+    // Wrap any operation that holds a carrier thread (synchronized, native calls, etc.)
+    detector.recordBlockingStart("db-query");
+    try {
+        // Use ReentrantLock instead of synchronized — virtual thread can unmount
+        Thread.sleep(2);  // simulates blocking I/O that properly parks the VT
+    } finally {
+        detector.recordBlockingEnd("db-query");
+    }
+}
+```
+
+**What is detected:**
+- Peak concurrent blocked virtual thread count reaching or exceeding available carriers
+  (defaults to `Runtime.getRuntime().availableProcessors()`)
+- Virtual threads still in blocked state at analysis time
+
+**Mitigation:** Replace `synchronized` with `ReentrantLock`; increase
+`jdk.virtualThreadScheduler.parallelism`; or gate concurrent blocking with a `Semaphore`.
+
 ---
 
-## Phase 7: High-Level Concurrency Patterns (v0.7.0) — NEW
+## Phase 7: High-Level Concurrency Patterns (v0.7.0)
 
 Phase 7 introduces detectors for common high-level concurrency patterns that are prevalent
 in modern Java applications. These detectors focus on practical, real-world issues that
