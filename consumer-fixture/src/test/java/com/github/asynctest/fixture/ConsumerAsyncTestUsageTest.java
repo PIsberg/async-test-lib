@@ -33,6 +33,8 @@ import com.github.asynctest.diagnostics.HttpClientConcurrencyDetector;
 import com.github.asynctest.diagnostics.StreamClosingDetector;
 import com.github.asynctest.diagnostics.CacheConcurrencyDetector;
 import com.github.asynctest.diagnostics.CompletableFutureChainDetector;
+import com.github.asynctest.diagnostics.VirtualThreadCpuBoundTaskDetector;
+import com.github.asynctest.diagnostics.VirtualThreadCarrierExhaustionDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -1465,5 +1467,66 @@ class ConsumerAsyncTestUsageTest {
             sum += i;
         }
         assertNotNull(AsyncTestContext.get());
+    }
+
+    /**
+     * Phase 6.4: CPU-bound task detection on virtual threads.
+     *
+     * <p>Demonstrates the {@link VirtualThreadCpuBoundTaskDetector}: records tasks
+     * that are CPU-bound and yield points for I/O-mixed work. Well-behaved tasks
+     * that call {@code recordYieldPoint} before blocking operations should not
+     * trigger violations.
+     */
+    @AsyncTest(threads = 4, invocations = 10,
+               useVirtualThreads = true,
+               detectVirtualThreadCpuBoundTasks = true,
+               timeoutMs = 5000)
+    void testVirtualThreadCpuBoundTaskDetection() throws InterruptedException {
+        var detector = AsyncTestContext.virtualThreadCpuBoundTaskDetector();
+
+        // Simulate an I/O-mixed task: record a yield point before any blocking call
+        String taskId = detector.recordTaskStart("data-fetch");
+        try {
+            // Signal that we're about to do I/O (would park the virtual thread)
+            detector.recordYieldPoint(taskId);
+            Thread.sleep(1);  // simulates I/O — virtual thread unmounts here
+        } finally {
+            detector.recordTaskEnd(taskId);
+        }
+
+        // Short CPU burst within threshold — should be fine
+        String cpuId = detector.recordTaskStart("quick-compute");
+        try {
+            int acc = 0;
+            for (int i = 0; i < 1000; i++) acc += i;
+            assertNotNull(acc);
+        } finally {
+            detector.recordTaskEnd(cpuId);
+        }
+    }
+
+    /**
+     * Phase 6.5: Carrier exhaustion detection for virtual threads.
+     *
+     * <p>Demonstrates the {@link VirtualThreadCarrierExhaustionDetector}: records
+     * blocking start/end around operations that may pin virtual threads. A well-behaved
+     * test that uses {@code ReentrantLock} (or limits concurrency) should not trigger
+     * the exhaustion threshold.
+     */
+    @AsyncTest(threads = 4, invocations = 10,
+               useVirtualThreads = true,
+               detectVirtualThreadCarrierExhaustion = true,
+               timeoutMs = 5000)
+    void testVirtualThreadCarrierExhaustionDetection() throws InterruptedException {
+        var detector = AsyncTestContext.virtualThreadCarrierExhaustionDetector();
+
+        // Record a blocking region around an operation that parks the virtual thread.
+        // Using ReentrantLock (not synchronized) so the virtual thread unmounts properly.
+        detector.recordBlockingStart("reentrantlock-acquire");
+        try {
+            Thread.sleep(1);  // virtual thread parks; carrier is freed
+        } finally {
+            detector.recordBlockingEnd("reentrantlock-acquire");
+        }
     }
 }

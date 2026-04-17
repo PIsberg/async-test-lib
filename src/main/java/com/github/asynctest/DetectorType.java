@@ -77,6 +77,8 @@ public enum DetectorType {
     STRUCTURED_CONCURRENCY,
     VIRTUAL_THREAD_CONTEXT_LEAKS,
     SCOPED_VALUE,
+    VIRTUAL_THREAD_CPU_BOUND,
+    VIRTUAL_THREAD_CARRIER_EXHAUSTION,
 
     // Phase 7: High-Level Concurrency Patterns
     HTTP_CLIENT,

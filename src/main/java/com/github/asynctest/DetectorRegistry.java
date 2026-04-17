@@ -80,9 +80,11 @@ final class DetectorRegistry {
     final StringBuilderDetector         stringBuilderDetector;
 
     // ---- Phase 6: Virtual Thread Concurrency (Java 21+) ----
-    final StructuredConcurrencyMisuseDetector structuredConcurrencyMisuseDetector;
-    final VirtualThreadContextLeakDetector    virtualThreadContextLeakDetector;
-    final ScopedValueMisuseDetector           scopedValueMisuseDetector;
+    final StructuredConcurrencyMisuseDetector  structuredConcurrencyMisuseDetector;
+    final VirtualThreadContextLeakDetector     virtualThreadContextLeakDetector;
+    final ScopedValueMisuseDetector            scopedValueMisuseDetector;
+    final VirtualThreadCpuBoundTaskDetector    virtualThreadCpuBoundTaskDetector;
+    final VirtualThreadCarrierExhaustionDetector virtualThreadCarrierExhaustionDetector;
 
     // ---- Phase 7: High-Level Concurrency Patterns ----
     final HttpClientConcurrencyDetector       httpClientConcurrencyDetector;
@@ -150,8 +152,13 @@ final class DetectorRegistry {
                 ? new StructuredConcurrencyMisuseDetector() : null;
         virtualThreadContextLeakDetector = cfg.detectVirtualThreadContextLeaks
                 ? new VirtualThreadContextLeakDetector() : null;
-        scopedValueMisuseDetector  = cfg.detectScopedValueMisuse                 ? new ScopedValueMisuseDetector()           : null;
-        
+        scopedValueMisuseDetector = cfg.detectScopedValueMisuse
+                ? new ScopedValueMisuseDetector() : null;
+        virtualThreadCpuBoundTaskDetector = cfg.detectVirtualThreadCpuBoundTasks
+                ? new VirtualThreadCpuBoundTaskDetector() : null;
+        virtualThreadCarrierExhaustionDetector = cfg.detectVirtualThreadCarrierExhaustion
+                ? new VirtualThreadCarrierExhaustionDetector() : null;
+
         // ---- Phase 7: High-Level Concurrency Patterns ----
         httpClientConcurrencyDetector = cfg.detectHttpClientIssues
                 ? new HttpClientConcurrencyDetector() : null;
@@ -331,6 +338,12 @@ final class DetectorRegistry {
         ifIssue(scopedValueMisuseDetector,
                 d -> d.analyze(),
                 ScopedValueMisuseDetector.ScopedValueMisuseReport::hasIssues, out);
+        ifIssue(virtualThreadCpuBoundTaskDetector,
+                d -> d.analyze(),
+                VirtualThreadCpuBoundTaskDetector.CpuBoundTaskReport::hasIssues, out);
+        ifIssue(virtualThreadCarrierExhaustionDetector,
+                d -> d.analyze(),
+                VirtualThreadCarrierExhaustionDetector.CarrierExhaustionReport::hasIssues, out);
 
         // ---- Phase 7: High-Level Concurrency Patterns ----
         ifIssue(httpClientConcurrencyDetector,

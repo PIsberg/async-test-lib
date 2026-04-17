@@ -92,6 +92,8 @@ public final class AsyncTestConfig {
     public final boolean detectStructuredConcurrencyIssues;
     public final boolean detectVirtualThreadContextLeaks;
     public final boolean detectScopedValueMisuse;
+    public final boolean detectVirtualThreadCpuBoundTasks;
+    public final boolean detectVirtualThreadCarrierExhaustion;
 
     // ---- Phase 7: High-Level Concurrency Patterns ----
     public final boolean detectHttpClientIssues;
@@ -163,9 +165,11 @@ public final class AsyncTestConfig {
         detectTimerIssues              = b.detectTimerIssues;
         detectCopyOnWriteCollectionIssues = b.detectCopyOnWriteCollectionIssues;
         detectStringBuilderIssues        = b.detectStringBuilderIssues;
-        detectStructuredConcurrencyIssues = b.detectStructuredConcurrencyIssues;
-        detectVirtualThreadContextLeaks  = b.detectVirtualThreadContextLeaks;
-        detectScopedValueMisuse          = b.detectScopedValueMisuse;
+        detectStructuredConcurrencyIssues    = b.detectStructuredConcurrencyIssues;
+        detectVirtualThreadContextLeaks      = b.detectVirtualThreadContextLeaks;
+        detectScopedValueMisuse              = b.detectScopedValueMisuse;
+        detectVirtualThreadCpuBoundTasks     = b.detectVirtualThreadCpuBoundTasks;
+        detectVirtualThreadCarrierExhaustion = b.detectVirtualThreadCarrierExhaustion;
         detectHttpClientIssues           = b.detectHttpClientIssues;
         detectStreamClosing              = b.detectStreamClosing;
         detectCacheConcurrency           = b.detectCacheConcurrency;
@@ -242,6 +246,8 @@ public final class AsyncTestConfig {
             .detectStructuredConcurrencyIssues(ann.detectStructuredConcurrencyIssues())
             .detectVirtualThreadContextLeaks(ann.detectVirtualThreadContextLeaks())
             .detectScopedValueMisuse(ann.detectScopedValueMisuse())
+            .detectVirtualThreadCpuBoundTasks(ann.detectVirtualThreadCpuBoundTasks())
+            .detectVirtualThreadCarrierExhaustion(ann.detectVirtualThreadCarrierExhaustion())
             .detectHttpClientIssues(ann.detectHttpClientIssues())
             .detectStreamClosing(ann.detectStreamClosing())
             .detectCacheConcurrency(ann.detectCacheConcurrency())
@@ -319,6 +325,8 @@ public final class AsyncTestConfig {
         private boolean detectStructuredConcurrencyIssues = false;
         private boolean detectVirtualThreadContextLeaks = false;
         private boolean detectScopedValueMisuse = false;
+        private boolean detectVirtualThreadCpuBoundTasks = false;
+        private boolean detectVirtualThreadCarrierExhaustion = false;
         private boolean detectHttpClientIssues = false;
         private boolean detectStreamClosing = false;
         private boolean detectCacheConcurrency = false;
@@ -386,10 +394,12 @@ public final class AsyncTestConfig {
         public Builder detectTimerIssues(boolean v) { detectTimerIssues = v; return this; }
         public Builder detectCopyOnWriteCollectionIssues(boolean v) { detectCopyOnWriteCollectionIssues = v; return this; }
         public Builder detectStringBuilderIssues(boolean v)           { detectStringBuilderIssues = v; return this; }
-        public Builder detectStructuredConcurrencyIssues(boolean v)    { detectStructuredConcurrencyIssues = v; return this; }
-        public Builder detectVirtualThreadContextLeaks(boolean v)      { detectVirtualThreadContextLeaks = v; return this; }
-        public Builder detectScopedValueMisuse(boolean v)              { detectScopedValueMisuse = v; return this; }
-        public Builder detectHttpClientIssues(boolean v)               { detectHttpClientIssues = v; return this; }
+        public Builder detectStructuredConcurrencyIssues(boolean v)      { detectStructuredConcurrencyIssues = v; return this; }
+        public Builder detectVirtualThreadContextLeaks(boolean v)        { detectVirtualThreadContextLeaks = v; return this; }
+        public Builder detectScopedValueMisuse(boolean v)                { detectScopedValueMisuse = v; return this; }
+        public Builder detectVirtualThreadCpuBoundTasks(boolean v)       { detectVirtualThreadCpuBoundTasks = v; return this; }
+        public Builder detectVirtualThreadCarrierExhaustion(boolean v)   { detectVirtualThreadCarrierExhaustion = v; return this; }
+        public Builder detectHttpClientIssues(boolean v)                 { detectHttpClientIssues = v; return this; }
         public Builder detectStreamClosing(boolean v)                  { detectStreamClosing = v; return this; }
         public Builder detectCacheConcurrency(boolean v)               { detectCacheConcurrency = v; return this; }
         public Builder detectCompletableFutureChainIssues(boolean v)   { detectCompletableFutureChainIssues = v; return this; }
@@ -506,6 +516,10 @@ public final class AsyncTestConfig {
                     else detectVirtualThreadContextLeaks = false;
                 if (!excludes.contains(DetectorType.SCOPED_VALUE)) detectScopedValueMisuse = true;
                     else detectScopedValueMisuse = false;
+                if (!excludes.contains(DetectorType.VIRTUAL_THREAD_CPU_BOUND)) detectVirtualThreadCpuBoundTasks = true;
+                    else detectVirtualThreadCpuBoundTasks = false;
+                if (!excludes.contains(DetectorType.VIRTUAL_THREAD_CARRIER_EXHAUSTION)) detectVirtualThreadCarrierExhaustion = true;
+                    else detectVirtualThreadCarrierExhaustion = false;
                 if (!excludes.contains(DetectorType.RACE_CONDITIONS)) detectRaceConditions = true;
                     else detectRaceConditions = false;
                 if (!excludes.contains(DetectorType.THREAD_LOCAL_LEAKS)) detectThreadLocalLeaks = true;
@@ -577,6 +591,8 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.STRUCTURED_CONCURRENCY)) detectStructuredConcurrencyIssues = false;
                 if (excludes.contains(DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS)) detectVirtualThreadContextLeaks = false;
                 if (excludes.contains(DetectorType.SCOPED_VALUE)) detectScopedValueMisuse = false;
+                if (excludes.contains(DetectorType.VIRTUAL_THREAD_CPU_BOUND)) detectVirtualThreadCpuBoundTasks = false;
+                if (excludes.contains(DetectorType.VIRTUAL_THREAD_CARRIER_EXHAUSTION)) detectVirtualThreadCarrierExhaustion = false;
                 if (excludes.contains(DetectorType.HTTP_CLIENT)) detectHttpClientIssues = false;
                 if (excludes.contains(DetectorType.STREAM_CLOSING)) detectStreamClosing = false;
                 if (excludes.contains(DetectorType.CACHE_CONCURRENCY)) detectCacheConcurrency = false;
