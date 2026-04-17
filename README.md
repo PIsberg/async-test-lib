@@ -183,7 +183,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 34. **Executor Self-Deadlock** - Sibling task waits on the same executor
 35. **Latch Misuse** - Missing or extra `countDown()` tracking
 
-### Phase 4: Infrastructure & Resource Management (4) — NEW
+### Phase 4: Infrastructure & Resource Management (4)
 36. **Thread Leaks** - Threads created but never terminated
 37. **Sleep in Lock** - `Thread.sleep()` while holding locks
 38. **Unbounded Queues** - `BlockingQueue` without capacity bounds
@@ -346,14 +346,14 @@ void stressWithVirtualThreads() {
 | `detectCopyOnWriteCollectionIssues` | boolean | true | Detect CopyOnWriteArrayList in write-heavy loops |
 | `detectStringBuilderIssues` | boolean | true | Detect StringBuilder mutated by multiple threads |
 
-### Phase 6: Virtual Thread Concurrency (Java 21+) (v0.7.0 / v0.8.0)
+### Phase 6: Virtual Thread Concurrency (Java 21+) (v0.7.0)
 | `detectStructuredConcurrencyIssues` | boolean | true | Detect StructuredTaskScope misuse — unclosed scopes, skipped join(), result accessed before join() |
 | `detectVirtualThreadContextLeaks` | boolean | true | Detect ThreadLocal leaks in virtual threads and InheritableThreadLocal misuse |
 | `detectScopedValueMisuse` | boolean | true | Detect ScopedValue.get() outside a binding and unintentional re-binding |
 | `detectVirtualThreadCpuBoundTasks` | boolean | true | Detect CPU-intensive tasks on virtual threads running beyond the 50ms threshold without a yield point |
 | `detectVirtualThreadCarrierExhaustion` | boolean | true | Detect concurrent blocking that approaches or exceeds the carrier thread count, causing scheduler starvation |
 
-### Phase 7: High-Level Concurrency Patterns (v0.7.0) — NEW
+### Phase 7: High-Level Concurrency Patterns (v0.7.0)
 | `detectHttpClientIssues` | boolean | true | Detect unclosed HTTP responses, connection pool exhaustion, incomplete HTTP operations |
 | `detectStreamClosing` | boolean | true | Detect InputStream/OutputStream not properly closed in concurrent code |
 | `detectCacheConcurrency` | boolean | true | Detect HashMap/LinkedHashMap used as cache without synchronization |
@@ -1854,7 +1854,7 @@ void testScopedValueUsage() {
 }
 ```
 
-### Virtual Thread CPU-Bound Task Detection (v0.8.0)
+### Virtual Thread CPU-Bound Task Detection (v0.7.0)
 
 Virtual threads are designed for I/O-bound work. CPU-intensive tasks that run without
 yielding monopolize carrier platform threads and reduce scalability.
@@ -1888,7 +1888,7 @@ void testMixedWorkload() throws InterruptedException {
 (file I/O, network calls, `Thread.sleep`, `LockSupport.park`, lock acquisition via
 `ReentrantLock`, etc.).
 
-### Virtual Thread Carrier Exhaustion Detection (v0.8.0)
+### Virtual Thread Carrier Exhaustion Detection (v0.7.0)
 
 Carrier thread exhaustion occurs when all platform threads in the virtual thread scheduler
 pool are simultaneously blocked by pinned or stuck virtual threads. No virtual thread can

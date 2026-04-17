@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-04-17
+
+### Added
+
+#### Phase 6: Virtual Thread Concurrency (Java 21+)
+- **Structured Concurrency Misuse** (`detectStructuredConcurrencyIssues`) — detects unclosed
+  `StructuredTaskScope`, subtask results accessed before `join()`, scopes closed without
+  `join()`, and empty scopes with no subtasks forked
+- **Virtual Thread Context Leaks** (`detectVirtualThreadContextLeaks`) — detects `ThreadLocal`
+  values set in virtual threads but never removed, `InheritableThreadLocal` misuse inside
+  virtual threads, and excessive per-thread `ThreadLocal` counts (prefer `ScopedValue`)
+- **ScopedValue Misuse** (`detectScopedValueMisuse`) — detects `ScopedValue.get()` calls
+  outside an active binding, unintentional re-binding in nested scopes, and excessive
+  simultaneous binding counts
+- **Virtual Thread CPU-Bound Tasks** (`detectVirtualThreadCpuBoundTasks`) — detects
+  CPU-intensive tasks running on virtual threads without yielding beyond a configurable
+  threshold (default 50 ms); monopolising a carrier thread negates virtual-thread scalability
+- **Virtual Thread Carrier Exhaustion** (`detectVirtualThreadCarrierExhaustion`) — detects
+  scenarios where the count of concurrently blocked virtual threads approaches or exceeds
+  the available carrier platform threads, causing scheduler starvation
+
+#### Phase 7: High-Level Concurrency Patterns
+- **HTTP Client Concurrency Issues** (`detectHttpClientIssues`) — detects unclosed HTTP
+  responses, connection pool exhaustion, and requests initiated but never completed
+- **Stream Closing** (`detectStreamClosing`) — detects `InputStream`/`OutputStream`/
+  `Reader`/`Writer` instances opened but never closed in concurrent code
+- **Cache Concurrency** (`detectCacheConcurrency`) — detects `HashMap`/`LinkedHashMap`
+  used as a cache without synchronisation and concurrent read/write races
+- **CompletableFuture Chain Issues** (`detectCompletableFutureChainIssues`) — detects
+  missing exception handlers, unjoined futures, and improper chain construction
+
+#### Documentation & examples
+- New example project `04-virtual-thread-context-leak` demonstrating virtual thread
+  context leak detection with a `RequestScopedService`
+- Extended consumer-fixture with Phase 6 and Phase 7 usage examples
+- README Phase 6 and Phase 7 deep-dive sections with usage patterns and fix guidance
+
+### Maintenance
+- Bump `step-security/harden-runner` 2.17.0 → 2.18.0
+- Bump `github/codeql-action` 4.35.1 → 4.35.2
+- Bump `gradle/actions` 4 → 6
+- Bump `org.sonatype.central:central-publishing-maven-plugin` to 0.10.0
+
 ## [0.6.2] - 2026-04-13
 
 ### Fixed

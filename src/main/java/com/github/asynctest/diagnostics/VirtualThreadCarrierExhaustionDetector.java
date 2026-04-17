@@ -44,7 +44,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  *
- * @since 0.8.0
+ * @since 0.7.0
  */
 public class VirtualThreadCarrierExhaustionDetector {
 

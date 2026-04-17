@@ -447,7 +447,7 @@ public @interface AsyncTest {
      * Enable CPU-bound task detection on virtual threads (Java 21+).
      * Detects virtual threads running long-duration computation without yielding,
      * which monopolizes carrier threads and reduces scalability.
-     * @since 0.8.0
+     * @since 0.7.0
      */
     boolean detectVirtualThreadCpuBoundTasks() default true;
 
@@ -456,7 +456,7 @@ public @interface AsyncTest {
      * Detects scenarios where concurrently blocked virtual threads approach or
      * exceed the number of available carrier platform threads, potentially causing
      * starvation even without a classic deadlock.
-     * @since 0.8.0
+     * @since 0.7.0
      */
     boolean detectVirtualThreadCarrierExhaustion() default true;
 

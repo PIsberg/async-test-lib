@@ -575,7 +575,7 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link VirtualThreadCpuBoundTaskDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVirtualThreadCpuBoundTasks = false}
-     * @since 0.8.0
+     * @since 0.7.0
      */
     public static VirtualThreadCpuBoundTaskDetector virtualThreadCpuBoundTaskDetector() {
         return require("detectVirtualThreadCpuBoundTasks", c -> c.virtualThreadCpuBoundTaskDetector);
@@ -584,7 +584,7 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link VirtualThreadCarrierExhaustionDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVirtualThreadCarrierExhaustion = false}
-     * @since 0.8.0
+     * @since 0.7.0
      */
     public static VirtualThreadCarrierExhaustionDetector virtualThreadCarrierExhaustionDetector() {
         return require("detectVirtualThreadCarrierExhaustion", c -> c.virtualThreadCarrierExhaustionDetector);
