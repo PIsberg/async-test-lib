@@ -6,7 +6,7 @@
 
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>consumer-fixture</artifactId>
-    <version>0.6.2</version>
+    <version>0.7.0</version>
     <packaging>jar</packaging>
 
     <name>Async Test Consumer Fixture</name>
@@ -16,7 +16,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <async-test.version>0.6.2</async-test.version>
+        <async-test.version>0.7.0</async-test.version>
         <junit.jupiter.version>6.0.3</junit.jupiter.version>
         <!-- Plugin versions -->
         <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
