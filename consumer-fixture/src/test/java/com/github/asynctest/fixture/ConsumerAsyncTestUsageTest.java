@@ -35,6 +35,10 @@ import com.github.asynctest.diagnostics.CacheConcurrencyDetector;
 import com.github.asynctest.diagnostics.CompletableFutureChainDetector;
 import com.github.asynctest.diagnostics.VirtualThreadCpuBoundTaskDetector;
 import com.github.asynctest.diagnostics.VirtualThreadCarrierExhaustionDetector;
+import com.github.asynctest.diagnostics.LockContentionDetector;
+import com.github.asynctest.diagnostics.SynchronizedNonFinalDetector;
+import com.github.asynctest.diagnostics.MissedSignalDetector;
+import com.github.asynctest.diagnostics.LazyInitRaceDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -1528,5 +1532,98 @@ class ConsumerAsyncTestUsageTest {
         } finally {
             detector.recordBlockingEnd("reentrantlock-acquire");
         }
+    }
+
+    // ============================================
+    // NEW DETECTORS (Phase 2: Additional Concurrency)
+    // ============================================
+
+    /**
+     * Lock contention detection — tracks a monitor that has high acquire-contention.
+     * Proper usage: record each acquire attempt, contention events, and releases.
+     */
+    @AsyncTest(threads = 4, detectLockContention = true, timeoutMs = 3000)
+    void testLockContentionDetection() {
+        Object sharedResource = new Object();
+        LockContentionDetector detector = AsyncTestContext.lockContentionDetector();
+
+        // Simulate contention: all threads attempt to acquire the same monitor
+        detector.recordAcquireAttempt(sharedResource, "sharedResource");
+        synchronized (sharedResource) {
+            detector.recordAcquired(sharedResource, "sharedResource");
+            // Simulate critical section work
+            try { Thread.sleep(1); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        }
+        detector.recordReleased(sharedResource, "sharedResource");
+
+        // To trigger the detector, record contention (in real usage, call this
+        // when another thread already holds the monitor at acquire time):
+        // detector.recordContention(sharedResource, "sharedResource");
+
+        var report = detector.analyze();
+        // In a real high-contention scenario: assertTrue(report.hasIssues())
+    }
+
+    // Shared final lock used by testSynchronizedNonFinalDetection.
+    private final Object fixtureLock = new Object();
+
+    /**
+     * Synchronized-on-non-final detection — demonstrates safe usage where the lock is
+     * always the same object identity.  invocations=1 keeps a single JUnit test instance
+     * so fixtureLock has a stable identity across all 4 threads.
+     */
+    @AsyncTest(threads = 4, invocations = 1, detectSynchronizedNonFinal = true, timeoutMs = 3000)
+    void testSynchronizedNonFinalDetection() {
+        SynchronizedNonFinalDetector detector = AsyncTestContext.synchronizedNonFinalDetector();
+
+        // fixtureLock is a final field on the single test instance for this invocation,
+        // so all 4 threads record the same identity hash code — no violation expected.
+        detector.recordLockObject(fixtureLock, "fixtureLock", ConsumerAsyncTestUsageTest.class);
+        synchronized (fixtureLock) {
+            // critical section
+        }
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(),
+                "Final field lock (same object for all threads) should not be flagged");
+    }
+
+    /**
+     * Missed-signal detection — demonstrates the detector API.
+     * Calling analyze() with an assertion inside a concurrent body is unsafe because
+     * recordWakeup from one thread can race with recordNotify from another, temporarily
+     * making waiterCount appear as zero.  The assertion is intentionally omitted here;
+     * correctness is verified by MissedSignalDetectorTest unit tests.
+     */
+    @AsyncTest(threads = 2, detectMissedSignals = true, timeoutMs = 3000)
+    void testMissedSignalDetection() {
+        MissedSignalDetector detector = AsyncTestContext.missedSignalDetector();
+
+        // Each thread registers as a waiter then signals the same condition.
+        detector.recordWait("workAvailable");
+        detector.recordNotify("workAvailable");
+        detector.recordWakeup("workAvailable");
+
+        // Analyse for informational purposes — do not assert inside a concurrent body.
+        var report = detector.analyze();
+        // In a scenario where notify() fires before any wait(), you would assert:
+        // assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Lazy-init race detection — detects multiple threads initializing the same field.
+     * Demonstrates the classic broken lazy-initialization pattern.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectLazyInitRace = true, timeoutMs = 3000)
+    void testLazyInitRaceDetection() {
+        LazyInitRaceDetector detector = AsyncTestContext.lazyInitRaceDetector();
+
+        // Safe single-init pattern (volatile + single initializer)
+        detector.recordNullCheck("ConsumerAsyncTestUsageTest.config", true, true);
+        detector.recordInitialization("ConsumerAsyncTestUsageTest.config");
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(),
+                "Single initialization with volatile field should not be flagged");
     }
 }

@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+#### Phase 2: Additional Concurrency Detectors
+- **Lock Contention** (`detectLockContention`) — detects monitors where more than 20% of
+  acquire attempts are blocked (or ≥5 contention events), flagging hot-lock hotspots that
+  degrade throughput and scalability under concurrent load
+- **Synchronized on Non-Final Field** (`detectSynchronizedNonFinal`) — detects the
+  anti-pattern of locking on a field that is not declared `final`; if the reference is
+  reassigned between invocations, two threads may synchronize on *different* objects,
+  silently breaking mutual exclusion
+- **Missed Signal** (`detectMissedSignals`) — detects `notify()` / `notifyAll()` calls
+  made when no thread is currently waiting on the condition; the signal is silently
+  discarded, causing threads that later call `wait()` to block indefinitely
+- **Lazy Initialization Race** (`detectLazyInitRace`) — detects fields that are initialized
+  by multiple concurrent threads because the null-guard is unsynchronized or the field is
+  not `volatile`; also flags non-volatile fields where several threads simultaneously
+  observe `null`, a visibility risk even when only one initialization occurs
+
+#### Documentation & examples
+- New example project `05-lock-contention` demonstrating coarse-grained lock contention
+  on `RequestCounterService` and the LockContentionDetector hotspot report
+
 ## [0.7.0] - 2026-04-17
 
 ### Added

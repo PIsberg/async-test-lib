@@ -44,6 +44,10 @@ public enum DetectorType {
     VOLATILE_ARRAY,
     DOUBLE_CHECKED_LOCKING,
     WAIT_TIMEOUT,
+    LOCK_CONTENTION,
+    SYNCHRONIZED_NON_FINAL,
+    MISSED_SIGNAL,
+    LAZY_INIT_RACE,
 
     // Phase 2: Advanced Concurrency Utilities
     PHASER,
