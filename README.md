@@ -326,6 +326,10 @@ void stressWithVirtualThreads() {
 | `detectVolatileArrayIssues` | boolean | true | Detect volatile array element visibility issues |
 | `detectDoubleCheckedLocking` | boolean | true | Detect broken double-checked locking patterns |
 | `detectWaitTimeout` | boolean | true | Detect wait() calls without timeout |
+| `detectLockContention` | boolean | true | Detect monitors with >20% acquire-contention ratio (hot-lock hotspots) |
+| `detectSynchronizedNonFinal` | boolean | true | Detect synchronizing on a non-final field that may be reassigned |
+| `detectMissedSignals` | boolean | true | Detect notify()/notifyAll() called when no thread is waiting (signal lost) |
+| `detectLazyInitRace` | boolean | true | Detect multiple threads concurrently initializing the same lazily-initialized field |
 | `detectPhaserIssues` | boolean | true | Detect Phaser missing arrive() and timeouts |
 | `detectStampedLockIssues` | boolean | true | Detect StampedLock unvalidated optimistic reads |
 | `detectExchangerIssues` | boolean | true | Detect Exchanger timeout and missing partners |

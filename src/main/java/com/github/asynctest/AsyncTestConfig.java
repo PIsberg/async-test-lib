@@ -68,6 +68,10 @@ public final class AsyncTestConfig {
     public final boolean detectVolatileArrayIssues;
     public final boolean detectDoubleCheckedLocking;
     public final boolean detectWaitTimeout;
+    public final boolean detectLockContention;
+    public final boolean detectSynchronizedNonFinal;
+    public final boolean detectMissedSignals;
+    public final boolean detectLazyInitRace;
 
     // ---- Phase 2: Advanced Concurrency Utilities ----
     public final boolean detectPhaserIssues;
@@ -150,6 +154,10 @@ public final class AsyncTestConfig {
         detectVolatileArrayIssues      = b.detectVolatileArrayIssues;
         detectDoubleCheckedLocking     = b.detectDoubleCheckedLocking;
         detectWaitTimeout              = b.detectWaitTimeout;
+        detectLockContention           = b.detectLockContention;
+        detectSynchronizedNonFinal     = b.detectSynchronizedNonFinal;
+        detectMissedSignals            = b.detectMissedSignals;
+        detectLazyInitRace             = b.detectLazyInitRace;
         detectPhaserIssues             = b.detectPhaserIssues;
         detectStampedLockIssues        = b.detectStampedLockIssues;
         detectExchangerIssues          = b.detectExchangerIssues;
@@ -228,6 +236,10 @@ public final class AsyncTestConfig {
             .detectVolatileArrayIssues(ann.detectVolatileArrayIssues())
             .detectDoubleCheckedLocking(ann.detectDoubleCheckedLocking())
             .detectWaitTimeout(ann.detectWaitTimeout())
+            .detectLockContention(ann.detectLockContention())
+            .detectSynchronizedNonFinal(ann.detectSynchronizedNonFinal())
+            .detectMissedSignals(ann.detectMissedSignals())
+            .detectLazyInitRace(ann.detectLazyInitRace())
             .detectPhaserIssues(ann.detectPhaserIssues())
             .detectStampedLockIssues(ann.detectStampedLockIssues())
             .detectExchangerIssues(ann.detectExchangerIssues())
@@ -307,6 +319,10 @@ public final class AsyncTestConfig {
         private boolean detectVolatileArrayIssues = false;
         private boolean detectDoubleCheckedLocking = false;
         private boolean detectWaitTimeout = false;
+        private boolean detectLockContention = false;
+        private boolean detectSynchronizedNonFinal = false;
+        private boolean detectMissedSignals = false;
+        private boolean detectLazyInitRace = false;
         private boolean detectPhaserIssues = false;
         private boolean detectStampedLockIssues = false;
         private boolean detectExchangerIssues = false;
@@ -379,6 +395,10 @@ public final class AsyncTestConfig {
         public Builder detectVolatileArrayIssues(boolean v) { detectVolatileArrayIssues = v; return this; }
         public Builder detectDoubleCheckedLocking(boolean v) { detectDoubleCheckedLocking = v; return this; }
         public Builder detectWaitTimeout(boolean v) { detectWaitTimeout = v; return this; }
+        public Builder detectLockContention(boolean v) { detectLockContention = v; return this; }
+        public Builder detectSynchronizedNonFinal(boolean v) { detectSynchronizedNonFinal = v; return this; }
+        public Builder detectMissedSignals(boolean v) { detectMissedSignals = v; return this; }
+        public Builder detectLazyInitRace(boolean v) { detectLazyInitRace = v; return this; }
         public Builder detectPhaserIssues(boolean v) { detectPhaserIssues = v; return this; }
         public Builder detectStampedLockIssues(boolean v) { detectStampedLockIssues = v; return this; }
         public Builder detectExchangerIssues(boolean v) { detectExchangerIssues = v; return this; }
@@ -480,6 +500,14 @@ public final class AsyncTestConfig {
                     else detectDoubleCheckedLocking = false;
                 if (!excludes.contains(DetectorType.WAIT_TIMEOUT)) detectWaitTimeout = true;
                     else detectWaitTimeout = false;
+                if (!excludes.contains(DetectorType.LOCK_CONTENTION)) detectLockContention = true;
+                    else detectLockContention = false;
+                if (!excludes.contains(DetectorType.SYNCHRONIZED_NON_FINAL)) detectSynchronizedNonFinal = true;
+                    else detectSynchronizedNonFinal = false;
+                if (!excludes.contains(DetectorType.MISSED_SIGNAL)) detectMissedSignals = true;
+                    else detectMissedSignals = false;
+                if (!excludes.contains(DetectorType.LAZY_INIT_RACE)) detectLazyInitRace = true;
+                    else detectLazyInitRace = false;
                 if (!excludes.contains(DetectorType.PHASER)) detectPhaserIssues = true;
                     else detectPhaserIssues = false;
                 if (!excludes.contains(DetectorType.STAMPED_LOCK)) detectStampedLockIssues = true;
@@ -573,6 +601,10 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.VOLATILE_ARRAY)) detectVolatileArrayIssues = false;
                 if (excludes.contains(DetectorType.DOUBLE_CHECKED_LOCKING)) detectDoubleCheckedLocking = false;
                 if (excludes.contains(DetectorType.WAIT_TIMEOUT)) detectWaitTimeout = false;
+                if (excludes.contains(DetectorType.LOCK_CONTENTION)) detectLockContention = false;
+                if (excludes.contains(DetectorType.SYNCHRONIZED_NON_FINAL)) detectSynchronizedNonFinal = false;
+                if (excludes.contains(DetectorType.MISSED_SIGNAL)) detectMissedSignals = false;
+                if (excludes.contains(DetectorType.LAZY_INIT_RACE)) detectLazyInitRace = false;
                 if (excludes.contains(DetectorType.PHASER)) detectPhaserIssues = false;
                 if (excludes.contains(DetectorType.STAMPED_LOCK)) detectStampedLockIssues = false;
                 if (excludes.contains(DetectorType.EXCHANGER)) detectExchangerIssues = false;

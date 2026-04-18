@@ -68,6 +68,10 @@ public final class AsyncTestContext {
     final VolatileArrayDetector volatileArrayDetector;
     final DoubleCheckedLockingDetector doubleCheckedLockingDetector;
     final WaitTimeoutDetector waitTimeoutDetector;
+    final LockContentionDetector lockContentionDetector;
+    final SynchronizedNonFinalDetector synchronizedNonFinalDetector;
+    final MissedSignalDetector missedSignalDetector;
+    final LazyInitRaceDetector lazyInitRaceDetector;
     final PhaserDetector phaserDetector;
     final StampedLockDetector stampedLockDetector;
     final ExchangerDetector exchangerDetector;
@@ -127,6 +131,10 @@ public final class AsyncTestContext {
         volatileArrayDetector             = registry.volatileArrayDetector;
         doubleCheckedLockingDetector      = registry.doubleCheckedLockingDetector;
         waitTimeoutDetector               = registry.waitTimeoutDetector;
+        lockContentionDetector            = registry.lockContentionDetector;
+        synchronizedNonFinalDetector      = registry.synchronizedNonFinalDetector;
+        missedSignalDetector              = registry.missedSignalDetector;
+        lazyInitRaceDetector              = registry.lazyInitRaceDetector;
         phaserDetector                    = registry.phaserDetector;
         stampedLockDetector               = registry.stampedLockDetector;
         exchangerDetector                 = registry.exchangerDetector;
@@ -420,6 +428,38 @@ public final class AsyncTestContext {
      */
     public static WaitTimeoutDetector waitTimeoutMonitor() {
         return require("detectWaitTimeout", c -> c.waitTimeoutDetector);
+    }
+
+    /**
+     * Returns the {@link LockContentionDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLockContention = false}
+     */
+    public static LockContentionDetector lockContentionDetector() {
+        return require("detectLockContention", c -> c.lockContentionDetector);
+    }
+
+    /**
+     * Returns the {@link SynchronizedNonFinalDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSynchronizedNonFinal = false}
+     */
+    public static SynchronizedNonFinalDetector synchronizedNonFinalDetector() {
+        return require("detectSynchronizedNonFinal", c -> c.synchronizedNonFinalDetector);
+    }
+
+    /**
+     * Returns the {@link MissedSignalDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectMissedSignals = false}
+     */
+    public static MissedSignalDetector missedSignalDetector() {
+        return require("detectMissedSignals", c -> c.missedSignalDetector);
+    }
+
+    /**
+     * Returns the {@link LazyInitRaceDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLazyInitRace = false}
+     */
+    public static LazyInitRaceDetector lazyInitRaceDetector() {
+        return require("detectLazyInitRace", c -> c.lazyInitRaceDetector);
     }
 
     /**

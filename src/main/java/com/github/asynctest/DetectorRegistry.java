@@ -51,12 +51,16 @@ final class DetectorRegistry {
     final ResourceLeakDetector                 resourceLeakDetector;
 
     // ---- Phase 2: Additional concurrency ----
-    final CountDownLatchDetector       countDownLatchDetector;
-    final CyclicBarrierDetector        cyclicBarrierDetector;
-    final ReentrantLockDetector        reentrantLockDetector;
-    final VolatileArrayDetector        volatileArrayDetector;
-    final DoubleCheckedLockingDetector doubleCheckedLockingDetector;
-    final WaitTimeoutDetector          waitTimeoutDetector;
+    final CountDownLatchDetector           countDownLatchDetector;
+    final CyclicBarrierDetector            cyclicBarrierDetector;
+    final ReentrantLockDetector            reentrantLockDetector;
+    final VolatileArrayDetector            volatileArrayDetector;
+    final DoubleCheckedLockingDetector     doubleCheckedLockingDetector;
+    final WaitTimeoutDetector              waitTimeoutDetector;
+    final LockContentionDetector           lockContentionDetector;
+    final SynchronizedNonFinalDetector     synchronizedNonFinalDetector;
+    final MissedSignalDetector             missedSignalDetector;
+    final LazyInitRaceDetector             lazyInitRaceDetector;
 
     // ---- Phase 2: Advanced concurrency utilities ----
     final PhaserDetector             phaserDetector;
@@ -132,6 +136,10 @@ final class DetectorRegistry {
         volatileArrayDetector      = cfg.detectVolatileArrayIssues      ? new VolatileArrayDetector()      : null;
         doubleCheckedLockingDetector = cfg.detectDoubleCheckedLocking   ? new DoubleCheckedLockingDetector() : null;
         waitTimeoutDetector        = cfg.detectWaitTimeout              ? new WaitTimeoutDetector()        : null;
+        lockContentionDetector     = cfg.detectLockContention           ? new LockContentionDetector()     : null;
+        synchronizedNonFinalDetector = cfg.detectSynchronizedNonFinal   ? new SynchronizedNonFinalDetector() : null;
+        missedSignalDetector       = cfg.detectMissedSignals            ? new MissedSignalDetector()       : null;
+        lazyInitRaceDetector       = cfg.detectLazyInitRace             ? new LazyInitRaceDetector()       : null;
         phaserDetector             = cfg.detectPhaserIssues             ? new PhaserDetector()             : null;
         stampedLockDetector        = cfg.detectStampedLockIssues        ? new StampedLockDetector()        : null;
         exchangerDetector          = cfg.detectExchangerIssues          ? new ExchangerDetector()          : null;
@@ -278,6 +286,18 @@ final class DetectorRegistry {
         ifIssue(waitTimeoutDetector,
                 d -> d.analyze(),
                 WaitTimeoutDetector.WaitTimeoutReport::hasIssues, out);
+        ifIssue(lockContentionDetector,
+                d -> d.analyze(),
+                LockContentionDetector.LockContentionReport::hasIssues, out);
+        ifIssue(synchronizedNonFinalDetector,
+                d -> d.analyze(),
+                SynchronizedNonFinalDetector.SynchronizedNonFinalReport::hasIssues, out);
+        ifIssue(missedSignalDetector,
+                d -> d.analyze(),
+                MissedSignalDetector.MissedSignalReport::hasIssues, out);
+        ifIssue(lazyInitRaceDetector,
+                d -> d.analyze(),
+                LazyInitRaceDetector.LazyInitRaceReport::hasIssues, out);
         ifIssue(phaserDetector,
                 d -> d.analyze(),
                 PhaserDetector.PhaserReport::hasIssues, out);

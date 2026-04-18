@@ -316,6 +316,34 @@ public @interface AsyncTest {
      */
     boolean detectWaitTimeout() default true;
 
+    /**
+     * Enable lock contention detection.
+     * Detects monitors where a high proportion of acquire attempts are blocked,
+     * indicating a performance-degrading contention hotspot.
+     */
+    boolean detectLockContention() default true;
+
+    /**
+     * Enable synchronized-on-non-final detection.
+     * Detects the anti-pattern of synchronizing on a field that is not declared
+     * {@code final} and may be reassigned, breaking mutual exclusion guarantees.
+     */
+    boolean detectSynchronizedNonFinal() default true;
+
+    /**
+     * Enable missed-signal detection.
+     * Detects {@code notify()} and {@code notifyAll()} calls made when no thread
+     * is waiting on the condition, causing the signal to be silently lost.
+     */
+    boolean detectMissedSignals() default true;
+
+    /**
+     * Enable lazy-initialization race detection.
+     * Detects fields that are initialized by multiple concurrent threads because
+     * the null-guard is not properly synchronized or the field is not volatile.
+     */
+    boolean detectLazyInitRace() default true;
+
     // ============= Phase 2: Advanced Concurrency Utilities =============
 
     /**
