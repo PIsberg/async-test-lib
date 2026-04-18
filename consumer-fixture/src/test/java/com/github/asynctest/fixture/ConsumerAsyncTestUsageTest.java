@@ -1564,52 +1564,46 @@ class ConsumerAsyncTestUsageTest {
         // In a real high-contention scenario: assertTrue(report.hasIssues())
     }
 
+    // Shared final lock for testSynchronizedNonFinalDetection — must be a field so that
+    // all invocations see the same object identity, proving the lock was never reassigned.
+    private final Object fixtureLock = new Object();
+
     /**
      * Synchronized-on-non-final detection — detects locking on reassignable references.
-     * Demonstrates both the buggy and safe patterns.
+     * Demonstrates safe usage: the lock is a final field so the same object is seen on
+     * every invocation and the detector reports no issues.
      */
     @AsyncTest(threads = 4, detectSynchronizedNonFinal = true, timeoutMs = 3000)
     void testSynchronizedNonFinalDetection() {
-        Object finalLock = new Object();  // in real code, this would be a final field
         SynchronizedNonFinalDetector detector = AsyncTestContext.synchronizedNonFinalDetector();
 
-        // Safe usage: always the same object instance
-        detector.recordLockObject(finalLock, "resourceLock", ConsumerAsyncTestUsageTest.class);
-        synchronized (finalLock) {
+        // Safe usage: fixtureLock is a final field — same instance on every invocation.
+        detector.recordLockObject(fixtureLock, "fixtureLock", ConsumerAsyncTestUsageTest.class);
+        synchronized (fixtureLock) {
             // critical section
         }
 
         var report = detector.analyze();
-        // Should have no issues when the same object instance is always used:
         assertFalse(report.hasIssues(),
-                "Consistent lock object usage should not be flagged");
+                "Final field lock (same object every invocation) should not be flagged");
     }
 
     /**
-     * Missed-signal detection — detects notify() called when no thread is waiting.
-     * Demonstrates the signal-before-wait anti-pattern.
+     * Missed-signal detection — demonstrates the detector API with a single thread so
+     * that recordWait/recordWakeup/recordNotify ordering is deterministic.
      */
-    @AsyncTest(threads = 2, detectMissedSignals = true, timeoutMs = 3000)
-    void testMissedSignalDetection() throws InterruptedException {
-        Object monitor = new Object();
+    @AsyncTest(threads = 1, invocations = 1, detectMissedSignals = true, timeoutMs = 3000)
+    void testMissedSignalDetection() {
         MissedSignalDetector detector = AsyncTestContext.missedSignalDetector();
 
-        // Proper usage: wait, then notify
-        synchronized (monitor) {
-            detector.recordWait("workAvailable");
-            monitor.wait(10);  // short timeout so test doesn't block
-            detector.recordWakeup("workAvailable");
-        }
-
-        synchronized (monitor) {
-            detector.recordNotify("workAvailable");
-            monitor.notifyAll();
-        }
+        // Correct sequence: register a waiter before signalling — no missed signal.
+        detector.recordWait("workAvailable");
+        detector.recordNotify("workAvailable");  // waiter count is 1 → signal delivered
+        detector.recordWakeup("workAvailable");
 
         var report = detector.analyze();
-        // workAvailable had a waiter so this notify() should not be missed
         assertFalse(report.hasIssues(),
-                "notify() called after wait() started should not flag a missed signal");
+                "notify() with an active waiter should not be flagged as a missed signal");
     }
 
     /**
