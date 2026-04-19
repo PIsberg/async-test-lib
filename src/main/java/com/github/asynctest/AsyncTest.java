@@ -548,5 +548,25 @@ public @interface AsyncTest {
      * If false, only a warning is logged.
      */
     boolean failOnBenchmarkRegression() default false;
+
+    // ============= Phase 8: License Gating (Integration) =============
+
+    /** Keygen Account ID. Defaults to System property 'keygen.account.id' if empty. */
+    String keygenAccountId() default "";
+
+    /** Keygen API Key. Defaults to System property 'keygen.api.key' if empty. */
+    String keygenApiKey() default "";
+
+    /** Keygen Product Id. Defaults to System property 'keygen.product.id' if empty. */
+    String keygenProductId() default "";
+
+    /** LemonSqueezy store subdomain (e.g. 'acme' for acme.lemonsqueezy.com). */
+    String lemonSqueezyStore() default "";
+
+    /** License key for Keygen validation. Defaults to System property 'license.key' if empty. */
+    String licenseKey() default "";
+
+    /** When true, use mock mode for LicenseGate (no network calls). Defaults to System property 'license.mock.mode' if empty. */
+    boolean licenseMockMode() default false;
 }
 
