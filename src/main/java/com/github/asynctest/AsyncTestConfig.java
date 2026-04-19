@@ -110,6 +110,14 @@ public final class AsyncTestConfig {
     public final double benchmarkRegressionThreshold;
     public final boolean failOnBenchmarkRegression;
 
+    // ---- License Gating ----
+    public final String keygenAccountId;
+    public final String keygenApiKey;
+    public final String keygenProductId;
+    public final String lemonSqueezyStore;
+    public final String licenseKey;
+    public final boolean licenseMockMode;
+
     private AsyncTestConfig(Builder b) {
         threads                        = b.threads;
         invocations                    = b.invocations;
@@ -185,6 +193,12 @@ public final class AsyncTestConfig {
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
+        keygenAccountId                = b.keygenAccountId;
+        keygenApiKey                   = b.keygenApiKey;
+        keygenProductId                = b.keygenProductId;
+        lemonSqueezyStore              = b.lemonSqueezyStore;
+        licenseKey                     = b.licenseKey;
+        licenseMockMode                = b.licenseMockMode;
     }
 
     /** Builds a config from an {@link AsyncTest} annotation instance. */
@@ -267,6 +281,12 @@ public final class AsyncTestConfig {
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
+            .keygenAccountId(ann.keygenAccountId())
+            .keygenApiKey(ann.keygenApiKey())
+            .keygenProductId(ann.keygenProductId())
+            .lemonSqueezyStore(ann.lemonSqueezyStore())
+            .licenseKey(ann.licenseKey())
+            .licenseMockMode(ann.licenseMockMode())
             .excludes(ann.excludes())
             .build();
     }
@@ -350,6 +370,12 @@ public final class AsyncTestConfig {
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
+        private String keygenAccountId = "";
+        private String keygenApiKey = "";
+        private String keygenProductId = "";
+        private String lemonSqueezyStore = "";
+        private String licenseKey = "";
+        private boolean licenseMockMode = false;
         private Set<DetectorType> excludes = EnumSet.noneOf(DetectorType.class);
 
         public Builder threads(int v)                        { threads = v; return this; }
@@ -426,6 +452,12 @@ public final class AsyncTestConfig {
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
+        public Builder keygenAccountId(String v) { keygenAccountId = v; return this; }
+        public Builder keygenApiKey(String v) { keygenApiKey = v; return this; }
+        public Builder keygenProductId(String v) { keygenProductId = v; return this; }
+        public Builder lemonSqueezyStore(String v) { lemonSqueezyStore = v; return this; }
+        public Builder licenseKey(String v) { licenseKey = v; return this; }
+        public Builder licenseMockMode(boolean v) { licenseMockMode = v; return this; }
 
         public Builder excludes(DetectorType[] v) {
             if (v != null && v.length > 0) {

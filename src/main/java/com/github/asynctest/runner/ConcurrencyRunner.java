@@ -11,6 +11,8 @@ import com.github.asynctest.diagnostics.MemoryModelValidator;
 import com.github.asynctest.diagnostics.Phase1DetectorSet;
 import com.github.asynctest.diagnostics.VirtualThreadStressConfig;
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
+import se.deversity.common.license.LicenseConfig;
+import se.deversity.common.license.LicenseGate;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -40,6 +42,47 @@ public class ConcurrencyRunner {
 
     public static void execute(ReflectiveInvocationContext<Method> invocationContext,
                                AsyncTestConfig config) throws Throwable {
+
+        // License Gate Integration
+        String keygenAcc = config.keygenAccountId.isEmpty() ? System.getProperty("keygen.account.id", "dummy-account") : config.keygenAccountId;
+        String keygenKey = config.keygenApiKey.isEmpty()    ? System.getProperty("keygen.api.key")                     : config.keygenApiKey;
+        String keygenProd = config.keygenProductId.isEmpty() ? System.getProperty("keygen.product.id", "dummy-prod")    : config.keygenProductId;
+        String lsStore   = config.lemonSqueezyStore.isEmpty() ? System.getProperty("ls.store.subdomain")               : config.lemonSqueezyStore;
+
+        // Zero-Config CI: Auto-enable mock mode in CI if no real API key is found
+        boolean isCi = System.getenv("GITHUB_ACTIONS") != null || System.getenv("CI") != null;
+        boolean hasKey = keygenKey != null && !keygenKey.isBlank();
+        boolean mock = config.licenseMockMode || Boolean.getBoolean("license.mock.mode") || (isCi && !hasKey);
+
+        // Fallback for dummy key if not in mock mode
+        if (keygenKey == null) keygenKey = "dummy-key";
+
+        LicenseGate gate = LicenseGate.of(
+            LicenseConfig.builder()
+                .keygenAccountId(keygenAcc)
+                .keygenApiKey(keygenKey)
+                .keygenProductId(keygenProd)
+                .lemonSqueezyStoreSubdomain(lsStore)
+                .mockMode(mock)
+                .build()
+        );
+
+        if (mock && isCi && !hasKey) {
+            System.out.println("LICENSE: Zero-Config CI mode active (Auto-Mocked)");
+        }
+
+        // For PoC: checking with a placeholder email.
+        String licKey = config.licenseKey.isEmpty() ? System.getProperty("license.key") : config.licenseKey;
+        
+        se.deversity.common.license.LicenseResult result = gate.check("user@example.com", licKey);
+        
+        if (result instanceof se.deversity.common.license.LicenseResult.Denied denied) {
+            String msg = "LICENSE DENIED: " + denied.reason() + (denied.message() != null ? " - " + denied.message() : "");
+            System.err.println(msg);
+            throw new SecurityException(msg); // ENFORCE: Stop execution if denied
+        } else {
+            System.out.println("LICENSE GRANTED: " + ((se.deversity.common.license.LicenseResult.Allowed)result).reason());
+        }
 
         // Benchmarking setup
         BenchmarkRecorder benchmarkRecorder = null;

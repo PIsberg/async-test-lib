@@ -82,6 +82,11 @@
             <version>${jazzer.version}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>se.deversity.common</groupId>
+            <artifactId>common-license-lib</artifactId>
+            <version>0.2.1</version>
+        </dependency>
     </dependencies>
 
     <build>
