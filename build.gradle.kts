@@ -27,7 +27,7 @@ dependencies {
     api("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
     testImplementation("org.junit.platform:junit-platform-testkit:$junitVersion")
     testImplementation("com.code-intelligence:jazzer-api:$jazzerVersion")
-    implementation("se.deversity.common:common-license-lib:0.2.0-SNAPSHOT")
+    implementation("se.deversity.common:common-license-lib:0.2.1")
 }
 
 tasks.test {
