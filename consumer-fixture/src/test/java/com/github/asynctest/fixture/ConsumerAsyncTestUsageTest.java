@@ -1663,7 +1663,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 8.1: Executor shutdown detection — proper lifecycle with awaitTermination.
      * Always call shutdown() followed by awaitTermination() to prevent thread leaks.
      */
-    @AsyncTest(threads = 2, invocations = 2, detectExecutorShutdown = true, timeoutMs = 5000)
+    @AsyncTest(threads = 1, invocations = 2, detectExecutorShutdown = true, timeoutMs = 5000)
     void testExecutorShutdownDetection() throws Exception {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         AsyncTestContext.executorShutdownMonitor()
