@@ -5,14 +5,26 @@ plugins {
 group = "se.deversity.async-test-lib"
 version = "1.0.0"
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
 repositories {
     mavenLocal()
     mavenCentral()
 }
 
+val asyncTestVersion = "0.7.0"
+val junitPlatformVersion = "6.0.3"
+
 dependencies {
-    testImplementation("se.deversity.async-test-lib:async-test-lib:0.7.0")
-    testImplementation("org.junit.jupiter:junit-jupiter:6.0.3")
+    testImplementation("se.deversity.async-test-lib:async-test-lib:$asyncTestVersion")
+    testImplementation("org.junit.jupiter:junit-jupiter:$junitPlatformVersion")
+    // Gradle bundles its own junit-platform-launcher (JUnit 5.x). The library brings in
+    // junit-jupiter-engine 6.x, so we must pin the launcher to the same version to avoid
+    // "OutputDirectoryCreator not available" failures at test discovery time.
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:$junitPlatformVersion")
 }
 
 tasks.test {
