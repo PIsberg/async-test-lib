@@ -97,6 +97,7 @@ public class MyAsyncTests {
 | `detectDeadlocks` | boolean | true | Detect circular lock dependencies |
 | `detectVisibility` | boolean | false | Detect missing volatile keywords |
 | `detectLivelocks` | boolean | false | Detect thread spinning and starvation |
+| `detectUncommittedChanges` | boolean | true | Detect untracked or uncommitted Git files |
 
 ### Phase 2 Detectors (Enabled by default if detectAll=true)
 

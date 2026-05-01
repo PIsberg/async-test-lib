@@ -1626,4 +1626,14 @@ class ConsumerAsyncTestUsageTest {
         assertFalse(report.hasIssues(),
                 "Single initialization with volatile field should not be flagged");
     }
+    /**
+     * Phase 1: Uncommitted changes detection.
+     * Flagging untracked or uncommitted files in the repository.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectUncommittedChanges = true)
+    void testUncommittedChangesDetection() {
+        // This detector runs automatically after the test method completes.
+        // It reports a LOW severity issue if the Git repo is dirty.
+        assertNotNull(AsyncTestContext.get());
+    }
 }

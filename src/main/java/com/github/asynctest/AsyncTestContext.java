@@ -96,6 +96,12 @@ public final class AsyncTestContext {
     final StreamClosingDetector               streamClosingDetector;
     final CacheConcurrencyDetector            cacheConcurrencyDetector;
     final CompletableFutureChainDetector      completableFutureChainDetector;
+    final ExecutorShutdownDetector            executorShutdownDetector;
+    final MutableMapKeyDetector               mutableMapKeyDetector;
+    final NestedMonitorLockoutDetector        nestedMonitorLockoutDetector;
+    final LockDowngradeDetector               lockDowngradeDetector;
+    final InheritableThreadLocalMisuseDetector inheritableThreadLocalMisuseDetector;
+    final UncommittedChangesDetector           uncommittedChangesDetector;
 
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
@@ -159,6 +165,12 @@ public final class AsyncTestContext {
         streamClosingDetector                  = registry.streamClosingDetector;
         cacheConcurrencyDetector               = registry.cacheConcurrencyDetector;
         completableFutureChainDetector         = registry.completableFutureChainDetector;
+        executorShutdownDetector               = registry.executorShutdownDetector;
+        mutableMapKeyDetector                  = registry.mutableMapKeyDetector;
+        nestedMonitorLockoutDetector           = registry.nestedMonitorLockoutDetector;
+        lockDowngradeDetector                  = registry.lockDowngradeDetector;
+        inheritableThreadLocalMisuseDetector   = registry.inheritableThreadLocalMisuseDetector;
+        uncommittedChangesDetector             = registry.uncommittedChangesDetector;
     }
 
     // ---- Lifecycle (called by ConcurrencyRunner) ----
@@ -666,6 +678,56 @@ public final class AsyncTestContext {
      */
     public static CompletableFutureChainDetector cfChainDetector() {
         return require("detectCompletableFutureChainIssues", c -> c.completableFutureChainDetector);
+    }
+
+    // ---- Phase 8: Lifecycle & Structural Correctness ----
+
+    /**
+     * Returns the {@link ExecutorShutdownDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectExecutorShutdown = false}
+     */
+    public static ExecutorShutdownDetector executorShutdownMonitor() {
+        return require("detectExecutorShutdown", c -> c.executorShutdownDetector);
+    }
+
+    /**
+     * Returns the {@link MutableMapKeyDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectMutableMapKeys = false}
+     */
+    public static MutableMapKeyDetector mutableMapKeyMonitor() {
+        return require("detectMutableMapKeys", c -> c.mutableMapKeyDetector);
+    }
+
+    /**
+     * Returns the {@link NestedMonitorLockoutDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectNestedMonitorLockout = false}
+     */
+    public static NestedMonitorLockoutDetector nestedMonitorLockoutMonitor() {
+        return require("detectNestedMonitorLockout", c -> c.nestedMonitorLockoutDetector);
+    }
+
+    /**
+     * Returns the {@link LockDowngradeDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLockDowngrade = false}
+     */
+    public static LockDowngradeDetector lockDowngradeMonitor() {
+        return require("detectLockDowngrade", c -> c.lockDowngradeDetector);
+    }
+
+    /**
+     * Returns the {@link InheritableThreadLocalMisuseDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectInheritableThreadLocalMisuse = false}
+     */
+    public static InheritableThreadLocalMisuseDetector inheritableThreadLocalMisuseMonitor() {
+        return require("detectInheritableThreadLocalMisuse", c -> c.inheritableThreadLocalMisuseDetector);
+    }
+
+    /**
+     * Returns the {@link UncommittedChangesDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectUncommittedChanges = false}
+     */
+    public static UncommittedChangesDetector uncommittedChangesMonitor() {
+        return require("detectUncommittedChanges", c -> c.uncommittedChangesDetector);
     }
 
     // ---- Helper ----

@@ -336,6 +336,7 @@ void stressWithVirtualThreads() {
 | `detectScheduledExecutorIssues` | boolean | true | Detect ScheduledExecutor missing shutdown |
 | `detectForkJoinPoolIssues` | boolean | true | Detect ForkJoinPool fork without join |
 | `detectThreadFactoryIssues` | boolean | true | Detect ThreadFactory missing exception handler |
+| `detectUncommittedChanges` | boolean | true | Detect untracked or uncommitted Git files |
 
 ### Phase 4: Infrastructure & Resource Management (v1.3.0)
 | `detectThreadLeaks` | boolean | true | Detect threads created but never terminated |

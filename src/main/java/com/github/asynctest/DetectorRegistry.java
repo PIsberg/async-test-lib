@@ -96,6 +96,14 @@ final class DetectorRegistry {
     final CacheConcurrencyDetector            cacheConcurrencyDetector;
     final CompletableFutureChainDetector      completableFutureChainDetector;
 
+    // ---- Phase 8: Lifecycle & Structural Correctness ----
+    final ExecutorShutdownDetector            executorShutdownDetector;
+    final MutableMapKeyDetector               mutableMapKeyDetector;
+    final NestedMonitorLockoutDetector        nestedMonitorLockoutDetector;
+    final LockDowngradeDetector               lockDowngradeDetector;
+    final InheritableThreadLocalMisuseDetector inheritableThreadLocalMisuseDetector;
+    final UncommittedChangesDetector          uncommittedChangesDetector;
+
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
      * Detectors whose flag is {@code false} are set to {@code null} and incur
@@ -176,6 +184,20 @@ final class DetectorRegistry {
                 ? new CacheConcurrencyDetector() : null;
         completableFutureChainDetector = cfg.detectCompletableFutureChainIssues
                 ? new CompletableFutureChainDetector() : null;
+
+        // ---- Phase 8: Lifecycle & Structural Correctness ----
+        executorShutdownDetector = cfg.detectExecutorShutdown
+                ? new ExecutorShutdownDetector() : null;
+        mutableMapKeyDetector = cfg.detectMutableMapKeys
+                ? new MutableMapKeyDetector() : null;
+        nestedMonitorLockoutDetector = cfg.detectNestedMonitorLockout
+                ? new NestedMonitorLockoutDetector() : null;
+        lockDowngradeDetector = cfg.detectLockDowngrade
+                ? new LockDowngradeDetector() : null;
+        inheritableThreadLocalMisuseDetector = cfg.detectInheritableThreadLocalMisuse
+                ? new InheritableThreadLocalMisuseDetector() : null;
+        uncommittedChangesDetector = cfg.detectUncommittedChanges
+                ? new UncommittedChangesDetector() : null;
     }
 
     /**
@@ -378,6 +400,26 @@ final class DetectorRegistry {
         ifIssue(completableFutureChainDetector,
                 d -> d.analyze(),
                 CompletableFutureChainDetector.CompletableFutureChainReport::hasIssues, out);
+
+        // ---- Phase 8: Lifecycle & Structural Correctness ----
+        ifIssue(executorShutdownDetector,
+                d -> d.analyze(),
+                ExecutorShutdownDetector.ExecutorShutdownReport::hasIssues, out);
+        ifIssue(mutableMapKeyDetector,
+                d -> d.analyze(),
+                MutableMapKeyDetector.MutableMapKeyReport::hasIssues, out);
+        ifIssue(nestedMonitorLockoutDetector,
+                d -> d.analyze(),
+                NestedMonitorLockoutDetector.NestedMonitorLockoutReport::hasIssues, out);
+        ifIssue(lockDowngradeDetector,
+                d -> d.analyze(),
+                LockDowngradeDetector.LockDowngradeReport::hasIssues, out);
+        ifIssue(inheritableThreadLocalMisuseDetector,
+                d -> d.analyze(),
+                InheritableThreadLocalMisuseDetector.InheritableThreadLocalReport::hasIssues, out);
+        ifIssue(uncommittedChangesDetector,
+                d -> d.analyze(),
+                UncommittedChangesDetector.UncommittedChangesReport::hasIssues, out);
 
         return out;
     }

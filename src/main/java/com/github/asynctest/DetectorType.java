@@ -88,5 +88,15 @@ public enum DetectorType {
     HTTP_CLIENT,
     STREAM_CLOSING,
     CACHE_CONCURRENCY,
-    COMPLETABLEFUTURE_CHAIN
+    COMPLETABLEFUTURE_CHAIN,
+
+    // Phase 8: Lifecycle & Structural Correctness
+    EXECUTOR_SHUTDOWN,
+    MUTABLE_MAP_KEY,
+    NESTED_MONITOR_LOCKOUT,
+    LOCK_DOWNGRADE,
+    INHERITABLE_THREAD_LOCAL,
+
+    // Phase 9: Repository & Environment State
+    UNCOMMITTED_CHANGES
 }

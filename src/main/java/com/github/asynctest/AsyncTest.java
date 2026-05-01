@@ -549,7 +549,60 @@ public @interface AsyncTest {
      */
     boolean failOnBenchmarkRegression() default false;
 
-    // ============= Phase 8: License Gating (Integration) =============
+    // ============= Phase 8: Lifecycle & Structural Correctness =============
+
+    /**
+     * Enable ExecutorService lifecycle detection.
+     * Detects executors that have tasks submitted but are never shut down, or are shut down
+     * without a subsequent {@code awaitTermination()} call.
+     * @since 1.3.0
+     */
+    boolean detectExecutorShutdown() default true;
+
+    /**
+     * Enable mutable map key detection.
+     * Detects objects used as {@code HashMap}/{@code HashSet} keys that are mutated
+     * (including hashCode-changing mutations) after insertion.
+     * @since 1.3.0
+     */
+    boolean detectMutableMapKeys() default true;
+
+    /**
+     * Enable nested monitor lockout detection.
+     * Detects threads that attempt blocking operations ({@code wait()}, {@code Future.get()},
+     * {@code Lock.lock()}) while holding a monitor on a different object.
+     * @since 1.3.0
+     */
+    boolean detectNestedMonitorLockout() default true;
+
+    /**
+     * Enable lock downgrade/upgrade detection.
+     * Detects illegal read-to-write upgrade attempts on {@link java.util.concurrent.locks.ReentrantReadWriteLock},
+     * which deadlock immediately because the upgrade is not supported.
+     * @since 1.3.0
+     */
+    boolean detectLockDowngrade() default true;
+
+    /**
+     * Enable {@link InheritableThreadLocal} misuse detection.
+     * Detects {@code InheritableThreadLocal} values read or written in thread-pool threads,
+     * where inheritance happens at thread-creation time rather than task-submission time,
+     * causing stale or cross-task context contamination.
+     * @since 1.3.0
+     */
+    boolean detectInheritableThreadLocalMisuse() default true;
+
+    // ============= Phase 9: Repository & Environment State =============
+
+    /**
+     * Enable uncommitted changes detection.
+     * Detects untracked or uncommitted files in the Git repository when the test completes.
+     * Helps ensure tests are run against a clean and reproducible repository state.
+     * @since 1.4.0
+     */
+    boolean detectUncommittedChanges() default true;
+
+    // ============= License Gating (Integration) =============
 
     /** Keygen Account ID. Defaults to System property 'keygen.account.id' if empty. */
     String keygenAccountId() default "";

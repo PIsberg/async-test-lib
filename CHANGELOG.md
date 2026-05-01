@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Phase 1: Core Concurrency Detectors
+- **Uncommitted Changes** (`detectUncommittedChanges`) — detects untracked or uncommitted
+  Git files that may affect test reproducibility; reports a low-severity issue if the
+  repository is not in a clean state (requires `git` to be available in the PATH)
+
 #### Phase 2: Additional Concurrency Detectors
 - **Lock Contention** (`detectLockContention`) — detects monitors where more than 20% of
   acquire attempts are blocked (or ≥5 contention events), flagging hot-lock hotspots that
