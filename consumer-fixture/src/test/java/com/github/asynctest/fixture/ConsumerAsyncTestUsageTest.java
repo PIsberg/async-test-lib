@@ -1758,7 +1758,7 @@ class ConsumerAsyncTestUsageTest {
 
         InheritableThreadLocal<String> itl = new InheritableThreadLocal<>();
         itl.set("request-context");
-        detector.recordSet(itl, "REQUEST_CONTEXT");
+        detector.recordSet(itl, "REQUEST_CONTEXT", "request-context");
 
         // Not registering as a pool thread — no violation expected
         detector.recordGet(itl, "REQUEST_CONTEXT");
