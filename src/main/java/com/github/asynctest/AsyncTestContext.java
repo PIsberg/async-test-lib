@@ -103,6 +103,18 @@ public final class AsyncTestContext {
     final InheritableThreadLocalMisuseDetector inheritableThreadLocalMisuseDetector;
     final UncommittedChangesDetector           uncommittedChangesDetector;
 
+    // ---- Phase 10: API Traps & Subtle Concurrency Bugs ----
+    final ThreadLocalContaminationDetector         threadLocalContaminationDetector;
+    final AtomicNonAtomicUpdateDetector            atomicNonAtomicUpdateDetector;
+    final SynchronizedCollectionIterationDetector  synchronizedCollectionIterationDetector;
+    final SharedFormatterDetector                  sharedFormatterDetector;
+    final ConcurrentMapComputeRecursionDetector    concurrentMapComputeRecursionDetector;
+    final SynchronizedOnLiteralDetector            synchronizedOnLiteralDetector;
+    final PublicLockExposureDetector               publicLockExposureDetector;
+    final ForkJoinTaskBlockingDetector             forkJoinTaskBlockingDetector;
+    final OptimisticReadValidationDetector         optimisticReadValidationDetector;
+    final CompletableFutureCommonPoolBlockingDetector cfCommonPoolBlockingDetector;
+
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
         // Mirror registry references so package-private field access still works
@@ -171,6 +183,16 @@ public final class AsyncTestContext {
         lockDowngradeDetector                  = registry.lockDowngradeDetector;
         inheritableThreadLocalMisuseDetector   = registry.inheritableThreadLocalMisuseDetector;
         uncommittedChangesDetector             = registry.uncommittedChangesDetector;
+        threadLocalContaminationDetector       = registry.threadLocalContaminationDetector;
+        atomicNonAtomicUpdateDetector          = registry.atomicNonAtomicUpdateDetector;
+        synchronizedCollectionIterationDetector = registry.synchronizedCollectionIterationDetector;
+        sharedFormatterDetector                = registry.sharedFormatterDetector;
+        concurrentMapComputeRecursionDetector  = registry.concurrentMapComputeRecursionDetector;
+        synchronizedOnLiteralDetector          = registry.synchronizedOnLiteralDetector;
+        publicLockExposureDetector             = registry.publicLockExposureDetector;
+        forkJoinTaskBlockingDetector           = registry.forkJoinTaskBlockingDetector;
+        optimisticReadValidationDetector       = registry.optimisticReadValidationDetector;
+        cfCommonPoolBlockingDetector           = registry.cfCommonPoolBlockingDetector;
     }
 
     // ---- Lifecycle (called by ConcurrencyRunner) ----
@@ -728,6 +750,86 @@ public final class AsyncTestContext {
      */
     public static UncommittedChangesDetector uncommittedChangesMonitor() {
         return require("detectUncommittedChanges", c -> c.uncommittedChangesDetector);
+    }
+
+    /**
+     * Returns the {@link ThreadLocalContaminationDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectThreadLocalContamination = false}
+     */
+    public static ThreadLocalContaminationDetector threadLocalContaminationMonitor() {
+        return require("detectThreadLocalContamination", c -> c.threadLocalContaminationDetector);
+    }
+
+    /**
+     * Returns the {@link AtomicNonAtomicUpdateDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectAtomicNonAtomicUpdates = false}
+     */
+    public static AtomicNonAtomicUpdateDetector atomicNonAtomicUpdateMonitor() {
+        return require("detectAtomicNonAtomicUpdates", c -> c.atomicNonAtomicUpdateDetector);
+    }
+
+    /**
+     * Returns the {@link SynchronizedCollectionIterationDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSynchronizedCollectionIteration = false}
+     */
+    public static SynchronizedCollectionIterationDetector synchronizedCollectionIterationMonitor() {
+        return require("detectSynchronizedCollectionIteration", c -> c.synchronizedCollectionIterationDetector);
+    }
+
+    /**
+     * Returns the {@link SharedFormatterDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedFormatter = false}
+     */
+    public static SharedFormatterDetector sharedFormatterMonitor() {
+        return require("detectSharedFormatter", c -> c.sharedFormatterDetector);
+    }
+
+    /**
+     * Returns the {@link ConcurrentMapComputeRecursionDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectConcurrentMapComputeRecursion = false}
+     */
+    public static ConcurrentMapComputeRecursionDetector concurrentMapComputeRecursionMonitor() {
+        return require("detectConcurrentMapComputeRecursion", c -> c.concurrentMapComputeRecursionDetector);
+    }
+
+    /**
+     * Returns the {@link SynchronizedOnLiteralDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSynchronizedOnLiteral = false}
+     */
+    public static SynchronizedOnLiteralDetector synchronizedOnLiteralMonitor() {
+        return require("detectSynchronizedOnLiteral", c -> c.synchronizedOnLiteralDetector);
+    }
+
+    /**
+     * Returns the {@link PublicLockExposureDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectPublicLockExposure = false}
+     */
+    public static PublicLockExposureDetector publicLockExposureMonitor() {
+        return require("detectPublicLockExposure", c -> c.publicLockExposureDetector);
+    }
+
+    /**
+     * Returns the {@link ForkJoinTaskBlockingDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectForkJoinTaskBlocking = false}
+     */
+    public static ForkJoinTaskBlockingDetector forkJoinTaskBlockingMonitor() {
+        return require("detectForkJoinTaskBlocking", c -> c.forkJoinTaskBlockingDetector);
+    }
+
+    /**
+     * Returns the {@link OptimisticReadValidationDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectOptimisticReadValidation = false}
+     */
+    public static OptimisticReadValidationDetector optimisticReadValidationMonitor() {
+        return require("detectOptimisticReadValidation", c -> c.optimisticReadValidationDetector);
+    }
+
+    /**
+     * Returns the {@link CompletableFutureCommonPoolBlockingDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCFCommonPoolBlocking = false}
+     */
+    public static CompletableFutureCommonPoolBlockingDetector cfCommonPoolBlockingMonitor() {
+        return require("detectCFCommonPoolBlocking", c -> c.cfCommonPoolBlockingDetector);
     }
 
     // ---- Helper ----

@@ -113,6 +113,18 @@ public final class AsyncTestConfig {
     public final boolean detectInheritableThreadLocalMisuse;
     public final boolean detectUncommittedChanges;
 
+    // ---- Phase 10: API Traps & Subtle Concurrency Bugs ----
+    public final boolean detectThreadLocalContamination;
+    public final boolean detectAtomicNonAtomicUpdates;
+    public final boolean detectSynchronizedCollectionIteration;
+    public final boolean detectSharedFormatter;
+    public final boolean detectConcurrentMapComputeRecursion;
+    public final boolean detectSynchronizedOnLiteral;
+    public final boolean detectPublicLockExposure;
+    public final boolean detectForkJoinTaskBlocking;
+    public final boolean detectOptimisticReadValidation;
+    public final boolean detectCFCommonPoolBlocking;
+
     // ---- Benchmarking ----
     public final boolean enableBenchmarking;
     public final double benchmarkRegressionThreshold;
@@ -204,6 +216,16 @@ public final class AsyncTestConfig {
         detectLockDowngrade              = b.detectLockDowngrade;
         detectInheritableThreadLocalMisuse = b.detectInheritableThreadLocalMisuse;
         detectUncommittedChanges           = b.detectUncommittedChanges;
+        detectThreadLocalContamination     = b.detectThreadLocalContamination;
+        detectAtomicNonAtomicUpdates       = b.detectAtomicNonAtomicUpdates;
+        detectSynchronizedCollectionIteration = b.detectSynchronizedCollectionIteration;
+        detectSharedFormatter              = b.detectSharedFormatter;
+        detectConcurrentMapComputeRecursion = b.detectConcurrentMapComputeRecursion;
+        detectSynchronizedOnLiteral        = b.detectSynchronizedOnLiteral;
+        detectPublicLockExposure           = b.detectPublicLockExposure;
+        detectForkJoinTaskBlocking         = b.detectForkJoinTaskBlocking;
+        detectOptimisticReadValidation     = b.detectOptimisticReadValidation;
+        detectCFCommonPoolBlocking         = b.detectCFCommonPoolBlocking;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -298,6 +320,16 @@ public final class AsyncTestConfig {
             .detectLockDowngrade(ann.detectLockDowngrade())
             .detectInheritableThreadLocalMisuse(ann.detectInheritableThreadLocalMisuse())
             .detectUncommittedChanges(ann.detectUncommittedChanges())
+            .detectThreadLocalContamination(ann.detectThreadLocalContamination())
+            .detectAtomicNonAtomicUpdates(ann.detectAtomicNonAtomicUpdates())
+            .detectSynchronizedCollectionIteration(ann.detectSynchronizedCollectionIteration())
+            .detectSharedFormatter(ann.detectSharedFormatter())
+            .detectConcurrentMapComputeRecursion(ann.detectConcurrentMapComputeRecursion())
+            .detectSynchronizedOnLiteral(ann.detectSynchronizedOnLiteral())
+            .detectPublicLockExposure(ann.detectPublicLockExposure())
+            .detectForkJoinTaskBlocking(ann.detectForkJoinTaskBlocking())
+            .detectOptimisticReadValidation(ann.detectOptimisticReadValidation())
+            .detectCFCommonPoolBlocking(ann.detectCFCommonPoolBlocking())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -393,6 +425,16 @@ public final class AsyncTestConfig {
         private boolean detectLockDowngrade = false;
         private boolean detectInheritableThreadLocalMisuse = false;
         private boolean detectUncommittedChanges           = false;
+        private boolean detectThreadLocalContamination     = false;
+        private boolean detectAtomicNonAtomicUpdates       = false;
+        private boolean detectSynchronizedCollectionIteration = false;
+        private boolean detectSharedFormatter              = false;
+        private boolean detectConcurrentMapComputeRecursion = false;
+        private boolean detectSynchronizedOnLiteral        = false;
+        private boolean detectPublicLockExposure           = false;
+        private boolean detectForkJoinTaskBlocking         = false;
+        private boolean detectOptimisticReadValidation     = false;
+        private boolean detectCFCommonPoolBlocking         = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -481,6 +523,16 @@ public final class AsyncTestConfig {
         public Builder detectLockDowngrade(boolean v)                  { detectLockDowngrade = v; return this; }
         public Builder detectInheritableThreadLocalMisuse(boolean v)   { detectInheritableThreadLocalMisuse = v; return this; }
         public Builder detectUncommittedChanges(boolean v)             { detectUncommittedChanges = v; return this; }
+        public Builder detectThreadLocalContamination(boolean v)       { detectThreadLocalContamination = v; return this; }
+        public Builder detectAtomicNonAtomicUpdates(boolean v)         { detectAtomicNonAtomicUpdates = v; return this; }
+        public Builder detectSynchronizedCollectionIteration(boolean v){ detectSynchronizedCollectionIteration = v; return this; }
+        public Builder detectSharedFormatter(boolean v)                { detectSharedFormatter = v; return this; }
+        public Builder detectConcurrentMapComputeRecursion(boolean v)  { detectConcurrentMapComputeRecursion = v; return this; }
+        public Builder detectSynchronizedOnLiteral(boolean v)          { detectSynchronizedOnLiteral = v; return this; }
+        public Builder detectPublicLockExposure(boolean v)             { detectPublicLockExposure = v; return this; }
+        public Builder detectForkJoinTaskBlocking(boolean v)           { detectForkJoinTaskBlocking = v; return this; }
+        public Builder detectOptimisticReadValidation(boolean v)       { detectOptimisticReadValidation = v; return this; }
+        public Builder detectCFCommonPoolBlocking(boolean v)           { detectCFCommonPoolBlocking = v; return this; }
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
@@ -642,6 +694,26 @@ public final class AsyncTestConfig {
                     else detectInheritableThreadLocalMisuse = false;
                 if (!excludes.contains(DetectorType.UNCOMMITTED_CHANGES)) detectUncommittedChanges = true;
                     else detectUncommittedChanges = false;
+                if (!excludes.contains(DetectorType.THREAD_LOCAL_CONTAMINATION)) detectThreadLocalContamination = true;
+                    else detectThreadLocalContamination = false;
+                if (!excludes.contains(DetectorType.ATOMIC_NON_ATOMIC_UPDATE)) detectAtomicNonAtomicUpdates = true;
+                    else detectAtomicNonAtomicUpdates = false;
+                if (!excludes.contains(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION)) detectSynchronizedCollectionIteration = true;
+                    else detectSynchronizedCollectionIteration = false;
+                if (!excludes.contains(DetectorType.SHARED_FORMATTER)) detectSharedFormatter = true;
+                    else detectSharedFormatter = false;
+                if (!excludes.contains(DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION)) detectConcurrentMapComputeRecursion = true;
+                    else detectConcurrentMapComputeRecursion = false;
+                if (!excludes.contains(DetectorType.SYNCHRONIZED_ON_LITERAL)) detectSynchronizedOnLiteral = true;
+                    else detectSynchronizedOnLiteral = false;
+                if (!excludes.contains(DetectorType.PUBLIC_LOCK_EXPOSURE)) detectPublicLockExposure = true;
+                    else detectPublicLockExposure = false;
+                if (!excludes.contains(DetectorType.FORK_JOIN_TASK_BLOCKING)) detectForkJoinTaskBlocking = true;
+                    else detectForkJoinTaskBlocking = false;
+                if (!excludes.contains(DetectorType.OPTIMISTIC_READ_VALIDATION)) detectOptimisticReadValidation = true;
+                    else detectOptimisticReadValidation = false;
+                if (!excludes.contains(DetectorType.CF_COMMON_POOL_BLOCKING)) detectCFCommonPoolBlocking = true;
+                    else detectCFCommonPoolBlocking = false;
             } else {
                 // If detectAll is false, we still respect explicit enables,
                 // but we also apply excludes for consistency.
