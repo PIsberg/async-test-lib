@@ -96,6 +96,26 @@ final class DetectorRegistry {
     final CacheConcurrencyDetector            cacheConcurrencyDetector;
     final CompletableFutureChainDetector      completableFutureChainDetector;
 
+    // ---- Phase 8: Lifecycle & Structural Correctness ----
+    final ExecutorShutdownDetector            executorShutdownDetector;
+    final MutableMapKeyDetector               mutableMapKeyDetector;
+    final NestedMonitorLockoutDetector        nestedMonitorLockoutDetector;
+    final LockDowngradeDetector               lockDowngradeDetector;
+    final InheritableThreadLocalMisuseDetector inheritableThreadLocalMisuseDetector;
+    final UncommittedChangesDetector          uncommittedChangesDetector;
+
+    // ---- Phase 10: API Traps & Subtle Concurrency Bugs ----
+    final ThreadLocalContaminationDetector         threadLocalContaminationDetector;
+    final AtomicNonAtomicUpdateDetector            atomicNonAtomicUpdateDetector;
+    final SynchronizedCollectionIterationDetector  synchronizedCollectionIterationDetector;
+    final SharedFormatterDetector                  sharedFormatterDetector;
+    final ConcurrentMapComputeRecursionDetector    concurrentMapComputeRecursionDetector;
+    final SynchronizedOnLiteralDetector            synchronizedOnLiteralDetector;
+    final PublicLockExposureDetector               publicLockExposureDetector;
+    final ForkJoinTaskBlockingDetector             forkJoinTaskBlockingDetector;
+    final OptimisticReadValidationDetector         optimisticReadValidationDetector;
+    final CompletableFutureCommonPoolBlockingDetector cfCommonPoolBlockingDetector;
+
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
      * Detectors whose flag is {@code false} are set to {@code null} and incur
@@ -176,6 +196,42 @@ final class DetectorRegistry {
                 ? new CacheConcurrencyDetector() : null;
         completableFutureChainDetector = cfg.detectCompletableFutureChainIssues
                 ? new CompletableFutureChainDetector() : null;
+
+        // ---- Phase 8: Lifecycle & Structural Correctness ----
+        executorShutdownDetector = cfg.detectExecutorShutdown
+                ? new ExecutorShutdownDetector() : null;
+        mutableMapKeyDetector = cfg.detectMutableMapKeys
+                ? new MutableMapKeyDetector() : null;
+        nestedMonitorLockoutDetector = cfg.detectNestedMonitorLockout
+                ? new NestedMonitorLockoutDetector() : null;
+        lockDowngradeDetector = cfg.detectLockDowngrade
+                ? new LockDowngradeDetector() : null;
+        inheritableThreadLocalMisuseDetector = cfg.detectInheritableThreadLocalMisuse
+                ? new InheritableThreadLocalMisuseDetector() : null;
+        uncommittedChangesDetector = cfg.detectUncommittedChanges
+                ? new UncommittedChangesDetector() : null;
+
+        // ---- Phase 10: API Traps & Subtle Concurrency Bugs ----
+        threadLocalContaminationDetector = cfg.detectThreadLocalContamination
+                ? new ThreadLocalContaminationDetector() : null;
+        atomicNonAtomicUpdateDetector = cfg.detectAtomicNonAtomicUpdates
+                ? new AtomicNonAtomicUpdateDetector() : null;
+        synchronizedCollectionIterationDetector = cfg.detectSynchronizedCollectionIteration
+                ? new SynchronizedCollectionIterationDetector() : null;
+        sharedFormatterDetector = cfg.detectSharedFormatter
+                ? new SharedFormatterDetector() : null;
+        concurrentMapComputeRecursionDetector = cfg.detectConcurrentMapComputeRecursion
+                ? new ConcurrentMapComputeRecursionDetector() : null;
+        synchronizedOnLiteralDetector = cfg.detectSynchronizedOnLiteral
+                ? new SynchronizedOnLiteralDetector() : null;
+        publicLockExposureDetector = cfg.detectPublicLockExposure
+                ? new PublicLockExposureDetector() : null;
+        forkJoinTaskBlockingDetector = cfg.detectForkJoinTaskBlocking
+                ? new ForkJoinTaskBlockingDetector() : null;
+        optimisticReadValidationDetector = cfg.detectOptimisticReadValidation
+                ? new OptimisticReadValidationDetector() : null;
+        cfCommonPoolBlockingDetector = cfg.detectCFCommonPoolBlocking
+                ? new CompletableFutureCommonPoolBlockingDetector() : null;
     }
 
     /**
@@ -378,6 +434,58 @@ final class DetectorRegistry {
         ifIssue(completableFutureChainDetector,
                 d -> d.analyze(),
                 CompletableFutureChainDetector.CompletableFutureChainReport::hasIssues, out);
+
+        // ---- Phase 8: Lifecycle & Structural Correctness ----
+        ifIssue(executorShutdownDetector,
+                d -> d.analyze(),
+                ExecutorShutdownDetector.ExecutorShutdownReport::hasIssues, out);
+        ifIssue(mutableMapKeyDetector,
+                d -> d.analyze(),
+                MutableMapKeyDetector.MutableMapKeyReport::hasIssues, out);
+        ifIssue(nestedMonitorLockoutDetector,
+                d -> d.analyze(),
+                NestedMonitorLockoutDetector.NestedMonitorLockoutReport::hasIssues, out);
+        ifIssue(lockDowngradeDetector,
+                d -> d.analyze(),
+                LockDowngradeDetector.LockDowngradeReport::hasIssues, out);
+        ifIssue(inheritableThreadLocalMisuseDetector,
+                d -> d.analyze(),
+                InheritableThreadLocalMisuseDetector.InheritableThreadLocalReport::hasIssues, out);
+        ifIssue(uncommittedChangesDetector,
+                d -> d.analyze(),
+                UncommittedChangesDetector.UncommittedChangesReport::hasIssues, out);
+
+        // ---- Phase 10: API Traps & Subtle Concurrency Bugs ----
+        ifIssue(threadLocalContaminationDetector,
+                d -> d.analyze(),
+                ThreadLocalContaminationDetector.ThreadLocalContaminationReport::hasIssues, out);
+        ifIssue(atomicNonAtomicUpdateDetector,
+                d -> d.analyze(),
+                AtomicNonAtomicUpdateDetector.AtomicNonAtomicUpdateReport::hasIssues, out);
+        ifIssue(synchronizedCollectionIterationDetector,
+                d -> d.analyze(),
+                SynchronizedCollectionIterationDetector.SynchronizedCollectionIterationReport::hasIssues, out);
+        ifIssue(sharedFormatterDetector,
+                d -> d.analyze(),
+                SharedFormatterDetector.SharedFormatterReport::hasIssues, out);
+        ifIssue(concurrentMapComputeRecursionDetector,
+                d -> d.analyze(),
+                ConcurrentMapComputeRecursionDetector.ConcurrentMapComputeRecursionReport::hasIssues, out);
+        ifIssue(synchronizedOnLiteralDetector,
+                d -> d.analyze(),
+                SynchronizedOnLiteralDetector.SynchronizedOnLiteralReport::hasIssues, out);
+        ifIssue(publicLockExposureDetector,
+                d -> d.analyze(),
+                PublicLockExposureDetector.PublicLockExposureReport::hasIssues, out);
+        ifIssue(forkJoinTaskBlockingDetector,
+                d -> d.analyze(),
+                ForkJoinTaskBlockingDetector.ForkJoinTaskBlockingReport::hasIssues, out);
+        ifIssue(optimisticReadValidationDetector,
+                d -> d.analyze(),
+                OptimisticReadValidationDetector.OptimisticReadValidationReport::hasIssues, out);
+        ifIssue(cfCommonPoolBlockingDetector,
+                d -> d.analyze(),
+                CompletableFutureCommonPoolBlockingDetector.CompletableFutureCommonPoolBlockingReport::hasIssues, out);
 
         return out;
     }

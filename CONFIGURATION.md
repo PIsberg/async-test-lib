@@ -34,7 +34,17 @@ void myEnterpriseTest() {
 }
 ```
 
-## 3. Enforcement
+```
+ 
+ ## 3. Repository Health: Uncommitted Changes Detection
+ 
+ The library can detect if your Git repository has untracked or uncommitted changes. This ensures that your concurrent tests are run against a clean baseline, which is critical for reproducibility.
+ 
+ - **Annotation**: `@AsyncTest(detectUncommittedChanges = true)` (Enabled by default if `detectAll = true`)
+ - **Behavior**: If changes are detected, a `LOW` severity issue will be reported in the diagnostic output.
+ - **Requirement**: `git` must be available in the system PATH.
+ 
+ ## 4. Enforcement
 The library uses a **Fail-Closed** policy by default. If the license check fails (Invalid key, expired, or network error), the runner will throw a `SecurityException` and the test will fail.
 
 To allow testing during network outages, you can set `-Dlicense.allow.on.network.error=true` (if supported by your `LicenseGate` version).

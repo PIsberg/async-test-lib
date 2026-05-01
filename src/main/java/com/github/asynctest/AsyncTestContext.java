@@ -96,6 +96,24 @@ public final class AsyncTestContext {
     final StreamClosingDetector               streamClosingDetector;
     final CacheConcurrencyDetector            cacheConcurrencyDetector;
     final CompletableFutureChainDetector      completableFutureChainDetector;
+    final ExecutorShutdownDetector            executorShutdownDetector;
+    final MutableMapKeyDetector               mutableMapKeyDetector;
+    final NestedMonitorLockoutDetector        nestedMonitorLockoutDetector;
+    final LockDowngradeDetector               lockDowngradeDetector;
+    final InheritableThreadLocalMisuseDetector inheritableThreadLocalMisuseDetector;
+    final UncommittedChangesDetector           uncommittedChangesDetector;
+
+    // ---- Phase 10: API Traps & Subtle Concurrency Bugs ----
+    final ThreadLocalContaminationDetector         threadLocalContaminationDetector;
+    final AtomicNonAtomicUpdateDetector            atomicNonAtomicUpdateDetector;
+    final SynchronizedCollectionIterationDetector  synchronizedCollectionIterationDetector;
+    final SharedFormatterDetector                  sharedFormatterDetector;
+    final ConcurrentMapComputeRecursionDetector    concurrentMapComputeRecursionDetector;
+    final SynchronizedOnLiteralDetector            synchronizedOnLiteralDetector;
+    final PublicLockExposureDetector               publicLockExposureDetector;
+    final ForkJoinTaskBlockingDetector             forkJoinTaskBlockingDetector;
+    final OptimisticReadValidationDetector         optimisticReadValidationDetector;
+    final CompletableFutureCommonPoolBlockingDetector cfCommonPoolBlockingDetector;
 
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
@@ -159,6 +177,22 @@ public final class AsyncTestContext {
         streamClosingDetector                  = registry.streamClosingDetector;
         cacheConcurrencyDetector               = registry.cacheConcurrencyDetector;
         completableFutureChainDetector         = registry.completableFutureChainDetector;
+        executorShutdownDetector               = registry.executorShutdownDetector;
+        mutableMapKeyDetector                  = registry.mutableMapKeyDetector;
+        nestedMonitorLockoutDetector           = registry.nestedMonitorLockoutDetector;
+        lockDowngradeDetector                  = registry.lockDowngradeDetector;
+        inheritableThreadLocalMisuseDetector   = registry.inheritableThreadLocalMisuseDetector;
+        uncommittedChangesDetector             = registry.uncommittedChangesDetector;
+        threadLocalContaminationDetector       = registry.threadLocalContaminationDetector;
+        atomicNonAtomicUpdateDetector          = registry.atomicNonAtomicUpdateDetector;
+        synchronizedCollectionIterationDetector = registry.synchronizedCollectionIterationDetector;
+        sharedFormatterDetector                = registry.sharedFormatterDetector;
+        concurrentMapComputeRecursionDetector  = registry.concurrentMapComputeRecursionDetector;
+        synchronizedOnLiteralDetector          = registry.synchronizedOnLiteralDetector;
+        publicLockExposureDetector             = registry.publicLockExposureDetector;
+        forkJoinTaskBlockingDetector           = registry.forkJoinTaskBlockingDetector;
+        optimisticReadValidationDetector       = registry.optimisticReadValidationDetector;
+        cfCommonPoolBlockingDetector           = registry.cfCommonPoolBlockingDetector;
     }
 
     // ---- Lifecycle (called by ConcurrencyRunner) ----
@@ -666,6 +700,136 @@ public final class AsyncTestContext {
      */
     public static CompletableFutureChainDetector cfChainDetector() {
         return require("detectCompletableFutureChainIssues", c -> c.completableFutureChainDetector);
+    }
+
+    // ---- Phase 8: Lifecycle & Structural Correctness ----
+
+    /**
+     * Returns the {@link ExecutorShutdownDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectExecutorShutdown = false}
+     */
+    public static ExecutorShutdownDetector executorShutdownMonitor() {
+        return require("detectExecutorShutdown", c -> c.executorShutdownDetector);
+    }
+
+    /**
+     * Returns the {@link MutableMapKeyDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectMutableMapKeys = false}
+     */
+    public static MutableMapKeyDetector mutableMapKeyMonitor() {
+        return require("detectMutableMapKeys", c -> c.mutableMapKeyDetector);
+    }
+
+    /**
+     * Returns the {@link NestedMonitorLockoutDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectNestedMonitorLockout = false}
+     */
+    public static NestedMonitorLockoutDetector nestedMonitorLockoutMonitor() {
+        return require("detectNestedMonitorLockout", c -> c.nestedMonitorLockoutDetector);
+    }
+
+    /**
+     * Returns the {@link LockDowngradeDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLockDowngrade = false}
+     */
+    public static LockDowngradeDetector lockDowngradeMonitor() {
+        return require("detectLockDowngrade", c -> c.lockDowngradeDetector);
+    }
+
+    /**
+     * Returns the {@link InheritableThreadLocalMisuseDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectInheritableThreadLocalMisuse = false}
+     */
+    public static InheritableThreadLocalMisuseDetector inheritableThreadLocalMisuseMonitor() {
+        return require("detectInheritableThreadLocalMisuse", c -> c.inheritableThreadLocalMisuseDetector);
+    }
+
+    /**
+     * Returns the {@link UncommittedChangesDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectUncommittedChanges = false}
+     */
+    public static UncommittedChangesDetector uncommittedChangesMonitor() {
+        return require("detectUncommittedChanges", c -> c.uncommittedChangesDetector);
+    }
+
+    /**
+     * Returns the {@link ThreadLocalContaminationDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectThreadLocalContamination = false}
+     */
+    public static ThreadLocalContaminationDetector threadLocalContaminationMonitor() {
+        return require("detectThreadLocalContamination", c -> c.threadLocalContaminationDetector);
+    }
+
+    /**
+     * Returns the {@link AtomicNonAtomicUpdateDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectAtomicNonAtomicUpdates = false}
+     */
+    public static AtomicNonAtomicUpdateDetector atomicNonAtomicUpdateMonitor() {
+        return require("detectAtomicNonAtomicUpdates", c -> c.atomicNonAtomicUpdateDetector);
+    }
+
+    /**
+     * Returns the {@link SynchronizedCollectionIterationDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSynchronizedCollectionIteration = false}
+     */
+    public static SynchronizedCollectionIterationDetector synchronizedCollectionIterationMonitor() {
+        return require("detectSynchronizedCollectionIteration", c -> c.synchronizedCollectionIterationDetector);
+    }
+
+    /**
+     * Returns the {@link SharedFormatterDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedFormatter = false}
+     */
+    public static SharedFormatterDetector sharedFormatterMonitor() {
+        return require("detectSharedFormatter", c -> c.sharedFormatterDetector);
+    }
+
+    /**
+     * Returns the {@link ConcurrentMapComputeRecursionDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectConcurrentMapComputeRecursion = false}
+     */
+    public static ConcurrentMapComputeRecursionDetector concurrentMapComputeRecursionMonitor() {
+        return require("detectConcurrentMapComputeRecursion", c -> c.concurrentMapComputeRecursionDetector);
+    }
+
+    /**
+     * Returns the {@link SynchronizedOnLiteralDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSynchronizedOnLiteral = false}
+     */
+    public static SynchronizedOnLiteralDetector synchronizedOnLiteralMonitor() {
+        return require("detectSynchronizedOnLiteral", c -> c.synchronizedOnLiteralDetector);
+    }
+
+    /**
+     * Returns the {@link PublicLockExposureDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectPublicLockExposure = false}
+     */
+    public static PublicLockExposureDetector publicLockExposureMonitor() {
+        return require("detectPublicLockExposure", c -> c.publicLockExposureDetector);
+    }
+
+    /**
+     * Returns the {@link ForkJoinTaskBlockingDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectForkJoinTaskBlocking = false}
+     */
+    public static ForkJoinTaskBlockingDetector forkJoinTaskBlockingMonitor() {
+        return require("detectForkJoinTaskBlocking", c -> c.forkJoinTaskBlockingDetector);
+    }
+
+    /**
+     * Returns the {@link OptimisticReadValidationDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectOptimisticReadValidation = false}
+     */
+    public static OptimisticReadValidationDetector optimisticReadValidationMonitor() {
+        return require("detectOptimisticReadValidation", c -> c.optimisticReadValidationDetector);
+    }
+
+    /**
+     * Returns the {@link CompletableFutureCommonPoolBlockingDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCFCommonPoolBlocking = false}
+     */
+    public static CompletableFutureCommonPoolBlockingDetector cfCommonPoolBlockingMonitor() {
+        return require("detectCFCommonPoolBlocking", c -> c.cfCommonPoolBlockingDetector);
     }
 
     // ---- Helper ----

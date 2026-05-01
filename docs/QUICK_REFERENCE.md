@@ -12,7 +12,8 @@ Making your library available for others to install and use via Maven/Gradle wit
 ✅ GitHub Packages hosting
 ✅ Javadoc generation
 ✅ Source code publication
-✅ 46,000+ words documentation
+- **Uncommitted Changes** — Detects untracked or uncommitted Git files that may affect test reproducibility
+- 69+ specialized detectors for common concurrency pitfalls
 ```
 
 ### How Others Install (Maven)
@@ -50,7 +51,7 @@ async-test-1.1.0-javadoc.jar  (450 KB)  → API docs
 ### Release Process (4 Steps)
 ```bash
 # 1. Update version in pom.xml
-sed -i 's/1.1.0/1.1.0/' pom.xml
+sed -i 's/0.7.0/0.8.0/' pom.xml
 
 # 2. Commit
 git commit -am "Release 1.1.0"

@@ -10,6 +10,7 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 | 02 | [Visibility/Volatile Flag](02-visibility-volatile-flag/) | `VisibilityMonitor` | Missing `volatile` on shared flags causes threads to never see shutdown signals | 🔴 Critical |
 | 03 | [Shared Non-Thread-Safe Collection](03-shared-collection/) | `SharedCollectionDetector` | ArrayList/HashMap shared across threads causes data loss and corruption | 🔴 Critical |
 | 04 | [Virtual Thread Context Leak](04-virtual-thread-context-leak/) | `VirtualThreadContextLeakDetector` | ThreadLocal leaks in virtual threads cause memory leaks | 🟡 High |
+| 09 | [Uncommitted Changes Detection](09-uncommitted-changes-detection/) | `UncommittedChangesDetector` | Untracked Git files break test reproducibility | 🟢 Low |
 
 ## Phase 7: High-Level Concurrency Patterns (New!)
 
@@ -196,6 +197,15 @@ examples/
 - `RaceConditionDetector` - Unsynchronized compound read-modify-write in `merge()`
 
 **Fix**: Use `ConcurrentHashMap`, `CopyOnWriteArrayList`, or `Collections.synchronizedList()`
+
+### 9. Uncommitted Git Changes (Example 09)
+**What**: Detects untracked or modified files in the Git repository that weren't committed.
+
+**Impact**: Polluted classpath, non-reproducible test results, and environmental drift between local and CI.
+
+**Primary Detector**: `UncommittedChangesDetector`
+- Flags: "Git repository has uncommitted or untracked changes"
+- Detects: `git status --porcelain` output showing M, A, D, R, C, or ?? files.
 
 ## How to Use These Examples
 

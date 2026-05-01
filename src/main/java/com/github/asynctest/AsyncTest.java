@@ -549,7 +549,146 @@ public @interface AsyncTest {
      */
     boolean failOnBenchmarkRegression() default false;
 
-    // ============= Phase 8: License Gating (Integration) =============
+    // ============= Phase 8: Lifecycle & Structural Correctness =============
+
+    /**
+     * Enable ExecutorService lifecycle detection.
+     * Detects executors that have tasks submitted but are never shut down, or are shut down
+     * without a subsequent {@code awaitTermination()} call.
+     * @since 1.3.0
+     */
+    boolean detectExecutorShutdown() default true;
+
+    /**
+     * Enable mutable map key detection.
+     * Detects objects used as {@code HashMap}/{@code HashSet} keys that are mutated
+     * (including hashCode-changing mutations) after insertion.
+     * @since 1.3.0
+     */
+    boolean detectMutableMapKeys() default true;
+
+    /**
+     * Enable nested monitor lockout detection.
+     * Detects threads that attempt blocking operations ({@code wait()}, {@code Future.get()},
+     * {@code Lock.lock()}) while holding a monitor on a different object.
+     * @since 1.3.0
+     */
+    boolean detectNestedMonitorLockout() default true;
+
+    /**
+     * Enable lock downgrade/upgrade detection.
+     * Detects illegal read-to-write upgrade attempts on {@link java.util.concurrent.locks.ReentrantReadWriteLock},
+     * which deadlock immediately because the upgrade is not supported.
+     * @since 1.3.0
+     */
+    boolean detectLockDowngrade() default true;
+
+    /**
+     * Enable {@link InheritableThreadLocal} misuse detection.
+     * Detects {@code InheritableThreadLocal} values read or written in thread-pool threads,
+     * where inheritance happens at thread-creation time rather than task-submission time,
+     * causing stale or cross-task context contamination.
+     * @since 1.3.0
+     */
+    boolean detectInheritableThreadLocalMisuse() default true;
+
+    // ============= Phase 9: Repository & Environment State =============
+
+    /**
+     * Enable uncommitted changes detection.
+     * Detects untracked or uncommitted files in the Git repository when the test completes.
+     * Helps ensure tests are run against a clean and reproducible repository state.
+     * @since 1.4.0
+     */
+    boolean detectUncommittedChanges() default true;
+
+    // ============= Phase 10: API Traps & Subtle Concurrency Bugs =============
+
+    /**
+     * Enable ThreadLocal cross-task contamination detection.
+     * Detects ThreadLocal values set in one task that are read by the next task on the same
+     * pooled thread without an intervening {@code remove()} or {@code set()}.
+     * @since 1.5.0
+     */
+    boolean detectThreadLocalContamination() default true;
+
+    /**
+     * Enable non-atomic Atomic* update detection.
+     * Detects {@code get()} followed by {@code set()} on {@link java.util.concurrent.atomic.AtomicInteger},
+     * {@link java.util.concurrent.atomic.AtomicLong}, etc. without {@code compareAndSet()}.
+     * @since 1.5.0
+     */
+    boolean detectAtomicNonAtomicUpdates() default true;
+
+    /**
+     * Enable synchronized-collection iteration detection.
+     * Detects iteration over {@link java.util.Collections#synchronizedList} /
+     * {@code synchronizedMap} / {@code synchronizedSet} wrappers without holding the
+     * wrapper's intrinsic lock.
+     * @since 1.5.0
+     */
+    boolean detectSynchronizedCollectionIteration() default true;
+
+    /**
+     * Enable shared formatter detection.
+     * Detects {@link java.util.Formatter}, {@link java.io.PrintWriter}, and
+     * {@link java.io.PrintStream} instances accessed from multiple threads without
+     * external synchronization.
+     * @since 1.5.0
+     */
+    boolean detectSharedFormatter() default true;
+
+    /**
+     * Enable ConcurrentHashMap compute recursion detection.
+     * Detects recursive {@link java.util.concurrent.ConcurrentHashMap#computeIfAbsent} /
+     * {@code compute} / {@code merge} calls on the same map and key from the same thread,
+     * causing an infinite loop (Java 8) or {@link IllegalStateException} (Java 9+).
+     * @since 1.5.0
+     */
+    boolean detectConcurrentMapComputeRecursion() default true;
+
+    /**
+     * Enable synchronized-on-literal detection.
+     * Detects {@code synchronized} blocks on interned {@link String} literals or JVM-cached
+     * {@link Integer} / {@link Long} values (range [-128, 127]) — monitors shared JVM-wide.
+     * @since 1.5.0
+     */
+    boolean detectSynchronizedOnLiteral() default true;
+
+    /**
+     * Enable public lock exposure detection.
+     * Detects classes that use {@code synchronized(this)} while {@code this} is publicly
+     * accessible, exposing the internal lock to external callers.
+     * @since 1.5.0
+     */
+    boolean detectPublicLockExposure() default true;
+
+    /**
+     * Enable ForkJoinTask blocking detection.
+     * Detects blocking calls ({@link Thread#sleep}, {@link Object#wait}, {@code Future.get()},
+     * blocking I/O) inside a {@link java.util.concurrent.ForkJoinTask} body, which starves
+     * {@link java.util.concurrent.ForkJoinPool} carrier threads.
+     * @since 1.5.0
+     */
+    boolean detectForkJoinTaskBlocking() default true;
+
+    /**
+     * Enable StampedLock optimistic read validation detection.
+     * Detects data accessed after {@link java.util.concurrent.locks.StampedLock#tryOptimisticRead()}
+     * without calling {@code validate(stamp)}, or data used after a failed validation.
+     * @since 1.5.0
+     */
+    boolean detectOptimisticReadValidation() default true;
+
+    /**
+     * Enable CompletableFuture common-pool blocking detection.
+     * Detects blocking operations inside {@link java.util.concurrent.CompletableFuture} stages
+     * submitted to the common {@link java.util.concurrent.ForkJoinPool} without a dedicated executor.
+     * @since 1.5.0
+     */
+    boolean detectCFCommonPoolBlocking() default true;
+
+    // ============= License Gating (Integration) =============
 
     /** Keygen Account ID. Defaults to System property 'keygen.account.id' if empty. */
     String keygenAccountId() default "";

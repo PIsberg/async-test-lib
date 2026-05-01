@@ -39,9 +39,27 @@ import com.github.asynctest.diagnostics.LockContentionDetector;
 import com.github.asynctest.diagnostics.SynchronizedNonFinalDetector;
 import com.github.asynctest.diagnostics.MissedSignalDetector;
 import com.github.asynctest.diagnostics.LazyInitRaceDetector;
+import com.github.asynctest.diagnostics.ExecutorShutdownDetector;
+import com.github.asynctest.diagnostics.MutableMapKeyDetector;
+import com.github.asynctest.diagnostics.NestedMonitorLockoutDetector;
+import com.github.asynctest.diagnostics.LockDowngradeDetector;
+import com.github.asynctest.diagnostics.InheritableThreadLocalMisuseDetector;
+import com.github.asynctest.diagnostics.ThreadLocalContaminationDetector;
+import com.github.asynctest.diagnostics.AtomicNonAtomicUpdateDetector;
+import com.github.asynctest.diagnostics.SynchronizedCollectionIterationDetector;
+import com.github.asynctest.diagnostics.SharedFormatterDetector;
+import com.github.asynctest.diagnostics.ConcurrentMapComputeRecursionDetector;
+import com.github.asynctest.diagnostics.SynchronizedOnLiteralDetector;
+import com.github.asynctest.diagnostics.PublicLockExposureDetector;
+import com.github.asynctest.diagnostics.ForkJoinTaskBlockingDetector;
+import com.github.asynctest.diagnostics.OptimisticReadValidationDetector;
+import com.github.asynctest.diagnostics.CompletableFutureCommonPoolBlockingDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.Collections;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
@@ -1625,5 +1643,339 @@ class ConsumerAsyncTestUsageTest {
         var report = detector.analyze();
         assertFalse(report.hasIssues(),
                 "Single initialization with volatile field should not be flagged");
+    }
+    /**
+     * Phase 1: Uncommitted changes detection.
+     * Flagging untracked or uncommitted files in the repository.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectUncommittedChanges = true)
+    void testUncommittedChangesDetection() {
+        // This detector runs automatically after the test method completes.
+        // It reports a LOW severity issue if the Git repo is dirty.
+        assertNotNull(AsyncTestContext.get());
+    }
+
+    // ============================================
+    // PHASE 8: Lifecycle & Structural Correctness
+    // ============================================
+
+    /**
+     * Phase 8.1: Executor shutdown detection — proper lifecycle with awaitTermination.
+     * Always call shutdown() followed by awaitTermination() to prevent thread leaks.
+     */
+    @AsyncTest(threads = 1, invocations = 2, detectExecutorShutdown = true, timeoutMs = 5000)
+    void testExecutorShutdownDetection() throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        AsyncTestContext.executorShutdownMonitor()
+            .recordExecutorCreated(executor, "lifecycle-pool");
+
+        executor.submit(() -> {});
+        AsyncTestContext.executorShutdownMonitor().recordTaskSubmitted(executor);
+
+        // Proper shutdown with awaitTermination
+        executor.shutdown();
+        AsyncTestContext.executorShutdownMonitor().recordShutdownCalled(executor, false);
+        executor.awaitTermination(1, java.util.concurrent.TimeUnit.SECONDS);
+        AsyncTestContext.executorShutdownMonitor().recordAwaitTerminationCalled(executor);
+
+        var report = AsyncTestContext.executorShutdownMonitor().analyze();
+        assertFalse(report.hasIssues(), "Properly shut-down executor should not be flagged");
+    }
+
+    /**
+     * Phase 8.2: Mutable map key detection — key should not be mutated after insertion.
+     * Mutating a HashMap key changes its hash bucket, breaking all future lookups.
+     */
+    @AsyncTest(threads = 2, invocations = 2, detectMutableMapKeys = true, timeoutMs = 3000)
+    void testMutableMapKeyDetection() {
+        MutableMapKeyDetector detector = AsyncTestContext.mutableMapKeyMonitor();
+
+        // Safe: key recorded at insertion, not mutated
+        String key = "stable-key-" + Thread.currentThread().getId();
+        java.util.Map<String, Integer> map = new java.util.HashMap<>();
+        map.put(key, 1);
+        detector.recordKeyInserted(map, key, "score-map");
+
+        // No mutation after insertion — no issue expected
+        var report = detector.analyze();
+        // In real usage with mutation: assertTrue(report.hasIssues())
+    }
+
+    /**
+     * Phase 8.3: Nested monitor lockout detection — blocking while holding a different monitor.
+     * Attempting to acquire a second lock while holding one is a deadlock path.
+     */
+    @AsyncTest(threads = 2, invocations = 2, detectNestedMonitorLockout = true, timeoutMs = 3000)
+    void testNestedMonitorLockoutDetection() {
+        NestedMonitorLockoutDetector detector = AsyncTestContext.nestedMonitorLockoutMonitor();
+        Object lockA = new Object();
+
+        synchronized (lockA) {
+            detector.recordMonitorAcquired(lockA);
+            // Safe: no blocking call while holding lockA — only record the context
+            detector.recordMonitorReleased(lockA);
+        }
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "No nested blocking — no lockout should be flagged");
+    }
+
+    /**
+     * Phase 8.4: Lock downgrade detection — correct write-to-read downgrade pattern.
+     * Lock downgrade (write → read) is valid; upgrade (read → write) deadlocks.
+     */
+    @AsyncTest(threads = 2, invocations = 2, detectLockDowngrade = true, timeoutMs = 3000)
+    void testLockDowngradeDetection() {
+        LockDowngradeDetector detector = AsyncTestContext.lockDowngradeMonitor();
+        ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
+
+        // Correct downgrade: write → read → release write → release read
+        rwLock.writeLock().lock();
+        detector.recordWriteLockAcquired(rwLock, "config-lock");
+        try {
+            rwLock.readLock().lock();
+            detector.recordReadLockAcquired(rwLock, "config-lock");
+            // write lock released while read lock is still held (valid downgrade)
+            rwLock.writeLock().unlock();
+            detector.recordWriteLockReleased(rwLock, "config-lock");
+        } finally {
+            rwLock.readLock().unlock();
+            detector.recordReadLockReleased(rwLock, "config-lock");
+        }
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Correct write-to-read downgrade should not be flagged");
+    }
+
+    /**
+     * Phase 8.5: InheritableThreadLocal misuse detection — pooled thread accesses ITL.
+     * InheritableThreadLocal values are captured at thread creation, not task submission.
+     */
+    @AsyncTest(threads = 2, invocations = 2, detectInheritableThreadLocalMisuse = true, timeoutMs = 3000)
+    void testInheritableThreadLocalMisuseDetection() {
+        InheritableThreadLocalMisuseDetector detector =
+            AsyncTestContext.inheritableThreadLocalMisuseMonitor();
+
+        InheritableThreadLocal<String> itl = new InheritableThreadLocal<>();
+        itl.set("request-context");
+        detector.recordSet(itl, "REQUEST_CONTEXT", "request-context");
+
+        // Not registering as a pool thread — no violation expected
+        detector.recordGet(itl, "REQUEST_CONTEXT");
+
+        var report = detector.analyze();
+        // In real pooled usage: assertTrue(report.hasIssues())
+    }
+
+    // ============================================
+    // PHASE 10: API Traps & Subtle Concurrency Bugs
+    // ============================================
+
+    /**
+     * Phase 10.1: ThreadLocal contamination — detecting stale values from a prior task.
+     * When pooled threads reuse ThreadLocals, task B silently reads task A's context.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectThreadLocalContamination = true, timeoutMs = 3000)
+    void testThreadLocalContaminationDetection() {
+        ThreadLocalContaminationDetector detector =
+            AsyncTestContext.threadLocalContaminationMonitor();
+        ThreadLocal<String> tl = new ThreadLocal<>();
+
+        // Task A: set a value
+        detector.recordNewTask(Thread.currentThread(), "task-A");
+        tl.set("user-A");
+        detector.recordSet(Thread.currentThread(), tl, "USER_TL");
+
+        // Task B on same thread without remove() — contamination!
+        detector.recordNewTask(Thread.currentThread(), "task-B");
+        boolean hasValue = tl.get() != null;
+        detector.recordGet(Thread.currentThread(), tl, "USER_TL", hasValue);
+
+        var report = detector.analyze();
+        // hasValue=true from prior task triggers contamination detection
+        if (hasValue) {
+            assertTrue(report.hasIssues(), "Stale value from prior task should be flagged");
+        }
+
+        tl.remove();
+    }
+
+    /**
+     * Phase 10.2: Atomic non-atomic update — get()+set() without compareAndSet().
+     * Concurrent threads using get+set silently lose each other's updates.
+     */
+    @AsyncTest(threads = 2, invocations = 5, detectAtomicNonAtomicUpdates = true, timeoutMs = 3000)
+    void testAtomicNonAtomicUpdateDetection() {
+        AtomicNonAtomicUpdateDetector detector = AsyncTestContext.atomicNonAtomicUpdateMonitor();
+        AtomicInteger counter = new AtomicInteger(0);
+
+        // Safe: using updateAndGet — CAS-based, no race
+        counter.updateAndGet(v -> v + 1);
+
+        // Demonstrate the pattern that should NOT be used (not recording it — safe test)
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "CAS-based update should not be flagged");
+    }
+
+    /**
+     * Phase 10.3: Synchronized collection iteration — safe iteration with lock held.
+     * Always hold synchronized(wrapper) while iterating a synchronized wrapper.
+     */
+    @AsyncTest(threads = 2, invocations = 5, detectSynchronizedCollectionIteration = true, timeoutMs = 3000)
+    void testSynchronizedCollectionIterationDetection() {
+        SynchronizedCollectionIterationDetector detector =
+            AsyncTestContext.synchronizedCollectionIterationMonitor();
+
+        java.util.List<String> list = Collections.synchronizedList(new java.util.ArrayList<>());
+        detector.recordWrapperCreated(list, "sync-event-list");
+
+        // Correct: hold the wrapper lock while iterating
+        synchronized (list) {
+            detector.recordIterationStarted(list, Thread.currentThread(), true);
+            for (String item : list) { /* read-only */ }
+        }
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Iteration inside synchronized(list) should not be flagged");
+    }
+
+    /**
+     * Phase 10.4: Shared formatter detection — access from multiple threads.
+     * PrintWriter/Formatter are not thread-safe; shared access corrupts output.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectSharedFormatter = true, timeoutMs = 3000)
+    void testSharedFormatterDetection() {
+        SharedFormatterDetector detector = AsyncTestContext.sharedFormatterMonitor();
+        java.io.PrintWriter pw = new java.io.PrintWriter(java.io.Writer.nullWriter());
+
+        detector.recordAccess(pw, "null-writer", Thread.currentThread());
+
+        var report = detector.analyze();
+        // Single-thread access should not trigger multi-thread flag
+        assertFalse(report.hasIssues(), "Single-thread access should not be flagged");
+    }
+
+    /**
+     * Phase 10.5: ConcurrentHashMap compute recursion — safe non-recursive usage.
+     * Recursive computeIfAbsent on the same key from the same thread causes infinite loop.
+     */
+    @AsyncTest(threads = 2, invocations = 5, detectConcurrentMapComputeRecursion = true, timeoutMs = 3000)
+    void testConcurrentMapComputeRecursionDetection() {
+        ConcurrentMapComputeRecursionDetector detector =
+            AsyncTestContext.concurrentMapComputeRecursionMonitor();
+        java.util.concurrent.ConcurrentHashMap<String, String> map = new java.util.concurrent.ConcurrentHashMap<>();
+
+        // Safe non-recursive compute
+        String key = "cache-key";
+        detector.recordComputeStart(map, key, Thread.currentThread(), "compute-cache");
+        map.computeIfAbsent(key, k -> "computed-value");
+        detector.recordComputeEnd(map, key, Thread.currentThread());
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Non-recursive compute should not be flagged");
+    }
+
+    /**
+     * Phase 10.6: Synchronized on literal — safe usage with a dedicated lock object.
+     * Synchronizing on a String literal or cached Integer uses a JVM-wide shared monitor.
+     */
+    @AsyncTest(threads = 2, invocations = 5, detectSynchronizedOnLiteral = true, timeoutMs = 3000)
+    void testSynchronizedOnLiteralDetection() {
+        SynchronizedOnLiteralDetector detector = AsyncTestContext.synchronizedOnLiteralMonitor();
+        Object privateLock = new Object();  // correct: private, non-interned lock object
+
+        synchronized (privateLock) {
+            detector.recordMonitorAcquired(privateLock, Thread.currentThread(), "testSynchronizedOnLiteralDetection");
+        }
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Private lock object should not be flagged");
+    }
+
+    /**
+     * Phase 10.7: Public lock exposure — synchronized(this) on an accessible object.
+     * Callers outside the class can acquire the same lock, causing unexpected deadlocks.
+     */
+    @AsyncTest(threads = 2, invocations = 5, detectPublicLockExposure = true, timeoutMs = 3000)
+    void testPublicLockExposureDetection() {
+        PublicLockExposureDetector detector = AsyncTestContext.publicLockExposureMonitor();
+        Object privateLock = new Object();
+
+        // Not published — safe usage
+        synchronized (privateLock) {
+            detector.recordSynchronizedOnThis(privateLock, Thread.currentThread(),
+                ConsumerAsyncTestUsageTest.class.getSimpleName());
+        }
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Non-published lock object should not be flagged");
+    }
+
+    /**
+     * Phase 10.8: ForkJoinTask blocking detection — no blocking calls inside a task.
+     * Blocking inside a ForkJoinTask starvation the bounded pool for all other tasks.
+     */
+    @AsyncTest(threads = 2, invocations = 5, detectForkJoinTaskBlocking = true, timeoutMs = 3000)
+    void testForkJoinTaskBlockingDetection() {
+        ForkJoinTaskBlockingDetector detector = AsyncTestContext.forkJoinTaskBlockingMonitor();
+        Thread current = Thread.currentThread();
+
+        // Safe: enter and exit without blocking
+        detector.recordForkJoinTaskEntered(current);
+        // perform non-blocking work
+        int sum = 0;
+        for (int i = 0; i < 100; i++) sum += i;
+        detector.recordForkJoinTaskExited(current);
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Non-blocking ForkJoinTask body should not be flagged");
+    }
+
+    /**
+     * Phase 10.9: Optimistic read validation — proper validate() before using data.
+     * StampedLock optimistic reads require validate(stamp) before trusting the data.
+     */
+    @AsyncTest(threads = 2, invocations = 5, detectOptimisticReadValidation = true, timeoutMs = 3000)
+    void testOptimisticReadValidationDetection() {
+        OptimisticReadValidationDetector detector =
+            AsyncTestContext.optimisticReadValidationMonitor();
+        java.util.concurrent.locks.StampedLock lock = new java.util.concurrent.locks.StampedLock();
+        Thread current = Thread.currentThread();
+
+        long stamp = lock.tryOptimisticRead();
+        detector.recordOptimisticReadStarted(lock, stamp, current);
+
+        // Read data
+        int snapshot = 42;
+        detector.recordDataAccessed(lock, stamp, current, "snapshot");
+
+        // Validate before using data — correct usage
+        boolean valid = lock.validate(stamp);
+        detector.recordValidateCalled(lock, stamp, valid, current);
+
+        if (!valid) {
+            // Fall back to read lock — not exercised in this test
+        }
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Validated optimistic read should not be flagged");
+    }
+
+    /**
+     * Phase 10.10: CompletableFuture common-pool blocking detection.
+     * Blocking inside a CF stage submitted without an Executor starves the common ForkJoinPool.
+     */
+    @AsyncTest(threads = 2, invocations = 5, detectCFCommonPoolBlocking = true, timeoutMs = 3000)
+    void testCFCommonPoolBlockingDetection() {
+        CompletableFutureCommonPoolBlockingDetector detector =
+            AsyncTestContext.cfCommonPoolBlockingMonitor();
+
+        CompletableFuture<String> future = new CompletableFuture<>();
+        // Not recorded as a common-pool submission — no issue expected
+        future.complete("ok");
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(),
+            "Future not submitted to common pool should not be flagged");
     }
 }
