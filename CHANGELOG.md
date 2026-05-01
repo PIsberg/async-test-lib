@@ -9,10 +9,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-#### Phase 1: Core Concurrency Detectors
+#### Phase 8: Lifecycle & Structural Correctness
+- **Executor Shutdown** (`detectExecutorShutdown`) — detects `ExecutorService` instances
+  that have tasks submitted but are never shut down (thread leak), or are shut down without
+  a subsequent `awaitTermination()` call (in-flight tasks silently abandoned)
+- **Mutable Map Key** (`detectMutableMapKeys`) — detects objects used as `HashMap` /
+  `HashSet` keys that are mutated after insertion; mutation changes the hash bucket,
+  silently breaking all future lookups and removes
+- **Nested Monitor Lockout** (`detectNestedMonitorLockout`) — detects threads that attempt
+  a blocking operation (`wait()`, `Future.get()`, `Lock.lock()`) while already holding a
+  monitor on a *different* object, a reliable path to deadlock
+- **Lock Downgrade** (`detectLockDowngrade`) — detects illegal read-to-write upgrade
+  attempts on `ReentrantReadWriteLock`; the JDK does not support upgrades and the attempt
+  deadlocks immediately
+- **InheritableThreadLocal Misuse** (`detectInheritableThreadLocalMisuse`) — detects
+  `InheritableThreadLocal` values accessed from thread-pool threads; the value is inherited
+  at thread-creation time rather than task-submission time, causing stale or cross-task
+  context contamination
+
+#### Phase 9: Repository & Environment State
 - **Uncommitted Changes** (`detectUncommittedChanges`) — detects untracked or uncommitted
   Git files that may affect test reproducibility; reports a low-severity issue if the
   repository is not in a clean state (requires `git` to be available in the PATH)
+
+#### Phase 10: API Traps & Subtle Concurrency Bugs
+- **ThreadLocal Contamination** (`detectThreadLocalContamination`) — detects `ThreadLocal`
+  values set in one task that are read by the next task on the same pooled thread without
+  an intervening `remove()` or `set()`; common source of stale MDC loggers and security
+  contexts in servlet/Spring applications
+- **Atomic Non-Atomic Update** (`detectAtomicNonAtomicUpdates`) — detects `get()` followed
+  by `set()` on `AtomicInteger` / `AtomicLong` / `AtomicReference` without
+  `compareAndSet()`; the data structure guarantees per-operation atomicity but a
+  read-modify-write without CAS silently loses concurrent updates
+- **Synchronized Collection Iteration** (`detectSynchronizedCollectionIteration`) —
+  detects `Collections.synchronizedList` / `synchronizedMap` / `synchronizedSet` wrappers
+  iterated without holding the wrapper's intrinsic lock; the Javadoc explicitly requires
+  `synchronized(list) { iterator }` but the compiler never enforces it
+- **Shared Formatter** (`detectSharedFormatter`) — detects `java.util.Formatter`,
+  `PrintWriter`, and `PrintStream` (including `System.out` / `System.err`) accessed from
+  multiple threads without external synchronization
+- **ConcurrentMap Compute Recursion** (`detectConcurrentMapComputeRecursion`) — detects
+  recursive `computeIfAbsent` / `compute` / `merge` calls on the same `ConcurrentHashMap`
+  key from the same thread; causes an infinite loop on Java 8 and
+  `IllegalStateException` on Java 9+
+- **Synchronized on Literal** (`detectSynchronizedOnLiteral`) — detects `synchronized`
+  blocks on interned `String` literals or JVM-cached `Integer` / `Long` values
+  (range [-128, 127]); those monitors are shared JVM-wide, silently coupling unrelated
+  classes through a single monitor
+- **Public Lock Exposure** (`detectPublicLockExposure`) — detects `synchronized(this)` on
+  objects that are publicly accessible; external callers can acquire the same lock,
+  causing unexpected deadlock or starvation
+- **ForkJoinTask Blocking** (`detectForkJoinTaskBlocking`) — detects blocking calls
+  (`Thread.sleep`, `Object.wait`, `Future.get`, blocking I/O) inside a `ForkJoinTask`
+  body; blocks a carrier thread and starves the bounded pool for all other tasks
+- **Optimistic Read Validation** (`detectOptimisticReadValidation`) — detects
+  `StampedLock.tryOptimisticRead()` data used without calling `validate(stamp)`, or data
+  continued to be used after a failed validation, producing silent torn-snapshot corruption
+- **CompletableFuture Common-Pool Blocking** (`detectCFCommonPoolBlocking`) — detects
+  blocking operations inside `CompletableFuture` stages submitted to the common
+  `ForkJoinPool` (i.e. created without a custom `Executor`); starves the pool for parallel
+  streams and all other JVM callers
+
+#### Documentation & examples
+- CLAUDE.md updated with Phase 8, Phase 9, and Phase 10 detector descriptions
 
 #### Phase 2: Additional Concurrency Detectors
 - **Lock Contention** (`detectLockContention`) — detects monitors where more than 20% of

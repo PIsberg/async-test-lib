@@ -13,7 +13,7 @@ Making your library available for others to install and use via Maven/Gradle wit
 ✅ Javadoc generation
 ✅ Source code publication
 - **Uncommitted Changes** — Detects untracked or uncommitted Git files that may affect test reproducibility
-- 51+ specialized detectors for common concurrency pitfalls
+- 69+ specialized detectors for common concurrency pitfalls
 ```
 
 ### How Others Install (Maven)

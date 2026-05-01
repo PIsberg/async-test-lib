@@ -21,7 +21,7 @@ Concurrency bugs are the most elusive and costly bugs in production systems. The
 
 
 ### Key Insight
-The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **51 specialized detectors** identify the exact problem:
+The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **69 specialized detectors** identify the exact problem:
 
 - **Deadlocks** with lock chain analysis showing which threads are waiting for which locks
 - **Memory visibility issues** by tracking field values across invocations
@@ -96,7 +96,7 @@ Rather than deploying code hoping there are no concurrency bugs, `async-test` he
 
 ---
 
-A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **51 specialized problem detectors**.
+A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **69 specialized problem detectors**.
 
 Catches race conditions, deadlocks, memory visibility issues, livelocks, false sharing, ABA problems, lock ordering violations, constructor safety issues, thread pool problems, and more.
 
@@ -202,6 +202,34 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 47. **ScopedValue Misuse** - `ScopedValue.get()` called outside an active binding; unintentional re-binding in nested scopes
 48. **Virtual Thread CPU-Bound Tasks** - CPU-intensive tasks running on virtual threads without yielding, monopolizing carrier threads
 49. **Virtual Thread Carrier Exhaustion** - Concurrent blocking of virtual threads approaching or exceeding carrier thread count
+
+### Phase 7: High-Level Concurrency Patterns (4)
+50. **HTTP Client Concurrency** - Unclosed HTTP responses, connection pool exhaustion, incomplete operations
+51. **Stream Closing** - `InputStream`/`OutputStream`/`Reader`/`Writer` opened but never closed in concurrent code
+52. **Cache Concurrency** - `HashMap`/`LinkedHashMap` used as a cache without synchronization
+53. **CompletableFuture Chain Issues** - Missing exception handlers, unjoined futures, improper chain construction
+
+### Phase 8: Lifecycle & Structural Correctness (5)
+54. **Executor Shutdown** - `ExecutorService` tasks submitted but executor never shut down, or shut down without `awaitTermination()`
+55. **Mutable Map Key** - `HashMap`/`HashSet` keys mutated after insertion, breaking lookups silently
+56. **Nested Monitor Lockout** - Blocking op (`wait`, `Future.get`, `lock`) attempted while holding a different monitor
+57. **Lock Downgrade** - Illegal read-to-write upgrade on `ReentrantReadWriteLock` — deadlocks immediately
+58. **InheritableThreadLocal Misuse** - `InheritableThreadLocal` accessed in pooled threads (value frozen at thread-creation, not task-submission)
+
+### Phase 9: Repository & Environment State (1)
+59. **Uncommitted Changes** - Untracked or uncommitted Git files detected via `git status --porcelain`
+
+### Phase 10: API Traps & Subtle Concurrency Bugs (10)
+60. **ThreadLocal Contamination** - ThreadLocal set in task A read by task B on the same reused pooled thread
+61. **Atomic Non-Atomic Update** - `get()` + `set()` on `AtomicInteger`/`Long`/`Reference` without `compareAndSet()`, losing concurrent updates
+62. **Synchronized Collection Iteration** - `Collections.synchronizedList/Map/Set` iterated without holding the wrapper lock
+63. **Shared Formatter** - `Formatter`, `PrintWriter`, or `PrintStream` accessed from multiple threads concurrently
+64. **ConcurrentMap Compute Recursion** - Recursive `computeIfAbsent` on same key from same thread — infinite loop (Java 8) or `IllegalStateException` (Java 9+)
+65. **Synchronized on Literal** - `synchronized` on interned `String` or cached `Integer`/`Long` [-128,127] — JVM-wide shared monitor
+66. **Public Lock Exposure** - `synchronized(this)` on publicly accessible object, enabling external callers to acquire the internal lock
+67. **ForkJoinTask Blocking** - Blocking call (`sleep`/`wait`/`Future.get`/IO) inside a `ForkJoinTask`, starving carrier threads
+68. **Optimistic Read Validation** - `StampedLock` optimistic-read data used without `validate(stamp)` or after failed validation
+69. **CF Common-Pool Blocking** - Blocking work inside `CompletableFuture` submitted without a custom `Executor`, starving the common pool
 
 ## Quick Start
 
@@ -363,6 +391,25 @@ void stressWithVirtualThreads() {
 | `detectStreamClosing` | boolean | true | Detect InputStream/OutputStream not properly closed in concurrent code |
 | `detectCacheConcurrency` | boolean | true | Detect HashMap/LinkedHashMap used as cache without synchronization |
 | `detectCompletableFutureChainIssues` | boolean | true | Detect missing exception handlers, unjoined futures, improper CF chain usage |
+
+### Phase 8: Lifecycle & Structural Correctness (v1.5.0)
+| `detectExecutorShutdown` | boolean | true | Detect ExecutorService tasks submitted but never shut down, or shut down without `awaitTermination()` |
+| `detectMutableMapKeys` | boolean | true | Detect `HashMap`/`HashSet` keys mutated after insertion, silently breaking future lookups |
+| `detectNestedMonitorLockout` | boolean | true | Detect blocking ops (`wait`/`Future.get`/`lock`) attempted while holding a different monitor |
+| `detectLockDowngrade` | boolean | true | Detect illegal read-to-write upgrade on `ReentrantReadWriteLock` (deadlocks immediately) |
+| `detectInheritableThreadLocalMisuse` | boolean | true | Detect `InheritableThreadLocal` accessed from pooled threads (value frozen at thread-creation time) |
+
+### Phase 10: API Traps & Subtle Concurrency Bugs (v1.5.0)
+| `detectThreadLocalContamination` | boolean | true | Detect `ThreadLocal` set in task A read by task B on the same reused pooled thread |
+| `detectAtomicNonAtomicUpdates` | boolean | true | Detect `get()` + `set()` on `Atomic*` without `compareAndSet()`, losing concurrent updates |
+| `detectSynchronizedCollectionIteration` | boolean | true | Detect `Collections.synchronized*` iterated without holding the wrapper lock |
+| `detectSharedFormatter` | boolean | true | Detect `Formatter`/`PrintWriter`/`PrintStream` accessed from multiple threads concurrently |
+| `detectConcurrentMapComputeRecursion` | boolean | true | Detect recursive `computeIfAbsent` on same key from same thread (infinite loop or `IllegalStateException`) |
+| `detectSynchronizedOnLiteral` | boolean | true | Detect `synchronized` on interned `String` or cached `Integer`/`Long` [-128,127] — JVM-wide shared monitor |
+| `detectPublicLockExposure` | boolean | true | Detect `synchronized(this)` on publicly accessible objects — enables external lock acquisition |
+| `detectForkJoinTaskBlocking` | boolean | true | Detect blocking calls (`sleep`/`wait`/`get`/IO) inside a `ForkJoinTask`, starving carrier threads |
+| `detectOptimisticReadValidation` | boolean | true | Detect `StampedLock` optimistic-read data used without `validate(stamp)` or after failed validation |
+| `detectCFCommonPoolBlocking` | boolean | true | Detect blocking work inside `CompletableFuture` submitted without a custom `Executor` |
 
 ## Phase 1: Core Features
 

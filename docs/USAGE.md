@@ -228,6 +228,56 @@ void testSharedStringBuilder() {
 // Fix: use ThreadLocal<StringBuilder> or build strings per-thread and join at the end
 ```
 
+### Phase 8: Lifecycle & Structural Correctness (v1.5.0)
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `detectExecutorShutdown` | boolean | true | Detect `ExecutorService` tasks submitted but never shut down, or shut down without `awaitTermination()` |
+| `detectMutableMapKeys` | boolean | true | Detect `HashMap`/`HashSet` keys mutated after insertion, silently breaking future lookups |
+| `detectNestedMonitorLockout` | boolean | true | Detect blocking ops (`wait`/`Future.get`/`lock`) attempted while holding a different monitor |
+| `detectLockDowngrade` | boolean | true | Detect illegal read-to-write upgrade on `ReentrantReadWriteLock` (deadlocks immediately) |
+| `detectInheritableThreadLocalMisuse` | boolean | true | Detect `InheritableThreadLocal` accessed from pooled threads (value frozen at thread-creation time, not task-submission time) |
+
+#### Context accessors for Phase 8 detectors
+
+```java
+AsyncTestContext.executorShutdownMonitor()             // ExecutorShutdownDetector
+AsyncTestContext.mutableMapKeyMonitor()                // MutableMapKeyDetector
+AsyncTestContext.nestedMonitorLockoutMonitor()         // NestedMonitorLockoutDetector
+AsyncTestContext.lockDowngradeMonitor()                // LockDowngradeDetector
+AsyncTestContext.inheritableThreadLocalMisuseMonitor() // InheritableThreadLocalMisuseDetector
+```
+
+### Phase 10: API Traps & Subtle Concurrency Bugs (v1.5.0)
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `detectThreadLocalContamination` | boolean | true | Detect `ThreadLocal` set in task A read by task B on the same reused pooled thread |
+| `detectAtomicNonAtomicUpdates` | boolean | true | Detect `get()` + `set()` on `Atomic*` without `compareAndSet()`, losing concurrent updates |
+| `detectSynchronizedCollectionIteration` | boolean | true | Detect `Collections.synchronized*` iterated without holding the wrapper lock |
+| `detectSharedFormatter` | boolean | true | Detect `Formatter`/`PrintWriter`/`PrintStream` accessed from multiple threads concurrently |
+| `detectConcurrentMapComputeRecursion` | boolean | true | Detect recursive `computeIfAbsent` on same key from same thread (infinite loop or `IllegalStateException`) |
+| `detectSynchronizedOnLiteral` | boolean | true | Detect `synchronized` on interned `String` or cached `Integer`/`Long` [-128, 127] — JVM-wide shared monitor |
+| `detectPublicLockExposure` | boolean | true | Detect `synchronized(this)` on publicly accessible objects — enables external lock acquisition |
+| `detectForkJoinTaskBlocking` | boolean | true | Detect blocking calls (`sleep`/`wait`/`get`/IO) inside a `ForkJoinTask`, starving carrier threads |
+| `detectOptimisticReadValidation` | boolean | true | Detect `StampedLock` optimistic-read data used without `validate(stamp)` or after failed validation |
+| `detectCFCommonPoolBlocking` | boolean | true | Detect blocking work inside `CompletableFuture` submitted without a custom `Executor` |
+
+#### Context accessors for Phase 10 detectors
+
+```java
+AsyncTestContext.threadLocalContaminationMonitor()         // ThreadLocalContaminationDetector
+AsyncTestContext.atomicNonAtomicUpdateMonitor()            // AtomicNonAtomicUpdateDetector
+AsyncTestContext.synchronizedCollectionIterationMonitor()  // SynchronizedCollectionIterationDetector
+AsyncTestContext.sharedFormatterMonitor()                  // SharedFormatterDetector
+AsyncTestContext.concurrentMapComputeRecursionMonitor()    // ConcurrentMapComputeRecursionDetector
+AsyncTestContext.synchronizedOnLiteralMonitor()            // SynchronizedOnLiteralDetector
+AsyncTestContext.publicLockExposureMonitor()               // PublicLockExposureDetector
+AsyncTestContext.forkJoinTaskBlockingMonitor()             // ForkJoinTaskBlockingDetector
+AsyncTestContext.optimisticReadValidationMonitor()         // OptimisticReadValidationDetector
+AsyncTestContext.cfCommonPoolBlockingMonitor()             // CompletableFutureCommonPoolBlockingDetector
+```
+
 ## Manual Legacy Diagnostics
 
 For older Java async patterns that need explicit instrumentation, instantiate the diagnostics directly:
