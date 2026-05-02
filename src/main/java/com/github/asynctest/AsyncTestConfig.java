@@ -125,6 +125,13 @@ public final class AsyncTestConfig {
     public final boolean detectOptimisticReadValidation;
     public final boolean detectCFCommonPoolBlocking;
 
+    // ---- Phase 11: Thread-Safety of Additional Types & Patterns ----
+    public final boolean detectSharedMatcher;
+    public final boolean detectSharedDecimalFormat;
+    public final boolean detectWeakReferenceRace;
+    public final boolean detectStatefulLambda;
+    public final boolean detectSharedMessageDigest;
+
     // ---- Benchmarking ----
     public final boolean enableBenchmarking;
     public final double benchmarkRegressionThreshold;
@@ -226,6 +233,11 @@ public final class AsyncTestConfig {
         detectForkJoinTaskBlocking         = b.detectForkJoinTaskBlocking;
         detectOptimisticReadValidation     = b.detectOptimisticReadValidation;
         detectCFCommonPoolBlocking         = b.detectCFCommonPoolBlocking;
+        detectSharedMatcher            = b.detectSharedMatcher;
+        detectSharedDecimalFormat      = b.detectSharedDecimalFormat;
+        detectWeakReferenceRace        = b.detectWeakReferenceRace;
+        detectStatefulLambda           = b.detectStatefulLambda;
+        detectSharedMessageDigest      = b.detectSharedMessageDigest;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -330,6 +342,11 @@ public final class AsyncTestConfig {
             .detectForkJoinTaskBlocking(ann.detectForkJoinTaskBlocking())
             .detectOptimisticReadValidation(ann.detectOptimisticReadValidation())
             .detectCFCommonPoolBlocking(ann.detectCFCommonPoolBlocking())
+            .detectSharedMatcher(ann.detectSharedMatcher())
+            .detectSharedDecimalFormat(ann.detectSharedDecimalFormat())
+            .detectWeakReferenceRace(ann.detectWeakReferenceRace())
+            .detectStatefulLambda(ann.detectStatefulLambda())
+            .detectSharedMessageDigest(ann.detectSharedMessageDigest())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -435,6 +452,11 @@ public final class AsyncTestConfig {
         private boolean detectForkJoinTaskBlocking         = false;
         private boolean detectOptimisticReadValidation     = false;
         private boolean detectCFCommonPoolBlocking         = false;
+        private boolean detectSharedMatcher            = false;
+        private boolean detectSharedDecimalFormat      = false;
+        private boolean detectWeakReferenceRace        = false;
+        private boolean detectStatefulLambda           = false;
+        private boolean detectSharedMessageDigest      = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -533,6 +555,11 @@ public final class AsyncTestConfig {
         public Builder detectForkJoinTaskBlocking(boolean v)           { detectForkJoinTaskBlocking = v; return this; }
         public Builder detectOptimisticReadValidation(boolean v)       { detectOptimisticReadValidation = v; return this; }
         public Builder detectCFCommonPoolBlocking(boolean v)           { detectCFCommonPoolBlocking = v; return this; }
+        public Builder detectSharedMatcher(boolean v)                  { detectSharedMatcher = v; return this; }
+        public Builder detectSharedDecimalFormat(boolean v)            { detectSharedDecimalFormat = v; return this; }
+        public Builder detectWeakReferenceRace(boolean v)              { detectWeakReferenceRace = v; return this; }
+        public Builder detectStatefulLambda(boolean v)                 { detectStatefulLambda = v; return this; }
+        public Builder detectSharedMessageDigest(boolean v)            { detectSharedMessageDigest = v; return this; }
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
@@ -714,6 +741,16 @@ public final class AsyncTestConfig {
                     else detectOptimisticReadValidation = false;
                 if (!excludes.contains(DetectorType.CF_COMMON_POOL_BLOCKING)) detectCFCommonPoolBlocking = true;
                     else detectCFCommonPoolBlocking = false;
+                if (!excludes.contains(DetectorType.SHARED_MATCHER)) detectSharedMatcher = true;
+                    else detectSharedMatcher = false;
+                if (!excludes.contains(DetectorType.SHARED_DECIMAL_FORMAT)) detectSharedDecimalFormat = true;
+                    else detectSharedDecimalFormat = false;
+                if (!excludes.contains(DetectorType.WEAK_REFERENCE_RACE)) detectWeakReferenceRace = true;
+                    else detectWeakReferenceRace = false;
+                if (!excludes.contains(DetectorType.STATEFUL_LAMBDA)) detectStatefulLambda = true;
+                    else detectStatefulLambda = false;
+                if (!excludes.contains(DetectorType.SHARED_MESSAGE_DIGEST)) detectSharedMessageDigest = true;
+                    else detectSharedMessageDigest = false;
             } else {
                 // If detectAll is false, we still respect explicit enables,
                 // but we also apply excludes for consistency.
@@ -788,6 +825,11 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.LOCK_DOWNGRADE)) detectLockDowngrade = false;
                 if (excludes.contains(DetectorType.INHERITABLE_THREAD_LOCAL)) detectInheritableThreadLocalMisuse = false;
                 if (excludes.contains(DetectorType.UNCOMMITTED_CHANGES)) detectUncommittedChanges = false;
+                if (excludes.contains(DetectorType.SHARED_MATCHER)) detectSharedMatcher = false;
+                if (excludes.contains(DetectorType.SHARED_DECIMAL_FORMAT)) detectSharedDecimalFormat = false;
+                if (excludes.contains(DetectorType.WEAK_REFERENCE_RACE)) detectWeakReferenceRace = false;
+                if (excludes.contains(DetectorType.STATEFUL_LAMBDA)) detectStatefulLambda = false;
+                if (excludes.contains(DetectorType.SHARED_MESSAGE_DIGEST)) detectSharedMessageDigest = false;
             }
             return new AsyncTestConfig(this);
         }

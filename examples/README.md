@@ -11,6 +11,7 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 | 03 | [Shared Non-Thread-Safe Collection](03-shared-collection/) | `SharedCollectionDetector` | ArrayList/HashMap shared across threads causes data loss and corruption | 🔴 Critical |
 | 04 | [Virtual Thread Context Leak](04-virtual-thread-context-leak/) | `VirtualThreadContextLeakDetector` | ThreadLocal leaks in virtual threads cause memory leaks | 🟡 High |
 | 09 | [Uncommitted Changes Detection](09-uncommitted-changes-detection/) | `UncommittedChangesDetector` | Untracked Git files break test reproducibility | 🟢 Low |
+| 10 | [Shared Non-Thread-Safe Types](10-shared-non-thread-safe-types/) | `SharedMatcherDetector`, `SharedDecimalFormatDetector`, `SharedMessageDigestDetector` | Shared `Matcher`, `DecimalFormat`, and `MessageDigest` fields silently produce wrong results under concurrent load | 🔴 Critical |
 
 ## Phase 7: High-Level Concurrency Patterns (New!)
 
@@ -206,6 +207,120 @@ examples/
 **Primary Detector**: `UncommittedChangesDetector`
 - Flags: "Git repository has uncommitted or untracked changes"
 - Detects: `git status --porcelain` output showing M, A, D, R, C, or ?? files.
+
+---
+
+## Phase 11: Thread-Safety of Additional Types & Patterns (New in 0.9.0)
+
+Five new detectors for JDK types that look thread-safe but silently corrupt state under
+concurrent use. All five follow the same manual-recording pattern — test code registers
+the shared object with the detector before exercising it.
+
+### 1. SharedMatcherDetector (`detectSharedMatcher`)
+
+**What**: Detects `java.util.regex.Matcher` instances accessed from multiple threads.
+
+**Impact**: Wrong validation results — valid inputs rejected, invalid inputs accepted — with no exception thrown. `Pattern` is safe to share; `Matcher` holds mutable per-match cursor and group state.
+
+**Usage**:
+```java
+@AsyncTest(threads = 8, detectSharedMatcher = true)
+void testEmailValidation() {
+    AsyncTestContext.sharedMatcherDetector()
+        .recordAccess(service.getSharedMatcher(), "emailMatcher", Thread.currentThread());
+    service.validateEmail(email);
+}
+```
+
+**Fix**: Call `pattern.matcher(input)` inside each thread/method call rather than storing the `Matcher` as a field.
+
+### 2. SharedDecimalFormatDetector (`detectSharedDecimalFormat`)
+
+**What**: Detects `DecimalFormat` / `NumberFormat` instances accessed from multiple threads.
+
+**Impact**: Garbled numeric output (e.g. `"1,2345.6"` for `1234.56`) or `ArrayIndexOutOfBoundsException` from the formatter's internal digit buffer. The numeric-formatting equivalent of the classic `SimpleDateFormat` bug.
+
+**Usage**:
+```java
+@AsyncTest(threads = 8, detectSharedDecimalFormat = true)
+void testAmountFormatting() {
+    AsyncTestContext.sharedDecimalFormatDetector()
+        .recordAccess(service.getAmountFormat(), "currencyFmt", Thread.currentThread());
+    String result = service.formatAmount(amount);
+}
+```
+
+**Fix**: `ThreadLocal<DecimalFormat>` or `new DecimalFormat(pattern)` per call.
+
+### 3. WeakReferenceRaceDetector (`detectWeakReferenceRace`)
+
+**What**: Detects two failure modes around `WeakReference` / `SoftReference`:
+1. **ERROR** — result of `get()` used without a null check (referent may be collected between the call and the first dereference)
+2. **WARN** — referent collected mid-test (some threads saw non-null, others saw null)
+
+**Usage**:
+```java
+@AsyncTest(threads = 4, detectWeakReferenceRace = true)
+void testWeakCache() {
+    var d = AsyncTestContext.weakReferenceRaceDetector();
+    Object val = weakRef.get();
+    d.recordGet(weakRef, "cachedEntry", val, Thread.currentThread());
+    if (val == null) {
+        d.recordNullDereference(weakRef, "cachedEntry", Thread.currentThread());
+    }
+    // use val — may be null if referent was collected
+}
+```
+
+### 4. StatefulLambdaDetector (`detectStatefulLambda`)
+
+**What**: Detects lambda / `Runnable` / `Callable` instances that capture mutable containers (e.g. `int[]`, `Object[]`) and are **executed concurrently** while those captures are mutated.
+
+**Impact**: Silently lost increments, corrupted array contents — the mutation looks like an atomic operation but involves multiple JVM instructions with no synchronization.
+
+**Usage**:
+```java
+int[] counter = {0};
+Runnable task = () -> { counter[0]++; };  // captures mutable int[]
+
+@AsyncTest(threads = 4, detectStatefulLambda = true)
+void testCounterTask() {
+    var d = AsyncTestContext.statefulLambdaDetector();
+    d.recordExecution(task, "counter-task", Thread.currentThread());
+    d.recordCapturedMutation(task, "counter[0]", Thread.currentThread());
+    task.run();
+}
+```
+
+**Fix**: Replace `int[]` with `AtomicInteger` or `LongAdder`; or create a new lambda instance per task.
+
+### 5. SharedMessageDigestDetector (`detectSharedMessageDigest`)
+
+**What**: Detects `MessageDigest` instances accessed from multiple threads.
+
+**Impact**: Wrong hash output with no exception — `update()` and `digest()` mutate the internal running buffer and byte count. Hash values differ silently from the expected result. One of the hardest concurrency bugs to reproduce in a debugger.
+
+**Usage**:
+```java
+@AsyncTest(threads = 8, detectSharedMessageDigest = true)
+void testFingerprint() {
+    AsyncTestContext.sharedMessageDigestDetector()
+        .recordAccess(service.getSha256(), "sha256", Thread.currentThread());
+    String hash = service.fingerprint(data);
+}
+```
+
+**Fix**: `MessageDigest.getInstance("SHA-256")` per thread, or `ThreadLocal<MessageDigest>`.
+
+---
+
+### Example 10: All Three Silent-Corruption Detectors Together
+
+See [10-shared-non-thread-safe-types](10-shared-non-thread-safe-types/) for a complete
+`DataProcessingService` that shares a `Matcher`, `DecimalFormat`, and `MessageDigest` as
+class fields — a pattern common in services written before Java's thread-safety rules were
+well understood. The example shows how `@Test` passes with false confidence and how each
+`@AsyncTest` detector fires.
 
 ## How to Use These Examples
 
