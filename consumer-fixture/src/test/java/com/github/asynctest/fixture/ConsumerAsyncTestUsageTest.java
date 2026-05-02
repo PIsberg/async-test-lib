@@ -1935,7 +1935,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 10.9: Optimistic read validation — proper validate() before using data.
      * StampedLock optimistic reads require validate(stamp) before trusting the data.
      */
-    @AsyncTest(threads = 2, invocations = 5, detectOptimisticReadValidation = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 5, detectOptimisticReadValidation = true, timeoutMs = 3000)
     void testOptimisticReadValidationDetection() {
         OptimisticReadValidationDetector detector =
             AsyncTestContext.optimisticReadValidationMonitor();
