@@ -1,7 +1,5 @@
 package com.github.asynctest.example;
 
-import com.github.asynctest.AsyncTest;
-import com.github.asynctest.AsyncTestContext;
 import com.github.asynctest.example.service.DataProcessingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,8 +11,15 @@ import static org.junit.jupiter.api.Assertions.*;
  * and SharedMessageDigestDetector.
  *
  * ========================================================================
- * DETECTORS: SharedMatcherDetector, SharedDecimalFormatDetector,
- *            SharedMessageDigestDetector
+ * NOTE: The Phase 11 detectors (detectSharedMatcher, detectSharedDecimalFormat,
+ * detectSharedMessageDigest, detectWeakReferenceRace, detectStatefulLambda) ship
+ * in async-test-lib 0.9.0. This example targets 0.8.0 so it runs from Maven
+ * Central without a local build.
+ *
+ * Upgrade steps (shown as comments throughout this file):
+ *   1. Bump async-test-lib.version in pom.xml to 0.9.0
+ *   2. Change @Test to @AsyncTest on the three Part 2 methods
+ *   3. Uncomment the AsyncTestContext detector calls inside each method
  * ========================================================================
  *
  * THE PATTERN:
@@ -28,22 +33,17 @@ import static org.junit.jupiter.api.Assertions.*;
  * corrupted when multiple threads call them concurrently without synchronization.
  *
  * WHY @Test PASSES:
- * Single-threaded execution serializes every call. There is never more than one
+ * Single-threaded execution serialises every call. There is never more than one
  * thread touching the shared object at once, so no corruption occurs and all
  * assertions pass deterministically.
  *
- * WHY @AsyncTest DETECTS THE BUG:
- * With multiple threads colliding on the same object simultaneously:
- *   - SharedMatcherDetector reports 'txIdMatcher' accessed from N threads
+ * WHY @AsyncTest DETECTS THE BUG (0.9.0):
+ * With multiple threads colliding on the same object simultaneously the detectors
+ * report which threads accessed which instance — the access pattern alone is
+ * sufficient to flag the risk, similar to a race detector:
+ *   - SharedMatcherDetector     reports 'txIdMatcher' accessed from N threads
  *   - SharedDecimalFormatDetector reports 'amountFormat' accessed from N threads
  *   - SharedMessageDigestDetector reports 'sha256' accessed from N threads
- *
- * WHAT THE DETECTORS DO:
- * The detector records which thread accessed which object instance. After the test
- * completes it checks whether any object was accessed from more than one thread and
- * reports a violation with the thread names for diagnosis.
- * The detectors do NOT need to observe a corruption event — the access pattern alone
- * is sufficient to flag the risk, similar to a race detector.
  */
 class SharedNonThreadSafeTypesTest {
 
@@ -61,8 +61,6 @@ class SharedNonThreadSafeTypesTest {
     /**
      * Sequential execution: all operations complete correctly because there is
      * never contention on the shared objects.
-     *
-     * This PASSES and shows normal, correct single-thread behaviour.
      */
     @Test
     void testValidate_singleThread() {
@@ -90,86 +88,77 @@ class SharedNonThreadSafeTypesTest {
     // =========================================================================
     // Part 2: @AsyncTest — exposes the concurrent bug via detector reports
     //
-    // These three tests are currently annotated with @Test so CI passes.
-    // To see the detectors fire, change each annotation to its @AsyncTest form
-    // (shown in the comment above each method).
+    // Currently @Test so this compiles against 0.8.0.
+    //
+    // To activate Phase 11 detection (requires 0.9.0):
+    //   1. Bump pom.xml: <async-test-lib.version>0.9.0</async-test-lib.version>
+    //   2. Change @Test to @AsyncTest on each method below
+    //   3. Uncomment the AsyncTestContext / import lines
     // =========================================================================
 
+    // import com.github.asynctest.AsyncTest;           // uncomment for 0.9.0
+    // import com.github.asynctest.AsyncTestContext;    // uncomment for 0.9.0
+
     /**
-     * Detector: SharedMatcherDetector
+     * Detector: SharedMatcherDetector (0.9.0)
      *
      * Change to:
      *   @AsyncTest(threads = 8, invocations = 10, detectSharedMatcher = true)
-     * to see the violation report.
+     * and uncomment the detector lines to see:
      *
-     * With @Test this PASSES because there is only one thread.
-     * With @AsyncTest the detector reports:
      *   SHARED REGEX MATCHER DETECTED:
-     *     - 'txIdMatcher' accessed from 8 threads (…) — Matcher is not thread-safe
+     *     - 'txIdMatcher' accessed from 8 threads — Matcher is not thread-safe;
+     *       Pattern is safe but each Matcher holds mutable match state
      */
-    // @AsyncTest(threads = 8, invocations = 10, detectSharedMatcher = true)
     @Test
-    void testSharedMatcher_detected() {
-        var detector = AsyncTestContext.sharedMatcherDetector();
-        if (detector != null) {
-            // Register the shared Matcher instance with the detector so it can
-            // track which threads access it.
-            detector.recordAccess(service.getBuggyMatcher(), "txIdMatcher",
-                    Thread.currentThread());
-        }
+    void testSharedMatcher_concurrent() {
+        // With 0.9.0 — uncomment these lines and change to @AsyncTest above:
+        // AsyncTestContext.sharedMatcherDetector()
+        //     .recordAccess(service.getBuggyMatcher(), "txIdMatcher", Thread.currentThread());
 
-        // Calls the buggy validateTransactionId() which reuses the shared Matcher
         boolean valid = service.validateTransactionId("TX-123456-USD");
         assertTrue(valid, "Valid transaction ID should pass validation");
     }
 
     /**
-     * Detector: SharedDecimalFormatDetector
+     * Detector: SharedDecimalFormatDetector (0.9.0)
      *
      * Change to:
      *   @AsyncTest(threads = 8, invocations = 10, detectSharedDecimalFormat = true)
-     * to see the violation report.
+     * and uncomment the detector lines to see:
      *
-     * With @AsyncTest the detector reports:
      *   SHARED DECIMAL FORMAT / NUMBER FORMAT DETECTED:
      *     - 'amountFormat' accessed from 8 threads — DecimalFormat/NumberFormat is not thread-safe
      */
-    // @AsyncTest(threads = 8, invocations = 10, detectSharedDecimalFormat = true)
     @Test
-    void testSharedDecimalFormat_detected() {
-        var detector = AsyncTestContext.sharedDecimalFormatDetector();
-        if (detector != null) {
-            detector.recordAccess(service.getBuggyAmountFormat(), "amountFormat",
-                    Thread.currentThread());
-        }
+    void testSharedDecimalFormat_concurrent() {
+        // With 0.9.0 — uncomment these lines and change to @AsyncTest above:
+        // AsyncTestContext.sharedDecimalFormatDetector()
+        //     .recordAccess(service.getBuggyAmountFormat(), "amountFormat", Thread.currentThread());
 
         String formatted = service.formatAmount(9999.99);
         assertNotNull(formatted, "Formatted amount should not be null");
     }
 
     /**
-     * Detector: SharedMessageDigestDetector
+     * Detector: SharedMessageDigestDetector (0.9.0)
      *
      * Change to:
      *   @AsyncTest(threads = 8, invocations = 10, detectSharedMessageDigest = true)
-     * to see the violation report.
+     * and uncomment the detector lines to see:
      *
-     * With @AsyncTest the detector reports:
      *   SHARED MESSAGE DIGEST DETECTED:
      *     - 'sha256' accessed from 8 threads — concurrent update()/digest() calls
      *       silently corrupt the hash state
      *
-     * NOTE: With @AsyncTest the fingerprint results may also differ across threads
-     * even for the same input, demonstrating the silent corruption.
+     * NOTE: Under concurrent load the fingerprint() results may also differ across
+     * threads for the same input, demonstrating the silent corruption directly.
      */
-    // @AsyncTest(threads = 8, invocations = 10, detectSharedMessageDigest = true)
     @Test
-    void testSharedMessageDigest_detected() {
-        var detector = AsyncTestContext.sharedMessageDigestDetector();
-        if (detector != null) {
-            detector.recordAccess(service.getBuggyMessageDigest(), "sha256",
-                    Thread.currentThread());
-        }
+    void testSharedMessageDigest_concurrent() {
+        // With 0.9.0 — uncomment these lines and change to @AsyncTest above:
+        // AsyncTestContext.sharedMessageDigestDetector()
+        //     .recordAccess(service.getBuggyMessageDigest(), "sha256", Thread.currentThread());
 
         String hash = service.fingerprint("TX-123456-USD");
         assertEquals(64, hash.length(), "SHA-256 hex digest must be 64 characters");
@@ -180,16 +169,14 @@ class SharedNonThreadSafeTypesTest {
     // =========================================================================
 
     /**
-     * The fixed versions use thread-local or per-call instances and pass
-     * with full concurrent stress testing.
-     *
-     * Uncomment @AsyncTest to verify the fixes hold under load.
+     * The fixed versions use thread-local or per-call instances.
+     * Uncomment @AsyncTest (0.9.0) to verify the fixes hold under concurrent load.
      */
     // @AsyncTest(threads = 8, invocations = 20,
     //         detectSharedMatcher = true, detectSharedDecimalFormat = true,
     //         detectSharedMessageDigest = true)
     @Test
-    void testFixed_concurrent() {
+    void testFixed_singleThread() {
         assertTrue(service.validateTransactionIdFixed("TX-123456-USD"));
         assertFalse(service.validateTransactionIdFixed("bad-format"));
         assertNotNull(service.formatAmountFixed(1234.56));
