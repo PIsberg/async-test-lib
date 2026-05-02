@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-05-02
+
 ### Added
 
 #### Phase 8: Lifecycle & Structural Correctness
@@ -215,4 +217,8 @@ First public release on Maven Central.
 - `02-visibility-volatile-flag` — demonstrates memory visibility bugs caused by a missing
   `volatile` keyword
 
+[0.8.0]: https://github.com/PIsberg/async-test-lib/releases/tag/v0.8.0
+[0.7.0]: https://github.com/PIsberg/async-test-lib/releases/tag/v0.7.0
+[0.6.2]: https://github.com/PIsberg/async-test-lib/releases/tag/v0.6.2
+[0.5.1]: https://github.com/PIsberg/async-test-lib/releases/tag/v0.5.1
 [0.5.0]: https://github.com/PIsberg/async-test-lib/releases/tag/v0.5.0

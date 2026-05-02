@@ -1283,14 +1283,14 @@ Add the dependency — available on [Maven Central](https://central.sonatype.com
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>0.5.0</version>
+    <version>0.8.0</version>
     <scope>test</scope>
 </dependency>
 ```
 
 **Gradle (Kotlin DSL)**
 ```kotlin
-testImplementation("se.deversity.async-test-lib:async-test-lib:0.5.0")
+testImplementation("se.deversity.async-test-lib:async-test-lib:0.8.0")
 ```
 
 ### 1. Catching a Race Condition

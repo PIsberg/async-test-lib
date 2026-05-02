@@ -51,21 +51,21 @@ async-test-1.1.0-javadoc.jar  (450 KB)  → API docs
 ### Release Process (4 Steps)
 ```bash
 # 1. Update version in pom.xml
-sed -i 's/0.7.0/0.8.0/' pom.xml
+sed -i 's/0.8.0/0.9.0/' pom.xml
 
 # 2. Commit
-git commit -am "Release 1.1.0"
+git commit -am "Release 0.9.0"
 
 # 3. Tag (this triggers GitHub Actions!)
-git tag -a v1.1.0 -m "Release 1.1.0"
+git tag -a v0.9.0 -m "Release 0.9.0"
 
 # 4. Push
-git push origin main && git push origin v1.1.0
+git push origin main && git push origin v0.9.0
 ```
 
 ### GitHub Actions Automation
 ```
-Tag push detected (v1.1.0)
+Tag push detected (v0.9.0)
     ↓
 Workflow starts (publish.yml)
     ↓
