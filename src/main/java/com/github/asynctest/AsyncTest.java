@@ -688,6 +688,49 @@ public @interface AsyncTest {
      */
     boolean detectCFCommonPoolBlocking() default true;
 
+    // ============= Phase 11: Thread-Safety of Additional Types & Patterns =============
+
+    /**
+     * Enable shared Matcher detection.
+     * Detects {@link java.util.regex.Matcher} instances accessed concurrently from multiple
+     * threads. {@code Pattern} is thread-safe but {@code Matcher} holds mutable match state.
+     * @since 0.9.0
+     */
+    boolean detectSharedMatcher() default true;
+
+    /**
+     * Enable shared DecimalFormat/NumberFormat detection.
+     * Detects {@link java.text.DecimalFormat} and {@link java.text.NumberFormat} instances
+     * accessed concurrently; neither is thread-safe.
+     * @since 0.9.0
+     */
+    boolean detectSharedDecimalFormat() default true;
+
+    /**
+     * Enable WeakReference/SoftReference race detection.
+     * Detects {@code get()} results used without null-checking, and references whose referent
+     * was collected mid-test — leaving some threads with null while others had non-null.
+     * @since 0.9.0
+     */
+    boolean detectWeakReferenceRace() default true;
+
+    /**
+     * Enable stateful-lambda detection.
+     * Detects lambda / {@link Runnable} / {@link java.util.concurrent.Callable} instances
+     * that capture mutable state and are executed concurrently from multiple threads.
+     * @since 0.9.0
+     */
+    boolean detectStatefulLambda() default true;
+
+    /**
+     * Enable shared MessageDigest detection.
+     * Detects {@link java.security.MessageDigest} instances accessed concurrently;
+     * {@code MessageDigest} is not thread-safe and concurrent {@code update()}/{@code digest()}
+     * calls silently corrupt the hash state.
+     * @since 0.9.0
+     */
+    boolean detectSharedMessageDigest() default true;
+
     // ============= License Gating (Integration) =============
 
     /** Keygen Account ID. Defaults to System property 'keygen.account.id' if empty. */

@@ -115,6 +115,13 @@ public final class AsyncTestContext {
     final OptimisticReadValidationDetector         optimisticReadValidationDetector;
     final CompletableFutureCommonPoolBlockingDetector cfCommonPoolBlockingDetector;
 
+    // ---- Phase 11: Thread-Safety of Additional Types & Patterns ----
+    final SharedMatcherDetector        sharedMatcherDetector;
+    final SharedDecimalFormatDetector  sharedDecimalFormatDetector;
+    final WeakReferenceRaceDetector    weakReferenceRaceDetector;
+    final StatefulLambdaDetector       statefulLambdaDetector;
+    final SharedMessageDigestDetector  sharedMessageDigestDetector;
+
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
         // Mirror registry references so package-private field access still works
@@ -193,6 +200,11 @@ public final class AsyncTestContext {
         forkJoinTaskBlockingDetector           = registry.forkJoinTaskBlockingDetector;
         optimisticReadValidationDetector       = registry.optimisticReadValidationDetector;
         cfCommonPoolBlockingDetector           = registry.cfCommonPoolBlockingDetector;
+        sharedMatcherDetector                  = registry.sharedMatcherDetector;
+        sharedDecimalFormatDetector            = registry.sharedDecimalFormatDetector;
+        weakReferenceRaceDetector              = registry.weakReferenceRaceDetector;
+        statefulLambdaDetector                 = registry.statefulLambdaDetector;
+        sharedMessageDigestDetector            = registry.sharedMessageDigestDetector;
     }
 
     // ---- Lifecycle (called by ConcurrencyRunner) ----
@@ -830,6 +842,53 @@ public final class AsyncTestContext {
      */
     public static CompletableFutureCommonPoolBlockingDetector cfCommonPoolBlockingMonitor() {
         return require("detectCFCommonPoolBlocking", c -> c.cfCommonPoolBlockingDetector);
+    }
+
+    // ---- Phase 11: Thread-Safety of Additional Types & Patterns ----
+
+    /**
+     * Returns the {@link SharedMatcherDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedMatcher = false}
+     * @since 0.9.0
+     */
+    public static SharedMatcherDetector sharedMatcherDetector() {
+        return require("detectSharedMatcher", c -> c.sharedMatcherDetector);
+    }
+
+    /**
+     * Returns the {@link SharedDecimalFormatDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedDecimalFormat = false}
+     * @since 0.9.0
+     */
+    public static SharedDecimalFormatDetector sharedDecimalFormatDetector() {
+        return require("detectSharedDecimalFormat", c -> c.sharedDecimalFormatDetector);
+    }
+
+    /**
+     * Returns the {@link WeakReferenceRaceDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectWeakReferenceRace = false}
+     * @since 0.9.0
+     */
+    public static WeakReferenceRaceDetector weakReferenceRaceDetector() {
+        return require("detectWeakReferenceRace", c -> c.weakReferenceRaceDetector);
+    }
+
+    /**
+     * Returns the {@link StatefulLambdaDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectStatefulLambda = false}
+     * @since 0.9.0
+     */
+    public static StatefulLambdaDetector statefulLambdaDetector() {
+        return require("detectStatefulLambda", c -> c.statefulLambdaDetector);
+    }
+
+    /**
+     * Returns the {@link SharedMessageDigestDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedMessageDigest = false}
+     * @since 0.9.0
+     */
+    public static SharedMessageDigestDetector sharedMessageDigestDetector() {
+        return require("detectSharedMessageDigest", c -> c.sharedMessageDigestDetector);
     }
 
     // ---- Helper ----

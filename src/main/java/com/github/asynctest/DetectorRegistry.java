@@ -116,6 +116,13 @@ final class DetectorRegistry {
     final OptimisticReadValidationDetector         optimisticReadValidationDetector;
     final CompletableFutureCommonPoolBlockingDetector cfCommonPoolBlockingDetector;
 
+    // ---- Phase 11: Thread-Safety of Additional Types & Patterns ----
+    final SharedMatcherDetector        sharedMatcherDetector;
+    final SharedDecimalFormatDetector  sharedDecimalFormatDetector;
+    final WeakReferenceRaceDetector    weakReferenceRaceDetector;
+    final StatefulLambdaDetector       statefulLambdaDetector;
+    final SharedMessageDigestDetector  sharedMessageDigestDetector;
+
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
      * Detectors whose flag is {@code false} are set to {@code null} and incur
@@ -232,6 +239,13 @@ final class DetectorRegistry {
                 ? new OptimisticReadValidationDetector() : null;
         cfCommonPoolBlockingDetector = cfg.detectCFCommonPoolBlocking
                 ? new CompletableFutureCommonPoolBlockingDetector() : null;
+
+        // ---- Phase 11: Thread-Safety of Additional Types & Patterns ----
+        sharedMatcherDetector       = cfg.detectSharedMatcher       ? new SharedMatcherDetector()       : null;
+        sharedDecimalFormatDetector = cfg.detectSharedDecimalFormat  ? new SharedDecimalFormatDetector() : null;
+        weakReferenceRaceDetector   = cfg.detectWeakReferenceRace    ? new WeakReferenceRaceDetector()   : null;
+        statefulLambdaDetector      = cfg.detectStatefulLambda       ? new StatefulLambdaDetector()      : null;
+        sharedMessageDigestDetector = cfg.detectSharedMessageDigest  ? new SharedMessageDigestDetector() : null;
     }
 
     /**
@@ -486,6 +500,23 @@ final class DetectorRegistry {
         ifIssue(cfCommonPoolBlockingDetector,
                 d -> d.analyze(),
                 CompletableFutureCommonPoolBlockingDetector.CompletableFutureCommonPoolBlockingReport::hasIssues, out);
+
+        // ---- Phase 11: Thread-Safety of Additional Types & Patterns ----
+        ifIssue(sharedMatcherDetector,
+                d -> d.analyze(),
+                SharedMatcherDetector.SharedMatcherReport::hasIssues, out);
+        ifIssue(sharedDecimalFormatDetector,
+                d -> d.analyze(),
+                SharedDecimalFormatDetector.SharedDecimalFormatReport::hasIssues, out);
+        ifIssue(weakReferenceRaceDetector,
+                d -> d.analyze(),
+                WeakReferenceRaceDetector.WeakReferenceRaceReport::hasIssues, out);
+        ifIssue(statefulLambdaDetector,
+                d -> d.analyze(),
+                StatefulLambdaDetector.StatefulLambdaReport::hasIssues, out);
+        ifIssue(sharedMessageDigestDetector,
+                d -> d.analyze(),
+                SharedMessageDigestDetector.SharedMessageDigestReport::hasIssues, out);
 
         return out;
     }

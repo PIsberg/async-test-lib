@@ -54,6 +54,11 @@ import com.github.asynctest.diagnostics.PublicLockExposureDetector;
 import com.github.asynctest.diagnostics.ForkJoinTaskBlockingDetector;
 import com.github.asynctest.diagnostics.OptimisticReadValidationDetector;
 import com.github.asynctest.diagnostics.CompletableFutureCommonPoolBlockingDetector;
+import com.github.asynctest.diagnostics.SharedMatcherDetector;
+import com.github.asynctest.diagnostics.SharedDecimalFormatDetector;
+import com.github.asynctest.diagnostics.WeakReferenceRaceDetector;
+import com.github.asynctest.diagnostics.StatefulLambdaDetector;
+import com.github.asynctest.diagnostics.SharedMessageDigestDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -888,6 +893,108 @@ class ConsumerAsyncTestUsageTest {
         // Analyze and report (for demonstration, we just print the report)
         var report = AsyncTestContext.waitTimeoutMonitor().analyze();
         // In real usage with infinite waits, you would assert: assertTrue(report.hasIssues())
+    }
+
+    // ============================================
+    // PHASE 11: Thread-Safety of Additional Types & Patterns
+    // ============================================
+
+    /**
+     * Phase 11.1: Shared Matcher detection — Matcher is not thread-safe.
+     * Pattern is safe to share; Matcher holds mutable per-match state and must not be shared.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectSharedMatcher = true, timeoutMs = 3000)
+    void testSharedMatcherDetection() {
+        SharedMatcherDetector detector = AsyncTestContext.sharedMatcherDetector();
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\d+");
+        java.util.regex.Matcher matcher = pattern.matcher("12345");
+
+        // Single-thread access — no issue expected
+        detector.recordAccess(matcher, "digits-matcher", Thread.currentThread());
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Single-thread Matcher access should not be flagged");
+    }
+
+    /**
+     * Phase 11.2: Shared DecimalFormat detection — DecimalFormat is not thread-safe.
+     * Use ThreadLocal<DecimalFormat> or create a new instance per call.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectSharedDecimalFormat = true, timeoutMs = 3000)
+    void testSharedDecimalFormatDetection() {
+        SharedDecimalFormatDetector detector = AsyncTestContext.sharedDecimalFormatDetector();
+        java.text.DecimalFormat df = new java.text.DecimalFormat("#,##0.00");
+
+        // Single-thread access — no issue expected
+        detector.recordAccess(df, "currency-format", Thread.currentThread());
+        df.format(1234.56);
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Single-thread DecimalFormat access should not be flagged");
+    }
+
+    /**
+     * Phase 11.3: Weak reference race detection — null-safe usage pattern.
+     * Always null-check WeakReference.get() before use.
+     */
+    @AsyncTest(threads = 2, invocations = 2, detectWeakReferenceRace = true, timeoutMs = 3000)
+    void testWeakReferenceRaceDetection() {
+        WeakReferenceRaceDetector detector = AsyncTestContext.weakReferenceRaceDetector();
+        Object obj = new Object();
+        java.lang.ref.WeakReference<Object> ref = new java.lang.ref.WeakReference<>(obj);
+
+        // Correct usage: null-check before use
+        Object val = ref.get();
+        detector.recordGet(ref, "cached-obj", val, Thread.currentThread());
+        if (val != null) {
+            // safely use val — strong local reference prevents GC
+            assertNotNull(val);
+        }
+
+        // Keep strong reference alive to avoid spurious null in this test
+        assertNotNull(obj);
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Null-safe WeakReference usage should not be flagged");
+    }
+
+    // Shared lambda instance for Phase 11.4 test
+    private final int[] lambdaCounter = {0};
+
+    /**
+     * Phase 11.4: Stateful lambda detection — captured mutable state shared across threads.
+     * Use AtomicInteger or separate instances when lambdas run concurrently.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectStatefulLambda = true, timeoutMs = 3000)
+    void testStatefulLambdaDetection() {
+        StatefulLambdaDetector detector = AsyncTestContext.statefulLambdaDetector();
+        // Safe: single-thread, no concurrent mutation expected in this invocation
+        Runnable task = () -> lambdaCounter[0]++;
+        detector.recordExecution(task, "counter-task", Thread.currentThread());
+        task.run();
+
+        var report = detector.analyze();
+        // Single-thread: executed on 1 thread only → no violation regardless of mutations
+        assertFalse(report.hasIssues(), "Single-thread lambda execution should not be flagged");
+    }
+
+    /**
+     * Phase 11.5: Shared MessageDigest detection — MessageDigest is not thread-safe.
+     * Use ThreadLocal<MessageDigest> or obtain a new instance per thread.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectSharedMessageDigest = true, timeoutMs = 3000)
+    void testSharedMessageDigestDetection() throws Exception {
+        SharedMessageDigestDetector detector = AsyncTestContext.sharedMessageDigestDetector();
+        java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+
+        // Single-thread access — no issue expected
+        detector.recordAccess(md, "sha256", Thread.currentThread());
+        md.update("hello".getBytes());
+        byte[] hash = md.digest();
+        assertNotNull(hash);
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Single-thread MessageDigest access should not be flagged");
     }
 
     // Helper class for constructor safety tests

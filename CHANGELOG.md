@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - Unreleased
+
+### Added
+
+#### Phase 11: Thread-Safety of Additional Types & Patterns
+- **Shared Matcher** (`detectSharedMatcher`) — detects `java.util.regex.Matcher` instances
+  accessed concurrently from multiple threads. `Pattern` is thread-safe but `Matcher` holds
+  mutable per-match state (position, group offsets, last-append position); concurrent use
+  produces incorrect matches or `StringIndexOutOfBoundsException`. Fix: call
+  `pattern.matcher(input)` inside each thread rather than sharing one `Matcher`.
+- **Shared DecimalFormat** (`detectSharedDecimalFormat`) — detects `java.text.DecimalFormat`
+  and `java.text.NumberFormat` instances accessed concurrently. Concurrent `format()` /
+  `parse()` calls corrupt internal multiplier and grouping state, producing garbled output
+  without any exception — the numeric-formatting analogue of `SimpleDateFormat` misuse.
+  Fix: `ThreadLocal<DecimalFormat>` or create a new instance per call.
+- **Weak Reference Race** (`detectWeakReferenceRace`) — detects two failure modes around
+  `WeakReference` / `SoftReference`: (1) `get()` result used without a null check
+  (`ERROR`) — the referent may be collected at any time, including between the
+  `get()` call and the first dereference; (2) referent collected mid-test (`WARN`) — the
+  same reference returned non-null from some threads and null from others, revealing code
+  paths that do not handle null on every branch.
+- **Stateful Lambda** (`detectStatefulLambda`) — detects `Runnable` / `Callable` / lambda
+  instances that capture mutable containers (e.g. `int[]`, `Object[]`, wrapper objects) and
+  are executed concurrently from multiple threads while mutating those captures. The JVM
+  enforces *effectively final* for captured variables, but captured *containers* are mutable —
+  a common, hard-to-spot data race. Fix: `AtomicInteger` / `LongAdder`, or create a new
+  lambda instance per task.
+- **Shared MessageDigest** (`detectSharedMessageDigest`) — detects `java.security.MessageDigest`
+  instances accessed concurrently. `MessageDigest` is not thread-safe: every `update()` and
+  `digest()` call mutates internal digest state (running hash buffer, byte count, padding).
+  Concurrent access silently corrupts the hash without throwing any exception — one of the
+  hardest concurrency bugs to diagnose in production. Fix: `MessageDigest.getInstance()` per
+  thread or `ThreadLocal<MessageDigest>`.
+
 ## [0.8.0] - 2026-05-02
 
 ### Added
