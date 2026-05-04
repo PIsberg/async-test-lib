@@ -1,0 +1,7 @@
+# async-test-lib load-test memory sweep
+# version=0.7.0 date=2026-05-04T15:56:19.286524700Z
+threads,invocations,noDetectorAllocKB,allDetectorAllocKB,overheadKB,overheadPct
+4,10,694.6,1204.3,509.7,73.4
+4,50,286.1,7921.6,7635.5,2668.7
+4,100,608.9,14811.4,14202.5,2332.4
+4,500,1943.5,60168.4,58224.9,2995.9
