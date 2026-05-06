@@ -2,7 +2,7 @@
 
 This Maven project exercises `async-test` as a downstream consumer would:
 
-- it depends on the built `com.github.asynctest:async-test` artifact
+- it depends on the built `se.deversity.asynctest:async-test` artifact
 - it runs its own JUnit test suite
 - it only uses the library's public API
 

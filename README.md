@@ -9,6 +9,41 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/PIsberg/async-test-lib/badge)](https://scorecard.dev/viewer/?uri=github.com/PIsberg/async-test-lib/)
 [![codecov](https://codecov.io/gh/PIsberg/async-test-lib/graph/badge.svg)](https://codecov.io/gh/PIsberg/async-test-lib)
 
+## Table of Contents
+
+- [Introduction](#introduction)
+- [A Quick Example](#a-quick-example)
+- [Why This Matters](#why-this-matters)
+- [How It Works](#how-it-works)
+- [Features](#features)
+- [Detector Coverage](#detector-coverage)
+- [Quick Start](#quick-start)
+- [Annotation Parameters](#annotation-parameters)
+- [Phase 1: Core Features](#phase-1-core-features)
+- [Phase 2: Advanced Detectors](#phase-2-advanced-detectors)
+- [Phase 3: Runtime Misuse Detectors](#phase-3-runtime-misuse-detectors)
+- [Legacy Java Async Diagnostics](#legacy-java-async-diagnostics)
+- [AsyncAssert: Side Effect Polling](#asyncassert-side-effect-polling)
+- [Diagnostic Output](#diagnostic-output)
+- [Performance](#performance)
+- [Requirements](#requirements)
+- [Get Started](#get-started)
+- [@AsyncTest Annotation Parameters](#asynctest-annotation-parameters)
+- [Diagnostic Output (detail)](#diagnostic-output-1)
+- [Requirements (detail)](#requirements-1)
+- [Best Practices](#best-practices)
+- [Project Statistics](#project-statistics)
+- [What Gets Detected](#what-gets-detected)
+- [Documentation](#documentation)
+- [Comparison with Other Tools](#comparison-with-other-tools)
+- [Migration Guide](#migration-guide)
+- [Observability: Event Listeners (v1.2.0+)](#observability-event-listeners-v120)
+- [New Detectors (v1.2.0+)](#new-detectors-v120)
+- [Phase 6: Virtual Thread Concurrency (Java 21+)](#phase-6-virtual-thread-concurrency-java-21)
+- [Phase 7: High-Level Concurrency Patterns (v0.7.0)](#phase-7-high-level-concurrency-patterns-v070)
+- [Troubleshooting](#troubleshooting)
+- [Building from Source](#building-from-source)
+
 ## Introduction
 
 Concurrency bugs are the most elusive and costly bugs in production systems. They're non-deterministic, hard to reproduce, and invisible to standard testing. A race condition might happen once every million test runs, deadlocks might only occur under specific thread scheduling, and memory visibility issues only manifest on specific hardware.
@@ -1283,14 +1318,14 @@ Add the dependency — available on [Maven Central](https://central.sonatype.com
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>0.8.0</version>
+    <version>0.9.0</version>
     <scope>test</scope>
 </dependency>
 ```
 
 **Gradle (Kotlin DSL)**
 ```kotlin
-testImplementation("se.deversity.async-test-lib:async-test-lib:0.8.0")
+testImplementation("se.deversity.async-test-lib:async-test-lib:0.9.0")
 ```
 
 ### 1. Catching a Race Condition
@@ -1298,7 +1333,7 @@ testImplementation("se.deversity.async-test-lib:async-test-lib:0.8.0")
 To catch a concurrency bug, annotate your JUnit 5 test with `@AsyncTest`.
 
 ```java
-import com.github.asynctest.AsyncTest;
+import se.deversity.asynctest.AsyncTest;
 import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -1377,7 +1412,7 @@ void testLivelock() {
 Use `AsyncAssert` to wait for asynchronous changes cleanly:
 
 ```java
-import com.github.asynctest.AsyncAssert;
+import se.deversity.asynctest.AsyncAssert;
 import java.time.Duration;
 
 @Test
@@ -1603,7 +1638,7 @@ Listeners receive callbacks for:
 ### Creating a Custom Listener
 
 ```java
-import com.github.asynctest.AsyncTestListener;
+import se.deversity.asynctest.AsyncTestListener;
 
 public class MyCustomListener implements AsyncTestListener {
     
@@ -1639,7 +1674,7 @@ public class MyCustomListener implements AsyncTestListener {
 ### Registering Listeners
 
 ```java
-import com.github.asynctest.AsyncTestListenerRegistry;
+import se.deversity.asynctest.AsyncTestListenerRegistry;
 
 @BeforeAll
 static void setUp() {

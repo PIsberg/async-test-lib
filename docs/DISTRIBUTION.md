@@ -52,7 +52,7 @@ When you release a version, three artifacts are created:
 </repository>
 
 <dependency>
-    <groupId>com.github.asynctest</groupId>
+    <groupId>se.deversity.asynctest</groupId>
     <artifactId>async-test</artifactId>
     <version>1.1.0</version>
     <scope>test</scope>
@@ -74,7 +74,7 @@ When you release a version, three artifacts are created:
 ```xml
 <!-- No repository needed - Maven searches Central by default -->
 <dependency>
-    <groupId>com.github.asynctest</groupId>
+    <groupId>se.deversity.asynctest</groupId>
     <artifactId>async-test</artifactId>
     <version>1.1.0</version>
     <scope>test</scope>
@@ -96,7 +96,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation 'com.github.asynctest:async-test:1.1.0'
+    testImplementation 'se.deversity.asynctest:async-test:1.1.0'
 }
 ```
 
@@ -140,7 +140,7 @@ Maven automatically pulls in JUnit dependencies. Users don't need to configure t
 
 ```
 async-test-1.1.0.jar
-├── com/github/asynctest/
+├── se/deversity/asynctest/
 │   ├── AsyncTest.class
 │   ├── AsyncTestExtension.class
 │   ├── runner/
@@ -154,11 +154,11 @@ async-test-1.1.0.jar
 │   ├── MANIFEST.MF (with version info)
 │   └── services/
 │       └── org.junit.jupiter.api.extension.Extension
-│           (Contains: com.github.asynctest.AsyncTestExtension)
+│           (Contains: se.deversity.asynctest.AsyncTestExtension)
 └── ... (resources)
 
 async-test-1.1.0-sources.jar
-└── com/github/asynctest/
+└── se/deversity/asynctest/
     ├── AsyncTest.java
     ├── AsyncTestExtension.java
     └── ... (all .java files)
@@ -203,7 +203,7 @@ async-test-1.1.0-javadoc.jar
 ### Method 1: Maven (Recommended)
 ```xml
 <dependency>
-    <groupId>com.github.asynctest</groupId>
+    <groupId>se.deversity.asynctest</groupId>
     <artifactId>async-test</artifactId>
     <version>1.1.0</version>
     <scope>test</scope>
@@ -212,12 +212,12 @@ async-test-1.1.0-javadoc.jar
 
 ### Method 2: Gradle
 ```gradle
-testImplementation 'com.github.asynctest:async-test:1.1.0'
+testImplementation 'se.deversity.asynctest:async-test:1.1.0'
 ```
 
 ### Method 3: Gradle Kotlin DSL
 ```kotlin
-testImplementation("com.github.asynctest:async-test:1.1.0")
+testImplementation("se.deversity.asynctest:async-test:1.1.0")
 ```
 
 ### Method 4: Manual JAR Download
@@ -283,7 +283,7 @@ sha256sum async-test-1.1.0.jar
 ### Issue: Artifact not found
 **Solution**: Verify correct version, check repository URL, clear Maven cache:
 ```bash
-rm -rf ~/.m2/repository/com/github/asynctest/
+rm -rf ~/.m2/repository/se/deversity/asynctest/
 mvn clean install
 ```
 
@@ -298,7 +298,7 @@ export GITHUB_TOKEN=ghp_xxxxxxxxxxxx
 **Solution**: Exclude conflicting JUnit version:
 ```xml
 <dependency>
-    <groupId>com.github.asynctest</groupId>
+    <groupId>se.deversity.asynctest</groupId>
     <artifactId>async-test</artifactId>
     <version>1.1.0</version>
     <exclusions>

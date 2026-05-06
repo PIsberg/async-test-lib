@@ -24,7 +24,7 @@ Making your library available for others to install and use via Maven/Gradle wit
 </repository>
 
 <dependency>
-    <groupId>com.github.asynctest</groupId>
+    <groupId>se.deversity.asynctest</groupId>
     <artifactId>async-test</artifactId>
     <version>1.1.0</version>
     <scope>test</scope>
@@ -37,7 +37,7 @@ repositories {
     maven { url = uri("https://maven.pkg.github.com/yourusername/async-test-lib") }
 }
 dependencies {
-    testImplementation 'com.github.asynctest:async-test:1.1.0'
+    testImplementation 'se.deversity.asynctest:async-test:1.1.0'
 }
 ```
 
@@ -51,7 +51,7 @@ async-test-1.1.0-javadoc.jar  (450 KB)  → API docs
 ### Release Process (4 Steps)
 ```bash
 # 1. Update version in pom.xml
-sed -i 's/0.8.0/0.9.0/' pom.xml
+sed -i 's/0.9.0/0.10.0/' pom.xml
 
 # 2. Commit
 git commit -am "Release 0.9.0"
@@ -118,7 +118,7 @@ Check 3: GitHub Releases
 
 ### Maven Configuration Summary
 ```
-Group ID:     com.github.asynctest
+Group ID:     se.deversity.asynctest
 Artifact ID:  async-test
 Version:      1.1.0
 Scope:        test
@@ -129,8 +129,8 @@ Repository:   https://maven.pkg.github.com/yourusername/async-test-lib
 
 ### Dependency Coordinates
 ```
-Maven:   com.github.asynctest:async-test:1.1.0
-Gradle:  'com.github.asynctest:async-test:1.1.0'
+Maven:   se.deversity.asynctest:async-test:1.1.0
+Gradle:  'se.deversity.asynctest:async-test:1.1.0'
 ```
 
 ### pom.xml Key Sections
@@ -299,7 +299,7 @@ GitHub Packages:
   └── 1.1.0 version
 
 Maven Central (in future):
-  com.github.asynctest:async-test:1.1.0
+  se.deversity.asynctest:async-test:1.1.0
   └── Available with no special configuration
 ```
 

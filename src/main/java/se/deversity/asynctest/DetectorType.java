@@ -1,0 +1,121 @@
+package se.deversity.asynctest;
+
+/**
+ * Enumerates all available detectors for type-safe opt-outs.
+ * Used with {@link AsyncTest#excludes()}.
+ */
+public enum DetectorType {
+    // Phase 1
+    DEADLOCKS,
+    VISIBILITY,
+    LIVELOCKS,
+
+    // Phase 2: Core
+    FALSE_SHARING,
+    WAKEUP_ISSUES,
+    CONSTRUCTOR_SAFETY,
+    ABA_PROBLEM,
+    LOCK_ORDER,
+    SYNCHRONIZERS,
+    THREAD_POOL,
+    MEMORY_ORDERING,
+    ASYNC_PIPELINE,
+    READ_WRITE_LOCK_FAIRNESS,
+
+    // Phase 2: Monitors
+    SEMAPHORE,
+    COMPLETABLE_FUTURE_EXCEPTIONS,
+    COMPLETABLE_FUTURE_COMPLETION_LEAKS,
+    VIRTUAL_THREAD_PINNING,
+    THREAD_POOL_DEADLOCK,
+    CONCURRENT_MODIFICATIONS,
+    LOCK_LEAKS,
+    SHARED_RANDOM,
+    BLOCKING_QUEUE,
+    CONDITION_VARIABLES,
+    SIMPLE_DATE_FORMAT,
+    PARALLEL_STREAMS,
+    RESOURCE_LEAKS,
+
+    // Phase 2: Additional Concurrency
+    COUNTDOWN_LATCH,
+    CYCLIC_BARRIER,
+    REENTRANT_LOCK,
+    VOLATILE_ARRAY,
+    DOUBLE_CHECKED_LOCKING,
+    WAIT_TIMEOUT,
+    LOCK_CONTENTION,
+    SYNCHRONIZED_NON_FINAL,
+    MISSED_SIGNAL,
+    LAZY_INIT_RACE,
+
+    // Phase 2: Advanced Concurrency Utilities
+    PHASER,
+    STAMPED_LOCK,
+    EXCHANGER,
+    SCHEDULED_EXECUTOR,
+    FORK_JOIN_POOL,
+    THREAD_FACTORY,
+
+    // Phase 3
+    RACE_CONDITIONS,
+    THREAD_LOCAL_LEAKS,
+    BUSY_WAITING,
+    ATOMICITY_VIOLATIONS,
+    INTERRUPT_MISHANDLING,
+
+    // Phase 4: Infrastructure & Resource Management
+    THREAD_LEAKS,
+    SLEEP_IN_LOCK,
+    UNBOUNDED_QUEUE,
+    THREAD_STARVATION,
+
+    // Phase 5: Thread-Safety of Common Types
+    CALENDAR,
+    SHARED_COLLECTIONS,
+    TIMER,
+    COPY_ON_WRITE_COLLECTIONS,
+    STRING_BUILDER,
+
+    // Phase 6: Virtual Thread Concurrency (Java 21+)
+    STRUCTURED_CONCURRENCY,
+    VIRTUAL_THREAD_CONTEXT_LEAKS,
+    SCOPED_VALUE,
+    VIRTUAL_THREAD_CPU_BOUND,
+    VIRTUAL_THREAD_CARRIER_EXHAUSTION,
+
+    // Phase 7: High-Level Concurrency Patterns
+    HTTP_CLIENT,
+    STREAM_CLOSING,
+    CACHE_CONCURRENCY,
+    COMPLETABLEFUTURE_CHAIN,
+
+    // Phase 8: Lifecycle & Structural Correctness
+    EXECUTOR_SHUTDOWN,
+    MUTABLE_MAP_KEY,
+    NESTED_MONITOR_LOCKOUT,
+    LOCK_DOWNGRADE,
+    INHERITABLE_THREAD_LOCAL,
+
+    // Phase 9: Repository & Environment State
+    UNCOMMITTED_CHANGES,
+
+    // Phase 10: API Traps & Subtle Concurrency Bugs
+    THREAD_LOCAL_CONTAMINATION,
+    ATOMIC_NON_ATOMIC_UPDATE,
+    SYNCHRONIZED_COLLECTION_ITERATION,
+    SHARED_FORMATTER,
+    CONCURRENT_MAP_COMPUTE_RECURSION,
+    SYNCHRONIZED_ON_LITERAL,
+    PUBLIC_LOCK_EXPOSURE,
+    FORK_JOIN_TASK_BLOCKING,
+    OPTIMISTIC_READ_VALIDATION,
+    CF_COMMON_POOL_BLOCKING,
+
+    // Phase 11: Thread-Safety of Additional Types & Patterns
+    SHARED_MATCHER,
+    SHARED_DECIMAL_FORMAT,
+    WEAK_REFERENCE_RACE,
+    STATEFUL_LAMBDA,
+    SHARED_MESSAGE_DIGEST
+}

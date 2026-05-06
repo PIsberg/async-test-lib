@@ -8,7 +8,7 @@ Add to your `pom.xml`:
 
 ```xml
 <dependency>
-    <groupId>com.github.asynctest</groupId>
+    <groupId>se.deversity.asynctest</groupId>
     <artifactId>async-test</artifactId>
     <version>1.1.0</version>
     <scope>test</scope>
@@ -47,7 +47,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation 'com.github.asynctest:async-test:1.1.0'
+    testImplementation 'se.deversity.asynctest:async-test:1.1.0'
 }
 ```
 
@@ -56,8 +56,8 @@ dependencies {
 ### 1. Import the annotation
 
 ```java
-import com.github.asynctest.AsyncTest;
-import com.github.asynctest.DetectorType;
+import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.DetectorType;
 ```
 
 ### 2. Annotate your test method

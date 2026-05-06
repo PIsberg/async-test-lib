@@ -16,7 +16,7 @@ repositories {
     mavenCentral()
 }
 
-val asyncTestVersion: String = project.findProperty("asyncTestVersion") as String? ?: "0.8.0"
+val asyncTestVersion: String = project.findProperty("asyncTestVersion") as String? ?: "0.9.0"
 val junitVersion = "6.0.3"
 
 // Publish library to local Maven before running load tests:

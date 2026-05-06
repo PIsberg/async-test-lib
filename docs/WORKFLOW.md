@@ -32,7 +32,7 @@ python -m pip install matplotlib numpy
 
 ---
 
-## Running benchmarks for the current version (0.8.0)
+## Running benchmarks for the current version (0.9.0)
 
 ### 1. Build and publish to local Maven
 
@@ -43,10 +43,10 @@ python -m pip install matplotlib numpy
 ### 2. Run the throughput + memory stress tests
 
 ```bash
-./gradlew -p load-tests test -PasyncTestVersion=0.8.0
+./gradlew -p load-tests test -PasyncTestVersion=0.9.0
 ```
 
-This writes two CSV files to `load-tests/results/0.8.0/`:
+This writes two CSV files to `load-tests/results/0.9.0/`:
 - `throughput.csv` — wall-clock timings across thread × invocation configurations
 - `memory.csv` — peak heap usage with and without detectors
 - `env.txt` — machine metadata (JDK, OS, CPU count, commit)
@@ -54,13 +54,13 @@ This writes two CSV files to `load-tests/results/0.8.0/`:
 ### 3. Run the JMH microbenchmarks (~2 minutes)
 
 ```bash
-./gradlew -p load-tests jmh -PasyncTestVersion=0.8.0
+./gradlew -p load-tests jmh -PasyncTestVersion=0.9.0
 ```
 
 Then copy the output to the results folder:
 
 ```bash
-cp load-tests/build/jmh-results.json load-tests/results/0.8.0/jmh.json
+cp load-tests/build/jmh-results.json load-tests/results/0.9.0/jmh.json
 ```
 
 ---
@@ -118,7 +118,7 @@ JMH is skipped in CI — run it locally before each release.
 
 ```bash
 # CI equivalent
-./gradlew -p load-tests test -PloadTestFast=true -PasyncTestVersion=0.8.0
+./gradlew -p load-tests test -PloadTestFast=true -PasyncTestVersion=0.9.0
 ```
 
 ---
@@ -158,7 +158,7 @@ load-tests/
     │   ├── throughput.csv
     │   ├── memory.csv
     │   └── jmh.json
-    ├── 0.8.0/
+    ├── 0.9.0/
     │   └── ...
     └── _plots/                 Generated PNGs (committed to repo)
         ├── throughput-vs-threads.png

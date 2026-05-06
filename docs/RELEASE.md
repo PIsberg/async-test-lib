@@ -91,7 +91,7 @@ Users add to their `pom.xml`:
 </repository>
 
 <dependency>
-    <groupId>com.github.asynctest</groupId>
+    <groupId>se.deversity.asynctest</groupId>
     <artifactId>async-test</artifactId>
     <version>1.1.0</version>
 </dependency>

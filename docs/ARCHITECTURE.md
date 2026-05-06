@@ -391,7 +391,7 @@ If no listeners are registered, detector reports are printed to `System.err` (ba
 ## File Structure
 
 ```
-src/main/java/com/github/asynctest/
+src/main/java/se/deversity/asynctest/
 ├── AsyncTest.java                    # Main annotation
 ├── AsyncTestConfig.java              # Configuration object
 ├── AsyncTestContext.java             # ThreadLocal context
@@ -489,11 +489,11 @@ The following structural improvements were made to address code quality concerns
 
 | Class | Package | Purpose |
 |-------|---------|---------|
-| `DetectorRegistry` | `com.github.asynctest` | Phase 2 detector lifecycle |
-| `Phase1DetectorSet` | `com.github.asynctest.diagnostics` | Phase 1 detector grouping |
-| `AsyncTestListener` | `com.github.asynctest` | Observability interface |
-| `AsyncTestListenerRegistry` | `com.github.asynctest` | Listener registration |
-| `NoopAsyncTestListener` | `com.github.asynctest` | No-op listener for opt-out |
+| `DetectorRegistry` | `se.deversity.asynctest` | Phase 2 detector lifecycle |
+| `Phase1DetectorSet` | `se.deversity.asynctest.diagnostics` | Phase 1 detector grouping |
+| `AsyncTestListener` | `se.deversity.asynctest` | Observability interface |
+| `AsyncTestListenerRegistry` | `se.deversity.asynctest` | Listener registration |
+| `NoopAsyncTestListener` | `se.deversity.asynctest` | No-op listener for opt-out |
 
 ---
 

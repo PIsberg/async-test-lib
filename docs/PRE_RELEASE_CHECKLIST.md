@@ -182,7 +182,7 @@ Edit `pom.xml`:
         <scope>test</scope>
     </dependency>
     <dependency>
-        <groupId>com.github.asynctest</groupId>
+        <groupId>se.deversity.asynctest</groupId>
         <artifactId>async-test</artifactId>
         <version>1.1.0</version>
         <scope>test</scope>
@@ -194,7 +194,7 @@ Create test file `src/test/java/com/example/AsyncTestExample.java`:
 ```java
 package com.example;
 
-import com.github.asynctest.AsyncTest;
+import se.deversity.asynctest.AsyncTest;
 import org.junit.jupiter.api.Test;
 
 public class AsyncTestExample {
@@ -252,7 +252,7 @@ When users install async-test-1.1.0:
 
 ```xml
 <dependency>
-    <groupId>com.github.asynctest</groupId>
+    <groupId>se.deversity.asynctest</groupId>
     <artifactId>async-test</artifactId>
     <version>1.1.0</version>
     <scope>test</scope>

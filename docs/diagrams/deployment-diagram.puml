@@ -2,7 +2,7 @@
 title Async Test Library - Deployment Diagram
 
 artifact "async-test-1.1.0.jar" as Jar {
-  folder "com/github/asynctest" {
+  folder "se/deversity/asynctest" {
     file "AsyncTest.class" as Annotation
     file "AsyncTestExtension.class" as Ext
     file "AsyncTestInvocationInterceptor.class" as Interceptor
@@ -11,11 +11,11 @@ artifact "async-test-1.1.0.jar" as Jar {
     file "DetectorType.class" as DType
   }
   
-  folder "com/github/asynctest/runner" {
+  folder "se/deversity/asynctest/runner" {
     file "ConcurrencyRunner.class" as Runner2
   }
   
-  folder "com/github/asynctest/diagnostics" {
+  folder "se/deversity/asynctest/diagnostics" {
     file "DeadlockDetector.class" as Deadlock
     file "FalseSharingDetector.class" as FalseSharing
     file "VisibilityMonitor.class" as Visibility
@@ -42,7 +42,7 @@ artifact "async-test-1.1.0.jar" as Jar {
     file "ResourceLeakDetector.class" as ResourceLeak
   }
   
-  folder "com/github/asynctest/benchmark" {
+  folder "se/deversity/asynctest/benchmark" {
     file "BenchmarkRecorder.class" as BenchRecorder
     file "BenchmarkComparator.class" as BenchComparator
     file "BenchmarkResult.class" as BenchResult
@@ -68,7 +68,7 @@ artifact "async-test-1.1.0-javadoc.jar" as Javadoc {
 }
 
 database "Maven Repository" as Maven {
-  folder "com/github/asynctest/async-test/1.1.0/" {
+  folder "se/deversity/asynctest/async-test/1.1.0/" {
     file "async-test-1.1.0.jar"
     file "async-test-1.1.0-sources.jar"
     file "async-test-1.1.0-javadoc.jar"
