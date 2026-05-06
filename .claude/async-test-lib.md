@@ -30,7 +30,7 @@ testImplementation("se.deversity.async-test-lib:async-test-lib:0.5.0")
 ## Quickstart
 
 ```java
-import com.github.asynctest.AsyncTest;
+import se.deversity.asynctest.AsyncTest;
 
 class CounterTest {
 
@@ -97,7 +97,7 @@ void testLockOrder() {
 
 ### Enable everything, opt out of noisy detectors
 ```java
-import com.github.asynctest.DetectorType;
+import se.deversity.asynctest.DetectorType;
 
 @AsyncTest(
     threads = 16,
@@ -264,8 +264,8 @@ class SharedStateTest {
 Register a listener to receive events from every test run:
 
 ```java
-import com.github.asynctest.AsyncTestListener;
-import com.github.asynctest.AsyncTestListenerRegistry;
+import se.deversity.asynctest.AsyncTestListener;
+import se.deversity.asynctest.AsyncTestListenerRegistry;
 
 public class MyListener implements AsyncTestListener {
     @Override

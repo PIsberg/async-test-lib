@@ -111,7 +111,7 @@ GitHub Actions will:
 
 <!-- Add dependency -->
 <dependency>
-    <groupId>com.github.asynctest</groupId>
+    <groupId>se.deversity.asynctest</groupId>
     <artifactId>async-test</artifactId>
     <version>1.1.0</version>
     <scope>test</scope>
@@ -127,7 +127,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation 'com.github.asynctest:async-test:1.1.0'
+    testImplementation 'se.deversity.asynctest:async-test:1.1.0'
 }
 ```
 
@@ -149,7 +149,7 @@ Two workflows in `.github/workflows/`:
 
 ```
 async-test-1.1.0.jar
-├── com/github/asynctest/
+├── se/deversity/asynctest/
 │   ├── AsyncTest.class (Main annotation)
 │   ├── AsyncTestExtension.class (JUnit integration)
 │   ├── runner/ConcurrencyRunner.class
@@ -219,7 +219,7 @@ Before first release:
 ## 🆘 Troubleshooting
 
 ### "Artifact not found" error
-- Verify correct groupId: `com.github.asynctest`
+- Verify correct groupId: `se.deversity.asynctest`
 - Verify correct artifactId: `async-test`
 - Check version matches release (e.g., v1.1.0 → 1.1.0)
 

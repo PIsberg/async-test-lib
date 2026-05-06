@@ -53,6 +53,6 @@ If changes are detected, you will see a `LOW` severity issue in the diagnostic r
 [ISSUE] Uncommitted Changes (LOW)
 Description: Git repository has uncommitted or untracked changes.
 Details: The following files are modified or untracked:
-  M  src/main/java/com/github/asynctest/MyFile.java
+  M  src/main/java/se/deversity/asynctest/MyFile.java
   ?? new-file.txt
 ```

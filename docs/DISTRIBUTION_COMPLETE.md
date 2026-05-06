@@ -63,7 +63,7 @@ When you release v1.1.0:
 </repository>
 
 <dependency>
-    <groupId>com.github.asynctest</groupId>
+    <groupId>se.deversity.asynctest</groupId>
     <artifactId>async-test</artifactId>
     <version>1.1.0</version>
     <scope>test</scope>
@@ -76,7 +76,7 @@ repositories {
     maven { url = uri("https://maven.pkg.github.com/yourusername/async-test-lib") }
 }
 dependencies {
-    testImplementation 'com.github.asynctest:async-test:1.1.0'
+    testImplementation 'se.deversity.asynctest:async-test:1.1.0'
 }
 ```
 

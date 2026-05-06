@@ -54,7 +54,7 @@ jobs:
       - name: Fuzz AsyncTestConfig builder
         run: |
           ./jazzer \
-            --target_class=com.github.asynctest.fuzz.AsyncTestConfigFuzzTarget \
+            --target_class=se.deversity.asynctest.fuzz.AsyncTestConfigFuzzTarget \
             --cp=target/test-classes:target/classes \
             -max_total_time=120 \
             -print_final_stats=1 \

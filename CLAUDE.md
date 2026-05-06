@@ -9,13 +9,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./gradlew test
 
 # Run a single test class
-./gradlew test --tests "com.github.asynctest.AsyncTestContextTest"
+./gradlew test --tests "se.deversity.asynctest.AsyncTestContextTest"
 
 # Run a single test method
-./gradlew test --tests "com.github.asynctest.AsyncTestContextTest.someMethodName"
+./gradlew test --tests "se.deversity.asynctest.AsyncTestContextTest.someMethodName"
 
 # Run tests in a subpackage
-./gradlew test --tests "com.github.asynctest.diagnostics.*"
+./gradlew test --tests "se.deversity.asynctest.diagnostics.*"
 
 # Build without running tests
 ./gradlew build -x test
@@ -44,7 +44,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Detector Organization
 
-Detectors live in `src/main/java/com/github/asynctest/diagnostics/` and are grouped by phase:
+Detectors live in `src/main/java/se/deversity/asynctest/diagnostics/` and are grouped by phase:
 
 - **Phase 1** — `DeadlockDetector`, `MemoryModelValidator` (visibility), `LivelockDetector` — always-available core
 - **Phase 2** — 40+ specialized detectors instantiated by `DetectorRegistry` based on `AsyncTestConfig` flags
