@@ -3,7 +3,9 @@ package se.deversity.asynctest.example.service;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.util.HexFormat;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -50,7 +52,7 @@ public class DataProcessingService {
     private final Matcher txIdMatcher = TX_ID_PATTERN.matcher("");
 
     // BUG 2: DecimalFormat is not thread-safe — this field must not be shared
-    private final DecimalFormat amountFormat = new DecimalFormat("#,##0.00");
+    private final DecimalFormat amountFormat = new DecimalFormat("#,##0.00", DecimalFormatSymbols.getInstance(Locale.US));
 
     // BUG 3: MessageDigest is not thread-safe — this field must not be shared
     private final MessageDigest sha256;
@@ -118,7 +120,7 @@ public class DataProcessingService {
     }
 
     private static final ThreadLocal<DecimalFormat> AMOUNT_FMT =
-            ThreadLocal.withInitial(() -> new DecimalFormat("#,##0.00"));
+            ThreadLocal.withInitial(() -> new DecimalFormat("#,##0.00", DecimalFormatSymbols.getInstance(Locale.US)));
 
     /** Fixed formatAmount: uses a ThreadLocal DecimalFormat. */
     public String formatAmountFixed(double amount) {
