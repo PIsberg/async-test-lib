@@ -105,7 +105,7 @@ jobs:
             --title "Release ${{ github.ref_name }}" \
             --notes "## Async Test Library ${{ github.ref_name }}
 
-          See [CHANGELOG.md](https://github.com/PIsberg/async-test-lib/blob/main/CHANGELOG.md) for what's new.
+          See [CHANGELOG.md](https://github.com/PIsberg/async-test-lib/blob/main/docs/CHANGELOG.md) for what's new.
 
           ### Maven
           \`\`\`xml
