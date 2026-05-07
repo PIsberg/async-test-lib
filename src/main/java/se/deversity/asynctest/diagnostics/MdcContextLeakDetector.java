@@ -100,8 +100,13 @@ public class MdcContextLeakDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("MDC CONTEXT LEAK DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
-            sb.append("  Fix: call MDC.clear() (or MDC.remove(key) for each key added) "
-                    + "in a finally block to prevent leakage to pooled-thread reuse");
+            sb.append("  Why: SLF4J's MDC (Mapped Diagnostic Context) is stored in a ThreadLocal. In a thread pool, a thread\n" +
+                       "       that sets MDC keys and never clears them contaminates the next task running on that thread with\n" +
+                       "       stale context. Log entries from Task B then carry Task A's request ID, user, or tenant — a\n" +
+                       "       data-leakage and mis-attribution bug.\n" +
+                       "  Fix: Always clear MDC in a task-finally block:\n" +
+                       "       try { MDC.put(\"requestId\", id); doWork(); } finally { MDC.clear(); }\n" +
+                       "       Or clear only specific keys: finally { MDC.remove(\"requestId\"); }");
             return sb.toString();
         }
     }

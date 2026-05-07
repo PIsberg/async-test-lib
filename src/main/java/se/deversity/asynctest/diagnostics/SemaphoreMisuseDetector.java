@@ -218,7 +218,14 @@ public class SemaphoreMisuseDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Fix: ensure every acquire() has a matching release() in a finally block");
+            sb.append("  Why: A permit that is acquired but never released is permanently consumed — the semaphore's available\n" +
+"       count drops by one for every leak. Under sustained leaking, all permits are exhausted and every\n" +
+"       subsequent acquire() blocks forever, halting all threads that depend on the semaphore.\n" +
+"       Over-releasing is equally wrong: it inflates the permit count beyond the intended limit, allowing\n" +
+"       more concurrent access than the resource can safely handle.\n" +
+"  Fix:\n" +
+"    - Always pair acquire() with release() in a finally block: sem.acquire(); try { ... } finally { sem.release(); }\n" +
+"    - Verify the initial permit count matches the actual resource capacity");
             return sb.toString();
         }
     }

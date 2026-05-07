@@ -314,8 +314,14 @@ public class ThreadStarvationDetector {
                     sb.append("  [").append(i + 1).append("] ").append(event.executorName).append("\n");
                     sb.append("      Wait time: ").append(event.waitTimeMs).append("ms\n");
                     sb.append("      Thread: ").append(event.threadName).append("\n");
-                    sb.append("      Problem: Task waited excessively before execution\n");
-                    sb.append("      Fix: Increase pool size, reduce task execution time, or use work-stealing\n");
+                    sb.append("      Why: The thread pool is saturated — tasks queue faster than workers finish them.\n");
+                    sb.append("           Persistent starvation means time-sensitive tasks (health-checks, user requests, timeouts)\n");
+                    sb.append("           can be delayed indefinitely, causing cascading failures across dependent services.\n");
+                    sb.append("      Fix:\n");
+                    sb.append("        - Increase pool size: Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2)\n");
+                    sb.append("        - Reduce per-task duration: move I/O-bound work to a dedicated I/O pool; use async I/O\n");
+                    sb.append("        - Use a work-stealing pool: Executors.newWorkStealingPool() balances load across idle threads\n");
+                    sb.append("        - Apply backpressure: reject or throttle submissions when the queue exceeds a threshold\n");
                 }
                 if (events.size() > 10) {
                     sb.append("  ... and ").append(events.size() - 10).append(" more events\n");

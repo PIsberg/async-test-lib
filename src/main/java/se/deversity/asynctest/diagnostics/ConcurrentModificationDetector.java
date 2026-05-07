@@ -255,7 +255,11 @@ public class ConcurrentModificationDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Fix: use Iterator.remove() for safe removal during iteration, or use thread-safe collections");
+            sb.append("  Why: Non-thread-safe collections track a modCount internally. Any structural change (add/remove) while another thread\n" +
+                       "       is iterating increments modCount, causing the iterator to throw ConcurrentModificationException or silently skip elements.\n" +
+                       "  Fix:\n" +
+                       "    - Remove during iteration via iterator.remove() (single-threaded) or Iterator from a synchronized block (multi-threaded)\n" +
+                       "    - Replace with CopyOnWriteArrayList (iteration sees a stable snapshot) or ConcurrentHashMap for map use-cases");
             return sb.toString();
         }
     }

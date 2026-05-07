@@ -93,9 +93,13 @@ public class UncaughtExceptionHandlerDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("UNCAUGHT EXCEPTION HANDLER MISSING DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
-            sb.append("  Fix: call thread.setUncaughtExceptionHandler(handler) before "
-                    + "thread.start(), or use a ThreadFactory that installs a handler "
-                    + "on every thread created by the pool");
+            sb.append("  Why: An uncaught exception kills the thread silently. Without an uncaught exception handler, the failure\n" +
+                       "       is never logged, the task is never retried, and the thread pool shrinks by one — often leading to\n" +
+                       "       gradual starvation as more threads die without anyone noticing.\n" +
+                       "  Fix: Set a handler on every thread or set a JVM-wide default:\n" +
+                       "       thread.setUncaughtExceptionHandler((t, e) -> log.error(\"Thread {} died\", t.getName(), e));\n" +
+                       "       // or globally:\n" +
+                       "       Thread.setDefaultUncaughtExceptionHandler((t, e) -> log.error(\"Unhandled exception\", e));");
             return sb.toString();
         }
     }

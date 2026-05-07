@@ -254,7 +254,13 @@ public class ConditionVariableDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Fix: use while-loop for await(), ensure signal() follows state change");
+            sb.append("  Why: A signal() sent before await() is called is lost — the waiting thread will never see it and\n" +
+"     blocks indefinitely. Checking a condition only once (if instead of while) causes spurious-wakeup\n" +
+"     bugs where the thread proceeds even though the condition is not yet true.\n" +
+"  Fix:\n" +
+"    - Always await() in a while loop: while (!ready) { condition.await(); }\n" +
+"    - Signal after the state change, not before: ready = true; condition.signalAll();\n" +
+"    - Prefer signalAll() over signal() unless exactly one thread should wake, to avoid missed-signal bugs");
             return sb.toString();
         }
     }

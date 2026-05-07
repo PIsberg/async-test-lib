@@ -224,16 +224,20 @@ public class FalseSharingDetector {
                         pair.field1, pair.accesses1, pair.field2, pair.accesses2, pair.distanceInBytes
                     ));
                 }
-                sb.append("\nFix: Add @Contended annotation or adjust field layout\n");
             }
-            
+
             if (!highContentionFields.isEmpty()) {
-                sb.append("\nHigh-contention fields (potential false sharing):\n");
+                sb.append("\nHigh-contention fields accessed by multiple threads:\n");
                 for (String field : highContentionFields) {
                     sb.append("  - ").append(field).append("\n");
                 }
-                sb.append("\nFix: Pad fields or use @Contended\n");
             }
+
+            sb.append("\nWhy: CPUs transfer memory in 64-byte cache lines. When Thread A writes fieldA and Thread B writes fieldB and both fields occupy the same cache line, every write forces the entire line to be invalidated and re-fetched across all cores — \"cache ping-pong\" that can reduce throughput by 10x even though the threads are touching entirely different fields.\n");
+            sb.append("Fix:\n");
+            sb.append("  - Annotate each hot field with @Contended (sun.misc.Contended / jdk.internal.vm.annotation.Contended); add -XX:+EnableContended on Java 8-10 (default from Java 11 onward)\n");
+            sb.append("  - Pad manually: place 7 long dummy fields between the hot fields to force them onto separate cache lines\n");
+            sb.append("  - Redesign: group read-only fields together and isolate write-heavy fields in their own inner class annotated @Contended");
             
             return sb.toString();
         }

@@ -106,7 +106,14 @@ public class FutureBlockingDetector {
             for (String issue : starvationRisks) {
                 sb.append("  - ").append(issue).append('\n');
             }
-            sb.append("  Fix: avoid blocking get()/join() on tasks scheduled to the same bounded executor");
+            sb.append("  Why: A thread calling Future.get() or CompletableFuture.join() blocks until the task completes.\n" +
+                       "       If the task was submitted to the same bounded executor whose thread is now blocked, the\n" +
+                       "       executor has one fewer available thread. When all threads are blocked waiting for queued\n" +
+                       "       tasks, those tasks can never run — the executor is deadlocked.\n" +
+                       "  Fix:\n" +
+                       "    - Submit blocking-wait tasks to a different (unbounded or larger) executor\n" +
+                       "    - Use non-blocking composition instead: thenApply/thenCompose instead of get()/join()\n" +
+                       "    - For virtual threads: blocking inside a virtual thread is safe — there is no pool exhaustion");
             return sb.toString();
         }
     }

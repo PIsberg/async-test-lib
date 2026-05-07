@@ -172,7 +172,10 @@ public class WakeupDetector {
                 for (String issue : monitorsWithSpuriousWakeups) {
                     sb.append("  - ").append(issue).append("\n");
                 }
-                sb.append("  Fix: Wrap wait() in while loop checking condition\n");
+                sb.append("  Why: wait() can return spuriously (without a notification) due to OS-level interrupts or JVM internals.\n" +
+                           "       Proceeding on a single if-check instead of a while loop causes the thread to act as if the\n" +
+                           "       condition is met when it is not, producing logic errors or data corruption.\n" +
+                           "  Fix: Always wrap wait() in a while loop: synchronized(lock) { while (!condition) { lock.wait(); } }\n");
             }
             
             if (!monitorsWithLostNotifications.isEmpty()) {
@@ -180,7 +183,11 @@ public class WakeupDetector {
                 for (String issue : monitorsWithLostNotifications) {
                     sb.append("  - ").append(issue).append("\n");
                 }
-                sb.append("  Fix: Ensure notify() comes after another thread calls wait()\n");
+                sb.append("  Why: A notify() fired before any thread calls wait() is silently lost — the waiting thread will\n" +
+                           "       never receive it and blocks forever. This is the classic \"lost wakeup\" race.\n" +
+                           "  Fix: Set a boolean flag before calling notify(), and check it in a while loop before wait():\n" +
+                           "       ready = true; lock.notifyAll();  // sender\n" +
+                           "       while (!ready) { lock.wait(); } // receiver — handles notify arriving before wait()\n");
             }
             
             if (!alwaysNotifyWithoutWait.isEmpty()) {
@@ -188,7 +195,12 @@ public class WakeupDetector {
                 for (String monitor : alwaysNotifyWithoutWait) {
                     sb.append("  - ").append(monitor).append("\n");
                 }
-                sb.append("  Fix: Implement proper wait/notify coordination\n");
+                sb.append("  Why: Calling notify() without a corresponding wait() is a no-op that wastes a signal.\n" +
+                           "       It usually indicates that the notify is being fired unconditionally rather than in response\n" +
+                           "       to a state change, breaking the protocol between producer and consumer.\n" +
+                           "  Fix: Pair notify() with a state change and pair wait() with a condition check:\n" +
+                           "       // Producer: condition = true; synchronized(lock) { lock.notifyAll(); }\n" +
+                           "       // Consumer: synchronized(lock) { while (!condition) { lock.wait(); } }\n");
             }
             
             return sb.toString();

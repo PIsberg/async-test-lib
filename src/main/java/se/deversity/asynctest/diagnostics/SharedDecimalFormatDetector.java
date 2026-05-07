@@ -73,8 +73,13 @@ public class SharedDecimalFormatDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("SHARED DECIMAL FORMAT / NUMBER FORMAT DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
-            sb.append("  Fix: use ThreadLocal<DecimalFormat>, create a new instance per call, "
-                    + "or use String.format() / java.text.MessageFormat for simple cases");
+            sb.append("  Why: DecimalFormat and NumberFormat maintain mutable internal state during format/parse operations.\n" +
+                       "       Concurrent use corrupts that state, producing garbled output, NumberFormatException, or\n" +
+                       "       silently wrong numeric strings — bugs that vary by thread scheduling.\n" +
+                       "  Fix:\n" +
+                       "    - Thread-local: ThreadLocal<DecimalFormat> fmt = ThreadLocal.withInitial(() -> new DecimalFormat(\"#,##0.00\"));\n" +
+                       "    - Per-call: create a new DecimalFormat inside the method (cheap for infrequent use)\n" +
+                       "    - Simple cases: String.format(\"%.2f\", value) — delegates to thread-safe internals");
             return sb.toString();
         }
     }

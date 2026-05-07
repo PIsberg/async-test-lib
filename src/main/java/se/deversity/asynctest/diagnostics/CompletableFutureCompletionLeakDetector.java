@@ -244,7 +244,7 @@ public class CompletableFutureCompletionLeakDetector {
             sb.append(IssueSeverity.HIGH.format())
               .append(": ")
               .append(leakedFutures.size())
-              .append(" uncompleted CompletableFuture(s) detected:\n");
+              .append(" uncompleted CompletableFuture(s) detected — any thread calling join() or get() on these will block forever; they will never be fulfilled unless explicitly completed or cancelled:\n");
 
             for (int i = 0; i < leakedFutures.size(); i++) {
                 LeakedFuture lf = leakedFutures.get(i);

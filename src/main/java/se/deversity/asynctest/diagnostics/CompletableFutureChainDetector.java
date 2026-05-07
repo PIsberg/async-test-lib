@@ -287,7 +287,14 @@ public class CompletableFutureChainDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Fix: always add .exceptionally() and ensure all futures are joined or awaited");
+            sb.append("  Why: An unjoined future whose exception is never handled silently swallows the error — the calling\n" +
+                    "       thread never sees the failure and proceeds as if the operation succeeded, producing wrong results\n" +
+                    "       or leaving the system in an inconsistent state. A future that is created but never awaited can\n" +
+                    "       also leak resources held by its computation.\n" +
+                    "  Fix:\n" +
+                    "    - Always add .exceptionally(ex -> { log(ex); return fallback; }) or .handle((r, ex) -> ...) to every chain\n" +
+                    "    - Call join() or get() on every future you submit, or compose with thenApply/thenCompose so the result propagates\n" +
+                    "    - Use CompletableFuture.allOf(futures).join() to await a collection of futures at once");
             return sb.toString();
         }
     }

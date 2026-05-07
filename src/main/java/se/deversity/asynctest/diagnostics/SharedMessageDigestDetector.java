@@ -75,9 +75,13 @@ public class SharedMessageDigestDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("SHARED MESSAGE DIGEST DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
-            sb.append("  Fix: obtain a new MessageDigest.getInstance(...) per thread or "
-                    + "use ThreadLocal<MessageDigest>; alternatively use MessageDigest.clone() "
-                    + "to snapshot a configured instance per call");
+            sb.append("  Why: MessageDigest accumulates bytes in an internal buffer as you call update(). Concurrent calls\n" +
+                       "       mix bytes from different threads into the same digest, producing a hash of interleaved data\n" +
+                       "       rather than the intended input — a silent data-integrity failure.\n" +
+                       "  Fix:\n" +
+                       "    - Create a new MessageDigest.getInstance(\"SHA-256\") per call or per thread (cheap, non-blocking)\n" +
+                       "    - Or use ThreadLocal<MessageDigest> and call reset() at the start of each use\n" +
+                       "    - MessageDigest.clone() works if a pre-configured instance must be reused (requires the algorithm to support cloning)");
             return sb.toString();
         }
     }

@@ -105,7 +105,11 @@ public class ReentrantLockDetector {
                     sb.append("    - ").append(info.name)
                       .append(" (tryLock() timed out)\n");
                 }
-                sb.append("  Fix: Increase timeout or review lock contention\n");
+                sb.append("  Why: tryLock() timing out means the lock is held for longer than expected, often indicating an\n" +
+"       undersized timeout, a lock held during slow I/O, or genuine contention from too many threads.\n" +
+"       Silently proceeding without the lock leads to data races or skipped critical sections.\n" +
+"  Fix: Increase the timeout, reduce the critical section size, or switch to a blocking lock.lock()\n" +
+"       if the caller must wait; never ignore a failed tryLock() — always handle the false return\n");
             }
 
             if (!starvationThreads.isEmpty()) {
@@ -113,7 +117,10 @@ public class ReentrantLockDetector {
                 for (String threadInfo : starvationThreads) {
                     sb.append("    - Thread ").append(threadInfo).append("\n");
                 }
-                sb.append("  Fix: Consider using fair ReentrantLock or reduce lock hold time\n");
+                sb.append("  Why: A non-fair lock allows new threads to \"barge\" ahead of waiting threads, causing some threads\n" +
+"       to wait arbitrarily long or never acquire the lock at all.\n" +
+"  Fix: Construct with new ReentrantLock(true) for FIFO fairness; or reduce lock hold time so all\n" +
+"       threads get more opportunities to acquire it\n");
             }
 
             if (!hasIssues()) {

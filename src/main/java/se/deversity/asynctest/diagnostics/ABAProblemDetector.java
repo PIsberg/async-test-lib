@@ -221,7 +221,13 @@ public class ABAProblemDetector {
                 for (String cas : successfulABACases) {
                     sb.append("  - ").append(cas).append("\n");
                 }
-                sb.append("\nFix: Use AtomicStampedReference or AtomicMarkableReference\n");
+                sb.append("\nWhy: An ABA race occurs when a location holds value A, is changed to B, then changed back to A\n"
+                        + "     before a competing CAS reads it. The CAS sees A (as expected) and succeeds — but the underlying\n"
+                        + "     object may have been destroyed and recreated, or a linked list node may have been freed and\n"
+                        + "     reallocated, leaving the data structure in a corrupt state that the CAS cannot detect.\n");
+                sb.append("\nFix: Use AtomicStampedReference<V> (pairs value with an integer version stamp) or\n"
+                        + "     AtomicMarkableReference<V> (pairs value with a boolean mark) so the CAS compares both\n"
+                        + "     the value and the stamp/mark — an A→B→A cycle changes the stamp and the CAS correctly fails\n");
             }
             
             sb.append("\nWarning: ABA problems are subtle and can cause:\n");

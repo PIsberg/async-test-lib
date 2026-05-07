@@ -94,8 +94,14 @@ public class AtomicNonAtomicUpdateDetector {
             StringBuilder sb = new StringBuilder("ATOMIC NON-ATOMIC UPDATE DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
             for (String d : details)    sb.append("    * ").append(d).append("\n");
-            sb.append("  Fix: replace get()+set() with a compareAndSet() CAS loop, "
-                    + "or use updateAndGet()/getAndUpdate() which handle the loop internally");
+            sb.append("  Why: A get() followed by set() on an AtomicXxx is not atomic as a compound operation — another thread\n")
+              .append("       can write a new value between the get() and the set(), and that write is silently overwritten by\n")
+              .append("       the set(). The result appears correct per-thread but loses the other thread's update entirely.\n")
+              .append("  Fix:\n")
+              .append("    - Use ref.updateAndGet(v -> v + delta) for read-modify-write on a single field\n")
+              .append("    - Use compareAndSet() in a retry loop when multiple fields must change together atomically:\n")
+              .append("        do { old = ref.get(); newVal = compute(old); } while (!ref.compareAndSet(old, newVal));\n")
+              .append("    - For pure counters, LongAdder gives better throughput under high contention");
             return sb.toString();
         }
     }

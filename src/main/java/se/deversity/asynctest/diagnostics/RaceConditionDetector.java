@@ -221,7 +221,7 @@ public class RaceConditionDetector {
 
             StringBuilder sb = new StringBuilder();
             sb.append(IssueSeverity.HIGH.format())
-              .append(": Potential race conditions detected\n\n");
+              .append(": Potential race conditions detected — unsynchronized writes to shared fields allow threads to overwrite each other's changes, producing lost updates, stale reads, and silently wrong results\n\n");
 
             if (!potentialRaces.isEmpty()) {
                 sb.append("Concurrent write hotspots:\n");

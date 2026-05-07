@@ -114,10 +114,13 @@ public class WaitTimeoutDetector {
                         sb.append("      WARNING: No notify/notifyAll detected - potential deadlock!\n");
                     }
                 }
-                sb.append("  Fix: Use wait(timeout) instead of wait():\n");
-                sb.append("    lock.wait(5000);  // 5 second timeout\n");
-                sb.append("    // Handle timeout case\n");
-                sb.append("  Or ensure proper notify/notifyAll is called.\n");
+                sb.append("  Why: Calling wait() without a timeout means the thread can only wake up via notify()/notifyAll().\n");
+                sb.append("       If the notification is never sent (due to a bug) or fires before wait() is called (a missed signal),\n");
+                sb.append("       the thread hangs indefinitely — freezing the test or the application.\n");
+                sb.append("  Fix: always supply a timeout so the thread can detect stalls and bail out:\n");
+                sb.append("    lock.wait(5000);  // 5 second timeout — check the condition again after waking\n");
+                sb.append("    // Handle timeout: log warning, retry, or fail fast\n");
+                sb.append("  Or ensure a matching notifyAll() is always called when the condition becomes true.\n");
             }
 
             if (!hasIssues()) {

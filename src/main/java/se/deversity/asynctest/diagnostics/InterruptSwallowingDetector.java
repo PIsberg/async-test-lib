@@ -85,9 +85,13 @@ public class InterruptSwallowingDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("INTERRUPT SWALLOWING DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
-            sb.append("  Fix: in every catch(InterruptedException) block either rethrow "
-                    + "the exception or call Thread.currentThread().interrupt() to preserve "
-                    + "the interrupt signal for callers");
+            sb.append("  Why: Catching InterruptedException and not restoring the interrupt flag clears the thread's interrupted\n" +
+                       "       status permanently. Any code up the call stack that checks Thread.interrupted() or calls another\n" +
+                       "       blocking method expecting to be interruptible will never see the interrupt — the shutdown signal\n" +
+                       "       is silently swallowed, preventing graceful termination.\n" +
+                       "  Fix: Always restore the interrupt flag when catching InterruptedException:\n" +
+                       "       catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new RuntimeException(e); }\n" +
+                       "       Or rethrow InterruptedException directly if the method signature allows it.");
             return sb.toString();
         }
     }
