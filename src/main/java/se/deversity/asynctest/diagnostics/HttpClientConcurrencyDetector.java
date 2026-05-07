@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects HTTP client concurrency issues, particularly with Java 11+ HttpClient.
@@ -35,6 +36,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/HttpClientConcurrencyDetectorTest.java"
+)
 public class HttpClientConcurrencyDetector {
 
     private static class ClientState {

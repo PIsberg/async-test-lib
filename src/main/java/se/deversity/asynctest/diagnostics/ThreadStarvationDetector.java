@@ -9,6 +9,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects thread starvation in thread pools.
@@ -47,6 +48,11 @@ import java.util.concurrent.atomic.AtomicLong;
  * }
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ThreadStarvationDetectorTest.java"
+)
 public class ThreadStarvationDetector {
 
     private static class ExecutorState {

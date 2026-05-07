@@ -1,9 +1,12 @@
 package se.deversity.asynctest;
 
+import se.deversity.vibetags.annotations.AILocked;
+
 /**
  * Enumerates all available detectors for type-safe opt-outs.
  * Used with {@link AsyncTest#excludes()}.
  */
+@AILocked(reason = "Each enum constant requires synchronized changes in five places: (1) @AsyncTest attribute, (2) AsyncTestConfig field, (3) AsyncTestConfig.Builder default, (4) both branches of AsyncTestConfig.build() (detectAll block + excludes block), and (5) DetectorRegistry constructor. Adding a value here in isolation breaks the system.")
 public enum DetectorType {
     // Phase 1
     DEADLOCKS,

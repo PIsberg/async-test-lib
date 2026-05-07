@@ -1,5 +1,8 @@
 package se.deversity.asynctest;
 
+import se.deversity.vibetags.annotations.AIContext;
+import se.deversity.vibetags.annotations.AICore;
+
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.Set;
@@ -9,6 +12,14 @@ import java.util.Set;
  * Passed to {@link se.deversity.asynctest.runner.ConcurrencyRunner} as a single object
  * instead of an ever-growing parameter list.
  */
+@AICore(
+    sensitivity = "Critical",
+    note = "Adding a new detector requires synchronized changes across six places: @AsyncTest attribute, AsyncTestConfig field, Builder default, from(AsyncTest) call chain, build() detectAll/excludes blocks, and DetectorRegistry constructor."
+)
+@AIContext(
+    focus = "Maintain strict 1:1 mapping between @AsyncTest attributes, Builder fields, from(AsyncTest), build() logic, and DetectorRegistry",
+    avoids = "mutable state — this class must remain immutable after construction"
+)
 public final class AsyncTestConfig {
 
     // ---- Execution ----

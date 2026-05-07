@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects iteration over {@link Collections#synchronizedList},
@@ -28,6 +29,11 @@ import java.util.concurrent.atomic.*;
  * mon.recordIterationStarted(list, Thread.currentThread(), false);
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SynchronizedCollectionIterationDetectorTest.java"
+)
 public class SynchronizedCollectionIterationDetector {
 
     private static class WrapperInfo {

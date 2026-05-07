@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects {@link ThreadLocal} context leaks in virtual threads.
@@ -50,6 +51,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * @since 0.7.0
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/VirtualThreadContextLeakDetectorTest.java"
+)
 public class VirtualThreadContextLeakDetector {
 
     /** High-watermark threshold: warn if a single virtual thread sets this many distinct keys */

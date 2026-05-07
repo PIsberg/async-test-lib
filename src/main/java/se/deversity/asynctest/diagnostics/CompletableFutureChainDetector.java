@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects improper CompletableFuture chain usage in concurrent code.
@@ -33,6 +34,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureChainDetectorTest.java"
+)
 public class CompletableFutureChainDetector {
 
     private static class FutureState {

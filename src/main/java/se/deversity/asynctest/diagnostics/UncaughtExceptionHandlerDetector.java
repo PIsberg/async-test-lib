@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.*;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects threads that are started without a custom {@link Thread.UncaughtExceptionHandler}
@@ -24,6 +25,11 @@ import java.util.concurrent.*;
  *
  * @since 0.10.0
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/UncaughtExceptionHandlerDetectorTest.java"
+)
 public class UncaughtExceptionHandlerDetector {
 
     private static class ThreadRecord {

@@ -4,6 +4,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.concurrent.locks.ReadWriteLock;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects incorrect {@link java.util.concurrent.locks.ReentrantReadWriteLock} downgrade and
@@ -43,6 +44,11 @@ import java.util.concurrent.locks.ReadWriteLock;
  * }
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/LockDowngradeDetectorTest.java"
+)
 public class LockDowngradeDetector {
 
     private static class LockState {

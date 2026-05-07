@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.*;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects {@link InterruptedException} catches where the interrupt flag is silently swallowed.
@@ -28,6 +29,11 @@ import java.util.concurrent.*;
  *
  * @since 0.10.0
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/InterruptSwallowingDetectorTest.java"
+)
 public class InterruptSwallowingDetector {
 
     private static class CatchEvent {

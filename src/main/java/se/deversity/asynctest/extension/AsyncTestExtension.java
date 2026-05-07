@@ -1,11 +1,13 @@
 package se.deversity.asynctest.extension;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.vibetags.annotations.AIContract;
 import org.junit.jupiter.api.extension.*;
 
 import java.util.Collections;
 import java.util.stream.Stream;
 
+@AIContract(reason = "JUnit 5 TestTemplateInvocationContextProvider SPI. The two overridden methods (supportsTestTemplate, provideTestTemplateInvocationContexts) must preserve their exact signatures as mandated by JUnit.")
 public class AsyncTestExtension implements TestTemplateInvocationContextProvider {
 
     @Override

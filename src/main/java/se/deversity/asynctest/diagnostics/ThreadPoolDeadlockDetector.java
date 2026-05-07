@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects thread pool deadlock scenarios.
@@ -61,6 +62,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * @since 1.2.0
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ThreadPoolDeadlockDetectorTest.java"
+)
 public class ThreadPoolDeadlockDetector {
 
     private static class PoolState {

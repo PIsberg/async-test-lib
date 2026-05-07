@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Phaser;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects Phaser misuse patterns:
@@ -12,6 +13,11 @@ import java.util.concurrent.Phaser;
  * - Phaser termination (phaser terminated unexpectedly)
  * - Wrong party count (more/fewer parties than registered)
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/PhaserDetectorTest.java"
+)
 public class PhaserDetector {
 
     private final Map<Phaser, PhaserInfo> phaserRegistry = new ConcurrentHashMap<>();

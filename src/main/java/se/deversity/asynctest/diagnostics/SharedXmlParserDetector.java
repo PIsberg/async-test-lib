@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.*;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects XML parser instances shared across multiple threads.
@@ -28,6 +29,11 @@ import java.util.concurrent.*;
  *
  * @since 0.10.0
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedXmlParserDetectorTest.java"
+)
 public class SharedXmlParserDetector {
 
     private static class ParserState {

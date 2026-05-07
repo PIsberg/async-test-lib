@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects {@link ThreadLocal} values that bleed from one task into the next task executing
@@ -24,6 +25,11 @@ import java.util.concurrent.atomic.*;
  * mon.recordGet(Thread.currentThread(), MY_TL, "MY_TL", MY_TL.get() != null);
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ThreadLocalContaminationDetectorTest.java"
+)
 public class ThreadLocalContaminationDetector {
 
     private static class ThreadState {

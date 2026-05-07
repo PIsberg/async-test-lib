@@ -6,6 +6,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RecursiveTask;
 import java.util.concurrent.RecursiveAction;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects ForkJoinPool misuse patterns:
@@ -14,6 +15,11 @@ import java.util.concurrent.RecursiveAction;
  * - Pool starvation (too few threads)
  * - Exception in forked tasks
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ForkJoinPoolDetectorTest.java"
+)
 public class ForkJoinPoolDetector {
 
     private final Map<ForkJoinPool, PoolInfo> poolRegistry = new ConcurrentHashMap<>();

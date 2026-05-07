@@ -5,6 +5,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects ReentrantLock misuse patterns:
@@ -13,6 +14,11 @@ import java.util.concurrent.locks.ReentrantLock;
  * - Lock timeout (tryLock with timeout expiring)
  * - Lock not released in finally block
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ReentrantLockDetectorTest.java"
+)
 public class ReentrantLockDetector {
 
     private final Map<ReentrantLock, LockInfo> lockRegistry = new ConcurrentHashMap<>();

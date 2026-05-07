@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects recursive calls to {@link ConcurrentHashMap#computeIfAbsent} (or
@@ -27,6 +28,11 @@ import java.util.concurrent.atomic.*;
  * }
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ConcurrentMapComputeRecursionDetectorTest.java"
+)
 public class ConcurrentMapComputeRecursionDetector {
 
     // slot = mapIdentityHash:keyIdentityHash:threadId

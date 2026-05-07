@@ -56,6 +56,7 @@
         <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
         <cyclonedx-maven-plugin.version>2.9.1</cyclonedx-maven-plugin.version>
         <central-publishing-maven-plugin.version>0.10.0</central-publishing-maven-plugin.version>
+        <vibetags.version>0.8.0</vibetags.version>
     </properties>
 
     <dependencies>
@@ -86,6 +87,12 @@
             <groupId>se.deversity.common</groupId>
             <artifactId>common-license-lib</artifactId>
             <version>0.2.1</version>
+        </dependency>
+        <dependency>
+            <groupId>se.deversity.vibetags</groupId>
+            <artifactId>vibetags-processor</artifactId>
+            <version>${vibetags.version}</version>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 

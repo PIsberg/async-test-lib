@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.*;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects SLF4J MDC (Mapped Diagnostic Context) entries that are not cleared at task end,
@@ -31,6 +32,11 @@ import java.util.concurrent.*;
  *
  * @since 0.10.0
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/MdcContextLeakDetectorTest.java"
+)
 public class MdcContextLeakDetector {
 
     private static class TaskSnapshot {

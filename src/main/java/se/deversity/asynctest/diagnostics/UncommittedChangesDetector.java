@@ -5,6 +5,7 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects untracked or uncommitted changes in the Git repository.
@@ -12,6 +13,11 @@ import java.util.concurrent.TimeUnit;
  *
  * @since 1.4.0
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/UncommittedChangesDetectorTest.java"
+)
 public class UncommittedChangesDetector {
 
     /**

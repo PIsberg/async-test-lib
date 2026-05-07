@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.*;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects blocking calls ({@link Thread#sleep}, {@link Object#wait}, {@code Future.get()},
@@ -24,6 +25,11 @@ import java.util.concurrent.*;
  * }
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ForkJoinTaskBlockingDetectorTest.java"
+)
 public class ForkJoinTaskBlockingDetector {
 
     private final Set<Long>    activeForkJoinThreads = ConcurrentHashMap.newKeySet();

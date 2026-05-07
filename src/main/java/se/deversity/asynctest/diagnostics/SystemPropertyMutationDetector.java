@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.*;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects concurrent mutations to JVM system properties via {@link System#setProperty}
@@ -22,6 +23,11 @@ import java.util.concurrent.*;
  *
  * @since 0.10.0
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SystemPropertyMutationDetectorTest.java"
+)
 public class SystemPropertyMutationDetector {
 
     private static class MutationEvent {

@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects concurrent modification issues in collections during iteration.
@@ -39,6 +40,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ConcurrentModificationDetectorTest.java"
+)
 public class ConcurrentModificationDetector {
 
     private static class CollectionState {

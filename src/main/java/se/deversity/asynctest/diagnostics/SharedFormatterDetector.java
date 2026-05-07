@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.*;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects {@link java.util.Formatter}, {@link java.io.PrintWriter}, and
@@ -18,6 +19,11 @@ import java.util.concurrent.*;
  * mon.recordAccess(sharedFormatter, "sharedFormatter", Thread.currentThread());
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedFormatterDetectorTest.java"
+)
 public class SharedFormatterDetector {
 
     private static class FormatterState {

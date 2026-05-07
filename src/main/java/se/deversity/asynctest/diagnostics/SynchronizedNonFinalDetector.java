@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects the anti-pattern of synchronizing on a non-final, reassignable
@@ -40,6 +41,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * }
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SynchronizedNonFinalDetectorTest.java"
+)
 public class SynchronizedNonFinalDetector {
 
     private static final class LockSlot {

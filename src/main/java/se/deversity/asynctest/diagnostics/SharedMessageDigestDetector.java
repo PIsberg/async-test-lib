@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.*;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects {@link java.security.MessageDigest} instances shared across multiple threads.
@@ -21,6 +22,11 @@ import java.util.concurrent.*;
  *
  * @since 0.9.0
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedMessageDigestDetectorTest.java"
+)
 public class SharedMessageDigestDetector {
 
     private static class DigestState {

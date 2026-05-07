@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.*;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects {@code synchronized} blocks that lock on interned {@link String} literals or
@@ -25,6 +26,11 @@ import java.util.concurrent.*;
  *     .recordMonitorAcquired(lock, Thread.currentThread(), "MyService.doWork");
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SynchronizedOnLiteralDetectorTest.java"
+)
 public class SynchronizedOnLiteralDetector {
 
     private static class LiteralUsage {
