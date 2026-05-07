@@ -9,6 +9,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects CompletableFuture instances that are created but never completed.
@@ -55,6 +56,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * @see CompletableFutureExceptionDetector
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureCompletionLeakDetectorTest.java"
+)
 public class CompletableFutureCompletionLeakDetector {
 
     private static class FutureState {

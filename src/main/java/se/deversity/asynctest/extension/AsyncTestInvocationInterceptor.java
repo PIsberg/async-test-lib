@@ -3,12 +3,17 @@ package se.deversity.asynctest.extension;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.asynctest.runner.ConcurrencyRunner;
+import se.deversity.vibetags.annotations.AICore;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.InvocationInterceptor;
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 
 import java.lang.reflect.Method;
 
+@AICore(
+    sensitivity = "Critical",
+    note = "invocation.skip() is intentional — ConcurrencyRunner owns the full N×M execution and must never call invocation.proceed(). Restoring proceed() would run the test body once outside the CyclicBarrier, bypassing all detectors."
+)
 public class AsyncTestInvocationInterceptor implements InvocationInterceptor {
 
     private final AsyncTest asyncTest;

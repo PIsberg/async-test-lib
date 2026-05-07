@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadFactory;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects ThreadFactory misuse patterns:
@@ -12,6 +13,11 @@ import java.util.concurrent.ThreadFactory;
  * - Missing thread naming convention
  * - Thread priority issues
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ThreadFactoryDetectorTest.java"
+)
 public class ThreadFactoryDetector {
 
     private final Map<ThreadFactory, FactoryInfo> factoryRegistry = new ConcurrentHashMap<>();

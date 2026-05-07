@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects misuse of Java 21+ {@code ScopedValue}.
@@ -52,6 +53,11 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * @since 0.7.0
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ScopedValueMisuseDetectorTest.java"
+)
 public class ScopedValueMisuseDetector {
 
     private static final int HIGH_BINDING_COUNT_THRESHOLD = 8;

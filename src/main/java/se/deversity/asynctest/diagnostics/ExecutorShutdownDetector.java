@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects {@link ExecutorService} instances that are created and used but never properly
@@ -31,6 +32,11 @@ import java.util.concurrent.atomic.*;
  * }
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ExecutorShutdownDetectorTest.java"
+)
 public class ExecutorShutdownDetector {
 
     private static class ExecutorState {

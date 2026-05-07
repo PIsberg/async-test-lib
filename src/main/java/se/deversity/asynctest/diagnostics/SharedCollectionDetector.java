@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects non-thread-safe collections shared across multiple threads without
@@ -49,6 +50,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedCollectionDetectorTest.java"
+)
 public class SharedCollectionDetector {
 
     private static class CollectionState {

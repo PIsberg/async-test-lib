@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.*;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects blocking operations ({@link Thread#sleep}, {@link Object#wait}, blocking I/O,
@@ -22,6 +23,11 @@ import java.util.concurrent.*;
  * mon.recordBlockingCall(cf, Thread.currentThread(), "InputStream.read");
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureCommonPoolBlockingDetectorTest.java"
+)
 public class CompletableFutureCommonPoolBlockingDetector {
 
     private final Set<Integer>         commonPoolFutures = ConcurrentHashMap.newKeySet();

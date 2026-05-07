@@ -1,6 +1,7 @@
 package se.deversity.asynctest;
 
 import se.deversity.asynctest.diagnostics.*;
+import se.deversity.vibetags.annotations.AIContext;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,6 +22,10 @@ import java.util.function.Function;
  * <p>All detector fields are package-private so that {@link AsyncTestContext}
  * static accessors can read them directly without reflection overhead.
  */
+@AIContext(
+    focus = "Each new detector requires exactly three steps in this class: (1) a final field declaration, (2) conditional construction in the constructor keyed on the config flag, (3) an analyzeAll() call in the correct phase block. All three steps must be added together.",
+    avoids = "partial patterns — a field without construction or analysis silently skips detection"
+)
 final class DetectorRegistry {
 
     // ---- Phase 2: Core ----

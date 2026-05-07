@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects virtual thread pinning issues.
@@ -49,6 +50,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * @since 1.2.0
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/VirtualThreadPinningDetectorTest.java"
+)
 public class VirtualThreadPinningDetector {
 
     private static class PinningEvent {

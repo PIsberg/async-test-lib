@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects CountDownLatch misuse patterns:
@@ -12,6 +13,11 @@ import java.util.concurrent.CountDownLatch;
  * - Extra countDown (more countDown() calls than initial count)
  * - Latch reuse (attempting to reuse single-use latch)
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/CountDownLatchDetectorTest.java"
+)
 public class CountDownLatchDetector {
 
     private final Map<CountDownLatch, LatchInfo> latchRegistry = new ConcurrentHashMap<>();

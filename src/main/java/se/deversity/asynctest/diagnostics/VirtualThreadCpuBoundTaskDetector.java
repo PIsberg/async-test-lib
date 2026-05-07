@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects CPU-bound tasks running on virtual threads.
@@ -43,6 +44,11 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * @since 0.7.0
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/VirtualThreadCpuBoundTaskDetectorTest.java"
+)
 public class VirtualThreadCpuBoundTaskDetector {
 
     static final long DEFAULT_CPU_THRESHOLD_MS = 50;

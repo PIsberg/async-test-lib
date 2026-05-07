@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects potential carrier thread exhaustion caused by concurrent blocking of virtual threads.
@@ -46,6 +47,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * @since 0.7.0
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/VirtualThreadCarrierExhaustionDetectorTest.java"
+)
 public class VirtualThreadCarrierExhaustionDetector {
 
     private final int carrierCount;

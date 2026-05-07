@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects volatile array element visibility issues.
@@ -15,6 +16,11 @@ import java.util.concurrent.ConcurrentHashMap;
  *   volatile int[] array = new int[10];  // Elements are NOT volatile!
  *   array[0] = 42;  // May not be visible to other threads
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/VolatileArrayDetectorTest.java"
+)
 public class VolatileArrayDetector {
 
     private final Map<ArrayInfo, Set<String>> elementAccesses = new ConcurrentHashMap<>();

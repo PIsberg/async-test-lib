@@ -9,3 +9,7 @@ bom.json
 # Gradle build output and caches
 build/
 .gradle/
+
+# VibeTags generated artifacts
+vibetags.log
+.vibetags-cache

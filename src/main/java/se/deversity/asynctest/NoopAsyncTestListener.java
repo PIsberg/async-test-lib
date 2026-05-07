@@ -1,5 +1,7 @@
 package se.deversity.asynctest;
 
+import se.deversity.vibetags.annotations.AIIgnore;
+
 /**
  * A no-op implementation of {@link AsyncTestListener} that ignores all events.
  *
@@ -21,6 +23,7 @@ package se.deversity.asynctest;
  *
  * @see AsyncTestListenerRegistry#register(AsyncTestListener)
  */
+@AIIgnore(reason = "Trivial no-op implementation of AsyncTestListener. All methods are intentionally empty — no logic to review or change here.")
 public class NoopAsyncTestListener implements AsyncTestListener {
 
     /**

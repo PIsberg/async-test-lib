@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.*;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects lambda / {@link Runnable} / {@link java.util.concurrent.Callable} instances
@@ -26,6 +27,11 @@ import java.util.concurrent.*;
  *
  * @since 0.9.0
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/StatefulLambdaDetectorTest.java"
+)
 public class StatefulLambdaDetector {
 
     private static class LambdaState {

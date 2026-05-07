@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.*;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects the <em>nested monitor lockout</em> anti-pattern: performing a blocking operation
@@ -32,6 +33,11 @@ import java.util.concurrent.*;
  * }
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/NestedMonitorLockoutDetectorTest.java"
+)
 public class NestedMonitorLockoutDetector {
 
     /** Per-thread set of currently held monitor identity hashes. */

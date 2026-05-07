@@ -7,6 +7,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects lock leak patterns where locks are acquired but never released.
@@ -38,6 +39,11 @@ import java.util.concurrent.locks.ReentrantLock;
  * }
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/LockLeakDetectorTest.java"
+)
 public class LockLeakDetector {
 
     private static class LockState {

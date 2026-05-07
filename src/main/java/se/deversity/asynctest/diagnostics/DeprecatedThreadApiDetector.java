@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.*;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects use of deprecated and unsafe {@link Thread} API methods:
@@ -26,6 +27,11 @@ import java.util.concurrent.*;
  *
  * @since 0.10.0
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/DeprecatedThreadApiDetectorTest.java"
+)
 public class DeprecatedThreadApiDetector {
 
     /** Names of deprecated {@link Thread} API methods tracked by this detector. */

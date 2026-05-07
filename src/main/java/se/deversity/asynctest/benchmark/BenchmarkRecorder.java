@@ -1,6 +1,7 @@
 package se.deversity.asynctest.benchmark;
 
 import se.deversity.asynctest.AsyncTestConfig;
+import se.deversity.vibetags.annotations.AIPerformance;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -12,6 +13,7 @@ import java.util.List;
  * Records benchmark execution times and manages comparison with baselines.
  * Integrated into the AsyncTest execution flow.
  */
+@AIPerformance(constraint = "recordInvocationStart() and recordInvocationEnd() are called on the hot path inside every invocation round. Keep them allocation-free and avoid acquiring locks in the common case.")
 public class BenchmarkRecorder {
 
     private static final String DEFAULT_BENCHMARK_STORE = "target/benchmark-data/baseline-store.dat";

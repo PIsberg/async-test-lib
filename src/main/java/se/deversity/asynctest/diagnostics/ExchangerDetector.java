@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Exchanger;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects Exchanger misuse patterns:
@@ -12,6 +13,11 @@ import java.util.concurrent.Exchanger;
  * - InterruptedException during exchange
  * - Null values being exchanged
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ExchangerDetectorTest.java"
+)
 public class ExchangerDetector {
 
     private final Map<Exchanger<?>, ExchangerInfo> exchangerRegistry = new ConcurrentHashMap<>();

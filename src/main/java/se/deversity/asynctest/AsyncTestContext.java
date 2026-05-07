@@ -1,6 +1,8 @@
 package se.deversity.asynctest;
 
 import se.deversity.asynctest.diagnostics.*;
+import se.deversity.vibetags.annotations.AIAudit;
+import se.deversity.vibetags.annotations.AICore;
 
 import java.util.List;
 import java.util.function.Function;
@@ -28,6 +30,11 @@ import java.util.function.Function;
  * <p>After the test run completes (or times out), the runner calls {@link #analyzeAll()}
  * and prints any Phase 2 reports that have issues.
  */
+@AICore(
+    sensitivity = "Critical",
+    note = "ThreadLocal install/uninstall must always be symmetric. A leak propagates stale detector state across test invocations and causes false positives or missed detections."
+)
+@AIAudit(checkFor = {"Thread Safety issues"})
 public final class AsyncTestContext {
 
     private static final ThreadLocal<AsyncTestContext> CURRENT = new ThreadLocal<>();

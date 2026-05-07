@@ -1,5 +1,7 @@
 package se.deversity.asynctest.runner;
 
+import se.deversity.vibetags.annotations.AIAudit;
+import se.deversity.vibetags.annotations.AICore;
 import se.deversity.asynctest.AfterEachInvocation;
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.asynctest.AsyncTestContext;
@@ -38,6 +40,11 @@ import java.util.concurrent.*;
  * <p>This class is intentionally stateless — all state lives in the per-call
  * local variables of {@link #execute}.
  */
+@AICore(
+    sensitivity = "Critical",
+    note = "Core stress-test execution engine. The CyclicBarrier pattern forces maximum thread contention. Timeout logic and AsyncTestContext install/uninstall are carefully calibrated — subtle changes introduce flaky tests or missed detector activations."
+)
+@AIAudit(checkFor = {"Thread Safety issues", "Resource Leaks"})
 public class ConcurrencyRunner {
 
     public static void execute(ReflectiveInvocationContext<Method> invocationContext,

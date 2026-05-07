@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects unbounded queue usage in concurrent code.
@@ -36,6 +37,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/UnboundedQueueDetectorTest.java"
+)
 public class UnboundedQueueDetector {
 
     private static class QueueState {

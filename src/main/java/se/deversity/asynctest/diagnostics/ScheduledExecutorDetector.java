@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects ScheduledExecutorService misuse patterns:
@@ -12,6 +13,11 @@ import java.util.concurrent.ScheduledExecutorService;
  * - Long-running tasks blocking scheduler
  * - Exception handling in scheduled tasks
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ScheduledExecutorDetectorTest.java"
+)
 public class ScheduledExecutorDetector {
 
     private final Map<ScheduledExecutorService, ExecutorInfo> executorRegistry = new ConcurrentHashMap<>();
