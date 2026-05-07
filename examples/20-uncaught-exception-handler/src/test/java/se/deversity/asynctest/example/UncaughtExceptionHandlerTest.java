@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * ============================================================
  * NOTE: UncaughtExceptionHandlerDetector ships in async-test-lib 0.10.0.
- * This example targets 0.9.0 so it compiles from Maven Central.
+ * This example targets 0.10.0 so it compiles from Maven Central.
  * ============================================================
  *
  * THE BUG: A background worker thread throws an uncaught exception but

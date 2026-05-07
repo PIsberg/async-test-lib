@@ -8,12 +8,11 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * ============================================================
  * NOTE: InterruptSwallowingDetector ships in async-test-lib 0.10.0.
- * This example targets 0.9.0 so it compiles from Maven Central.
+ * This example targets 0.10.0 so it compiles from Maven Central.
  *
  * Upgrade steps:
- *   1. Bump async-test-lib.version in pom.xml to 0.10.0
- *   2. Change the Part 2 @Test to @AsyncTest
- *   3. Uncomment the AsyncTestContext calls inside Part 2
+ *   1. Change the Part 2 @Test to @AsyncTest
+ *   2. Uncomment the AsyncTestContext calls inside Part 2
  * ============================================================
  *
  * THE BUG: A task runner catches InterruptedException but neither restores
@@ -70,7 +69,7 @@ class InterruptSwallowingTest {
 
     @Test
     void part2_detectInterruptSwallowing_placeholder() {
-        // Placeholder: run as plain @Test to compile against 0.9.0.
+        // Placeholder: run as plain @Test to compile against 0.10.0.
         // After upgrading to 0.10.0, replace with:
         //
         //   var d = AsyncTestContext.interruptSwallowingDetector();

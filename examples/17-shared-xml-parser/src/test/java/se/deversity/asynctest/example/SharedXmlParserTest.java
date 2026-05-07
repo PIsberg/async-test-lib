@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * ============================================================
  * NOTE: SharedXmlParserDetector ships in async-test-lib 0.10.0.
- * This example targets 0.9.0 so it compiles from Maven Central.
+ * This example targets 0.10.0 so it compiles from Maven Central.
  * ============================================================
  *
  * THE BUG: An XML service holds a single shared DocumentBuilder.

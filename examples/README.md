@@ -220,7 +220,7 @@ examples/
 
 ---
 
-## Phase 11: Thread-Safety of Additional Types & Patterns (New in 0.9.0)
+## Phase 11: Thread-Safety of Additional Types & Patterns (New in 0.10.0)
 
 Five new detectors for JDK types that look thread-safe but silently corrupt state under
 concurrent use. All five follow the same manual-recording pattern — test code registers

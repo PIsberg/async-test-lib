@@ -13,11 +13,11 @@ import static org.junit.jupiter.api.Assertions.*;
  * ========================================================================
  * NOTE: The Phase 11 detectors (detectSharedMatcher, detectSharedDecimalFormat,
  * detectSharedMessageDigest, detectWeakReferenceRace, detectStatefulLambda) ship
- * in async-test-lib 0.9.0. This example targets 0.8.0 so it runs from Maven
+ * in async-test-lib 0.10.0. This example targets 0.8.0 so it runs from Maven
  * Central without a local build.
  *
  * Upgrade steps (shown as comments throughout this file):
- *   1. Bump async-test-lib.version in pom.xml to 0.9.0
+ *   1. Bump async-test-lib.version in pom.xml to 0.10.0
  *   2. Change @Test to @AsyncTest on the three Part 2 methods
  *   3. Uncomment the AsyncTestContext detector calls inside each method
  * ========================================================================
@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * thread touching the shared object at once, so no corruption occurs and all
  * assertions pass deterministically.
  *
- * WHY @AsyncTest DETECTS THE BUG (0.9.0):
+ * WHY @AsyncTest DETECTS THE BUG (0.10.0):
  * With multiple threads colliding on the same object simultaneously the detectors
  * report which threads accessed which instance — the access pattern alone is
  * sufficient to flag the risk, similar to a race detector:
@@ -90,17 +90,17 @@ class SharedNonThreadSafeTypesTest {
     //
     // Currently @Test so this compiles against 0.8.0.
     //
-    // To activate Phase 11 detection (requires 0.9.0):
-    //   1. Bump pom.xml: <async-test-lib.version>0.9.0</async-test-lib.version>
+    // To activate Phase 11 detection (requires 0.10.0):
+    //   1. Bump pom.xml: <async-test-lib.version>0.10.0</async-test-lib.version>
     //   2. Change @Test to @AsyncTest on each method below
     //   3. Uncomment the AsyncTestContext / import lines
     // =========================================================================
 
-    // import se.deversity.asynctest.AsyncTest;           // uncomment for 0.9.0
-    // import se.deversity.asynctest.AsyncTestContext;    // uncomment for 0.9.0
+    // import se.deversity.asynctest.AsyncTest;           // uncomment for 0.10.0
+    // import se.deversity.asynctest.AsyncTestContext;    // uncomment for 0.10.0
 
     /**
-     * Detector: SharedMatcherDetector (0.9.0)
+     * Detector: SharedMatcherDetector (0.10.0)
      *
      * Change to:
      *   @AsyncTest(threads = 8, invocations = 10, detectSharedMatcher = true)
@@ -112,7 +112,7 @@ class SharedNonThreadSafeTypesTest {
      */
     @Test
     void testSharedMatcher_concurrent() {
-        // With 0.9.0 — uncomment these lines and change to @AsyncTest above:
+        // With 0.10.0 — uncomment these lines and change to @AsyncTest above:
         // AsyncTestContext.sharedMatcherDetector()
         //     .recordAccess(service.getBuggyMatcher(), "txIdMatcher", Thread.currentThread());
 
@@ -121,7 +121,7 @@ class SharedNonThreadSafeTypesTest {
     }
 
     /**
-     * Detector: SharedDecimalFormatDetector (0.9.0)
+     * Detector: SharedDecimalFormatDetector (0.10.0)
      *
      * Change to:
      *   @AsyncTest(threads = 8, invocations = 10, detectSharedDecimalFormat = true)
@@ -132,7 +132,7 @@ class SharedNonThreadSafeTypesTest {
      */
     @Test
     void testSharedDecimalFormat_concurrent() {
-        // With 0.9.0 — uncomment these lines and change to @AsyncTest above:
+        // With 0.10.0 — uncomment these lines and change to @AsyncTest above:
         // AsyncTestContext.sharedDecimalFormatDetector()
         //     .recordAccess(service.getBuggyAmountFormat(), "amountFormat", Thread.currentThread());
 
@@ -141,7 +141,7 @@ class SharedNonThreadSafeTypesTest {
     }
 
     /**
-     * Detector: SharedMessageDigestDetector (0.9.0)
+     * Detector: SharedMessageDigestDetector (0.10.0)
      *
      * Change to:
      *   @AsyncTest(threads = 8, invocations = 10, detectSharedMessageDigest = true)
@@ -156,7 +156,7 @@ class SharedNonThreadSafeTypesTest {
      */
     @Test
     void testSharedMessageDigest_concurrent() {
-        // With 0.9.0 — uncomment these lines and change to @AsyncTest above:
+        // With 0.10.0 — uncomment these lines and change to @AsyncTest above:
         // AsyncTestContext.sharedMessageDigestDetector()
         //     .recordAccess(service.getBuggyMessageDigest(), "sha256", Thread.currentThread());
 
@@ -170,7 +170,7 @@ class SharedNonThreadSafeTypesTest {
 
     /**
      * The fixed versions use thread-local or per-call instances.
-     * Uncomment @AsyncTest (0.9.0) to verify the fixes hold under concurrent load.
+     * Uncomment @AsyncTest (0.10.0) to verify the fixes hold under concurrent load.
      */
     // @AsyncTest(threads = 8, invocations = 20,
     //         detectSharedMatcher = true, detectSharedDecimalFormat = true,
