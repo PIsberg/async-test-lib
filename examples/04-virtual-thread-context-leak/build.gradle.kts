@@ -15,7 +15,7 @@ repositories {
     mavenLocal()
 }
 
-val asyncTestVersion = "0.10.0"
+val asyncTestVersion = "1.3.0"
 val junitVersion = "5.10.2"
 val junitPlatformVersion = "6.0.3"
 
