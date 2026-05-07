@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * ============================================================
  * NOTE: FutureIgnoredDetector ships in async-test-lib 0.10.0.
- * This example targets 0.9.0 so it compiles from Maven Central.
+ * This example targets 0.10.0 so it compiles from Maven Central.
  * ============================================================
  *
  * THE BUG: An event bus submits background tasks but discards the

@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * ============================================================
  * NOTE: ExplicitGcDetector ships in async-test-lib 0.10.0.
- * This example targets 0.9.0 so it compiles from Maven Central.
+ * This example targets 0.10.0 so it compiles from Maven Central.
  * ============================================================
  *
  * THE BUG: A cache manager calls System.gc() to hint memory reclamation
