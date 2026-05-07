@@ -10,7 +10,7 @@ on:
       asyncTestVersion:
         description: "Library version to test against (default: current build)"
         required: false
-        default: "0.9.0"
+        default: "0.10.0"
 
 permissions:
   contents: read
@@ -57,7 +57,7 @@ jobs:
       - name: Run load tests (fast subset — capped for CI)
         run: |
           ./gradlew -p load-tests test \
-            -PasyncTestVersion=${{ inputs.asyncTestVersion || '0.9.0' }} \
+            -PasyncTestVersion=${{ inputs.asyncTestVersion || '0.10.0' }} \
             -PloadTestFast=true
 
       - name: Upload throughput results
