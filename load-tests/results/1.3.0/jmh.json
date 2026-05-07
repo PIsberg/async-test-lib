@@ -1,0 +1,358 @@
+[
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "se.deversity.asynctest.loadtest.AsyncTestBenchmark.detectorOverhead_t2_allDetectors",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "C:\\Program Files\\Java\\jdk-21\\bin\\java.exe",
+        "jvmArgs" : [
+            "-Dfile.encoding=UTF8",
+            "-Dfile.encoding=UTF-8",
+            "-Djava.io.tmpdir=C:\\dev\\private\\async-test-lib\\load-tests\\build\\tmp\\jmh",
+            "-Duser.country=GB",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "-Dlicense.mock.mode=true",
+            "-Dasync.test.version=1.3.0"
+        ],
+        "jdkVersion" : "21.0.9",
+        "vmName" : "Java HotSpot(TM) 64-Bit Server VM",
+        "vmVersion" : "21.0.9+7-LTS-338",
+        "warmupIterations" : 3,
+        "warmupTime" : "1 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "2 s",
+        "measurementBatchSize" : 1,
+        "primaryMetric" : {
+            "score" : 108.82287157894737,
+            "scoreError" : 2.983021973532619,
+            "scoreConfidence" : [
+                105.83984960541476,
+                111.80589355247999
+            ],
+            "scorePercentiles" : {
+                "0.0" : 107.57319473684211,
+                "50.0" : 109.13267894736842,
+                "90.0" : 109.60511578947369,
+                "95.0" : 109.60511578947369,
+                "99.0" : 109.60511578947369,
+                "99.9" : 109.60511578947369,
+                "99.99" : 109.60511578947369,
+                "99.999" : 109.60511578947369,
+                "99.9999" : 109.60511578947369,
+                "100.0" : 109.60511578947369
+            },
+            "scoreUnit" : "ms/op",
+            "rawData" : [
+                [
+                    109.14512105263158,
+                    107.57319473684211,
+                    109.60511578947369,
+                    108.65824736842106,
+                    109.13267894736842
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "se.deversity.asynctest.loadtest.AsyncTestBenchmark.detectorOverhead_t4_allDetectors",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "C:\\Program Files\\Java\\jdk-21\\bin\\java.exe",
+        "jvmArgs" : [
+            "-Dfile.encoding=UTF8",
+            "-Dfile.encoding=UTF-8",
+            "-Djava.io.tmpdir=C:\\dev\\private\\async-test-lib\\load-tests\\build\\tmp\\jmh",
+            "-Duser.country=GB",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "-Dlicense.mock.mode=true",
+            "-Dasync.test.version=1.3.0"
+        ],
+        "jdkVersion" : "21.0.9",
+        "vmName" : "Java HotSpot(TM) 64-Bit Server VM",
+        "vmVersion" : "21.0.9+7-LTS-338",
+        "warmupIterations" : 3,
+        "warmupTime" : "1 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "2 s",
+        "measurementBatchSize" : 1,
+        "primaryMetric" : {
+            "score" : 116.42555979016167,
+            "scoreError" : 15.099250982305886,
+            "scoreConfidence" : [
+                101.32630880785578,
+                131.52481077246756
+            ],
+            "scorePercentiles" : {
+                "0.0" : 110.52008947368421,
+                "50.0" : 117.54246111111111,
+                "90.0" : 120.97707058823529,
+                "95.0" : 120.97707058823529,
+                "99.0" : 120.97707058823529,
+                "99.9" : 120.97707058823529,
+                "99.99" : 120.97707058823529,
+                "99.999" : 120.97707058823529,
+                "99.9999" : 120.97707058823529,
+                "100.0" : 120.97707058823529
+            },
+            "scoreUnit" : "ms/op",
+            "rawData" : [
+                [
+                    118.06686666666667,
+                    117.54246111111111,
+                    110.52008947368421,
+                    115.02131111111112,
+                    120.97707058823529
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "se.deversity.asynctest.loadtest.AsyncTestBenchmark.detectorOverhead_t8_allDetectors",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "C:\\Program Files\\Java\\jdk-21\\bin\\java.exe",
+        "jvmArgs" : [
+            "-Dfile.encoding=UTF8",
+            "-Dfile.encoding=UTF-8",
+            "-Djava.io.tmpdir=C:\\dev\\private\\async-test-lib\\load-tests\\build\\tmp\\jmh",
+            "-Duser.country=GB",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "-Dlicense.mock.mode=true",
+            "-Dasync.test.version=1.3.0"
+        ],
+        "jdkVersion" : "21.0.9",
+        "vmName" : "Java HotSpot(TM) 64-Bit Server VM",
+        "vmVersion" : "21.0.9+7-LTS-338",
+        "warmupIterations" : 3,
+        "warmupTime" : "1 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "2 s",
+        "measurementBatchSize" : 1,
+        "primaryMetric" : {
+            "score" : 129.82825970588235,
+            "scoreError" : 22.174259103206108,
+            "scoreConfidence" : [
+                107.65400060267623,
+                152.00251880908846
+            ],
+            "scorePercentiles" : {
+                "0.0" : 124.39244117647058,
+                "50.0" : 130.37006875,
+                "90.0" : 138.3033,
+                "95.0" : 138.3033,
+                "99.0" : 138.3033,
+                "99.9" : 138.3033,
+                "99.99" : 138.3033,
+                "99.999" : 138.3033,
+                "99.9999" : 138.3033,
+                "100.0" : 138.3033
+            },
+            "scoreUnit" : "ms/op",
+            "rawData" : [
+                [
+                    124.39244117647058,
+                    124.53308235294118,
+                    130.37006875,
+                    131.54240625,
+                    138.3033
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "se.deversity.asynctest.loadtest.AsyncTestBenchmark.frameworkOverhead_t2_noDetectors",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "C:\\Program Files\\Java\\jdk-21\\bin\\java.exe",
+        "jvmArgs" : [
+            "-Dfile.encoding=UTF8",
+            "-Dfile.encoding=UTF-8",
+            "-Djava.io.tmpdir=C:\\dev\\private\\async-test-lib\\load-tests\\build\\tmp\\jmh",
+            "-Duser.country=GB",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "-Dlicense.mock.mode=true",
+            "-Dasync.test.version=1.3.0"
+        ],
+        "jdkVersion" : "21.0.9",
+        "vmName" : "Java HotSpot(TM) 64-Bit Server VM",
+        "vmVersion" : "21.0.9+7-LTS-338",
+        "warmupIterations" : 3,
+        "warmupTime" : "1 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "2 s",
+        "measurementBatchSize" : 1,
+        "primaryMetric" : {
+            "score" : 106.24416057894737,
+            "scoreError" : 9.036949530608867,
+            "scoreConfidence" : [
+                97.20721104833851,
+                115.28111010955624
+            ],
+            "scorePercentiles" : {
+                "0.0" : 103.300785,
+                "50.0" : 107.36265263157895,
+                "90.0" : 108.21765789473685,
+                "95.0" : 108.21765789473685,
+                "99.0" : 108.21765789473685,
+                "99.9" : 108.21765789473685,
+                "99.99" : 108.21765789473685,
+                "99.999" : 108.21765789473685,
+                "99.9999" : 108.21765789473685,
+                "100.0" : 108.21765789473685
+            },
+            "scoreUnit" : "ms/op",
+            "rawData" : [
+                [
+                    108.21765789473685,
+                    107.36265263157895,
+                    104.14366,
+                    108.19604736842105,
+                    103.300785
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "se.deversity.asynctest.loadtest.AsyncTestBenchmark.frameworkOverhead_t4_noDetectors",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "C:\\Program Files\\Java\\jdk-21\\bin\\java.exe",
+        "jvmArgs" : [
+            "-Dfile.encoding=UTF8",
+            "-Dfile.encoding=UTF-8",
+            "-Djava.io.tmpdir=C:\\dev\\private\\async-test-lib\\load-tests\\build\\tmp\\jmh",
+            "-Duser.country=GB",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "-Dlicense.mock.mode=true",
+            "-Dasync.test.version=1.3.0"
+        ],
+        "jdkVersion" : "21.0.9",
+        "vmName" : "Java HotSpot(TM) 64-Bit Server VM",
+        "vmVersion" : "21.0.9+7-LTS-338",
+        "warmupIterations" : 3,
+        "warmupTime" : "1 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "2 s",
+        "measurementBatchSize" : 1,
+        "primaryMetric" : {
+            "score" : 108.95223999999999,
+            "scoreError" : 2.6105974114090293,
+            "scoreConfidence" : [
+                106.34164258859096,
+                111.56283741140902
+            ],
+            "scorePercentiles" : {
+                "0.0" : 108.01646315789473,
+                "50.0" : 109.06167368421053,
+                "90.0" : 109.8873052631579,
+                "95.0" : 109.8873052631579,
+                "99.0" : 109.8873052631579,
+                "99.9" : 109.8873052631579,
+                "99.99" : 109.8873052631579,
+                "99.999" : 109.8873052631579,
+                "99.9999" : 109.8873052631579,
+                "100.0" : 109.8873052631579
+            },
+            "scoreUnit" : "ms/op",
+            "rawData" : [
+                [
+                    109.8873052631579,
+                    109.0858,
+                    108.70995789473685,
+                    109.06167368421053,
+                    108.01646315789473
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "se.deversity.asynctest.loadtest.AsyncTestBenchmark.frameworkOverhead_t8_noDetectors",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "C:\\Program Files\\Java\\jdk-21\\bin\\java.exe",
+        "jvmArgs" : [
+            "-Dfile.encoding=UTF8",
+            "-Dfile.encoding=UTF-8",
+            "-Djava.io.tmpdir=C:\\dev\\private\\async-test-lib\\load-tests\\build\\tmp\\jmh",
+            "-Duser.country=GB",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "-Dlicense.mock.mode=true",
+            "-Dasync.test.version=1.3.0"
+        ],
+        "jdkVersion" : "21.0.9",
+        "vmName" : "Java HotSpot(TM) 64-Bit Server VM",
+        "vmVersion" : "21.0.9+7-LTS-338",
+        "warmupIterations" : 3,
+        "warmupTime" : "1 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "2 s",
+        "measurementBatchSize" : 1,
+        "primaryMetric" : {
+            "score" : 109.17983999999998,
+            "scoreError" : 2.2182169896643003,
+            "scoreConfidence" : [
+                106.96162301033569,
+                111.39805698966428
+            ],
+            "scorePercentiles" : {
+                "0.0" : 108.24553684210527,
+                "50.0" : 109.22612631578947,
+                "90.0" : 109.66193684210526,
+                "95.0" : 109.66193684210526,
+                "99.0" : 109.66193684210526,
+                "99.9" : 109.66193684210526,
+                "99.99" : 109.66193684210526,
+                "99.999" : 109.66193684210526,
+                "99.9999" : 109.66193684210526,
+                "100.0" : 109.66193684210526
+            },
+            "scoreUnit" : "ms/op",
+            "rawData" : [
+                [
+                    109.64503157894737,
+                    109.12056842105264,
+                    108.24553684210527,
+                    109.66193684210526,
+                    109.22612631578947
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    }
+]
+
+
