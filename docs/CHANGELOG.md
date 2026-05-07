@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-05-08
+
 ### Added
+
+- **VibeTags 0.8.0 integration** — AI guardrail annotations declared in `CLAUDE.md`
+  cover locked files, contextual instructions, audit requirements, ignored elements,
+  core elements, performance constraints, contract signatures, and per-detector
+  test-driven coverage requirements.
 
 #### Phase 12: Operational & Hygiene Concurrency Issues
 - **Interrupt Swallowing** (`detectInterruptSwallowing`) — detects `catch (InterruptedException)`
@@ -45,6 +52,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without a custom `UncaughtExceptionHandler` that subsequently throw, causing the exception
   to be silently discarded from the submitter's perspective (only printed to stderr via the
   default thread-group handler).
+
+### Changed
+
+- **Detector error messages** restructured to a consistent **what / why / fix** layout
+  across all detector reports, making issues easier to triage without cross-referencing
+  the docs.
+
+### Fixed
+
+- Downgrade `maven-source-plugin` from 3.4.0 to 3.3.1 to restore source-jar generation
+  during `test-compile` in the fuzzing workflow.
+- Align `pom.xml` and `build.gradle.kts` versions across all examples and the
+  `load-tests` subproject (including `load-tests.yml`) so consumer projects resolve
+  the matching published artifact.
 
 ## [0.9.0] - 2026-05-06
 
@@ -295,6 +316,7 @@ First public release on Maven Central.
 - `02-visibility-volatile-flag` — demonstrates memory visibility bugs caused by a missing
   `volatile` keyword
 
+[1.3.0]: https://github.com/PIsberg/async-test-lib/releases/tag/v1.3.0
 [0.8.0]: https://github.com/PIsberg/async-test-lib/releases/tag/v0.8.0
 [0.7.0]: https://github.com/PIsberg/async-test-lib/releases/tag/v0.7.0
 [0.6.2]: https://github.com/PIsberg/async-test-lib/releases/tag/v0.6.2
