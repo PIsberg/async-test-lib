@@ -90,8 +90,13 @@ public class ThreadLocalContaminationDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("THREADLOCAL CONTAMINATION DETECTED:\n");
             for (String c : contaminations) sb.append("  - ").append(c).append("\n");
-            sb.append("  Fix: call ThreadLocal.remove() in a task-finally block, "
-                    + "or use a try-with-resources wrapper that clears the value on close");
+            sb.append("  Why: Thread pools reuse threads across tasks. A ThreadLocal set by Task A persists into Task B\n" +
+                    "       if it is not explicitly cleared. Task B then reads stale, unintended context — a security\n" +
+                    "       boundary violation if the value is a user identity or tenant, and a correctness bug otherwise.\n" +
+                    "  Fix:\n" +
+                    "    - Call ThreadLocal.remove() in a task-finally block: try { doWork(); } finally { ctx.remove(); }\n" +
+                    "    - Or wrap in AutoCloseable: try (var ctx = ScopedContext.bind(value)) { doWork(); }\n" +
+                    "    - Consider ScopedValue (Java 21+) instead — it is automatically scoped to the current call and cleaned up");
             return sb.toString();
         }
     }

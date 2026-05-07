@@ -294,7 +294,10 @@ public class BlockingQueueDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Fix: check offer() return values, handle null from poll(), consider queue capacity");
+            sb.append("  Why: A silent offer() failure means an item was silently dropped — the producer believes it sent data but the consumer never receives it.\n" +
+                       "       An empty poll() returning null instead of blocking causes downstream logic to proceed with missing data, producing wrong results.\n" +
+                       "       Queue saturation stalls producers and can cascade into a deadlock if producers are also consumers.\n" +
+                       "  Fix: always check offer() return value; use put() to block on full queues; use take() or poll(timeout) instead of poll()");
             return sb.toString();
         }
     }

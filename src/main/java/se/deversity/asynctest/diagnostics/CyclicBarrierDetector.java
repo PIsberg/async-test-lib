@@ -105,7 +105,9 @@ public class CyclicBarrierDetector {
                       .append(" (").append(info.parties).append(" parties expected, ")
                       .append(info.arrivals).append(" arrived before timeout)\n");
                 }
-                sb.append("  Fix: Ensure all threads reach the barrier before timeout\n");
+                sb.append("  Why: If fewer threads than expected call await(), the barrier never trips and all waiting threads block indefinitely.\n");
+                sb.append("       Once a barrier is broken, it propagates BrokenBarrierException to all waiting parties.\n");
+                sb.append("  Fix: Ensure all registered parties call await(); wrap in try-catch BrokenBarrierException and reset() before reuse\n");
             }
 
             if (!brokenBarriers.isEmpty()) {
@@ -115,7 +117,9 @@ public class CyclicBarrierDetector {
                     sb.append("    - ").append(info.name)
                       .append(" (barrier broken - thread interrupted or timed out)\n");
                 }
-                sb.append("  Fix: Handle BrokenBarrierException and InterruptedException properly\n");
+                sb.append("  Why: A thread timing out or being interrupted breaks the barrier for all other waiting parties,\n");
+                sb.append("       leaving them stuck unless the barrier is explicitly reset.\n");
+                sb.append("  Fix: Catch BrokenBarrierException, call barrier.reset() before reuse, and restore interrupt status on InterruptedException\n");
             }
 
             if (!hasIssues()) {

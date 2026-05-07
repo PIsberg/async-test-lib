@@ -105,8 +105,15 @@ public class NestedMonitorLockoutDetector {
             StringBuilder sb = new StringBuilder("NESTED MONITOR LOCKOUT ISSUES DETECTED:\n");
             Set<String> deduped = new LinkedHashSet<>(incidents);
             for (String incident : deduped) sb.append("  - ").append(incident).append("\n");
-            sb.append("  Fix: never hold a monitor while calling wait(), Future.get(), Lock.lock(),"
-                    + " or other blocking operations on a different object's monitor");
+            sb.append("  Why: When a thread holds Monitor A and then calls a blocking operation that waits for Monitor B,\n")
+              .append("       every thread that needs Monitor A is forced to wait for the unrelated blocking call to complete —\n")
+              .append("       even though the blocking call has nothing to do with the state protected by Monitor A.\n")
+              .append("       If Monitor B is also contested, this creates a layered wait chain that degrades to a near-deadlock.\n")
+              .append("  Fix:\n")
+              .append("    - Release the monitor before any blocking call: copy the data you need under the lock, exit the\n")
+              .append("      synchronized block, then perform the blocking operation outside\n")
+              .append("    - Use Condition.await() (from ReentrantLock) instead of Object.wait() — it releases the associated\n")
+              .append("      lock atomically while waiting, so other threads can enter the critical section");
             return sb.toString();
         }
     }

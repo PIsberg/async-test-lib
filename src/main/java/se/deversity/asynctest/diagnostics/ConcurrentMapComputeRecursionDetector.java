@@ -81,9 +81,13 @@ public class ConcurrentMapComputeRecursionDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("CONCURRENT MAP COMPUTE RECURSION DETECTED:\n");
             for (String r : recursions) sb.append("  - ").append(r).append("\n");
-            sb.append("  Fix: avoid calling compute*() on the same map inside a compute*() "
-                    + "mapping function for the same key; use a separate helper map "
-                    + "or restructure the recursion to avoid re-entry");
+            sb.append("  Why: ConcurrentHashMap.compute() locks the bucket for the key while invoking the mapping function.\n" +
+                       "       If the mapping function calls compute() on the same map for the same key, it tries to re-acquire\n" +
+                       "       the already-held bucket lock — the thread deadlocks indefinitely against itself.\n" +
+                       "  Fix:\n" +
+                       "    - Restructure the algorithm to avoid re-entrant compute() on the same key\n" +
+                       "    - Compute the new value first (in a local variable), then call map.put(key, value) atomically\n" +
+                       "    - For recursive structures, use a separate auxiliary map or a stack-based approach");
             return sb.toString();
         }
     }

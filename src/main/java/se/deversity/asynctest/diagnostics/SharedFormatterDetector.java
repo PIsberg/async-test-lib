@@ -71,8 +71,12 @@ public class SharedFormatterDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("SHARED FORMATTER / PRINT-STREAM DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
-            sb.append("  Fix: use a thread-local Formatter, synchronize externally, "
-                    + "or replace with a thread-safe logging framework (SLF4J, java.util.logging)");
+            sb.append("  Why: java.util.Formatter and PrintStream maintain mutable internal buffers. Concurrent writes\n" +
+                       "       interleave output, producing garbled lines that mix characters from multiple threads.\n" +
+                       "  Fix:\n" +
+                       "    - Use a thread-safe logging framework (SLF4J, java.util.logging) which handles concurrent writes\n" +
+                       "    - Use a thread-local Formatter: ThreadLocal.withInitial(() -> new Formatter())\n" +
+                       "    - Synchronize externally on the shared formatter/stream for short, infrequent writes");
             return sb.toString();
         }
     }

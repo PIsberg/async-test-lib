@@ -119,6 +119,9 @@ public class VolatileArrayDetector {
                     sb.append("               not individual elements. Element updates may not\n");
                     sb.append("               be visible across threads.\n");
                 }
+                sb.append("  Why: The volatile keyword guarantees visibility of the array reference (the pointer to the array object),\n");
+                sb.append("       NOT the individual array elements. A write to array[i] in Thread A may remain invisible to Thread B\n");
+                sb.append("       indefinitely — producing stale reads, lost updates, and non-deterministic results.\n");
                 sb.append("  Fix: Use one of these alternatives:\n");
                 sb.append("    - AtomicReferenceArray<T>\n");
                 sb.append("    - AtomicIntegerArray / AtomicLongArray\n");

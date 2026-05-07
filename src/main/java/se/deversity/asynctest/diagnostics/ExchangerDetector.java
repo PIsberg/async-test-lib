@@ -114,8 +114,10 @@ public class ExchangerDetector {
                     sb.append("    - ").append(info.name)
                       .append(" (exchange timed out - no partner thread found)\n");
                 }
-                sb.append("  Fix: Ensure even number of threads call exchange()\n");
-                sb.append("  Or use exchange(value, timeout, unit) with proper timeout handling\n");
+                sb.append("  Why: Exchanger requires exactly two threads to rendezvous simultaneously. If one thread times out or is\n");
+                sb.append("       interrupted, the corresponding thread waits forever for a partner that will never arrive.\n");
+                sb.append("  Fix: Ensure an even number of threads always call exchange(); use exchange(value, timeout, unit) and handle\n");
+                sb.append("       TimeoutException so the orphaned thread does not block indefinitely\n");
             }
 
             if (!interruptedExchangers.isEmpty()) {
@@ -125,7 +127,9 @@ public class ExchangerDetector {
                     sb.append("    - ").append(info.name)
                       .append(" (exchange interrupted)\n");
                 }
-                sb.append("  Fix: Handle InterruptedException properly and restore interrupt status\n");
+                sb.append("  Why: Swallowing InterruptedException leaves the interrupt flag cleared, silently preventing shutdown signals\n");
+                sb.append("       from propagating up the call stack.\n");
+                sb.append("  Fix: Restore the interrupt flag (Thread.currentThread().interrupt()) and rethrow or handle the interruption\n");
             }
 
             if (nullValueExchanges > 0) {

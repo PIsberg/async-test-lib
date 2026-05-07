@@ -125,8 +125,13 @@ public class StampedLockDetector {
                     sb.append("    - ").append(lockInfo).append("\n");
                 }
                 sb.append("  Problem: Optimistic read stamp used without calling validate()\n");
-                sb.append("  Fix: Always validate optimistic reads:\n");
-                sb.append("    if (lock.validate(stamp)) { /* use data */ }\n");
+                sb.append("  Why: An optimistic read acquires no lock. A concurrent writer may update the fields between the read\n" +
+                        "       and the validate() call, meaning the read values are a torn snapshot from two different states.\n" +
+                        "       Using data from a failed validation produces silently wrong results.\n");
+                sb.append("  Fix: Always call lock.validate(stamp) before using optimistically-read data:\n");
+                sb.append("    long stamp = lock.tryOptimisticRead();\n");
+                sb.append("    int x = field;  // read — may be torn\n");
+                sb.append("    if (!lock.validate(stamp)) { stamp = lock.readLock(); try { x = field; } finally { lock.unlockRead(stamp); } }\n");
             }
 
             if (!stampNotReleased.isEmpty()) {
@@ -134,8 +139,11 @@ public class StampedLockDetector {
                 for (String lockInfo : stampNotReleased) {
                     sb.append("    - ").append(lockInfo).append("\n");
                 }
-                sb.append("  Fix: Always unlock in finally block:\n");
-                sb.append("    try { lock.unlockRead(stamp); } finally { }\n");
+                sb.append("  Why: An unreleased StampedLock read or write lock blocks all subsequent writers (or all readers\n" +
+                        "       for a leaked write lock) indefinitely, causing the application to hang.\n");
+                sb.append("  Fix: Always release stamps in a finally block:\n");
+                sb.append("    long stamp = lock.readLock();\n");
+                sb.append("    try { /* read fields */ } finally { lock.unlockRead(stamp); }\n");
             }
 
             if (!hasIssues()) {

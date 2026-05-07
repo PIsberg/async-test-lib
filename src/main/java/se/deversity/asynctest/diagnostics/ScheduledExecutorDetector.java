@@ -138,8 +138,9 @@ public class ScheduledExecutorDetector {
                     ExecutorInfo info = executorRegistry.get(executor);
                     sb.append("    - ").append(info.name).append("\n");
                 }
-                sb.append("  Fix: Always call shutdown() or shutdownNow() after use\n");
-                sb.append("  Or use try-with-resources pattern\n");
+                sb.append("  Why: A ScheduledExecutorService that is never shut down continues scheduling tasks forever and\n" +
+                        "       keeps its worker threads alive, preventing JVM exit and leaking OS thread resources.\n");
+                sb.append("  Fix: Always call shutdown() or shutdownNow() in a finally block; Java 19+: use try-with-resources\n");
             }
 
             if (!longRunningTasks.isEmpty()) {
@@ -152,7 +153,10 @@ public class ScheduledExecutorDetector {
 
             if (exceptionInTasks > 0) {
                 sb.append("  Exceptions in Scheduled Tasks: ").append(exceptionInTasks).append("\n");
-                sb.append("  Fix: Handle exceptions in scheduled tasks to prevent cancellation\n");
+                sb.append("  Why: ScheduledExecutorService silently cancels a recurring task if its Runnable throws an unchecked exception.\n" +
+                        "       The task simply stops running with no log entry or notification — a critical background job can\n" +
+                        "       vanish unnoticed.\n");
+                sb.append("  Fix: Wrap the task body in try/catch Throwable: () -> { try { work(); } catch (Throwable t) { log(t); } }\n");
             }
 
             if (!hasIssues()) {

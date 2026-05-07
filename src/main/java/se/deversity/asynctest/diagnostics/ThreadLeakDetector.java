@@ -249,7 +249,13 @@ public class ThreadLeakDetector {
                             sb.append("        at ").append(leak.creationStack[j]).append("\n");
                         }
                     }
-                    sb.append("      Fix: Ensure thread is properly terminated with join() or executor.shutdown()\n");
+                    sb.append("      Why: Threads that outlive the test consume OS resources (stack memory, file descriptors) and may\n");
+                    sb.append("           interfere with subsequent tests by writing to shared state, holding locks, or preventing JVM exit.\n");
+                    sb.append("      Fix:\n");
+                    sb.append("        - Daemon threads: set thread.setDaemon(true) so the JVM terminates them automatically on exit\n");
+                    sb.append("        - Managed threads: call thread.join() or executor.shutdown() + awaitTermination() in a finally block\n");
+                    sb.append("        - Use try-with-resources if the executor implements AutoCloseable (Java 19+ ExecutorService)\n");
+                    sb.append("        - Pass a stop signal via a volatile boolean or interrupt: thread.interrupt() + check Thread.interrupted()\n");
                 }
             }
             return sb.toString();

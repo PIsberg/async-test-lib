@@ -128,9 +128,11 @@ public class ForkJoinPoolDetector {
                     sb.append("    - ").append(taskInfo).append("\n");
                 }
                 sb.append("  Problem: Forked tasks must be joined to get results and exceptions\n");
-                sb.append("  Fix: Always call join() after fork():\n");
-                sb.append("    task.fork();\n");
-                sb.append("    result = task.join();\n");
+                sb.append("  Why: fork() submits the task asynchronously but does not wait for it. Without join(), the task result\n" +
+                        "       is discarded and any exception it throws is silently lost. The parent task proceeds with a missing\n" +
+                        "       or default value, producing silently wrong computation results.\n");
+                sb.append("  Fix: Always call join() after fork() to retrieve the result and propagate exceptions:\n");
+                sb.append("    task.fork(); result = task.join();  // or: result = task.invoke() (fork + join in one call)\n");
             }
 
             if (!exceptionsInTasks.isEmpty()) {
@@ -138,7 +140,9 @@ public class ForkJoinPoolDetector {
                 for (String taskInfo : exceptionsInTasks) {
                     sb.append("    - ").append(taskInfo).append("\n");
                 }
-                sb.append("  Fix: Handle exceptions in compute() method\n");
+                sb.append("  Why: An uncaught exception in compute() propagates to the join() caller as an unchecked RuntimeException.\n" +
+                        "       If join() is never called (leaked fork), the exception is silently dropped.\n");
+                sb.append("  Fix: Wrap the body of compute() in try/catch and either handle the exception or rethrow as RuntimeException\n");
             }
 
             if (taskStealCount > 0) {

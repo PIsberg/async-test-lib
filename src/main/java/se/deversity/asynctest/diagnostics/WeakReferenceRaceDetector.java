@@ -122,8 +122,12 @@ public class WeakReferenceRaceDetector {
             StringBuilder sb = new StringBuilder("WEAK REFERENCE RACE DETECTED:\n");
             for (String v : violations) sb.append("  ERROR - ").append(v).append("\n");
             for (String w : warnings)   sb.append("  WARN  - ").append(w).append("\n");
-            sb.append("  Fix: always null-check WeakReference.get() immediately before use; "
-                    + "consider storing the result in a local variable and re-checking after every potential GC point");
+            sb.append("  Why: The garbage collector may collect a weakly-reachable object at any moment, including between\n"
+                    + "       a null-check and the next use of the result. Without a null-check on every get() call,\n"
+                    + "       code will throw NullPointerException non-deterministically under GC pressure.\n"
+                    + "  Fix: assign get() to a local variable once and null-check that variable:\n"
+                    + "       T ref = weakRef.get(); if (ref != null) { use(ref); }  // safe: local variable not GC'd\n"
+                    + "       Never call weakRef.get() twice expecting the same result — the GC can collect between the two calls");
             return sb.toString();
         }
     }

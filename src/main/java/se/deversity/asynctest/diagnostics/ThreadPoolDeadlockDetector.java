@@ -277,7 +277,7 @@ public class ThreadPoolDeadlockDetector {
             sb.append(IssueSeverity.HIGH.format())
               .append(": ")
               .append(risks.size())
-              .append(" pool(s) with potential deadlock scenarios\n");
+              .append(" pool(s) with potential deadlock scenarios — tasks that submit more work to the same bounded executor and then wait for it will deadlock when all pool threads are occupied and the queue is full\n");
 
             for (int i = 0; i < risks.size(); i++) {
                 PoolDeadlockRisk risk = risks.get(i);

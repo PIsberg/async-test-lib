@@ -132,8 +132,14 @@ public class ExecutorShutdownDetector {
             StringBuilder sb = new StringBuilder("EXECUTOR SHUTDOWN ISSUES DETECTED:\n");
             for (String issue : notShutDown)        sb.append("  - ").append(issue).append("\n");
             for (String issue : noAwaitTermination) sb.append("  - ").append(issue).append("\n");
-            sb.append("  Fix: always call shutdown() followed by awaitTermination() "
-                    + "to ensure a clean executor lifecycle and prevent thread leaks");
+            sb.append("  Why: An executor that is never shut down keeps its worker threads alive indefinitely. Those threads\n" +
+                    "       are non-daemon by default, so they prevent JVM exit and consume OS thread resources. Without\n" +
+                    "       awaitTermination(), in-flight tasks may be interrupted mid-execution when the test ends, causing\n" +
+                    "       partial writes, corrupted state, or misleading test failures.\n" +
+                    "  Fix:\n" +
+                    "    - Always call shutdown() then awaitTermination(timeout, unit) in a finally block\n" +
+                    "    - Java 19+: ExecutorService implements AutoCloseable — use try-with-resources for automatic shutdown\n" +
+                    "    - Use shutdownNow() only when you need to cancel in-flight tasks; handle the returned pending-task list");
             return sb.toString();
         }
     }

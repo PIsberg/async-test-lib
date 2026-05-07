@@ -203,7 +203,13 @@ public class SharedRandomDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Fix: use ThreadLocalRandom.current() for concurrent random number generation");
+            sb.append("  Why: java.util.Random uses a shared AtomicLong seed. Under concurrent use, threads contend on that\n" +
+                       "       single seed via CAS, causing high contention and throughput that degrades with thread count.\n" +
+                       "       In the worst case, the contention serialises random number generation across all threads.\n" +
+                       "  Fix:\n" +
+                       "    - Use ThreadLocalRandom.current().nextInt(...) — each thread has its own seed, zero contention\n" +
+                       "    - For cryptographic randomness: use SecureRandom with a per-thread or synchronized instance\n" +
+                       "    - For reproducible testing: SplittableRandom is thread-safe-by-split and supports parallel streams");
             return sb.toString();
         }
     }

@@ -177,7 +177,12 @@ public class BusyWaitDetector {
                     sb.append("  - ").append(loop).append('\n');
                 }
             }
-            sb.append("  Fix: replace spin loops with wait/notify, latches, or futures");
+            sb.append("\nWhy: A spin loop keeps a CPU core at 100% utilization for the entire wait duration, preventing other threads from being scheduled on that core. Under load, each spinning thread blocks a pool thread from doing real work, cascading latency across the whole system.\n");
+            sb.append("Fix: replace spin loops with blocking primitives that park the thread at zero CPU cost:\n");
+            sb.append("  - wait()/notify() inside a synchronized block (check condition in a while loop)\n");
+            sb.append("  - CountDownLatch.await() for one-time handoff\n");
+            sb.append("  - CompletableFuture.join() or Future.get() for async results\n");
+            sb.append("  - LockSupport.park() for low-level unparking by another thread");
             return sb.toString();
         }
     }

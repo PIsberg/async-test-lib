@@ -186,7 +186,13 @@ public class CopyOnWriteCollectionDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Fix: use ConcurrentHashMap.newKeySet() or ConcurrentLinkedQueue for write-heavy workloads");
+            sb.append("  Why: Every add/remove on a CopyOnWrite collection creates a full copy of the underlying array.\n" +
+                       "       Under write-heavy load this means O(n) allocation per write, excessive GC pressure, and\n" +
+                       "       throughput that degrades proportionally to collection size — exactly the wrong trade-off for frequent writes.\n" +
+                       "  Fix:\n" +
+                       "    - Write-heavy sets: ConcurrentHashMap.newKeySet() (O(1) amortised writes)\n" +
+                       "    - Write-heavy queues: ConcurrentLinkedQueue or a BlockingQueue variant\n" +
+                       "    - CopyOnWrite is only appropriate when reads vastly outnumber writes (e.g. listener lists)");
             return sb.toString();
         }
     }

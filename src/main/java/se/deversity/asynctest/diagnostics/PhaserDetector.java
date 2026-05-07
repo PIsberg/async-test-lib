@@ -116,7 +116,9 @@ public class PhaserDetector {
                       .append(" (").append(info.parties).append(" parties expected, ")
                       .append(info.arrivals).append(" arrived)\n");
                 }
-                sb.append("  Fix: Ensure all threads call arrive/awaitAdvance before timeout\n");
+                sb.append("  Why: A Phaser advances only when all registered parties arrive. If any party never calls arrive() or arriveAndAwaitAdvance(),\n");
+                sb.append("       all other parties block at the phase boundary indefinitely — the phaser stalls forever.\n");
+                sb.append("  Fix: Ensure every registered party always arrives (even on exception paths); use try/finally or deregister with arriveAndDeregister()\n");
             }
 
             if (!terminatedPhasers.isEmpty()) {
@@ -126,7 +128,9 @@ public class PhaserDetector {
                     sb.append("    - ").append(info.name)
                       .append(" (phaser terminated - possibly due to timeout or unbalance)\n");
                 }
-                sb.append("  Fix: Check for phaser.unbalance() calls or timeout conditions\n");
+                sb.append("  Why: A terminated Phaser rejects all further arrive/await calls, causing threads that still need to\n");
+                sb.append("       synchronise to receive an unexpected terminated-state response.\n");
+                sb.append("  Fix: Check phaser.isTerminated() before registering or arriving; investigate unintended arriveAndDeregister() calls\n");
             }
 
             if (!hasIssues()) {

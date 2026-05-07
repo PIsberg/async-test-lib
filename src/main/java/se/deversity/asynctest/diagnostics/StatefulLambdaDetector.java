@@ -100,8 +100,14 @@ public class StatefulLambdaDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("STATEFUL LAMBDA SHARED ACROSS THREADS DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
-            sb.append("  Fix: use AtomicInteger/LongAdder for captured counters, "
-                    + "or create a new lambda instance per task to avoid shared mutable captures");
+            sb.append("  Why: A lambda that captures a mutable variable or field shares that state with every thread that\n"
+                    + "       executes the lambda concurrently. Without synchronization, two threads can read the same value,\n"
+                    + "       both modify it, and one update is silently lost — a classic lost-update race condition inside\n"
+                    + "       what looks like a simple closure.\n"
+                    + "  Fix:\n"
+                    + "    - Use AtomicInteger/AtomicLong/LongAdder for captured numeric counters (lock-free, correct)\n"
+                    + "    - Capture only effectively-final, immutable values and pass mutable state via method parameters\n"
+                    + "    - Create a new lambda (or a new capturing context) per task so each thread gets its own state");
             return sb.toString();
         }
     }

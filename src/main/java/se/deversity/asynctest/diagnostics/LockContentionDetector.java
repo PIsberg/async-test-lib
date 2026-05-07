@@ -176,8 +176,14 @@ public class LockContentionDetector {
                 sb.append("  No contention issues detected.\n");
             }
 
-            sb.append("  Fix: reduce critical-section size, use finer-grained locks,")
-              .append(" lock striping, or lock-free data structures (AtomicXxx, ConcurrentHashMap).");
+            sb.append("  Why: High contention means threads spend most of their time blocked waiting to acquire the lock rather than doing real work.\n")
+              .append("       Beyond the performance hit, extreme contention can starve low-priority threads indefinitely if the JVM's lock-scheduling\n")
+              .append("       is non-fair — tasks queue up faster than they are released.\n")
+              .append("  Fix:\n")
+              .append("    - Reduce the critical section to the minimum work that truly needs exclusive access\n")
+              .append("    - Use finer-grained locks: split one coarse-grained lock into per-key or per-segment locks\n")
+              .append("    - Use lock striping (e.g. Guava's Striped<Lock>) to limit contention to a small set of buckets\n")
+              .append("    - Replace locks with lock-free structures: AtomicLong.incrementAndGet(), ConcurrentHashMap.compute()");
             return sb.toString();
         }
     }

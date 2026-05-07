@@ -207,7 +207,22 @@ public class LivelockDetector {
                     sb.append("  - ").append(thread).append("\n");
                 }
             }
-            
+
+            sb.append("\nWhy: ");
+            if (!livelockCandidates.isEmpty()) {
+                sb.append("Livelock threads appear active (CPU time accumulates) but make no real progress — they keep reacting to each other's state changes in a tight cycle, burning CPU indefinitely without completing any work. ");
+            }
+            if (!starvedThreads.isEmpty()) {
+                sb.append("Starved threads are permanently blocked or never scheduled because other threads monopolize CPU or locks, causing tasks to silently stall or never execute. ");
+            }
+            if (!noProgressThreads.isEmpty()) {
+                sb.append("Threads with no progress are neither completing work nor making forward state changes — a sign of an unnoticed block or incorrect loop condition. ");
+            }
+            sb.append("\nFix:\n");
+            sb.append("  - Livelock: introduce randomised back-off between retries — e.g. Thread.sleep(ThreadLocalRandom.current().nextInt(10, 50)) — so threads yield to each other rather than thrashing in lock-step\n");
+            sb.append("  - Starvation: use a fair lock (new ReentrantLock(true)) so threads acquire in arrival order; reduce lock hold time; avoid priority inversion\n");
+            sb.append("  - No-progress threads: check for missed notify() calls, broken loop exit conditions, or tasks submitted to a saturated executor");
+
             return sb.toString();
         }
     }

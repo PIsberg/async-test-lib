@@ -100,9 +100,11 @@ public class ThreadFactoryDetector {
                 for (String threadInfo : missingExceptionHandler) {
                     sb.append("    - ").append(threadInfo).append("\n");
                 }
-                sb.append("  Problem: Uncaught exceptions will be silently swallowed\n");
-                sb.append("  Fix: Set uncaught exception handler:\n");
-                sb.append("    thread.setUncaughtExceptionHandler((t, e) -> e.printStackTrace());\n");
+                sb.append("  Why: An uncaught exception in a thread kills that thread silently. Without a handler, the failure\n");
+                sb.append("       is never logged, the work is never retried, and the thread pool shrinks without anyone noticing.\n");
+                sb.append("  Fix: Set an uncaught exception handler on every created thread:\n");
+                sb.append("    thread.setUncaughtExceptionHandler((t, e) -> log.error(\"Thread {} died\", t.getName(), e));\n");
+                sb.append("  Or set a JVM-wide default: Thread.setDefaultUncaughtExceptionHandler(...)\n");
             }
 
             if (!nonDaemonThreads.isEmpty()) {
@@ -110,8 +112,10 @@ public class ThreadFactoryDetector {
                 for (String threadInfo : nonDaemonThreads) {
                     sb.append("    - ").append(threadInfo).append("\n");
                 }
-                sb.append("  Warning: Non-daemon threads prevent JVM shutdown\n");
-                sb.append("  Fix: Set thread as daemon: thread.setDaemon(true);\n");
+                sb.append("  Why: The JVM waits for all non-daemon threads to finish before exiting. A leaked non-daemon thread\n");
+                sb.append("       prevents clean shutdown and may keep processes alive in production or cause test hangs.\n");
+                sb.append("  Fix: Mark background threads as daemons so the JVM does not wait for them:\n");
+                sb.append("    thread.setDaemon(true);  // must be called before thread.start()\n");
             }
 
             if (!unnamedThreads.isEmpty()) {
@@ -119,9 +123,10 @@ public class ThreadFactoryDetector {
                 for (String threadInfo : unnamedThreads) {
                     sb.append("    - ").append(threadInfo).append("\n");
                 }
-                sb.append("  Warning: Hard to debug without meaningful names\n");
-                sb.append("  Fix: Use descriptive thread names:\n");
-                sb.append("    new Thread(runnable, \"pool-1-worker-\" + threadNumber);\n");
+                sb.append("  Why: Thread names appear in stack traces, thread dumps, and monitoring dashboards. Generic names like\n");
+                sb.append("       \"Thread-42\" make it impossible to identify which component a blocked or crashing thread belongs to.\n");
+                sb.append("  Fix: Assign descriptive names in the factory:\n");
+                sb.append("    thread.setName(\"payment-worker-\" + threadCount.incrementAndGet());\n");
             }
 
             if (!hasIssues()) {

@@ -271,7 +271,7 @@ public class VirtualThreadPinningDetector {
             sb.append(IssueSeverity.MEDIUM.format())
               .append(": ")
               .append(events.size())
-              .append(" pinning event(s) detected (max concurrent: ")
+              .append(" virtual thread pinning event(s) detected — a pinned virtual thread cannot unmount from its carrier platform thread, so that carrier is unavailable to other virtual threads for the entire duration of the block (max concurrent pinned: ")
               .append(maxPinnedCount)
               .append(")\n");
 

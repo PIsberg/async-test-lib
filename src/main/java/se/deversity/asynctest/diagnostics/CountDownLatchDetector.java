@@ -101,7 +101,9 @@ public class CountDownLatchDetector {
                       .append(" (expected ").append(info.initialCount)
                       .append(" countDown() calls, but await() timed out)\n");
                 }
-                sb.append("  Fix: Ensure all threads call countDown() before await() timeout\n");
+                sb.append("  Why: If countDown() is not called enough times the latch count never reaches zero and await() blocks forever;\n");
+                sb.append("       the test or application hangs waiting for threads that never signal completion.\n");
+                sb.append("  Fix: Ensure every participating thread calls countDown() exactly once — even on exception paths (use try/finally)\n");
             }
 
             if (!extraCountDownLatches.isEmpty()) {
@@ -112,7 +114,9 @@ public class CountDownLatchDetector {
                       .append(" (initial count: ").append(info.initialCount)
                       .append(", but countDown() called more times)\n");
                 }
-                sb.append("  Fix: Verify countDown() is called exactly once per thread\n");
+                sb.append("  Why: Calling countDown() more times than the initial count has no effect (the latch stays at zero),\n");
+                sb.append("       but it indicates a logic error in thread coordination that can mask real bugs.\n");
+                sb.append("  Fix: Verify countDown() is called exactly once per thread — track with an AtomicInteger if needed\n");
             }
 
             if (!hasIssues()) {

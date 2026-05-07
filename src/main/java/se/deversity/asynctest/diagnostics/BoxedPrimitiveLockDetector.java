@@ -106,8 +106,12 @@ public class BoxedPrimitiveLockDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("BOXED PRIMITIVE LOCK DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
-            sb.append("  Fix: use a dedicated private final Object lock = new Object() "
-                    + "instead of synchronizing on Integer, Boolean, Long, or String literals");
+            sb.append("  Why: Synchronizing on a boxed primitive (Integer, Long, Boolean) is dangerous because the JVM caches\n" +
+                       "       commonly-used values (Integers -128 to 127, Boolean.TRUE/FALSE). Two completely unrelated code paths\n" +
+                       "       that synchronize on 'Integer.valueOf(42)' acquire the same monitor object — causing accidental\n" +
+                       "       coupling and potential deadlocks with code that has nothing to do with your class.\n" +
+                       "  Fix: Always synchronize on a dedicated private final Object lock = new Object(); — never on a boxed\n" +
+                       "       primitive, String literal, or any other object that might be shared or interned by the JVM.");
             return sb.toString();
         }
     }

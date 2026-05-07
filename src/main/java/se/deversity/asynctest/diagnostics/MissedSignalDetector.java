@@ -168,9 +168,15 @@ public class MissedSignalDetector {
                 sb.append("  No missed signals detected.\n");
             }
 
-            sb.append("  Fix: always check a state predicate in a loop before waiting")
-              .append(" (while (!ready) { monitor.wait(); }) so that re-checking after the fact")
-              .append(" handles signals that arrive before wait().");
+            sb.append("  Why: A notify() that fires before wait() is called is silently lost — the waiting thread never wakes.\n" +
+"     This is the \"missed signal\" (or \"lost wakeup\") problem. Without a state predicate loop, the\n" +
+"     thread waits forever even though the condition it was waiting for has already become true.\n" +
+"  Fix:\n" +
+"    - Always guard wait() with a state predicate in a while loop:\n" +
+"        synchronized(lock) { while (!ready) { lock.wait(); } }\n" +
+"    - The while loop re-checks the condition after every wakeup, so a signal that arrives before wait()\n" +
+"      is handled correctly — the thread checks the condition, sees it is true, and skips wait() entirely\n" +
+"    - Use notifyAll() instead of notify() to avoid leaving other waiters stranded");
             return sb.toString();
         }
     }
