@@ -67,6 +67,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `load-tests` subproject (including `load-tests.yml`) so consumer projects resolve
   the matching published artifact.
 
+### Performance
+
+Despite shipping 10 additional Phase 12 detectors, 1.3.0 measurably outperforms
+the 0.7.0 and 0.8.0 baselines on the two metrics that matter for users:
+**detector-on CPU overhead** and **peak heap overhead**. The no-detector path
+is unchanged within noise (see `load-tests/results/_plots/throughput-vs-threads.png`),
+so these wins apply to anyone who runs `@AsyncTest` with `detectAll = true`
+(the default).
+
+Full sweep on JDK 21.0.9 / Windows 11 / 16 CPUs, JMH 1.37 (3 warmup + 5 measure
+iterations); raw CSV/JSON in `load-tests/results/1.3.0/`.
+
+#### Detector overhead — up to ~25% faster at 8 threads
+
+![Framework & detector overhead by release](../load-tests/results/_plots/detector-overhead-by-release.png)
+
+| benchmark | 0.7.0 ms/op | 0.8.0 ms/op | **1.3.0 ms/op** | Δ vs 0.8.0 |
+|---|---:|---:|---:|---:|
+| `detectorOverhead_t2_allDetectors` | 123.1 | 123.4 | **108.8** | −12% |
+| `detectorOverhead_t4_allDetectors` | 137.8 | 140.9 | **116.4** | −17% |
+| `detectorOverhead_t8_allDetectors` | 161.9 | 164.6 | **129.8** | −21% |
+
+The all-detectors path got noticeably faster at higher thread counts even
+though Phase 11 and Phase 12 added 15 new detectors since 0.8.0.
+
+#### Memory — ~45% lower peak heap at 500 invocations
+
+![Detector memory overhead vs invocations](../load-tests/results/_plots/memory-overhead-vs-invocations.png)
+
+| invocations (threads=4) | 0.7.0 overhead MB | 0.8.0 overhead MB | **1.3.0 overhead MB** |
+|---:|---:|---:|---:|
+| 10  | 0.5  | 0.8  | **0.7** |
+| 100 | 13.9 | 15.0 | **12.0** |
+| 500 | 56.9 | 56.0 | **30.8** |
+
+Peak-heap overhead vs the no-detector run grows much more slowly with invocation
+count in 1.3.0 — about 45% lower at 500 invocations than either prior baseline.
+
 ## [0.9.0] - 2026-05-06
 
 ### Changed
