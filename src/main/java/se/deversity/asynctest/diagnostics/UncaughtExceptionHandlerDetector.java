@@ -1,0 +1,102 @@
+package se.deversity.asynctest.diagnostics;
+
+import java.util.*;
+import java.util.concurrent.*;
+
+/**
+ * Detects threads that are started without a custom {@link Thread.UncaughtExceptionHandler}
+ * and that subsequently throw an uncaught exception.
+ *
+ * <p>Without an explicit handler, uncaught exceptions are routed only to the thread group's
+ * default handler (typically a stderr print). The submitting code has no way to detect
+ * the failure, the exception is effectively swallowed from the perspective of the task
+ * submitter, and the thread pool silently replaces the dead thread.
+ *
+ * <p>Usage inside {@code @AsyncTest}:
+ * <pre>{@code
+ * var d = AsyncTestContext.uncaughtExceptionHandlerDetector();
+ * Thread worker = new Thread(task);
+ * d.recordThreadStart(worker);   // before worker.start()
+ * worker.start();
+ * // ... later, if worker throws:
+ * d.recordUncaughtException(worker, throwable);
+ * }</pre>
+ *
+ * @since 0.10.0
+ */
+public class UncaughtExceptionHandlerDetector {
+
+    private static class ThreadRecord {
+        final long    threadId;
+        final String  threadName;
+        final boolean hasCustomHandler;
+        volatile Throwable uncaughtException;
+
+        ThreadRecord(long tid, String tname, boolean hasCustomHandler) {
+            this.threadId         = tid;
+            this.threadName       = tname;
+            this.hasCustomHandler = hasCustomHandler;
+        }
+    }
+
+    private final Map<Long, ThreadRecord> threads = new ConcurrentHashMap<>();
+
+    /**
+     * Records that a thread is about to be started.
+     *
+     * <p>The detector checks whether the thread has a custom
+     * {@link Thread.UncaughtExceptionHandler} (not the default thread-group handler).
+     *
+     * @param thread the thread being started (null-safe)
+     */
+    public void recordThreadStart(Thread thread) {
+        if (thread == null) return;
+        boolean hasCustom = thread.getUncaughtExceptionHandler() != null
+                && !(thread.getUncaughtExceptionHandler() instanceof ThreadGroup);
+        threads.put(thread.getId(),
+                new ThreadRecord(thread.getId(), thread.getName(), hasCustom));
+    }
+
+    /**
+     * Records that a thread terminated with an uncaught exception.
+     *
+     * @param thread    the thread that threw (null-safe)
+     * @param throwable the uncaught exception
+     */
+    public void recordUncaughtException(Thread thread, Throwable throwable) {
+        if (thread == null) return;
+        ThreadRecord rec = threads.get(thread.getId());
+        if (rec != null) rec.uncaughtException = throwable;
+    }
+
+    /** @return report of threads that threw without a custom UncaughtExceptionHandler */
+    public UncaughtExceptionHandlerReport analyze() {
+        UncaughtExceptionHandlerReport r = new UncaughtExceptionHandlerReport();
+        for (ThreadRecord rec : threads.values()) {
+            if (!rec.hasCustomHandler && rec.uncaughtException != null) {
+                r.violations.add(String.format(
+                        "Thread '%s' threw '%s' but had no custom UncaughtExceptionHandler — "
+                                + "the exception was only printed to stderr and ignored by the submitter",
+                        rec.threadName, rec.uncaughtException.getClass().getSimpleName()));
+            }
+        }
+        return r;
+    }
+
+    /** Report produced by {@link #analyze()}. */
+    public static class UncaughtExceptionHandlerReport {
+        final List<String> violations = new ArrayList<>();
+
+        public boolean hasIssues() { return !violations.isEmpty(); }
+
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder("UNCAUGHT EXCEPTION HANDLER MISSING DETECTED:\n");
+            for (String v : violations) sb.append("  - ").append(v).append("\n");
+            sb.append("  Fix: call thread.setUncaughtExceptionHandler(handler) before "
+                    + "thread.start(), or use a ThreadFactory that installs a handler "
+                    + "on every thread created by the pool");
+            return sb.toString();
+        }
+    }
+}

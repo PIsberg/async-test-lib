@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### Phase 12: Operational & Hygiene Concurrency Issues
+- **Interrupt Swallowing** (`detectInterruptSwallowing`) — detects `catch (InterruptedException)`
+  blocks that neither rethrow the exception nor call `Thread.currentThread().interrupt()`,
+  permanently suppressing the cooperative-cancellation signal and preventing executors and
+  blocking operations from observing shutdown requests.
+- **MDC Context Leak** (`detectMdcContextLeak`) — detects SLF4J MDC entries that are not
+  cleared at task end, causing key/value leakage to the next task run on a reused pooled
+  thread (wrong request-ID, user, or trace-ID in logs).
+- **System Property Mutation** (`detectSystemPropertyMutation`) — detects concurrent
+  `System.setProperty()` or `clearProperty()` calls during the test run, which introduce
+  non-deterministic configuration and test pollution that survives to subsequent test methods.
+- **Future Ignored** (`detectFutureIgnored`) — detects `Future` / `CompletableFuture` instances
+  returned from `submit()` that are never inspected via `get()`, `isDone()`, `isCancelled()`, or
+  `cancel()`, causing exceptions from failed tasks to be silently discarded.
+- **Explicit GC** (`detectExplicitGc`) — detects `System.gc()` or `Runtime.gc()` invocations
+  during concurrent execution, which trigger unpredictable stop-the-world pauses that corrupt
+  latency measurements and concurrency-timing tests.
+- **Deprecated Thread API** (`detectDeprecatedThreadApi`) — detects calls to `Thread.stop()`,
+  `Thread.suspend()`, `Thread.resume()`, `Thread.destroy()`, and `Thread.countStackFrames()`,
+  which are unsafe (`stop()` releases all monitors, breaking invariants; `suspend/resume` are
+  inherently deadlock-prone) and were removed or made no-ops in Java 20+.
+- **Shared XML Parser** (`detectSharedXmlParser`) — detects `DocumentBuilder`, `SAXParser`,
+  `Transformer`, and `XPath` instances accessed concurrently from multiple threads; all are
+  not thread-safe and produce corrupted parse results or `ConcurrentModificationException`s
+  under concurrent use.
+- **Boxed Primitive Lock** (`detectBoxedPrimitiveLock`) — detects `synchronized` blocks that
+  lock on cached boxed primitives (`Integer`/`Long` in range −128..127, `Boolean.TRUE/FALSE`,
+  interned `String` literals), which are JVM-global shared instances causing unexpected
+  contention with unrelated code using the same value as a lock.
+- **Shared TimeZone** (`detectSharedTimeZone`) — detects `TimeZone` instances whose mutable
+  state (`setRawOffset`, `setID`) is modified from multiple threads, silently producing wrong
+  date/time arithmetic.
+- **Uncaught Exception Handler** (`detectUncaughtExceptionHandler`) — detects threads started
+  without a custom `UncaughtExceptionHandler` that subsequently throw, causing the exception
+  to be silently discarded from the submitter's perspective (only printed to stderr via the
+  default thread-group handler).
+
 ## [0.9.0] - 2026-05-06
 
 ### Changed

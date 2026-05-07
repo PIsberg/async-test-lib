@@ -59,6 +59,16 @@ import se.deversity.asynctest.diagnostics.SharedDecimalFormatDetector;
 import se.deversity.asynctest.diagnostics.WeakReferenceRaceDetector;
 import se.deversity.asynctest.diagnostics.StatefulLambdaDetector;
 import se.deversity.asynctest.diagnostics.SharedMessageDigestDetector;
+import se.deversity.asynctest.diagnostics.InterruptSwallowingDetector;
+import se.deversity.asynctest.diagnostics.MdcContextLeakDetector;
+import se.deversity.asynctest.diagnostics.SystemPropertyMutationDetector;
+import se.deversity.asynctest.diagnostics.FutureIgnoredDetector;
+import se.deversity.asynctest.diagnostics.ExplicitGcDetector;
+import se.deversity.asynctest.diagnostics.DeprecatedThreadApiDetector;
+import se.deversity.asynctest.diagnostics.SharedXmlParserDetector;
+import se.deversity.asynctest.diagnostics.BoxedPrimitiveLockDetector;
+import se.deversity.asynctest.diagnostics.SharedTimeZoneDetector;
+import se.deversity.asynctest.diagnostics.UncaughtExceptionHandlerDetector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -2084,5 +2094,157 @@ class ConsumerAsyncTestUsageTest {
         var report = detector.analyze();
         assertFalse(report.hasIssues(),
             "Future not submitted to common pool should not be flagged");
+    }
+
+    // =========== Phase 12: Operational & Hygiene Concurrency Issues ===========
+
+    /**
+     * Phase 12.1: Interrupt-swallowing detection — catch(InterruptedException) without
+     * restoring the interrupt flag permanently suppresses the cancellation signal.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectInterruptSwallowing = true, timeoutMs = 3000)
+    void testInterruptSwallowingDetection() {
+        InterruptSwallowingDetector detector = AsyncTestContext.interruptSwallowingDetector();
+
+        // Properly handled — no issue expected
+        detector.recordCatch(Thread.currentThread(), "MyService.work:42", true);
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Properly restored interrupt should not be flagged");
+    }
+
+    /**
+     * Phase 12.2: MDC context-leak detection — MDC entries not cleared at task end leak
+     * to the next task on the reused pooled thread.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectMdcContextLeak = true, timeoutMs = 3000)
+    void testMdcContextLeakDetection() {
+        MdcContextLeakDetector detector = AsyncTestContext.mdcContextLeakDetector();
+
+        // Start with empty MDC and end with empty MDC — no issue
+        detector.recordTaskStart(Thread.currentThread(), null);
+        detector.recordTaskEnd(Thread.currentThread(), null);
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Cleared MDC should not be flagged");
+    }
+
+    /**
+     * Phase 12.3: System-property mutation detection — concurrent setProperty/clearProperty
+     * causes non-deterministic configuration and test pollution.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectSystemPropertyMutation = true, timeoutMs = 3000)
+    void testSystemPropertyMutationDetection() {
+        SystemPropertyMutationDetector detector = AsyncTestContext.systemPropertyMutationDetector();
+
+        // Single-thread set — not a concurrent violation
+        detector.recordSet("example.key", "value", Thread.currentThread());
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Single-thread property set should not be a concurrent violation");
+    }
+
+    /**
+     * Phase 12.4: Ignored-Future detection — submit() result never inspected swallows
+     * task exceptions silently.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectFutureIgnored = true, timeoutMs = 3000)
+    void testFutureIgnoredDetection() {
+        FutureIgnoredDetector detector = AsyncTestContext.futureIgnoredDetector();
+
+        Future<Void> f = CompletableFuture.completedFuture(null);
+        detector.recordSubmit(f, "background-task", Thread.currentThread());
+        detector.recordInspect(f, Thread.currentThread()); // properly inspected
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Inspected Future should not be flagged");
+    }
+
+    /**
+     * Phase 12.5: Explicit-GC detection — System.gc() triggers unpredictable STW pauses
+     * that corrupt timing measurements in concurrency tests.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectExplicitGc = true, timeoutMs = 3000)
+    void testExplicitGcDetection() {
+        ExplicitGcDetector detector = AsyncTestContext.explicitGcDetector();
+
+        // No GC invocations recorded — no issue expected
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "No explicit GC should not be flagged");
+    }
+
+    /**
+     * Phase 12.6: Deprecated-Thread-API detection — Thread.stop/suspend/resume/destroy
+     * are unsafe and removed in Java 20+.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectDeprecatedThreadApi = true, timeoutMs = 3000)
+    void testDeprecatedThreadApiDetection() {
+        DeprecatedThreadApiDetector detector = AsyncTestContext.deprecatedThreadApiDetector();
+
+        // No deprecated API calls — no issue expected
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "No deprecated API usage should not be flagged");
+    }
+
+    /**
+     * Phase 12.7: Shared-XML-parser detection — DocumentBuilder/SAXParser/Transformer/XPath
+     * are not thread-safe; shared instance causes corrupted parse results.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectSharedXmlParser = true, timeoutMs = 3000)
+    void testSharedXmlParserDetection() {
+        SharedXmlParserDetector detector = AsyncTestContext.sharedXmlParserDetector();
+
+        Object parser = new Object(); // represents a DocumentBuilder in production
+        detector.recordAccess(parser, "DocumentBuilder", Thread.currentThread());
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Single-thread XML parser access should not be flagged");
+    }
+
+    /**
+     * Phase 12.8: Boxed-primitive-lock detection — synchronized on cached Integer/Boolean/Long
+     * or interned String acquires a JVM-global shared monitor.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectBoxedPrimitiveLock = true, timeoutMs = 3000)
+    void testBoxedPrimitiveLockDetection() {
+        BoxedPrimitiveLockDetector detector = AsyncTestContext.boxedPrimitiveLockDetector();
+
+        Object plainLock = new Object(); // safe — not a cached boxed primitive
+        detector.recordLockAcquire(plainLock, Thread.currentThread(), "MyService:10");
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Plain Object lock should not be flagged");
+    }
+
+    /**
+     * Phase 12.9: Shared-TimeZone mutation detection — setRawOffset/setID on a shared
+     * TimeZone from multiple threads produces silently wrong date/time arithmetic.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectSharedTimeZone = true, timeoutMs = 3000)
+    void testSharedTimeZoneDetection() {
+        SharedTimeZoneDetector detector = AsyncTestContext.sharedTimeZoneDetector();
+
+        Object tz = new Object(); // represents a TimeZone in production
+        detector.recordMutation(tz, "setRawOffset", Thread.currentThread());
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Single-thread TimeZone mutation should not be flagged");
+    }
+
+    /**
+     * Phase 12.10: Uncaught-exception-handler detection — threads that throw without a
+     * custom handler discard the exception silently from the submitter's perspective.
+     */
+    @AsyncTest(threads = 1, invocations = 1, detectUncaughtExceptionHandler = true, timeoutMs = 3000)
+    void testUncaughtExceptionHandlerDetection() {
+        UncaughtExceptionHandlerDetector detector = AsyncTestContext.uncaughtExceptionHandlerDetector();
+
+        Thread workerWithHandler = new Thread(() -> {});
+        workerWithHandler.setUncaughtExceptionHandler((t, e) -> {});
+        detector.recordThreadStart(workerWithHandler);
+        // Thread completes normally — no issue expected
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Thread with handler should not be flagged");
     }
 }

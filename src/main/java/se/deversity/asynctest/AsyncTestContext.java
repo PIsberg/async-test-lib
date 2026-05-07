@@ -122,6 +122,18 @@ public final class AsyncTestContext {
     final StatefulLambdaDetector       statefulLambdaDetector;
     final SharedMessageDigestDetector  sharedMessageDigestDetector;
 
+    // ---- Phase 12: Operational & Hygiene Concurrency Issues ----
+    final InterruptSwallowingDetector       interruptSwallowingDetector;
+    final MdcContextLeakDetector            mdcContextLeakDetector;
+    final SystemPropertyMutationDetector    systemPropertyMutationDetector;
+    final FutureIgnoredDetector             futureIgnoredDetector;
+    final ExplicitGcDetector                explicitGcDetector;
+    final DeprecatedThreadApiDetector       deprecatedThreadApiDetector;
+    final SharedXmlParserDetector           sharedXmlParserDetector;
+    final BoxedPrimitiveLockDetector        boxedPrimitiveLockDetector;
+    final SharedTimeZoneDetector            sharedTimeZoneDetector;
+    final UncaughtExceptionHandlerDetector  uncaughtExceptionHandlerDetector;
+
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
         // Mirror registry references so package-private field access still works
@@ -205,6 +217,16 @@ public final class AsyncTestContext {
         weakReferenceRaceDetector              = registry.weakReferenceRaceDetector;
         statefulLambdaDetector                 = registry.statefulLambdaDetector;
         sharedMessageDigestDetector            = registry.sharedMessageDigestDetector;
+        interruptSwallowingDetector            = registry.interruptSwallowingDetector;
+        mdcContextLeakDetector                 = registry.mdcContextLeakDetector;
+        systemPropertyMutationDetector         = registry.systemPropertyMutationDetector;
+        futureIgnoredDetector                  = registry.futureIgnoredDetector;
+        explicitGcDetector                     = registry.explicitGcDetector;
+        deprecatedThreadApiDetector            = registry.deprecatedThreadApiDetector;
+        sharedXmlParserDetector                = registry.sharedXmlParserDetector;
+        boxedPrimitiveLockDetector             = registry.boxedPrimitiveLockDetector;
+        sharedTimeZoneDetector                 = registry.sharedTimeZoneDetector;
+        uncaughtExceptionHandlerDetector       = registry.uncaughtExceptionHandlerDetector;
     }
 
     // ---- Lifecycle (called by ConcurrencyRunner) ----
@@ -889,6 +911,98 @@ public final class AsyncTestContext {
      */
     public static SharedMessageDigestDetector sharedMessageDigestDetector() {
         return require("detectSharedMessageDigest", c -> c.sharedMessageDigestDetector);
+    }
+
+    // ---- Phase 12: Operational & Hygiene Concurrency Issues ----
+
+    /**
+     * Returns the {@link InterruptSwallowingDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectInterruptSwallowing = false}
+     * @since 0.10.0
+     */
+    public static InterruptSwallowingDetector interruptSwallowingDetector() {
+        return require("detectInterruptSwallowing", c -> c.interruptSwallowingDetector);
+    }
+
+    /**
+     * Returns the {@link MdcContextLeakDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectMdcContextLeak = false}
+     * @since 0.10.0
+     */
+    public static MdcContextLeakDetector mdcContextLeakDetector() {
+        return require("detectMdcContextLeak", c -> c.mdcContextLeakDetector);
+    }
+
+    /**
+     * Returns the {@link SystemPropertyMutationDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSystemPropertyMutation = false}
+     * @since 0.10.0
+     */
+    public static SystemPropertyMutationDetector systemPropertyMutationDetector() {
+        return require("detectSystemPropertyMutation", c -> c.systemPropertyMutationDetector);
+    }
+
+    /**
+     * Returns the {@link FutureIgnoredDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectFutureIgnored = false}
+     * @since 0.10.0
+     */
+    public static FutureIgnoredDetector futureIgnoredDetector() {
+        return require("detectFutureIgnored", c -> c.futureIgnoredDetector);
+    }
+
+    /**
+     * Returns the {@link ExplicitGcDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectExplicitGc = false}
+     * @since 0.10.0
+     */
+    public static ExplicitGcDetector explicitGcDetector() {
+        return require("detectExplicitGc", c -> c.explicitGcDetector);
+    }
+
+    /**
+     * Returns the {@link DeprecatedThreadApiDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectDeprecatedThreadApi = false}
+     * @since 0.10.0
+     */
+    public static DeprecatedThreadApiDetector deprecatedThreadApiDetector() {
+        return require("detectDeprecatedThreadApi", c -> c.deprecatedThreadApiDetector);
+    }
+
+    /**
+     * Returns the {@link SharedXmlParserDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedXmlParser = false}
+     * @since 0.10.0
+     */
+    public static SharedXmlParserDetector sharedXmlParserDetector() {
+        return require("detectSharedXmlParser", c -> c.sharedXmlParserDetector);
+    }
+
+    /**
+     * Returns the {@link BoxedPrimitiveLockDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectBoxedPrimitiveLock = false}
+     * @since 0.10.0
+     */
+    public static BoxedPrimitiveLockDetector boxedPrimitiveLockDetector() {
+        return require("detectBoxedPrimitiveLock", c -> c.boxedPrimitiveLockDetector);
+    }
+
+    /**
+     * Returns the {@link SharedTimeZoneDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedTimeZone = false}
+     * @since 0.10.0
+     */
+    public static SharedTimeZoneDetector sharedTimeZoneDetector() {
+        return require("detectSharedTimeZone", c -> c.sharedTimeZoneDetector);
+    }
+
+    /**
+     * Returns the {@link UncaughtExceptionHandlerDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectUncaughtExceptionHandler = false}
+     * @since 0.10.0
+     */
+    public static UncaughtExceptionHandlerDetector uncaughtExceptionHandlerDetector() {
+        return require("detectUncaughtExceptionHandler", c -> c.uncaughtExceptionHandlerDetector);
     }
 
     // ---- Helper ----

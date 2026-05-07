@@ -132,6 +132,18 @@ public final class AsyncTestConfig {
     public final boolean detectStatefulLambda;
     public final boolean detectSharedMessageDigest;
 
+    // ---- Phase 12: Operational & Hygiene Concurrency Issues ----
+    public final boolean detectInterruptSwallowing;
+    public final boolean detectMdcContextLeak;
+    public final boolean detectSystemPropertyMutation;
+    public final boolean detectFutureIgnored;
+    public final boolean detectExplicitGc;
+    public final boolean detectDeprecatedThreadApi;
+    public final boolean detectSharedXmlParser;
+    public final boolean detectBoxedPrimitiveLock;
+    public final boolean detectSharedTimeZone;
+    public final boolean detectUncaughtExceptionHandler;
+
     // ---- Benchmarking ----
     public final boolean enableBenchmarking;
     public final double benchmarkRegressionThreshold;
@@ -238,6 +250,16 @@ public final class AsyncTestConfig {
         detectWeakReferenceRace        = b.detectWeakReferenceRace;
         detectStatefulLambda           = b.detectStatefulLambda;
         detectSharedMessageDigest      = b.detectSharedMessageDigest;
+        detectInterruptSwallowing      = b.detectInterruptSwallowing;
+        detectMdcContextLeak           = b.detectMdcContextLeak;
+        detectSystemPropertyMutation   = b.detectSystemPropertyMutation;
+        detectFutureIgnored            = b.detectFutureIgnored;
+        detectExplicitGc               = b.detectExplicitGc;
+        detectDeprecatedThreadApi      = b.detectDeprecatedThreadApi;
+        detectSharedXmlParser          = b.detectSharedXmlParser;
+        detectBoxedPrimitiveLock       = b.detectBoxedPrimitiveLock;
+        detectSharedTimeZone           = b.detectSharedTimeZone;
+        detectUncaughtExceptionHandler = b.detectUncaughtExceptionHandler;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -347,6 +369,16 @@ public final class AsyncTestConfig {
             .detectWeakReferenceRace(ann.detectWeakReferenceRace())
             .detectStatefulLambda(ann.detectStatefulLambda())
             .detectSharedMessageDigest(ann.detectSharedMessageDigest())
+            .detectInterruptSwallowing(ann.detectInterruptSwallowing())
+            .detectMdcContextLeak(ann.detectMdcContextLeak())
+            .detectSystemPropertyMutation(ann.detectSystemPropertyMutation())
+            .detectFutureIgnored(ann.detectFutureIgnored())
+            .detectExplicitGc(ann.detectExplicitGc())
+            .detectDeprecatedThreadApi(ann.detectDeprecatedThreadApi())
+            .detectSharedXmlParser(ann.detectSharedXmlParser())
+            .detectBoxedPrimitiveLock(ann.detectBoxedPrimitiveLock())
+            .detectSharedTimeZone(ann.detectSharedTimeZone())
+            .detectUncaughtExceptionHandler(ann.detectUncaughtExceptionHandler())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -457,6 +489,16 @@ public final class AsyncTestConfig {
         private boolean detectWeakReferenceRace        = false;
         private boolean detectStatefulLambda           = false;
         private boolean detectSharedMessageDigest      = false;
+        private boolean detectInterruptSwallowing      = false;
+        private boolean detectMdcContextLeak           = false;
+        private boolean detectSystemPropertyMutation   = false;
+        private boolean detectFutureIgnored            = false;
+        private boolean detectExplicitGc               = false;
+        private boolean detectDeprecatedThreadApi      = false;
+        private boolean detectSharedXmlParser          = false;
+        private boolean detectBoxedPrimitiveLock       = false;
+        private boolean detectSharedTimeZone           = false;
+        private boolean detectUncaughtExceptionHandler = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -560,6 +602,16 @@ public final class AsyncTestConfig {
         public Builder detectWeakReferenceRace(boolean v)              { detectWeakReferenceRace = v; return this; }
         public Builder detectStatefulLambda(boolean v)                 { detectStatefulLambda = v; return this; }
         public Builder detectSharedMessageDigest(boolean v)            { detectSharedMessageDigest = v; return this; }
+        public Builder detectInterruptSwallowing(boolean v)            { detectInterruptSwallowing = v; return this; }
+        public Builder detectMdcContextLeak(boolean v)                 { detectMdcContextLeak = v; return this; }
+        public Builder detectSystemPropertyMutation(boolean v)         { detectSystemPropertyMutation = v; return this; }
+        public Builder detectFutureIgnored(boolean v)                  { detectFutureIgnored = v; return this; }
+        public Builder detectExplicitGc(boolean v)                     { detectExplicitGc = v; return this; }
+        public Builder detectDeprecatedThreadApi(boolean v)            { detectDeprecatedThreadApi = v; return this; }
+        public Builder detectSharedXmlParser(boolean v)                { detectSharedXmlParser = v; return this; }
+        public Builder detectBoxedPrimitiveLock(boolean v)             { detectBoxedPrimitiveLock = v; return this; }
+        public Builder detectSharedTimeZone(boolean v)                 { detectSharedTimeZone = v; return this; }
+        public Builder detectUncaughtExceptionHandler(boolean v)       { detectUncaughtExceptionHandler = v; return this; }
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
@@ -751,6 +803,26 @@ public final class AsyncTestConfig {
                     else detectStatefulLambda = false;
                 if (!excludes.contains(DetectorType.SHARED_MESSAGE_DIGEST)) detectSharedMessageDigest = true;
                     else detectSharedMessageDigest = false;
+                if (!excludes.contains(DetectorType.INTERRUPT_SWALLOWING)) detectInterruptSwallowing = true;
+                    else detectInterruptSwallowing = false;
+                if (!excludes.contains(DetectorType.MDC_CONTEXT_LEAK)) detectMdcContextLeak = true;
+                    else detectMdcContextLeak = false;
+                if (!excludes.contains(DetectorType.SYSTEM_PROPERTY_MUTATION)) detectSystemPropertyMutation = true;
+                    else detectSystemPropertyMutation = false;
+                if (!excludes.contains(DetectorType.FUTURE_IGNORED)) detectFutureIgnored = true;
+                    else detectFutureIgnored = false;
+                if (!excludes.contains(DetectorType.EXPLICIT_GC)) detectExplicitGc = true;
+                    else detectExplicitGc = false;
+                if (!excludes.contains(DetectorType.DEPRECATED_THREAD_API)) detectDeprecatedThreadApi = true;
+                    else detectDeprecatedThreadApi = false;
+                if (!excludes.contains(DetectorType.SHARED_XML_PARSER)) detectSharedXmlParser = true;
+                    else detectSharedXmlParser = false;
+                if (!excludes.contains(DetectorType.BOXED_PRIMITIVE_LOCK)) detectBoxedPrimitiveLock = true;
+                    else detectBoxedPrimitiveLock = false;
+                if (!excludes.contains(DetectorType.SHARED_TIMEZONE)) detectSharedTimeZone = true;
+                    else detectSharedTimeZone = false;
+                if (!excludes.contains(DetectorType.UNCAUGHT_EXCEPTION_HANDLER)) detectUncaughtExceptionHandler = true;
+                    else detectUncaughtExceptionHandler = false;
             } else {
                 // If detectAll is false, we still respect explicit enables,
                 // but we also apply excludes for consistency.
@@ -830,6 +902,16 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.WEAK_REFERENCE_RACE)) detectWeakReferenceRace = false;
                 if (excludes.contains(DetectorType.STATEFUL_LAMBDA)) detectStatefulLambda = false;
                 if (excludes.contains(DetectorType.SHARED_MESSAGE_DIGEST)) detectSharedMessageDigest = false;
+                if (excludes.contains(DetectorType.INTERRUPT_SWALLOWING)) detectInterruptSwallowing = false;
+                if (excludes.contains(DetectorType.MDC_CONTEXT_LEAK)) detectMdcContextLeak = false;
+                if (excludes.contains(DetectorType.SYSTEM_PROPERTY_MUTATION)) detectSystemPropertyMutation = false;
+                if (excludes.contains(DetectorType.FUTURE_IGNORED)) detectFutureIgnored = false;
+                if (excludes.contains(DetectorType.EXPLICIT_GC)) detectExplicitGc = false;
+                if (excludes.contains(DetectorType.DEPRECATED_THREAD_API)) detectDeprecatedThreadApi = false;
+                if (excludes.contains(DetectorType.SHARED_XML_PARSER)) detectSharedXmlParser = false;
+                if (excludes.contains(DetectorType.BOXED_PRIMITIVE_LOCK)) detectBoxedPrimitiveLock = false;
+                if (excludes.contains(DetectorType.SHARED_TIMEZONE)) detectSharedTimeZone = false;
+                if (excludes.contains(DetectorType.UNCAUGHT_EXCEPTION_HANDLER)) detectUncaughtExceptionHandler = false;
             }
             return new AsyncTestConfig(this);
         }

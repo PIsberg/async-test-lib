@@ -123,6 +123,18 @@ final class DetectorRegistry {
     final StatefulLambdaDetector       statefulLambdaDetector;
     final SharedMessageDigestDetector  sharedMessageDigestDetector;
 
+    // ---- Phase 12: Operational & Hygiene Concurrency Issues ----
+    final InterruptSwallowingDetector       interruptSwallowingDetector;
+    final MdcContextLeakDetector            mdcContextLeakDetector;
+    final SystemPropertyMutationDetector    systemPropertyMutationDetector;
+    final FutureIgnoredDetector             futureIgnoredDetector;
+    final ExplicitGcDetector                explicitGcDetector;
+    final DeprecatedThreadApiDetector       deprecatedThreadApiDetector;
+    final SharedXmlParserDetector           sharedXmlParserDetector;
+    final BoxedPrimitiveLockDetector        boxedPrimitiveLockDetector;
+    final SharedTimeZoneDetector            sharedTimeZoneDetector;
+    final UncaughtExceptionHandlerDetector  uncaughtExceptionHandlerDetector;
+
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
      * Detectors whose flag is {@code false} are set to {@code null} and incur
@@ -246,6 +258,18 @@ final class DetectorRegistry {
         weakReferenceRaceDetector   = cfg.detectWeakReferenceRace    ? new WeakReferenceRaceDetector()   : null;
         statefulLambdaDetector      = cfg.detectStatefulLambda       ? new StatefulLambdaDetector()      : null;
         sharedMessageDigestDetector = cfg.detectSharedMessageDigest  ? new SharedMessageDigestDetector() : null;
+
+        // ---- Phase 12: Operational & Hygiene Concurrency Issues ----
+        interruptSwallowingDetector      = cfg.detectInterruptSwallowing     ? new InterruptSwallowingDetector()      : null;
+        mdcContextLeakDetector           = cfg.detectMdcContextLeak          ? new MdcContextLeakDetector()           : null;
+        systemPropertyMutationDetector   = cfg.detectSystemPropertyMutation  ? new SystemPropertyMutationDetector()   : null;
+        futureIgnoredDetector            = cfg.detectFutureIgnored           ? new FutureIgnoredDetector()            : null;
+        explicitGcDetector               = cfg.detectExplicitGc              ? new ExplicitGcDetector()               : null;
+        deprecatedThreadApiDetector      = cfg.detectDeprecatedThreadApi     ? new DeprecatedThreadApiDetector()      : null;
+        sharedXmlParserDetector          = cfg.detectSharedXmlParser         ? new SharedXmlParserDetector()          : null;
+        boxedPrimitiveLockDetector       = cfg.detectBoxedPrimitiveLock      ? new BoxedPrimitiveLockDetector()       : null;
+        sharedTimeZoneDetector           = cfg.detectSharedTimeZone          ? new SharedTimeZoneDetector()           : null;
+        uncaughtExceptionHandlerDetector = cfg.detectUncaughtExceptionHandler ? new UncaughtExceptionHandlerDetector() : null;
     }
 
     /**
@@ -517,6 +541,38 @@ final class DetectorRegistry {
         ifIssue(sharedMessageDigestDetector,
                 d -> d.analyze(),
                 SharedMessageDigestDetector.SharedMessageDigestReport::hasIssues, out);
+
+        // ---- Phase 12: Operational & Hygiene Concurrency Issues ----
+        ifIssue(interruptSwallowingDetector,
+                d -> d.analyze(),
+                InterruptSwallowingDetector.InterruptSwallowingReport::hasIssues, out);
+        ifIssue(mdcContextLeakDetector,
+                d -> d.analyze(),
+                MdcContextLeakDetector.MdcContextLeakReport::hasIssues, out);
+        ifIssue(systemPropertyMutationDetector,
+                d -> d.analyze(),
+                SystemPropertyMutationDetector.SystemPropertyMutationReport::hasIssues, out);
+        ifIssue(futureIgnoredDetector,
+                d -> d.analyze(),
+                FutureIgnoredDetector.FutureIgnoredReport::hasIssues, out);
+        ifIssue(explicitGcDetector,
+                d -> d.analyze(),
+                ExplicitGcDetector.ExplicitGcReport::hasIssues, out);
+        ifIssue(deprecatedThreadApiDetector,
+                d -> d.analyze(),
+                DeprecatedThreadApiDetector.DeprecatedThreadApiReport::hasIssues, out);
+        ifIssue(sharedXmlParserDetector,
+                d -> d.analyze(),
+                SharedXmlParserDetector.SharedXmlParserReport::hasIssues, out);
+        ifIssue(boxedPrimitiveLockDetector,
+                d -> d.analyze(),
+                BoxedPrimitiveLockDetector.BoxedPrimitiveLockReport::hasIssues, out);
+        ifIssue(sharedTimeZoneDetector,
+                d -> d.analyze(),
+                SharedTimeZoneDetector.SharedTimeZoneReport::hasIssues, out);
+        ifIssue(uncaughtExceptionHandlerDetector,
+                d -> d.analyze(),
+                UncaughtExceptionHandlerDetector.UncaughtExceptionHandlerReport::hasIssues, out);
 
         return out;
     }

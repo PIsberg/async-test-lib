@@ -731,6 +731,98 @@ public @interface AsyncTest {
      */
     boolean detectSharedMessageDigest() default true;
 
+    // ============= Phase 12: Operational & Hygiene Concurrency Issues =============
+
+    /**
+     * Enable interrupt-swallowing detection.
+     * Detects {@code catch (InterruptedException)} blocks that neither rethrow the exception
+     * nor call {@code Thread.currentThread().interrupt()}, permanently suppressing the
+     * cooperative-cancellation signal.
+     * @since 0.10.0
+     */
+    boolean detectInterruptSwallowing() default true;
+
+    /**
+     * Enable MDC context-leak detection.
+     * Detects SLF4J MDC entries that are not cleared at task end, causing key/value leakage
+     * to the next task run on a reused pooled thread.
+     * @since 0.10.0
+     */
+    boolean detectMdcContextLeak() default true;
+
+    /**
+     * Enable system-property mutation detection.
+     * Detects concurrent {@link System#setProperty} or {@link System#clearProperty} calls
+     * during the test run, which cause non-deterministic configuration and test pollution.
+     * @since 0.10.0
+     */
+    boolean detectSystemPropertyMutation() default true;
+
+    /**
+     * Enable ignored-Future detection.
+     * Detects {@link java.util.concurrent.Future} instances returned from
+     * {@code submit()} that are never inspected, causing exceptions from failed tasks
+     * to be silently swallowed.
+     * @since 0.10.0
+     */
+    boolean detectFutureIgnored() default true;
+
+    /**
+     * Enable explicit-GC detection.
+     * Detects {@link System#gc()} or {@link Runtime#gc()} invocations during concurrent
+     * execution, which trigger unpredictable stop-the-world pauses that corrupt timing
+     * measurements and concurrency tests.
+     * @since 0.10.0
+     */
+    boolean detectExplicitGc() default true;
+
+    /**
+     * Enable deprecated-Thread-API detection.
+     * Detects calls to {@code Thread.stop()}, {@code Thread.suspend()},
+     * {@code Thread.resume()}, {@code Thread.destroy()}, or
+     * {@code Thread.countStackFrames()}, which are unsafe and removed/deprecated in
+     * Java 20+.
+     * @since 0.10.0
+     */
+    boolean detectDeprecatedThreadApi() default true;
+
+    /**
+     * Enable shared-XML-parser detection.
+     * Detects {@link javax.xml.parsers.DocumentBuilder}, {@link javax.xml.parsers.SAXParser},
+     * {@link javax.xml.transform.Transformer}, or {@link javax.xml.xpath.XPath} instances
+     * accessed concurrently from multiple threads; all are non-thread-safe.
+     * @since 0.10.0
+     */
+    boolean detectSharedXmlParser() default true;
+
+    /**
+     * Enable boxed-primitive-lock detection.
+     * Detects {@code synchronized} blocks that lock on cached boxed primitives
+     * ({@link Integer}/{@link Long} in range {@code -128..127}, {@link Boolean#TRUE}/
+     * {@link Boolean#FALSE}, interned {@link String} literals), which are JVM-global
+     * shared instances that cause unexpected contention.
+     * @since 0.10.0
+     */
+    boolean detectBoxedPrimitiveLock() default true;
+
+    /**
+     * Enable shared-TimeZone mutation detection.
+     * Detects {@link java.util.TimeZone} instances whose mutable state ({@code setRawOffset},
+     * {@code setID}) is modified from multiple threads, causing silently wrong date/time
+     * arithmetic.
+     * @since 0.10.0
+     */
+    boolean detectSharedTimeZone() default true;
+
+    /**
+     * Enable uncaught-exception-handler detection.
+     * Detects threads started without a custom {@link Thread.UncaughtExceptionHandler} that
+     * subsequently throw, causing the exception to be silently discarded from the submitter's
+     * perspective.
+     * @since 0.10.0
+     */
+    boolean detectUncaughtExceptionHandler() default true;
+
     // ============= License Gating (Integration) =============
 
     /** Keygen Account ID. Defaults to System property 'keygen.account.id' if empty. */

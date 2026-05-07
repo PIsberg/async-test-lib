@@ -266,6 +266,25 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 68. **Optimistic Read Validation** - `StampedLock` optimistic-read data used without `validate(stamp)` or after failed validation
 69. **CF Common-Pool Blocking** - Blocking work inside `CompletableFuture` submitted without a custom `Executor`, starving the common pool
 
+### Phase 11: Thread-Safety of Additional Types & Patterns (5)
+70. **Shared Matcher** - `java.util.regex.Matcher` instances shared across threads (holds mutable per-match state)
+71. **Shared DecimalFormat** - `DecimalFormat`/`NumberFormat` accessed concurrently (corrupts internal multiplier and grouping state)
+72. **Weak Reference Race** - `WeakReference`/`SoftReference` `get()` result used without null check or referent collected mid-test
+73. **Stateful Lambda** - Lambda/`Runnable`/`Callable` instances capturing mutable containers executed from multiple threads concurrently
+74. **Shared MessageDigest** - `java.security.MessageDigest` accessed concurrently (not thread-safe; corrupts hash state silently)
+
+### Phase 12: Operational & Hygiene Concurrency Issues (10)
+75. **Interrupt Swallowing** - `catch(InterruptedException)` without restoring the interrupt flag — suppresses cooperative cancellation permanently
+76. **MDC Context Leak** - SLF4J MDC entries not cleared at task end, leaking into the next task on a reused pooled thread
+77. **System Property Mutation** - Concurrent `System.setProperty()`/`clearProperty()` causing non-deterministic configuration and test pollution
+78. **Future Ignored** - `Future` from `submit()` never inspected — exceptions from failed tasks silently swallowed
+79. **Explicit GC** - `System.gc()`/`Runtime.gc()` triggering unpredictable STW pauses mid-test
+80. **Deprecated Thread API** - `Thread.stop()`/`suspend()`/`resume()`/`destroy()` — unsafe and removed in Java 20+
+81. **Shared XML Parser** - `DocumentBuilder`/`SAXParser`/`Transformer`/`XPath` shared across threads (not thread-safe)
+82. **Boxed Primitive Lock** - `synchronized` on cached `Integer`/`Long` (−128..127), `Boolean.TRUE/FALSE`, or interned `String` literals — JVM-global shared monitor
+83. **Shared TimeZone** - `TimeZone` mutated (`setRawOffset`/`setID`) from multiple threads — silently wrong date/time arithmetic
+84. **Uncaught Exception Handler** - Threads started without a custom `UncaughtExceptionHandler` that subsequently throw — exception silently discarded
+
 ## Quick Start
 
 ### 1. Basic Race Condition Test

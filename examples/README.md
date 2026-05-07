@@ -12,6 +12,16 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 | 04 | [Virtual Thread Context Leak](04-virtual-thread-context-leak/) | `VirtualThreadContextLeakDetector` | ThreadLocal leaks in virtual threads cause memory leaks | 🟡 High |
 | 09 | [Uncommitted Changes Detection](09-uncommitted-changes-detection/) | `UncommittedChangesDetector` | Untracked Git files break test reproducibility | 🟢 Low |
 | 10 | [Shared Non-Thread-Safe Types](10-shared-non-thread-safe-types/) | `SharedMatcherDetector`, `SharedDecimalFormatDetector`, `SharedMessageDigestDetector` | Shared `Matcher`, `DecimalFormat`, and `MessageDigest` fields silently produce wrong results under concurrent load | 🔴 Critical |
+| 11 | [Interrupt Swallowing](11-interrupt-swallowing/) | `InterruptSwallowingDetector` | `catch(InterruptedException)` without restoring the flag permanently suppresses cooperative cancellation | 🔴 Critical |
+| 12 | [MDC Context Leak](12-mdc-context-leak/) | `MdcContextLeakDetector` | MDC entries not cleared at task end contaminate the next request on the reused thread | 🟡 High |
+| 13 | [System Property Mutation](13-system-property-mutation/) | `SystemPropertyMutationDetector` | Concurrent `System.setProperty()` causes non-deterministic configuration and test pollution | 🟡 High |
+| 14 | [Future Ignored](14-future-ignored/) | `FutureIgnoredDetector` | `submit()` result never inspected — task exceptions silently swallowed | 🔴 Critical |
+| 15 | [Explicit GC](15-explicit-gc/) | `ExplicitGcDetector` | `System.gc()` triggers unpredictable STW pauses that corrupt concurrency timing tests | 🟡 High |
+| 16 | [Deprecated Thread API](16-deprecated-thread-api/) | `DeprecatedThreadApiDetector` | `Thread.stop()`/`suspend()`/`resume()` are unsafe and removed in Java 20+ | 🔴 Critical |
+| 17 | [Shared XML Parser](17-shared-xml-parser/) | `SharedXmlParserDetector` | `DocumentBuilder`/`Transformer` shared across threads causes corrupted parse results | 🔴 Critical |
+| 18 | [Boxed Primitive Lock](18-boxed-primitive-lock/) | `BoxedPrimitiveLockDetector` | `synchronized` on cached `Integer`/`Boolean` acquires a JVM-global shared monitor | 🔴 Critical |
+| 19 | [Shared TimeZone](19-shared-timezone/) | `SharedTimeZoneDetector` | `TimeZone.setRawOffset()` from multiple threads produces silently wrong date/time arithmetic | 🟡 High |
+| 20 | [Uncaught Exception Handler](20-uncaught-exception-handler/) | `UncaughtExceptionHandlerDetector` | Threads without a custom `UncaughtExceptionHandler` discard thrown exceptions silently | 🟡 High |
 
 ## Phase 7: High-Level Concurrency Patterns (New!)
 
@@ -356,6 +366,213 @@ All examples run in CI to ensure they compile and pass with `@Test`:
       mvn -Dmaven.repo.local=.m2/repository -f "$dir/pom.xml" test
     done
 ```
+
+## Phase 12: Operational & Hygiene Concurrency Issues (New in 0.10.0)
+
+### 1. InterruptSwallowingDetector
+**What**: Detects `catch(InterruptedException)` blocks that swallow the signal without calling `Thread.currentThread().interrupt()` or rethrowing.
+
+**Impact**: Executors, blocking operations, and shutdown handlers can no longer observe the interrupted state. Threads ignore cancellation requests, potentially looping forever.
+
+**Usage**:
+```java
+@AsyncTest(threads = 4, detectInterruptSwallowing = true)
+void testInterruptHandling() {
+    try {
+        Thread.sleep(100);
+    } catch (InterruptedException e) {
+        var d = AsyncTestContext.interruptSwallowingDetector();
+        d.recordCatch(Thread.currentThread(), "MyWorker.run:42", false); // BAD
+        // Fix: Thread.currentThread().interrupt(); d.recordCatch(..., true);
+    }
+}
+```
+
+**Fix**: Add `Thread.currentThread().interrupt()` before returning from every catch block, or rethrow as `InterruptedException`.
+
+---
+
+### 2. MdcContextLeakDetector
+**What**: Detects SLF4J MDC (Mapped Diagnostic Context) entries not cleared at task end, leaking into the next task on the same pooled thread.
+
+**Impact**: Log entries for request B carry request A's `requestId`, `userId`, or `traceId` — cross-request log pollution, compliance risks.
+
+**Usage**:
+```java
+@AsyncTest(threads = 4, detectMdcContextLeak = true)
+void testMdcCleanup() {
+    var d = AsyncTestContext.mdcContextLeakDetector();
+    Map<String,String> before = MDC.getCopyOfContextMap();
+    d.recordTaskStart(Thread.currentThread(), before);
+    try {
+        MDC.put("requestId", "abc");
+        processRequest();
+    } finally {
+        d.recordTaskEnd(Thread.currentThread(), MDC.getCopyOfContextMap());
+        MDC.clear(); // Fix: add this line
+    }
+}
+```
+
+**Fix**: Call `MDC.clear()` (or `MDC.remove(key)`) in a `finally` block.
+
+---
+
+### 3. SystemPropertyMutationDetector
+**What**: Detects concurrent `System.setProperty()` / `clearProperty()` calls during the test run.
+
+**Impact**: Non-deterministic configuration state, test pollution that survives to subsequent test methods, data races on the shared `Properties` object.
+
+**Usage**:
+```java
+@AsyncTest(threads = 4, detectSystemPropertyMutation = true)
+void testConfig() {
+    var d = AsyncTestContext.systemPropertyMutationDetector();
+    d.recordSet("app.timeout", "5000", Thread.currentThread());
+    System.setProperty("app.timeout", "5000");
+}
+```
+
+**Fix**: Use environment variables, a test-scoped configuration map, or restore the property in `@AfterEach`.
+
+---
+
+### 4. FutureIgnoredDetector
+**What**: Detects `Future` / `CompletableFuture` instances returned from `submit()` that are never inspected.
+
+**Impact**: Exceptions thrown by submitted tasks are silently discarded. Failed background work appears to succeed.
+
+**Usage**:
+```java
+@AsyncTest(threads = 4, detectFutureIgnored = true)
+void testSubmit() {
+    var d = AsyncTestContext.futureIgnoredDetector();
+    Future<?> f = executor.submit(task);
+    d.recordSubmit(f, "orderProcessor", Thread.currentThread());
+    // Fix: d.recordInspect(f, Thread.currentThread()); f.get();
+}
+```
+
+**Fix**: Always call `future.get()` (in a try-catch) or attach a `.whenComplete()` / `.exceptionally()` handler.
+
+---
+
+### 5. ExplicitGcDetector
+**What**: Detects `System.gc()` or `Runtime.getRuntime().gc()` during concurrent execution.
+
+**Impact**: Triggers an unpredictable stop-the-world pause, inflating latency measurements and introducing artificial timeouts that mask real concurrency bugs.
+
+**Usage**:
+```java
+@AsyncTest(threads = 4, detectExplicitGc = true)
+void testEviction() {
+    var d = AsyncTestContext.explicitGcDetector();
+    d.recordGcInvocation(Thread.currentThread(), "CacheManager.evict:58");
+    System.gc(); // Flagged!
+}
+```
+
+**Fix**: Remove explicit GC calls and rely on the JVM's automatic memory management.
+
+---
+
+### 6. DeprecatedThreadApiDetector
+**What**: Detects calls to `Thread.stop()`, `Thread.suspend()`, `Thread.resume()`, `Thread.destroy()`, `Thread.countStackFrames()`.
+
+**Impact**: `stop()` releases all monitors held by the target thread, breaking all invariants in shared state. `suspend/resume` are inherently deadlock-prone. All are removed or made no-ops in Java 20+.
+
+**Usage**:
+```java
+@AsyncTest(threads = 4, detectDeprecatedThreadApi = true)
+void testCancel() {
+    var d = AsyncTestContext.deprecatedThreadApiDetector();
+    d.recordApiUse("Thread.stop", Thread.currentThread()); // Flagged!
+    workerThread.stop(); // DO NOT USE
+}
+```
+
+**Fix**: Use cooperative cancellation (`volatile boolean cancelled`, `interrupt()`), `Semaphore`, `wait/notify`, or structured concurrency.
+
+---
+
+### 7. SharedXmlParserDetector
+**What**: Detects `DocumentBuilder`, `SAXParser`, `Transformer`, and `XPath` instances accessed from multiple threads.
+
+**Impact**: Corrupted parse results, `ConcurrentModificationException`s, or wrong XPath evaluations that are difficult to reproduce.
+
+**Usage**:
+```java
+@AsyncTest(threads = 4, detectSharedXmlParser = true)
+void testXmlProcessing() {
+    var d = AsyncTestContext.sharedXmlParserDetector();
+    d.recordAccess(sharedBuilder, "DocumentBuilder", Thread.currentThread());
+    Document doc = sharedBuilder.parse(stream); // Flagged!
+}
+```
+
+**Fix**: Use `ThreadLocal<DocumentBuilder>` or obtain a new instance per task (factories are thread-safe for `newXxx()`).
+
+---
+
+### 8. BoxedPrimitiveLockDetector
+**What**: Detects `synchronized` blocks locking on cached boxed primitives.
+
+**Impact**: Any code anywhere in the JVM synchronizing on the same value accidentally shares your monitor, causing surprising contention or deadlocks.
+
+**Usage**:
+```java
+@AsyncTest(threads = 4, detectBoxedPrimitiveLock = true)
+void testSync() {
+    var d = AsyncTestContext.boxedPrimitiveLockDetector();
+    Integer id = 42; // cached!
+    d.recordLockAcquire(id, Thread.currentThread(), "OrderService:30");
+    synchronized (id) { ... } // Flagged!
+}
+```
+
+**Fix**: Use a dedicated `private final Object lock = new Object()`.
+
+---
+
+### 9. SharedTimeZoneDetector
+**What**: Detects `TimeZone` instances mutated from multiple threads.
+
+**Impact**: Non-deterministic timezone offsets and IDs — silently wrong date/time arithmetic that is notoriously hard to reproduce.
+
+**Usage**:
+```java
+@AsyncTest(threads = 4, detectSharedTimeZone = true)
+void testTz() {
+    var d = AsyncTestContext.sharedTimeZoneDetector();
+    d.recordMutation(sharedTz, "setRawOffset", Thread.currentThread());
+    sharedTz.setRawOffset(3600_000); // Flagged!
+}
+```
+
+**Fix**: Use `ZoneId` (java.time) which is immutable and thread-safe; or obtain a fresh `TimeZone.getTimeZone(id)` copy per thread.
+
+---
+
+### 10. UncaughtExceptionHandlerDetector
+**What**: Detects threads started without a custom `UncaughtExceptionHandler` that subsequently throw.
+
+**Impact**: The exception is only printed to stderr via the default thread-group handler. The submitting code has no way to detect the failure, and the thread pool silently replaces the dead thread.
+
+**Usage**:
+```java
+@AsyncTest(threads = 4, detectUncaughtExceptionHandler = true)
+void testWorker() {
+    var d = AsyncTestContext.uncaughtExceptionHandlerDetector();
+    Thread worker = new Thread(task); // no handler set!
+    d.recordThreadStart(worker);
+    worker.start();
+    // if worker throws: d.recordUncaughtException(worker, throwable);
+}
+```
+
+**Fix**: Call `worker.setUncaughtExceptionHandler(handler)` before `start()`, or use a `ThreadFactory` that installs a handler on every created thread.
+
+---
 
 ## Key Takeaways
 

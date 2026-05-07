@@ -278,6 +278,36 @@ AsyncTestContext.optimisticReadValidationMonitor()         // OptimisticReadVali
 AsyncTestContext.cfCommonPoolBlockingMonitor()             // CompletableFutureCommonPoolBlockingDetector
 ```
 
+### Phase 12: Operational & Hygiene Concurrency Issues (v0.10.0)
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `detectInterruptSwallowing` | boolean | true | Detect `catch(InterruptedException)` blocks that swallow the signal without calling `Thread.currentThread().interrupt()` or rethrowing |
+| `detectMdcContextLeak` | boolean | true | Detect SLF4J MDC entries not cleared at task end, leaking into the next task on a reused pooled thread |
+| `detectSystemPropertyMutation` | boolean | true | Detect concurrent `System.setProperty()` / `clearProperty()` calls causing non-deterministic configuration |
+| `detectFutureIgnored` | boolean | true | Detect `Future`s from `submit()` that are never inspected — exceptions from failed tasks are silently swallowed |
+| `detectExplicitGc` | boolean | true | Detect `System.gc()` / `Runtime.gc()` invocations that trigger unpredictable STW pauses mid-test |
+| `detectDeprecatedThreadApi` | boolean | true | Detect calls to `Thread.stop()`, `Thread.suspend()`, `Thread.resume()`, `Thread.destroy()`, `Thread.countStackFrames()` |
+| `detectSharedXmlParser` | boolean | true | Detect `DocumentBuilder` / `SAXParser` / `Transformer` / `XPath` instances accessed from multiple threads |
+| `detectBoxedPrimitiveLock` | boolean | true | Detect `synchronized` on cached `Integer`/`Long` (−128..127), `Boolean.TRUE/FALSE`, or interned `String` literals |
+| `detectSharedTimeZone` | boolean | true | Detect `TimeZone` instances mutated (`setRawOffset`, `setID`) from multiple threads |
+| `detectUncaughtExceptionHandler` | boolean | true | Detect threads started without a custom `UncaughtExceptionHandler` that subsequently throw |
+
+#### Context accessors for Phase 12 detectors
+
+```java
+AsyncTestContext.interruptSwallowingDetector()        // InterruptSwallowingDetector
+AsyncTestContext.mdcContextLeakDetector()             // MdcContextLeakDetector
+AsyncTestContext.systemPropertyMutationDetector()     // SystemPropertyMutationDetector
+AsyncTestContext.futureIgnoredDetector()              // FutureIgnoredDetector
+AsyncTestContext.explicitGcDetector()                 // ExplicitGcDetector
+AsyncTestContext.deprecatedThreadApiDetector()        // DeprecatedThreadApiDetector
+AsyncTestContext.sharedXmlParserDetector()            // SharedXmlParserDetector
+AsyncTestContext.boxedPrimitiveLockDetector()         // BoxedPrimitiveLockDetector
+AsyncTestContext.sharedTimeZoneDetector()             // SharedTimeZoneDetector
+AsyncTestContext.uncaughtExceptionHandlerDetector()   // UncaughtExceptionHandlerDetector
+```
+
 ## Manual Legacy Diagnostics
 
 For older Java async patterns that need explicit instrumentation, instantiate the diagnostics directly:
