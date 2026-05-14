@@ -129,7 +129,7 @@ class FundsTransferServiceTest {
      * regardless of transfer direction. No circular dependency possible.
      */
     @Test
-    void testTransfer_fixedTotalLockOrder_noViolationDetected() {
+    void testTransfer_fixedTotalLockOrder_noViolationDetected() throws InterruptedException {
         Account a = new Account("ACC-001");
         Account b = new Account("ACC-002");
 
@@ -137,20 +137,21 @@ class FundsTransferServiceTest {
         Account first  = a.id().compareTo(b.id()) < 0 ? a : b;
         Account second = a.id().compareTo(b.id()) < 0 ? b : a;
 
-        // Simulate the fixed lock acquisition order for both transfer directions
         var validator = new se.deversity.asynctest.diagnostics.LockOrderValidator();
 
-        // Thread 1: ACC-001 → ACC-002 (canonical order)
-        validator.recordLockAcquisition(first.lock());
-        validator.recordLockAcquisition(second.lock());
-        validator.recordLockRelease(second.lock());
-        validator.recordLockRelease(first.lock());
+        // Both threads use canonical order — each thread gets its own LockSequence
+        // so the validator never sees consecutive pairs across thread boundaries.
+        Runnable canonicalTransfer = () -> {
+            validator.recordLockAcquisition(first.lock());
+            validator.recordLockAcquisition(second.lock());
+            validator.recordLockRelease(second.lock());
+            validator.recordLockRelease(first.lock());
+        };
 
-        // Thread 2: reverse transfer, but same canonical order: ACC-001 → ACC-002
-        validator.recordLockAcquisition(first.lock());
-        validator.recordLockAcquisition(second.lock());
-        validator.recordLockRelease(second.lock());
-        validator.recordLockRelease(first.lock());
+        Thread t1 = new Thread(canonicalTransfer);
+        Thread t2 = new Thread(canonicalTransfer);
+        t1.start(); t1.join();
+        t2.start(); t2.join();
 
         var report = validator.validateLockOrder();
         assertFalse(report.hasIssues(),
