@@ -47,28 +47,23 @@ public class SpinPollingWorker {
     }
 
     /**
-     * Processes tasks using a tight spin loop, recording each iteration
-     * with the provided BusyWaitDetector so the framework can measure
-     * spin intensity.
+     * Processes tasks using a tight spin loop, invoking {@code loopCallback}
+     * on each iteration so callers can instrument the spin (e.g. record to a
+     * BusyWaitDetector) without the service importing any test-scoped types.
      *
-     * This is the instrumented version used in the @AsyncTest body.
-     *
-     * @param detector the BusyWaitDetector instance from the test
+     * @param loopCallback called once per poll iteration (may be null)
+     * @param yieldCallback called once after the loop exits (may be null)
      * @return the last task polled, or null if the queue was empty
      */
-    public String processInstrumented(se.deversity.asynctest.diagnostics.BusyWaitDetector detector) {
+    public String processInstrumented(Runnable loopCallback, Runnable yieldCallback) {
         String result = null;
-        long iterations = 0;
 
         while (!taskQueue.isEmpty()) {
             result = taskQueue.poll();
-            iterations++;
-            detector.recordLoopIteration();
+            if (loopCallback != null) loopCallback.run();
         }
 
-        // Always record a yield at the loop boundary so the detector can
-        // compute the final spin duration for this burst.
-        detector.recordYield();
+        if (yieldCallback != null) yieldCallback.run();
 
         lastResult = result;
         return result;

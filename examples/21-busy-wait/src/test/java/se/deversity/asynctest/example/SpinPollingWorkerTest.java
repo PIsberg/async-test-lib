@@ -138,7 +138,9 @@ class SpinPollingWorkerTest {
         // instrumented path, recording every loop iteration for the detector.
         // The first thread(s) to run will process many thousands of tasks,
         // driving the iteration count past the 10,000-iteration spin threshold.
-        worker.processInstrumented(busyWaitDetector);
+        worker.processInstrumented(
+                busyWaitDetector::recordLoopIteration,
+                busyWaitDetector::recordYield);
     }
 
     /**
