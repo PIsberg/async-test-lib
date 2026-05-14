@@ -36,7 +36,7 @@ tasks.test {
     useJUnitPlatform()
     // Match Maven surefire forkCount=1, reuseForks=false: new JVM for each test class
     forkEvery = 1
-    systemProperty("license.mock.mode", System.getProperty("license.mock.mode", "false"))
+    systemProperty("license.mock.mode", System.getProperty("license.mock.mode", "true"))
     systemProperty("license.key", System.getProperty("license.key", ""))
     
     finalizedBy(tasks.jacocoTestReport)
