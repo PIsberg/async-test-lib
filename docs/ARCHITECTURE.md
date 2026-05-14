@@ -243,10 +243,15 @@ Shows the structure and common pattern of all detectors.
 - Opt-in via annotation flags
 - Record events during test execution
 
-**Phase 3: Runtime Validators (5 classes)**
+**Phase 3: Behavioral Detectors (5 classes) — auto-wired via DetectorRegistry**
+- RaceConditionDetector, ThreadLocalMonitor, BusyWaitDetector
+- AtomicityValidator, InterruptMonitor
+- Instantiated and analyzed automatically when their config flags are enabled
+
+**Standalone Validators (5 classes) — manual instantiation**
 - NotifyAllValidator, LazyInitValidator, FutureBlockingDetector
 - ExecutorDeadlockDetector, LatchMisuseDetector
-- Manual validator pattern for legacy Java async patterns
+- Instantiate directly in test code; not wired into DetectorRegistry
 
 **Phase 4: Infrastructure & Resource Management (4 classes)**
 - ThreadLeakDetector, SleepInLockDetector, UnboundedQueueDetector, ThreadStarvationDetector
@@ -375,9 +380,10 @@ If no listeners are registered, detector reports are printed to `System.err` (ba
 
 ### 3. Opt-in Complexity
 
-- Phase 1: Always on (core detectors)
-- Phase 2: Opt-in via flags (advanced detectors)
-- Phase 3: Manual validators (legacy patterns)
+- Phase 1: Always on (core detectors: deadlock, visibility, livelock)
+- Phase 2: Opt-in via flags (40+ advanced detectors managed by DetectorRegistry)
+- Phase 3: Behavioral auto-detectors (race conditions, ThreadLocal leaks, busy-wait, atomicity, interrupt)
+- Standalone validators: manual instantiation for targeted legacy-pattern checks
 - Benchmarking: Opt-in via flag or system property
 
 ### 4. Zero Overhead Default
@@ -398,7 +404,7 @@ src/main/java/se/deversity/asynctest/
 ├── AsyncTestListener.java            # Observability listener interface (NEW)
 ├── AsyncTestListenerRegistry.java    # Listener registry (NEW)
 ├── NoopAsyncTestListener.java        # No-op listener for opt-out (NEW)
-├── DetectorRegistry.java             # Phase 2 detector registry (NEW)
+├── DetectorRegistry.java             # Phase 1–3 detector lifecycle (NEW)
 ├── DetectorType.java                 # Detector enumeration
 ├── BeforeEachInvocation.java         # Lifecycle annotation
 ├── AfterEachInvocation.java          # Lifecycle annotation
@@ -489,7 +495,7 @@ The following structural improvements were made to address code quality concerns
 
 | Class | Package | Purpose |
 |-------|---------|---------|
-| `DetectorRegistry` | `se.deversity.asynctest` | Phase 2 detector lifecycle |
+| `DetectorRegistry` | `se.deversity.asynctest` | Phase 1–3 detector lifecycle |
 | `Phase1DetectorSet` | `se.deversity.asynctest.diagnostics` | Phase 1 detector grouping |
 | `AsyncTestListener` | `se.deversity.asynctest` | Observability interface |
 | `AsyncTestListenerRegistry` | `se.deversity.asynctest` | Listener registration |

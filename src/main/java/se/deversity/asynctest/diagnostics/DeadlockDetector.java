@@ -150,4 +150,40 @@ public class DeadlockDetector {
         System.err.println(AutoFix.getDeadlockFix());
         System.err.println("=".repeat(60) + "\n");
     }
+
+    /**
+     * Analyze current JVM thread state for deadlocks.
+     * Queries the JVM via JMX and returns a report suitable for use in {@link se.deversity.asynctest.DetectorRegistry}.
+     */
+    public DeadlockReport analyze() {
+        return new DeadlockReport(hasDeadlock());
+    }
+
+    public static class DeadlockReport {
+        private final boolean deadlocked;
+
+        public DeadlockReport(boolean deadlocked) {
+            this.deadlocked = deadlocked;
+        }
+
+        public boolean hasIssues() {
+            return deadlocked;
+        }
+
+        @Override
+        public String toString() {
+            if (!deadlocked) {
+                return "No deadlocks detected.";
+            }
+            return "DEADLOCK DETECTED:\n"
+                + "  Circular lock dependency found between JVM threads.\n"
+                + "  Why: Thread A holds lock X and waits for lock Y; Thread B holds lock Y and waits for lock X.\n"
+                + "       Neither can proceed — both are blocked forever.\n"
+                + "  Fix:\n"
+                + "    - Establish a consistent global lock-ordering: always acquire locks in the same order\n"
+                + "    - Use tryLock() with a timeout instead of unconditional lock() to break cycles\n"
+                + "    - Reduce lock scope: restructure code to avoid holding one lock while acquiring another\n"
+                + "  Run DeadlockDetector.printThreadDump() for a full lock-chain diagnosis.";
+        }
+    }
 }

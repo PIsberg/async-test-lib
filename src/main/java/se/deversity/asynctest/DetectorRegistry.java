@@ -28,6 +28,11 @@ import java.util.function.Function;
 )
 final class DetectorRegistry {
 
+    // ---- Phase 1 ----
+    final DeadlockDetector  deadlockDetector;
+    final VisibilityMonitor visibilityMonitor;
+    final LivelockDetector  livelockDetector;
+
     // ---- Phase 2: Core ----
     final FalseSharingDetector       falseSharingDetector;
     final WakeupDetector             wakeupDetector;
@@ -74,6 +79,13 @@ final class DetectorRegistry {
     final ScheduledExecutorDetector  scheduledExecutorDetector;
     final ForkJoinPoolDetector       forkJoinPoolDetector;
     final ThreadFactoryDetector      threadFactoryDetector;
+
+    // ---- Phase 3 ----
+    final RaceConditionDetector raceConditionDetector;
+    final ThreadLocalMonitor    threadLocalMonitor;
+    final BusyWaitDetector      busyWaitDetector;
+    final AtomicityValidator    atomicityValidator;
+    final InterruptMonitor      interruptMonitor;
 
     // ---- Phase 4: Infrastructure & Resource Management ----
     final ThreadLeakDetector         threadLeakDetector;
@@ -146,6 +158,9 @@ final class DetectorRegistry {
      * zero overhead during the test run.
      */
     DetectorRegistry(AsyncTestConfig cfg) {
+        deadlockDetector           = cfg.detectDeadlocks                ? new DeadlockDetector()           : null;
+        visibilityMonitor          = cfg.detectVisibility               ? new VisibilityMonitor()           : null;
+        livelockDetector           = cfg.detectLivelocks                ? new LivelockDetector()            : null;
         falseSharingDetector       = cfg.detectFalseSharing             ? new FalseSharingDetector()       : null;
         wakeupDetector             = cfg.detectWakeupIssues             ? new WakeupDetector()             : null;
         constructorSafetyValidator = cfg.validateConstructorSafety      ? new ConstructorSafetyValidator() : null;
@@ -190,6 +205,11 @@ final class DetectorRegistry {
         scheduledExecutorDetector  = cfg.detectScheduledExecutorIssues  ? new ScheduledExecutorDetector()  : null;
         forkJoinPoolDetector       = cfg.detectForkJoinPoolIssues       ? new ForkJoinPoolDetector()       : null;
         threadFactoryDetector      = cfg.detectThreadFactoryIssues      ? new ThreadFactoryDetector()      : null;
+        raceConditionDetector      = cfg.detectRaceConditions           ? new RaceConditionDetector()      : null;
+        threadLocalMonitor         = cfg.detectThreadLocalLeaks         ? new ThreadLocalMonitor()          : null;
+        busyWaitDetector           = cfg.detectBusyWaiting              ? new BusyWaitDetector()            : null;
+        atomicityValidator         = cfg.detectAtomicityViolations      ? new AtomicityValidator()          : null;
+        interruptMonitor           = cfg.detectInterruptMishandling     ? new InterruptMonitor()            : null;
         threadLeakDetector         = cfg.detectThreadLeaks              ? new ThreadLeakDetector()         : null;
         sleepInLockDetector        = cfg.detectSleepInLock              ? new SleepInLockDetector()        : null;
         unboundedQueueDetector     = cfg.detectUnboundedQueue           ? new UnboundedQueueDetector()     : null;
@@ -288,6 +308,17 @@ final class DetectorRegistry {
      */
     List<String> analyzeAll() {
         List<String> out = new ArrayList<>();
+
+        // ---- Phase 1 ----
+        ifIssue(deadlockDetector,
+                d -> d.analyze(),
+                DeadlockDetector.DeadlockReport::hasIssues, out);
+        ifIssue(visibilityMonitor,
+                d -> d.analyzeVisibility(),
+                VisibilityMonitor.VisibilityReport::hasIssues, out);
+        ifIssue(livelockDetector,
+                d -> d.analyzeLivelocks(),
+                LivelockDetector.LivelockReport::hasIssues, out);
 
         ifIssue(falseSharingDetector,
                 d -> d.analyzeFalseSharing(),
@@ -415,6 +446,23 @@ final class DetectorRegistry {
         ifIssue(threadFactoryDetector,
                 d -> d.analyze(),
                 ThreadFactoryDetector.ThreadFactoryReport::hasIssues, out);
+
+        // ---- Phase 3 ----
+        ifIssue(raceConditionDetector,
+                d -> d.analyzeRaceConditions(),
+                RaceConditionDetector.RaceConditionReport::hasIssues, out);
+        ifIssue(threadLocalMonitor,
+                d -> d.analyzeThreadLocalLeaks(),
+                ThreadLocalMonitor.ThreadLocalReport::hasIssues, out);
+        ifIssue(busyWaitDetector,
+                d -> d.analyzeBusyWaiting(),
+                BusyWaitDetector.BusyWaitReport::hasIssues, out);
+        ifIssue(atomicityValidator,
+                d -> d.analyzeAtomicity(),
+                AtomicityValidator.AtomicityReport::hasIssues, out);
+        ifIssue(interruptMonitor,
+                d -> d.analyzeInterruptHandling(),
+                InterruptMonitor.InterruptReport::hasIssues, out);
 
         // ---- Phase 4: Infrastructure & Resource Management ----
         ifIssue(threadLeakDetector,
