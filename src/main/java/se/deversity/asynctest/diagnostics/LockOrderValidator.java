@@ -34,8 +34,8 @@ public class LockOrderValidator {
      * Record a lock acquisition.
      */
     public void recordLockAcquisition(Object lock) {
-        if (!enabled) return;
-        
+        if (!enabled || lock == null) return;
+
         long threadId = Thread.currentThread().getId();
         String lockId = lock.getClass().getSimpleName() + "@" + System.identityHashCode(lock);
         
@@ -52,8 +52,8 @@ public class LockOrderValidator {
      * Record lock release.
      */
     public void recordLockRelease(Object lock) {
-        if (!enabled) return;
-        
+        if (!enabled || lock == null) return;
+
         long threadId = Thread.currentThread().getId();
         String lockId = lock.getClass().getSimpleName() + "@" + System.identityHashCode(lock);
         
@@ -97,8 +97,7 @@ public class LockOrderValidator {
                 String lock2 = sequence.lockOrder.get(i + 1);
                 
                 String pair = normalizeUnorderedPair(lock1, lock2);
-                String order = lock1.compareTo(lock2) < 0 ? 
-                    lock1 + " -> " + lock2 : lock2 + " -> " + lock1;
+                String order = lock1 + " -> " + lock2;
                 
                 lockPairOrderings.computeIfAbsent(pair, k -> new HashSet<>()).add(order);
             }

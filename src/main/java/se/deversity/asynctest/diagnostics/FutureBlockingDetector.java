@@ -27,6 +27,9 @@ public class FutureBlockingDetector {
     private final Map<Integer, ExecutorState> executors = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
+    public void disable() { enabled = false; }
+    public void enable()  { enabled = true;  }
+
     public void registerExecutor(Object executor, String name, int maxThreads) {
         if (!enabled || executor == null) {
             return;

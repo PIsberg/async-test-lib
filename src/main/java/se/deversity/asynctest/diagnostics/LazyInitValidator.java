@@ -49,7 +49,7 @@ public class LazyInitValidator {
         LazyInitReport report = new LazyInitReport();
 
         for (LazyFieldState state : fields.values()) {
-            if (state.initializationAttempts.get() > 1 && !state.synchronizedAccess) {
+            if (state.initializationAttempts.get() > 1 && !state.synchronizedAccess && !state.volatileField) {
                 report.multipleInitializations.add(String.format(
                     "%s: %d unsynchronized initialization attempts across %d threads",
                     state.fieldName,

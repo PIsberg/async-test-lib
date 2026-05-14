@@ -47,8 +47,8 @@ public class ConstructorSafetyValidator {
      * Mark the start of object construction.
      */
     public void recordConstructionStart(Object object) {
-        if (!enabled) return;
-        
+        if (!enabled || object == null) return;
+
         int id = System.identityHashCode(object);
         objects.putIfAbsent(id, new ObjectState(id, object.getClass().getSimpleName()));
     }
@@ -112,6 +112,12 @@ public class ConstructorSafetyValidator {
                 ));
             }
             
+            if (!state.constructionComplete && state.constructionStartTime > 0) {
+                report.possiblyIncompleteConstructions.add(
+                    state.className + " (construction started but never completed)"
+                );
+            }
+
             if (state.constructionComplete) {
                 long constructionTime = state.constructionEndTime - state.constructionStartTime;
                 

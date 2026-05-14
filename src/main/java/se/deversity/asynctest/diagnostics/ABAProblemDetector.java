@@ -131,27 +131,27 @@ public class ABAProblemDetector {
     
     private boolean detectABA(AtomicValueHistory history, CASAttempt attempt) {
         List<ValueChange> changes = history.changes;
-        
-        // Find if there was a cycle after the last time this expected value was current
+
         boolean foundExpectedBefore = false;
         boolean foundDifferentAfter = false;
-        boolean foundExpectedAgain = false;
-        
+
         for (ValueChange change : changes) {
-            if (change.isSameValue(change.newValue, attempt.expectedValue)) {
-                foundExpectedBefore = true;
-                foundDifferentAfter = false;
-            } else if (foundExpectedBefore) {
-                foundDifferentAfter = true;
-            }
-            
-            if (foundDifferentAfter && change.isSameValue(change.newValue, attempt.expectedValue)) {
-                foundExpectedAgain = true;
-                break;
+            if (!foundExpectedBefore) {
+                if (change.isSameValue(change.newValue, attempt.expectedValue)) {
+                    foundExpectedBefore = true;
+                }
+            } else if (!foundDifferentAfter) {
+                if (!change.isSameValue(change.newValue, attempt.expectedValue)) {
+                    foundDifferentAfter = true;
+                }
+            } else {
+                if (change.isSameValue(change.newValue, attempt.expectedValue)) {
+                    return true; // A -> B -> A confirmed
+                }
             }
         }
-        
-        return foundExpectedBefore && foundDifferentAfter && foundExpectedAgain;
+
+        return false;
     }
     
     /**
