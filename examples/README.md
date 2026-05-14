@@ -10,6 +10,9 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 | 02 | [Visibility/Volatile Flag](02-visibility-volatile-flag/) | `VisibilityMonitor` | Missing `volatile` on shared flags causes threads to never see shutdown signals | 🔴 Critical |
 | 03 | [Shared Non-Thread-Safe Collection](03-shared-collection/) | `SharedCollectionDetector` | ArrayList/HashMap shared across threads causes data loss and corruption | 🔴 Critical |
 | 04 | [Virtual Thread Context Leak](04-virtual-thread-context-leak/) | `VirtualThreadContextLeakDetector` | ThreadLocal leaks in virtual threads cause memory leaks | 🟡 High |
+| 06 | [Deadlock](06-deadlock/) | `DeadlockDetector` | Two threads acquire the same pair of locks in opposite order — circular wait, neither can proceed | 🔴 Critical |
+| 07 | [Livelock](07-livelock/) | `LivelockDetector` | Two nodes back off and retry without delay — threads stay active but make no progress | 🔴 Critical |
+| 08 | [Race Condition](08-race-condition/) | `RaceConditionDetector` | Non-atomic check-then-update lets multiple threads pass the stock threshold, driving count negative | 🔴 Critical |
 | 09 | [Uncommitted Changes Detection](09-uncommitted-changes-detection/) | `UncommittedChangesDetector` | Untracked Git files break test reproducibility | 🟢 Low |
 | 10 | [Shared Non-Thread-Safe Types](10-shared-non-thread-safe-types/) | `SharedMatcherDetector`, `SharedDecimalFormatDetector`, `SharedMessageDigestDetector` | Shared `Matcher`, `DecimalFormat`, and `MessageDigest` fields silently produce wrong results under concurrent load | 🔴 Critical |
 | 11 | [Interrupt Swallowing](11-interrupt-swallowing/) | `InterruptSwallowingDetector` | `catch(InterruptedException)` without restoring the flag permanently suppresses cooperative cancellation | 🔴 Critical |
@@ -22,6 +25,18 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 | 18 | [Boxed Primitive Lock](18-boxed-primitive-lock/) | `BoxedPrimitiveLockDetector` | `synchronized` on cached `Integer`/`Boolean` acquires a JVM-global shared monitor | 🔴 Critical |
 | 19 | [Shared TimeZone](19-shared-timezone/) | `SharedTimeZoneDetector` | `TimeZone.setRawOffset()` from multiple threads produces silently wrong date/time arithmetic | 🟡 High |
 | 20 | [Uncaught Exception Handler](20-uncaught-exception-handler/) | `UncaughtExceptionHandlerDetector` | Threads without a custom `UncaughtExceptionHandler` discard thrown exceptions silently | 🟡 High |
+| 21 | [Busy Wait](21-busy-wait/) | `BusyWaitDetector` | Tight spin loop polling an empty queue wastes CPU and prevents other threads from running | 🟡 High |
+| 22 | [Atomicity Violation](22-atomicity-violation/) | `AtomicityValidator` | Non-atomic read-modify-write on a `volatile long` loses increments under concurrent load | 🔴 Critical |
+| 23 | [ThreadLocal Leak](23-thread-local-leak/) | `ThreadLocalMonitor` | Request context stored in `ThreadLocal` never cleared — next task on the reused thread sees stale auth data | 🟡 High |
+| 24 | [Interrupt Mishandling](24-interrupt-mishandling/) | `InterruptMonitor` | `catch(InterruptedException)` without restoring the interrupt flag breaks cooperative cancellation | 🔴 Critical |
+| 25 | [Executor Self-Deadlock](25-executor-deadlock/) | `ExecutorDeadlockDetector` | Task on a single-thread pool submits a subtask to the same pool and blocks waiting — the subtask never runs | 🔴 Critical |
+| 26 | [Future Blocking](26-future-blocking/) | `FutureBlockingDetector` | Pool workers call `Future.get()` on futures submitted to the same bounded pool — starvation when all threads block | 🔴 Critical |
+| 27 | [Latch Misuse](27-latch-misuse/) | `LatchMisuseDetector` | `countDown()` in both `catch` and `finally` blocks causes premature latch completion and races to the next phase | 🟡 High |
+| 28 | [Unsafe Lazy Init](28-lazy-init/) | `LazyInitValidator` | Double-checked locking without `volatile` — partially-constructed singleton visible to other threads | 🔴 Critical |
+| 29 | [ABA Problem](29-aba-problem/) | `ABAProblemDetector` | Lock-free stack CAS succeeds despite node being recycled — classic A→B→A problem corrupts the stack | 🔴 Critical |
+| 30 | [False Sharing](30-false-sharing/) | `FalseSharingDetector` | Adjacent `volatile long` fields on the same cache line cause coherence traffic between threads updating independent counters | 🟡 High |
+| 31 | [Lock Order Violation](31-lock-order-violation/) | `LockOrderValidator` | Transfer service acquires account locks in source-first order — two concurrent opposite transfers create a circular dependency | 🔴 Critical |
+| 32 | [RW Lock Starvation](32-rwlock-starvation/) | `ReadWriteLockMonitor` | Non-fair `ReentrantReadWriteLock(false)` lets readers cut ahead of waiting writers indefinitely — writes never complete | 🟡 High |
 
 ## Phase 7: High-Level Concurrency Patterns (New!)
 
