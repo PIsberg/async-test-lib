@@ -147,17 +147,16 @@ class ConfigurationSingletonTest {
      */
     @Test
     void testHolderIdiom_safePublication() {
-        // Verify the holder idiom is safe to use
-        class SafeSingleton {
-            private SafeSingleton() {}
-            private static class Holder {
-                static final SafeSingleton INSTANCE = new SafeSingleton();
-            }
-            public static SafeSingleton getInstance() { return Holder.INSTANCE; }
-        }
-
         SafeSingleton a = SafeSingleton.getInstance();
         SafeSingleton b = SafeSingleton.getInstance();
         assertSame(a, b);
+    }
+
+    private static class SafeSingleton {
+        private SafeSingleton() {}
+        private static class Holder {
+            static final SafeSingleton INSTANCE = new SafeSingleton();
+        }
+        public static SafeSingleton getInstance() { return Holder.INSTANCE; }
     }
 }
