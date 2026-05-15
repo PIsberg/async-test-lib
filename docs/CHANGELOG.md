@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-05-15
+
+### Added
+
+#### Phase 1 & Phase 3 detectors now wired through `DetectorRegistry`
+
+Phase 1 detectors were previously always-active via a direct `Phase1DetectorSet` hand-off
+to `ConcurrencyRunner`. They are now also registered in `DetectorRegistry`, making them
+subject to the same `AsyncTestConfig` flag and `excludes` opt-out mechanism as every other
+detector. Phase 3 detectors existed as classes but had no registry wiring — they are now
+fully integrated.
+
+**Phase 1 (newly config-controlled):**
+- **Deadlock detection** (`detectDeadlocks`) — circular lock chain detection with thread
+  and lock ownership report; previously always-on, now opt-outable via `excludes`
+- **Memory visibility** (`detectVisibility`) — tracks field values across invocations to
+  detect missing `volatile` or synchronisation; now config-controlled
+- **Livelock detection** (`detectLivelocks`) — recognises threads spinning without making
+  forward progress; now config-controlled
+
+**Phase 3 (newly wired):**
+- **Race condition** (`detectRaceConditions`) — barrier-synchronised thread collisions that
+  force concurrent field access and expose data races standard sequential tests miss
+- **ThreadLocal leak** (`detectThreadLocalLeaks`) — detects `ThreadLocal` values set but
+  never removed, causing stale values to propagate to the next task on a reused pooled thread
+- **Busy waiting** (`detectBusyWaiting`) — detects spin-loops that consume CPU without
+  yielding (`Thread.sleep`, `LockSupport.park`, or `Thread.yield`), degrading throughput and
+  starving other threads on the carrier pool
+- **Atomicity violation** (`detectAtomicityViolations`) — detects check-then-act sequences
+  on shared state (null-check then write, read-then-increment, conditional update) that are
+  not protected by a single atomic operation or lock, silently losing concurrent updates
+- **Interrupt mishandling** (`detectInterruptMishandling`) — detects `InterruptedException`
+  catches that neither rethrow nor call `Thread.currentThread().interrupt()`, permanently
+  suppressing the cooperative-cancellation signal
+
+#### Test coverage
+
+Added 24 test files covering Phase 1 & Phase 3 detector classes that previously had no
+dedicated tests: `DeadlockDetectorTest`, `LivelockDetectorTest`, `VisibilityMonitorTest`,
+`RaceConditionDetectorTest`, `ThreadLocalMonitorTest`, `BusyWaitDetectorTest`,
+`AtomicityValidatorTest`, `InterruptMonitorTest`, `FalseSharingDetectorTest`,
+`ABAProblemDetectorTest`, `LockOrderValidatorTest`, `ConstructorSafetyValidatorTest`,
+`MemoryOrderingMonitorTest`, `SynchronizerMonitorTest`, `ThreadPoolMonitorTest`,
+`ReadWriteLockMonitorTest`, `PipelineMonitorTest`, `WakeupDetectorTest`,
+`NotifyAllValidatorTest`, `LazyInitValidatorTest`, `FutureBlockingDetectorTest`,
+`ExecutorDeadlockDetectorTest`, `LatchMisuseDetectorTest`, and `ThreadLocalMonitorTest`.
+
+#### Examples
+
+Added 15 new example projects demonstrating Phase 3 and Phase 2 detectors in realistic
+service classes:
+
+- `21-busy-wait` — `SpinPollingWorker` polling a queue without yield or sleep
+- `22-atomicity-violation` — `HitCounterService` with an unsynchronised read-then-increment
+- `23-thread-local-leak` — `RequestContextService` setting a `ThreadLocal` without cleanup
+- `24-interrupt-mishandling` — `BackgroundWorker` swallowing `InterruptedException`
+- `25-executor-deadlock` — `ReportGenerationService` submitting tasks that wait on each other
+- `26-future-blocking` — `BatchProcessingService` blocking the submitter thread on `get()`
+- `27-latch-misuse` — `ServiceInitializer` with a `CountDownLatch` never counted down
+- `28-lazy-init` — `ConfigurationSingleton` with an unsynchronised null-guard
+- `29-aba-problem` — `LockFreeStack` with a `compareAndSet` susceptible to ABA
+- `30-false-sharing` — `PerformanceCounters` with adjacent fields sharing a cache line
+- `31-lock-order-violation` — `FundsTransferService` locking two accounts in caller-defined order
+- `32-rwlock-starvation` — `ReadHeavyCache` where writers starve behind a read flood
+
+### Fixed
+
+- `examples/06-deadlock` — transfer tasks now run on separate threads to actually trigger
+  the circular lock chain the test is designed to detect
+- `examples/28-lazy-init` — `SafeSingleton` extracted to a static nested class so
+  `AsyncTest` can instantiate the outer test class without triggering the lazy-init race
+  under construction
+- `examples/21-busy-wait` — removed stray `diagnostics` import from `SpinPollingWorker`
+  production source
+
+### Maintenance
+
+- Default `license.mock.mode=true` in the root Gradle build so the test suite runs locally
+  without a license key (CI behaviour unchanged)
+- Bump `step-security/harden-runner` 2.19.1 → 2.19.3
+- Bump `actions/dependency-review-action` 4.9.0 → 5.0.0
+- Bump `sigstore/cosign-installer` 4.1.1 → 4.1.2
+
 ## [1.3.0] - 2026-05-08
 
 ### Added
@@ -354,6 +437,7 @@ First public release on Maven Central.
 - `02-visibility-volatile-flag` — demonstrates memory visibility bugs caused by a missing
   `volatile` keyword
 
+[1.4.0]: https://github.com/PIsberg/async-test-lib/releases/tag/v1.4.0
 [1.3.0]: https://github.com/PIsberg/async-test-lib/releases/tag/v1.3.0
 [0.8.0]: https://github.com/PIsberg/async-test-lib/releases/tag/v0.8.0
 [0.7.0]: https://github.com/PIsberg/async-test-lib/releases/tag/v0.7.0
