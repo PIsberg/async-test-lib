@@ -1,5 +1,6 @@
 package se.deversity.asynctest;
 
+import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.vibetags.annotations.AIContract;
 
 /**
@@ -57,4 +58,21 @@ public interface AsyncTestListener {
      * @param timeoutMs the configured timeout in milliseconds
      */
     default void onTimeout(long timeoutMs) {}
+
+    /**
+     * Called when a detector reports an issue, with structured severity information.
+     *
+     * <p>This is a richer alternative to {@link #onDetectorReport} that includes the
+     * parsed {@link IssueSeverity} so listeners can route or filter by priority without
+     * re-parsing the report text. Both methods are fired for every detector finding.
+     *
+     * <p>The default implementation is a no-op, preserving backwards compatibility with
+     * existing {@link AsyncTestListener} implementations.
+     *
+     * @param detectorName the name of the detector (e.g., "FalseSharingDetector")
+     * @param severity      the severity level parsed from the detector's report
+     * @param report        the detector's full report content
+     * @since 1.5.0
+     */
+    default void onStructuredReport(String detectorName, IssueSeverity severity, String report) {}
 }

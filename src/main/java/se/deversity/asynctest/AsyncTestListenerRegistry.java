@@ -1,5 +1,6 @@
 package se.deversity.asynctest;
 
+import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.vibetags.annotations.AIContract;
 
 import java.util.List;
@@ -111,19 +112,38 @@ public final class AsyncTestListenerRegistry {
     }
 
     /**
-     * Fires the {@code onDetectorReport} event to all registered listeners.
+     * Fires the {@code onDetectorReport} and {@code onStructuredReport} events to all
+     * registered listeners.
+     *
+     * <p>Severity is parsed from the report text using {@link IssueSeverity} markers
+     * (emoji or keyword). Reports with no recognisable marker default to {@link IssueSeverity#HIGH}.
      *
      * @param detectorName the detector name
      * @param report the report content
      */
     public static void fireDetectorReport(String detectorName, String report) {
+        IssueSeverity severity = parseSeverity(report);
         for (AsyncTestListener listener : LISTENERS) {
             try {
                 listener.onDetectorReport(detectorName, report);
             } catch (RuntimeException e) {
                 System.err.println("Warning: AsyncTestListener.onDetectorReport threw: " + e.getMessage());
             }
+            try {
+                listener.onStructuredReport(detectorName, severity, report);
+            } catch (RuntimeException e) {
+                System.err.println("Warning: AsyncTestListener.onStructuredReport threw: " + e.getMessage());
+            }
         }
+    }
+
+    private static IssueSeverity parseSeverity(String report) {
+        if (report == null) return IssueSeverity.HIGH;
+        if (report.contains("CRITICAL") || report.contains("🔴")) return IssueSeverity.CRITICAL;
+        if (report.contains("HIGH")     || report.contains("🟠")) return IssueSeverity.HIGH;
+        if (report.contains("MEDIUM")   || report.contains("🟡")) return IssueSeverity.MEDIUM;
+        if (report.contains("LOW")      || report.contains("🟢")) return IssueSeverity.LOW;
+        return IssueSeverity.HIGH;
     }
 
     /**

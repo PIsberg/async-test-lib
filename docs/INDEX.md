@@ -16,8 +16,10 @@
 | Document | Length | Purpose | Read If... |
 |----------|--------|---------|-----------|
 | [README.md](README.md) | 2,000 words | Project overview | You're new to the library |
-| [USAGE.md](docs/USAGE.md) | 8,800 words | Complete user guide | You want to install and use it |
-| [QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) | 3,000 words | One-page cheatsheet | You need quick answers |
+| [USAGE.md](USAGE.md) | 8,800 words | Complete user guide | You want to install and use it |
+| [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | 3,000 words | One-page cheatsheet | You need quick answers |
+| [CI_INTEGRATION.md](CI_INTEGRATION.md) | 1,500 words | CI/CD pipeline setup | You want findings in GitHub Actions / Jenkins / GitLab |
+| [intellij-plugin/README.md](../intellij-plugin/README.md) | 1,200 words | IntelliJ IDEA plugin | You want findings surfaced inside the IDE |
 
 ### For Library Maintainers (Releasing & Distributing)
 
@@ -39,6 +41,16 @@
 2. Add dependency to your pom.xml
 3. Start using @AsyncTest annotation
 4. Reference examples in [USAGE.md](USAGE.md)
+
+### "I want findings to appear in my CI dashboard (GitHub Actions / Jenkins / GitLab)"
+1. Read: [CI_INTEGRATION.md](CI_INTEGRATION.md)
+2. Register `JUnitXmlReportListener` in your test setup
+3. Upload `target/async-test-reports/` as a CI artifact
+
+### "I want to see findings inside IntelliJ IDEA"
+1. Read: [intellij-plugin/README.md](../intellij-plugin/README.md)
+2. Register `JsonReportListener` in your tests
+3. Build and install the plugin: `cd intellij-plugin && ./gradlew buildPlugin`
 
 ### "I'm the maintainer and want to create the first release"
 1. Read: [PRE_RELEASE_CHECKLIST.md](PRE_RELEASE_CHECKLIST.md)
@@ -108,6 +120,18 @@ TOTAL ....................... ~69,000 words
 - **What are the parameters?** → [USAGE.md](USAGE.md)
 - **Can I see examples?** → [USAGE.md](USAGE.md)
 - **What Java version?** → [USAGE.md](USAGE.md) or [QUICK_REFERENCE.md](QUICK_REFERENCE.md)
+
+### CI/CD Integration & Reporting (v1.5.0+)
+- **CI pipeline setup (GitHub Actions / Jenkins / GitLab)** → [CI_INTEGRATION.md](CI_INTEGRATION.md)
+- **JUnit XML report for CI dashboards** → [CI_INTEGRATION.md](CI_INTEGRATION.md) — `JUnitXmlReportListener`
+- **Fail the build on any detector finding** → [CI_INTEGRATION.md](CI_INTEGRATION.md) — `StrictModeListener`
+- **Structured JSON output for dashboards/webhooks** → [CI_INTEGRATION.md](CI_INTEGRATION.md) — `JsonReportListener`
+
+### IntelliJ IDEA Plugin (v1.5.0+)
+- **Installing the plugin** → [intellij-plugin/README.md](../intellij-plugin/README.md)
+- **Wiring JsonReportListener** → [intellij-plugin/README.md](../intellij-plugin/README.md)
+- **Plugin settings** → [intellij-plugin/README.md](../intellij-plugin/README.md)
+- **Troubleshooting (no findings appear)** → [intellij-plugin/README.md](../intellij-plugin/README.md)
 
 ### Release Process
 - **First time releasing?** → [PRE_RELEASE_CHECKLIST.md](PRE_RELEASE_CHECKLIST.md)

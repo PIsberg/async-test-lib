@@ -1,0 +1,158 @@
+package se.deversity.asynctest.report;
+
+import se.deversity.asynctest.AsyncTestListener;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.Instant;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * An {@link AsyncTestListener} that writes detector findings to a JUnit-compatible XML report.
+ *
+ * <p>CI systems (GitHub Actions, Jenkins, GitLab CI) parse JUnit XML to surface test failures
+ * in their dashboards. Registering this listener ensures every concurrency finding appears
+ * as a named test case failure visible in the CI run, not just as stderr noise.
+ *
+ * <h3>Usage</h3>
+ * <pre>{@code
+ * @BeforeAll
+ * static void setup() {
+ *     AsyncTestListenerRegistry.register(new JUnitXmlReportListener());
+ * }
+ * }</pre>
+ *
+ * <p>The report is written to {@code target/async-test-reports/TEST-AsyncTestConcurrencyReport.xml}
+ * (Maven) or {@code build/async-test-reports/TEST-AsyncTestConcurrencyReport.xml} (Gradle)
+ * when the JVM shuts down, or immediately via {@link #flush()}.
+ *
+ * <h3>GitHub Actions integration</h3>
+ * <pre>{@code
+ * - name: Upload async-test detector reports
+ *   uses: actions/upload-artifact@v4
+ *   if: always()
+ *   with:
+ *     name: async-test-reports
+ *     path: target/async-test-reports/
+ * }</pre>
+ *
+ * @see StrictModeListener
+ */
+public final class JUnitXmlReportListener implements AsyncTestListener {
+
+    private static final String REPORT_FILENAME = "TEST-AsyncTestConcurrencyReport.xml";
+
+    private final List<DetectorFinding> findings = new CopyOnWriteArrayList<>();
+    private final String outputDir;
+    private final AtomicBoolean flushed = new AtomicBoolean(false);
+
+    /**
+     * Creates a listener that auto-detects the output directory (Maven or Gradle build dir).
+     * Registers a JVM shutdown hook to flush the report automatically.
+     */
+    public JUnitXmlReportListener() {
+        this(resolveDefaultOutputDir(), true);
+    }
+
+    /**
+     * Creates a listener that writes to the given directory.
+     * Registers a JVM shutdown hook to flush the report automatically.
+     *
+     * @param outputDir the directory to write the XML report into
+     */
+    public JUnitXmlReportListener(String outputDir) {
+        this(outputDir, true);
+    }
+
+    /**
+     * @param outputDir the directory to write the XML report into
+     * @param registerShutdownHook whether to register a JVM shutdown hook for auto-flush
+     */
+    public JUnitXmlReportListener(String outputDir, boolean registerShutdownHook) {
+        this.outputDir = outputDir;
+        if (registerShutdownHook) {
+            Runtime.getRuntime().addShutdownHook(
+                new Thread(this::flush, "async-test-xml-report-flush"));
+        }
+    }
+
+    @Override
+    public void onDetectorReport(String detectorName, String report) {
+        findings.add(new DetectorFinding(detectorName, report, System.currentTimeMillis()));
+    }
+
+    /**
+     * Writes the accumulated findings to a JUnit XML file.
+     * Safe to call multiple times; the report is written only once.
+     *
+     * @return the path of the written report file, or {@code null} if there were no findings
+     */
+    public Path flush() {
+        if (findings.isEmpty() || !flushed.compareAndSet(false, true)) {
+            return null;
+        }
+        try {
+            Path dir = Paths.get(outputDir);
+            Files.createDirectories(dir);
+            Path xmlFile = dir.resolve(REPORT_FILENAME);
+            writeXml(xmlFile, List.copyOf(findings));
+            return xmlFile;
+        } catch (IOException e) {
+            System.err.println("async-test: Failed to write JUnit XML report: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Returns the number of accumulated findings (useful for assertions in tests of this listener).
+     */
+    public int getFindingCount() {
+        return findings.size();
+    }
+
+    private static void writeXml(Path xmlFile, List<DetectorFinding> snapshot) throws IOException {
+        int count = snapshot.size();
+        StringBuilder sb = new StringBuilder(512);
+        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        sb.append("<testsuite name=\"AsyncTest Concurrency Detector Report\"")
+          .append(" tests=\"").append(count).append("\"")
+          .append(" failures=\"").append(count).append("\"")
+          .append(" errors=\"0\" skipped=\"0\" time=\"0.000\"")
+          .append(" timestamp=\"").append(Instant.now()).append("\">\n");
+
+        for (DetectorFinding f : snapshot) {
+            String message = "[" + f.severity + "] " + xmlEscape(f.detectorName)
+                           + " detected a concurrency issue";
+            sb.append("  <testcase name=\"").append(xmlEscape(f.detectorName))
+              .append("\" classname=\"se.deversity.asynctest.detectors\"")
+              .append(" time=\"0.000\">\n");
+            sb.append("    <failure message=\"").append(xmlEscape(message))
+              .append("\" type=\"ConcurrencyIssueDetected\"><![CDATA[")
+              .append(f.report)
+              .append("]]></failure>\n");
+            sb.append("  </testcase>\n");
+        }
+        sb.append("</testsuite>\n");
+
+        Files.writeString(xmlFile, sb.toString(), StandardCharsets.UTF_8);
+    }
+
+    private static String xmlEscape(String s) {
+        return s.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;");
+    }
+
+    private static String resolveDefaultOutputDir() {
+        if (new File("target").isDirectory()) return "target/async-test-reports";
+        if (new File("build").isDirectory())  return "build/async-test-reports";
+        return "async-test-reports";
+    }
+}

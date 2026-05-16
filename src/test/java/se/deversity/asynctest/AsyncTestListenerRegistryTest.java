@@ -3,11 +3,13 @@ package se.deversity.asynctest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import se.deversity.asynctest.diagnostics.IssueSeverity;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -157,6 +159,26 @@ class AsyncTestListenerRegistryTest {
         assertEquals(1, receivedNames.size());
         assertEquals("FalseSharingDetector", receivedNames.get(0));
         assertEquals("Report content", receivedReports.get(0));
+    }
+
+    @Test
+    void fireDetectorReport_alsoNotifiesOnStructuredReport() {
+        AtomicReference<String> receivedName = new AtomicReference<>();
+        AtomicReference<IssueSeverity> receivedSeverity = new AtomicReference<>();
+
+        AsyncTestListener listener = new AsyncTestListener() {
+            @Override
+            public void onStructuredReport(String detectorName, IssueSeverity severity, String report) {
+                receivedName.set(detectorName);
+                receivedSeverity.set(severity);
+            }
+        };
+
+        AsyncTestListenerRegistry.register(listener);
+        AsyncTestListenerRegistry.fireDetectorReport("FalseSharingDetector", "🔴 CRITICAL: deadlock");
+
+        assertEquals("FalseSharingDetector", receivedName.get());
+        assertEquals(IssueSeverity.CRITICAL, receivedSeverity.get());
     }
 
     @Test

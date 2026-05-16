@@ -1,0 +1,66 @@
+<idea-plugin>
+    <id>se.deversity.asynctest</id>
+    <name>async-test Detector</name>
+    <vendor email="isberg.peter+atl@gmail.com" url="https://github.com/PIsberg/async-test-lib">Peter Isberg</vendor>
+
+    <description><![CDATA[
+        <p>Surfaces concurrency issues detected by the
+        <a href="https://github.com/PIsberg/async-test-lib">async-test</a> library
+        directly inside IntelliJ IDEA.</p>
+
+        <p>After your test suite runs with <code>JsonReportListener</code> registered,
+        click <strong>View → Tool Windows → async-test Findings</strong> (or press the
+        toolbar button) to see all detector findings grouped by severity — without
+        switching to the terminal or grepping log files.</p>
+
+        <h3>Features</h3>
+        <ul>
+            <li>Reads <code>async-test-report.json</code> from Maven or Gradle build output</li>
+            <li>Colour-coded severity: CRITICAL (red), HIGH (orange), MEDIUM (yellow), LOW (green)</li>
+            <li>Expandable finding details with the full detector report</li>
+            <li>One-click refresh after re-running tests</li>
+            <li>Configurable report file path in Settings → Tools → async-test</li>
+        </ul>
+
+        <h3>Setup</h3>
+        <p>Register <code>JsonReportListener</code> in your test class:</p>
+        <pre>
+@BeforeAll
+static void setup() {
+    AsyncTestListenerRegistry.register(new JsonReportListener());
+}
+        </pre>
+    ]]></description>
+
+    <change-notes><![CDATA[
+        <b>1.0.0</b> — Initial release: tool window, severity colours, refresh, configurable path.
+    ]]></change-notes>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="async-test Findings"
+                    anchor="bottom"
+                    factoryClass="se.deversity.asynctest.intellij.AsyncTestToolWindowFactory"
+                    icon="/icons/asynctest.svg"/>
+
+        <applicationService
+            serviceImplementation="se.deversity.asynctest.intellij.AsyncTestSettings"/>
+
+        <applicationConfigurable
+            parentId="tools"
+            instance="se.deversity.asynctest.intellij.AsyncTestConfigurable"
+            id="se.deversity.asynctest.intellij.AsyncTestConfigurable"
+            displayName="async-test"/>
+    </extensions>
+
+    <actions>
+        <action id="AsyncTest.Refresh"
+                class="se.deversity.asynctest.intellij.RefreshFindingsAction"
+                text="Refresh async-test Findings"
+                description="Re-read the JSON report file and update the tool window"
+                icon="AllIcons.Actions.Refresh">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>
