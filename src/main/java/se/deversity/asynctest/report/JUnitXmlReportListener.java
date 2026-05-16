@@ -1,8 +1,8 @@
 package se.deversity.asynctest.report;
 
 import se.deversity.asynctest.AsyncTestListener;
+import se.deversity.asynctest.diagnostics.IssueSeverity;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -57,7 +57,7 @@ public final class JUnitXmlReportListener implements AsyncTestListener {
      * Registers a JVM shutdown hook to flush the report automatically.
      */
     public JUnitXmlReportListener() {
-        this(resolveDefaultOutputDir(), true);
+        this(ReportListeners.resolveDefaultOutputDir(), true);
     }
 
     /**
@@ -71,7 +71,7 @@ public final class JUnitXmlReportListener implements AsyncTestListener {
     }
 
     /**
-     * @param outputDir the directory to write the XML report into
+     * @param outputDir            the directory to write the XML report into
      * @param registerShutdownHook whether to register a JVM shutdown hook for auto-flush
      */
     public JUnitXmlReportListener(String outputDir, boolean registerShutdownHook) {
@@ -83,8 +83,8 @@ public final class JUnitXmlReportListener implements AsyncTestListener {
     }
 
     @Override
-    public void onDetectorReport(String detectorName, String report) {
-        findings.add(new DetectorFinding(detectorName, report, System.currentTimeMillis()));
+    public void onStructuredReport(String detectorName, IssueSeverity severity, String report) {
+        findings.add(new DetectorFinding(detectorName, severity, report, System.currentTimeMillis()));
     }
 
     /**
@@ -118,7 +118,7 @@ public final class JUnitXmlReportListener implements AsyncTestListener {
 
     private static void writeXml(Path xmlFile, List<DetectorFinding> snapshot) throws IOException {
         int count = snapshot.size();
-        StringBuilder sb = new StringBuilder(512);
+        StringBuilder sb = new StringBuilder(Math.max(1024, count * 300));
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         sb.append("<testsuite name=\"AsyncTest Concurrency Detector Report\"")
           .append(" tests=\"").append(count).append("\"")
@@ -127,7 +127,7 @@ public final class JUnitXmlReportListener implements AsyncTestListener {
           .append(" timestamp=\"").append(Instant.now()).append("\">\n");
 
         for (DetectorFinding f : snapshot) {
-            String message = "[" + f.severity + "] " + xmlEscape(f.detectorName)
+            String message = "[" + f.severity.name() + "] " + xmlEscape(f.detectorName)
                            + " detected a concurrency issue";
             sb.append("  <testcase name=\"").append(xmlEscape(f.detectorName))
               .append("\" classname=\"se.deversity.asynctest.detectors\"")
@@ -148,11 +148,5 @@ public final class JUnitXmlReportListener implements AsyncTestListener {
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;");
-    }
-
-    private static String resolveDefaultOutputDir() {
-        if (new File("target").isDirectory()) return "target/async-test-reports";
-        if (new File("build").isDirectory())  return "build/async-test-reports";
-        return "async-test-reports";
     }
 }

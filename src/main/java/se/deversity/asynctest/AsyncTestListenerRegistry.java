@@ -138,12 +138,7 @@ public final class AsyncTestListenerRegistry {
     }
 
     private static IssueSeverity parseSeverity(String report) {
-        if (report == null) return IssueSeverity.HIGH;
-        if (report.contains("CRITICAL") || report.contains("🔴")) return IssueSeverity.CRITICAL;
-        if (report.contains("HIGH")     || report.contains("🟠")) return IssueSeverity.HIGH;
-        if (report.contains("MEDIUM")   || report.contains("🟡")) return IssueSeverity.MEDIUM;
-        if (report.contains("LOW")      || report.contains("🟢")) return IssueSeverity.LOW;
-        return IssueSeverity.HIGH;
+        return IssueSeverity.fromReport(report);
     }
 
     /**
