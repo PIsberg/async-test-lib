@@ -9,7 +9,7 @@
 [![Java](https://img.shields.io/badge/Java-21%2B-orange)](https://openjdk.org/projects/jdk/21/)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/PIsberg/async-test-lib/badge)](https://securityscorecards.dev/viewer/?uri=github.com/PIsberg/async-test-lib)
 
-![async-test execution flow](docs/diagrams/SequenceExecution.png)
+![async-test demo](docs/diagrams/demo.gif)
 
 </div>
 
