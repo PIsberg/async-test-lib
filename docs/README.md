@@ -38,6 +38,8 @@
 - [Comparison with Other Tools](#comparison-with-other-tools)
 - [Migration Guide](#migration-guide)
 - [Observability: Event Listeners (v1.2.0+)](#observability-event-listeners-v120)
+- [CI/CD Integration & Reporting (v1.5.0+)](#cicd-integration--reporting-v150)
+- [IntelliJ IDEA Plugin (v1.5.0+)](#intellij-idea-plugin-v150)
 - [New Detectors (v1.2.0+)](#new-detectors-v120)
 - [Phase 6: Virtual Thread Concurrency (Java 21+)](#phase-6-virtual-thread-concurrency-java-21)
 - [Phase 7: High-Level Concurrency Patterns (v0.7.0)](#phase-7-high-level-concurrency-patterns-v070)
@@ -1736,11 +1738,128 @@ public class ThreadSafeListener implements AsyncTestListener {
 
 | Use Case | Implementation |
 |----------|---------------|
-| **CI/CD Integration** | Send detector reports to GitHub Actions, Jenkins |
+| **CI/CD Integration** | Use `JUnitXmlReportListener` or `StrictModeListener` (see below) |
 | **Metrics Collection** | Track invocation times, failure rates |
 | **Custom Logging** | Route output to Log4j, SLF4J, or file |
 | **Alerting** | Send Slack/Teams notifications on failures |
-| **Test Reporting** | Generate custom HTML/PDF reports |
+| **Test Reporting** | Use `JsonReportListener` or `JUnitXmlReportListener` (see below) |
+
+### Structured Report: `onStructuredReport` (v1.5.0+)
+
+In addition to `onDetectorReport(String, String)`, listeners receive a richer callback with the parsed severity:
+
+```java
+@Override
+public void onStructuredReport(String detectorName, IssueSeverity severity, String report) {
+    if (severity == IssueSeverity.CRITICAL || severity == IssueSeverity.HIGH) {
+        alertChannel.send("[" + severity + "] " + detectorName + ": " + report);
+    }
+}
+```
+
+Both `onDetectorReport` and `onStructuredReport` are fired for every finding. Existing listeners that don't override `onStructuredReport` receive a no-op default — no migration needed.
+
+---
+
+## CI/CD Integration & Reporting (v1.5.0+)
+
+async-test ships three ready-made listeners in `se.deversity.asynctest.report` for CI pipeline integration. Full details in [CI_INTEGRATION.md](CI_INTEGRATION.md).
+
+### JUnitXmlReportListener
+
+Writes detector findings to a JUnit-compatible XML file that GitHub Actions, Jenkins, and GitLab CI can parse as named test-case failures — not just stderr noise.
+
+```java
+@BeforeAll
+static void setup() {
+    AsyncTestListenerRegistry.register(new JUnitXmlReportListener());
+}
+```
+
+Output: `target/async-test-reports/TEST-AsyncTestConcurrencyReport.xml` (Maven) or `build/async-test-reports/…` (Gradle).
+
+**GitHub Actions snippet:**
+```yaml
+- name: Upload async-test reports
+  uses: actions/upload-artifact@v4
+  if: always()
+  with:
+    name: async-test-concurrency-reports
+    path: target/async-test-reports/
+```
+
+### StrictModeListener
+
+Fails the test immediately when any detector fires. Use this in zero-tolerance pipelines where concurrency warnings must always break the build.
+
+```java
+@BeforeAll
+static void setup() {
+    AsyncTestListenerRegistry.register(new StrictModeListener());
+}
+```
+
+### JsonReportListener
+
+Writes a structured JSON file consumed by the [IntelliJ IDEA Plugin](#intellij-idea-plugin-v150) and any dashboard or webhook that understands JSON.
+
+```java
+@BeforeAll
+static void setup() {
+    AsyncTestListenerRegistry.register(new JsonReportListener());
+}
+```
+
+Output format:
+```json
+{
+  "asyncTestVersion": "1.5.0",
+  "generatedAt": "2026-05-16T10:30:00Z",
+  "totalFindings": 1,
+  "findings": [
+    {
+      "detectorName": "FalseSharingDetector",
+      "severity": "HIGH",
+      "timestampMs": 1747382000000,
+      "report": "..."
+    }
+  ]
+}
+```
+
+### Combining listeners
+
+```java
+@BeforeAll
+static void setup() {
+    AsyncTestListenerRegistry.register(new JsonReportListener());     // IntelliJ plugin
+    AsyncTestListenerRegistry.register(new JUnitXmlReportListener()); // CI XML dashboard
+    // AsyncTestListenerRegistry.register(new StrictModeListener());  // fail on any finding
+}
+```
+
+---
+
+## IntelliJ IDEA Plugin (v1.5.0+)
+
+The async-test IntelliJ plugin reads `async-test-report.json` and surfaces every finding inside the IDE — no terminal, no log-grepping.
+
+### Setup
+
+1. Register `JsonReportListener` in your tests (see above).
+2. Build and install the plugin:
+   ```bash
+   cd intellij-plugin
+   ./gradlew buildPlugin
+   # Then: Settings → Plugins → ⚙ → Install Plugin from Disk…
+   ```
+3. Run your tests. Open **View → Tool Windows → async-test Findings**.
+
+### What you see
+
+The tool window shows a table of findings with severity-coloured rows (CRITICAL = red, HIGH = orange, MEDIUM = yellow, LOW = green). Click any row to expand the full detector report in a detail pane. Hit **Refresh** after re-running tests to reload the report.
+
+See [intellij-plugin/README.md](../intellij-plugin/README.md) for full installation, configuration, and troubleshooting details.
 
 ---
 

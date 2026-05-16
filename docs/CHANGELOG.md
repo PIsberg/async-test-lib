@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-05-16
+
+### Added
+
+#### CI/CD-native fail gates (`se.deversity.asynctest.report`)
+
+Three new listener implementations make it straightforward to wire async-test into CI pipelines
+and IDE tooling without writing custom code.
+
+- **`JUnitXmlReportListener`** — accumulates detector findings during a test run and writes a
+  JUnit-compatible XML report to `target/async-test-reports/TEST-AsyncTestConcurrencyReport.xml`
+  (Maven) or `build/async-test-reports/…` (Gradle). GitHub Actions, Jenkins, and GitLab CI
+  parse this file and surface each finding as a named test-case failure in their dashboards.
+  The report is flushed automatically via a JVM shutdown hook, or immediately via `flush()`.
+
+- **`StrictModeListener`** — converts any detector report into an immediate `AssertionError`.
+  Register this in zero-tolerance pipelines where concurrency findings must always break the build,
+  not just log to stderr.
+
+- **`JsonReportListener`** — writes a structured JSON file (`async-test-report.json`) containing
+  detector name, `IssueSeverity` enum value, full report text, and a Unix timestamp for each
+  finding. Consumed by the new IntelliJ IDEA plugin and any dashboard or alerting webhook that
+  understands JSON.
+
+- **`DetectorFinding`** — immutable value object shared by both report listeners. Captures
+  detector name, severity (parsed from `IssueSeverity` emoji/keyword markers in the report text),
+  full report, and timestamp.
+
+See [CI_INTEGRATION.md](CI_INTEGRATION.md) for GitHub Actions, Jenkins, and GitLab CI snippets.
+
+#### Structured listener event: `onStructuredReport` (v1.5.0)
+
+`AsyncTestListener` gains a new default method:
+
+```java
+default void onStructuredReport(String detectorName, IssueSeverity severity, String report) {}
+```
+
+`AsyncTestListenerRegistry.fireDetectorReport` now also parses severity from the report text and
+fires `onStructuredReport` alongside the existing `onDetectorReport`. Existing implementations
+that do not override the new method receive a no-op default — **no migration required**.
+
+#### IntelliJ IDEA plugin
+
+A standalone Gradle module (`intellij-plugin/`) targeting IntelliJ IDEA 2024.1+:
+
+- **async-test Findings tool window** — docked at the bottom panel; shows a severity-coloured
+  table of findings (CRITICAL = red, HIGH = orange, MEDIUM = yellow, LOW = green).
+- **Expandable detail pane** — click any row to see the full detector report.
+- **Summary bar** — displays finding counts broken down by severity level.
+- **Refresh action** — available in Tools menu and the tool window toolbar; re-reads the JSON
+  report file on demand after tests are re-run.
+- **Settings panel** — Settings → Tools → async-test; configurable report file path supporting
+  both Maven and Gradle output directories.
+
+Build and install: `cd intellij-plugin && ./gradlew buildPlugin`, then install from disk in
+IntelliJ's Plugin settings. See [intellij-plugin/README.md](../intellij-plugin/README.md).
+
+#### Documentation
+
+- [CI_INTEGRATION.md](CI_INTEGRATION.md) — full setup guide with workflow snippets for GitHub
+  Actions, Jenkins, and GitLab CI; covers all three listener types and combining strategies.
+- [intellij-plugin/README.md](../intellij-plugin/README.md) — plugin installation, setup,
+  tool window walkthrough, settings reference, and troubleshooting.
+
+### Changed
+
+- `AsyncTestListenerRegistry.fireDetectorReport` now also parses `IssueSeverity` from the report
+  text and calls `listener.onStructuredReport(detectorName, severity, report)` for every
+  registered listener. The existing `onDetectorReport` call is unchanged.
+
 ## [1.4.0] - 2026-05-15
 
 ### Added
