@@ -3,7 +3,6 @@ package se.deversity.asynctest.report;
 import se.deversity.asynctest.AsyncTestListener;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -56,7 +55,7 @@ public final class JsonReportListener implements AsyncTestListener {
     private static final String REPORT_FILENAME = "async-test-report.json";
     private static final String VERSION = "1.5.0";
 
-    private final List<StructuredFinding> findings = new CopyOnWriteArrayList<>();
+    private final List<DetectorFinding> findings = new CopyOnWriteArrayList<>();
     private final String outputDir;
     private final AtomicBoolean flushed = new AtomicBoolean(false);
 
@@ -65,7 +64,7 @@ public final class JsonReportListener implements AsyncTestListener {
      * Registers a JVM shutdown hook to flush the report automatically.
      */
     public JsonReportListener() {
-        this(resolveDefaultOutputDir(), true);
+        this(ReportListeners.resolveDefaultOutputDir(), true);
     }
 
     /**
@@ -92,8 +91,7 @@ public final class JsonReportListener implements AsyncTestListener {
 
     @Override
     public void onStructuredReport(String detectorName, IssueSeverity severity, String report) {
-        findings.add(new StructuredFinding(detectorName, severity.name(), report,
-            System.currentTimeMillis()));
+        findings.add(new DetectorFinding(detectorName, severity, report, System.currentTimeMillis()));
     }
 
     /**
@@ -125,23 +123,24 @@ public final class JsonReportListener implements AsyncTestListener {
         return findings.size();
     }
 
-    private static void writeJson(Path jsonFile, List<StructuredFinding> snapshot) throws IOException {
-        StringBuilder sb = new StringBuilder(512);
+    private static void writeJson(Path jsonFile, List<DetectorFinding> snapshot) throws IOException {
+        int count = snapshot.size();
+        StringBuilder sb = new StringBuilder(Math.max(1024, count * 300));
         sb.append("{\n");
         sb.append("  \"asyncTestVersion\": ").append(jsonString(VERSION)).append(",\n");
         sb.append("  \"generatedAt\": ").append(jsonString(Instant.now().toString())).append(",\n");
-        sb.append("  \"totalFindings\": ").append(snapshot.size()).append(",\n");
+        sb.append("  \"totalFindings\": ").append(count).append(",\n");
         sb.append("  \"findings\": [\n");
 
-        for (int i = 0; i < snapshot.size(); i++) {
-            StructuredFinding f = snapshot.get(i);
+        for (int i = 0; i < count; i++) {
+            DetectorFinding f = snapshot.get(i);
             sb.append("    {\n");
             sb.append("      \"detectorName\": ").append(jsonString(f.detectorName)).append(",\n");
-            sb.append("      \"severity\": ").append(jsonString(f.severity)).append(",\n");
+            sb.append("      \"severity\": ").append(jsonString(f.severity.name())).append(",\n");
             sb.append("      \"timestampMs\": ").append(f.timestampMs).append(",\n");
             sb.append("      \"report\": ").append(jsonString(f.report)).append("\n");
             sb.append("    }");
-            if (i < snapshot.size() - 1) sb.append(",");
+            if (i < count - 1) sb.append(",");
             sb.append("\n");
         }
 
@@ -153,18 +152,26 @@ public final class JsonReportListener implements AsyncTestListener {
 
     private static String jsonString(String s) {
         if (s == null) return "null";
-        return "\"" + s.replace("\\", "\\\\")
-                       .replace("\"", "\\\"")
-                       .replace("\n", "\\n")
-                       .replace("\r", "\\r")
-                       .replace("\t", "\\t") + "\"";
+        StringBuilder sb = new StringBuilder(s.length() + 2);
+        sb.append('"');
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\\' -> sb.append("\\\\");
+                case '"'  -> sb.append("\\\"");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                default -> {
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+                }
+            }
+        }
+        sb.append('"');
+        return sb.toString();
     }
-
-    private static String resolveDefaultOutputDir() {
-        if (new File("target").isDirectory()) return "target/async-test-reports";
-        if (new File("build").isDirectory())  return "build/async-test-reports";
-        return "async-test-reports";
-    }
-
-    private record StructuredFinding(String detectorName, String severity, String report, long timestampMs) {}
 }

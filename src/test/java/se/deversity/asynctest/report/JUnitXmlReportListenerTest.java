@@ -2,6 +2,7 @@ package se.deversity.asynctest.report;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import se.deversity.asynctest.diagnostics.IssueSeverity;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -23,17 +24,18 @@ class JUnitXmlReportListenerTest {
     }
 
     @Test
-    void onDetectorReport_incrementsFindingCount() {
+    void onStructuredReport_incrementsFindingCount() {
         JUnitXmlReportListener listener = new JUnitXmlReportListener(tempDir.toString(), false);
-        listener.onDetectorReport("FalseSharingDetector", "False sharing detected");
-        listener.onDetectorReport("DeadlockDetector", "Deadlock detected");
+        listener.onStructuredReport("FalseSharingDetector", IssueSeverity.HIGH, "False sharing detected");
+        listener.onStructuredReport("DeadlockDetector", IssueSeverity.CRITICAL, "Deadlock detected");
         assertEquals(2, listener.getFindingCount());
     }
 
     @Test
     void flush_writesXmlFile() throws IOException {
         JUnitXmlReportListener listener = new JUnitXmlReportListener(tempDir.toString(), false);
-        listener.onDetectorReport("FalseSharingDetector", "False sharing detected in field 'counter'");
+        listener.onStructuredReport("FalseSharingDetector", IssueSeverity.HIGH,
+            "False sharing detected in field 'counter'");
 
         Path result = listener.flush();
 
@@ -44,7 +46,7 @@ class JUnitXmlReportListenerTest {
     @Test
     void flush_xmlContainsTestsuite() throws IOException {
         JUnitXmlReportListener listener = new JUnitXmlReportListener(tempDir.toString(), false);
-        listener.onDetectorReport("VisibilityMonitor", "Visibility issue detected");
+        listener.onStructuredReport("VisibilityMonitor", IssueSeverity.HIGH, "Visibility issue detected");
 
         Path result = listener.flush();
         String xml = Files.readString(result, StandardCharsets.UTF_8);
@@ -57,7 +59,7 @@ class JUnitXmlReportListenerTest {
     @Test
     void flush_xmlContainsDetectorName() throws IOException {
         JUnitXmlReportListener listener = new JUnitXmlReportListener(tempDir.toString(), false);
-        listener.onDetectorReport("ReentrantLockDetector", "Lock acquired unfairly");
+        listener.onStructuredReport("ReentrantLockDetector", IssueSeverity.HIGH, "Lock acquired unfairly");
 
         Path result = listener.flush();
         String xml = Files.readString(result, StandardCharsets.UTF_8);
@@ -72,7 +74,7 @@ class JUnitXmlReportListenerTest {
     void flush_xmlContainsReportContent() throws IOException {
         JUnitXmlReportListener listener = new JUnitXmlReportListener(tempDir.toString(), false);
         String report = "Thread t1 acquired lock A before lock B, violating established order";
-        listener.onDetectorReport("LockOrderValidator", report);
+        listener.onStructuredReport("LockOrderValidator", IssueSeverity.HIGH, report);
 
         Path result = listener.flush();
         String xml = Files.readString(result, StandardCharsets.UTF_8);
@@ -83,9 +85,9 @@ class JUnitXmlReportListenerTest {
     @Test
     void flush_multipleFindings_allIncluded() throws IOException {
         JUnitXmlReportListener listener = new JUnitXmlReportListener(tempDir.toString(), false);
-        listener.onDetectorReport("DetectorA", "Report A");
-        listener.onDetectorReport("DetectorB", "Report B");
-        listener.onDetectorReport("DetectorC", "Report C");
+        listener.onStructuredReport("DetectorA", IssueSeverity.HIGH, "Report A");
+        listener.onStructuredReport("DetectorB", IssueSeverity.MEDIUM, "Report B");
+        listener.onStructuredReport("DetectorC", IssueSeverity.LOW, "Report C");
 
         Path result = listener.flush();
         String xml = Files.readString(result, StandardCharsets.UTF_8);
@@ -100,12 +102,12 @@ class JUnitXmlReportListenerTest {
     @Test
     void flush_idempotent_secondCallDoesNothing() throws IOException {
         JUnitXmlReportListener listener = new JUnitXmlReportListener(tempDir.toString(), false);
-        listener.onDetectorReport("SomeDetector", "Some report");
+        listener.onStructuredReport("SomeDetector", IssueSeverity.HIGH, "Some report");
 
         Path first = listener.flush();
         assertNotNull(first);
 
-        listener.onDetectorReport("AnotherDetector", "Another report");
+        listener.onStructuredReport("AnotherDetector", IssueSeverity.MEDIUM, "Another report");
         Path second = listener.flush();
         assertNull(second, "Second flush() call should be a no-op");
 
@@ -117,7 +119,7 @@ class JUnitXmlReportListenerTest {
     @Test
     void flush_xmlEscapesSpecialChars() throws IOException {
         JUnitXmlReportListener listener = new JUnitXmlReportListener(tempDir.toString(), false);
-        listener.onDetectorReport("Detector<A>&B\"", "Normal report content");
+        listener.onStructuredReport("Detector<A>&B\"", IssueSeverity.HIGH, "Normal report content");
 
         Path result = listener.flush();
         String xml = Files.readString(result, StandardCharsets.UTF_8);
@@ -127,39 +129,35 @@ class JUnitXmlReportListenerTest {
     }
 
     @Test
-    void severityParsed_criticalInReport() {
-        DetectorFinding finding = new DetectorFinding("D", "🔴 CRITICAL: deadlock imminent", 0L);
-        assertEquals("CRITICAL", finding.severity);
+    void fromReport_critical() {
+        assertEquals(IssueSeverity.CRITICAL, IssueSeverity.fromReport("🔴 CRITICAL: deadlock imminent"));
     }
 
     @Test
-    void severityParsed_highInReport() {
-        DetectorFinding finding = new DetectorFinding("D", "🟠 HIGH: data corruption possible", 0L);
-        assertEquals("HIGH", finding.severity);
+    void fromReport_high() {
+        assertEquals(IssueSeverity.HIGH, IssueSeverity.fromReport("🟠 HIGH: data corruption possible"));
     }
 
     @Test
-    void severityParsed_mediumInReport() {
-        DetectorFinding finding = new DetectorFinding("D", "🟡 MEDIUM: performance issue", 0L);
-        assertEquals("MEDIUM", finding.severity);
+    void fromReport_medium() {
+        assertEquals(IssueSeverity.MEDIUM, IssueSeverity.fromReport("🟡 MEDIUM: performance issue"));
     }
 
     @Test
-    void severityParsed_lowInReport() {
-        DetectorFinding finding = new DetectorFinding("D", "🟢 LOW: minor inefficiency", 0L);
-        assertEquals("LOW", finding.severity);
+    void fromReport_low() {
+        assertEquals(IssueSeverity.LOW, IssueSeverity.fromReport("🟢 LOW: minor inefficiency"));
     }
 
     @Test
-    void severityParsed_unknownDefaultsToHigh() {
-        DetectorFinding finding = new DetectorFinding("D", "Something went wrong", 0L);
-        assertEquals("HIGH", finding.severity);
+    void fromReport_unknownDefaultsToHigh() {
+        assertEquals(IssueSeverity.HIGH, IssueSeverity.fromReport("Something went wrong"));
     }
 
     @Test
     void flush_xmlContainsSeverityInMessage() throws IOException {
         JUnitXmlReportListener listener = new JUnitXmlReportListener(tempDir.toString(), false);
-        listener.onDetectorReport("DeadlockDetector", "🔴 CRITICAL: Thread deadlock detected");
+        listener.onStructuredReport("DeadlockDetector", IssueSeverity.CRITICAL,
+            "🔴 CRITICAL: Thread deadlock detected");
 
         Path result = listener.flush();
         String xml = Files.readString(result, StandardCharsets.UTF_8);

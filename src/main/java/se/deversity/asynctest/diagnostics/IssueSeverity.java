@@ -89,4 +89,21 @@ public enum IssueSeverity {
     public String format() {
         return getAnsiColor() + label + getAnsiReset();
     }
+
+    /**
+     * Infers the severity from a detector report string by scanning for
+     * {@link IssueSeverity} emoji/keyword markers. Defaults to {@link #HIGH} when
+     * no marker is present, matching the assumption that untagged reports are significant.
+     *
+     * @param report the raw report text produced by a detector; {@code null} is treated as empty
+     * @return the matched severity, or {@link #HIGH} if none is found
+     */
+    public static IssueSeverity fromReport(String report) {
+        if (report == null || report.isEmpty()) return HIGH;
+        if (report.contains("CRITICAL") || report.contains("🔴")) return CRITICAL;
+        if (report.contains("HIGH")     || report.contains("🟠")) return HIGH;
+        if (report.contains("MEDIUM")   || report.contains("🟡")) return MEDIUM;
+        if (report.contains("LOW")      || report.contains("🟢")) return LOW;
+        return HIGH;
+    }
 }
