@@ -65,7 +65,7 @@ jobs:
 
       - name: Open PR if GIF changed
         run: |
-          if ! git diff --quiet docs/diagrams/demo.gif; then
+          if git status --porcelain docs/diagrams/demo.cast docs/diagrams/demo.gif | grep -q .; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             BRANCH="chore/update-demo-gif-$(date +%Y%m%d-%H%M%S)"
