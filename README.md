@@ -1,6 +1,6 @@
 <div align="center">
 
-# async-test
+# async-test-lib
 
 **JUnit 5 concurrency stress testing — one annotation, 69+ detectors**
 
