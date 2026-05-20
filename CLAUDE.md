@@ -59,6 +59,12 @@
     <element path="se.deversity.asynctest.benchmark.BenchmarkRecorder">
       <constraint>recordInvocationStart() and recordInvocationEnd() are called on the hot path inside every invocation round. Keep them allocation-free and avoid acquiring locks in the common case.</constraint>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.SiteCapture">
+      <constraint>Called from detector recordAccess paths; do not allocate when a site is already captured for a given key.</constraint>
+    </element>
+    <element path="se.deversity.asynctest.spi.adapters.LegacyDetectorAdapter">
+      <constraint>analyze() does Method.getMethod + invoke each call; only invoked once per round per detector, not on the hot recordAccess path. If profiling shows reflection overhead, cache the Method handles in the constructor.</constraint>
+    </element>
   </performance_constraints>
 
 <rule>Elements listed in <performance_constraints> are on a hot path. Never introduce O(n²) or worse complexity. Always reason about time and space complexity before suggesting changes.</rule>
@@ -157,6 +163,11 @@
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/CyclicBarrierDetectorTest.java</test_location>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/DaemonThreadHygieneDetectorTest.java</test_location>
+    </element>
     <element path="se.deversity.asynctest.diagnostics.DeprecatedThreadApiDetector">
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
@@ -212,6 +223,11 @@
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/InterruptSwallowingDetectorTest.java</test_location>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/JdbcConnectionSharedDetectorTest.java</test_location>
+    </element>
     <element path="se.deversity.asynctest.diagnostics.LazyInitRaceDetector">
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
@@ -251,6 +267,11 @@
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/NestedMonitorLockoutDetectorTest.java</test_location>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/NotifyWithoutMonitorDetectorTest.java</test_location>
     </element>
     <element path="se.deversity.asynctest.diagnostics.OptimisticReadValidationDetector">
       <coverage_goal>80</coverage_goal>
@@ -326,6 +347,11 @@
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/SharedRandomDetectorTest.java</test_location>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.SharedSecureRandomDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/SharedSecureRandomDetectorTest.java</test_location>
     </element>
     <element path="se.deversity.asynctest.diagnostics.SharedTimeZoneDetector">
       <coverage_goal>80</coverage_goal>
@@ -467,39 +493,207 @@
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/WaitTimeoutDetectorTest.java</test_location>
     </element>
-    <element path="se.deversity.asynctest.diagnostics.WeakReferenceRaceDetector">
-      <coverage_goal>80</coverage_goal>
-      <frameworks>JUNIT_5</frameworks>
-      <test_location>src/test/java/se/deversity/asynctest/diagnostics/WeakReferenceRaceDetectorTest.java</test_location>
-    </element>
-    <element path="se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector">
-      <coverage_goal>80</coverage_goal>
-      <frameworks>JUNIT_5</frameworks>
-      <test_location>src/test/java/se/deversity/asynctest/diagnostics/DaemonThreadHygieneDetectorTest.java</test_location>
-    </element>
-    <element path="se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector">
-      <coverage_goal>80</coverage_goal>
-      <frameworks>JUNIT_5</frameworks>
-      <test_location>src/test/java/se/deversity/asynctest/diagnostics/NotifyWithoutMonitorDetectorTest.java</test_location>
-    </element>
-    <element path="se.deversity.asynctest.diagnostics.SharedSecureRandomDetector">
-      <coverage_goal>80</coverage_goal>
-      <frameworks>JUNIT_5</frameworks>
-      <test_location>src/test/java/se/deversity/asynctest/diagnostics/SharedSecureRandomDetectorTest.java</test_location>
-    </element>
     <element path="se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector">
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/WeakHashMapSharedDetectorTest.java</test_location>
     </element>
-    <element path="se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector">
+    <element path="se.deversity.asynctest.diagnostics.WeakReferenceRaceDetector">
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
-      <test_location>src/test/java/se/deversity/asynctest/diagnostics/JdbcConnectionSharedDetectorTest.java</test_location>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/WeakReferenceRaceDetectorTest.java</test_location>
     </element>
   </test_driven_requirements>
 
 <rule>For any element listed in <test_driven_requirements>, you MUST provide both the implementation change AND the corresponding test code update in a single response. Changes without tests are incomplete and must not be proposed.</rule>
+  <thread_safe_elements>
+    <element path="se.deversity.asynctest.AsyncTestContext">
+      <strategy>THREAD_LOCAL</strategy>
+      <note>CURRENT ThreadLocal maintains context per active test thread symmetrically.</note>
+    </element>
+    <element path="se.deversity.asynctest.DetectorRegistry">
+      <strategy>SYNCHRONIZED</strategy>
+      <note>Guards conditional access to internal detector initialization and phase blocks.</note>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector">
+      <strategy>OTHER</strategy>
+      <note>Per-thread access map is a ConcurrentHashMap; first-registration-wins via putIfAbsent.</note>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector">
+      <strategy>OTHER</strategy>
+      <note>ConcurrentHashMap-backed JDBC-resource tracking; per-resource State holds ConcurrentHashMap.newKeySet() for accessing threads.</note>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector">
+      <strategy>SYNCHRONIZED</strategy>
+      <note>Attempts list mutated under a single intrinsic monitor on the list itself; sampling Thread.holdsLock requires no locking.</note>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.SharedSecureRandomDetector">
+      <strategy>OTHER</strategy>
+      <note>Per-instance state in ConcurrentHashMap with double-check (get-then-computeIfAbsent) hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().</note>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector">
+      <strategy>OTHER</strategy>
+      <note>ConcurrentHashMap-backed instance tracking; per-instance State holds ConcurrentHashMap.newKeySet() for thread ids/names.</note>
+    </element>
+    <element path="se.deversity.asynctest.runner.ConcurrencyRunner">
+      <strategy>OTHER</strategy>
+      <note>Coordinates concurrency using CyclicBarrier to maximize thread contention.</note>
+    </element>
+    <element path="se.deversity.asynctest.runner.LicenseGuard">
+      <strategy>OTHER</strategy>
+      <note>ConcurrentHashMap.computeIfAbsent guarantees at-most-once gate execution per fingerprint under contention; volatile announce flags collapse the GRANTED/CI banner to once-per-JVM.</note>
+    </element>
+    <element path="se.deversity.asynctest.spi.DetectorRegistry">
+      <strategy>IMMUTABLE</strategy>
+      <note>All public methods are read-only views over an EnumMap populated once at construction.</note>
+    </element>
+  </thread_safe_elements>
+
+<rule>Elements listed in <thread_safe_elements> are explicitly designed to be thread-safe via the named strategy. Any modification MUST preserve the synchronization invariant and document its reasoning in the change description.</rule>
+  <immutable_types>
+    <type path="se.deversity.asynctest.AsyncTestConfig">
+      <note>Immutable snapshot of @AsyncTest parameters to ensure thread safety.</note>
+    </type>
+    <type path="se.deversity.asynctest.Preset">
+      <note>Enum constants — JVM guarantees structural immutability. Internal enabled-set is captured at class init.</note>
+    </type>
+    <type path="se.deversity.asynctest.diagnostics.SiteCapture.Site">
+      <note>Java record — fields are final by language; types are all primitives or String.</note>
+    </type>
+    <type path="se.deversity.asynctest.report.Violation">
+      <note>Java record — fields are final by language. Collection fields are deep-copied to immutable views in the canonical constructor.</note>
+    </type>
+    <type path="se.deversity.asynctest.spi.DetectorRegistry">
+      <note>Effectively immutable after build() — the EnumMap is populated only in the private constructor and never mutated thereafter; safe to publish to multiple threads.</note>
+    </type>
+  </immutable_types>
+
+<rule>Types listed in <immutable_types> are immutable by design. Never introduce non-final fields, setters, or methods that mutate instance state.</rule>
+  <observability_instrumentation>
+    <element path="se.deversity.asynctest.benchmark.BenchmarkRecorder">
+      <metric>benchmark.invocation.times</metric>
+      <log>[BENCHMARK] Baseline created</log>
+      <log>[BENCHMARK] Baseline updated</log>
+      <log>[BENCHMARK] STABLE</log>
+      <log>[BENCHMARK] REGRESSION</log>
+      <log>[BENCHMARK] IMPROVEMENT</log>
+      <note>Hot path telemetry used by JUnit benchmark metrics and baseline regression checks.</note>
+    </element>
+  </observability_instrumentation>
+
+<rule>Elements listed in <observability_instrumentation> publish metrics, traces, or log statements that downstream dashboards and alerts depend on. Never remove or rename instrumentation without flagging the corresponding dashboard update.</rule>
+  <public_api_elements>
+    <element path="se.deversity.asynctest.AsyncAssert">
+      <api>public</api>
+    </element>
+    <element path="se.deversity.asynctest.AsyncTest">
+      <api>public</api>
+    </element>
+    <element path="se.deversity.asynctest.AsyncTestContext">
+      <api>public</api>
+    </element>
+    <element path="se.deversity.asynctest.AsyncTestContext.sharedMessageDigestDetector()">
+      <api>public</api>
+    </element>
+    <element path="se.deversity.asynctest.AsyncTestContext.sharedCryptographyDetector()">
+      <api>public</api>
+    </element>
+    <element path="se.deversity.asynctest.AsyncTestListener">
+      <api>public</api>
+    </element>
+    <element path="se.deversity.asynctest.AsyncTestListenerRegistry">
+      <api>public</api>
+    </element>
+    <element path="se.deversity.asynctest.Preset">
+      <api>public</api>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.SiteCapture.Site">
+      <api>public</api>
+    </element>
+    <element path="se.deversity.asynctest.extension.AsyncTestExtension">
+      <api>public</api>
+    </element>
+    <element path="se.deversity.asynctest.report.Formatter">
+      <api>public</api>
+    </element>
+    <element path="se.deversity.asynctest.report.JsonFormatter">
+      <api>public</api>
+    </element>
+    <element path="se.deversity.asynctest.report.MarkdownFormatter">
+      <api>public</api>
+    </element>
+    <element path="se.deversity.asynctest.report.Violation">
+      <api>public</api>
+    </element>
+    <element path="se.deversity.asynctest.spi.Detector">
+      <api>public</api>
+    </element>
+    <element path="se.deversity.asynctest.spi.DetectorFactory">
+      <api>public</api>
+    </element>
+    <element path="se.deversity.asynctest.spi.DetectorRegistry">
+      <api>public</api>
+    </element>
+  </public_api_elements>
+
+<rule>Elements in <public_api_elements> expose public API. Preserve public signature, Javadoc, and backwards compatibility without exceptions.</rule>
+  <idempotent_elements>
+    <element path="se.deversity.asynctest.AsyncTestContext.uninstall()">
+      <idempotent>true</idempotent>
+      <reason>ThreadLocal.remove() is documented as a no-op when the thread has no value set; the install/uninstall symmetry rule (CLAUDE.md) tolerates extra uninstalls. ConcurrencyRunner relies on this in its outermost-finally cleanup.</reason>
+    </element>
+    <element path="se.deversity.asynctest.AsyncTestListenerRegistry.Registration.close()">
+      <idempotent>true</idempotent>
+      <reason>Guarded by the `closed` volatile flag; second close() returns early before touching the registry. Covered by `registrationClose_isIdempotent` test.</reason>
+    </element>
+    <element path="se.deversity.asynctest.AsyncTestListenerRegistry.unregister(se.deversity.asynctest.AsyncTestListener)">
+      <idempotent>true</idempotent>
+      <reason>Backed by List.remove which is a no-op when the listener is absent; second call returns false but produces no observable side effect.</reason>
+    </element>
+    <element path="se.deversity.asynctest.AsyncTestListenerRegistry.clearAll()">
+      <idempotent>true</idempotent>
+      <reason>List.clear() on an already-empty list is a no-op; repeated calls have identical observable effect (empty registry).</reason>
+    </element>
+    <element path="se.deversity.asynctest.runner.LicenseGuard.check(se.deversity.asynctest.AsyncTestConfig)">
+      <idempotent>true</idempotent>
+      <reason>ConcurrentHashMap.computeIfAbsent guarantees the underlying gate.check fires at most once per Fingerprint; repeat calls return immediately. Denied results consistently throw SecurityException for the same fingerprint.</reason>
+    </element>
+    <element path="se.deversity.asynctest.spi.DetectorRegistry.analyzeAll()">
+      <idempotent>true</idempotent>
+      <reason>Each Detector.analyze() must return the same violations for the same observed state (the SPI contract). Calling analyzeAll() N times on a quiescent registry yields N identical lists; do not introduce stateful side-effects in analyze().</reason>
+    </element>
+  </idempotent_elements>
+
+<rule>Operations listed in <idempotent_elements> must remain idempotent. Never introduce side effects that cause repeated invocations to produce different results.</rule>
+  <feature_flag_elements>
+    <element path="se.deversity.asynctest.AsyncTestConfig.enableBenchmarking">
+      <flag>async-test.benchmarking.enabled</flag>
+      <default_value>false</default_value>
+    </element>
+    <element path="se.deversity.asynctest.AsyncTestConfig.licenseMockMode">
+      <flag>license.mock.mode</flag>
+      <default_value>false</default_value>
+    </element>
+    <element path="se.deversity.asynctest.benchmark.BenchmarkRecorder">
+      <flag>async-test.benchmarking.enabled</flag>
+      <default_value>false</default_value>
+    </element>
+  </feature_flag_elements>
+
+<rule>Elements listed in <feature_flag_elements> are gated by a feature flag. Always preserve the flag check — never assume the flag is always active.</rule>
+  <security_elements>
+    <element path="se.deversity.asynctest.diagnostics.SharedMessageDigestDetector">
+      <aspect>cryptography (hash integrity / MAC / signature state)</aspect>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.SharedSecureRandomDetector">
+      <aspect>cryptography (RNG quality)</aspect>
+    </element>
+    <element path="se.deversity.asynctest.runner.LicenseGuard">
+      <aspect>authorization</aspect>
+    </element>
+  </security_elements>
+
+<rule>Elements listed in <security_elements> are security-critical. Never weaken their security properties. Every proposed change must be explicitly reviewed for security impact.</rule>
 </project_guardrails>
 
 <rule>Never propose edits to files listed in <locked_files>.</rule>

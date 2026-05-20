@@ -13,3 +13,4 @@ build/
 # VibeTags generated artifacts
 vibetags.log
 .vibetags-cache
+.vibetags-mod-*
