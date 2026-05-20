@@ -18,7 +18,10 @@
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>5.10.2</junit.version>
-        <async-test-lib.version>1.0.0</async-test-lib.version>
+        <!-- MUST match the parent project's <version>. The example uses APIs from
+             the in-progress source; run `mvn install -DskipTests` at the project
+             root first so ~/.m2 has the resolvable artifact. -->
+        <async-test-lib.version>1.4.0</async-test-lib.version>
     </properties>
 
     <dependencies>
@@ -51,6 +54,12 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
+                <configuration>
+                    <systemPropertyVariables>
+                        <!-- Skip the LicenseGuard network gate (example runs offline) -->
+                        <license.mock.mode>true</license.mock.mode>
+                    </systemPropertyVariables>
+                </configuration>
             </plugin>
         </plugins>
     </build>
