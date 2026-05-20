@@ -34,6 +34,7 @@ public class SharedMessageDigestDetector {
         final String      type;
         final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
+        final Set<SiteCapture.Site> accessSites = ConcurrentHashMap.newKeySet();
 
         DigestState(String name, String type) {
             this.name = name;
@@ -81,6 +82,9 @@ public class SharedMessageDigestDetector {
         }
         s.accessingThreadIds.add(thread.getId());
         s.accessingThreadNames.add(thread.getName());
+        // Capture the user-code site once per distinct call site. The Set's hashing
+        // gives us per-(class, line) dedupe so a tight loop doesn't accumulate frames.
+        SiteCapture.capture().ifPresent(s.accessSites::add);
     }
 
     /** @return report of JCA instances accessed from multiple threads */
@@ -114,6 +118,16 @@ public class SharedMessageDigestDetector {
                                     + "concurrent update()/digest() calls silently corrupt the hash state",
                             s.name, s.accessingThreadIds.size(),
                             String.join(", ", s.accessingThreadNames));
+                }
+                // Append source-line attribution if we captured at least one user-code frame.
+                // The set is already deduped by (class, line); a tight loop on one site
+                // contributes a single entry, multiple distinct sites all show.
+                if (!s.accessSites.isEmpty()) {
+                    StringBuilder sites = new StringBuilder("\n    Access sites:");
+                    for (SiteCapture.Site site : s.accessSites) {
+                        sites.append("\n      - ").append(site.render());
+                    }
+                    msg = msg + sites;
                 }
                 r.violations.add(msg);
             }

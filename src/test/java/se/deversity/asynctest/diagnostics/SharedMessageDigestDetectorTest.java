@@ -230,6 +230,26 @@ public class SharedMessageDigestDetectorTest {
     }
 
     @Test
+    void testReportIncludesSourceLineAttribution() throws Exception {
+        // Two distinct call sites on the same instance from two threads. The
+        // captured Set<Site> should dedupe by (class, line) and surface both
+        // sites in the toString().
+        var d = new SharedMessageDigestDetector();
+        MessageDigest md = sha256();
+        d.recordAccess(md, "sha-attr", Thread.currentThread()); // site A
+        Thread t = new Thread(() -> d.recordAccess(md, "sha-attr", Thread.currentThread())); // site B
+        t.start();
+        t.join();
+
+        String msg = d.analyze().violations.get(0);
+        // The report mentions "Access sites:" once the attribution block fires.
+        assertTrue(msg.contains("Access sites:"),
+                "Violation must include source-line attribution; got: " + msg);
+        assertTrue(msg.contains("SharedMessageDigestDetectorTest"),
+                "Site should name the user-code test class, not framework internals: " + msg);
+    }
+
+    @Test
     void testLabelFallbackOnlyEvaluatedOnFirstAccess() {
         // When name is null on first call, the fallback label is captured.
         // Subsequent calls with a different name MUST NOT mutate the stored label
