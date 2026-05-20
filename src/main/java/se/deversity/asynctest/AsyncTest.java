@@ -120,6 +120,25 @@ public @interface AsyncTest {
     boolean detectAll() default true;
 
     /**
+     * Curated detector bundle. Overrides {@link #detectAll()} and the per-flag
+     * boolean attributes when set to anything other than {@link Preset#ALL}.
+     *
+     * <ul>
+     *   <li>{@link Preset#ALL} — every detector (default; equivalent to legacy {@code detectAll = true}).</li>
+     *   <li>{@link Preset#ESSENTIALS} — ~12 high-signal detectors for everyday CI.</li>
+     *   <li>{@link Preset#STRICT} — same as ALL, named explicitly.</li>
+     *   <li>{@link Preset#CI_FAST} — minimal set for pull-request gates.</li>
+     *   <li>{@link Preset#NONE} — disable all detectors; concurrent execution only.</li>
+     * </ul>
+     *
+     * <p>{@link #excludes()} still applies on top of the preset, letting you trim
+     * one or two detectors from a curated bundle.
+     *
+     * @since 1.0.0
+     */
+    Preset preset() default Preset.ALL;
+
+    /**
      * Specific detectors to exclude when {@code detectAll = true}.
      * Use {@link DetectorType} to specify which detectors to skip.
      * <p>Example: {@code @AsyncTest(detectAll = true, excludes = {DetectorType.BUSY_WAITING})}

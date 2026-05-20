@@ -301,13 +301,32 @@ public final class AsyncTestConfig {
         // Check for global benchmarking system property
         boolean globalBenchmarkingEnabled = Boolean.getBoolean("async-test.benchmarking.enabled");
 
+        // Resolve preset → effective detectAll + excludes set.
+        // ALL/STRICT preserve the legacy detectAll behavior; other presets force
+        // detectAll = true but exclude every DetectorType outside the preset's
+        // enabled set so that build()'s detectAll loop activates only the
+        // selected detectors. User-supplied excludes() always layer on top.
+        Preset preset = ann.preset();
+        boolean effectiveDetectAll;
+        Set<DetectorType> effectiveExcludes = EnumSet.noneOf(DetectorType.class);
+        if (preset.isAll()) {
+            effectiveDetectAll = ann.detectAll();
+        } else {
+            effectiveDetectAll = true;
+            Set<DetectorType> enabled = preset.enabled();
+            for (DetectorType t : DetectorType.values()) {
+                if (!enabled.contains(t)) effectiveExcludes.add(t);
+            }
+        }
+        effectiveExcludes.addAll(Arrays.asList(ann.excludes()));
+
         return builder()
             .threads(threadsOverride)
             .invocations(ann.invocations())
             .useVirtualThreads(ann.useVirtualThreads())
             .timeoutMs(ann.timeoutMs())
             .virtualThreadStressMode(ann.virtualThreadStressMode())
-            .detectAll(ann.detectAll())
+            .detectAll(effectiveDetectAll)
             .detectDeadlocks(ann.detectDeadlocks())
             .detectVisibility(ann.detectVisibility())
             .detectLivelocks(ann.detectLivelocks())
@@ -413,7 +432,7 @@ public final class AsyncTestConfig {
             .lemonSqueezyStore(ann.lemonSqueezyStore())
             .licenseKey(ann.licenseKey())
             .licenseMockMode(ann.licenseMockMode())
-            .excludes(ann.excludes())
+            .excludes(effectiveExcludes.toArray(new DetectorType[0]))
             .build();
     }
 
