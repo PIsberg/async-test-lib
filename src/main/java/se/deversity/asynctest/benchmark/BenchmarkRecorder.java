@@ -1,8 +1,9 @@
 package se.deversity.asynctest.benchmark;
 
 import se.deversity.asynctest.AsyncTestConfig;
-import se.deversity.vibetags.annotations.AIPerformance;
+import se.deversity.vibetags.annotations.AIFeatureFlag;
 import se.deversity.vibetags.annotations.AIObservability;
+import se.deversity.vibetags.annotations.AIPerformance;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -20,6 +21,7 @@ import java.util.List;
     logs = {"[BENCHMARK] Baseline created", "[BENCHMARK] Baseline updated", "[BENCHMARK] STABLE", "[BENCHMARK] REGRESSION", "[BENCHMARK] IMPROVEMENT"},
     note = "Hot path telemetry used by JUnit benchmark metrics and baseline regression checks."
 )
+@AIFeatureFlag(flag = "async-test.benchmarking.enabled", defaultValue = false)
 public class BenchmarkRecorder {
 
     private static final String DEFAULT_BENCHMARK_STORE = "target/benchmark-data/baseline-store.dat";

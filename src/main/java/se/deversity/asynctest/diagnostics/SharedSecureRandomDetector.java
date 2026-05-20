@@ -1,6 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
 import se.deversity.asynctest.report.Violation;
+import se.deversity.vibetags.annotations.AISecure;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
@@ -51,6 +52,7 @@ import java.util.concurrent.ConcurrentHashMap;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedSecureRandomDetectorTest.java"
 )
+@AISecure(aspect = "cryptography (RNG quality)")
 public final class SharedSecureRandomDetector {
 
     private static final class State {

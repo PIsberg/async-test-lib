@@ -3,6 +3,7 @@ package se.deversity.asynctest;
 import se.deversity.asynctest.diagnostics.*;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICore;
+import se.deversity.vibetags.annotations.AIIdempotent;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
@@ -261,6 +262,7 @@ public final class AsyncTestContext {
     }
 
     /** Removes the context from the calling thread's ThreadLocal. */
+    @AIIdempotent(reason = "ThreadLocal.remove() is documented as a no-op when the thread has no value set; the install/uninstall symmetry rule (CLAUDE.md) tolerates extra uninstalls. ConcurrencyRunner relies on this in its outermost-finally cleanup.")
     public static void uninstall() {
         CURRENT.remove();
     }

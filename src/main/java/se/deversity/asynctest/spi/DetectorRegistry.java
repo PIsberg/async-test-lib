@@ -3,6 +3,7 @@ package se.deversity.asynctest.spi;
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.report.Violation;
+import se.deversity.vibetags.annotations.AIIdempotent;
 import se.deversity.vibetags.annotations.AIImmutable;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -81,6 +82,7 @@ public final class DetectorRegistry {
     }
 
     /** Aggregated violations from every active detector for the current round. */
+    @AIIdempotent(reason = "Each Detector.analyze() must return the same violations for the same observed state (the SPI contract). Calling analyzeAll() N times on a quiescent registry yields N identical lists; do not introduce stateful side-effects in analyze().")
     public List<Violation> analyzeAll() {
         List<Violation> out = new ArrayList<>();
         for (Detector d : byType.values()) {
