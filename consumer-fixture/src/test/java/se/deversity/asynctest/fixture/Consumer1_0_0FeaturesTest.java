@@ -171,14 +171,10 @@ class Consumer1_0_0FeaturesTest {
 
     // ---- 8) Phase 13 detectors: AsyncTestContext accessors compile + return ----
 
-    @AsyncTest(threads = 2, invocations = 1,
-               preset = Preset.NONE,
-               detectDaemonThreadHygiene = true,
-               detectNotifyWithoutMonitor = true,
-               detectSharedSecureRandom = true,
-               detectWeakHashMapShared = true,
-               detectJdbcConnectionShared = true,
-               licenseMockMode = true)
+    // Default Preset.ALL + detectAll=true enables every detector. Per-flag
+    // overrides under Preset.NONE don't work — the preset's effective excludes
+    // pin every type off before per-flag values are read.
+    @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true)
     void phase13_accessors_are_reachable() {
         assertNotNull(AsyncTestContext.daemonThreadHygieneDetector());
         assertNotNull(AsyncTestContext.notifyWithoutMonitorDetector());

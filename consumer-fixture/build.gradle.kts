@@ -18,7 +18,10 @@ repositories {
     mavenCentral()
 }
 
-val asyncTestVersion = "1.3.0"
+// MUST match the version in the parent's gradle.properties / pom.xml so that
+// `mvn install -DskipTests` (or `./gradlew publishToMavenLocal`) at the
+// project root makes the in-progress APIs resolvable here via mavenLocal().
+val asyncTestVersion = "1.4.0"
 val junitVersion = "6.0.3"
 
 dependencies {
@@ -33,6 +36,8 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    // Skip the LicenseGuard's network gate (the fixture is offline)
+    systemProperty("license.mock.mode", "true")
     // Enable benchmarking for all @AsyncTest tests in this module
     systemProperty("async-test.benchmarking.enabled", "true")
     // Benchmark regression threshold (20% default)
