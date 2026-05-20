@@ -19,7 +19,7 @@
 ## Why async-test?
 
 - **One annotation** — `@AsyncTest` hammers your code with N threads × M invocations using a `CyclicBarrier` to force maximum contention. No executor boilerplate, no manual `CountDownLatch`, no `Thread.join` loops.
-- **69+ detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types, and more — all off by default, all enabled with `detectAll = true`.
+- **100 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types, JDBC sharing, MessageDigest/SecureRandom integrity, and more — all on by default (`detectAll = true`), or pick a `Preset` for a curated subset.
 - **JUnit 5 native** — no agent, no bytecode weaving, no special JVM flags. Works anywhere JUnit 5 runs.
 - **CI-ready out of the box** — ship JUnit XML reports, machine-readable JSON, or `AssertionError` fail-gates directly to GitHub Actions, Jenkins, and GitLab CI.
 
@@ -36,7 +36,7 @@
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>1.4.0</version>
+    <version>1.5.0</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -44,7 +44,7 @@
 **Gradle** — add to `build.gradle.kts`:
 
 ```kotlin
-testImplementation("se.deversity.async-test-lib:async-test-lib:1.4.0")
+testImplementation("se.deversity.async-test-lib:async-test-lib:1.5.0")
 ```
 
 **Write your first stress test:**
@@ -277,7 +277,7 @@ More examples with runnable code: [examples/](examples/)
 
 ---
 
-## What's new in 1.0.0
+## What's new in 1.5.0
 
 This release introduces several APIs alongside the legacy detector flags. All are additive — existing tests keep working unchanged.
 

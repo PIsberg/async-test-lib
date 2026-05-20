@@ -24,7 +24,7 @@ import java.util.Set;
  * behavior. The other presets imply {@code detectAll = false} and enable only
  * the listed {@link DetectorType}s.
  *
- * @since 1.0.0
+ * @since 1.5.0
  */
 @AIPublicAPI
 @AIImmutable(note = "Enum constants — JVM guarantees structural immutability. Internal enabled-set is captured at class init.")

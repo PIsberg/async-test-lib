@@ -37,7 +37,7 @@ import java.util.List;
  * 1.0.0 cutover; existing detectors continue to work unchanged. New detectors
  * can be implemented either way.
  *
- * @since 1.0.0
+ * @since 1.5.0
  */
 @AIPublicAPI
 public interface Detector {

@@ -114,7 +114,7 @@ public class AsyncAssert {
      * @param timeout maximum time to wait
      * @param <T>     the chain's result type
      * @return the resolved value, or throws on failure / timeout
-     * @since 1.0.0
+     * @since 1.5.0
      */
     public static <T> T awaitAsync(CompletionStage<T> stage, Duration timeout) {
         if (stage == null) throw new IllegalArgumentException("stage must not be null");

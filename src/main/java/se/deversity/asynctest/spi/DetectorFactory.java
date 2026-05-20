@@ -14,7 +14,7 @@ import se.deversity.vibetags.annotations.AIPublicAPI;
  * <p>Register via {@code META-INF/services/se.deversity.asynctest.spi.DetectorFactory}
  * or {@code @AutoService(DetectorFactory.class)} at build time.
  *
- * @since 1.0.0
+ * @since 1.5.0
  */
 @AIPublicAPI
 public interface DetectorFactory {

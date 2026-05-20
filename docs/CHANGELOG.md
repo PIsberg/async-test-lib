@@ -7,237 +7,245 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+(empty — see 1.5.0 below for the most recent shipped work)
 
-#### Public API — `@AsyncTest` extensions
-- **`@AsyncTest(threadCounts = {1, 2, 4, 8, 16, 32})`** — schedule matrix. Each entry
-  becomes its own JUnit invocation with display name
+
+## [1.5.0] - 2026-05-20
+
+The 1.5.0 release combines the originally-drafted CI/CD-native fail-gate work
+(2026-05-16) with a substantial follow-up that introduced curated detector
+presets, the schedule matrix, structured violation reporting, the Detector
+SPI, source-line attribution, hardening of the runner cleanup path, the
+process-wide LicenseGuard cache, replay-seed support, async-body helpers,
+scoped listener registration, the Phase 13 detector category (5 new
+detectors), and the 0.9.7 vibetags annotation upgrade.
+
+### Added — Public API (`@AsyncTest` extensions)
+
+- **`@AsyncTest(threadCounts = {1, 2, 4, 8, 16, 32})`** — schedule matrix.
+  Each entry becomes its own JUnit invocation with display name
   `[AsyncTest] N threads x M invocations`. Bug-finding sensitivity is often
-  thread-count-dependent; sweeping a range cheaply surfaces races that single-count
-  runs miss. Empty array (default) keeps legacy `@AsyncTest(threads = ...)` behavior.
-- **`@AsyncTest(preset = Preset.X)`** — curated detector bundles instead of editing
-  ~85 individual flags. Five presets ship:
-  - `ALL` — every detector (legacy `detectAll = true`; the default).
-  - `STRICT` — same set as `ALL`, named explicitly.
-  - `ESSENTIALS` — 12 high-signal detectors for everyday CI (deadlocks, races,
-    atomicity, lock/thread leaks, interrupt mishandling, conc-modification,
-    CompletableFuture errors, resource leaks, uncaught exception handlers).
-  - `CI_FAST` — pruned ESSENTIALS for PR gates; omits visibility / livelock /
-    interrupt-mishandling.
-  - `NONE` — every detector off; pure N×M stress execution.
-  `excludes = {...}` continues to layer on top of any preset.
-- **`@AsyncTest(replaySeed = N)`** + **`AsyncTestContext.replaySeed()`** — runner
-  produces a `long` seed per invocation round so test bodies can seed their own
-  RNGs deterministically. With `replaySeed = 0L` (default) a fresh seed is drawn
-  per round; the value is printed on failure
-  (`[AsyncTest] Failure with replaySeed=4242L — paste into @AsyncTest(...)`) so
-  the failing round can be reproduced. Does NOT make thread scheduling
-  deterministic; gives RNG-driven choices (sleep jitter, payload selection,
-  branch picks) a stable starting point.
+  thread-count-dependent; sweeping a range cheaply surfaces races that
+  single-count runs miss. Empty array (default) keeps legacy `threads`
+  behavior.
+- **`@AsyncTest(preset = Preset.X)`** — curated detector bundles instead of
+  editing ~90 individual flags. Five presets: `ALL` (default; every detector),
+  `STRICT` (same set as ALL, named explicitly), `ESSENTIALS` (12 high-signal
+  detectors for everyday CI), `CI_FAST` (pruned ESSENTIALS for PR gates),
+  `NONE` (every detector off; pure N×M stress execution). `excludes = {...}`
+  layers on top of any preset.
+- **`@AsyncTest(replaySeed = N)`** + **`AsyncTestContext.replaySeed()`** —
+  per-round seed exposed to the test body so RNG-driven choices (sleep
+  jitter, payload selection, branch picks) become reproducible. Default
+  `0L` draws a fresh seed per round and prints it on failure for
+  paste-and-reproduce.
 
-#### Public API — assertions & listeners
-- **`AsyncAssert.awaitAsync(stage, timeout)`** — blocks on a `CompletionStage`
-  inside a test body and unwraps `ExecutionException` so async-chain failures
-  surface as the original exception (`RuntimeException` / `AssertionError`)
-  rather than the wrapper. The supported way to exercise async APIs from
-  `@AsyncTest`, since JUnit Jupiter rejects non-void `@TestTemplate` return
-  types at discovery.
+### Added — Public API (assertions & listeners)
+
+- **`AsyncAssert.awaitAsync(stage, timeout)`** — block on a `CompletionStage`
+  inside a test body and unwrap `ExecutionException` so chain failures surface
+  with the original exception type. The supported way to exercise async APIs
+  from `@AsyncTest`, since JUnit Jupiter rejects non-void `@TestTemplate`
+  return types at discovery.
 - **`AsyncTestListenerRegistry.registerScoped(listener)`** — returns an
-  AutoCloseable `Registration`; closing it unregisters the listener. Pair with
-  try-with-resources to bind a listener's lifetime to a single test and avoid
-  JVM-wide listener leakage across tests.
-- **`AsyncTestListenerRegistry.snapshot()` / `restoreSnapshot(s)`** — capture
-  and restore the full registry around a block; useful in
-  `@BeforeEach`/`@AfterEach` for full revert semantics.
+  `AutoCloseable Registration`; closing it unregisters the listener. Pair
+  with try-with-resources to bind a listener's lifetime to a single test
+  and avoid JVM-wide listener leakage.
+- **`AsyncTestListenerRegistry.snapshot()` / `restoreSnapshot(s)`** —
+  capture/restore the full registry around a block.
 
-#### Public API — structured reporting (`se.deversity.asynctest.report`)
-- **`Violation` record** — `(detector, severity, message, sites, attributes, when)`
-  with defensive defaults and validation. Replaces flat strings for tooling that
-  needs to parse violations (CI gating, SARIF, IDE plugins, dashboards). Legacy
-  string `toString()` reports continue alongside.
-- **`Formatter`** — functional interface `List<Violation> → String`.
-- **`MarkdownFormatter`** — human-facing Markdown suitable for PR comments and
-  CI logs (`##` header, `###` per-violation sections, "Access sites" and
-  "Details" sub-blocks).
-- **`JsonFormatter`** — compact JSON array with proper string escaping; no
-  external dependency. Stable schema:
-  `{"detector":"…","severity":"HIGH","message":"…","sites":[…],"attributes":{…},"when":"…"}`.
+### Added — Structured reporting (`se.deversity.asynctest.report`)
 
-#### Public API — Detector SPI (`se.deversity.asynctest.spi`)
-- **`Detector`** interface — `type() → DetectorType`, `analyze() → List<Violation>`,
-  optional `onTestStart()` / `onTestEnd()` lifecycle hooks. Per-test instance lifecycle.
-- **`DetectorFactory`** — `type()`, `isEnabledFor(config)`, `create(config)`. Discovered
-  via `ServiceLoader` from `META-INF/services/se.deversity.asynctest.spi.DetectorFactory`.
-- **`DetectorRegistry`** (new package) — `build(config)` instantiates enabled factories,
-  `get(Class<T>)` typed lookup, `get(DetectorType)` enum lookup, `analyzeAll()`
-  aggregates structured violations. Coexists with the legacy
-  `se.deversity.asynctest.DetectorRegistry` for the 1.0.0 cutover; new detectors
-  use the SPI, the existing 90+ migrate incrementally.
-- **`SharedMessageDigestDetectorFactory`** — canary SPI adapter for
-  `SharedMessageDigestDetector`, registered via `META-INF/services`. Demonstrates
-  the migration pattern: existing detector unchanged, adapter projects
-  `analyze().structuredViolations`.
+- **`Violation` record** — `(detector, severity, message, sites, attributes,
+  when)` with defensive defaults and validation. Replaces flat strings for
+  tooling that needs to parse violations.
+- **`Formatter`** functional interface (`List<Violation> → String`).
+- **`MarkdownFormatter`** — Markdown for PR comments and CI logs (`##`
+  header, `###` per-violation sections, "Access sites" and "Details"
+  sub-blocks).
+- **`JsonFormatter`** — compact JSON array, no external dependency, with
+  proper string escaping. Stable schema.
 
-#### Diagnostics — source-line attribution
-- **`SiteCapture.capture()`** — `StackWalker`-based helper that captures the
-  first non-framework stack frame for any detector access event. Filters
-  framework internals (runner, extension, benchmark, JDK reflection,
-  java.util.concurrent, JUnit, Gradle, classnames ending
-  `Detector`/`Monitor`/`Validator`).
-- **`SiteCapture.Site`** record with `render()` producing
-  `Class.method(File.java:42)` form. `Set<Site>` natively dedupes by
-  `(class, line)` so a tight loop on one site contributes a single attribution.
-- **Canary migration**: `SharedMessageDigestDetector` now appends an
-  `Access sites:` block to violations. Pattern documented for incremental
-  rollout across the other 90+ detectors.
+### Added — Detector SPI (`se.deversity.asynctest.spi`)
+
+- **`Detector`** — `type() → DetectorType`, `analyze() → List<Violation>`,
+  optional `onTestStart()` / `onTestEnd()` lifecycle hooks.
+- **`DetectorFactory`** — `type()`, `isEnabledFor(config)`, `create(config)`.
+  Discovered via `ServiceLoader` from
+  `META-INF/services/se.deversity.asynctest.spi.DetectorFactory`.
+- **`DetectorRegistry`** (new package) — `build(config)` instantiates enabled
+  factories, `get(Class<T>)` typed lookup, `get(DetectorType)` enum lookup,
+  `analyzeAll()` aggregates structured violations.
+- **`LegacyDetectorAdapter<D>`** — generic SPI `Detector` that wraps any
+  legacy detector via reflection and projects its `analyze()` into a
+  `Violation`.
+- **`LegacyDetectorFactories`** — 99 inner-class factories registering every
+  pre-existing `DetectorType` through the SPI (plus the dedicated typed
+  `SharedMessageDigestDetectorFactory` for the canary). Coexists with the
+  legacy `se.deversity.asynctest.DetectorRegistry`.
+- **`AllDetectorsSpiCoverageTest`** — guards against drift: a new
+  `DetectorType` value without a matching factory fails the build.
+
+### Added — Phase 13 detectors (5 new categories)
+
+Each ships with full framework wiring: `DetectorType` enum value, `@AsyncTest`
+flag, `AsyncTestConfig` field+builder+from()+build() blocks, legacy
+`DetectorRegistry` instantiation + `analyzeAll()`, `AsyncTestContext` static
+accessor, SPI factory, `META-INF/services` registration, and dedicated tests.
+
+- **`DaemonThreadHygieneDetector`** (`detectDaemonThreadHygiene`,
+  `DAEMON_THREAD_HYGIENE`) — flags non-daemon `Thread` instances still alive
+  at analyze time. Severity MEDIUM. Complements `ThreadLeakDetector`.
+- **`NotifyWithoutMonitorDetector`** (`detectNotifyWithoutMonitor`,
+  `NOTIFY_WITHOUT_MONITOR`) — samples `Thread.holdsLock(monitor)` when a
+  notify attempt is declared; flags calls without the monitor held.
+- **`SharedSecureRandomDetector`** (`detectSharedSecureRandom`,
+  `SHARED_SECURE_RANDOM`) — flags `java.security.SecureRandom` shared across
+  threads. Provider-dependent thread safety. Reports carry algorithm +
+  provider names.
+- **`WeakHashMapSharedDetector`** (`detectWeakHashMapShared`,
+  `WEAK_HASH_MAP_SHARED`) — flags `WeakHashMap` / `IdentityHashMap` shared
+  across threads. GC-driven removal and linear-probing-specific hazards
+  beyond the regular `HashMap` family.
+- **`JdbcConnectionSharedDetector`** (`detectJdbcConnectionShared`,
+  `JDBC_CONNECTION_SHARED`) — flags `java.sql.Connection` / `Statement` /
+  `PreparedStatement` / `ResultSet` shared across threads. JDBC spec doesn't
+  require any to be thread-safe; most drivers aren't.
+
+A sixth detector (`ThreadLocalRandomCachedDetector`) was prototyped but
+removed: `ThreadLocalRandom.current()` is intentionally safe to share
+because each thread reads its own seed slot.
+
+**Total: 95 → 100 detectors across 12 → 13 phases.**
+
+### Added — Diagnostics
+
+- **`SiteCapture`** helper (`se.deversity.asynctest.diagnostics`) — captures
+  the first non-framework stack frame for any detector access event via
+  `StackWalker`. Reports now carry `Access sites:` blocks pointing at the
+  user-code line that produced the issue. Canary: `SharedMessageDigestDetector`.
+
+### Added — CI/CD-native fail gates (`se.deversity.asynctest.report`)
+
+Three listener implementations make it straightforward to wire async-test into
+CI pipelines and IDE tooling without writing custom code.
+
+- **`JUnitXmlReportListener`** — accumulates detector findings during a test
+  run and writes a JUnit-compatible XML report to
+  `target/async-test-reports/TEST-AsyncTestConcurrencyReport.xml` (Maven) or
+  `build/async-test-reports/…` (Gradle). GitHub Actions, Jenkins, and GitLab
+  CI parse this file and surface each finding as a named test-case failure.
+  Flushed automatically via a JVM shutdown hook, or immediately via `flush()`.
+- **`StrictModeListener`** — converts any detector report into an immediate
+  `AssertionError`. Register this in zero-tolerance pipelines where
+  concurrency findings must always break the build.
+- **`JsonReportListener`** — writes a structured JSON file
+  (`async-test-report.json`) consumed by the IntelliJ IDEA plugin and
+  dashboards.
+- **`DetectorFinding`** — immutable value object shared by both report
+  listeners.
+
+See [CI_INTEGRATION.md](CI_INTEGRATION.md) for GitHub Actions, Jenkins, and
+GitLab CI snippets.
+
+### Added — Structured listener event: `onStructuredReport`
+
+`AsyncTestListener` gains a new default method:
+
+```java
+default void onStructuredReport(String detectorName, IssueSeverity severity, String report) {}
+```
+
+`AsyncTestListenerRegistry.fireDetectorReport` now also parses severity from
+the report text and fires `onStructuredReport` alongside the existing
+`onDetectorReport`. Existing implementations that do not override the new
+method receive a no-op default — **no migration required**.
+
+### Added — IntelliJ IDEA plugin
+
+A standalone Gradle module (`intellij-plugin/`) targeting IntelliJ IDEA
+2024.1+:
+
+- **async-test Findings tool window** — docked at the bottom panel; shows a
+  severity-coloured table of findings (CRITICAL = red, HIGH = orange,
+  MEDIUM = yellow, LOW = green).
+- **Expandable detail pane** — click any row to see the full detector report.
+- **Summary bar** — finding counts broken down by severity level.
+- **Refresh action** — re-reads the JSON report file on demand after tests
+  are re-run.
+- **Settings panel** — Settings → Tools → async-test; configurable report
+  file path for both Maven and Gradle outputs.
+
+Build and install: `cd intellij-plugin && ./gradlew buildPlugin`, then
+install from disk. See [intellij-plugin/README.md](../intellij-plugin/README.md).
 
 ### Changed
 
-- **`ConcurrencyRunner` workers — `latch.countDown()` is now guaranteed under
-  every failure mode**. Previously, an exception from `AsyncTestContext.install`,
-  `uninstall`, or `phase1.livelock.captureSnapshot()` inside the worker's
-  `finally` block would skip `countDown()`, causing the runner to block on
-  `latch.await(roundTimeoutMs)` and surface a misleading "timed out — possible
-  deadlock" instead of the real cause. Each cleanup step is now independently
-  guarded; `countDown()` is the last statement in the outermost finally.
-  Uninstall failures are appended to `failures` (and visible to the user);
-  snapshot failures are warn-only (diagnostic, never user-facing).
+- **`AsyncTestListenerRegistry.fireDetectorReport`** now also parses
+  `IssueSeverity` from the report text and calls
+  `listener.onStructuredReport(detectorName, severity, report)` for every
+  registered listener. The existing `onDetectorReport` call is unchanged.
+- **`ConcurrencyRunner` workers — `latch.countDown()` is now guaranteed
+  under every failure mode**. Previously an exception from
+  `AsyncTestContext.install`, `uninstall`, or
+  `phase1.livelock.captureSnapshot()` inside the worker's `finally` block
+  would skip `countDown()`, causing the runner to block on
+  `latch.await(roundTimeoutMs)` and surface a misleading "timed out —
+  possible deadlock" report instead of the real cause. Each cleanup step
+  is now independently guarded; `countDown()` is the last statement in
+  the outermost finally.
 - **License gating moved out of `ConcurrencyRunner.execute()`** into a new
-  `LicenseGuard` class with a process-wide `ConcurrentHashMap` cache keyed on
-  the resolved license-config fingerprint. The gate is now a
+  `LicenseGuard` class with a process-wide `ConcurrentHashMap` cache keyed
+  on the resolved license-config fingerprint. The gate is now a
   `ConcurrentHashMap.get()` after the first call per JVM, not a fresh
   `LicenseGate` construction + `gate.check(...)` per test. "Zero-Config CI"
   announcement and "LICENSE GRANTED" message print once per JVM instead of
   once per test.
-- **`SharedMessageDigestDetector.recordAccess` hot path** restructured with a
-  double-check: cheap `ConcurrentHashMap.get()` first; only on miss does the
-  `instanceof Cipher/Mac/Signature` chain and label-string construction run,
-  inside the `computeIfAbsent` factory. The lambda allocation and reflection
-  call now fire once per registered instance instead of per call.
+- **`SharedMessageDigestDetector.recordAccess` hot path** restructured with
+  a double-check: cheap `ConcurrentHashMap.get()` first; only on miss does
+  the `instanceof Cipher/Mac/Signature` chain and label-string construction
+  run, inside the `computeIfAbsent` factory.
 - **`AsyncTestListenerRegistry` javadoc** rewritten to lead with a "Lifetime
   warning" block making the JVM-wide static reality obvious, with two
-  recommended scoped patterns (try-with-resources `registerScoped` and
-  `snapshot/restoreSnapshot`) shown before the legacy unscoped `register`.
+  recommended scoped patterns shown before the legacy unscoped `register`.
 
 ### Fixed
 
-- **Async-body failures no longer surface wrapped in `ExecutionException`** —
-  `ConcurrencyRunner.unwrap()` now also strips `ExecutionException` so user
-  assertions/exceptions from `CompletionStage` chains surface with the original
-  type.
+- **Async-body failures no longer surface wrapped in `ExecutionException`**
+  — `ConcurrencyRunner.unwrap()` now also strips `ExecutionException` so
+  user assertions/exceptions from `CompletionStage` chains surface with the
+  original type.
 
 ### Performance
 
-- Hot-path detector `recordAccess` calls no longer allocate per-invocation when
-  the detected instance is already registered (the common case). Targeted at
-  the `@AIPerformance` constraint documented on `BenchmarkRecorder`; same
-  pattern is the template for migrating the other detectors that call
-  framework helpers on the hot path.
+- Hot-path detector `recordAccess` calls no longer allocate per-invocation
+  when the detected instance is already registered (the common case).
+  Targeted at the `@AIPerformance` constraint documented on
+  `BenchmarkRecorder`; same pattern is the template for migrating the
+  other detectors that call framework helpers on the hot path.
 
-### Added (post-SPI canary)
+### Build / workflow
 
-#### Detector SPI — full coverage for every `DetectorType` value
+- **vibetags** bumped `0.8.0 → 0.9.5 → 0.9.7`. Three new annotation types
+  applied across the codebase:
+  - `@AIIdempotent` on operations that must remain side-effect-stable
+    (`Registration.close`, `unregister`, `clearAll`,
+    `AsyncTestContext.uninstall`, `LicenseGuard.check`, SPI
+    `DetectorRegistry.analyzeAll`).
+  - `@AIFeatureFlag` on runtime-flag-gated surfaces
+    (`AsyncTestConfig.enableBenchmarking`, `AsyncTestConfig.licenseMockMode`,
+    `BenchmarkRecorder` class).
+  - `@AISecure` on security-critical code (`LicenseGuard` =
+    authorization; `SharedSecureRandomDetector` = cryptography / RNG quality;
+    `SharedMessageDigestDetector` = cryptography / hash integrity).
+- **Demo-GIF workflow** (`.github/workflows/demo.yml`) switched from
+  branch + `gh pr create` ceremony to a direct push to `main`. The
+  default `GITHUB_TOKEN` cannot create PRs without explicit repo-setting
+  authorisation; the workflow's `paths:` filter prevents recursion.
+  Commit also carries `[skip ci]` as belt-and-suspenders.
+- **README** gains a tokei lines-of-code badge.
 
-Closes the gap left by the canary commit. Every `DetectorType` value now has
-a registered `DetectorFactory` discoverable via `ServiceLoader`; previously
-only `SHARED_MESSAGE_DIGEST` had one.
-
-- **`LegacyDetectorAdapter<D>`** — generic SPI `Detector` that wraps any
-  legacy detector instance and projects its `analyze()` output into a single
-  `Violation` via reflection (calls `delegate.analyze()`, walks the report's
-  class hierarchy for `hasIssues()`, wraps `toString()` when present).
-  Detectors whose report doesn't follow the canonical
-  `analyze() → Report{hasIssues(), toString()}` shape silently return an
-  empty list — they continue to work through the legacy path.
-- **`LegacyDetectorFactories`** — single file containing 94 inner-class
-  `DetectorFactory` implementations, one per `DetectorType`. Each declares
-  its `type()`, reads its matching `AsyncTestConfig` boolean flag in
-  `isEnabledFor()`, and produces a `LegacyDetectorAdapter` wrapping a fresh
-  detector instance. The dedicated `SharedMessageDigestDetectorFactory` is
-  preserved as the typed-adapter template for detectors migrated to expose
-  `structuredViolations` natively.
-- **`META-INF/services/se.deversity.asynctest.spi.DetectorFactory`** — now
-  lists every factory (1 dedicated + 94 inner-class entries), grouped by
-  phase for readability.
-- **`AllDetectorsSpiCoverageTest`** — single source of truth for SPI
-  coverage:
-  - `everyDetectorTypeHasARegisteredFactory` — scans the ServiceLoader output
-    and asserts `EnumSet.allOf(DetectorType.class)` is fully covered. Adding
-    a new `DetectorType` without a matching factory now fails this test with
-    a precise list of missing types.
-  - `buildingRegistryWithDetectAllInstantiatesEveryType` — `detectAll = true`
-    must produce a registry instance per type.
-  - `factoriesUseStableServiceLoaderOrdering` — service count matches
-    `DetectorType.values().length` (catches duplicates and typos).
-
-#### Phase 13 — Additional concurrency-bug categories (5 new detectors)
-
-Five detector categories not yet covered by the existing 95. Each ships with
-full framework wiring: `DetectorType` enum value, `@AsyncTest` flag,
-`AsyncTestConfig` field+builder+from()+build() blocks, legacy `DetectorRegistry`
-instantiation + `analyzeAll()` integration, `AsyncTestContext` static accessor,
-`LegacyDetectorFactories` SPI inner class, `META-INF/services` registration,
-and a dedicated test class.
-
-- **`DaemonThreadHygieneDetector`** (`detectDaemonThreadHygiene`,
-  `DAEMON_THREAD_HYGIENE`) — flags non-daemon `Thread` instances that are
-  still alive at analyze time. Non-daemon threads block JVM exit;
-  `ThreadLeakDetector` counts live threads but doesn't flag the daemon-flag
-  hygiene issue specifically. Severity: MEDIUM.
-- **`NotifyWithoutMonitorDetector`** (`detectNotifyWithoutMonitor`,
-  `NOTIFY_WITHOUT_MONITOR`) — samples `Thread.holdsLock(monitor)` when a
-  notify attempt is declared. Calls without the monitor held would throw
-  `IllegalMonitorStateException` at runtime and leave wait()-ers blocked.
-  Complements `MissedSignalDetector` (notify with no waiter) by catching the
-  inverse — notifies that are illegal regardless of who's waiting.
-- **`SharedSecureRandomDetector`** (`detectSharedSecureRandom`,
-  `SHARED_SECURE_RANDOM`) — flags `java.security.SecureRandom` instances
-  accessed from multiple threads. Provider-dependent thread safety
-  (SHA1PRNG, NativePRNG, Bouncy Castle, custom SPIs all behave differently).
-  Reports carry algorithm and provider names for triage. Distinct from
-  `SharedRandomDetector` which covers `java.util.Random` only.
-- **`WeakHashMapSharedDetector`** (`detectWeakHashMapShared`,
-  `WEAK_HASH_MAP_SHARED`) — flags `WeakHashMap` and `IdentityHashMap`
-  shared across threads. Both have additional concurrency hazards beyond
-  regular `HashMap`: `WeakHashMap`'s GC-driven entry removal mutates the
-  table on every get/put; `IdentityHashMap`'s open-addressing with linear
-  probing can drop/duplicate entries under concurrent puts.
-  `SharedCollectionDetector` covers `ArrayList`/`HashMap`/`HashSet` but not
-  these two specialized maps.
-- **`JdbcConnectionSharedDetector`** (`detectJdbcConnectionShared`,
-  `JDBC_CONNECTION_SHARED`) — flags `java.sql.Connection`/`Statement`/
-  `PreparedStatement`/`ResultSet` accessed from multiple threads. JDBC spec
-  does NOT require any to be thread-safe; PostgreSQL/MySQL/Oracle drivers
-  all document one-thread-per-Connection. Concurrent use produces mixed
-  result-set cursors, protocol corruption, transaction leakage, or silent
-  parameter-binding corruption. Tests use JDK dynamic proxies — no real DB.
-
-A sixth detector (`ThreadLocalRandomCachedDetector`) was prototyped but
-removed: `ThreadLocalRandom.current()` returns a static singleton that is
-designed to be safe across threads (each thread reads its own seed slot), so
-the "cached and reused" anti-pattern isn't actually a bug.
-
-Total: 95 → **100 detectors** across **13 phases**.
-
-#### Workflow
-
-- Demo-GIF workflow (`.github/workflows/demo.yml`) switched from branch +
-  `gh pr create` ceremony to a direct push to `main`. The default
-  `GITHUB_TOKEN` cannot create PRs unless the repo has "Allow GitHub Actions
-  to create and approve pull requests" toggled on (Settings → Actions →
-  General); the previous workflow failed with `GitHub Actions is not
-  permitted to create or approve pull requests (createPullRequest)`. The
-  workflow's `paths:` filter restricts triggers to `src/**`, `tools/**`, and
-  the workflow file itself, so pushing regenerated
-  `docs/diagrams/demo.{cast,gif}` does NOT re-trigger the workflow. The
-  commit message also carries `[skip ci]` as belt-and-suspenders.
-
-#### README
-
-- New tokei lines-of-code badge alongside the existing License / Build /
-  Java badges.
-
-## [1.5.0] - 2026-05-16
+### Originally drafted as 1.5.0 (2026-05-16, never released)
 
 ### Added
 

@@ -17,7 +17,7 @@ import java.util.List;
  *
  * <p>Registered via {@code META-INF/services/se.deversity.asynctest.spi.DetectorFactory}.
  *
- * @since 1.0.0
+ * @since 1.5.0
  */
 public final class SharedMessageDigestDetectorFactory implements DetectorFactory {
 

@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "se.deversity.async-test-lib"
-version = "1.0.0"
+version = "1.5.0"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_21
@@ -11,19 +11,15 @@ java {
 }
 
 repositories {
-    // mavenLocal MUST come first: the example pins the same version as the
-    // parent (1.4.0) but uses in-progress APIs that Maven Central's 1.4.0
-    // doesn't have. Run `mvn install -DskipTests` at the project root first
-    // so the local artifact resolves before Central's stale one.
+    // mavenLocal MUST come first: pre-release builds (and snapshots) should
+    // resolve locally before Maven Central. After 1.5.0 is published to Central,
+    // either order works for that pinned version.
     mavenLocal()
     mavenCentral()
 }
 
 // MUST match the parent project's gradle.properties / pom.xml version.
-// The example uses APIs from the in-progress source; run
-// `mvn install -DskipTests` (or `./gradlew publishToMavenLocal`) at the
-// project root first so mavenLocal() can resolve them.
-val asyncTestVersion = "1.4.0"
+val asyncTestVersion = "1.5.0"
 val junitVersion = "5.10.2"
 val junitPlatformVersion = "6.0.3"
 

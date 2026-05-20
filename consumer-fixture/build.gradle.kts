@@ -18,10 +18,8 @@ repositories {
     mavenCentral()
 }
 
-// MUST match the version in the parent's gradle.properties / pom.xml so that
-// `mvn install -DskipTests` (or `./gradlew publishToMavenLocal`) at the
-// project root makes the in-progress APIs resolvable here via mavenLocal().
-val asyncTestVersion = "1.4.0"
+// MUST match the version in the parent's gradle.properties / pom.xml.
+val asyncTestVersion = "1.5.0"
 val junitVersion = "6.0.3"
 
 dependencies {

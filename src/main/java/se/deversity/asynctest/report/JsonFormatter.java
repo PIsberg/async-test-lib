@@ -23,7 +23,7 @@ import java.util.Map;
  * ]
  * }</pre>
  *
- * @since 1.0.0
+ * @since 1.5.0
  */
 @AIPublicAPI
 public final class JsonFormatter implements Formatter {

@@ -47,7 +47,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link se.deversity.asynctest.spi.DetectorFactory} SPI if you want it picked
  * up by {@link se.deversity.asynctest.spi.DetectorRegistry}.
  *
- * @since 1.0.0
+ * @since 1.5.0
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Per-thread access map is a ConcurrentHashMap; first-registration-wins via putIfAbsent.")
 @AITestDriven(

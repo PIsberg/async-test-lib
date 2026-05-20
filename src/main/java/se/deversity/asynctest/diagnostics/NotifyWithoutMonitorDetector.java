@@ -40,7 +40,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * waiter) by flagging the inverse: notifies that are illegal regardless of
  * whether anyone is waiting.
  *
- * @since 1.0.0
+ * @since 1.5.0
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.SYNCHRONIZED, note = "Attempts list mutated under a single intrinsic monitor on the list itself; sampling Thread.holdsLock requires no locking.")
 @AITestDriven(

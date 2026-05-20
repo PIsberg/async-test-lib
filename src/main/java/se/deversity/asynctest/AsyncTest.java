@@ -52,7 +52,7 @@ public @interface AsyncTest {
      *
      * <p>Default empty array means "use {@link #threads()}" (legacy behavior).
      *
-     * @since 1.0.0
+     * @since 1.5.0
      */
     int[] threadCounts() default {};
 
@@ -134,7 +134,7 @@ public @interface AsyncTest {
      * <p>{@link #excludes()} still applies on top of the preset, letting you trim
      * one or two detectors from a curated bundle.
      *
-     * @since 1.0.0
+     * @since 1.5.0
      */
     Preset preset() default Preset.ALL;
 
@@ -163,7 +163,7 @@ public @interface AsyncTest {
      * }
      * }</pre>
      *
-     * @since 1.0.0
+     * @since 1.5.0
      */
     long replaySeed() default 0L;
 
@@ -903,7 +903,7 @@ public @interface AsyncTest {
      * registered with the detector that are still alive at analyze time — they will block
      * JVM exit and hang the test process. See
      * {@link se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector}.
-     * @since 1.0.0
+     * @since 1.5.0
      */
     boolean detectDaemonThreadHygiene() default true;
 
@@ -912,7 +912,7 @@ public @interface AsyncTest {
      * declared by user code without the calling thread holding the monitor — would throw
      * {@link IllegalMonitorStateException} at runtime and leave wait()-ers blocked. See
      * {@link se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector}.
-     * @since 1.0.0
+     * @since 1.5.0
      */
     boolean detectNotifyWithoutMonitor() default true;
 
@@ -922,7 +922,7 @@ public @interface AsyncTest {
      * {@code SecureRandom} thread safety is provider-dependent and concurrent access can
      * produce biased or duplicate cryptographic output. See
      * {@link se.deversity.asynctest.diagnostics.SharedSecureRandomDetector}.
-     * @since 1.0.0
+     * @since 1.5.0
      */
     boolean detectSharedSecureRandom() default true;
 
@@ -931,7 +931,7 @@ public @interface AsyncTest {
      * detection. Both have additional concurrency hazards beyond regular {@code HashMap}
      * (GC-driven removal and linear-probing collisions respectively). See
      * {@link se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector}.
-     * @since 1.0.0
+     * @since 1.5.0
      */
     boolean detectWeakHashMapShared() default true;
 
@@ -941,7 +941,7 @@ public @interface AsyncTest {
      * {@link java.sql.ResultSet} accessed from multiple threads. The JDBC spec does NOT
      * require any of these to be thread-safe; most drivers (PostgreSQL, MySQL, Oracle) aren't.
      * See {@link se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector}.
-     * @since 1.0.0
+     * @since 1.5.0
      */
     boolean detectJdbcConnectionShared() default true;
 

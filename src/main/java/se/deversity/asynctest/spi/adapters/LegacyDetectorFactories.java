@@ -22,7 +22,7 @@ import se.deversity.asynctest.spi.DetectorFactory;
  * violations directly) is intentionally NOT duplicated here — it remains the
  * canary for the "typed adapter" pattern.
  *
- * @since 1.0.0
+ * @since 1.5.0
  */
 public final class LegacyDetectorFactories {
 

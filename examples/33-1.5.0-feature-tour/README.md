@@ -1,6 +1,6 @@
-# Example 33 — async-test-lib 1.0.0 feature tour
+# Example 33 — async-test-lib 1.5.0 feature tour
 
-Runnable demo of every public API added in 1.0.0. Each test method
+Runnable demo of every public API added in 1.5.0. Each test method
 in [`FeatureTourTest`](src/test/java/se/deversity/asynctest/example/FeatureTourTest.java)
 exercises one new surface:
 
@@ -17,29 +17,33 @@ exercises one new surface:
 
 ## Run
 
+Once 1.5.0 is published to Maven Central:
+
 ```bash
-# 1. From the project root: install in-progress async-test-lib to ~/.m2
+cd examples/33-1.5.0-feature-tour
+mvn test                       # or: ./gradlew test
+```
+
+Before publication (or to test in-progress source), install the local artifact first:
+
+```bash
+# 1. From the project root: install async-test-lib 1.5.0 to ~/.m2
 mvn install -DskipTests        # or: ./gradlew publishToMavenLocal
 
 # 2. Run the example
-cd examples/33-1.0.0-feature-tour
-mvn test                       # or: ./gradlew test (from project root: ./gradlew -p examples/33-1.0.0-feature-tour test)
+cd examples/33-1.5.0-feature-tour
+mvn test                       # or: ./gradlew test
 ```
 
-**Why the install-first step?** The example pins the same version as
-the parent (`1.4.0`) but uses APIs not yet present in Maven Central's
-published `1.4.0`. The `mavenLocal()` repository is listed first so
-the freshly-installed in-progress artifact wins.
-
-If Gradle complains about missing symbols after a re-install:
+If Gradle complains about missing symbols after a re-install of the same
+version number, bust the cache:
 
 ```bash
 rm -rf ~/.gradle/caches/modules-2/files-2.1/se.deversity.async-test-lib
 ./gradlew --refresh-dependencies test
 ```
 
-(Gradle treats non-SNAPSHOT versions as immutable in its cache; an
-in-place `mvn install` of the same version number isn't auto-detected.)
+(Gradle treats non-SNAPSHOT versions as immutable in its cache.)
 
 ## What to look for
 
@@ -49,5 +53,7 @@ matrix-sweep test, the detectors enabled by `Preset.CI_FAST` light up — that's
 the framework demonstrating its value with a concrete example.
 
 The Phase 13 `sharedSecureRandomDetector()` test deliberately runs with
-`preset = Preset.NONE` and then explicitly enables ONE detector — showing how
-to opt into a single check when you don't want the full preset.
+`detectAll = false` plus `detectSharedSecureRandom = true` — showing how to
+opt into a single check when you don't want the full preset. (Note: using
+`Preset.NONE` plus per-flag overrides does NOT work — the preset's effective
+excludes pin every per-flag back to false.)

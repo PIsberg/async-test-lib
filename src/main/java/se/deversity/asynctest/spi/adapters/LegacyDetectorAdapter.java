@@ -33,7 +33,7 @@ import java.util.Map;
  *
  * @param <D> legacy detector type
  *
- * @since 1.0.0
+ * @since 1.5.0
  */
 @AIPerformance(constraint = "analyze() does Method.getMethod + invoke each call; only invoked once per round per detector, not on the hot recordAccess path. If profiling shows reflection overhead, cache the Method handles in the constructor.")
 public final class LegacyDetectorAdapter<D> implements Detector {
