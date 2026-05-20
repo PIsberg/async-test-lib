@@ -67,10 +67,17 @@ class DetectorRegistrySpiTest {
 
     @Test
     void adapter_surfacesStructuredViolationsThroughSpi() throws Exception {
-        AsyncTestConfig cfg = AsyncTestConfig.builder()
-                .detectAll(true)
-                .detectSharedMessageDigest(true)
-                .build();
+        // Narrow the config to ONLY SHARED_MESSAGE_DIGEST so other detector
+        // factories don't activate and emit unrelated findings (e.g.
+        // UncommittedChangesDetector). detectAll=true plus excluding every
+        // other type achieves that.
+        AsyncTestConfig.Builder b = AsyncTestConfig.builder().detectAll(true);
+        for (DetectorType t : DetectorType.values()) {
+            if (t != DetectorType.SHARED_MESSAGE_DIGEST) {
+                b.excludes(new DetectorType[]{t});
+            }
+        }
+        AsyncTestConfig cfg = b.build();
         DetectorRegistry reg = DetectorRegistry.build(cfg);
 
         // Reach into the adapter and feed the wrapped detector some events.
@@ -84,7 +91,11 @@ class DetectorRegistrySpiTest {
         t.start();
         t.join();
 
-        var violations = reg.analyzeAll();
+        // Filter to the SharedMessageDigest violation specifically — the SPI
+        // registry includes every active factory's findings.
+        var violations = reg.analyzeAll().stream()
+                .filter(v -> "SharedMessageDigest".equals(v.detector()))
+                .toList();
         assertEquals(1, violations.size());
         var v = violations.get(0);
         assertEquals("SharedMessageDigest", v.detector());

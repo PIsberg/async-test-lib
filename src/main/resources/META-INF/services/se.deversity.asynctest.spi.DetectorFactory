@@ -1,3 +1,134 @@
 # Built-in DetectorFactory implementations discovered by ServiceLoader.
 # New detectors should add a line here (or use @AutoService).
+
+# Dedicated typed adapter (surfaces structured violations directly).
 se.deversity.asynctest.spi.adapters.SharedMessageDigestDetectorFactory
+
+# Bulk legacy-detector adapters (use LegacyDetectorAdapter via reflection).
+# One inner class per DetectorType in se.deversity.asynctest.spi.adapters.LegacyDetectorFactories.
+
+# Phase 1 — Core
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$Deadlocks
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$Visibility
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$Livelocks
+
+# Phase 2 — Core advanced
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$FalseSharing
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$WakeupIssues
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ConstructorSafety
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ABAProblem
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$LockOrder
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$Synchronizers
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ThreadPool
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$MemoryOrdering
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$AsyncPipeline
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ReadWriteLockFairness
+
+# Phase 2 — Monitors
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$Semaphore
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CompletableFutureExceptions
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CompletableFutureCompletionLeaks
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$VirtualThreadPinning
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ThreadPoolDeadlock
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ConcurrentModifications
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$LockLeaks
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedRandom
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$BlockingQueue
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ConditionVariables
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SimpleDateFormat_
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ParallelStreams
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ResourceLeaks
+
+# Phase 2 — Additional concurrency
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CountDownLatch_
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CyclicBarrier_
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ReentrantLock_
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$VolatileArray
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$DoubleCheckedLocking
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$WaitTimeout
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$LockContention
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SynchronizedNonFinal
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$MissedSignal
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$LazyInitRace
+
+# Phase 2 — Advanced concurrency utilities
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$Phaser_
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$StampedLock
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$Exchanger_
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ScheduledExecutor
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ForkJoinPool
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ThreadFactory_
+
+# Phase 3 — Behavioral
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$RaceConditions
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ThreadLocalLeaks
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$BusyWaiting
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$AtomicityViolations
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$InterruptMishandling
+
+# Phase 4 — Infrastructure & resource management
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ThreadLeaks
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SleepInLock
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$UnboundedQueue
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ThreadStarvation
+
+# Phase 5 — Thread-safety of common types
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$Calendar_
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedCollections
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$Timer_
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CopyOnWriteCollections
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$StringBuilder_
+
+# Phase 6 — Virtual thread concurrency (Java 21+)
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$StructuredConcurrency
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$VirtualThreadContextLeaks
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ScopedValue_
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$VirtualThreadCpuBound
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$VirtualThreadCarrierExhaustion
+
+# Phase 7 — High-level concurrency patterns
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$HttpClient_
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$StreamClosing
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CacheConcurrency
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CompletableFutureChain
+
+# Phase 8 — Lifecycle & structural correctness
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ExecutorShutdown
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$MutableMapKey
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$NestedMonitorLockout
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$LockDowngrade
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$InheritableThreadLocal_
+
+# Phase 9 — Repository & environment state
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$UncommittedChanges
+
+# Phase 10 — API traps & subtle concurrency bugs
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ThreadLocalContamination
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$AtomicNonAtomicUpdate
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SynchronizedCollectionIteration
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedFormatter
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ConcurrentMapComputeRecursion
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SynchronizedOnLiteral
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$PublicLockExposure
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ForkJoinTaskBlocking
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$OptimisticReadValidation
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CfCommonPoolBlocking
+
+# Phase 11 — Thread-safety of additional types & patterns
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedMatcher
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedDecimalFormat
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$WeakReferenceRace
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$StatefulLambda
+# SHARED_MESSAGE_DIGEST covered by SharedMessageDigestDetectorFactory above
+
+# Phase 12 — Operational & hygiene concurrency issues
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$InterruptSwallowing
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$MdcContextLeak
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SystemPropertyMutation
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$FutureIgnored
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ExplicitGc
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$DeprecatedThreadApi
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedXmlParser
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$BoxedPrimitiveLock
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedTimeZone
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$UncaughtExceptionHandler
