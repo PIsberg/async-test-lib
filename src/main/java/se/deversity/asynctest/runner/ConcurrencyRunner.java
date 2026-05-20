@@ -102,6 +102,14 @@ public class ConcurrencyRunner {
 
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(config.timeoutMs);
 
+        // Replay-seed source: explicit @AsyncTest(replaySeed=N) makes every
+        // round use N; default 0 generates a fresh seed per round so failures
+        // are reproducible after the runner logs the value.
+        java.util.random.RandomGenerator seedSource = (config.replaySeed != 0L)
+                ? null
+                : new java.util.Random();
+        long currentSeed = 0L;
+
         try {
             for (int i = 0; i < config.invocations; i++) {
                 long remainingMs = remainingMillis(deadlineNanos);
@@ -109,6 +117,10 @@ public class ConcurrencyRunner {
                     throw timeoutError(config.timeoutMs, null, phase1, phase2Context,
                             config.detectDeadlocks);
                 }
+
+                // Seed for this round — fixed from annotation, or freshly drawn.
+                currentSeed = (seedSource != null) ? seedSource.nextLong() : config.replaySeed;
+                phase2Context.setReplaySeedForRound(currentSeed);
 
                 long benchmarkStart = 0;
                 if (benchmarkRecorder != null) {
@@ -139,11 +151,17 @@ public class ConcurrencyRunner {
                 throw timeoutError(config.timeoutMs, e, phase1, phase2Context,
                         config.detectDeadlocks);
             }
+            // Surface the seed of the failing round so the user can reproduce by
+            // pasting it into @AsyncTest(replaySeed=N).
+            System.err.println("[AsyncTest] Failure with replaySeed=" + currentSeed
+                    + "L — paste into @AsyncTest(replaySeed=...) to reproduce.");
             AsyncTestListenerRegistry.fireTestFailed(e);
             phase1.printReports();
             printPhase2Reports(phase2Context);
             throw e;
         } catch (Throwable t) {
+            System.err.println("[AsyncTest] Failure with replaySeed=" + currentSeed
+                    + "L — paste into @AsyncTest(replaySeed=...) to reproduce.");
             AsyncTestListenerRegistry.fireTestFailed(t);
             phase1.printReports();
             printPhase2Reports(phase2Context);

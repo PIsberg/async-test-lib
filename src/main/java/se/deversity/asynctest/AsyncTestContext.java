@@ -260,6 +260,39 @@ public final class AsyncTestContext {
         return CURRENT.get();
     }
 
+    // ---- Replay seed (set per-invocation by ConcurrencyRunner) ----
+
+    /**
+     * Per-round seed. Volatile because the runner thread writes it between
+     * rounds while N worker threads may still be reading (they shouldn't be —
+     * latch.await ensures the round is over — but volatile is the right
+     * conservative discipline for cross-thread visibility).
+     */
+    private volatile long currentRoundSeed = 0L;
+
+    /**
+     * Returns the replay seed for the currently executing invocation round.
+     *
+     * <p>Use this from inside an {@code @AsyncTest} method body to seed any
+     * RNG-driven choices (sleep jitter, randomised payloads, branch selection)
+     * with a value the runner controls. When a test fails, the runner logs the
+     * seed so you can paste it into {@code @AsyncTest(replaySeed=...)} to
+     * reproduce the same RNG sequence on the next run.
+     *
+     * <p>Returns {@code 0L} when called outside an {@code @AsyncTest} round.
+     *
+     * @since 1.0.0
+     */
+    public static long replaySeed() {
+        AsyncTestContext ctx = CURRENT.get();
+        return ctx == null ? 0L : ctx.currentRoundSeed;
+    }
+
+    /** Internal: set by {@code ConcurrencyRunner} before each invocation round. */
+    public void setReplaySeedForRound(long seed) {
+        this.currentRoundSeed = seed;
+    }
+
     // ---- Internal reporting ----
 
     /**

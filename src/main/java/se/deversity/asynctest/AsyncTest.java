@@ -139,6 +139,35 @@ public @interface AsyncTest {
     Preset preset() default Preset.ALL;
 
     /**
+     * Replay seed for deterministic re-runs.
+     *
+     * <p>The runner exposes a {@code long} seed per invocation via
+     * {@link AsyncTestContext#replaySeed()}. When {@link #replaySeed()} is
+     * {@code 0} (default), each invocation gets a fresh random seed and the
+     * value is logged on test failure so you can plug it back in. When set
+     * explicitly, every invocation uses that exact seed.
+     *
+     * <p>This does <em>not</em> make thread scheduling deterministic — that
+     * would require JVM-level instrumentation — but it gives any RNG-driven
+     * input in your test body (sleep jitter, randomised payloads, choice of
+     * worker behaviour) a stable starting point so a failure caught once can
+     * be reproduced.
+     *
+     * <p>Usage pattern:
+     * <pre>{@code
+     * @AsyncTest
+     * void flaky_race() {
+     *     long seed = AsyncTestContext.replaySeed();
+     *     var rng = new Random(seed);
+     *     // ... use rng for any randomised choices in the body
+     * }
+     * }</pre>
+     *
+     * @since 1.0.0
+     */
+    long replaySeed() default 0L;
+
+    /**
      * Specific detectors to exclude when {@code detectAll = true}.
      * Use {@link DetectorType} to specify which detectors to skip.
      * <p>Example: {@code @AsyncTest(detectAll = true, excludes = {DetectorType.BUSY_WAITING})}

@@ -133,6 +133,7 @@ class PresetResolutionTest {
         @Override public String virtualThreadStressMode() { return def("virtualThreadStressMode"); }
         @Override public boolean detectAll() { return def("detectAll"); }
         @Override public Preset preset() { return preset; }
+        @Override public long replaySeed() { return def("replaySeed"); }
         @Override public DetectorType[] excludes() { return excludes; }
         @Override public boolean detectFalseSharing() { return def("detectFalseSharing"); }
         @Override public boolean detectWakeupIssues() { return def("detectWakeupIssues"); }

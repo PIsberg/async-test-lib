@@ -35,6 +35,12 @@ public final class AsyncTestConfig {
     /** When {@code true}, every detector is treated as enabled. */
     public final boolean detectAll;
 
+    /**
+     * Replay seed configured on the annotation (0 = generate per invocation).
+     * The actual per-invocation seed used at runtime is on {@link AsyncTestContext#replaySeed()}.
+     */
+    public final long replaySeed;
+
     // ---- Phase 1 ----
     public final boolean detectDeadlocks;
     public final boolean detectVisibility;
@@ -177,6 +183,7 @@ public final class AsyncTestConfig {
         timeoutMs                      = b.timeoutMs;
         virtualThreadStressMode        = b.virtualThreadStressMode;
         detectAll                      = b.detectAll;
+        replaySeed                     = b.replaySeed;
         detectDeadlocks                = b.detectDeadlocks;
         detectVisibility               = b.detectVisibility;
         detectLivelocks                = b.detectLivelocks;
@@ -327,6 +334,7 @@ public final class AsyncTestConfig {
             .timeoutMs(ann.timeoutMs())
             .virtualThreadStressMode(ann.virtualThreadStressMode())
             .detectAll(effectiveDetectAll)
+            .replaySeed(ann.replaySeed())
             .detectDeadlocks(ann.detectDeadlocks())
             .detectVisibility(ann.detectVisibility())
             .detectLivelocks(ann.detectLivelocks())
@@ -447,6 +455,7 @@ public final class AsyncTestConfig {
         private long timeoutMs                     = 5_000;
         private String virtualThreadStressMode     = "OFF";
         private boolean detectAll                  = false;
+        private long    replaySeed                 = 0L;
         private boolean detectDeadlocks            = true;
         private boolean detectVisibility           = false;
         private boolean detectLivelocks            = false;
@@ -560,6 +569,7 @@ public final class AsyncTestConfig {
         public Builder timeoutMs(long v)                     { timeoutMs = v; return this; }
         public Builder virtualThreadStressMode(String v)     { virtualThreadStressMode = v; return this; }
         public Builder detectAll(boolean v)                  { detectAll = v; return this; }
+        public Builder replaySeed(long v)                    { replaySeed = v; return this; }
         public Builder detectDeadlocks(boolean v)            { detectDeadlocks = v; return this; }
         public Builder detectVisibility(boolean v)           { detectVisibility = v; return this; }
         public Builder detectLivelocks(boolean v)            { detectLivelocks = v; return this; }
