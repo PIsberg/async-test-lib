@@ -36,6 +36,27 @@ public @interface AsyncTest {
     int threads() default 10;
 
     /**
+     * Optional schedule matrix: when non-empty, the test runs once per entry,
+     * each run using that entry as the thread count. The {@link #threads()}
+     * value is ignored for runs that use this matrix.
+     *
+     * <p>Bug-finding sensitivity is often thread-count-dependent — a race that
+     * misses at 4 threads can surface reliably at 32, and vice versa. Use this
+     * to sweep a range cheaply.
+     *
+     * <p>Example:
+     * <pre>{@code
+     * @AsyncTest(threadCounts = {1, 2, 4, 8, 16, 32, 64})
+     * void racy_under_contention() { ... }
+     * }</pre>
+     *
+     * <p>Default empty array means "use {@link #threads()}" (legacy behavior).
+     *
+     * @since 1.0.0
+     */
+    int[] threadCounts() default {};
+
+    /**
      * Number of times the entire concurrent execution is repeated.
      */
     int invocations() default 100;

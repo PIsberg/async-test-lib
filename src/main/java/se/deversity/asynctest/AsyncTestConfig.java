@@ -286,11 +286,23 @@ public final class AsyncTestConfig {
 
     /** Builds a config from an {@link AsyncTest} annotation instance. */
     public static AsyncTestConfig from(AsyncTest ann) {
+        return from(ann, ann.threads());
+    }
+
+    /**
+     * Builds a config from an {@link AsyncTest} annotation instance, overriding
+     * the thread count. Used by the schedule-matrix path in {@code @AsyncTest(threadCounts=...)}
+     * so that each matrix entry runs with its own thread count while sharing all
+     * other annotation fields.
+     *
+     * @since 1.0.0
+     */
+    public static AsyncTestConfig from(AsyncTest ann, int threadsOverride) {
         // Check for global benchmarking system property
         boolean globalBenchmarkingEnabled = Boolean.getBoolean("async-test.benchmarking.enabled");
-        
+
         return builder()
-            .threads(ann.threads())
+            .threads(threadsOverride)
             .invocations(ann.invocations())
             .useVirtualThreads(ann.useVirtualThreads())
             .timeoutMs(ann.timeoutMs())
