@@ -132,3 +132,10 @@ se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedXmlParser
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$BoxedPrimitiveLock
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedTimeZone
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$UncaughtExceptionHandler
+
+# Phase 13 — additional concurrency-bug categories (1.0.0+)
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$DaemonThreadHygiene
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$NotifyWithoutMonitor
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedSecureRandom
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$WeakHashMapShared
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$JdbcConnectionShared

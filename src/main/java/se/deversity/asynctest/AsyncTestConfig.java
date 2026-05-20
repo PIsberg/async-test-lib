@@ -163,6 +163,13 @@ public final class AsyncTestConfig {
     public final boolean detectSharedTimeZone;
     public final boolean detectUncaughtExceptionHandler;
 
+    // ---- Phase 13 (1.0.0+) ----
+    public final boolean detectDaemonThreadHygiene;
+    public final boolean detectNotifyWithoutMonitor;
+    public final boolean detectSharedSecureRandom;
+    public final boolean detectWeakHashMapShared;
+    public final boolean detectJdbcConnectionShared;
+
     // ---- Benchmarking ----
     public final boolean enableBenchmarking;
     public final double benchmarkRegressionThreshold;
@@ -280,6 +287,12 @@ public final class AsyncTestConfig {
         detectBoxedPrimitiveLock       = b.detectBoxedPrimitiveLock;
         detectSharedTimeZone           = b.detectSharedTimeZone;
         detectUncaughtExceptionHandler = b.detectUncaughtExceptionHandler;
+        // Phase 13
+        detectDaemonThreadHygiene   = b.detectDaemonThreadHygiene;
+        detectNotifyWithoutMonitor  = b.detectNotifyWithoutMonitor;
+        detectSharedSecureRandom    = b.detectSharedSecureRandom;
+        detectWeakHashMapShared     = b.detectWeakHashMapShared;
+        detectJdbcConnectionShared  = b.detectJdbcConnectionShared;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -431,6 +444,11 @@ public final class AsyncTestConfig {
             .detectBoxedPrimitiveLock(ann.detectBoxedPrimitiveLock())
             .detectSharedTimeZone(ann.detectSharedTimeZone())
             .detectUncaughtExceptionHandler(ann.detectUncaughtExceptionHandler())
+            .detectDaemonThreadHygiene(ann.detectDaemonThreadHygiene())
+            .detectNotifyWithoutMonitor(ann.detectNotifyWithoutMonitor())
+            .detectSharedSecureRandom(ann.detectSharedSecureRandom())
+            .detectWeakHashMapShared(ann.detectWeakHashMapShared())
+            .detectJdbcConnectionShared(ann.detectJdbcConnectionShared())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -552,6 +570,12 @@ public final class AsyncTestConfig {
         private boolean detectBoxedPrimitiveLock       = false;
         private boolean detectSharedTimeZone           = false;
         private boolean detectUncaughtExceptionHandler = false;
+        // Phase 13
+        private boolean detectDaemonThreadHygiene  = false;
+        private boolean detectNotifyWithoutMonitor = false;
+        private boolean detectSharedSecureRandom   = false;
+        private boolean detectWeakHashMapShared    = false;
+        private boolean detectJdbcConnectionShared = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -666,6 +690,11 @@ public final class AsyncTestConfig {
         public Builder detectBoxedPrimitiveLock(boolean v)             { detectBoxedPrimitiveLock = v; return this; }
         public Builder detectSharedTimeZone(boolean v)                 { detectSharedTimeZone = v; return this; }
         public Builder detectUncaughtExceptionHandler(boolean v)       { detectUncaughtExceptionHandler = v; return this; }
+        public Builder detectDaemonThreadHygiene(boolean v)            { detectDaemonThreadHygiene = v; return this; }
+        public Builder detectNotifyWithoutMonitor(boolean v)           { detectNotifyWithoutMonitor = v; return this; }
+        public Builder detectSharedSecureRandom(boolean v)             { detectSharedSecureRandom = v; return this; }
+        public Builder detectWeakHashMapShared(boolean v)              { detectWeakHashMapShared = v; return this; }
+        public Builder detectJdbcConnectionShared(boolean v)           { detectJdbcConnectionShared = v; return this; }
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
@@ -877,6 +906,17 @@ public final class AsyncTestConfig {
                     else detectSharedTimeZone = false;
                 if (!excludes.contains(DetectorType.UNCAUGHT_EXCEPTION_HANDLER)) detectUncaughtExceptionHandler = true;
                     else detectUncaughtExceptionHandler = false;
+                // Phase 13
+                if (!excludes.contains(DetectorType.DAEMON_THREAD_HYGIENE)) detectDaemonThreadHygiene = true;
+                    else detectDaemonThreadHygiene = false;
+                if (!excludes.contains(DetectorType.NOTIFY_WITHOUT_MONITOR)) detectNotifyWithoutMonitor = true;
+                    else detectNotifyWithoutMonitor = false;
+                if (!excludes.contains(DetectorType.SHARED_SECURE_RANDOM)) detectSharedSecureRandom = true;
+                    else detectSharedSecureRandom = false;
+                if (!excludes.contains(DetectorType.WEAK_HASH_MAP_SHARED)) detectWeakHashMapShared = true;
+                    else detectWeakHashMapShared = false;
+                if (!excludes.contains(DetectorType.JDBC_CONNECTION_SHARED)) detectJdbcConnectionShared = true;
+                    else detectJdbcConnectionShared = false;
             } else {
                 // If detectAll is false, we still respect explicit enables,
                 // but we also apply excludes for consistency.
@@ -966,6 +1006,12 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.BOXED_PRIMITIVE_LOCK)) detectBoxedPrimitiveLock = false;
                 if (excludes.contains(DetectorType.SHARED_TIMEZONE)) detectSharedTimeZone = false;
                 if (excludes.contains(DetectorType.UNCAUGHT_EXCEPTION_HANDLER)) detectUncaughtExceptionHandler = false;
+                // Phase 13
+                if (excludes.contains(DetectorType.DAEMON_THREAD_HYGIENE)) detectDaemonThreadHygiene = false;
+                if (excludes.contains(DetectorType.NOTIFY_WITHOUT_MONITOR)) detectNotifyWithoutMonitor = false;
+                if (excludes.contains(DetectorType.SHARED_SECURE_RANDOM)) detectSharedSecureRandom = false;
+                if (excludes.contains(DetectorType.WEAK_HASH_MAP_SHARED)) detectWeakHashMapShared = false;
+                if (excludes.contains(DetectorType.JDBC_CONNECTION_SHARED)) detectJdbcConnectionShared = false;
             }
             return new AsyncTestConfig(this);
         }

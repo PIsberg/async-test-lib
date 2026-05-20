@@ -145,6 +145,13 @@ public final class AsyncTestContext {
     final SharedTimeZoneDetector            sharedTimeZoneDetector;
     final UncaughtExceptionHandlerDetector  uncaughtExceptionHandlerDetector;
 
+    // ---- Phase 13: Additional concurrency-bug categories (1.0.0+) ----
+    final DaemonThreadHygieneDetector       daemonThreadHygieneDetector;
+    final NotifyWithoutMonitorDetector      notifyWithoutMonitorDetector;
+    final SharedSecureRandomDetector        sharedSecureRandomDetector;
+    final WeakHashMapSharedDetector         weakHashMapSharedDetector;
+    final JdbcConnectionSharedDetector      jdbcConnectionSharedDetector;
+
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
         // Mirror registry references so package-private field access still works
@@ -238,6 +245,12 @@ public final class AsyncTestContext {
         boxedPrimitiveLockDetector             = registry.boxedPrimitiveLockDetector;
         sharedTimeZoneDetector                 = registry.sharedTimeZoneDetector;
         uncaughtExceptionHandlerDetector       = registry.uncaughtExceptionHandlerDetector;
+        // Phase 13
+        daemonThreadHygieneDetector            = registry.daemonThreadHygieneDetector;
+        notifyWithoutMonitorDetector           = registry.notifyWithoutMonitorDetector;
+        sharedSecureRandomDetector             = registry.sharedSecureRandomDetector;
+        weakHashMapSharedDetector              = registry.weakHashMapSharedDetector;
+        jdbcConnectionSharedDetector           = registry.jdbcConnectionSharedDetector;
     }
 
     // ---- Lifecycle (called by ConcurrencyRunner) ----
@@ -1058,6 +1071,53 @@ public final class AsyncTestContext {
      */
     public static UncaughtExceptionHandlerDetector uncaughtExceptionHandlerDetector() {
         return require("detectUncaughtExceptionHandler", c -> c.uncaughtExceptionHandlerDetector);
+    }
+
+    // ---- Phase 13 accessors (1.0.0+) ----
+
+    /**
+     * Returns the {@link DaemonThreadHygieneDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectDaemonThreadHygiene = false}
+     * @since 1.0.0
+     */
+    public static DaemonThreadHygieneDetector daemonThreadHygieneDetector() {
+        return require("detectDaemonThreadHygiene", c -> c.daemonThreadHygieneDetector);
+    }
+
+    /**
+     * Returns the {@link NotifyWithoutMonitorDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectNotifyWithoutMonitor = false}
+     * @since 1.0.0
+     */
+    public static NotifyWithoutMonitorDetector notifyWithoutMonitorDetector() {
+        return require("detectNotifyWithoutMonitor", c -> c.notifyWithoutMonitorDetector);
+    }
+
+    /**
+     * Returns the {@link SharedSecureRandomDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedSecureRandom = false}
+     * @since 1.0.0
+     */
+    public static SharedSecureRandomDetector sharedSecureRandomDetector() {
+        return require("detectSharedSecureRandom", c -> c.sharedSecureRandomDetector);
+    }
+
+    /**
+     * Returns the {@link WeakHashMapSharedDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectWeakHashMapShared = false}
+     * @since 1.0.0
+     */
+    public static WeakHashMapSharedDetector weakHashMapSharedDetector() {
+        return require("detectWeakHashMapShared", c -> c.weakHashMapSharedDetector);
+    }
+
+    /**
+     * Returns the {@link JdbcConnectionSharedDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectJdbcConnectionShared = false}
+     * @since 1.0.0
+     */
+    public static JdbcConnectionSharedDetector jdbcConnectionSharedDetector() {
+        return require("detectJdbcConnectionShared", c -> c.jdbcConnectionSharedDetector);
     }
 
     // ---- Helper ----

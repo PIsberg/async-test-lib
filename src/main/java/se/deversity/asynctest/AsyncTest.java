@@ -896,6 +896,55 @@ public @interface AsyncTest {
      */
     boolean detectUncaughtExceptionHandler() default true;
 
+    // ============= Phase 13: Additional concurrency-bug categories (1.0.0+) =============
+
+    /**
+     * Enable daemon-thread hygiene detection. Flags non-daemon {@link Thread} instances
+     * registered with the detector that are still alive at analyze time — they will block
+     * JVM exit and hang the test process. See
+     * {@link se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector}.
+     * @since 1.0.0
+     */
+    boolean detectDaemonThreadHygiene() default true;
+
+    /**
+     * Enable illegal-notify detection. Flags {@code notify()}/{@code notifyAll()} attempts
+     * declared by user code without the calling thread holding the monitor — would throw
+     * {@link IllegalMonitorStateException} at runtime and leave wait()-ers blocked. See
+     * {@link se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector}.
+     * @since 1.0.0
+     */
+    boolean detectNotifyWithoutMonitor() default true;
+
+    /**
+     * Enable shared-{@link java.security.SecureRandom} detection. Distinct from
+     * {@link #detectSharedRandom()} which covers {@code java.util.Random} only.
+     * {@code SecureRandom} thread safety is provider-dependent and concurrent access can
+     * produce biased or duplicate cryptographic output. See
+     * {@link se.deversity.asynctest.diagnostics.SharedSecureRandomDetector}.
+     * @since 1.0.0
+     */
+    boolean detectSharedSecureRandom() default true;
+
+    /**
+     * Enable shared {@link java.util.WeakHashMap} / {@link java.util.IdentityHashMap}
+     * detection. Both have additional concurrency hazards beyond regular {@code HashMap}
+     * (GC-driven removal and linear-probing collisions respectively). See
+     * {@link se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector}.
+     * @since 1.0.0
+     */
+    boolean detectWeakHashMapShared() default true;
+
+    /**
+     * Enable JDBC resource sharing detection. Flags
+     * {@link java.sql.Connection}/{@link java.sql.Statement}/{@link java.sql.PreparedStatement}/
+     * {@link java.sql.ResultSet} accessed from multiple threads. The JDBC spec does NOT
+     * require any of these to be thread-safe; most drivers (PostgreSQL, MySQL, Oracle) aren't.
+     * See {@link se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector}.
+     * @since 1.0.0
+     */
+    boolean detectJdbcConnectionShared() default true;
+
     // ============= License Gating (Integration) =============
 
     /** Keygen Account ID. Defaults to System property 'keygen.account.id' if empty. */

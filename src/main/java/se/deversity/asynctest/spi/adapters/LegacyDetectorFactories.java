@@ -820,4 +820,46 @@ public final class LegacyDetectorFactories {
             return new LegacyDetectorAdapter<>(new UncaughtExceptionHandlerDetector(), DetectorType.UNCAUGHT_EXCEPTION_HANDLER, "UncaughtExceptionHandler");
         }
     }
+
+    // ---------- Phase 13 — additional concurrency-bug categories (1.0.0+) ----------
+
+    public static final class DaemonThreadHygiene implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.DAEMON_THREAD_HYGIENE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectDaemonThreadHygiene; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new DaemonThreadHygieneDetector(), DetectorType.DAEMON_THREAD_HYGIENE, "DaemonThreadHygiene");
+        }
+    }
+
+    public static final class NotifyWithoutMonitor implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.NOTIFY_WITHOUT_MONITOR; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectNotifyWithoutMonitor; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new NotifyWithoutMonitorDetector(), DetectorType.NOTIFY_WITHOUT_MONITOR, "NotifyWithoutMonitor");
+        }
+    }
+
+    public static final class SharedSecureRandom implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.SHARED_SECURE_RANDOM; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectSharedSecureRandom; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new SharedSecureRandomDetector(), DetectorType.SHARED_SECURE_RANDOM, "SharedSecureRandom");
+        }
+    }
+
+    public static final class WeakHashMapShared implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.WEAK_HASH_MAP_SHARED; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectWeakHashMapShared; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new WeakHashMapSharedDetector(), DetectorType.WEAK_HASH_MAP_SHARED, "WeakHashMapShared");
+        }
+    }
+
+    public static final class JdbcConnectionShared implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.JDBC_CONNECTION_SHARED; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectJdbcConnectionShared; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new JdbcConnectionSharedDetector(), DetectorType.JDBC_CONNECTION_SHARED, "JdbcConnectionShared");
+        }
+    }
 }

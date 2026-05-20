@@ -228,6 +228,11 @@ class PresetResolutionTest {
         @Override public boolean detectBoxedPrimitiveLock() { return def("detectBoxedPrimitiveLock"); }
         @Override public boolean detectSharedTimeZone() { return def("detectSharedTimeZone"); }
         @Override public boolean detectUncaughtExceptionHandler() { return def("detectUncaughtExceptionHandler"); }
+        @Override public boolean detectDaemonThreadHygiene() { return def("detectDaemonThreadHygiene"); }
+        @Override public boolean detectNotifyWithoutMonitor() { return def("detectNotifyWithoutMonitor"); }
+        @Override public boolean detectSharedSecureRandom() { return def("detectSharedSecureRandom"); }
+        @Override public boolean detectWeakHashMapShared() { return def("detectWeakHashMapShared"); }
+        @Override public boolean detectJdbcConnectionShared() { return def("detectJdbcConnectionShared"); }
         @Override public boolean enableBenchmarking() { return def("enableBenchmarking"); }
         @Override public double benchmarkRegressionThreshold() { return def("benchmarkRegressionThreshold"); }
         @Override public boolean failOnBenchmarkRegression() { return def("failOnBenchmarkRegression"); }

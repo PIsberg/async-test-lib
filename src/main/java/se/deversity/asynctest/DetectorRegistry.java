@@ -154,6 +154,13 @@ final class DetectorRegistry {
     final SharedTimeZoneDetector            sharedTimeZoneDetector;
     final UncaughtExceptionHandlerDetector  uncaughtExceptionHandlerDetector;
 
+    // ---- Phase 13: Additional concurrency-bug categories (1.0.0+) ----
+    final DaemonThreadHygieneDetector       daemonThreadHygieneDetector;
+    final NotifyWithoutMonitorDetector      notifyWithoutMonitorDetector;
+    final SharedSecureRandomDetector        sharedSecureRandomDetector;
+    final WeakHashMapSharedDetector         weakHashMapSharedDetector;
+    final JdbcConnectionSharedDetector      jdbcConnectionSharedDetector;
+
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
      * Detectors whose flag is {@code false} are set to {@code null} and incur
@@ -297,6 +304,13 @@ final class DetectorRegistry {
         boxedPrimitiveLockDetector       = cfg.detectBoxedPrimitiveLock      ? new BoxedPrimitiveLockDetector()       : null;
         sharedTimeZoneDetector           = cfg.detectSharedTimeZone          ? new SharedTimeZoneDetector()           : null;
         uncaughtExceptionHandlerDetector = cfg.detectUncaughtExceptionHandler ? new UncaughtExceptionHandlerDetector() : null;
+
+        // ---- Phase 13: Additional concurrency-bug categories (1.0.0+) ----
+        daemonThreadHygieneDetector  = cfg.detectDaemonThreadHygiene  ? new DaemonThreadHygieneDetector()  : null;
+        notifyWithoutMonitorDetector = cfg.detectNotifyWithoutMonitor ? new NotifyWithoutMonitorDetector() : null;
+        sharedSecureRandomDetector   = cfg.detectSharedSecureRandom   ? new SharedSecureRandomDetector()   : null;
+        weakHashMapSharedDetector    = cfg.detectWeakHashMapShared    ? new WeakHashMapSharedDetector()    : null;
+        jdbcConnectionSharedDetector = cfg.detectJdbcConnectionShared ? new JdbcConnectionSharedDetector() : null;
     }
 
     /**
@@ -628,6 +642,23 @@ final class DetectorRegistry {
         ifIssue(uncaughtExceptionHandlerDetector,
                 d -> d.analyze(),
                 UncaughtExceptionHandlerDetector.UncaughtExceptionHandlerReport::hasIssues, out);
+
+        // ---- Phase 13 (1.0.0+) ----
+        ifIssue(daemonThreadHygieneDetector,
+                d -> d.analyze(),
+                DaemonThreadHygieneDetector.Report::hasIssues, out);
+        ifIssue(notifyWithoutMonitorDetector,
+                d -> d.analyze(),
+                NotifyWithoutMonitorDetector.Report::hasIssues, out);
+        ifIssue(sharedSecureRandomDetector,
+                d -> d.analyze(),
+                SharedSecureRandomDetector.Report::hasIssues, out);
+        ifIssue(weakHashMapSharedDetector,
+                d -> d.analyze(),
+                WeakHashMapSharedDetector.Report::hasIssues, out);
+        ifIssue(jdbcConnectionSharedDetector,
+                d -> d.analyze(),
+                JdbcConnectionSharedDetector.Report::hasIssues, out);
 
         return out;
     }
