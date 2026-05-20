@@ -3,6 +3,7 @@ package se.deversity.asynctest;
 import org.junit.jupiter.api.TestTemplate;
 import org.junit.jupiter.api.extension.ExtendWith;
 import se.deversity.vibetags.annotations.AIContract;
+import se.deversity.vibetags.annotations.AIPublicAPI;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -21,6 +22,7 @@ import java.lang.annotation.Target;
  * - Virtual thread pinning issues (Java 21+)
  */
 @AIContract(reason = "Public annotation API used directly in user test methods. Attribute names, types, and defaults are part of the stable public API — any change is a breaking change for all consumers.")
+@AIPublicAPI
 @Target({ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
 @TestTemplate
@@ -32,6 +34,27 @@ public @interface AsyncTest {
      * Each thread will execute the test method once per invocation round.
      */
     int threads() default 10;
+
+    /**
+     * Optional schedule matrix: when non-empty, the test runs once per entry,
+     * each run using that entry as the thread count. The {@link #threads()}
+     * value is ignored for runs that use this matrix.
+     *
+     * <p>Bug-finding sensitivity is often thread-count-dependent — a race that
+     * misses at 4 threads can surface reliably at 32, and vice versa. Use this
+     * to sweep a range cheaply.
+     *
+     * <p>Example:
+     * <pre>{@code
+     * @AsyncTest(threadCounts = {1, 2, 4, 8, 16, 32, 64})
+     * void racy_under_contention() { ... }
+     * }</pre>
+     *
+     * <p>Default empty array means "use {@link #threads()}" (legacy behavior).
+     *
+     * @since 1.0.0
+     */
+    int[] threadCounts() default {};
 
     /**
      * Number of times the entire concurrent execution is repeated.
@@ -95,6 +118,54 @@ public @interface AsyncTest {
      * <p>Example: {@code @AsyncTest(detectAll = false, detectDeadlocks = true)} — only deadlock detection.
      */
     boolean detectAll() default true;
+
+    /**
+     * Curated detector bundle. Overrides {@link #detectAll()} and the per-flag
+     * boolean attributes when set to anything other than {@link Preset#ALL}.
+     *
+     * <ul>
+     *   <li>{@link Preset#ALL} — every detector (default; equivalent to legacy {@code detectAll = true}).</li>
+     *   <li>{@link Preset#ESSENTIALS} — ~12 high-signal detectors for everyday CI.</li>
+     *   <li>{@link Preset#STRICT} — same as ALL, named explicitly.</li>
+     *   <li>{@link Preset#CI_FAST} — minimal set for pull-request gates.</li>
+     *   <li>{@link Preset#NONE} — disable all detectors; concurrent execution only.</li>
+     * </ul>
+     *
+     * <p>{@link #excludes()} still applies on top of the preset, letting you trim
+     * one or two detectors from a curated bundle.
+     *
+     * @since 1.0.0
+     */
+    Preset preset() default Preset.ALL;
+
+    /**
+     * Replay seed for deterministic re-runs.
+     *
+     * <p>The runner exposes a {@code long} seed per invocation via
+     * {@link AsyncTestContext#replaySeed()}. When {@link #replaySeed()} is
+     * {@code 0} (default), each invocation gets a fresh random seed and the
+     * value is logged on test failure so you can plug it back in. When set
+     * explicitly, every invocation uses that exact seed.
+     *
+     * <p>This does <em>not</em> make thread scheduling deterministic — that
+     * would require JVM-level instrumentation — but it gives any RNG-driven
+     * input in your test body (sleep jitter, randomised payloads, choice of
+     * worker behaviour) a stable starting point so a failure caught once can
+     * be reproduced.
+     *
+     * <p>Usage pattern:
+     * <pre>{@code
+     * @AsyncTest
+     * void flaky_race() {
+     *     long seed = AsyncTestContext.replaySeed();
+     *     var rng = new Random(seed);
+     *     // ... use rng for any randomised choices in the body
+     * }
+     * }</pre>
+     *
+     * @since 1.0.0
+     */
+    long replaySeed() default 0L;
 
     /**
      * Specific detectors to exclude when {@code detectAll = true}.

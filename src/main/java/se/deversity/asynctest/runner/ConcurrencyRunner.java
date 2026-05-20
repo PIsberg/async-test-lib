@@ -2,6 +2,7 @@ package se.deversity.asynctest.runner;
 
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICore;
+import se.deversity.vibetags.annotations.AIThreadSafe;
 import se.deversity.asynctest.AfterEachInvocation;
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.asynctest.AsyncTestContext;
@@ -13,8 +14,6 @@ import se.deversity.asynctest.diagnostics.MemoryModelValidator;
 import se.deversity.asynctest.diagnostics.Phase1DetectorSet;
 import se.deversity.asynctest.diagnostics.VirtualThreadStressConfig;
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
-import se.deversity.common.license.LicenseConfig;
-import se.deversity.common.license.LicenseGate;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -45,51 +44,15 @@ import java.util.concurrent.*;
     note = "Core stress-test execution engine. The CyclicBarrier pattern forces maximum thread contention. Timeout logic and AsyncTestContext install/uninstall are carefully calibrated — subtle changes introduce flaky tests or missed detector activations."
 )
 @AIAudit(checkFor = {"Thread Safety issues", "Resource Leaks"})
+@AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Coordinates concurrency using CyclicBarrier to maximize thread contention.")
 public class ConcurrencyRunner {
 
     public static void execute(ReflectiveInvocationContext<Method> invocationContext,
                                AsyncTestConfig config) throws Throwable {
 
-        // License Gate Integration
-        String keygenAcc = config.keygenAccountId.isEmpty() ? System.getProperty("keygen.account.id", "dummy-account") : config.keygenAccountId;
-        String keygenKey = config.keygenApiKey.isEmpty()    ? System.getProperty("keygen.api.key")                     : config.keygenApiKey;
-        String keygenProd = config.keygenProductId.isEmpty() ? System.getProperty("keygen.product.id", "dummy-prod")    : config.keygenProductId;
-        String lsStore   = config.lemonSqueezyStore.isEmpty() ? System.getProperty("ls.store.subdomain")               : config.lemonSqueezyStore;
-
-        // Zero-Config CI: Auto-enable mock mode in CI if no real API key is found
-        boolean isCi = System.getenv("GITHUB_ACTIONS") != null || System.getenv("CI") != null;
-        boolean hasKey = keygenKey != null && !keygenKey.isBlank();
-        boolean mock = config.licenseMockMode || Boolean.getBoolean("license.mock.mode") || (isCi && !hasKey);
-
-        // Fallback for dummy key if not in mock mode
-        if (keygenKey == null) keygenKey = "dummy-key";
-
-        LicenseGate gate = LicenseGate.of(
-            LicenseConfig.builder()
-                .keygenAccountId(keygenAcc)
-                .keygenApiKey(keygenKey)
-                .keygenProductId(keygenProd)
-                .lemonSqueezyStoreSubdomain(lsStore)
-                .mockMode(mock)
-                .build()
-        );
-
-        if (mock && isCi && !hasKey) {
-            System.out.println("LICENSE: Zero-Config CI mode active (Auto-Mocked)");
-        }
-
-        // For PoC: checking with a placeholder email.
-        String licKey = config.licenseKey.isEmpty() ? System.getProperty("license.key") : config.licenseKey;
-        
-        se.deversity.common.license.LicenseResult result = gate.check("user@example.com", licKey);
-        
-        if (result instanceof se.deversity.common.license.LicenseResult.Denied denied) {
-            String msg = "LICENSE DENIED: " + denied.reason() + (denied.message() != null ? " - " + denied.message() : "");
-            System.err.println(msg);
-            throw new SecurityException(msg); // ENFORCE: Stop execution if denied
-        } else {
-            System.out.println("LICENSE GRANTED: " + ((se.deversity.common.license.LicenseResult.Allowed)result).reason());
-        }
+        // Process-wide license check — cached by config fingerprint, so this is
+        // a ConcurrentHashMap hit after the first invocation per JVM.
+        LicenseGuard.check(config);
 
         // Benchmarking setup
         BenchmarkRecorder benchmarkRecorder = null;
@@ -139,6 +102,14 @@ public class ConcurrencyRunner {
 
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(config.timeoutMs);
 
+        // Replay-seed source: explicit @AsyncTest(replaySeed=N) makes every
+        // round use N; default 0 generates a fresh seed per round so failures
+        // are reproducible after the runner logs the value.
+        java.util.random.RandomGenerator seedSource = (config.replaySeed != 0L)
+                ? null
+                : new java.util.Random();
+        long currentSeed = 0L;
+
         try {
             for (int i = 0; i < config.invocations; i++) {
                 long remainingMs = remainingMillis(deadlineNanos);
@@ -146,6 +117,10 @@ public class ConcurrencyRunner {
                     throw timeoutError(config.timeoutMs, null, phase1, phase2Context,
                             config.detectDeadlocks);
                 }
+
+                // Seed for this round — fixed from annotation, or freshly drawn.
+                currentSeed = (seedSource != null) ? seedSource.nextLong() : config.replaySeed;
+                phase2Context.setReplaySeedForRound(currentSeed);
 
                 long benchmarkStart = 0;
                 if (benchmarkRecorder != null) {
@@ -176,11 +151,17 @@ public class ConcurrencyRunner {
                 throw timeoutError(config.timeoutMs, e, phase1, phase2Context,
                         config.detectDeadlocks);
             }
+            // Surface the seed of the failing round so the user can reproduce by
+            // pasting it into @AsyncTest(replaySeed=N).
+            System.err.println("[AsyncTest] Failure with replaySeed=" + currentSeed
+                    + "L — paste into @AsyncTest(replaySeed=...) to reproduce.");
             AsyncTestListenerRegistry.fireTestFailed(e);
             phase1.printReports();
             printPhase2Reports(phase2Context);
             throw e;
         } catch (Throwable t) {
+            System.err.println("[AsyncTest] Failure with replaySeed=" + currentSeed
+                    + "L — paste into @AsyncTest(replaySeed=...) to reproduce.");
             AsyncTestListenerRegistry.fireTestFailed(t);
             phase1.printReports();
             printPhase2Reports(phase2Context);
@@ -220,20 +201,52 @@ public class ConcurrencyRunner {
 
         for (int t = 0; t < threads; t++) {
             executor.submit(() -> {
-                AsyncTestContext.install(phase2Context);
+                // latch.countDown() MUST always run, regardless of any failure in
+                // install / test body / uninstall / snapshot. Without this guarantee
+                // the runner blocks on latch.await() until timeoutMs, turning any
+                // bug in worker cleanup into a fake "deadlock detected" report.
+                boolean installed = false;
                 try {
-                    barrier.await();
-                    method.invoke(target, args);
-                } catch (Throwable ex) {
-                    failures.add(unwrap(ex));
-                } finally {
-                    // Uninstall before counting down so the runner cannot proceed
-                    // past latch.await() while any thread still holds the context.
-                    AsyncTestContext.uninstall();
-                    latch.countDown();
-                    if (phase1.livelock != null) {
-                        phase1.livelock.captureSnapshot();
+                    AsyncTestContext.install(phase2Context);
+                    installed = true;
+                    try {
+                        barrier.await();
+                        Object result = method.invoke(target, args);
+                        // Async test body support: if the method returns a CompletionStage,
+                        // wait for it to complete (or fail) before counting this worker done.
+                        // Without this, the test would "succeed" the instant invoke() returned,
+                        // long before the async work finished — defeating the whole point of
+                        // running stress tests on async code.
+                        if (result instanceof java.util.concurrent.CompletionStage<?> stage) {
+                            stage.toCompletableFuture()
+                                 .get(roundTimeoutMs, TimeUnit.MILLISECONDS);
+                        }
+                    } catch (Throwable ex) {
+                        failures.add(unwrap(ex));
                     }
+                } catch (Throwable installErr) {
+                    failures.add(installErr);
+                } finally {
+                    // Symmetry rule (CLAUDE.md): only uninstall if install succeeded.
+                    // Each cleanup step is independently guarded so one failure can't
+                    // suppress the next.
+                    if (installed) {
+                        try {
+                            AsyncTestContext.uninstall();
+                        } catch (Throwable uninstallErr) {
+                            failures.add(uninstallErr);
+                        }
+                    }
+                    if (phase1.livelock != null) {
+                        try {
+                            phase1.livelock.captureSnapshot();
+                        } catch (Throwable snapErr) {
+                            // Diagnostic-only path; never fail the test on this.
+                            System.err.println(
+                                "Warning: livelock snapshot failed: " + snapErr.getMessage());
+                        }
+                    }
+                    latch.countDown();
                 }
             });
         }
@@ -276,7 +289,12 @@ public class ConcurrencyRunner {
     }
 
     private static Throwable unwrap(Throwable t) {
-        if (t instanceof InvocationTargetException) {
+        if (t instanceof InvocationTargetException && t.getCause() != null) {
+            return t.getCause();
+        }
+        // CompletableFuture.get(...) wraps async-body failures in ExecutionException.
+        // Strip that layer so user assertions surface intact.
+        if (t instanceof ExecutionException && t.getCause() != null) {
             return t.getCause();
         }
         return t;

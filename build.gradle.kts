@@ -28,8 +28,8 @@ dependencies {
     testImplementation("org.junit.platform:junit-platform-testkit:$junitVersion")
     testImplementation("com.code-intelligence:jazzer-api:$jazzerVersion")
     implementation("se.deversity.common:common-license-lib:0.2.1")
-    compileOnly("se.deversity.vibetags:vibetags-processor:0.8.0")
-    annotationProcessor("se.deversity.vibetags:vibetags-processor:0.8.0")
+    compileOnly("se.deversity.vibetags:vibetags-processor:0.9.5")
+    annotationProcessor("se.deversity.vibetags:vibetags-processor:0.9.5")
 }
 
 tasks.test {

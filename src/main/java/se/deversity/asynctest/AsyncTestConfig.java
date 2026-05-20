@@ -2,6 +2,7 @@ package se.deversity.asynctest;
 
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AICore;
+import se.deversity.vibetags.annotations.AIImmutable;
 
 import java.util.Arrays;
 import java.util.EnumSet;
@@ -20,6 +21,7 @@ import java.util.Set;
     focus = "Maintain strict 1:1 mapping between @AsyncTest attributes, Builder fields, from(AsyncTest), build() logic, and DetectorRegistry",
     avoids = "mutable state — this class must remain immutable after construction"
 )
+@AIImmutable(note = "Immutable snapshot of @AsyncTest parameters to ensure thread safety.")
 public final class AsyncTestConfig {
 
     // ---- Execution ----
@@ -32,6 +34,12 @@ public final class AsyncTestConfig {
     // ---- Umbrella flag ----
     /** When {@code true}, every detector is treated as enabled. */
     public final boolean detectAll;
+
+    /**
+     * Replay seed configured on the annotation (0 = generate per invocation).
+     * The actual per-invocation seed used at runtime is on {@link AsyncTestContext#replaySeed()}.
+     */
+    public final long replaySeed;
 
     // ---- Phase 1 ----
     public final boolean detectDeadlocks;
@@ -175,6 +183,7 @@ public final class AsyncTestConfig {
         timeoutMs                      = b.timeoutMs;
         virtualThreadStressMode        = b.virtualThreadStressMode;
         detectAll                      = b.detectAll;
+        replaySeed                     = b.replaySeed;
         detectDeadlocks                = b.detectDeadlocks;
         detectVisibility               = b.detectVisibility;
         detectLivelocks                = b.detectLivelocks;
@@ -284,16 +293,48 @@ public final class AsyncTestConfig {
 
     /** Builds a config from an {@link AsyncTest} annotation instance. */
     public static AsyncTestConfig from(AsyncTest ann) {
+        return from(ann, ann.threads());
+    }
+
+    /**
+     * Builds a config from an {@link AsyncTest} annotation instance, overriding
+     * the thread count. Used by the schedule-matrix path in {@code @AsyncTest(threadCounts=...)}
+     * so that each matrix entry runs with its own thread count while sharing all
+     * other annotation fields.
+     *
+     * @since 1.0.0
+     */
+    public static AsyncTestConfig from(AsyncTest ann, int threadsOverride) {
         // Check for global benchmarking system property
         boolean globalBenchmarkingEnabled = Boolean.getBoolean("async-test.benchmarking.enabled");
-        
+
+        // Resolve preset → effective detectAll + excludes set.
+        // ALL/STRICT preserve the legacy detectAll behavior; other presets force
+        // detectAll = true but exclude every DetectorType outside the preset's
+        // enabled set so that build()'s detectAll loop activates only the
+        // selected detectors. User-supplied excludes() always layer on top.
+        Preset preset = ann.preset();
+        boolean effectiveDetectAll;
+        Set<DetectorType> effectiveExcludes = EnumSet.noneOf(DetectorType.class);
+        if (preset.isAll()) {
+            effectiveDetectAll = ann.detectAll();
+        } else {
+            effectiveDetectAll = true;
+            Set<DetectorType> enabled = preset.enabled();
+            for (DetectorType t : DetectorType.values()) {
+                if (!enabled.contains(t)) effectiveExcludes.add(t);
+            }
+        }
+        effectiveExcludes.addAll(Arrays.asList(ann.excludes()));
+
         return builder()
-            .threads(ann.threads())
+            .threads(threadsOverride)
             .invocations(ann.invocations())
             .useVirtualThreads(ann.useVirtualThreads())
             .timeoutMs(ann.timeoutMs())
             .virtualThreadStressMode(ann.virtualThreadStressMode())
-            .detectAll(ann.detectAll())
+            .detectAll(effectiveDetectAll)
+            .replaySeed(ann.replaySeed())
             .detectDeadlocks(ann.detectDeadlocks())
             .detectVisibility(ann.detectVisibility())
             .detectLivelocks(ann.detectLivelocks())
@@ -399,7 +440,7 @@ public final class AsyncTestConfig {
             .lemonSqueezyStore(ann.lemonSqueezyStore())
             .licenseKey(ann.licenseKey())
             .licenseMockMode(ann.licenseMockMode())
-            .excludes(ann.excludes())
+            .excludes(effectiveExcludes.toArray(new DetectorType[0]))
             .build();
     }
 
@@ -414,6 +455,7 @@ public final class AsyncTestConfig {
         private long timeoutMs                     = 5_000;
         private String virtualThreadStressMode     = "OFF";
         private boolean detectAll                  = false;
+        private long    replaySeed                 = 0L;
         private boolean detectDeadlocks            = true;
         private boolean detectVisibility           = false;
         private boolean detectLivelocks            = false;
@@ -527,6 +569,7 @@ public final class AsyncTestConfig {
         public Builder timeoutMs(long v)                     { timeoutMs = v; return this; }
         public Builder virtualThreadStressMode(String v)     { virtualThreadStressMode = v; return this; }
         public Builder detectAll(boolean v)                  { detectAll = v; return this; }
+        public Builder replaySeed(long v)                    { replaySeed = v; return this; }
         public Builder detectDeadlocks(boolean v)            { detectDeadlocks = v; return this; }
         public Builder detectVisibility(boolean v)           { detectVisibility = v; return this; }
         public Builder detectLivelocks(boolean v)            { detectLivelocks = v; return this; }

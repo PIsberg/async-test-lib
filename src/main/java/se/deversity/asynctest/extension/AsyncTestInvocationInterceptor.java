@@ -17,9 +17,22 @@ import java.lang.reflect.Method;
 public class AsyncTestInvocationInterceptor implements InvocationInterceptor {
 
     private final AsyncTest asyncTest;
+    private final int threadCount;
 
     public AsyncTestInvocationInterceptor(AsyncTest asyncTest) {
+        this(asyncTest, asyncTest.threads());
+    }
+
+    /**
+     * Construct with an explicit thread count, used by the schedule-matrix path
+     * in {@code @AsyncTest(threadCounts=...)} where each matrix entry runs with
+     * its own count.
+     *
+     * @since 1.0.0
+     */
+    public AsyncTestInvocationInterceptor(AsyncTest asyncTest, int threadCount) {
         this.asyncTest = asyncTest;
+        this.threadCount = threadCount;
     }
 
     @Override
@@ -30,6 +43,6 @@ public class AsyncTestInvocationInterceptor implements InvocationInterceptor {
         // invocation.proceed() — as the sole InvocationInterceptor we own the execution.
         // Skipping proceed() is valid per JUnit's contract (Fix 6).
         invocation.skip();
-        ConcurrencyRunner.execute(invocationContext, AsyncTestConfig.from(asyncTest));
+        ConcurrencyRunner.execute(invocationContext, AsyncTestConfig.from(asyncTest, threadCount));
     }
 }

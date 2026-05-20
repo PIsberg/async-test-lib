@@ -3,6 +3,8 @@ package se.deversity.asynctest;
 import se.deversity.asynctest.diagnostics.*;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICore;
+import se.deversity.vibetags.annotations.AIPublicAPI;
+import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.util.List;
 import java.util.function.Function;
@@ -35,6 +37,8 @@ import java.util.function.Function;
     note = "ThreadLocal install/uninstall must always be symmetric. A leak propagates stale detector state across test invocations and causes false positives or missed detections."
 )
 @AIAudit(checkFor = {"Thread Safety issues"})
+@AIThreadSafe(strategy = AIThreadSafe.Strategy.THREAD_LOCAL, note = "CURRENT ThreadLocal maintains context per active test thread symmetrically.")
+@AIPublicAPI
 public final class AsyncTestContext {
 
     private static final ThreadLocal<AsyncTestContext> CURRENT = new ThreadLocal<>();
@@ -254,6 +258,39 @@ public final class AsyncTestContext {
      */
     public static AsyncTestContext get() {
         return CURRENT.get();
+    }
+
+    // ---- Replay seed (set per-invocation by ConcurrencyRunner) ----
+
+    /**
+     * Per-round seed. Volatile because the runner thread writes it between
+     * rounds while N worker threads may still be reading (they shouldn't be —
+     * latch.await ensures the round is over — but volatile is the right
+     * conservative discipline for cross-thread visibility).
+     */
+    private volatile long currentRoundSeed = 0L;
+
+    /**
+     * Returns the replay seed for the currently executing invocation round.
+     *
+     * <p>Use this from inside an {@code @AsyncTest} method body to seed any
+     * RNG-driven choices (sleep jitter, randomised payloads, branch selection)
+     * with a value the runner controls. When a test fails, the runner logs the
+     * seed so you can paste it into {@code @AsyncTest(replaySeed=...)} to
+     * reproduce the same RNG sequence on the next run.
+     *
+     * <p>Returns {@code 0L} when called outside an {@code @AsyncTest} round.
+     *
+     * @since 1.0.0
+     */
+    public static long replaySeed() {
+        AsyncTestContext ctx = CURRENT.get();
+        return ctx == null ? 0L : ctx.currentRoundSeed;
+    }
+
+    /** Internal: set by {@code ConcurrencyRunner} before each invocation round. */
+    public void setReplaySeedForRound(long seed) {
+        this.currentRoundSeed = seed;
     }
 
     // ---- Internal reporting ----
@@ -916,8 +953,19 @@ public final class AsyncTestContext {
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedMessageDigest = false}
      * @since 0.9.0
      */
+    @AIPublicAPI
     public static SharedMessageDigestDetector sharedMessageDigestDetector() {
         return require("detectSharedMessageDigest", c -> c.sharedMessageDigestDetector);
+    }
+
+    /**
+     * Returns the {@link SharedMessageDigestDetector} (as a unified Shared Cryptography Detector) for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedMessageDigest = false}
+     * @since 0.9.5
+     */
+    @AIPublicAPI
+    public static SharedMessageDigestDetector sharedCryptographyDetector() {
+        return sharedMessageDigestDetector();
     }
 
     // ---- Phase 12: Operational & Hygiene Concurrency Issues ----

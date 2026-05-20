@@ -2,6 +2,7 @@ package se.deversity.asynctest;
 
 import se.deversity.asynctest.diagnostics.*;
 import se.deversity.vibetags.annotations.AIContext;
+import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,6 +27,7 @@ import java.util.function.Function;
     focus = "Each new detector requires exactly three steps in this class: (1) a final field declaration, (2) conditional construction in the constructor keyed on the config flag, (3) an analyzeAll() call in the correct phase block. All three steps must be added together.",
     avoids = "partial patterns — a field without construction or analysis silently skips detection"
 )
+@AIThreadSafe(strategy = AIThreadSafe.Strategy.SYNCHRONIZED, note = "Guards conditional access to internal detector initialization and phase blocks.")
 final class DetectorRegistry {
 
     // ---- Phase 1 ----

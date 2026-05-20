@@ -2,6 +2,7 @@ package se.deversity.asynctest;
 
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.vibetags.annotations.AIContract;
+import se.deversity.vibetags.annotations.AIPublicAPI;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -13,12 +14,30 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * callbacks for async-test lifecycle events. Listeners are stored in a
  * {@link CopyOnWriteArrayList} to allow concurrent iteration without locking.
  *
- * <p><strong>Usage:</strong>
- * <pre>{@code
- * // Register a custom listener
- * AsyncTestListenerRegistry.register(new MyCustomListener());
+ * <p><strong>⚠ Lifetime warning:</strong> The listener list is <em>JVM-wide</em>
+ * static state. A listener registered in one test will continue to fire in every
+ * subsequent test that runs in the same JVM unless explicitly unregistered. Prefer
+ * one of the scoped patterns below to avoid cross-test leakage:
  *
- * // Optionally unregister later
+ * <ul>
+ *   <li>{@link #registerScoped(AsyncTestListener)} returns an {@link AutoCloseable}
+ *       you can use with try-with-resources to scope a listener to a single test.</li>
+ *   <li>{@link #snapshot()} / {@link #restoreSnapshot(Snapshot)} let you save and
+ *       restore the full registry around a block (useful in {@code @BeforeEach} /
+ *       {@code @AfterEach}).</li>
+ * </ul>
+ *
+ * <p><strong>Recommended usage (scoped):</strong>
+ * <pre>{@code
+ * try (var ignored = AsyncTestListenerRegistry.registerScoped(myListener)) {
+ *     // ... run code; listener fires only inside this block
+ * }
+ * }</pre>
+ *
+ * <p><strong>Legacy usage (unscoped — caller responsible for cleanup):</strong>
+ * <pre>{@code
+ * AsyncTestListenerRegistry.register(new MyCustomListener());
+ * // ... later ...
  * AsyncTestListenerRegistry.unregister(myListener);
  * }</pre>
  *
@@ -33,6 +52,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * @see NoopAsyncTestListener
  */
 @AIContract(reason = "Public API for registering and unregistering AsyncTestListener instances. register(), unregister(), clearAll(), and fireXxx() methods are called by user code and infrastructure — signatures must not change.")
+@AIPublicAPI
 public final class AsyncTestListenerRegistry {
 
     private static final List<AsyncTestListener> LISTENERS = new CopyOnWriteArrayList<>();
@@ -172,5 +192,75 @@ public final class AsyncTestListenerRegistry {
      */
     public static void clearAll() {
         LISTENERS.clear();
+    }
+
+    /**
+     * Registers a listener and returns an {@link AutoCloseable} that unregisters it
+     * when closed. Use with try-with-resources to bind a listener's lifetime to a
+     * block and avoid leakage into subsequent tests in the same JVM.
+     *
+     * <pre>{@code
+     * try (var ignored = AsyncTestListenerRegistry.registerScoped(myListener)) {
+     *     // ... listener fires only here
+     * }
+     * }</pre>
+     *
+     * @param listener the listener to register (must not be null)
+     * @return an AutoCloseable Registration; closing it unregisters the listener
+     * @throws IllegalArgumentException if listener is null
+     * @since 1.0.0
+     */
+    public static Registration registerScoped(AsyncTestListener listener) {
+        register(listener);
+        return new Registration(listener);
+    }
+
+    /**
+     * Captures the current set of registered listeners. Pair with
+     * {@link #restoreSnapshot(Snapshot)} to scope a block of code so that any
+     * listeners registered or unregistered during the block are reverted afterward.
+     *
+     * @return an immutable snapshot of the current listener set
+     * @since 1.0.0
+     */
+    public static Snapshot snapshot() {
+        return new Snapshot(List.copyOf(LISTENERS));
+    }
+
+    /**
+     * Restores the registry to the state captured by {@link #snapshot()}.
+     * Listeners added since the snapshot are removed; listeners removed are re-added.
+     *
+     * @param snapshot a snapshot previously obtained from {@link #snapshot()}
+     * @since 1.0.0
+     */
+    public static void restoreSnapshot(Snapshot snapshot) {
+        if (snapshot == null) throw new IllegalArgumentException("Snapshot must not be null");
+        LISTENERS.clear();
+        LISTENERS.addAll(snapshot.listeners);
+    }
+
+    /**
+     * AutoCloseable handle returned by {@link #registerScoped(AsyncTestListener)}.
+     * Closing it unregisters the listener (idempotent).
+     */
+    public static final class Registration implements AutoCloseable {
+        private final AsyncTestListener listener;
+        private volatile boolean closed;
+
+        private Registration(AsyncTestListener listener) { this.listener = listener; }
+
+        @Override
+        public void close() {
+            if (closed) return;
+            closed = true;
+            unregister(listener);
+        }
+    }
+
+    /** Immutable snapshot of the listener registry. */
+    public static final class Snapshot {
+        private final List<AsyncTestListener> listeners;
+        private Snapshot(List<AsyncTestListener> listeners) { this.listeners = listeners; }
     }
 }

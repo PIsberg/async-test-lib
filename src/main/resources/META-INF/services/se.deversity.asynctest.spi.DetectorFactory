@@ -1,0 +1,3 @@
+# Built-in DetectorFactory implementations discovered by ServiceLoader.
+# New detectors should add a line here (or use @AutoService).
+se.deversity.asynctest.spi.adapters.SharedMessageDigestDetectorFactory

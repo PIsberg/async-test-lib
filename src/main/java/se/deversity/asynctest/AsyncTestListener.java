@@ -2,6 +2,7 @@ package se.deversity.asynctest;
 
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.vibetags.annotations.AIContract;
+import se.deversity.vibetags.annotations.AIPublicAPI;
 
 /**
  * Listener interface for observing async-test lifecycle events.
@@ -19,6 +20,7 @@ import se.deversity.vibetags.annotations.AIContract;
  * @see NoopAsyncTestListener
  */
 @AIContract(reason = "Public SPI interface for observing async-test lifecycle events. Method signatures are part of the stable API — implementors bind to these exact names and parameter types.")
+@AIPublicAPI
 public interface AsyncTestListener {
 
     /**

@@ -7,6 +7,133 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### Public API — `@AsyncTest` extensions
+- **`@AsyncTest(threadCounts = {1, 2, 4, 8, 16, 32})`** — schedule matrix. Each entry
+  becomes its own JUnit invocation with display name
+  `[AsyncTest] N threads x M invocations`. Bug-finding sensitivity is often
+  thread-count-dependent; sweeping a range cheaply surfaces races that single-count
+  runs miss. Empty array (default) keeps legacy `@AsyncTest(threads = ...)` behavior.
+- **`@AsyncTest(preset = Preset.X)`** — curated detector bundles instead of editing
+  ~85 individual flags. Five presets ship:
+  - `ALL` — every detector (legacy `detectAll = true`; the default).
+  - `STRICT` — same set as `ALL`, named explicitly.
+  - `ESSENTIALS` — 12 high-signal detectors for everyday CI (deadlocks, races,
+    atomicity, lock/thread leaks, interrupt mishandling, conc-modification,
+    CompletableFuture errors, resource leaks, uncaught exception handlers).
+  - `CI_FAST` — pruned ESSENTIALS for PR gates; omits visibility / livelock /
+    interrupt-mishandling.
+  - `NONE` — every detector off; pure N×M stress execution.
+  `excludes = {...}` continues to layer on top of any preset.
+- **`@AsyncTest(replaySeed = N)`** + **`AsyncTestContext.replaySeed()`** — runner
+  produces a `long` seed per invocation round so test bodies can seed their own
+  RNGs deterministically. With `replaySeed = 0L` (default) a fresh seed is drawn
+  per round; the value is printed on failure
+  (`[AsyncTest] Failure with replaySeed=4242L — paste into @AsyncTest(...)`) so
+  the failing round can be reproduced. Does NOT make thread scheduling
+  deterministic; gives RNG-driven choices (sleep jitter, payload selection,
+  branch picks) a stable starting point.
+
+#### Public API — assertions & listeners
+- **`AsyncAssert.awaitAsync(stage, timeout)`** — blocks on a `CompletionStage`
+  inside a test body and unwraps `ExecutionException` so async-chain failures
+  surface as the original exception (`RuntimeException` / `AssertionError`)
+  rather than the wrapper. The supported way to exercise async APIs from
+  `@AsyncTest`, since JUnit Jupiter rejects non-void `@TestTemplate` return
+  types at discovery.
+- **`AsyncTestListenerRegistry.registerScoped(listener)`** — returns an
+  AutoCloseable `Registration`; closing it unregisters the listener. Pair with
+  try-with-resources to bind a listener's lifetime to a single test and avoid
+  JVM-wide listener leakage across tests.
+- **`AsyncTestListenerRegistry.snapshot()` / `restoreSnapshot(s)`** — capture
+  and restore the full registry around a block; useful in
+  `@BeforeEach`/`@AfterEach` for full revert semantics.
+
+#### Public API — structured reporting (`se.deversity.asynctest.report`)
+- **`Violation` record** — `(detector, severity, message, sites, attributes, when)`
+  with defensive defaults and validation. Replaces flat strings for tooling that
+  needs to parse violations (CI gating, SARIF, IDE plugins, dashboards). Legacy
+  string `toString()` reports continue alongside.
+- **`Formatter`** — functional interface `List<Violation> → String`.
+- **`MarkdownFormatter`** — human-facing Markdown suitable for PR comments and
+  CI logs (`##` header, `###` per-violation sections, "Access sites" and
+  "Details" sub-blocks).
+- **`JsonFormatter`** — compact JSON array with proper string escaping; no
+  external dependency. Stable schema:
+  `{"detector":"…","severity":"HIGH","message":"…","sites":[…],"attributes":{…},"when":"…"}`.
+
+#### Public API — Detector SPI (`se.deversity.asynctest.spi`)
+- **`Detector`** interface — `type() → DetectorType`, `analyze() → List<Violation>`,
+  optional `onTestStart()` / `onTestEnd()` lifecycle hooks. Per-test instance lifecycle.
+- **`DetectorFactory`** — `type()`, `isEnabledFor(config)`, `create(config)`. Discovered
+  via `ServiceLoader` from `META-INF/services/se.deversity.asynctest.spi.DetectorFactory`.
+- **`DetectorRegistry`** (new package) — `build(config)` instantiates enabled factories,
+  `get(Class<T>)` typed lookup, `get(DetectorType)` enum lookup, `analyzeAll()`
+  aggregates structured violations. Coexists with the legacy
+  `se.deversity.asynctest.DetectorRegistry` for the 1.0.0 cutover; new detectors
+  use the SPI, the existing 90+ migrate incrementally.
+- **`SharedMessageDigestDetectorFactory`** — canary SPI adapter for
+  `SharedMessageDigestDetector`, registered via `META-INF/services`. Demonstrates
+  the migration pattern: existing detector unchanged, adapter projects
+  `analyze().structuredViolations`.
+
+#### Diagnostics — source-line attribution
+- **`SiteCapture.capture()`** — `StackWalker`-based helper that captures the
+  first non-framework stack frame for any detector access event. Filters
+  framework internals (runner, extension, benchmark, JDK reflection,
+  java.util.concurrent, JUnit, Gradle, classnames ending
+  `Detector`/`Monitor`/`Validator`).
+- **`SiteCapture.Site`** record with `render()` producing
+  `Class.method(File.java:42)` form. `Set<Site>` natively dedupes by
+  `(class, line)` so a tight loop on one site contributes a single attribution.
+- **Canary migration**: `SharedMessageDigestDetector` now appends an
+  `Access sites:` block to violations. Pattern documented for incremental
+  rollout across the other 90+ detectors.
+
+### Changed
+
+- **`ConcurrencyRunner` workers — `latch.countDown()` is now guaranteed under
+  every failure mode**. Previously, an exception from `AsyncTestContext.install`,
+  `uninstall`, or `phase1.livelock.captureSnapshot()` inside the worker's
+  `finally` block would skip `countDown()`, causing the runner to block on
+  `latch.await(roundTimeoutMs)` and surface a misleading "timed out — possible
+  deadlock" instead of the real cause. Each cleanup step is now independently
+  guarded; `countDown()` is the last statement in the outermost finally.
+  Uninstall failures are appended to `failures` (and visible to the user);
+  snapshot failures are warn-only (diagnostic, never user-facing).
+- **License gating moved out of `ConcurrencyRunner.execute()`** into a new
+  `LicenseGuard` class with a process-wide `ConcurrentHashMap` cache keyed on
+  the resolved license-config fingerprint. The gate is now a
+  `ConcurrentHashMap.get()` after the first call per JVM, not a fresh
+  `LicenseGate` construction + `gate.check(...)` per test. "Zero-Config CI"
+  announcement and "LICENSE GRANTED" message print once per JVM instead of
+  once per test.
+- **`SharedMessageDigestDetector.recordAccess` hot path** restructured with a
+  double-check: cheap `ConcurrentHashMap.get()` first; only on miss does the
+  `instanceof Cipher/Mac/Signature` chain and label-string construction run,
+  inside the `computeIfAbsent` factory. The lambda allocation and reflection
+  call now fire once per registered instance instead of per call.
+- **`AsyncTestListenerRegistry` javadoc** rewritten to lead with a "Lifetime
+  warning" block making the JVM-wide static reality obvious, with two
+  recommended scoped patterns (try-with-resources `registerScoped` and
+  `snapshot/restoreSnapshot`) shown before the legacy unscoped `register`.
+
+### Fixed
+
+- **Async-body failures no longer surface wrapped in `ExecutionException`** —
+  `ConcurrencyRunner.unwrap()` now also strips `ExecutionException` so user
+  assertions/exceptions from `CompletionStage` chains surface with the original
+  type.
+
+### Performance
+
+- Hot-path detector `recordAccess` calls no longer allocate per-invocation when
+  the detected instance is already registered (the common case). Targeted at
+  the `@AIPerformance` constraint documented on `BenchmarkRecorder`; same
+  pattern is the template for migrating the other detectors that call
+  framework helpers on the hot path.
+
 ## [1.5.0] - 2026-05-16
 
 ### Added

@@ -313,4 +313,57 @@ class AsyncTestListenerRegistryTest {
             lastTimeout = timeoutMs;
         }
     }
+
+    // ---- Scoped registration / snapshot tests ----
+
+    @Test
+    void registerScoped_addsAndAutoUnregistersOnClose() {
+        AsyncTestListener listener = new NoopAsyncTestListener();
+        try (AsyncTestListenerRegistry.Registration r = AsyncTestListenerRegistry.registerScoped(listener)) {
+            assertEquals(1, AsyncTestListenerRegistry.getListenerCount());
+            assertNotNull(r);
+        }
+        assertEquals(0, AsyncTestListenerRegistry.getListenerCount(),
+                "Listener should be unregistered after try-with-resources block");
+    }
+
+    @Test
+    void registerScoped_nullThrows() {
+        assertThrows(IllegalArgumentException.class, () ->
+                AsyncTestListenerRegistry.registerScoped(null));
+    }
+
+    @Test
+    void registrationClose_isIdempotent() {
+        AsyncTestListener listener = new NoopAsyncTestListener();
+        AsyncTestListenerRegistry.Registration r = AsyncTestListenerRegistry.registerScoped(listener);
+        r.close();
+        r.close(); // second close must not throw or affect other state
+        AsyncTestListenerRegistry.register(listener);
+        r.close(); // should not remove the re-registered instance again
+        assertEquals(1, AsyncTestListenerRegistry.getListenerCount());
+    }
+
+    @Test
+    void snapshotAndRestore_revertsAddsAndRemoves() {
+        AsyncTestListener keep = new NoopAsyncTestListener();
+        AsyncTestListenerRegistry.register(keep);
+
+        AsyncTestListenerRegistry.Snapshot snap = AsyncTestListenerRegistry.snapshot();
+
+        AsyncTestListener transient_ = new NoopAsyncTestListener();
+        AsyncTestListenerRegistry.register(transient_);
+        AsyncTestListenerRegistry.unregister(keep);
+        assertEquals(1, AsyncTestListenerRegistry.getListenerCount());
+
+        AsyncTestListenerRegistry.restoreSnapshot(snap);
+        assertEquals(1, AsyncTestListenerRegistry.getListenerCount(),
+                "Restore must revert to the snapshot — keep present, transient gone");
+    }
+
+    @Test
+    void restoreSnapshot_nullThrows() {
+        assertThrows(IllegalArgumentException.class, () ->
+                AsyncTestListenerRegistry.restoreSnapshot(null));
+    }
 }
