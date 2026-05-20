@@ -193,7 +193,16 @@ public class ConcurrencyRunner {
                     installed = true;
                     try {
                         barrier.await();
-                        method.invoke(target, args);
+                        Object result = method.invoke(target, args);
+                        // Async test body support: if the method returns a CompletionStage,
+                        // wait for it to complete (or fail) before counting this worker done.
+                        // Without this, the test would "succeed" the instant invoke() returned,
+                        // long before the async work finished — defeating the whole point of
+                        // running stress tests on async code.
+                        if (result instanceof java.util.concurrent.CompletionStage<?> stage) {
+                            stage.toCompletableFuture()
+                                 .get(roundTimeoutMs, TimeUnit.MILLISECONDS);
+                        }
                     } catch (Throwable ex) {
                         failures.add(unwrap(ex));
                     }
@@ -262,7 +271,12 @@ public class ConcurrencyRunner {
     }
 
     private static Throwable unwrap(Throwable t) {
-        if (t instanceof InvocationTargetException) {
+        if (t instanceof InvocationTargetException && t.getCause() != null) {
+            return t.getCause();
+        }
+        // CompletableFuture.get(...) wraps async-body failures in ExecutionException.
+        // Strip that layer so user assertions surface intact.
+        if (t instanceof ExecutionException && t.getCause() != null) {
             return t.getCause();
         }
         return t;
