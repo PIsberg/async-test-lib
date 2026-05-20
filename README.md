@@ -97,17 +97,20 @@ After the run, the **detector registry** analyses what was observed and reports 
 
 ## Detectors
 
-Enable all 69 detectors with a single flag, or cherry-pick:
+90+ detectors enabled by default with a single flag, or cherry-pick:
 
 ```java
-// Everything on
-@AsyncTest(detectAll = true)
+// Everything on (default for bare @AsyncTest)
+@AsyncTest
+
+// Curated preset for everyday CI
+@AsyncTest(preset = Preset.ESSENTIALS)
 
 // Everything on except false sharing (too slow for this suite)
-@AsyncTest(detectAll = true, excludes = { DetectorType.FALSE_SHARING })
+@AsyncTest(excludes = { DetectorType.FALSE_SHARING })
 
 // Explicit opt-in
-@AsyncTest(detectDeadlocks = true, detectRaceConditions = true)
+@AsyncTest(detectAll = false, detectDeadlocks = true, detectRaceConditions = true)
 ```
 
 ### Detector categories
@@ -132,24 +135,30 @@ Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
 
 ```java
 @AsyncTest(
-    threads    = 10,        // concurrent threads per invocation round
-    invocations = 100,      // how many rounds to run
-    timeoutMs  = 5000,      // per-test timeout
-    useVirtualThreads = true,              // Java 21+ virtual threads
-    virtualThreadStressMode = "HIGH",      // OFF / LOW / MEDIUM / HIGH / EXTREME
-    detectAll  = true,                     // enable every detector
-    excludes   = { DetectorType.FALSE_SHARING }  // opt-out of specific ones
+    threads      = 10,                       // concurrent threads per invocation round
+    threadCounts = {2, 4, 8, 16, 32},        // OR: sweep multiple counts (one JUnit invocation per entry)
+    invocations  = 100,                      // how many rounds to run
+    timeoutMs    = 5000,                     // per-test timeout
+    useVirtualThreads = true,                // Java 21+ virtual threads
+    virtualThreadStressMode = "HIGH",        // OFF / LOW / MEDIUM / HIGH / EXTREME
+    preset       = Preset.ESSENTIALS,        // curated detector bundle (overrides detectAll)
+    detectAll    = true,                     // legacy umbrella when preset = ALL
+    excludes     = { DetectorType.FALSE_SHARING },  // prune even from a preset
+    replaySeed   = 0L                        // 0 = fresh per round; set on failure to reproduce
 )
 ```
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `threads` | 10 | Threads spawned per round |
+| `threadCounts` | `{}` | Schedule matrix — one invocation per entry; ignored when empty. Sweeps thread counts cheaply since race sensitivity is count-dependent |
 | `invocations` | 100 | Number of barrier rounds |
 | `timeoutMs` | 5000 | Whole-test timeout (ms) |
 | `useVirtualThreads` | true | Use `Thread.ofVirtual()` (Java 21+) |
-| `detectAll` | false | Enable all detectors in one shot |
-| `excludes` | `{}` | Detectors to skip when `detectAll = true` |
+| `preset` | `Preset.ALL` | Curated bundle: `ALL` / `STRICT` / `ESSENTIALS` / `CI_FAST` / `NONE` |
+| `detectAll` | true | Enable all detectors in one shot (honored when `preset = ALL`) |
+| `excludes` | `{}` | Detectors to skip — layers on top of any preset |
+| `replaySeed` | 0 | Per-round RNG seed. `0` = fresh per round (printed on failure); set explicitly to reproduce a failing schedule |
 
 ---
 
@@ -207,7 +216,81 @@ class VirtualThreadTest {
 }
 ```
 
+### Sweep thread counts to find the contention sweet spot
+
+```java
+class HashMapCacheTest {
+    private final Map<String, String> cache = new HashMap<>(); // BUG: not thread-safe
+
+    @AsyncTest(threadCounts = {2, 4, 8, 16, 32, 64})  // 6 separate JUnit invocations
+    void put_thenGet() {
+        cache.put(UUID.randomUUID().toString(), "v");
+    }
+}
+// JUnit emits one test per count; race condition surfaces reliably at 16+
+```
+
+### Async test body — await a `CompletionStage` inside @AsyncTest
+
+```java
+class AsyncPipelineTest {
+    @AsyncTest(threads = 8)
+    void hammer_pipeline() {
+        CompletableFuture<String> stage = service.processAsync(payload);
+        String result = AsyncAssert.awaitAsync(stage, Duration.ofSeconds(5));
+        assertEquals("ok", result);
+    }
+}
+// awaitAsync unwraps ExecutionException — failures surface as the real exception type
+```
+
+### Reproduce a flaky failure
+
+```java
+class FlakyTest {
+    @AsyncTest                                          // 1st run: failure prints replaySeed=4242L
+    @AsyncTest(replaySeed = 4242L)                      // re-run with the printed seed
+    void randomised_workload() {
+        var rng = new Random(AsyncTestContext.replaySeed());
+        Thread.sleep(rng.nextInt(10));                  // randomised jitter is now deterministic
+        service.handle(payload(rng));
+    }
+}
+```
+
+### Scoped listener (no JVM-wide leak)
+
+```java
+@Test
+void capture_findings_for_one_test() {
+    try (var ignored = AsyncTestListenerRegistry.registerScoped(myListener)) {
+        // myListener fires only inside this block
+        runMyAsyncTest();
+    }
+    // automatic unregister on close
+}
+```
+
 More examples with runnable code: [examples/](examples/)
+
+---
+
+## What's new in 1.0.0
+
+This release introduces several APIs alongside the legacy detector flags. All are additive — existing tests keep working unchanged.
+
+- **`Preset` enum** — `@AsyncTest(preset = Preset.ESSENTIALS | CI_FAST | STRICT | NONE | ALL)` instead of editing ~85 individual boolean flags.
+- **`threadCounts` schedule matrix** — sweep `{1,2,4,8,…}` cheaply via one JUnit invocation per count.
+- **`replaySeed`** — runner gives each round a deterministic seed for RNG-driven bodies; failures print the seed for paste-and-reproduce.
+- **`AsyncAssert.awaitAsync(stage, timeout)`** — supported way to exercise `CompletionStage` APIs inside a test body (JUnit Jupiter mandates void `@TestTemplate` return types).
+- **Scoped listeners** — `AsyncTestListenerRegistry.registerScoped(...)` returns an `AutoCloseable` to stop the JVM-wide listener leak between tests.
+- **Structured reporting** — `se.deversity.asynctest.report.Violation` + `MarkdownFormatter` / `JsonFormatter` for CI tooling that needs to consume violations programmatically.
+- **Source-line attribution** — violations now carry an `Access sites:` block pointing at the user-code line that produced the issue (canary: `SharedMessageDigestDetector`; rolling out incrementally).
+- **Detector SPI** — `se.deversity.asynctest.spi.{Detector, DetectorFactory, DetectorRegistry}` discovered via `ServiceLoader`. New detectors plug in with one class + one `META-INF/services` line; the legacy 90+ continue to work via the old registry until migrated.
+
+Internal hardening: `latch.countDown()` is now guaranteed under every worker-cleanup failure mode (no more fake "timed out — possible deadlock" reports from cleanup bugs); license gating moved from per-test to a process-wide cache in `LicenseGuard`.
+
+Full notes: [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 ---
 

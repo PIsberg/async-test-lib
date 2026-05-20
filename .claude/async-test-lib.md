@@ -54,19 +54,32 @@ class CounterTest {
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `threads` | int | 10 | Concurrent threads per invocation round |
+| `threadCounts` | int[] | `{}` | **Schedule matrix.** When non-empty, one JUnit invocation per entry runs with that thread count; ignored when empty. Use to sweep `{2,4,8,16,32}` cheaply (1.0.0+) |
 | `invocations` | int | 100 | Number of invocation rounds |
 | `useVirtualThreads` | boolean | true | Use Project Loom virtual threads (Java 21+) |
 | `timeoutMs` | long | 5000 | Milliseconds before timeout (triggers deadlock analysis) |
 | `virtualThreadStressMode` | String | `"OFF"` | `OFF` / `LOW` / `MEDIUM` / `HIGH` / `EXTREME` — pins carrier threads to increase contention |
-| `detectAll` | boolean | **true** | Enable every detector at once. Set `false` to only run individually-flagged detectors |
-| `excludes` | DetectorType[] | `{}` | Detectors to skip when `detectAll = true` |
+| `preset` | `Preset` | `Preset.ALL` | **Curated detector bundle.** `ALL` / `STRICT` / `ESSENTIALS` / `CI_FAST` / `NONE`. Overrides `detectAll` for any value other than `ALL` (1.0.0+) |
+| `detectAll` | boolean | **true** | Enable every detector at once. Honored when `preset = ALL`; ignored otherwise. Set `false` to only run individually-flagged detectors |
+| `excludes` | DetectorType[] | `{}` | Detectors to skip — layers on top of any preset |
+| `replaySeed` | long | 0 | **Per-round RNG seed.** `0` = fresh seed per round, printed on failure for paste-and-reproduce. Set explicitly to reproduce a failing schedule (1.0.0+) |
 | `enableBenchmarking` | boolean | false | Record timing data for regression detection |
 | `benchmarkRegressionThreshold` | double | 0.2 | Regression threshold as a decimal (0.2 = 20%) |
 | `failOnBenchmarkRegression` | boolean | false | Fail the test if a regression is detected |
 
-Every individual detector flag (the full `detect*` / `validate*` / `monitor*` list further down) defaults to `true` and is gated by `detectAll`. To run a tiny subset, set `detectAll = false` and enable only what you need.
+Every individual detector flag (the full `detect*` / `validate*` / `monitor*` list further down) defaults to `true` and is gated by `detectAll`. To run a tiny subset, set `detectAll = false` and enable only what you need — or use `preset = Preset.ESSENTIALS` / `Preset.CI_FAST` for curated bundles.
 
 `virtualThreadStressMode` thread budgets: `LOW` ≈ 100, `MEDIUM` ≈ 1,000, `HIGH` ≈ 10,000, `EXTREME` ≈ 100,000+ (may need heap adjustment).
+
+### Preset bundles (1.0.0+)
+
+| Preset | Detectors | Use case |
+|--------|-----------|----------|
+| `ALL` | every detector (default) | "Tell me everything." Default behavior; equivalent to `detectAll = true` |
+| `STRICT` | every detector | Same set as `ALL`, named explicitly for libraries that want "every check on by name" independent of what `ALL` evolves to |
+| `ESSENTIALS` | 12 high-signal: deadlocks, races, atomicity, lock/thread leaks, interrupt-mishandling, conc-modification, CompletableFuture errors, resource leaks, uncaught-exception handlers | Everyday CI on application code — covers the bugs production teams hit most often |
+| `CI_FAST` | 6 detectors: deadlocks, races, atomicity, lock leaks, conc-modification, CompletableFuture errors | PR gates where ESSENTIALS would be too slow (omits visibility / livelocks / interrupt-mishandling) |
+| `NONE` | none | Pure N×M stress execution with no diagnostic machinery; useful when you only want concurrent execution |
 
 ---
 
@@ -78,6 +91,67 @@ Every individual detector flag (the full `detect*` / `validate*` / `monitor*` li
 void testMyService() {
     myService.process(request);   // every detector active
 }
+```
+
+### Curated preset for everyday CI (1.0.0+)
+```java
+import se.deversity.asynctest.Preset;
+
+@AsyncTest(preset = Preset.ESSENTIALS)
+void testMyService() {
+    myService.process(request);   // 12 high-signal detectors; fast
+}
+```
+
+### Sweep thread counts to find the contention sweet spot (1.0.0+)
+```java
+@AsyncTest(threadCounts = {2, 4, 8, 16, 32, 64})  // 6 separate JUnit invocations
+void testRacyCache() {
+    cache.put(key, value);  // race may only surface at 16+ threads
+}
+```
+Each entry produces a JUnit invocation with display name `[AsyncTest] N threads x M invocations`. Pair with a preset to scope detectors per run.
+
+### Async test body — await a `CompletionStage` (1.0.0+)
+```java
+import se.deversity.asynctest.AsyncAssert;
+import java.time.Duration;
+
+@AsyncTest(threads = 8)
+void testAsyncPipeline() {
+    CompletableFuture<String> stage = service.processAsync(payload);
+    String result = AsyncAssert.awaitAsync(stage, Duration.ofSeconds(5));
+    assertEquals("ok", result);
+}
+```
+`awaitAsync` blocks until the chain completes and unwraps `ExecutionException` so user assertions/exceptions surface as their original types. This is the supported way to exercise async APIs from `@AsyncTest`, since JUnit Jupiter rejects non-void `@TestTemplate` return types at discovery.
+
+### Reproduce a flaky failure with `replaySeed` (1.0.0+)
+```java
+import se.deversity.asynctest.AsyncTestContext;
+import java.util.Random;
+
+@AsyncTest                          // 1st run: "[AsyncTest] Failure with replaySeed=42424242L"
+// @AsyncTest(replaySeed = 42424242L)  // re-run with the printed seed
+void randomisedWorkload() {
+    var rng = new Random(AsyncTestContext.replaySeed());
+    Thread.sleep(rng.nextInt(10));   // randomised jitter is now deterministic
+    service.handle(payload(rng));
+}
+```
+The runner draws a fresh `long` seed per round (visible to all N workers in that round via `AsyncTestContext.replaySeed()`) and prints it on failure. Setting `replaySeed = N` pins every round to `N`. Does NOT make thread scheduling deterministic — gives RNG-driven test inputs a stable starting point.
+
+### Scoped listener (no JVM-wide leak) (1.0.0+)
+```java
+try (var ignored = AsyncTestListenerRegistry.registerScoped(myListener)) {
+    runMyAsyncTest();   // myListener fires only inside this block
+}
+// automatic unregister on close
+```
+Or save/restore the whole registry around a block:
+```java
+var snap = AsyncTestListenerRegistry.snapshot();
+try { ... } finally { AsyncTestListenerRegistry.restoreSnapshot(snap); }
 ```
 
 ### Race condition — narrowed
@@ -397,6 +471,46 @@ AsyncTestListenerRegistry.register(new MyListener());
 ```
 
 Listeners may be called from multiple threads concurrently — implementations must be thread-safe.
+
+---
+
+## Structured violations & formatters (1.0.0+)
+
+Detector findings are also exposed as structured `Violation` records in `se.deversity.asynctest.report`. Two built-in formatters consume them:
+
+```java
+import se.deversity.asynctest.report.*;
+
+List<Violation> findings = // from a detector adapter or the SPI registry
+String md   = new MarkdownFormatter().format(findings);   // PR comments, CI logs
+String json = new JsonFormatter().format(findings);       // dashboards, SARIF, IDE plugins
+```
+
+Each `Violation` carries `detector`, `severity` (`IssueSeverity`), `message`, `sites: List<SiteCapture.Site>`, `attributes: Map<String,Object>`, and `when: Instant`. The legacy `toString()` string reports continue alongside.
+
+**Source-line attribution.** Violations now include an `Access sites:` block pointing at the user-code line that produced the issue (e.g. `MyService.encrypt(MyService.java:42)`). Currently emitted by `SharedMessageDigestDetector` as the canary; rolling out incrementally to the other 90+ detectors. `SiteCapture.capture()` is the shared helper for migrating each one.
+
+---
+
+## Detector SPI (1.0.0+)
+
+For custom detectors and tooling: `se.deversity.asynctest.spi.{Detector, DetectorFactory, DetectorRegistry}`. Register a `DetectorFactory` via `META-INF/services/se.deversity.asynctest.spi.DetectorFactory` and it's discovered by `ServiceLoader`:
+
+```java
+public final class MyDetectorFactory implements DetectorFactory {
+    @Override public DetectorType type() { return DetectorType.SOMETHING; }
+    @Override public boolean isEnabledFor(AsyncTestConfig cfg) { return cfg.detectSomething; }
+    @Override public Detector create(AsyncTestConfig cfg) { return new MyDetector(); }
+}
+```
+
+```java
+DetectorRegistry reg = DetectorRegistry.build(config);
+List<Violation> all = reg.analyzeAll();
+MyDetector mine = reg.get(MyDetector.class);
+```
+
+The legacy `se.deversity.asynctest.DetectorRegistry` continues to power the existing 90+ detectors; the SPI registry coexists for new detectors and incremental migrations.
 
 ---
 

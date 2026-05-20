@@ -2,7 +2,9 @@
 
 ## Overview
 
-This document provides a comprehensive architectural overview of the async-test library using PlantUML diagrams. The library enables deterministic concurrency testing by forcing thread collisions and detecting 35+ categories of concurrency bugs.
+This document provides a comprehensive architectural overview of the async-test library using PlantUML diagrams. The library enables deterministic concurrency testing by forcing thread collisions and detecting **95+ categories** of concurrency bugs across 12 detector phases.
+
+> **Note (1.0.0):** Several public-API additions and an SPI introduced in 1.0.0 are described in [Reporting Pipeline](#reporting-pipeline-100), [Detector SPI](#detector-spi-100), and [License Guard](#license-guard-100) sections below. The PlantUML diagrams elsewhere in this document still reflect the pre-1.0.0 detector wiring; they remain accurate for the legacy registry that powers the existing 90+ detectors. Diagrams will be regenerated as part of the next docs sweep.
 
 ## Table of Contents
 
@@ -39,16 +41,26 @@ Shows the high-level system architecture and external dependencies.
 Shows the main containers/components within the async-test library JAR.
 
 **Main Containers:**
-- **Extension Layer**: JUnit 5 integration (AsyncTestExtension, AsyncTestInvocationInterceptor)
-- **Configuration**: AsyncTest annotation and AsyncTestConfig
-- **Runner Core**: ConcurrencyRunner, AsyncTestContext, VirtualThreadStressConfig
-- **Detector Modules**:
-  - Phase 1: Core (9 detectors) — grouped via `Phase1DetectorSet`
-  - Phase 2: Advanced (20 detectors) — managed by `DetectorRegistry`
-  - Phase 3: Runtime (5 detectors)
+- **Extension Layer**: JUnit 5 integration (`AsyncTestExtension`, `AsyncTestInvocationInterceptor`).
+  Since 1.0.0 the extension fans out one `TestTemplateInvocationContext` per
+  `@AsyncTest(threadCounts={…})` entry for the schedule matrix.
+- **Configuration**: `AsyncTest` annotation, `AsyncTestConfig` (immutable), `Preset` enum
+- **Runner Core**: `ConcurrencyRunner`, `AsyncTestContext`, `VirtualThreadStressConfig`,
+  `LicenseGuard` (extracted in 1.0.0 — see [License Guard](#license-guard-100))
+- **Detector Modules** (~95+ detectors across 12 phases):
+  - Phase 1: Core (3 detectors) — grouped via `Phase1DetectorSet`
+  - Phases 2–12: managed by `DetectorRegistry`
+- **Reporting** (NEW in 1.0.0 — `se.deversity.asynctest.report`):
+  `Violation` record, `Formatter` interface, `MarkdownFormatter`, `JsonFormatter`
+- **Detector SPI** (NEW in 1.0.0 — `se.deversity.asynctest.spi`):
+  `Detector`, `DetectorFactory`, SPI-driven `DetectorRegistry`, `adapters/` for canary migrations
+- **Diagnostics helpers**: `SiteCapture` (new in 1.0.0) for source-line attribution
 - **Benchmark Module**: 5 classes for performance tracking
-- **Lifecycle Annotations**: BeforeEachInvocation, AfterEachInvocation
-- **Observability** (NEW): AsyncTestListener, AsyncTestListenerRegistry, NoopAsyncTestListener
+- **Lifecycle Annotations**: `BeforeEachInvocation`, `AfterEachInvocation`
+- **Observability**: `AsyncTestListener`, `AsyncTestListenerRegistry` (with scoped
+  `Registration` / `Snapshot` since 1.0.0), `NoopAsyncTestListener`
+- **Assertion helpers**: `AsyncAssert.awaitUntil`, `AsyncAssert.capture`,
+  `AsyncAssert.awaitAsync` (new in 1.0.0)
 
 ![Container Diagram](../docs/diagrams/ContainerDiagram.png)
 
@@ -394,38 +406,198 @@ If no listeners are registered, detector reports are printed to `System.err` (ba
 
 ---
 
+## Reporting Pipeline (1.0.0)
+
+In 1.0.0 detector findings gained a structured representation alongside the
+historical free-text `String` reports. Both flow through the runner unchanged;
+new tooling consumes the structured form.
+
+```
+Detector observation (recordAccess, etc.)
+        │
+        ▼
+analyze() → legacy String reports     +     analyze().structuredViolations: List<Violation>
+                                                      │
+                                                      ▼
+                                     Formatter.format(...)
+                                     ├── MarkdownFormatter  → PR comments, CI logs
+                                     └── JsonFormatter      → dashboards / SARIF / IDE plugins
+```
+
+`Violation` (`se.deversity.asynctest.report`) is an immutable record:
+`(detector, severity: IssueSeverity, message, sites: List<SiteCapture.Site>, attributes: Map<String,Object>, when: Instant)`.
+The canonical constructor enforces non-blank `detector`, defaults `sites` and
+`attributes` to empty immutables, and stamps `when` with `Instant.now()` if null.
+
+**Source-line attribution** is captured by `SiteCapture.capture()` which performs
+a single `StackWalker.walk` and returns the first non-framework `StackFrame` as a
+`Site(className, methodName, fileName, lineNumber)` record. Framework frames are
+filtered by package prefix (`runner.`, `extension.`, `benchmark.`, JDK reflection,
+`java.util.concurrent`, JUnit, Gradle) and class-name suffix (`Detector`,
+`Monitor`, `Validator`, `SiteCapture`). Detectors that adopt the helper add
+`Set<SiteCapture.Site>` to their per-instance state; the `Set` dedupes by
+`(class, line)` so a tight loop on one call site contributes a single
+attribution. `SharedMessageDigestDetector` is the canary; other detectors
+migrate incrementally.
+
+The two formatters ship with no external dependencies. JSON output uses a small
+hand-rolled writer with proper escape handling for `\"`, `\\`, `\n`, `\r`, `\t`,
+and control characters (`\\u00xx`).
+
+---
+
+## Detector SPI (1.0.0)
+
+The legacy detector architecture required synchronized edits across five places
+(annotation field, config field+builder+defaults, both `build()` branches,
+registry instantiation arm) — a documented fan-out risk in `CLAUDE.md`. The SPI
+in `se.deversity.asynctest.spi` collapses that to **one class + one
+META-INF/services line**.
+
+```
+META-INF/services/se.deversity.asynctest.spi.DetectorFactory
+        │
+        ▼  ServiceLoader.load(...)
+DetectorFactory(s)                              ← user-implemented or built-in
+        │
+        ▼  build(AsyncTestConfig)
+DetectorRegistry                                 ← SPI registry (new package)
+        │
+        ▼  analyzeAll()
+List<Violation>                                  ← structured stream
+```
+
+**SPI contracts:**
+
+- `Detector` — `type() → DetectorType`, `analyze() → List<Violation>`, optional
+  `onTestStart()` / `onTestEnd()` lifecycle hooks. Per-test instance lifecycle.
+- `DetectorFactory` — `type()`, `isEnabledFor(AsyncTestConfig)`,
+  `create(AsyncTestConfig)`. `isEnabledFor` reads whichever boolean field on
+  `AsyncTestConfig` corresponds to the detector — no automatic mapping (each
+  factory is explicit, keeping the addressable surface intact).
+- `DetectorRegistry` (in the `spi` package, distinct from the legacy one) —
+  `build(config)` discovers via ServiceLoader, filters by `isEnabledFor`,
+  instantiates. Two lookup styles: typed `get(Class<T>)` and enum-keyed
+  `get(DetectorType)`. `analyzeAll()` aggregates structured violations.
+
+**Coexistence with the legacy registry.** Both registries instantiate
+independently and run side-by-side during the cutover. The legacy
+`se.deversity.asynctest.DetectorRegistry` continues to drive the existing 90+
+detectors via field+if-block wiring; the SPI registry powers any new detector
+that ships with a `DetectorFactory`. Migration of a legacy detector to the SPI
+is a thin adapter (see `adapters/SharedMessageDigestDetectorFactory` for the
+canary pattern) — existing detector class unchanged, factory wraps it, adapter
+projects `analyze().structuredViolations`.
+
+---
+
+## License Guard (1.0.0)
+
+Previously `ConcurrencyRunner.execute()` constructed a fresh `LicenseGate` and
+called `gate.check(...)` on **every test invocation**, including in mock-mode CI
+runs. For a suite with 1000 `@AsyncTest` methods that meant 1000 redundant gate
+constructions — pure noise on the hot path and a layering smell (a concurrency
+engine should not know about license vendors).
+
+`LicenseGuard` (in `se.deversity.asynctest.runner`) now owns the concern:
+
+- `check(config)` is a `ConcurrentHashMap.get()` on a `Fingerprint` derived from
+  the resolved license-config fields (account, key, product, store, license,
+  mockMode + their System-property fallbacks).
+- First call per fingerprint runs the real gate exactly once; all later calls
+  with matching fingerprints return immediately.
+- "Zero-Config CI" announcement and "LICENSE GRANTED" message are guarded by
+  volatile flags so they print at most once per JVM, not per test.
+- Denied results still throw `SecurityException` with the original message
+  format (no behavior change for failing licenses).
+
+`ConcurrencyRunner.execute()` dropped ~40 lines of license plumbing in favor of
+a single `LicenseGuard.check(config)` call.
+
+---
+
+## Worker latch.countDown() guarantee (1.0.0)
+
+The per-worker code in `runSingleInvocationRound` previously placed the
+`AsyncTestContext.uninstall()` and `phase1.livelock.captureSnapshot()` calls
+**before** `latch.countDown()` inside a single `finally` block. If any of those
+cleanup calls threw, `countDown()` was skipped and the runner blocked on
+`latch.await(roundTimeoutMs)` until the deadline elapsed — surfacing a
+misleading "timed out — possible deadlock" instead of the real cause.
+
+In 1.0.0 the structure is:
+
+```java
+boolean installed = false;
+try {
+    AsyncTestContext.install(phase2Context);
+    installed = true;
+    try { barrier.await(); method.invoke(target, args); }
+    catch (Throwable ex) { failures.add(unwrap(ex)); }
+} catch (Throwable installErr) {
+    failures.add(installErr);
+} finally {
+    if (installed) { try { AsyncTestContext.uninstall(); }
+                     catch (Throwable e) { failures.add(e); } }
+    if (phase1.livelock != null) { try { phase1.livelock.captureSnapshot(); }
+                                   catch (Throwable e) { /* warn-only */ } }
+    latch.countDown();   // ALWAYS — last statement in the outermost finally
+}
+```
+
+Each cleanup step is independently guarded so one failure cannot suppress the
+next. The `installed` flag preserves the ThreadLocal install/uninstall symmetry
+rule from `CLAUDE.md` (only uninstall what was installed).
+
+---
+
 ## File Structure
 
 ```
 src/main/java/se/deversity/asynctest/
-├── AsyncTest.java                    # Main annotation
-├── AsyncTestConfig.java              # Configuration object
-├── AsyncTestContext.java             # ThreadLocal context
-├── AsyncTestListener.java            # Observability listener interface (NEW)
-├── AsyncTestListenerRegistry.java    # Listener registry (NEW)
-├── NoopAsyncTestListener.java        # No-op listener for opt-out (NEW)
-├── DetectorRegistry.java             # Phase 1–3 detector lifecycle (NEW)
+├── AsyncTest.java                    # Main annotation (incl. threadCounts, preset, replaySeed since 1.0.0)
+├── AsyncTestConfig.java              # Immutable configuration snapshot
+├── AsyncTestContext.java             # ThreadLocal context + replaySeed accessor
+├── AsyncTestListener.java            # Observability listener interface
+├── AsyncTestListenerRegistry.java    # Listener registry (+ scoped Registration/Snapshot since 1.0.0)
+├── NoopAsyncTestListener.java        # No-op listener for opt-out
+├── DetectorRegistry.java             # Legacy detector lifecycle (powers existing 90+)
 ├── DetectorType.java                 # Detector enumeration
+├── Preset.java                       # NEW in 1.0.0 — curated detector bundles
 ├── BeforeEachInvocation.java         # Lifecycle annotation
 ├── AfterEachInvocation.java          # Lifecycle annotation
-├── AsyncAssert.java                  # Async assertion helper
+├── AsyncAssert.java                  # Async assertion helper (+ awaitAsync since 1.0.0)
 ├── extension/
-│   ├── AsyncTestExtension.java       # JUnit 5 extension
-│   └── AsyncTestInvocationInterceptor.java  # Interceptor
+│   ├── AsyncTestExtension.java       # JUnit 5 extension (matrix fan-out since 1.0.0)
+│   └── AsyncTestInvocationInterceptor.java  # Interceptor (threadCount override since 1.0.0)
 ├── runner/
-│   └── ConcurrencyRunner.java        # Main execution engine
-├── diagnostics/                      # 35 detector implementations
-│   ├── Phase1DetectorSet.java        # Phase 1 detector group (NEW)
+│   ├── ConcurrencyRunner.java        # Main execution engine
+│   └── LicenseGuard.java             # NEW in 1.0.0 — process-wide license cache
+├── diagnostics/                      # 90+ detector implementations
+│   ├── Phase1DetectorSet.java        # Phase 1 detector group
+│   ├── SiteCapture.java              # NEW in 1.0.0 — source-line attribution helper
 │   ├── DeadlockDetector.java
-│   ├── VisibilityMonitor.java
-│   ├── FalseSharingDetector.java
-│   ├── ... (28 more detectors)
+│   ├── ... (90+ more detectors across phases 1–12)
+├── report/                           # NEW package in 1.0.0 — structured reporting
+│   ├── Violation.java                # (detector, severity, message, sites, attributes, when)
+│   ├── Formatter.java                # functional interface List<Violation> → String
+│   ├── MarkdownFormatter.java        # PR comments / CI logs
+│   └── JsonFormatter.java            # dashboards / SARIF / IDE plugins
+├── spi/                              # NEW package in 1.0.0 — Detector SPI
+│   ├── Detector.java                 # SPI interface: type(), analyze(), lifecycle hooks
+│   ├── DetectorFactory.java          # ServiceLoader-discovered factory
+│   ├── DetectorRegistry.java         # SPI-driven registry (coexists with legacy)
+│   └── adapters/
+│       └── SharedMessageDigestDetectorFactory.java  # canary SPI adapter
 └── benchmark/                        # Benchmarking module
     ├── BenchmarkRecorder.java
     ├── BenchmarkComparator.java
     ├── BenchmarkResult.java
     ├── BenchmarkComparisonResult.java
     └── BenchmarkRegressionException.java
+
+src/main/resources/META-INF/services/
+└── se.deversity.asynctest.spi.DetectorFactory  # NEW in 1.0.0 — ServiceLoader registration
 ```
 
 ---
