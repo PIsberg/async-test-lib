@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import java.util.*;
 import java.util.concurrent.*;
 import se.deversity.asynctest.report.Violation;
+import se.deversity.vibetags.annotations.AISecure;
 import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
@@ -28,6 +29,7 @@ import se.deversity.vibetags.annotations.AITestDriven;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedMessageDigestDetectorTest.java"
 )
+@AISecure(aspect = "cryptography (hash integrity / MAC / signature state)")
 public class SharedMessageDigestDetector {
 
     private static class DigestState {

@@ -148,11 +148,16 @@ class FeatureTourTest {
 
     // ---- 8) Bonus: a Phase 13 detector in action — SharedSecureRandom ----
 
+    // Pattern: opt into ONE detector via detectAll=false + per-flag=true.
+    // (Preset.NONE plus per-flag overrides does NOT work — the preset's
+    // effective excludes force every per-flag back to false; use detectAll=false
+    // when you want only the flags you list to be active.)
     @AsyncTest(
         threads = 4,
         invocations = 1,
-        preset = Preset.NONE,                              // disable everything else
-        detectSharedSecureRandom = true                    // … then turn this one on
+        detectAll = false,                                  // disable everything else
+        detectSharedSecureRandom = true,                    // … then turn this one on
+        licenseMockMode = true
     )
     void phase13_shared_secure_random_is_detected() {
         // Get the framework-managed detector instance and record one access from

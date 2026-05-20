@@ -1,6 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.vibetags.annotations.AIImmutable;
 import se.deversity.vibetags.annotations.AIPerformance;
+import se.deversity.vibetags.annotations.AIPublicAPI;
 
 import java.lang.StackWalker.StackFrame;
 import java.util.Objects;
@@ -93,6 +95,8 @@ public final class SiteCapture {
      * Immutable record of a captured caller frame. Equality is by (class, line) so
      * a {@code Set<Site>} natively deduplicates repeat accesses from the same line.
      */
+    @AIPublicAPI
+    @AIImmutable(note = "Java record — fields are final by language; types are all primitives or String.")
     public record Site(String className, String methodName, String fileName, int lineNumber) {
 
         public Site {

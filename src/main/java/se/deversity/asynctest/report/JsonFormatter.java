@@ -1,5 +1,7 @@
 package se.deversity.asynctest.report;
 
+import se.deversity.vibetags.annotations.AIPublicAPI;
+
 import java.util.List;
 import java.util.Map;
 
@@ -23,6 +25,7 @@ import java.util.Map;
  *
  * @since 1.0.0
  */
+@AIPublicAPI
 public final class JsonFormatter implements Formatter {
 
     @Override

@@ -2,6 +2,7 @@ package se.deversity.asynctest;
 
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.vibetags.annotations.AIContract;
+import se.deversity.vibetags.annotations.AIIdempotent;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
 import java.util.List;
@@ -79,6 +80,7 @@ public final class AsyncTestListenerRegistry {
      * @param listener the listener to unregister
      * @return true if the listener was registered and has been removed
      */
+    @AIIdempotent(reason = "Backed by List.remove which is a no-op when the listener is absent; second call returns false but produces no observable side effect.")
     public static boolean unregister(AsyncTestListener listener) {
         return LISTENERS.remove(listener);
     }
@@ -190,6 +192,7 @@ public final class AsyncTestListenerRegistry {
      *
      * <p>Useful for test cleanup to avoid listener leakage between tests.
      */
+    @AIIdempotent(reason = "List.clear() on an already-empty list is a no-op; repeated calls have identical observable effect (empty registry).")
     public static void clearAll() {
         LISTENERS.clear();
     }
@@ -250,6 +253,7 @@ public final class AsyncTestListenerRegistry {
 
         private Registration(AsyncTestListener listener) { this.listener = listener; }
 
+        @AIIdempotent(reason = "Guarded by the `closed` volatile flag; second close() returns early before touching the registry. Covered by `registrationClose_isIdempotent` test.")
         @Override
         public void close() {
             if (closed) return;

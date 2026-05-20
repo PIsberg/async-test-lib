@@ -1,5 +1,6 @@
 package se.deversity.asynctest;
 
+import se.deversity.vibetags.annotations.AIImmutable;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
 import java.util.EnumSet;
@@ -26,6 +27,7 @@ import java.util.Set;
  * @since 1.0.0
  */
 @AIPublicAPI
+@AIImmutable(note = "Enum constants — JVM guarantees structural immutability. Internal enabled-set is captured at class init.")
 public enum Preset {
 
     /**

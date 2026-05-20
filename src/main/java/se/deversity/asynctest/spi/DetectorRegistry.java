@@ -3,7 +3,10 @@ package se.deversity.asynctest.spi;
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.report.Violation;
+import se.deversity.vibetags.annotations.AIIdempotent;
+import se.deversity.vibetags.annotations.AIImmutable;
 import se.deversity.vibetags.annotations.AIPublicAPI;
+import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -28,6 +31,8 @@ import java.util.ServiceLoader;
  * @since 1.0.0
  */
 @AIPublicAPI
+@AIImmutable(note = "Effectively immutable after build() — the EnumMap is populated only in the private constructor and never mutated thereafter; safe to publish to multiple threads.")
+@AIThreadSafe(strategy = AIThreadSafe.Strategy.IMMUTABLE, note = "All public methods are read-only views over an EnumMap populated once at construction.")
 public final class DetectorRegistry {
 
     private final Map<DetectorType, Detector> byType = new EnumMap<>(DetectorType.class);
@@ -77,6 +82,7 @@ public final class DetectorRegistry {
     }
 
     /** Aggregated violations from every active detector for the current round. */
+    @AIIdempotent(reason = "Each Detector.analyze() must return the same violations for the same observed state (the SPI contract). Calling analyzeAll() N times on a quiescent registry yields N identical lists; do not introduce stateful side-effects in analyze().")
     public List<Violation> analyzeAll() {
         List<Violation> out = new ArrayList<>();
         for (Detector d : byType.values()) {

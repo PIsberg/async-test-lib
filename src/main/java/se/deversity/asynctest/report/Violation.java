@@ -2,6 +2,7 @@ package se.deversity.asynctest.report;
 
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.SiteCapture;
+import se.deversity.vibetags.annotations.AIImmutable;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
 import java.time.Instant;
@@ -27,6 +28,7 @@ import java.util.Map;
  * @since 1.0.0
  */
 @AIPublicAPI
+@AIImmutable(note = "Java record — fields are final by language. Collection fields are deep-copied to immutable views in the canonical constructor.")
 public record Violation(
         String detector,
         IssueSeverity severity,

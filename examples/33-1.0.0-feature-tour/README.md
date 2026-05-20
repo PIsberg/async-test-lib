@@ -18,15 +18,28 @@ exercises one new surface:
 ## Run
 
 ```bash
-# Maven
-mvn test
+# 1. From the project root: install in-progress async-test-lib to ~/.m2
+mvn install -DskipTests        # or: ./gradlew publishToMavenLocal
 
-# Gradle
-./gradlew test
+# 2. Run the example
+cd examples/33-1.0.0-feature-tour
+mvn test                       # or: ./gradlew test (from project root: ./gradlew -p examples/33-1.0.0-feature-tour test)
 ```
 
-Requires the local artifact: run `mvn install -DskipTests` (or
-`./gradlew publishToMavenLocal`) at the repository root first.
+**Why the install-first step?** The example pins the same version as
+the parent (`1.4.0`) but uses APIs not yet present in Maven Central's
+published `1.4.0`. The `mavenLocal()` repository is listed first so
+the freshly-installed in-progress artifact wins.
+
+If Gradle complains about missing symbols after a re-install:
+
+```bash
+rm -rf ~/.gradle/caches/modules-2/files-2.1/se.deversity.async-test-lib
+./gradlew --refresh-dependencies test
+```
+
+(Gradle treats non-SNAPSHOT versions as immutable in its cache; an
+in-place `mvn install` of the same version number isn't auto-detected.)
 
 ## What to look for
 

@@ -4,6 +4,9 @@ import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.common.license.LicenseConfig;
 import se.deversity.common.license.LicenseGate;
 import se.deversity.common.license.LicenseResult;
+import se.deversity.vibetags.annotations.AIIdempotent;
+import se.deversity.vibetags.annotations.AISecure;
+import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -24,6 +27,11 @@ import java.util.concurrent.ConcurrentMap;
  * <p>Denied results throw {@link SecurityException}, mirroring the original
  * runner behavior. Granted results are announced once per JVM (not per test).
  */
+@AIThreadSafe(
+    strategy = AIThreadSafe.Strategy.OTHER,
+    note = "ConcurrentHashMap.computeIfAbsent guarantees at-most-once gate execution per fingerprint under contention; volatile announce flags collapse the GRANTED/CI banner to once-per-JVM."
+)
+@AISecure(aspect = "authorization")
 public final class LicenseGuard {
 
     private static final ConcurrentMap<Fingerprint, Boolean> CACHE = new ConcurrentHashMap<>();
@@ -36,6 +44,7 @@ public final class LicenseGuard {
      * Validates the license for the given config. Throws {@link SecurityException}
      * if denied. Subsequent calls with the same fingerprint return immediately.
      */
+    @AIIdempotent(reason = "ConcurrentHashMap.computeIfAbsent guarantees the underlying gate.check fires at most once per Fingerprint; repeat calls return immediately. Denied results consistently throw SecurityException for the same fingerprint.")
     public static void check(AsyncTestConfig config) {
         Fingerprint fp = Fingerprint.from(config);
         if (CACHE.containsKey(fp)) return; // fast path

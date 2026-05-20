@@ -2,6 +2,7 @@ package se.deversity.asynctest;
 
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AICore;
+import se.deversity.vibetags.annotations.AIFeatureFlag;
 import se.deversity.vibetags.annotations.AIImmutable;
 
 import java.util.Arrays;
@@ -171,6 +172,7 @@ public final class AsyncTestConfig {
     public final boolean detectJdbcConnectionShared;
 
     // ---- Benchmarking ----
+    @AIFeatureFlag(flag = "async-test.benchmarking.enabled", defaultValue = false)
     public final boolean enableBenchmarking;
     public final double benchmarkRegressionThreshold;
     public final boolean failOnBenchmarkRegression;
@@ -181,6 +183,7 @@ public final class AsyncTestConfig {
     public final String keygenProductId;
     public final String lemonSqueezyStore;
     public final String licenseKey;
+    @AIFeatureFlag(flag = "license.mock.mode", defaultValue = false)
     public final boolean licenseMockMode;
 
     private AsyncTestConfig(Builder b) {

@@ -60,6 +60,8 @@
                 <version>${maven-surefire-plugin.version}</version>
                 <configuration>
                     <systemPropertyVariables>
+                        <!-- Skip the LicenseGuard's network gate (the fixture is offline) -->
+                        <license.mock.mode>true</license.mock.mode>
                         <!-- Enable benchmarking for all @AsyncTest tests in this module -->
                         <async-test.benchmarking.enabled>true</async-test.benchmarking.enabled>
                         <!-- Optional: Set benchmark regression threshold (20% default) -->

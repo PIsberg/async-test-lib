@@ -1,6 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
 import se.deversity.asynctest.report.Violation;
+import se.deversity.vibetags.annotations.AITestDriven;
+import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -51,6 +53,12 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * @since 1.0.0
  */
+@AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "ConcurrentHashMap-backed JDBC-resource tracking; per-resource State holds ConcurrentHashMap.newKeySet() for accessing threads.")
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/JdbcConnectionSharedDetectorTest.java"
+)
 public final class JdbcConnectionSharedDetector {
 
     private static final class State {
