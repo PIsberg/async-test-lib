@@ -222,20 +222,43 @@ public class ConcurrencyRunner {
 
         for (int t = 0; t < threads; t++) {
             executor.submit(() -> {
-                AsyncTestContext.install(phase2Context);
+                // latch.countDown() MUST always run, regardless of any failure in
+                // install / test body / uninstall / snapshot. Without this guarantee
+                // the runner blocks on latch.await() until timeoutMs, turning any
+                // bug in worker cleanup into a fake "deadlock detected" report.
+                boolean installed = false;
                 try {
-                    barrier.await();
-                    method.invoke(target, args);
-                } catch (Throwable ex) {
-                    failures.add(unwrap(ex));
-                } finally {
-                    // Uninstall before counting down so the runner cannot proceed
-                    // past latch.await() while any thread still holds the context.
-                    AsyncTestContext.uninstall();
-                    latch.countDown();
-                    if (phase1.livelock != null) {
-                        phase1.livelock.captureSnapshot();
+                    AsyncTestContext.install(phase2Context);
+                    installed = true;
+                    try {
+                        barrier.await();
+                        method.invoke(target, args);
+                    } catch (Throwable ex) {
+                        failures.add(unwrap(ex));
                     }
+                } catch (Throwable installErr) {
+                    failures.add(installErr);
+                } finally {
+                    // Symmetry rule (CLAUDE.md): only uninstall if install succeeded.
+                    // Each cleanup step is independently guarded so one failure can't
+                    // suppress the next.
+                    if (installed) {
+                        try {
+                            AsyncTestContext.uninstall();
+                        } catch (Throwable uninstallErr) {
+                            failures.add(uninstallErr);
+                        }
+                    }
+                    if (phase1.livelock != null) {
+                        try {
+                            phase1.livelock.captureSnapshot();
+                        } catch (Throwable snapErr) {
+                            // Diagnostic-only path; never fail the test on this.
+                            System.err.println(
+                                "Warning: livelock snapshot failed: " + snapErr.getMessage());
+                        }
+                    }
+                    latch.countDown();
                 }
             });
         }
