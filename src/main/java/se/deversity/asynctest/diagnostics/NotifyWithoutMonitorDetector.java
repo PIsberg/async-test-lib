@@ -1,6 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
 import se.deversity.asynctest.report.Violation;
+import se.deversity.vibetags.annotations.AITestDriven;
+import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -40,6 +42,12 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * @since 1.0.0
  */
+@AIThreadSafe(strategy = AIThreadSafe.Strategy.SYNCHRONIZED, note = "Attempts list mutated under a single intrinsic monitor on the list itself; sampling Thread.holdsLock requires no locking.")
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/NotifyWithoutMonitorDetectorTest.java"
+)
 public final class NotifyWithoutMonitorDetector {
 
     private static final class Attempt {

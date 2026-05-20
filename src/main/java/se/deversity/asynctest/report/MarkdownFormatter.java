@@ -1,5 +1,7 @@
 package se.deversity.asynctest.report;
 
+import se.deversity.vibetags.annotations.AIPublicAPI;
+
 import java.util.List;
 
 /**
@@ -8,6 +10,7 @@ import java.util.List;
  *
  * @since 1.0.0
  */
+@AIPublicAPI
 public final class MarkdownFormatter implements Formatter {
 
     @Override

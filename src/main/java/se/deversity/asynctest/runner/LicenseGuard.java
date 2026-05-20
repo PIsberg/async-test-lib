@@ -4,6 +4,7 @@ import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.common.license.LicenseConfig;
 import se.deversity.common.license.LicenseGate;
 import se.deversity.common.license.LicenseResult;
+import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -24,6 +25,10 @@ import java.util.concurrent.ConcurrentMap;
  * <p>Denied results throw {@link SecurityException}, mirroring the original
  * runner behavior. Granted results are announced once per JVM (not per test).
  */
+@AIThreadSafe(
+    strategy = AIThreadSafe.Strategy.OTHER,
+    note = "ConcurrentHashMap.computeIfAbsent guarantees at-most-once gate execution per fingerprint under contention; volatile announce flags collapse the GRANTED/CI banner to once-per-JVM."
+)
 public final class LicenseGuard {
 
     private static final ConcurrentMap<Fingerprint, Boolean> CACHE = new ConcurrentHashMap<>();

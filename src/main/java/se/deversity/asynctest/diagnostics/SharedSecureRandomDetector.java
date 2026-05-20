@@ -1,6 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
 import se.deversity.asynctest.report.Violation;
+import se.deversity.vibetags.annotations.AITestDriven;
+import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.security.SecureRandom;
 import java.time.Instant;
@@ -43,6 +45,12 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * @since 1.0.0
  */
+@AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Per-instance state in ConcurrentHashMap with double-check (get-then-computeIfAbsent) hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().")
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedSecureRandomDetectorTest.java"
+)
 public final class SharedSecureRandomDetector {
 
     private static final class State {

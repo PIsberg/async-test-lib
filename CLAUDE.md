@@ -472,6 +472,31 @@
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/WeakReferenceRaceDetectorTest.java</test_location>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/DaemonThreadHygieneDetectorTest.java</test_location>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/NotifyWithoutMonitorDetectorTest.java</test_location>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.SharedSecureRandomDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/SharedSecureRandomDetectorTest.java</test_location>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/WeakHashMapSharedDetectorTest.java</test_location>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/JdbcConnectionSharedDetectorTest.java</test_location>
+    </element>
   </test_driven_requirements>
 
 <rule>For any element listed in <test_driven_requirements>, you MUST provide both the implementation change AND the corresponding test code update in a single response. Changes without tests are incomplete and must not be proposed.</rule>
