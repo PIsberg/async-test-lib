@@ -134,6 +134,109 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pattern is the template for migrating the other detectors that call
   framework helpers on the hot path.
 
+### Added (post-SPI canary)
+
+#### Detector SPI — full coverage for every `DetectorType` value
+
+Closes the gap left by the canary commit. Every `DetectorType` value now has
+a registered `DetectorFactory` discoverable via `ServiceLoader`; previously
+only `SHARED_MESSAGE_DIGEST` had one.
+
+- **`LegacyDetectorAdapter<D>`** — generic SPI `Detector` that wraps any
+  legacy detector instance and projects its `analyze()` output into a single
+  `Violation` via reflection (calls `delegate.analyze()`, walks the report's
+  class hierarchy for `hasIssues()`, wraps `toString()` when present).
+  Detectors whose report doesn't follow the canonical
+  `analyze() → Report{hasIssues(), toString()}` shape silently return an
+  empty list — they continue to work through the legacy path.
+- **`LegacyDetectorFactories`** — single file containing 94 inner-class
+  `DetectorFactory` implementations, one per `DetectorType`. Each declares
+  its `type()`, reads its matching `AsyncTestConfig` boolean flag in
+  `isEnabledFor()`, and produces a `LegacyDetectorAdapter` wrapping a fresh
+  detector instance. The dedicated `SharedMessageDigestDetectorFactory` is
+  preserved as the typed-adapter template for detectors migrated to expose
+  `structuredViolations` natively.
+- **`META-INF/services/se.deversity.asynctest.spi.DetectorFactory`** — now
+  lists every factory (1 dedicated + 94 inner-class entries), grouped by
+  phase for readability.
+- **`AllDetectorsSpiCoverageTest`** — single source of truth for SPI
+  coverage:
+  - `everyDetectorTypeHasARegisteredFactory` — scans the ServiceLoader output
+    and asserts `EnumSet.allOf(DetectorType.class)` is fully covered. Adding
+    a new `DetectorType` without a matching factory now fails this test with
+    a precise list of missing types.
+  - `buildingRegistryWithDetectAllInstantiatesEveryType` — `detectAll = true`
+    must produce a registry instance per type.
+  - `factoriesUseStableServiceLoaderOrdering` — service count matches
+    `DetectorType.values().length` (catches duplicates and typos).
+
+#### Phase 13 — Additional concurrency-bug categories (5 new detectors)
+
+Five detector categories not yet covered by the existing 95. Each ships with
+full framework wiring: `DetectorType` enum value, `@AsyncTest` flag,
+`AsyncTestConfig` field+builder+from()+build() blocks, legacy `DetectorRegistry`
+instantiation + `analyzeAll()` integration, `AsyncTestContext` static accessor,
+`LegacyDetectorFactories` SPI inner class, `META-INF/services` registration,
+and a dedicated test class.
+
+- **`DaemonThreadHygieneDetector`** (`detectDaemonThreadHygiene`,
+  `DAEMON_THREAD_HYGIENE`) — flags non-daemon `Thread` instances that are
+  still alive at analyze time. Non-daemon threads block JVM exit;
+  `ThreadLeakDetector` counts live threads but doesn't flag the daemon-flag
+  hygiene issue specifically. Severity: MEDIUM.
+- **`NotifyWithoutMonitorDetector`** (`detectNotifyWithoutMonitor`,
+  `NOTIFY_WITHOUT_MONITOR`) — samples `Thread.holdsLock(monitor)` when a
+  notify attempt is declared. Calls without the monitor held would throw
+  `IllegalMonitorStateException` at runtime and leave wait()-ers blocked.
+  Complements `MissedSignalDetector` (notify with no waiter) by catching the
+  inverse — notifies that are illegal regardless of who's waiting.
+- **`SharedSecureRandomDetector`** (`detectSharedSecureRandom`,
+  `SHARED_SECURE_RANDOM`) — flags `java.security.SecureRandom` instances
+  accessed from multiple threads. Provider-dependent thread safety
+  (SHA1PRNG, NativePRNG, Bouncy Castle, custom SPIs all behave differently).
+  Reports carry algorithm and provider names for triage. Distinct from
+  `SharedRandomDetector` which covers `java.util.Random` only.
+- **`WeakHashMapSharedDetector`** (`detectWeakHashMapShared`,
+  `WEAK_HASH_MAP_SHARED`) — flags `WeakHashMap` and `IdentityHashMap`
+  shared across threads. Both have additional concurrency hazards beyond
+  regular `HashMap`: `WeakHashMap`'s GC-driven entry removal mutates the
+  table on every get/put; `IdentityHashMap`'s open-addressing with linear
+  probing can drop/duplicate entries under concurrent puts.
+  `SharedCollectionDetector` covers `ArrayList`/`HashMap`/`HashSet` but not
+  these two specialized maps.
+- **`JdbcConnectionSharedDetector`** (`detectJdbcConnectionShared`,
+  `JDBC_CONNECTION_SHARED`) — flags `java.sql.Connection`/`Statement`/
+  `PreparedStatement`/`ResultSet` accessed from multiple threads. JDBC spec
+  does NOT require any to be thread-safe; PostgreSQL/MySQL/Oracle drivers
+  all document one-thread-per-Connection. Concurrent use produces mixed
+  result-set cursors, protocol corruption, transaction leakage, or silent
+  parameter-binding corruption. Tests use JDK dynamic proxies — no real DB.
+
+A sixth detector (`ThreadLocalRandomCachedDetector`) was prototyped but
+removed: `ThreadLocalRandom.current()` returns a static singleton that is
+designed to be safe across threads (each thread reads its own seed slot), so
+the "cached and reused" anti-pattern isn't actually a bug.
+
+Total: 95 → **100 detectors** across **13 phases**.
+
+#### Workflow
+
+- Demo-GIF workflow (`.github/workflows/demo.yml`) switched from branch +
+  `gh pr create` ceremony to a direct push to `main`. The default
+  `GITHUB_TOKEN` cannot create PRs unless the repo has "Allow GitHub Actions
+  to create and approve pull requests" toggled on (Settings → Actions →
+  General); the previous workflow failed with `GitHub Actions is not
+  permitted to create or approve pull requests (createPullRequest)`. The
+  workflow's `paths:` filter restricts triggers to `src/**`, `tools/**`, and
+  the workflow file itself, so pushing regenerated
+  `docs/diagrams/demo.{cast,gif}` does NOT re-trigger the workflow. The
+  commit message also carries `[skip ci]` as belt-and-suspenders.
+
+#### README
+
+- New tokei lines-of-code badge alongside the existing License / Build /
+  Java badges.
+
 ## [1.5.0] - 2026-05-16
 
 ### Added

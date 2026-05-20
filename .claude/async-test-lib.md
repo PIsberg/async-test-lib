@@ -1,6 +1,6 @@
 # async-test-lib — Usage Guide
 
-**async-test-lib** is a JUnit 5 extension for stress-testing concurrent Java code. It forces real thread collisions using a `CyclicBarrier`, then runs 90+ specialized detectors to identify exactly what went wrong.
+**async-test-lib** is a JUnit 5 extension for stress-testing concurrent Java code. It forces real thread collisions using a `CyclicBarrier`, then runs 100 specialized detectors across 13 phases to identify exactly what went wrong.
 
 - Replaces `@Test` with `@AsyncTest` — zero other changes needed
 - Requires Java 21 and JUnit 5 (Jupiter 6.0.3+)
@@ -436,6 +436,15 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 | `detectBoxedPrimitiveLock` | `BOXED_PRIMITIVE_LOCK` | `synchronized` on cached `Integer`/`Long`/`Boolean.TRUE`/interned `String` |
 | `detectSharedTimeZone` | `SHARED_TIMEZONE` | Mutating shared `TimeZone` via `setRawOffset`/`setID` from multiple threads |
 | `detectUncaughtExceptionHandler` | `UNCAUGHT_EXCEPTION_HANDLER` | Threads started without a custom `UncaughtExceptionHandler` that subsequently throw |
+
+### Phase 13 — Additional concurrency-bug categories (1.0.0+)
+| Annotation field | DetectorType | What it catches |
+|-----------------|-------------|-----------------|
+| `detectDaemonThreadHygiene` | `DAEMON_THREAD_HYGIENE` | Non-daemon `Thread` instances still alive at analyze time — they block JVM exit and can hang the test process. Distinct from `THREAD_LEAKS` which counts live threads regardless of daemon flag. Detector class: `DaemonThreadHygieneDetector`. |
+| `detectNotifyWithoutMonitor` | `NOTIFY_WITHOUT_MONITOR` | `notify()`/`notifyAll()` attempts (declared via `recordNotifyAttempt`) when the calling thread does not hold the monitor — would throw `IllegalMonitorStateException` at runtime and leave `wait()`-ers blocked. Complements `MISSED_SIGNAL` (which catches notifies with no waiter). |
+| `detectSharedSecureRandom` | `SHARED_SECURE_RANDOM` | `java.security.SecureRandom` instances accessed from multiple threads. Thread safety is provider-dependent (SHA1PRNG, NativePRNG, Bouncy Castle, custom SPIs all differ). Distinct from `SHARED_RANDOM` which covers `java.util.Random` only. Report carries algorithm + provider names. |
+| `detectWeakHashMapShared` | `WEAK_HASH_MAP_SHARED` | `WeakHashMap` or `IdentityHashMap` instances accessed from multiple threads. Both have additional concurrency hazards beyond regular `HashMap`: GC-driven entry removal mutates the table on every get/put; linear probing can drop or duplicate entries under concurrent puts. |
+| `detectJdbcConnectionShared` | `JDBC_CONNECTION_SHARED` | `java.sql.Connection`/`Statement`/`PreparedStatement`/`ResultSet` accessed from multiple threads. JDBC spec does not require any of these to be thread-safe; most drivers (Postgres/MySQL/Oracle) document one-thread-per-Connection. Concurrent use produces mixed cursors, protocol corruption, or transaction leakage. |
 
 ---
 

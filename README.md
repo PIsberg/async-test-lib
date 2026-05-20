@@ -2,7 +2,7 @@
 
 # async-test-lib
 
-**JUnit 5 concurrency stress testing — one annotation, 69+ detectors**
+**JUnit 5 concurrency stress testing — one annotation, 100 detectors**
 
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm_Noncommercial-blue.svg)](LICENSE)
 [![Build](https://github.com/PIsberg/async-test-lib/actions/workflows/tests.yml/badge.svg)](https://github.com/PIsberg/async-test-lib/actions/workflows/tests.yml)
@@ -98,7 +98,7 @@ After the run, the **detector registry** analyses what was observed and reports 
 
 ## Detectors
 
-90+ detectors enabled by default with a single flag, or cherry-pick:
+100 detectors enabled by default with a single flag, or cherry-pick:
 
 ```java
 // Everything on (default for bare @AsyncTest)
@@ -127,6 +127,7 @@ After the run, the **detector registry** analyses what was observed and reports 
 | **Concurrency primitives** | `CompletableFuture` chain issues, blocking on common pool, `ForkJoinTask` blocking, `Exchanger`, `Phaser`, `Semaphore` misuse |
 | **Hygiene** | Interrupt swallowing, MDC context leak, `System.setProperty` from multiple threads, `System.gc()` in tests, deprecated thread API (`Thread.stop()` etc.) |
 | **Environment** | Uncommitted Git changes (reproducibility gate) |
+| **Phase 13** (new) | Daemon-thread hygiene, illegal `notify*()`, shared `SecureRandom`, shared `WeakHashMap`/`IdentityHashMap`, shared JDBC `Connection`/`Statement`/`ResultSet` |
 
 Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
 
@@ -287,7 +288,8 @@ This release introduces several APIs alongside the legacy detector flags. All ar
 - **Scoped listeners** — `AsyncTestListenerRegistry.registerScoped(...)` returns an `AutoCloseable` to stop the JVM-wide listener leak between tests.
 - **Structured reporting** — `se.deversity.asynctest.report.Violation` + `MarkdownFormatter` / `JsonFormatter` for CI tooling that needs to consume violations programmatically.
 - **Source-line attribution** — violations now carry an `Access sites:` block pointing at the user-code line that produced the issue (canary: `SharedMessageDigestDetector`; rolling out incrementally).
-- **Detector SPI** — `se.deversity.asynctest.spi.{Detector, DetectorFactory, DetectorRegistry}` discovered via `ServiceLoader`. New detectors plug in with one class + one `META-INF/services` line; the legacy 90+ continue to work via the old registry until migrated.
+- **Detector SPI** — `se.deversity.asynctest.spi.{Detector, DetectorFactory, DetectorRegistry}` discovered via `ServiceLoader`. New detectors plug in with one class + one `META-INF/services` line. **All 100 detectors are now SPI-discoverable** via `LegacyDetectorFactories` (reflection-backed adapters) plus the typed `SharedMessageDigestDetectorFactory` for the canary detector. `AllDetectorsSpiCoverageTest` guards against drift — a new `DetectorType` without a matching factory fails the build.
+- **Phase 13 detectors** — 5 new detectors filling real gaps: `DaemonThreadHygieneDetector` (non-daemon thread leaks blocking JVM exit), `NotifyWithoutMonitorDetector` (illegal `notify*()` calls), `SharedSecureRandomDetector` (provider-dependent `SecureRandom` thread safety), `WeakHashMapSharedDetector` (`WeakHashMap`/`IdentityHashMap` GC + probing hazards), `JdbcConnectionSharedDetector` (JDBC `Connection`/`Statement`/`ResultSet` not thread-safe per spec). Total: 95 → **100** detectors across **13 phases**.
 
 Internal hardening: `latch.countDown()` is now guaranteed under every worker-cleanup failure mode (no more fake "timed out — possible deadlock" reports from cleanup bugs); license gating moved from per-test to a process-wide cache in `LicenseGuard`.
 

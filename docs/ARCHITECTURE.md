@@ -2,9 +2,9 @@
 
 ## Overview
 
-This document provides a comprehensive architectural overview of the async-test library using PlantUML diagrams. The library enables deterministic concurrency testing by forcing thread collisions and detecting **95+ categories** of concurrency bugs across 12 detector phases.
+This document provides a comprehensive architectural overview of the async-test library using PlantUML diagrams. The library enables deterministic concurrency testing by forcing thread collisions and detecting **100 categories** of concurrency bugs across **13 detector phases**.
 
-> **Note (1.0.0):** Several public-API additions and an SPI introduced in 1.0.0 are described in [Reporting Pipeline](#reporting-pipeline-100), [Detector SPI](#detector-spi-100), and [License Guard](#license-guard-100) sections below. The PlantUML diagrams elsewhere in this document still reflect the pre-1.0.0 detector wiring; they remain accurate for the legacy registry that powers the existing 90+ detectors. Diagrams will be regenerated as part of the next docs sweep.
+> **Note (1.0.0):** Several public-API additions and an SPI introduced in 1.0.0 are described in [Reporting Pipeline](#reporting-pipeline-100), [Detector SPI](#detector-spi-100), and [License Guard](#license-guard-100) sections below. The Detector SPI now covers **every** `DetectorType` value via `LegacyDetectorFactories` (was canary-only at SPI introduction); see the Detector SPI section. Phase 13 (5 new detectors) was added end-to-end and is integrated through the same 13-point fan-out as the legacy 95. The PlantUML diagrams elsewhere in this document still reflect the pre-1.0.0 detector wiring; they remain accurate for the legacy registry. Diagrams will be regenerated as part of the next docs sweep.
 
 ## Table of Contents
 
@@ -480,14 +480,33 @@ List<Violation>                                  ← structured stream
   instantiates. Two lookup styles: typed `get(Class<T>)` and enum-keyed
   `get(DetectorType)`. `analyzeAll()` aggregates structured violations.
 
+**Full SPI coverage (1.0.0+).** Every `DetectorType` value — all 100 of them —
+is registered as a `DetectorFactory` and discoverable via `ServiceLoader`.
+Coverage is automated:
+
+- **`LegacyDetectorFactories`** is a single file containing 99 inner-class
+  `DetectorFactory` implementations (one per `DetectorType`, excluding the
+  one with a dedicated typed adapter). Each declares its `type()`, reads its
+  matching `AsyncTestConfig` boolean in `isEnabledFor()`, and produces a
+  `LegacyDetectorAdapter` wrapping a fresh detector instance.
+- **`LegacyDetectorAdapter<D>`** is the generic SPI `Detector` that reflectively
+  invokes `delegate.analyze()` and the resulting report's `hasIssues()` /
+  `toString()`, wrapping the toString into a single `Violation` when has-issues
+  fires. Detectors whose report doesn't follow the canonical
+  `analyze() → Report{hasIssues(), toString()}` shape return an empty list.
+- **`SharedMessageDigestDetectorFactory`** is the typed-adapter template: when
+  a legacy detector is migrated to expose `structuredViolations` natively,
+  its factory uses a typed adapter to project them directly (no reflection).
+- **`AllDetectorsSpiCoverageTest`** guards against drift: a new
+  `DetectorType` value without a matching factory fails the build with a
+  precise list of missing types.
+
 **Coexistence with the legacy registry.** Both registries instantiate
-independently and run side-by-side during the cutover. The legacy
-`se.deversity.asynctest.DetectorRegistry` continues to drive the existing 90+
-detectors via field+if-block wiring; the SPI registry powers any new detector
-that ships with a `DetectorFactory`. Migration of a legacy detector to the SPI
-is a thin adapter (see `adapters/SharedMessageDigestDetectorFactory` for the
-canary pattern) — existing detector class unchanged, factory wraps it, adapter
-projects `analyze().structuredViolations`.
+independently and run side-by-side. The legacy
+`se.deversity.asynctest.DetectorRegistry` continues to drive per-test
+execution and owns the `AsyncTestContext` wiring; the SPI registry is the
+surface for programmatic discovery, custom user detectors, and incremental
+migration of each detector to expose structured violations natively.
 
 ---
 
@@ -573,11 +592,16 @@ src/main/java/se/deversity/asynctest/
 ├── runner/
 │   ├── ConcurrencyRunner.java        # Main execution engine
 │   └── LicenseGuard.java             # NEW in 1.0.0 — process-wide license cache
-├── diagnostics/                      # 90+ detector implementations
+├── diagnostics/                      # 100 detector implementations across 13 phases
 │   ├── Phase1DetectorSet.java        # Phase 1 detector group
 │   ├── SiteCapture.java              # NEW in 1.0.0 — source-line attribution helper
 │   ├── DeadlockDetector.java
-│   ├── ... (90+ more detectors across phases 1–12)
+│   ├── ... (95 more across phases 1–12)
+│   ├── DaemonThreadHygieneDetector.java   # NEW in 1.0.0 — Phase 13
+│   ├── NotifyWithoutMonitorDetector.java  # NEW in 1.0.0 — Phase 13
+│   ├── SharedSecureRandomDetector.java    # NEW in 1.0.0 — Phase 13
+│   ├── WeakHashMapSharedDetector.java     # NEW in 1.0.0 — Phase 13
+│   ├── JdbcConnectionSharedDetector.java  # NEW in 1.0.0 — Phase 13
 ├── report/                           # NEW package in 1.0.0 — structured reporting
 │   ├── Violation.java                # (detector, severity, message, sites, attributes, when)
 │   ├── Formatter.java                # functional interface List<Violation> → String
@@ -588,7 +612,9 @@ src/main/java/se/deversity/asynctest/
 │   ├── DetectorFactory.java          # ServiceLoader-discovered factory
 │   ├── DetectorRegistry.java         # SPI-driven registry (coexists with legacy)
 │   └── adapters/
-│       └── SharedMessageDigestDetectorFactory.java  # canary SPI adapter
+│       ├── LegacyDetectorAdapter.java               # generic reflective wrapper
+│       ├── LegacyDetectorFactories.java             # 99 inner-class factories (1 per DetectorType)
+│       └── SharedMessageDigestDetectorFactory.java  # typed canary adapter (template)
 └── benchmark/                        # Benchmarking module
     ├── BenchmarkRecorder.java
     ├── BenchmarkComparator.java
