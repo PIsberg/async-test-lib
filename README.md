@@ -275,25 +275,7 @@ void capture_findings_for_one_test() {
 
 More examples with runnable code: [examples/](examples/)
 
----
-
-## What's new in 1.5.0
-
-This release introduces several APIs alongside the legacy detector flags. All are additive — existing tests keep working unchanged.
-
-- **`Preset` enum** — `@AsyncTest(preset = Preset.ESSENTIALS | CI_FAST | STRICT | NONE | ALL)` instead of editing ~85 individual boolean flags.
-- **`threadCounts` schedule matrix** — sweep `{1,2,4,8,…}` cheaply via one JUnit invocation per count.
-- **`replaySeed`** — runner gives each round a deterministic seed for RNG-driven bodies; failures print the seed for paste-and-reproduce.
-- **`AsyncAssert.awaitAsync(stage, timeout)`** — supported way to exercise `CompletionStage` APIs inside a test body (JUnit Jupiter mandates void `@TestTemplate` return types).
-- **Scoped listeners** — `AsyncTestListenerRegistry.registerScoped(...)` returns an `AutoCloseable` to stop the JVM-wide listener leak between tests.
-- **Structured reporting** — `se.deversity.asynctest.report.Violation` + `MarkdownFormatter` / `JsonFormatter` for CI tooling that needs to consume violations programmatically.
-- **Source-line attribution** — violations now carry an `Access sites:` block pointing at the user-code line that produced the issue (canary: `SharedMessageDigestDetector`; rolling out incrementally).
-- **Detector SPI** — `se.deversity.asynctest.spi.{Detector, DetectorFactory, DetectorRegistry}` discovered via `ServiceLoader`. New detectors plug in with one class + one `META-INF/services` line. **All 100 detectors are now SPI-discoverable** via `LegacyDetectorFactories` (reflection-backed adapters) plus the typed `SharedMessageDigestDetectorFactory` for the canary detector. `AllDetectorsSpiCoverageTest` guards against drift — a new `DetectorType` without a matching factory fails the build.
-- **Phase 13 detectors** — 5 new detectors filling real gaps: `DaemonThreadHygieneDetector` (non-daemon thread leaks blocking JVM exit), `NotifyWithoutMonitorDetector` (illegal `notify*()` calls), `SharedSecureRandomDetector` (provider-dependent `SecureRandom` thread safety), `WeakHashMapSharedDetector` (`WeakHashMap`/`IdentityHashMap` GC + probing hazards), `JdbcConnectionSharedDetector` (JDBC `Connection`/`Statement`/`ResultSet` not thread-safe per spec). Total: 95 → **100** detectors across **13 phases**.
-
-Internal hardening: `latch.countDown()` is now guaranteed under every worker-cleanup failure mode (no more fake "timed out — possible deadlock" reports from cleanup bugs); license gating moved from per-test to a process-wide cache in `LicenseGuard`.
-
-Full notes: [docs/CHANGELOG.md](docs/CHANGELOG.md)
+Release notes: [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 ---
 
