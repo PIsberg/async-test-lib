@@ -3,6 +3,12 @@ package se.deversity.asynctest.diagnostics;
 import org.junit.jupiter.api.Test;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import javax.crypto.Cipher;
+import javax.crypto.Mac;
+import java.security.Signature;
+import se.deversity.asynctest.AsyncTestConfig;
+import se.deversity.asynctest.AsyncTestContext;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 public class SharedMessageDigestDetectorTest {
@@ -11,6 +17,30 @@ public class SharedMessageDigestDetectorTest {
         try {
             return MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static Cipher cipher() {
+        try {
+            return Cipher.getInstance("AES/CBC/PKCS5Padding");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static Mac mac() {
+        try {
+            return Mac.getInstance("HmacSHA256");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static Signature signature() {
+        try {
+            return Signature.getInstance("SHA256withRSA");
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -89,6 +119,88 @@ public class SharedMessageDigestDetectorTest {
         t2.join();
         String s = d.analyze().toString();
         assertTrue(s.contains("SHARED MESSAGE DIGEST"));
-        assertTrue(s.contains("Fix"));
+        assertTrue(s.contains("Why"));
+    }
+
+    @Test
+    void testDetectsSharedCipher() throws Exception {
+        var d = new SharedMessageDigestDetector();
+        Cipher c = cipher();
+        d.recordAccess(c, "aes-cipher", Thread.currentThread());
+        Thread t2 = new Thread(() -> d.recordAccess(c, "aes-cipher", Thread.currentThread()));
+        t2.start();
+        t2.join();
+        assertTrue(d.analyze().hasIssues());
+        assertTrue(d.analyze().violations.get(0).contains("aes-cipher"));
+        assertTrue(d.analyze().violations.get(0).contains("Cipher"));
+    }
+
+    @Test
+    void testDetectsSharedMac() throws Exception {
+        var d = new SharedMessageDigestDetector();
+        Mac m = mac();
+        d.recordAccess(m, "hmac-sha256", Thread.currentThread());
+        Thread t2 = new Thread(() -> d.recordAccess(m, "hmac-sha256", Thread.currentThread()));
+        t2.start();
+        t2.join();
+        assertTrue(d.analyze().hasIssues());
+        assertTrue(d.analyze().violations.get(0).contains("hmac-sha256"));
+        assertTrue(d.analyze().violations.get(0).contains("Mac"));
+    }
+
+    @Test
+    void testDetectsSharedSignature() throws Exception {
+        var d = new SharedMessageDigestDetector();
+        Signature s = signature();
+        d.recordAccess(s, "sha256-rsa", Thread.currentThread());
+        Thread t2 = new Thread(() -> d.recordAccess(s, "sha256-rsa", Thread.currentThread()));
+        t2.start();
+        t2.join();
+        assertTrue(d.analyze().hasIssues());
+        assertTrue(d.analyze().violations.get(0).contains("sha256-rsa"));
+        assertTrue(d.analyze().violations.get(0).contains("Signature"));
+    }
+
+    @Test
+    void testReportToStringContainsAllJcaFixHints() throws Exception {
+        var d = new SharedMessageDigestDetector();
+        MessageDigest md = sha256();
+        Cipher c = cipher();
+        Mac m = mac();
+        Signature sig = signature();
+
+        d.recordAccess(md, "md", Thread.currentThread());
+        d.recordAccess(c, "c", Thread.currentThread());
+        d.recordAccess(m, "m", Thread.currentThread());
+        d.recordAccess(sig, "sig", Thread.currentThread());
+
+        Thread t2 = new Thread(() -> {
+            d.recordAccess(md, "md", Thread.currentThread());
+            d.recordAccess(c, "c", Thread.currentThread());
+            d.recordAccess(m, "m", Thread.currentThread());
+            d.recordAccess(sig, "sig", Thread.currentThread());
+        });
+        t2.start();
+        t2.join();
+
+        String s = d.analyze().toString();
+        assertTrue(s.contains("SHARED MESSAGE DIGEST"));
+        assertTrue(s.contains("[MessageDigest]"));
+        assertTrue(s.contains("[Cipher]"));
+        assertTrue(s.contains("[Mac]"));
+        assertTrue(s.contains("[Signature]"));
+    }
+
+    @Test
+    void testSharedCryptographyDetectorAlias() {
+        AsyncTestConfig cfg = AsyncTestConfig.builder().detectSharedMessageDigest(true).build();
+        AsyncTestContext ctx = new AsyncTestContext(cfg);
+        AsyncTestContext.install(ctx);
+        try {
+            var d = AsyncTestContext.sharedCryptographyDetector();
+            assertNotNull(d);
+        } finally {
+            AsyncTestContext.uninstall();
+        }
     }
 }

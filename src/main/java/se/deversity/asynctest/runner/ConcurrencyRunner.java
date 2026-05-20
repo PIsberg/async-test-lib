@@ -2,6 +2,7 @@ package se.deversity.asynctest.runner;
 
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICore;
+import se.deversity.vibetags.annotations.AIThreadSafe;
 import se.deversity.asynctest.AfterEachInvocation;
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.asynctest.AsyncTestContext;
@@ -45,6 +46,7 @@ import java.util.concurrent.*;
     note = "Core stress-test execution engine. The CyclicBarrier pattern forces maximum thread contention. Timeout logic and AsyncTestContext install/uninstall are carefully calibrated — subtle changes introduce flaky tests or missed detector activations."
 )
 @AIAudit(checkFor = {"Thread Safety issues", "Resource Leaks"})
+@AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Coordinates concurrency using CyclicBarrier to maximize thread contention.")
 public class ConcurrencyRunner {
 
     public static void execute(ReflectiveInvocationContext<Method> invocationContext,

@@ -3,6 +3,7 @@ package se.deversity.asynctest;
 import org.junit.jupiter.api.TestTemplate;
 import org.junit.jupiter.api.extension.ExtendWith;
 import se.deversity.vibetags.annotations.AIContract;
+import se.deversity.vibetags.annotations.AIPublicAPI;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -21,6 +22,7 @@ import java.lang.annotation.Target;
  * - Virtual thread pinning issues (Java 21+)
  */
 @AIContract(reason = "Public annotation API used directly in user test methods. Attribute names, types, and defaults are part of the stable public API — any change is a breaking change for all consumers.")
+@AIPublicAPI
 @Target({ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
 @TestTemplate

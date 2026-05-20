@@ -1,6 +1,7 @@
 package se.deversity.asynctest;
 
 import se.deversity.vibetags.annotations.AIContract;
+import se.deversity.vibetags.annotations.AIPublicAPI;
 
 import java.time.Duration;
 import java.util.concurrent.Callable;
@@ -11,6 +12,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 @AIContract(reason = "Public assertion utility API for AsyncTest consumers. awaitUntil() and capture() are used directly in user test code — method signatures and semantics must not change without a major version bump.")
+@AIPublicAPI
 public class AsyncAssert {
 
     /**

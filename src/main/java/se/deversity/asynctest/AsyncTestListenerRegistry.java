@@ -2,6 +2,7 @@ package se.deversity.asynctest;
 
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.vibetags.annotations.AIContract;
+import se.deversity.vibetags.annotations.AIPublicAPI;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -33,6 +34,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * @see NoopAsyncTestListener
  */
 @AIContract(reason = "Public API for registering and unregistering AsyncTestListener instances. register(), unregister(), clearAll(), and fireXxx() methods are called by user code and infrastructure — signatures must not change.")
+@AIPublicAPI
 public final class AsyncTestListenerRegistry {
 
     private static final List<AsyncTestListener> LISTENERS = new CopyOnWriteArrayList<>();

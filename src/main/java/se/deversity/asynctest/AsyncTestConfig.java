@@ -2,6 +2,7 @@ package se.deversity.asynctest;
 
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AICore;
+import se.deversity.vibetags.annotations.AIImmutable;
 
 import java.util.Arrays;
 import java.util.EnumSet;
@@ -20,6 +21,7 @@ import java.util.Set;
     focus = "Maintain strict 1:1 mapping between @AsyncTest attributes, Builder fields, from(AsyncTest), build() logic, and DetectorRegistry",
     avoids = "mutable state — this class must remain immutable after construction"
 )
+@AIImmutable(note = "Immutable snapshot of @AsyncTest parameters to ensure thread safety.")
 public final class AsyncTestConfig {
 
     // ---- Execution ----

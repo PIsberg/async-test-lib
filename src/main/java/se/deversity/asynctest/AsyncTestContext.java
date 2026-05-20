@@ -3,6 +3,8 @@ package se.deversity.asynctest;
 import se.deversity.asynctest.diagnostics.*;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICore;
+import se.deversity.vibetags.annotations.AIPublicAPI;
+import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.util.List;
 import java.util.function.Function;
@@ -35,6 +37,8 @@ import java.util.function.Function;
     note = "ThreadLocal install/uninstall must always be symmetric. A leak propagates stale detector state across test invocations and causes false positives or missed detections."
 )
 @AIAudit(checkFor = {"Thread Safety issues"})
+@AIThreadSafe(strategy = AIThreadSafe.Strategy.THREAD_LOCAL, note = "CURRENT ThreadLocal maintains context per active test thread symmetrically.")
+@AIPublicAPI
 public final class AsyncTestContext {
 
     private static final ThreadLocal<AsyncTestContext> CURRENT = new ThreadLocal<>();
@@ -916,8 +920,19 @@ public final class AsyncTestContext {
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedMessageDigest = false}
      * @since 0.9.0
      */
+    @AIPublicAPI
     public static SharedMessageDigestDetector sharedMessageDigestDetector() {
         return require("detectSharedMessageDigest", c -> c.sharedMessageDigestDetector);
+    }
+
+    /**
+     * Returns the {@link SharedMessageDigestDetector} (as a unified Shared Cryptography Detector) for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedMessageDigest = false}
+     * @since 0.9.5
+     */
+    @AIPublicAPI
+    public static SharedMessageDigestDetector sharedCryptographyDetector() {
+        return sharedMessageDigestDetector();
     }
 
     // ---- Phase 12: Operational & Hygiene Concurrency Issues ----
