@@ -230,6 +230,26 @@ public class SharedMessageDigestDetectorTest {
     }
 
     @Test
+    void testReportEmitsStructuredViolation() throws Exception {
+        var d = new SharedMessageDigestDetector();
+        MessageDigest md = sha256();
+        d.recordAccess(md, "sha-struct", Thread.currentThread());
+        Thread t = new Thread(() -> d.recordAccess(md, "sha-struct", Thread.currentThread()));
+        t.start();
+        t.join();
+
+        var report = d.analyze();
+        assertEquals(1, report.structuredViolations.size());
+        var v = report.structuredViolations.get(0);
+        assertEquals("SharedMessageDigest", v.detector());
+        assertEquals(se.deversity.asynctest.diagnostics.IssueSeverity.HIGH, v.severity());
+        assertTrue(v.message().contains("sha-struct"));
+        assertEquals("MessageDigest", v.attributes().get("type"));
+        assertEquals(2, v.attributes().get("threads"));
+        assertNotNull(v.when());
+    }
+
+    @Test
     void testReportIncludesSourceLineAttribution() throws Exception {
         // Two distinct call sites on the same instance from two threads. The
         // captured Set<Site> should dedupe by (class, line) and surface both

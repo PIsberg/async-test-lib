@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.*;
+import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
@@ -130,6 +131,20 @@ public class SharedMessageDigestDetector {
                     msg = msg + sites;
                 }
                 r.violations.add(msg);
+
+                // Mirror as a structured Violation for downstream formatters.
+                Map<String, Object> attrs = Map.of(
+                        "type", s.type,
+                        "threads", s.accessingThreadIds.size(),
+                        "threadNames", String.join(",", s.accessingThreadNames),
+                        "name", s.name);
+                r.structuredViolations.add(new Violation(
+                        "SharedMessageDigest",
+                        IssueSeverity.HIGH,
+                        msg,
+                        new ArrayList<>(s.accessSites),
+                        attrs,
+                        java.time.Instant.now()));
             }
         }
         return r;
@@ -139,6 +154,8 @@ public class SharedMessageDigestDetector {
     public static class SharedMessageDigestReport {
         public final List<String> violations = new ArrayList<>();
         public final Set<String> violatedTypes = new LinkedHashSet<>();
+        /** Structured mirror of {@link #violations} for {@link se.deversity.asynctest.report.Formatter}s. */
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         public boolean hasIssues() { return !violations.isEmpty(); }
 
