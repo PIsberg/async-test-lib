@@ -52,21 +52,33 @@ public class SharedMessageDigestDetector {
      */
     public void recordAccess(Object digest, String name, Thread thread) {
         if (digest == null || thread == null) return;
-        
-        String type = "MessageDigest";
-        if (digest instanceof javax.crypto.Cipher) {
-            type = "Cipher";
-        } else if (digest instanceof javax.crypto.Mac) {
-            type = "Mac";
-        } else if (digest instanceof java.security.Signature) {
-            type = "Signature";
+
+        // Hot path: lookup-only. The vast majority of calls hit an instance the
+        // detector has already seen at least once, so we avoid all classification
+        // work (instanceof chain, label string construction, lambda allocation)
+        // until we know the entry is missing.
+        int id = System.identityHashCode(digest);
+        DigestState s = digests.get(id);
+        if (s == null) {
+            // Cold path: first encounter of this instance. computeIfAbsent
+            // guarantees the factory runs at most once even under contention.
+            s = digests.computeIfAbsent(id, k -> {
+                String label = (name != null)
+                        ? name
+                        : digest.getClass().getSimpleName() + "@" + k;
+                String type;
+                if (digest instanceof javax.crypto.Cipher) {
+                    type = "Cipher";
+                } else if (digest instanceof javax.crypto.Mac) {
+                    type = "Mac";
+                } else if (digest instanceof java.security.Signature) {
+                    type = "Signature";
+                } else {
+                    type = "MessageDigest";
+                }
+                return new DigestState(label, type);
+            });
         }
-        
-        final String finalType = type;
-        String label = name != null ? name
-                : digest.getClass().getSimpleName() + "@" + System.identityHashCode(digest);
-        DigestState s = digests.computeIfAbsent(
-                System.identityHashCode(digest), id -> new DigestState(label, finalType));
         s.accessingThreadIds.add(thread.getId());
         s.accessingThreadNames.add(thread.getName());
     }

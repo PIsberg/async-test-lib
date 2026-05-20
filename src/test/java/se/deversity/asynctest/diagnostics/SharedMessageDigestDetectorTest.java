@@ -203,4 +203,48 @@ public class SharedMessageDigestDetectorTest {
             AsyncTestContext.uninstall();
         }
     }
+
+    @Test
+    void testRepeatedAccessSameInstanceProducesSingleViolation() throws Exception {
+        // Exercises the hot-path lookup short-circuit: repeated recordAccess on
+        // the same instance must not double-count or duplicate violations.
+        var d = new SharedMessageDigestDetector();
+        MessageDigest md = sha256();
+        // Many repeated calls on main thread (fast-path).
+        for (int i = 0; i < 1_000; i++) {
+            d.recordAccess(md, "sha-hot", Thread.currentThread());
+        }
+        Thread t2 = new Thread(() -> {
+            for (int i = 0; i < 1_000; i++) {
+                d.recordAccess(md, "sha-hot", Thread.currentThread());
+            }
+        });
+        t2.start();
+        t2.join();
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues());
+        assertEquals(1, report.violations.size(), "Repeated access must not duplicate violations");
+        assertTrue(report.violations.get(0).contains("sha-hot"));
+        assertTrue(report.violations.get(0).contains("2 threads"));
+    }
+
+    @Test
+    void testLabelFallbackOnlyEvaluatedOnFirstAccess() {
+        // When name is null on first call, the fallback label is captured.
+        // Subsequent calls with a different name MUST NOT mutate the stored label
+        // (label is fixed at first registration).
+        var d = new SharedMessageDigestDetector();
+        MessageDigest md = sha256();
+        d.recordAccess(md, null, Thread.currentThread());
+        d.recordAccess(md, "renamed", new Thread("worker-x"));
+        // Trigger the violation (need >1 thread)
+        Thread t = new Thread(() -> d.recordAccess(md, "ignored", Thread.currentThread()));
+        t.start();
+        try { t.join(); } catch (InterruptedException ignored) {}
+
+        String msg = d.analyze().violations.get(0);
+        // First-access fallback label has form "MessageDigest$Delegate@<hash>" or similar
+        assertFalse(msg.contains("renamed"), "Label captured on first access must be sticky");
+    }
 }
