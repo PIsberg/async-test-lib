@@ -123,6 +123,7 @@ public class DeadlockDetector {
     /**
      * Get a summary of current lock contention.
      */
+    @SuppressWarnings("PMD.AssignmentInOperand") // counter++ in switch arrow case is idiomatic
     public static String getLockContentionSummary() {
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
         ThreadInfo[] threadInfos = threadMXBean.dumpAllThreads(true, true);
