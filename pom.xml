@@ -95,6 +95,12 @@
             <version>0.2.1</version>
         </dependency>
         <dependency>
+            <groupId>com.github.spotbugs</groupId>
+            <artifactId>spotbugs-annotations</artifactId>
+            <version>${spotbugs.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
             <groupId>se.deversity.vibetags</groupId>
             <artifactId>vibetags-processor</artifactId>
             <version>${vibetags.version}</version>
