@@ -1,10 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import se.deversity.vibetags.annotations.AITestDriven;
 

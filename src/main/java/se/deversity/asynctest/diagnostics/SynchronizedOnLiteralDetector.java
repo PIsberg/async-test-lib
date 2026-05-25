@@ -64,6 +64,7 @@ public class SynchronizedOnLiteralDetector {
     }
 
     @SuppressFBWarnings("ES_COMPARING_STRINGS_WITH_EQ")
+    @SuppressWarnings({"PMD.CompareObjectsWithEquals", "PMD.UseEqualsToCompareStrings"}) // intentional: s == s.intern() detects literal/interned strings
     private static String describeIfLiteral(Object obj) {
         if (obj instanceof String) {
             String s = (String) obj;

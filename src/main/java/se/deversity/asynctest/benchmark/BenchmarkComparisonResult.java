@@ -5,7 +5,7 @@ import java.util.Objects;
 /**
  * Result of comparing current benchmark results against a baseline.
  */
-public class BenchmarkComparisonResult {
+public final class BenchmarkComparisonResult {
 
     private final BenchmarkResult currentResult;
     private final BenchmarkResult baselineResult;
@@ -86,7 +86,7 @@ public class BenchmarkComparisonResult {
         }
 
         String changeStr = String.format("%+.2f%%", percentChange);
-        String status = isRegression ? "REGRESSION" : (isImprovement ? "IMPROVEMENT" : "STABLE");
+        String status = isRegression ? "REGRESSION" : isImprovement ? "IMPROVEMENT" : "STABLE";
 
         return String.format(
             "BenchmarkComparisonResult{%s, baseline=%s, current=%s, change=%s}",

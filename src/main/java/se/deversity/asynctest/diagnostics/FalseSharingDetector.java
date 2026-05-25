@@ -19,7 +19,6 @@ public class FalseSharingDetector {
     
     private final Map<String, FieldAccessInfo> fieldAccess = new ConcurrentHashMap<>();
     private final Map<String, List<AccessEvent>> accessHistory = new ConcurrentHashMap<>();
-    private final AtomicLong eventCounter = new AtomicLong(0);
     private volatile boolean enabled = true;
     
     private static class FieldAccessInfo {

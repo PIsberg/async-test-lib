@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -23,8 +24,8 @@ public class ReadWriteLockMonitor {
         volatile long maxWriteWaitTime = 0;
         final Set<Long> currentReaders = ConcurrentHashMap.newKeySet();
         volatile long currentWriter = -1;
-        final java.util.concurrent.atomic.AtomicInteger readerStarvations = new java.util.concurrent.atomic.AtomicInteger(0);
-        final java.util.concurrent.atomic.AtomicInteger writerStarvations = new java.util.concurrent.atomic.AtomicInteger(0);
+        final AtomicInteger readerStarvations = new AtomicInteger(0);
+        final AtomicInteger writerStarvations = new AtomicInteger(0);
         
         LockState(String name) {
             this.lockName = name;

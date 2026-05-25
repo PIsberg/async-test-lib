@@ -1,7 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.lang.management.ManagementFactory;
-import java.lang.management.LockInfo;
 import java.lang.management.MonitorInfo;
 import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
@@ -12,8 +11,6 @@ import java.util.*;
  * circular lock dependencies, thread states, and provides actionable diagnostics.
  */
 public class DeadlockDetector {
-
-    private static final int LOCK_CHAIN_MAX_DEPTH = 20;
 
     public static void printThreadDump() {
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
@@ -82,6 +79,7 @@ public class DeadlockDetector {
         System.err.println("\n=======================================================\n");
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter") // allThreads reserved for future multi-hop chain traversal
     private static void printLockChain(ThreadInfo thread, ThreadInfo[] allThreads, Map<Long, ThreadInfo> threadMap) {
         System.err.println("Thread-" + thread.getThreadId() + " (" + thread.getThreadName() + "):");
         System.err.println("  State: " + thread.getThreadState());
@@ -129,7 +127,9 @@ public class DeadlockDetector {
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
         ThreadInfo[] threadInfos = threadMXBean.dumpAllThreads(true, true);
         
-        int blocked = 0, waiting = 0, running = 0;
+        int blocked = 0;
+        int waiting = 0;
+        int running = 0;
         for (ThreadInfo ti : threadInfos) {
             switch (ti.getThreadState()) {
                 case BLOCKED -> blocked++;

@@ -48,7 +48,7 @@ public class UncommittedChangesDetector {
                     String status = line.substring(0, 2);
                     String file = line.substring(3);
                     
-                    if (status.equals("??")) {
+                    if ("??".equals(status)) {
                         report.untrackedFiles.add(file);
                     } else {
                         report.uncommittedFiles.add(file + " [" + status.trim() + "]");
@@ -64,11 +64,11 @@ public class UncommittedChangesDetector {
             } else if (process.exitValue() != 0) {
                 report.error = "git status failed with exit code " + process.exitValue();
             }
-        } catch (IOException | InterruptedException e) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            report.error = "Failed to check git status: " + e.getMessage();
+        } catch (IOException e) {
             // Git may not be available or not a repository
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
             report.error = "Failed to check git status: " + e.getMessage();
         }
         return report;

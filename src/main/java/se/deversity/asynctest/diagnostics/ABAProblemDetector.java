@@ -2,8 +2,6 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -45,6 +43,7 @@ public class ABAProblemDetector {
             this.newValue = neu;
         }
         
+        @SuppressWarnings("PMD.CompareObjectsWithEquals") // identity equality intentional for atomic value tracking
         boolean isSameValue(Object v1, Object v2) {
             if (v1 == null && v2 == null) return true;
             if (v1 == null || v2 == null) return false;
@@ -111,6 +110,7 @@ public class ABAProblemDetector {
         history.casAttempts.put((long) System.identityHashCode(attempt), attempt);
     }
     
+    @SuppressWarnings("PMD.UnusedFormalParameter") // newChange reserved for future cycle-context logging
     private void detectCycles(AtomicValueHistory history, ValueChange newChange) {
         List<ValueChange> changes = history.changes;
         if (changes.size() < 3) return;

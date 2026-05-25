@@ -16,8 +16,6 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class MemoryModelValidator {
     
-    private static final int VALIDATION_ITERATIONS = 10000;
-    private static final int THREAD_COUNT = 20;
     
     private final AtomicReference<ValidationResult> lastResult = new AtomicReference<>();
     
@@ -49,7 +47,7 @@ public class MemoryModelValidator {
         AtomicInteger readCount = new AtomicInteger(0);
         
         Thread writer = new Thread(() -> {
-            try { Thread.sleep(10); } catch (InterruptedException e) {}
+            try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
             flag.set(true);
         });
         
@@ -89,7 +87,7 @@ public class MemoryModelValidator {
         });
         
         Thread t2 = new Thread(() -> {
-            try { Thread.sleep(50); } catch (InterruptedException e) {}
+            try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
             synchronized (lock) {
                 if (sharedValue[0] == 42) {
                     result.observations.add("✓ Synchronization happens-before is correct");
@@ -143,7 +141,7 @@ public class MemoryModelValidator {
         });
         
         Thread reader = new Thread(() -> {
-            try { Thread.sleep(10); } catch (InterruptedException e) {}
+            try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
             success[0] = "SUCCESS".equals(atomicRef.get());
         });
         
@@ -175,7 +173,7 @@ public class MemoryModelValidator {
         }
         
         public double getPassRate() {
-            return testsRun == 0 ? 0 : (100.0 * testsPassed) / testsRun;
+            return testsRun == 0 ? 0 : 100.0 * testsPassed / testsRun;
         }
         
         @Override

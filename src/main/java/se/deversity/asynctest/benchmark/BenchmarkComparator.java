@@ -63,7 +63,7 @@ public class BenchmarkComparator {
         if (baselineAvg == 0) {
             percentChange = currentAvg > 0 ? 100.0 : 0.0;
         } else {
-            percentChange = ((double) (currentAvg - baselineAvg) / baselineAvg) * 100.0;
+            percentChange = (double) (currentAvg - baselineAvg) / baselineAvg * 100.0;
         }
 
         boolean isRegression = percentChange > regressionThresholdPercent;
@@ -184,7 +184,7 @@ public class BenchmarkComparator {
      */
     private void saveAllBaselines(Map<String, BenchmarkResult> store) {
         // Ensure parent directory exists
-        java.nio.file.Path parent = benchmarkStorePath.getParent();
+        Path parent = benchmarkStorePath.getParent();
         if (parent != null) {
             File parentDir = parent.toFile();
             if (!parentDir.exists() && !parentDir.mkdirs()) {

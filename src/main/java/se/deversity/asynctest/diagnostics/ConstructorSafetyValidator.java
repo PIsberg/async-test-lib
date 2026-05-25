@@ -34,9 +34,9 @@ public class ConstructorSafetyValidator {
         }
     }
     
-    private static class FieldAccessInfo {
+    private static final class FieldAccessInfo {
         volatile long firstAccessTime = 0;
-        final java.util.concurrent.atomic.AtomicInteger accessCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        final AtomicInteger accessCount = new AtomicInteger(0);
         final Set<Long> accessingThreadIds = ConcurrentHashMap.newKeySet();
     }
     

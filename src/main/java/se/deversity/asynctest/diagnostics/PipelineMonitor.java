@@ -101,7 +101,7 @@ public class PipelineMonitor {
             if (processed < published * 0.9) {
                 report.lowProcessingRate.add(String.format(
                     "%s: Only %.1f%% of events processed",
-                    stage.stageName, (100.0 * processed) / Math.max(1, published)
+                    stage.stageName, 100.0 * processed / Math.max(1, published)
                 ));
             }
         }

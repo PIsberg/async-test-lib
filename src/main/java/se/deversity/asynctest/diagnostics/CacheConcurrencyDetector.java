@@ -218,7 +218,7 @@ public class CacheConcurrencyDetector {
             }
 
             // Track thread activity
-            if (state.readerThreads.size() > 0 || state.writerThreads.size() > 0) {
+            if (!state.readerThreads.isEmpty() || !state.writerThreads.isEmpty()) {
                 report.threadActivity.put(state.name, String.format(
                     "%d reader threads, %d writer threads",
                     state.readerThreads.size(),

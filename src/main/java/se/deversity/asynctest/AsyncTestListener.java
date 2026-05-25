@@ -29,7 +29,7 @@ public interface AsyncTestListener {
      * @param round the invocation round number (0-based)
      * @param threads the number of threads that will execute this round
      */
-    default void onInvocationStarted(int round, int threads) {}
+    default void onInvocationStarted(int round, int threads) { /* no-op default */ }
 
     /**
      * Called when an invocation round completes (all threads finished).
@@ -37,14 +37,14 @@ public interface AsyncTestListener {
      * @param round the invocation round number (0-based)
      * @param durationMs the duration of the round in milliseconds
      */
-    default void onInvocationCompleted(int round, long durationMs) {}
+    default void onInvocationCompleted(int round, long durationMs) { /* no-op default */ }
 
     /**
      * Called when a test fails (AssertionError or other throwable).
      *
      * @param cause the failure cause
      */
-    default void onTestFailed(Throwable cause) {}
+    default void onTestFailed(Throwable cause) { /* no-op default */ }
 
     /**
      * Called when a detector reports an issue.
@@ -52,14 +52,14 @@ public interface AsyncTestListener {
      * @param detectorName the name of the detector (e.g., "FalseSharingDetector")
      * @param report the detector's report content
      */
-    default void onDetectorReport(String detectorName, String report) {}
+    default void onDetectorReport(String detectorName, String report) { /* no-op default */ }
 
     /**
      * Called when a timeout occurs.
      *
      * @param timeoutMs the configured timeout in milliseconds
      */
-    default void onTimeout(long timeoutMs) {}
+    default void onTimeout(long timeoutMs) { /* no-op default */ }
 
     /**
      * Called when a detector reports an issue, with structured severity information.
@@ -76,5 +76,5 @@ public interface AsyncTestListener {
      * @param report        the detector's full report content
      * @since 1.5.0
      */
-    default void onStructuredReport(String detectorName, IssueSeverity severity, String report) {}
+    default void onStructuredReport(String detectorName, IssueSeverity severity, String report) { /* no-op default */ }
 }

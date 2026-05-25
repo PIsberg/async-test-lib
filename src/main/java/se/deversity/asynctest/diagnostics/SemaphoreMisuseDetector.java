@@ -154,7 +154,7 @@ public class SemaphoreMisuseDetector {
             }
 
             // Track thread participation
-            if (state.acquiringThreads.size() > 0) {
+            if (!state.acquiringThreads.isEmpty()) {
                 report.threadActivity.put(state.name, String.format(
                     "%d threads acquired, %d threads released, max concurrent: %d",
                     state.acquiringThreads.size(),

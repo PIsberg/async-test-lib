@@ -1,7 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -65,7 +64,6 @@ public class ThreadFactoryDetector {
      */
     public ThreadFactoryReport analyze() {
         return new ThreadFactoryReport(
-            factoryRegistry,
             missingExceptionHandler,
             nonDaemonThreads,
             unnamedThreads
@@ -76,18 +74,15 @@ public class ThreadFactoryDetector {
      * Report class for ThreadFactory analysis.
      */
     public static class ThreadFactoryReport {
-        private final Map<ThreadFactory, FactoryInfo> factoryRegistry;
         private final Set<String> missingExceptionHandler;
         private final Set<String> nonDaemonThreads;
         private final Set<String> unnamedThreads;
 
         public ThreadFactoryReport(
-            Map<ThreadFactory, FactoryInfo> factoryRegistry,
             Set<String> missingExceptionHandler,
             Set<String> nonDaemonThreads,
             Set<String> unnamedThreads
         ) {
-            this.factoryRegistry = Collections.unmodifiableMap(new HashMap<>(factoryRegistry));
             this.missingExceptionHandler = Collections.unmodifiableSet(new HashSet<>(missingExceptionHandler));
             this.nonDaemonThreads = Collections.unmodifiableSet(new HashSet<>(nonDaemonThreads));
             this.unnamedThreads = Collections.unmodifiableSet(new HashSet<>(unnamedThreads));

@@ -60,7 +60,7 @@ public final class WeakHashMapSharedDetector {
         }
     }
 
-    private final java.util.Map<Integer, State> instances = new ConcurrentHashMap<>();
+    private final Map<Integer, State> instances = new ConcurrentHashMap<>();
 
     /**
      * Record an access to a {@link WeakHashMap} or {@link IdentityHashMap}.

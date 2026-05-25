@@ -3,10 +3,8 @@ package se.deversity.asynctest.diagnostics;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
@@ -166,7 +164,7 @@ public class LockLeakDetector {
             }
 
             // Track thread participation
-            if (state.acquiringThreads.size() > 0) {
+            if (!state.acquiringThreads.isEmpty()) {
                 report.threadActivity.put(state.name, String.format(
                     "%d threads acquired, %d threads released, max hold: %dms",
                     state.acquiringThreads.size(),

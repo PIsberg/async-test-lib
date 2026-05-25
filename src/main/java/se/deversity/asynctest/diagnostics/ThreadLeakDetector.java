@@ -50,7 +50,7 @@ import se.deversity.vibetags.annotations.AITestDriven;
 )
 public class ThreadLeakDetector {
 
-    private static class ThreadState {
+    private static final class ThreadState {
         final String name;
         final Thread thread;
         final long startTime;

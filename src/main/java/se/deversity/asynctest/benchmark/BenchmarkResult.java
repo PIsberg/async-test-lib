@@ -2,7 +2,6 @@ package se.deversity.asynctest.benchmark;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -13,7 +12,7 @@ import java.util.Objects;
  * Represents benchmark results for a single test method.
  * Stores execution times and statistics for comparison across runs.
  */
-public class BenchmarkResult implements Serializable {
+public final class BenchmarkResult implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private final String testClass;

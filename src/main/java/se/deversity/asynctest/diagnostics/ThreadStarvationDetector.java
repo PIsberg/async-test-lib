@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -67,7 +66,7 @@ public class ThreadStarvationDetector {
         final AtomicLong totalExecutionTime = new AtomicLong(0);
         final AtomicLong maxExecutionTime = new AtomicLong(0);
         volatile int peakQueueDepth = 0;
-        final java.util.concurrent.atomic.AtomicInteger currentQueueDepth = new java.util.concurrent.atomic.AtomicInteger(0);
+        final AtomicInteger currentQueueDepth = new AtomicInteger(0);
 
         ExecutorState(ExecutorService executor, String name, int poolSize) {
             this.executor = executor;
@@ -202,7 +201,7 @@ public class ThreadStarvationDetector {
      */
     public ThreadStarvationReport analyze() {
         if (!enabled) {
-            return new ThreadStarvationReport(List.of(), 0, 0, 0, false);
+            return new ThreadStarvationReport(List.of(), 0, 0, 0);
         }
 
         List<StarvationEventSnapshot> snapshots;
@@ -230,8 +229,7 @@ public class ThreadStarvationDetector {
             snapshots,
             totalStarved,
             totalTracked,
-            maxWaitTime,
-            true
+            maxWaitTime
         );
     }
 
@@ -282,15 +280,13 @@ public class ThreadStarvationDetector {
         private final int totalStarved;
         private final int totalTracked;
         private final int maxWaitTimeMs;
-        private final boolean enabled;
 
         ThreadStarvationReport(List<StarvationEventSnapshot> events, int totalStarved,
-                              int totalTracked, int maxWaitTimeMs, boolean enabled) {
+                              int totalTracked, int maxWaitTimeMs) {
             this.events = events;
             this.totalStarved = totalStarved;
             this.totalTracked = totalTracked;
             this.maxWaitTimeMs = maxWaitTimeMs;
-            this.enabled = enabled;
         }
 
         public boolean hasIssues() {
