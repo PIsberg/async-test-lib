@@ -1,11 +1,14 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.RecursiveTask;
 import java.util.concurrent.RecursiveAction;
+import java.util.concurrent.RecursiveTask;
 import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
@@ -112,9 +115,9 @@ public class ForkJoinPoolDetector {
             Set<String> exceptionsInTasks,
             int taskStealCount
         ) {
-            this.poolRegistry = poolRegistry;
-            this.forkedWithoutJoin = forkedWithoutJoin;
-            this.exceptionsInTasks = exceptionsInTasks;
+            this.poolRegistry = Collections.unmodifiableMap(new HashMap<>(poolRegistry));
+            this.forkedWithoutJoin = Collections.unmodifiableSet(new HashSet<>(forkedWithoutJoin));
+            this.exceptionsInTasks = Collections.unmodifiableSet(new HashSet<>(exceptionsInTasks));
             this.taskStealCount = taskStealCount;
         }
 

@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -90,9 +93,9 @@ public class ReentrantLockDetector {
             Set<ReentrantLock> timeoutLocks,
             Set<String> starvationThreads
         ) {
-            this.lockRegistry = lockRegistry;
-            this.timeoutLocks = timeoutLocks;
-            this.starvationThreads = starvationThreads;
+            this.lockRegistry = Collections.unmodifiableMap(new HashMap<>(lockRegistry));
+            this.timeoutLocks = Collections.unmodifiableSet(new HashSet<>(timeoutLocks));
+            this.starvationThreads = Collections.unmodifiableSet(new HashSet<>(starvationThreads));
         }
 
         public boolean hasIssues() {

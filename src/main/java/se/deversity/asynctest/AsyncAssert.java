@@ -1,5 +1,6 @@
 package se.deversity.asynctest;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import se.deversity.vibetags.annotations.AIContract;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
@@ -59,6 +60,7 @@ public class AsyncAssert {
         private final AtomicReference<Throwable> error = new AtomicReference<>();
         private volatile boolean complete = false;
 
+        @SuppressFBWarnings("EI_EXPOSE_REP2")
         public FutureCapture(CompletableFuture<T> future) {
             this.future = future;
             future.whenComplete((res, err) -> {

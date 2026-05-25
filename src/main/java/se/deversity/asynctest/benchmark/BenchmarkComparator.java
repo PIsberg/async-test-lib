@@ -184,9 +184,13 @@ public class BenchmarkComparator {
      */
     private void saveAllBaselines(Map<String, BenchmarkResult> store) {
         // Ensure parent directory exists
-        File parentDir = benchmarkStorePath.getParent().toFile();
-        if (!parentDir.exists()) {
-            parentDir.mkdirs();
+        java.nio.file.Path parent = benchmarkStorePath.getParent();
+        if (parent != null) {
+            File parentDir = parent.toFile();
+            if (!parentDir.exists() && !parentDir.mkdirs()) {
+                System.err.println("Warning: Could not create benchmark baseline directory: " + parentDir);
+                return;
+            }
         }
 
         try (FileOutputStream fos = new FileOutputStream(benchmarkStorePath.toFile());
@@ -202,8 +206,8 @@ public class BenchmarkComparator {
      */
     public void clearAllBaselines() {
         File storeFile = benchmarkStorePath.toFile();
-        if (storeFile.exists()) {
-            storeFile.delete();
+        if (storeFile.exists() && !storeFile.delete()) {
+            System.err.println("Warning: Could not delete benchmark baseline file: " + storeFile);
         }
     }
 }

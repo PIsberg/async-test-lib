@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -102,8 +105,8 @@ public class VolatileArrayDetector {
             Map<ArrayInfo, Set<String>> elementAccesses,
             Set<ArrayInfo> problematicArrays
         ) {
-            this.elementAccesses = elementAccesses;
-            this.problematicArrays = problematicArrays;
+            this.elementAccesses = Collections.unmodifiableMap(new HashMap<>(elementAccesses));
+            this.problematicArrays = Collections.unmodifiableSet(new HashSet<>(problematicArrays));
         }
 
         public boolean hasIssues() {

@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -89,9 +92,9 @@ public class CyclicBarrierDetector {
             Set<CyclicBarrier> timedOutBarriers,
             Set<CyclicBarrier> brokenBarriers
         ) {
-            this.barrierRegistry = barrierRegistry;
-            this.timedOutBarriers = timedOutBarriers;
-            this.brokenBarriers = brokenBarriers;
+            this.barrierRegistry = Collections.unmodifiableMap(new HashMap<>(barrierRegistry));
+            this.timedOutBarriers = Collections.unmodifiableSet(new HashSet<>(timedOutBarriers));
+            this.brokenBarriers = Collections.unmodifiableSet(new HashSet<>(brokenBarriers));
         }
 
         public boolean hasIssues() {
@@ -109,7 +112,7 @@ public class CyclicBarrierDetector {
                     BarrierInfo info = barrierRegistry.get(barrier);
                     sb.append("    - ").append(info.name)
                       .append(" (").append(info.parties).append(" parties expected, ")
-                      .append(info.arrivals).append(" arrived before timeout)\n");
+                      .append(info.getArrivals()).append(" arrived before timeout)\n");
                 }
                 sb.append("  Why: If fewer threads than expected call await(), the barrier never trips and all waiting threads block indefinitely.\n");
                 sb.append("       Once a barrier is broken, it propagates BrokenBarrierException to all waiting parties.\n");
@@ -142,7 +145,7 @@ public class CyclicBarrierDetector {
     static class BarrierInfo {
         final String name;
         final int parties;
-        int arrivals = 0;
+        private int arrivals = 0;
         int completedCycles = 0;
 
         BarrierInfo(String name, int parties) {
@@ -157,6 +160,10 @@ public class CyclicBarrierDetector {
         synchronized void cycleComplete() {
             completedCycles++;
             arrivals = 0;
+        }
+
+        synchronized int getArrivals() {
+            return arrivals;
         }
     }
 }

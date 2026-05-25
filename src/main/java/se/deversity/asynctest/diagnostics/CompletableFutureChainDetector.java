@@ -286,7 +286,7 @@ public class CompletableFutureChainDetector {
                 }
             }
 
-            sb.append(String.format("  Summary: %d created, %d joined, %d chained\n",
+            sb.append(String.format("  Summary: %d created, %d joined, %d chained%n",
                 totalCreated, totalJoined, totalChained));
 
             if (!hasIssues()) {

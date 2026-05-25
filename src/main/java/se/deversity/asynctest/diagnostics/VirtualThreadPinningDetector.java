@@ -216,7 +216,7 @@ public class VirtualThreadPinningDetector {
         }
         try {
             return (boolean) Thread.class.getMethod("isVirtual").invoke(thread);
-        } catch (Exception e) {
+        } catch (ReflectiveOperationException e) {
             return false;
         }
     }
@@ -239,7 +239,7 @@ public class VirtualThreadPinningDetector {
          * @return list of pinning event snapshots
          */
         public List<PinningEventSnapshot> getEvents() {
-            return events;
+            return Collections.unmodifiableList(events);
         }
 
         /**
@@ -362,7 +362,7 @@ public class VirtualThreadPinningDetector {
          * @return stack trace at pinning point
          */
         public StackTraceElement[] getStackTrace() {
-            return stackTrace;
+            return stackTrace == null ? null : stackTrace.clone();
         }
     }
 }

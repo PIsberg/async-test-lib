@@ -223,9 +223,9 @@ public class VirtualThreadContextLeakDetector {
             return !leaks.isEmpty() || !inheritableInVirtualIssues.isEmpty();
         }
 
-        public List<String> getLeaks()                        { return leaks; }
-        public List<String> getInheritableInVirtualIssues()   { return inheritableInVirtualIssues; }
-        public List<String> getHighCountWarnings()             { return highCountWarnings; }
+        public List<String> getLeaks()                        { return Collections.unmodifiableList(leaks); }
+        public List<String> getInheritableInVirtualIssues()   { return Collections.unmodifiableList(inheritableInVirtualIssues); }
+        public List<String> getHighCountWarnings()             { return Collections.unmodifiableList(highCountWarnings); }
         public int          getTotalSets()                     { return totalSets; }
         public int          getTotalRemoves()                  { return totalRemoves; }
 

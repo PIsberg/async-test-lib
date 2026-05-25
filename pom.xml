@@ -59,6 +59,8 @@
         <cyclonedx-maven-plugin.version>2.9.1</cyclonedx-maven-plugin.version>
         <central-publishing-maven-plugin.version>0.10.0</central-publishing-maven-plugin.version>
         <vibetags.version>0.9.7</vibetags.version>
+        <spotbugs-maven-plugin.version>4.8.6.6</spotbugs-maven-plugin.version>
+        <spotbugs.version>4.8.6</spotbugs.version>
     </properties>
 
     <dependencies>
@@ -94,6 +96,12 @@
             <groupId>se.deversity.vibetags</groupId>
             <artifactId>vibetags-processor</artifactId>
             <version>${vibetags.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.github.spotbugs</groupId>
+            <artifactId>spotbugs-annotations</artifactId>
+            <version>${spotbugs.version}</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>
@@ -212,6 +220,29 @@
                     <autoPublish>true</autoPublish>
                     <waitUntil>published</waitUntil>
                 </configuration>
+            </plugin>
+            <!-- SpotBugs static analysis — main sources only -->
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <version>${spotbugs-maven-plugin.version}</version>
+                <configuration>
+                    <effort>Max</effort>
+                    <threshold>Low</threshold>
+                    <includeTests>false</includeTests>
+                    <xmlOutput>true</xmlOutput>
+                    <failOnError>true</failOnError>
+                    <excludeFilterFile>${project.basedir}/spotbugs-exclude.xml</excludeFilterFile>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>spotbugs-check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

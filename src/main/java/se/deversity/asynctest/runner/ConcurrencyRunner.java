@@ -1,5 +1,6 @@
 package se.deversity.asynctest.runner;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICore;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -184,6 +185,7 @@ public class ConcurrencyRunner {
         }
     }
 
+    @SuppressFBWarnings("RV_RETURN_VALUE_IGNORED_BAD_PRACTICE")
     private static void runSingleInvocationRound(ReflectiveInvocationContext<Method> context,
                                                  int threads,
                                                  ExecutorService executor,

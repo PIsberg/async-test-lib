@@ -223,7 +223,7 @@ public class CompletableFutureCompletionLeakDetector {
          * @return list of leaked futures
          */
         public List<LeakedFuture> getLeakedFutures() {
-            return leakedFutures;
+            return Collections.unmodifiableList(leakedFutures);
         }
 
         /**
@@ -326,7 +326,7 @@ public class CompletableFutureCompletionLeakDetector {
          * @return stack trace at creation point
          */
         public StackTraceElement[] getCreationStackTrace() {
-            return creationStackTrace;
+            return creationStackTrace == null ? null : creationStackTrace.clone();
         }
 
         @Override

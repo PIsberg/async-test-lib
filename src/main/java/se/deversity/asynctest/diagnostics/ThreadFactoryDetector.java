@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -50,9 +53,9 @@ public class ThreadFactoryDetector {
                 nonDaemonThreads.add(factoryName + ":" + thread.getName());
             }
             
-            // Check for unnamed thread
-            if (thread.getName() == null || thread.getName().startsWith("Thread-")) {
-                unnamedThreads.add(factoryName + ":" + (thread.getName() != null ? thread.getName() : "null"));
+            // Check for unnamed thread (Thread.getName() never returns null)
+            if (thread.getName().startsWith("Thread-")) {
+                unnamedThreads.add(factoryName + ":" + thread.getName());
             }
         }
     }
@@ -84,10 +87,10 @@ public class ThreadFactoryDetector {
             Set<String> nonDaemonThreads,
             Set<String> unnamedThreads
         ) {
-            this.factoryRegistry = factoryRegistry;
-            this.missingExceptionHandler = missingExceptionHandler;
-            this.nonDaemonThreads = nonDaemonThreads;
-            this.unnamedThreads = unnamedThreads;
+            this.factoryRegistry = Collections.unmodifiableMap(new HashMap<>(factoryRegistry));
+            this.missingExceptionHandler = Collections.unmodifiableSet(new HashSet<>(missingExceptionHandler));
+            this.nonDaemonThreads = Collections.unmodifiableSet(new HashSet<>(nonDaemonThreads));
+            this.unnamedThreads = Collections.unmodifiableSet(new HashSet<>(unnamedThreads));
         }
 
         public boolean hasIssues() {

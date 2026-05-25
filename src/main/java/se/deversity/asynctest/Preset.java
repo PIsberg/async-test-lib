@@ -3,6 +3,7 @@ package se.deversity.asynctest;
 import se.deversity.vibetags.annotations.AIImmutable;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Set;
 
@@ -99,7 +100,7 @@ public enum Preset {
      * releases.
      */
     public Set<DetectorType> enabled() {
-        return enabled;
+        return enabled == null ? null : Collections.unmodifiableSet(enabled);
     }
 
     /** True when the preset is the legacy default. */

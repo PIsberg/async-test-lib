@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -90,8 +93,8 @@ public class WaitTimeoutDetector {
             Map<WaitInfo, Set<String>> waitEvents,
             Set<WaitInfo> infiniteWaits
         ) {
-            this.waitEvents = waitEvents;
-            this.infiniteWaits = infiniteWaits;
+            this.waitEvents = Collections.unmodifiableMap(new HashMap<>(waitEvents));
+            this.infiniteWaits = Collections.unmodifiableSet(new HashSet<>(infiniteWaits));
         }
 
         public boolean hasIssues() {

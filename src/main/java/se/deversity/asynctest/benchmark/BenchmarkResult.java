@@ -4,6 +4,7 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -76,7 +77,7 @@ public class BenchmarkResult implements Serializable {
     }
 
     public List<Long> getInvocationTimesNanos() {
-        return invocationTimesNanos;
+        return Collections.unmodifiableList(invocationTimesNanos);
     }
 
     /**

@@ -209,9 +209,9 @@ public class ScopedValueMisuseDetector {
             return !unboundGetIssues.isEmpty() || !rebindIssues.isEmpty();
         }
 
-        public List<String> getUnboundGetIssues()     { return unboundGetIssues; }
-        public List<String> getRebindIssues()          { return rebindIssues; }
-        public List<String> getHighBindingWarnings()   { return highBindingWarnings; }
+        public List<String> getUnboundGetIssues()     { return Collections.unmodifiableList(unboundGetIssues); }
+        public List<String> getRebindIssues()          { return Collections.unmodifiableList(rebindIssues); }
+        public List<String> getHighBindingWarnings()   { return Collections.unmodifiableList(highBindingWarnings); }
         public int          getTotalBindings()          { return totalBindings; }
         public int          getTotalGetCalls()          { return totalGetCalls; }
         public int          getUnboundGetCount()        { return unboundGetCount; }

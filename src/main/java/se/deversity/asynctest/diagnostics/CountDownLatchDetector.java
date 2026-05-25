@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,8 +40,8 @@ public class CountDownLatchDetector {
     public void recordCountDown(CountDownLatch latch) {
         LatchInfo info = latchRegistry.get(latch);
         if (info != null) {
-            info.countDown();
-            if (info.currentCount < 0) {
+            boolean extra = info.countDown();
+            if (extra) {
                 extraCountDownLatches.add(latch);
             }
         }
@@ -85,9 +88,9 @@ public class CountDownLatchDetector {
             Set<CountDownLatch> timedOutLatches,
             Set<CountDownLatch> extraCountDownLatches
         ) {
-            this.latchRegistry = latchRegistry;
-            this.timedOutLatches = timedOutLatches;
-            this.extraCountDownLatches = extraCountDownLatches;
+            this.latchRegistry = Collections.unmodifiableMap(new HashMap<>(latchRegistry));
+            this.timedOutLatches = Collections.unmodifiableSet(new HashSet<>(timedOutLatches));
+            this.extraCountDownLatches = Collections.unmodifiableSet(new HashSet<>(extraCountDownLatches));
         }
 
         public boolean hasIssues() {
@@ -148,8 +151,10 @@ public class CountDownLatchDetector {
             this.currentCount = initialCount;
         }
 
-        synchronized void countDown() {
+        /** Decrements count. Returns true if count dropped below zero (extra countDown). */
+        synchronized boolean countDown() {
             currentCount--;
+            return currentCount < 0;
         }
     }
 }

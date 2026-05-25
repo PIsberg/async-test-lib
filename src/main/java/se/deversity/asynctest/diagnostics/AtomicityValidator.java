@@ -80,7 +80,7 @@ public class AtomicityValidator {
                     ));
                 }
             } else {
-                operation.firstReads.putIfAbsent(fieldName, value);
+                operation.firstReads.computeIfAbsent(fieldName, k -> value);
             }
         }
     }

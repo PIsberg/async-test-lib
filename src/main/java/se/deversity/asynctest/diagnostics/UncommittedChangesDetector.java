@@ -1,7 +1,9 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -33,7 +35,8 @@ public class UncommittedChangesDetector {
                     .redirectErrorStream(true)
                     .start();
 
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     if (line.isBlank()) continue;
@@ -61,8 +64,11 @@ public class UncommittedChangesDetector {
             } else if (process.exitValue() != 0) {
                 report.error = "git status failed with exit code " + process.exitValue();
             }
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException e) {
             // Git may not be available or not a repository
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             report.error = "Failed to check git status: " + e.getMessage();
         }
         return report;

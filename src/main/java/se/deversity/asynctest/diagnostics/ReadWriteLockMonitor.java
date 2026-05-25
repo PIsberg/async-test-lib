@@ -23,8 +23,8 @@ public class ReadWriteLockMonitor {
         volatile long maxWriteWaitTime = 0;
         final Set<Long> currentReaders = ConcurrentHashMap.newKeySet();
         volatile long currentWriter = -1;
-        volatile int readerStarvations = 0;
-        volatile int writerStarvations = 0;
+        final java.util.concurrent.atomic.AtomicInteger readerStarvations = new java.util.concurrent.atomic.AtomicInteger(0);
+        final java.util.concurrent.atomic.AtomicInteger writerStarvations = new java.util.concurrent.atomic.AtomicInteger(0);
         
         LockState(String name) {
             this.lockName = name;
@@ -89,7 +89,7 @@ public class ReadWriteLockMonitor {
         
         // Check for writer starvation (lots of readers, high write wait time)
         if (waitTimeMs > 100 && state.readLockCount.get() > state.writeLockCount.get() * 2) {
-            state.writerStarvations++;
+            state.writerStarvations.incrementAndGet();
         }
     }
     
@@ -128,10 +128,11 @@ public class ReadWriteLockMonitor {
             }
             
             // Check for writer starvation
-            if (state.writerStarvations > 0) {
+            int starv = state.writerStarvations.get();
+            if (starv > 0) {
                 report.starvedWriters.add(String.format(
                     "%s: Writers starved %d times (max wait: %dms)",
-                    state.lockName, state.writerStarvations, state.maxWriteWaitTime
+                    state.lockName, starv, state.maxWriteWaitTime
                 ));
             }
             

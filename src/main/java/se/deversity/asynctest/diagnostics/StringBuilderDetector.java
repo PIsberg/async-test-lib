@@ -155,6 +155,7 @@ public class StringBuilderDetector {
             case "insert"  -> state.insertCount.incrementAndGet();
             case "delete"  -> state.deleteCount.incrementAndGet();
             case "replace" -> state.replaceCount.incrementAndGet();
+            default        -> { /* unrecognized mutation type — ignored */ }
         }
     }
 

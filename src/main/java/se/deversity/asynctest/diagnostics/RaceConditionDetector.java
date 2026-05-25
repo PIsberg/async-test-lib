@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -156,8 +157,10 @@ public class RaceConditionDetector {
 
     /**
      * Get the deduplicator for this detector.
+     * Intentionally returns the live deduplicator so callers can query and extend it.
      * @return the issue deduplicator
      */
+    @SuppressFBWarnings("EI_EXPOSE_REP")
     public IssueDeduplicator<RaceConditionEvent> getDeduplicator() {
         return deduplicator;
     }

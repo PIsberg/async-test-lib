@@ -227,7 +227,7 @@ public class StreamClosingDetector {
                 }
             }
 
-            sb.append(String.format("  Summary: %d opened, %d closed, %d max concurrent\n",
+            sb.append(String.format("  Summary: %d opened, %d closed, %d max concurrent%n",
                 totalOpened, totalClosed, maxConcurrentOpen));
 
             if (!hasIssues()) {

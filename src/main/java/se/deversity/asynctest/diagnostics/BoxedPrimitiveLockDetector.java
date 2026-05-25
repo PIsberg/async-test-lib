@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.*;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
@@ -71,6 +72,9 @@ public class BoxedPrimitiveLockDetector {
         }
     }
 
+    @SuppressFBWarnings("ES_COMPARING_STRINGS_WITH_EQ")
+    // Intentional reference comparison: obj == obj.intern() is true only when obj is an interned
+    // (literal) String — which is exactly what we want to detect as a dangerous lock target.
     private static String detectCachedPrimitive(Object obj) {
         if (obj instanceof Boolean) {
             return "Boolean cached instance (" + obj + ")";

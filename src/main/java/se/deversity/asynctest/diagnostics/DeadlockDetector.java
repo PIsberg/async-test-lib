@@ -135,6 +135,7 @@ public class DeadlockDetector {
                 case BLOCKED -> blocked++;
                 case WAITING, TIMED_WAITING -> waiting++;
                 case RUNNABLE -> running++;
+                default -> { /* NEW, TERMINATED — not counted */ }
             }
         }
         

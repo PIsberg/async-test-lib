@@ -17,7 +17,7 @@ public class WakeupDetector {
     
     private static class MonitorState {
         final Object monitor;
-        volatile int waitingThreads = 0;
+        int waitingThreads = 0; // guarded by synchronized(this)
         final AtomicLong notifyCount = new AtomicLong(0);
         final AtomicLong spuriousWakeups = new AtomicLong(0);
         final AtomicLong lostNotifications = new AtomicLong(0);

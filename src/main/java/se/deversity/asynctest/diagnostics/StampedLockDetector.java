@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -111,9 +114,9 @@ public class StampedLockDetector {
             Set<String> unvalidatedOptimisticReads,
             Set<String> stampNotReleased
         ) {
-            this.lockRegistry = lockRegistry;
-            this.unvalidatedOptimisticReads = unvalidatedOptimisticReads;
-            this.stampNotReleased = stampNotReleased;
+            this.lockRegistry = Collections.unmodifiableMap(new HashMap<>(lockRegistry));
+            this.unvalidatedOptimisticReads = Collections.unmodifiableSet(new HashSet<>(unvalidatedOptimisticReads));
+            this.stampNotReleased = Collections.unmodifiableSet(new HashSet<>(stampNotReleased));
         }
 
         public boolean hasIssues() {

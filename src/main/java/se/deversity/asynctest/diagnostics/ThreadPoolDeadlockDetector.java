@@ -256,7 +256,7 @@ public class ThreadPoolDeadlockDetector {
          * @return list of pool-specific deadlock risks
          */
         public List<PoolDeadlockRisk> getRisks() {
-            return risks;
+            return Collections.unmodifiableList(risks);
         }
 
         /**
@@ -375,7 +375,7 @@ public class ThreadPoolDeadlockDetector {
          * @return list of nested submission snapshots
          */
         public List<NestedSubmissionSnapshot> getNestedSubmissions() {
-            return nestedSubmissions;
+            return Collections.unmodifiableList(nestedSubmissions);
         }
     }
 
@@ -411,7 +411,7 @@ public class ThreadPoolDeadlockDetector {
          * @return stack trace at submission point
          */
         public StackTraceElement[] getStackTrace() {
-            return stackTrace;
+            return stackTrace == null ? null : stackTrace.clone();
         }
     }
 }

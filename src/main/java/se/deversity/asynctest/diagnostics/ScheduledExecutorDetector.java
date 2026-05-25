@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -121,9 +124,9 @@ public class ScheduledExecutorDetector {
             Set<String> longRunningTasks,
             int exceptionInTasks
         ) {
-            this.executorRegistry = executorRegistry;
-            this.notShutdownExecutors = notShutdownExecutors;
-            this.longRunningTasks = longRunningTasks;
+            this.executorRegistry = Collections.unmodifiableMap(new HashMap<>(executorRegistry));
+            this.notShutdownExecutors = Collections.unmodifiableSet(new HashSet<>(notShutdownExecutors));
+            this.longRunningTasks = Collections.unmodifiableSet(new HashSet<>(longRunningTasks));
             this.exceptionInTasks = exceptionInTasks;
         }
 
