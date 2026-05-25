@@ -39,4 +39,32 @@
         <Bug pattern="DP_DO_INSIDE_DO_PRIVILEGED"/>
     </Match>
 
+    <!-- ================================================================
+         THROWS_METHOD_THROWS_CLAUSE_THROWABLE — intentional in runner
+         runSingleInvocationRound must declare throws Throwable so that
+         worker-thread failures (AssertionError, OutOfMemoryError, etc.)
+         propagate unmodified to the test thread. Narrowing to Exception
+         would silently swallow Errors.
+         ================================================================ -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_CLAUSE_THROWABLE"/>
+        <Class name="se.deversity.asynctest.runner.ConcurrencyRunner"/>
+    </Match>
+
+    <!-- ================================================================
+         THROWS_METHOD_THROWS_RUNTIMEEXCEPTION — intentional re-throw pattern
+         ConcurrencyRunner.invokeLifecycleMethods re-wraps and re-throws
+         lifecycle failures as RuntimeException so they surface to JUnit.
+         AsyncAssert.awaitAsync wraps async completion failures into
+         RuntimeException for clean, unchecked test assertions.
+         ================================================================ -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Class name="se.deversity.asynctest.runner.ConcurrencyRunner"/>
+    </Match>
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Class name="se.deversity.asynctest.AsyncAssert"/>
+    </Match>
+
 </FindBugsFilter>

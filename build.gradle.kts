@@ -31,7 +31,7 @@ dependencies {
     implementation("se.deversity.common:common-license-lib:0.2.1")
     compileOnly("se.deversity.vibetags:vibetags-processor:0.9.7")
     annotationProcessor("se.deversity.vibetags:vibetags-processor:0.9.7")
-    compileOnly("com.github.spotbugs:spotbugs-annotations:4.8.6")
+    compileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
 }
 
 tasks.test {
