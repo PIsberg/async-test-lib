@@ -17,7 +17,7 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class CounterService {
 
-    final ReentrantLock lock = new ReentrantLock();
+    public final ReentrantLock lock = new ReentrantLock();
     private int count = 0;
 
     /**

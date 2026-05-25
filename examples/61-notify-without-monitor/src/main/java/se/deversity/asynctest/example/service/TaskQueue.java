@@ -12,7 +12,7 @@ import java.util.LinkedList;
 public class TaskQueue {
 
     // Exposed for the detector API call in the test
-    final LinkedList<String> queue = new LinkedList<>();
+    public final LinkedList<String> queue = new LinkedList<>();
 
     /**
      * Adds a task and notifies waiting consumers.

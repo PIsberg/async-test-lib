@@ -13,8 +13,8 @@ import java.util.Deque;
 public class ProducerConsumerService {
 
     // Exposed for the detector API calls in the test
-    final Object lockA = new Object();
-    final Object lockB = new Object();
+    public final Object lockA = new Object();
+    public final Object lockB = new Object();
 
     private final Deque<String> queue = new ArrayDeque<>();
 

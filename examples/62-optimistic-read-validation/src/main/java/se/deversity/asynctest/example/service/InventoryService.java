@@ -13,7 +13,7 @@ import java.util.concurrent.locks.StampedLock;
 public class InventoryService {
 
     // Exposed for the detector API calls in the test
-    final StampedLock lock = new StampedLock();
+    public final StampedLock lock = new StampedLock();
 
     private int stock = 100;
 

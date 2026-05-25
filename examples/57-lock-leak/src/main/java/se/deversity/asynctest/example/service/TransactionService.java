@@ -13,7 +13,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class TransactionService {
 
     // Exposed so the test can register it with the detector
-    final ReentrantLock lock = new ReentrantLock();
+    public final ReentrantLock lock = new ReentrantLock();
 
     /**
      * Begins a transaction by acquiring the lock.

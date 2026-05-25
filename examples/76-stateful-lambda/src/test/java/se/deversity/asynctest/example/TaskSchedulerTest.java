@@ -81,13 +81,15 @@ class TaskSchedulerTest {
         var detector = AsyncTestContext.get().statefulLambdaDetector();
 
         // Simulate the buggy pattern: a single shared int[] captured by a Runnable.
+        // Use an array-wrapper to allow self-reference from inside the lambda.
         int[] count = {0};
-        Runnable sharedTask = () -> {
-            detector.recordExecution(sharedTask, "counting-task", Thread.currentThread());
-            detector.recordCapturedMutation(sharedTask, "count", Thread.currentThread());
+        Runnable[] taskRef = {null};
+        taskRef[0] = () -> {
+            detector.recordExecution(taskRef[0], "counting-task", Thread.currentThread());
+            detector.recordCapturedMutation(taskRef[0], "count", Thread.currentThread());
             count[0]++; // BUG: non-atomic update on shared captured array element
         };
 
-        sharedTask.run();
+        taskRef[0].run();
     }
 }

@@ -16,7 +16,7 @@ public class DataStore {
 
     private final Map<String, String> store = new HashMap<>();
     // Exposed so the test can pass it to the detector
-    final ReentrantReadWriteLock dataLock = new ReentrantReadWriteLock();
+    public final ReentrantReadWriteLock dataLock = new ReentrantReadWriteLock();
 
     /**
      * Writes {@code value} for {@code key} and then reads it back.

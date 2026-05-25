@@ -21,10 +21,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * - The same test with @AsyncTest FAILS (exposing the real concurrent bug)
  *
  * THE BUG:
- * ScopedContextService.getCurrentUser() calls USER_ID.get() without guarding
- * with isBound(). When called outside a ScopedValue.where().run() scope the
- * JVM throws NoSuchElementException. In a concurrent test some invocations
- * may reach getCurrentUser() from an unbound thread context.
+ * ScopedContextService.getCurrentUser() reads USER_ID (ThreadLocal) without
+ * checking for null. When called outside a runWithUser() scope it returns null,
+ * causing a downstream NullPointerException or IllegalStateException. In a
+ * concurrent test some invocations reach getCurrentUser() from an unbound thread.
  *
  * WHY @Test PASSES:
  * The sequential test always wraps the call inside runWithUser(), establishing
@@ -83,11 +83,11 @@ class ScopedContextServiceTest {
         AsyncTestContext.scopedValueMisuseDetector()
                 .recordGetCalled(SV_NAME, Thread.currentThread());
 
-        // Call the buggy method — will throw NoSuchElementException if unbound
+        // Call the buggy method — will throw IllegalStateException if unbound
         try {
             String user = service.getCurrentUser();
             assertNotNull(user, "User must not be null when binding exists");
-        } catch (NoSuchElementException e) {
+        } catch (IllegalStateException e) {
             // Expected when called outside a binding — detector already recorded the issue
         }
     }

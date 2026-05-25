@@ -82,7 +82,7 @@ class DataPipelineTest {
     @Disabled("Remove @Disabled to see the bug detected by PipelineMonitor")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, monitorAsyncPipeline = true)
     void test_concurrent_detectsPipelineImbalance() {
-        PipelineMonitor mon = AsyncTestContext.pipelineMonitor();
+        se.deversity.asynctest.diagnostics.PipelineMonitor mon = AsyncTestContext.pipelineMonitor();
         mon.registerStage("parse");
         mon.registerStage("enrich");
         mon.registerStage("persist");
@@ -104,6 +104,4 @@ class DataPipelineTest {
         }
     }
 
-    // Inner alias to avoid fully-qualified name in test
-    private static class PipelineMonitor extends se.deversity.asynctest.diagnostics.PipelineMonitor {}
 }

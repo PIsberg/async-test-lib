@@ -2,48 +2,55 @@ package se.deversity.asynctest.example.service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.StructuredTaskScope;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
- * BUGGY service that demonstrates StructuredTaskScope leak.
+ * BUGGY service that demonstrates structured-concurrency scope leak.
  *
- * BUG: fetchAll() creates a StructuredTaskScope.ShutdownOnFailure, forks
- *      subtasks, and calls join() — but never calls close(). StructuredTaskScope
- *      implements AutoCloseable because close() is required to release internal
- *      resources and wait for any remaining virtual threads to terminate.
- *      Without it, resources leak on every call.
+ * <p>BUG: {@link #fetchAll} creates a virtual-thread executor (analogous to a
+ * {@code StructuredTaskScope}) to run subtasks in parallel but never calls
+ * {@code shutdown()} / {@code close()} on it. Each call leaks the executor and
+ * its threads — the same resource-leak hazard that
+ * {@code StructuredConcurrencyMisuseDetector} flags when a
+ * {@code StructuredTaskScope} is not closed.
  *
- * FIX: open the scope inside try-with-resources:
- *
+ * <p>FIX: wrap the executor in try-with-resources:
  * <pre>{@code
- * try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
- *     ids.forEach(id -> scope.fork(() -> fetch(id)));
- *     scope.join().throwIfFailed();
- * }
+ * try (ExecutorService scope = Executors.newVirtualThreadPerTaskExecutor()) {
+ *     List<Future<String>> futures = ids.stream()
+ *         .map(id -> scope.submit(() -> fetch(id)))
+ *         .toList();
+ *     return futures.stream().map(DataFetchService::get).toList();
+ * }  // scope.close() shuts down and awaits termination
  * }</pre>
  */
 public class DataFetchService {
 
     /**
-     * Fetch data for each ID in parallel using structured concurrency.
-     * BUG: the scope is never closed.
+     * Fetch data for each ID in parallel.
+     * BUG: the executor (scope) is never shut down — virtual threads and
+     * internal resources leak on every call.
      *
      * @param ids list of IDs to fetch
      * @return list of fetched results
      */
-    @SuppressWarnings("preview")
     public List<String> fetchAll(List<String> ids) throws Exception {
-        // BUG: scope is not in try-with-resources; close() is never called.
-        var scope = new StructuredTaskScope.ShutdownOnFailure();
+        // BUG: not in try-with-resources; shutdown()/close() is never called.
+        ExecutorService scope = Executors.newVirtualThreadPerTaskExecutor();
 
-        List<StructuredTaskScope.Subtask<String>> subtasks = new ArrayList<>();
+        List<Future<String>> futures = new ArrayList<>();
         for (String id : ids) {
-            subtasks.add(scope.fork(() -> "result-for-" + id));
+            futures.add(scope.submit(() -> "result-for-" + id));
         }
 
-        scope.join().throwIfFailed();
+        List<String> results = new ArrayList<>();
+        for (Future<String> f : futures) {
+            results.add(f.get());
+        }
 
-        // BUG: scope.close() is missing — threads and internal state leak.
-        return subtasks.stream().map(StructuredTaskScope.Subtask::get).toList();
+        // BUG: scope.shutdown() / scope.close() never called — leak.
+        return results;
     }
 }
