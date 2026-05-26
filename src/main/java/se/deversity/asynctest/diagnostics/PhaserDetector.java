@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -100,9 +103,9 @@ public class PhaserDetector {
             Set<Phaser> timedOutPhasers,
             Set<Phaser> terminatedPhasers
         ) {
-            this.phaserRegistry = phaserRegistry;
-            this.timedOutPhasers = timedOutPhasers;
-            this.terminatedPhasers = terminatedPhasers;
+            this.phaserRegistry = Collections.unmodifiableMap(new HashMap<>(phaserRegistry));
+            this.timedOutPhasers = Collections.unmodifiableSet(new HashSet<>(timedOutPhasers));
+            this.terminatedPhasers = Collections.unmodifiableSet(new HashSet<>(terminatedPhasers));
         }
 
         public boolean hasIssues() {
@@ -120,7 +123,7 @@ public class PhaserDetector {
                     PhaserInfo info = phaserRegistry.get(phaser);
                     sb.append("    - ").append(info.name)
                       .append(" (").append(info.parties).append(" parties expected, ")
-                      .append(info.arrivals).append(" arrived)\n");
+                      .append(info.getArrivals()).append(" arrived)\n");
                 }
                 sb.append("  Why: A Phaser advances only when all registered parties arrive. If any party never calls arrive() or arriveAndAwaitAdvance(),\n");
                 sb.append("       all other parties block at the phase boundary indefinitely — the phaser stalls forever.\n");
@@ -153,7 +156,7 @@ public class PhaserDetector {
     static class PhaserInfo {
         final String name;
         final int parties;
-        int arrivals = 0;
+        private int arrivals = 0;
         int completedPhases = 0;
         int currentPhase = 0;
 
@@ -176,6 +179,10 @@ public class PhaserDetector {
                 currentPhase = phase;
                 arrivals = 0;
             }
+        }
+
+        synchronized int getArrivals() {
+            return arrivals;
         }
     }
 }

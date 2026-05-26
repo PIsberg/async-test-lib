@@ -185,7 +185,7 @@ public class VirtualThreadCarrierExhaustionDetector {
             return exhaustionEventCount > 0;
         }
 
-        public List<String> getExhaustionDetails()   { return exhaustionDetails; }
+        public List<String> getExhaustionDetails()   { return Collections.unmodifiableList(exhaustionDetails); }
         public int          getPeakConcurrentlyBlocked() { return peakConcurrentlyBlocked; }
         public int          getExhaustionEventCount() { return exhaustionEventCount; }
         public int          getCarrierCount()         { return carrierCount; }

@@ -132,7 +132,7 @@ public final class DaemonThreadHygieneDetector {
                             "threadId", s.threadId,
                             "threadName", s.threadName,
                             "label", s.label,
-                            "stillAlive", (t != null && t.isAlive())),
+                            "stillAlive", t.isAlive()),
                     Instant.now()));
         }
         return r;

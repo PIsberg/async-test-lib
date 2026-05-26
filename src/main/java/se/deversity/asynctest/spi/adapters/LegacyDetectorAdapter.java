@@ -72,11 +72,9 @@ public final class LegacyDetectorAdapter<D> implements Detector {
                     List.of(),
                     Map.of(),
                     Instant.now()));
-        } catch (NoSuchMethodException e) {
-            // Detector doesn't follow the canonical shape; legacy path still works.
-            return List.of();
         } catch (ReflectiveOperationException e) {
-            // analyze() / hasIssues() threw — don't poison the rest of the SPI sweep.
+            // Detector doesn't follow canonical shape (NoSuchMethodException), or
+            // analyze()/hasIssues() threw — don't poison the rest of the SPI sweep.
             return List.of();
         }
     }

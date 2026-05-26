@@ -2,7 +2,6 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
 import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
@@ -32,7 +31,7 @@ import se.deversity.vibetags.annotations.AITestDriven;
 )
 public class ThreadLocalContaminationDetector {
 
-    private static class ThreadState {
+    private static final class ThreadState {
         int taskCount = 0;
         String currentTaskName = "task-0";
         final Map<Integer, Integer> lastSetInTask = new HashMap<>();

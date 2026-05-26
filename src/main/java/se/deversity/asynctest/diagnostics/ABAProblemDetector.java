@@ -2,8 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Detects the ABA Problem in atomic operations.
@@ -24,7 +23,7 @@ public class ABAProblemDetector {
         final String varName;
         final List<ValueChange> changes = Collections.synchronizedList(new ArrayList<>());
         final Map<Long, CASAttempt> casAttempts = new ConcurrentHashMap<>();
-        volatile int cycleCount = 0;
+        final AtomicLong cycleCount = new AtomicLong(0);
         
         AtomicValueHistory(String name) {
             this.varName = name;
@@ -44,6 +43,7 @@ public class ABAProblemDetector {
             this.newValue = neu;
         }
         
+        @SuppressWarnings("PMD.CompareObjectsWithEquals") // identity equality intentional for atomic value tracking
         boolean isSameValue(Object v1, Object v2) {
             if (v1 == null && v2 == null) return true;
             if (v1 == null || v2 == null) return false;
@@ -110,6 +110,7 @@ public class ABAProblemDetector {
         history.casAttempts.put((long) System.identityHashCode(attempt), attempt);
     }
     
+    @SuppressWarnings("PMD.UnusedFormalParameter") // newChange reserved for future cycle-context logging
     private void detectCycles(AtomicValueHistory history, ValueChange newChange) {
         List<ValueChange> changes = history.changes;
         if (changes.size() < 3) return;
@@ -124,7 +125,7 @@ public class ABAProblemDetector {
             if (c1.isSameValue(c1.newValue, c3.newValue) && 
                 c1.isSameValue(c2.oldValue, c1.newValue) &&
                 !c1.isSameValue(c2.newValue, c3.newValue)) {
-                history.cycleCount++;
+                history.cycleCount.incrementAndGet();
             }
         }
     }
@@ -161,8 +162,9 @@ public class ABAProblemDetector {
         ABAReport report = new ABAReport();
         
         for (AtomicValueHistory history : trackedVariables.values()) {
-            if (history.cycleCount > 0) {
-                report.variablesWithCycles.put(history.varName, history.cycleCount);
+            long cycles = history.cycleCount.get();
+            if (cycles > 0) {
+                report.variablesWithCycles.put(history.varName, (int) cycles);
             }
             
             // Check for CAS attempts that succeeded despite ABA
@@ -211,7 +213,7 @@ public class ABAProblemDetector {
             if (!variablesWithCycles.isEmpty()) {
                 sb.append("\nVariables with A->B->A cycles:\n");
                 for (Map.Entry<String, Integer> entry : variablesWithCycles.entrySet()) {
-                    sb.append(String.format("  - %s: %d cycles detected\n", 
+                    sb.append(String.format("  - %s: %d cycles detected%n",
                         entry.getKey(), entry.getValue()));
                 }
             }

@@ -3,7 +3,6 @@ package se.deversity.asynctest.diagnostics;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import se.deversity.vibetags.annotations.AITestDriven;
 
@@ -157,7 +156,7 @@ public class SleepInLockDetector {
      */
     public SleepInLockReport analyze() {
         if (!enabled) {
-            return new SleepInLockReport(List.of(), 0, false);
+            return new SleepInLockReport(List.of(), 0);
         }
 
         List<SleepInLockEventSnapshot> snapshots;
@@ -170,7 +169,7 @@ public class SleepInLockDetector {
                 .toList();
         }
 
-        return new SleepInLockReport(snapshots, eventCount.get(), true);
+        return new SleepInLockReport(snapshots, eventCount.get());
     }
 
     /**
@@ -213,12 +212,10 @@ public class SleepInLockDetector {
     public static class SleepInLockReport {
         private final List<SleepInLockEventSnapshot> events;
         private final int totalCount;
-        private final boolean enabled;
 
-        SleepInLockReport(List<SleepInLockEventSnapshot> events, int totalCount, boolean enabled) {
+        SleepInLockReport(List<SleepInLockEventSnapshot> events, int totalCount) {
             this.events = events;
             this.totalCount = totalCount;
-            this.enabled = enabled;
         }
 
         public boolean hasIssues() {

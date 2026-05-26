@@ -1,0 +1,73 @@
+<?xml version="1.0"?>
+<ruleset name="async-test-lib PMD ruleset"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+    <description>
+        Quickstart ruleset with intentional architectural exclusions documented below.
+    </description>
+
+    <rule ref="rulesets/java/quickstart.xml">
+        <!--
+            AvoidUsingVolatile: Volatile fields are an intentional thread-safety design choice
+            throughout the detector infrastructure (e.g. ThreadLeakDetector, LicenseGuard).
+            The CLAUDE.md thread_safe_elements section documents each strategy.
+        -->
+        <exclude name="AvoidUsingVolatile"/>
+
+        <!--
+            ControlStatementBraces: Builder.java is a generated validation class with hundreds
+            of single-statement guard clauses. Enforcing braces there would bloat the file
+            significantly without improving readability or safety.
+        -->
+        <exclude name="ControlStatementBraces"/>
+
+        <!--
+            ClassNamingConventions: Classes like SimpleDateFormat_, CountDownLatch_, CyclicBarrier_
+            etc. use an underscore suffix intentionally to signal they are adapter/proxy wrappers
+            of the standard Java class with the same base name.
+        -->
+        <exclude name="ClassNamingConventions"/>
+
+        <!--
+            AvoidCatchingThrowable: The ConcurrencyRunner stress-test engine must catch Throwable
+            to propagate assertion failures and errors from worker threads back to the test thread.
+            Narrowing to Exception would silently swallow AssertionError and OutOfMemoryError.
+        -->
+        <exclude name="AvoidCatchingThrowable"/>
+
+        <!--
+            AvoidAccessibilityAlteration: ConcurrencyRunner uses reflection (setAccessible) to
+            invoke test methods on the test instance directly. This is the standard JUnit 5
+            extension mechanism for custom test runners and cannot be avoided.
+        -->
+        <exclude name="AvoidAccessibilityAlteration"/>
+
+        <!--
+            UseUtilityClass / MissingStaticMethodInNonInstantiatableClass:
+            AsyncAssert is a public API class whose constructor must remain accessible.
+            See contract_signatures in CLAUDE.md.
+        -->
+        <exclude name="UseUtilityClass"/>
+        <exclude name="MissingStaticMethodInNonInstantiatableClass"/>
+
+        <!--
+            AvoidThreadGroup: ThreadGroup usage is intentional for capturing uncaught-exception
+            scope in the UncaughtExceptionHandlerDetector.
+        -->
+        <exclude name="AvoidThreadGroup"/>
+
+        <!--
+            AvoidBranchingStatementAsLastInLoop: The break-as-last-in-loop pattern is used
+            intentionally in search loops where the loop condition cannot encode the termination.
+        -->
+        <exclude name="AvoidBranchingStatementAsLastInLoop"/>
+
+        <!--
+            CloseResource: ExecutorService and ScheduledExecutorService instances flagged here are
+            shut down explicitly via shutdownNow() in finally blocks. SpotBugs covers resource leaks
+            with higher fidelity and also runs in the verify phase.
+        -->
+        <exclude name="CloseResource"/>
+    </rule>
+</ruleset>

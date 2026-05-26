@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -67,7 +66,7 @@ public class ThreadStarvationDetector {
         final AtomicLong totalExecutionTime = new AtomicLong(0);
         final AtomicLong maxExecutionTime = new AtomicLong(0);
         volatile int peakQueueDepth = 0;
-        volatile int currentQueueDepth = 0;
+        final AtomicInteger currentQueueDepth = new AtomicInteger(0);
 
         ExecutorState(ExecutorService executor, String name, int poolSize) {
             this.executor = executor;
@@ -127,9 +126,9 @@ public class ThreadStarvationDetector {
         ExecutorState state = trackedExecutors.get(System.identityHashCode(executor));
         if (state != null) {
             state.submittedTasks.incrementAndGet();
-            state.currentQueueDepth++;
-            if (state.currentQueueDepth > state.peakQueueDepth) {
-                state.peakQueueDepth = state.currentQueueDepth;
+            int depth = state.currentQueueDepth.incrementAndGet();
+            if (depth > state.peakQueueDepth) {
+                state.peakQueueDepth = depth;
             }
         }
         return System.nanoTime();
@@ -152,7 +151,7 @@ public class ThreadStarvationDetector {
         for (ExecutorState state : trackedExecutors.values()) {
             if (state.name.equals(executorName)) {
                 state.startedTasks.incrementAndGet();
-                state.currentQueueDepth = Math.max(0, state.currentQueueDepth - 1);
+                state.currentQueueDepth.updateAndGet(v -> Math.max(0, v - 1));
                 state.totalWaitTime.addAndGet(waitTimeNs);
                 long maxWait = state.maxWaitTime.get();
                 while (waitTimeNs > maxWait) {
@@ -186,8 +185,6 @@ public class ThreadStarvationDetector {
     public void recordTaskEnd(String executorName) {
         if (!enabled) return;
 
-        long endTime = System.nanoTime();
-
         for (ExecutorState state : trackedExecutors.values()) {
             if (state.name.equals(executorName)) {
                 state.completedTasks.incrementAndGet();
@@ -204,7 +201,7 @@ public class ThreadStarvationDetector {
      */
     public ThreadStarvationReport analyze() {
         if (!enabled) {
-            return new ThreadStarvationReport(List.of(), 0, 0, 0, false);
+            return new ThreadStarvationReport(List.of(), 0, 0, 0);
         }
 
         List<StarvationEventSnapshot> snapshots;
@@ -232,8 +229,7 @@ public class ThreadStarvationDetector {
             snapshots,
             totalStarved,
             totalTracked,
-            maxWaitTime,
-            true
+            maxWaitTime
         );
     }
 
@@ -284,15 +280,13 @@ public class ThreadStarvationDetector {
         private final int totalStarved;
         private final int totalTracked;
         private final int maxWaitTimeMs;
-        private final boolean enabled;
 
         ThreadStarvationReport(List<StarvationEventSnapshot> events, int totalStarved,
-                              int totalTracked, int maxWaitTimeMs, boolean enabled) {
+                              int totalTracked, int maxWaitTimeMs) {
             this.events = events;
             this.totalStarved = totalStarved;
             this.totalTracked = totalTracked;
             this.maxWaitTimeMs = maxWaitTimeMs;
-            this.enabled = enabled;
         }
 
         public boolean hasIssues() {

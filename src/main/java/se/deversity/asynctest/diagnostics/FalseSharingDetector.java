@@ -19,17 +19,16 @@ public class FalseSharingDetector {
     
     private final Map<String, FieldAccessInfo> fieldAccess = new ConcurrentHashMap<>();
     private final Map<String, List<AccessEvent>> accessHistory = new ConcurrentHashMap<>();
-    private final AtomicLong eventCounter = new AtomicLong(0);
     private volatile boolean enabled = true;
     
     private static class FieldAccessInfo {
         final String fieldName;
         final Class<?> fieldType;
         final long memoryOffset;
-        volatile long accessCount = 0;
+        final AtomicLong accessCount = new AtomicLong(0);
         volatile long lastAccessTime = 0;
         final Set<Long> accessingThreadIds = ConcurrentHashMap.newKeySet();
-        
+
         FieldAccessInfo(String name, Class<?> type, long offset) {
             this.fieldName = name;
             this.fieldType = type;
@@ -57,27 +56,22 @@ public class FalseSharingDetector {
     public void recordFieldAccess(Object object, String fieldName, Class<?> fieldType) {
         if (!enabled || object == null) return;
         
-        try {
-            String key = object.getClass().getName() + "." + fieldName;
-            
-            // Try to estimate memory offset (this is approximate)
-            long offset = estimateMemoryOffset(object.getClass(), fieldName);
-            
-            FieldAccessInfo info = fieldAccess.computeIfAbsent(key, 
-                k -> new FieldAccessInfo(fieldName, fieldType, offset)
-            );
-            
-            info.accessCount++;
-            info.lastAccessTime = System.nanoTime();
-            info.accessingThreadIds.add(Thread.currentThread().getId());
-            
-            // Record detailed access history for analysis
-            accessHistory.computeIfAbsent(key, k -> Collections.synchronizedList(new ArrayList<>()))
-                .add(new AccessEvent(System.nanoTime(), Thread.currentThread().getId(), fieldName, offset));
-            
-        } catch (Exception e) {
-            // Silently ignore reflection errors
-        }
+        String key = object.getClass().getName() + "." + fieldName;
+
+        // Try to estimate memory offset (this is approximate)
+        long offset = estimateMemoryOffset(object.getClass(), fieldName);
+
+        FieldAccessInfo info = fieldAccess.computeIfAbsent(key,
+            k -> new FieldAccessInfo(fieldName, fieldType, offset)
+        );
+
+        info.accessCount.incrementAndGet();
+        info.lastAccessTime = System.nanoTime();
+        info.accessingThreadIds.add(Thread.currentThread().getId());
+
+        // Record detailed access history for analysis
+        accessHistory.computeIfAbsent(key, k -> Collections.synchronizedList(new ArrayList<>()))
+            .add(new AccessEvent(System.nanoTime(), Thread.currentThread().getId(), fieldName, offset));
     }
     
     /**
@@ -107,8 +101,8 @@ public class FalseSharingDetector {
                         // Different threads accessing adjacent fields
                         if (!field1.accessingThreadIds.equals(field2.accessingThreadIds)) {
                             FalseSharingReport.ContentionPair pair = new FalseSharingReport.ContentionPair(
-                                field1.fieldName, field2.fieldName, distance, 
-                                field1.accessCount, field2.accessCount
+                                field1.fieldName, field2.fieldName, distance,
+                                field1.accessCount.get(), field2.accessCount.get()
                             );
                             report.falseSharedPairs.add(pair);
                         }
@@ -145,9 +139,9 @@ public class FalseSharingDetector {
     
     private long estimateMemoryOffset(Class<?> clazz, String fieldName) {
         try {
-            Field field = clazz.getDeclaredField(fieldName);
-            // Try to get offset via Unsafe (Java 9+)
-            // For now, return approximate based on field order
+            // Verify field exists (throws NoSuchFieldException if not)
+            clazz.getDeclaredField(fieldName);
+            // Approximate offset based on field declaration order
             Field[] fields = clazz.getDeclaredFields();
             long offset = 16; // Object header
             for (Field f : fields) {
@@ -220,7 +214,7 @@ public class FalseSharingDetector {
                 sb.append("\nFields in same cache line accessed by different threads:\n");
                 for (ContentionPair pair : falseSharedPairs) {
                     sb.append(String.format(
-                        "  - %s (accesses: %d) <-> %s (accesses: %d) [distance: %d bytes]\n",
+                        "  - %s (accesses: %d) <-> %s (accesses: %d) [distance: %d bytes]%n",
                         pair.field1, pair.accesses1, pair.field2, pair.accesses2, pair.distanceInBytes
                     ));
                 }

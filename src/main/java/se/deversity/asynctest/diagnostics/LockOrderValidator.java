@@ -27,7 +27,6 @@ public class LockOrderValidator {
     }
     
     private final Map<Long, LockSequence> threadLockOrders = new ConcurrentHashMap<>();
-    private final Map<String, Set<List<String>>> observedLockOrders = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     
     /**

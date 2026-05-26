@@ -3,7 +3,6 @@ package se.deversity.asynctest.diagnostics;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import se.deversity.vibetags.annotations.AITestDriven;
@@ -170,12 +169,9 @@ public class ConditionVariableDetector {
 
             // Check for threads still waiting (potential deadlock)
             if (state.currentWaiters.get() > 0) {
-                long waitTimeMs = state.lastAwaitTime != null 
-                    ? System.currentTimeMillis() - state.lastAwaitTime 
-                    : 0;
                 report.stuckWaiters.add(String.format(
                     "%s: %d threads still waiting (last signal %dms ago)",
-                    state.name, state.currentWaiters.get(), 
+                    state.name, state.currentWaiters.get(),
                     state.lastSignalTime != null ? System.currentTimeMillis() - state.lastSignalTime : 0));
             }
 
@@ -188,7 +184,7 @@ public class ConditionVariableDetector {
             }
 
             // Track thread participation
-            if (state.waitingThreads.size() > 0 || state.signalingThreads.size() > 0) {
+            if (!state.waitingThreads.isEmpty() || !state.signalingThreads.isEmpty()) {
                 report.threadActivity.put(state.name, String.format(
                     "%d waiters, %d signalers, %d awaits, %d signals, %d signalAll",
                     state.waitingThreads.size(),

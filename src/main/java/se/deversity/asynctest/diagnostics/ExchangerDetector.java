@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -96,9 +99,9 @@ public class ExchangerDetector {
             Set<Exchanger<?>> interruptedExchangers,
             int nullValueExchanges
         ) {
-            this.exchangerRegistry = exchangerRegistry;
-            this.timedOutExchangers = timedOutExchangers;
-            this.interruptedExchangers = interruptedExchangers;
+            this.exchangerRegistry = Collections.unmodifiableMap(new HashMap<>(exchangerRegistry));
+            this.timedOutExchangers = Collections.unmodifiableSet(new HashSet<>(timedOutExchangers));
+            this.interruptedExchangers = Collections.unmodifiableSet(new HashSet<>(interruptedExchangers));
             this.nullValueExchanges = nullValueExchanges;
         }
 

@@ -230,7 +230,7 @@ public class VirtualThreadCpuBoundTaskDetector {
             return !violations.isEmpty();
         }
 
-        public List<String> getViolations()    { return violations; }
+        public List<String> getViolations()    { return Collections.unmodifiableList(violations); }
         public int          getTotalTasks()     { return totalTasks; }
         public long         getAverageDurationMs() { return averageDurationMs; }
         public long         getMaxDurationMs()  { return maxDurationMs; }

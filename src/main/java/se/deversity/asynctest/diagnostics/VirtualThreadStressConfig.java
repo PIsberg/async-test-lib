@@ -108,7 +108,8 @@ public class VirtualThreadStressConfig {
      */
     public static boolean isVirtualThreadSupported() {
         try {
-            return Thread.class.getMethod("ofVirtual") != null;
+            Thread.class.getMethod("ofVirtual");
+            return true;
         } catch (NoSuchMethodException e) {
             return false;
         }

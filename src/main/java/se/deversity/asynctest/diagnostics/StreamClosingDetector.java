@@ -3,7 +3,6 @@ package se.deversity.asynctest.diagnostics;
 import java.io.Closeable;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import se.deversity.vibetags.annotations.AITestDriven;
@@ -184,9 +183,9 @@ public class StreamClosingDetector {
         int totalOpened;
         int totalClosed;
         int maxConcurrentOpen;
-        final java.util.List<String> unclosedStreams = new java.util.ArrayList<>();
-        final java.util.List<String> crossThreadClosing = new java.util.ArrayList<>();
-        final java.util.List<String> resourceExhaustionRisk = new java.util.ArrayList<>();
+        final List<String> unclosedStreams = new java.util.ArrayList<>();
+        final List<String> crossThreadClosing = new java.util.ArrayList<>();
+        final List<String> resourceExhaustionRisk = new java.util.ArrayList<>();
 
         /**
          * Check if any issues were detected.
@@ -227,7 +226,7 @@ public class StreamClosingDetector {
                 }
             }
 
-            sb.append(String.format("  Summary: %d opened, %d closed, %d max concurrent\n",
+            sb.append(String.format("  Summary: %d opened, %d closed, %d max concurrent%n",
                 totalOpened, totalClosed, maxConcurrentOpen));
 
             if (!hasIssues()) {

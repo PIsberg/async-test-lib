@@ -1,8 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Detects memory ordering violations and compiler reordering issues.
@@ -70,7 +68,7 @@ public class MemoryOrderingMonitor {
                 MemoryAccess a2 = accesses.get(i + 1);
                 
                 // If write followed by read from different thread
-                if (a1.operation.equals("WRITE") && a2.operation.equals("READ") && 
+                if ("WRITE".equals(a1.operation) && "READ".equals(a2.operation) && 
                     a1.threadId != a2.threadId) {
                     
                     // Check if read saw the written value
@@ -94,7 +92,7 @@ public class MemoryOrderingMonitor {
             // Look for suspicious reordering patterns
             for (int i = 0; i < accesses.size() - 1; i++) {
                 MemoryAccess write = accesses.get(i);
-                if (!write.operation.equals("WRITE")) continue;
+                if (!"WRITE".equals(write.operation)) continue;
                 
                 // If write is followed by unrelated operations
                 for (int j = i + 1; j < accesses.size() && j < i + 3; j++) {

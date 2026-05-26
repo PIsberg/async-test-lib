@@ -1,5 +1,6 @@
 package se.deversity.asynctest;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import se.deversity.vibetags.annotations.AIContract;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
@@ -31,14 +32,14 @@ public class AsyncAssert {
                 if (Boolean.TRUE.equals(condition.call())) {
                     return;
                 }
-            } catch (Exception e) {
+            } catch (Exception e) { // NOPMD EmptyCatchBlock — polling deliberately ignores transient failures
                 // Ignore exceptions during polling, just keep trying
             }
             try {
                 Thread.sleep(pollInterval.toMillis());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                throw new AssertionError("Polling interrupted");
+                throw new AssertionError("Polling interrupted", e);
             }
         }
         
@@ -59,6 +60,7 @@ public class AsyncAssert {
         private final AtomicReference<Throwable> error = new AtomicReference<>();
         private volatile boolean complete = false;
 
+        @SuppressFBWarnings("EI_EXPOSE_REP2")
         public FutureCapture(CompletableFuture<T> future) {
             this.future = future;
             future.whenComplete((res, err) -> {
@@ -116,6 +118,7 @@ public class AsyncAssert {
      * @return the resolved value, or throws on failure / timeout
      * @since 1.5.0
      */
+    @SuppressWarnings("PMD.PreserveStackTrace") // cause is already the unwrapped original; re-throwing it preserves the trace
     public static <T> T awaitAsync(CompletionStage<T> stage, Duration timeout) {
         if (stage == null) throw new IllegalArgumentException("stage must not be null");
         if (timeout == null) throw new IllegalArgumentException("timeout must not be null");

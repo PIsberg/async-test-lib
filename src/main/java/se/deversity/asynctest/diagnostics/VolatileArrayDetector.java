@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -72,6 +74,7 @@ public class VolatileArrayDetector {
         }
     }
 
+    @SuppressWarnings("PMD.CompareObjectsWithEquals") // array identity comparison is intentional
     private ArrayInfo findArrayInfo(Object array, String arrayName) {
         for (ArrayInfo info : elementAccesses.keySet()) {
             if (info.array == array || info.name.equals(arrayName)) {
@@ -86,7 +89,6 @@ public class VolatileArrayDetector {
      */
     public VolatileArrayReport analyze() {
         return new VolatileArrayReport(
-            elementAccesses,
             problematicArrays
         );
     }
@@ -95,15 +97,12 @@ public class VolatileArrayDetector {
      * Report class for volatile array analysis.
      */
     public static class VolatileArrayReport {
-        private final Map<ArrayInfo, Set<String>> elementAccesses;
         private final Set<ArrayInfo> problematicArrays;
 
         public VolatileArrayReport(
-            Map<ArrayInfo, Set<String>> elementAccesses,
             Set<ArrayInfo> problematicArrays
         ) {
-            this.elementAccesses = elementAccesses;
-            this.problematicArrays = problematicArrays;
+            this.problematicArrays = Collections.unmodifiableSet(new HashSet<>(problematicArrays));
         }
 
         public boolean hasIssues() {

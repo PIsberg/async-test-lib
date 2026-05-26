@@ -32,7 +32,7 @@ import se.deversity.vibetags.annotations.AITestDriven;
 )
 public class SharedTimeZoneDetector {
 
-    private static class TzState {
+    private static final class TzState {
         final Set<Long>   mutatingThreadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> mutatingThreadNames = ConcurrentHashMap.newKeySet();
         volatile String   firstOperation;

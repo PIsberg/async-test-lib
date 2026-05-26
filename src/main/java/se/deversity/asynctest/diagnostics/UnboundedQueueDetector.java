@@ -156,7 +156,7 @@ public class UnboundedQueueDetector {
      */
     public UnboundedQueueReport analyze() {
         if (!enabled) {
-            return new UnboundedQueueReport(List.of(), 0, 0, false);
+            return new UnboundedQueueReport(List.of(), 0, 0);
         }
 
         List<UnboundedQueueEvent> allEvents;
@@ -190,7 +190,7 @@ public class UnboundedQueueDetector {
             }
         }
 
-        return new UnboundedQueueReport(allEvents, unboundedCount, totalTracked, true);
+        return new UnboundedQueueReport(allEvents, unboundedCount, totalTracked);
     }
 
     /**
@@ -241,14 +241,12 @@ public class UnboundedQueueDetector {
         private final List<UnboundedQueueEvent> events;
         private final int unboundedCount;
         private final int totalTracked;
-        private final boolean enabled;
 
         UnboundedQueueReport(List<UnboundedQueueEvent> events, int unboundedCount,
-                            int totalTracked, boolean enabled) {
+                            int totalTracked) {
             this.events = events;
             this.unboundedCount = unboundedCount;
             this.totalTracked = totalTracked;
-            this.enabled = enabled;
         }
 
         public boolean hasIssues() {

@@ -143,6 +143,7 @@ public class CalendarDetector {
             case "get" -> state.getCount.incrementAndGet();
             case "set" -> state.setCount.incrementAndGet();
             case "add" -> state.addCount.incrementAndGet();
+            default -> { /* unrecognized method — ignored */ }
         }
     }
 

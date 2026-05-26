@@ -99,13 +99,13 @@ public class SystemPropertyMutationDetector {
                                 + "concurrent property mutation causes non-deterministic "
                                 + "configuration and test pollution",
                         key, threadIds.size(), String.join(", ", threadNames)));
-            } else if (mutations.size() >= 1) {
+            } else if (!mutations.isEmpty()) {
                 // Even single-thread mutation is worth reporting as a hygiene issue
                 MutationEvent first = mutations.get(0);
                 r.singleThreadMutations.add(String.format(
                         "Property '%s' %s by thread '%s' — "
                                 + "verify the property is restored after the test",
-                        key, first.operation.equals("set") ? "set to '" + first.value + "'" : "cleared",
+                        key, "set".equals(first.operation) ? "set to '" + first.value + "'" : "cleared",
                         first.threadName));
             }
         }

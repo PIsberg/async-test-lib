@@ -148,7 +148,7 @@ public class ResourceLeakDetector {
             }
 
             // Track thread participation
-            if (state.openingThreads.size() > 0) {
+            if (!state.openingThreads.isEmpty()) {
                 report.threadActivity.put(state.name, String.format(
                     "%s: %d threads opened, %d threads closed, opens: %d, closes: %d",
                     state.resourceType,

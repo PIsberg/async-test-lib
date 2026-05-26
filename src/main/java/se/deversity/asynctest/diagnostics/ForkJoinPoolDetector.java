@@ -1,11 +1,11 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.RecursiveTask;
-import java.util.concurrent.RecursiveAction;
 import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
@@ -90,7 +90,6 @@ public class ForkJoinPoolDetector {
      */
     public ForkJoinPoolReport analyze() {
         return new ForkJoinPoolReport(
-            poolRegistry,
             forkedWithoutJoin,
             exceptionsInTasks,
             taskStealCount
@@ -101,20 +100,17 @@ public class ForkJoinPoolDetector {
      * Report class for ForkJoinPool analysis.
      */
     public static class ForkJoinPoolReport {
-        private final Map<ForkJoinPool, PoolInfo> poolRegistry;
         private final Set<String> forkedWithoutJoin;
         private final Set<String> exceptionsInTasks;
         private final int taskStealCount;
 
         public ForkJoinPoolReport(
-            Map<ForkJoinPool, PoolInfo> poolRegistry,
             Set<String> forkedWithoutJoin,
             Set<String> exceptionsInTasks,
             int taskStealCount
         ) {
-            this.poolRegistry = poolRegistry;
-            this.forkedWithoutJoin = forkedWithoutJoin;
-            this.exceptionsInTasks = exceptionsInTasks;
+            this.forkedWithoutJoin = Collections.unmodifiableSet(new HashSet<>(forkedWithoutJoin));
+            this.exceptionsInTasks = Collections.unmodifiableSet(new HashSet<>(exceptionsInTasks));
             this.taskStealCount = taskStealCount;
         }
 

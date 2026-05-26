@@ -65,11 +65,11 @@ public interface Detector {
      * Default no-op; override to capture initial state (e.g. baseline thread
      * counts).
      */
-    default void onTestStart() {}
+    default void onTestStart() { /* no-op default */ }
 
     /**
      * Lifecycle hook called by the runner after the last invocation round.
      * Default no-op; override to release per-test resources.
      */
-    default void onTestEnd() {}
+    default void onTestEnd() { /* no-op default */ }
 }

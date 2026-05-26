@@ -27,9 +27,11 @@ dependencies {
     api("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
     testImplementation("org.junit.platform:junit-platform-testkit:$junitVersion")
     testImplementation("com.code-intelligence:jazzer-api:$jazzerVersion")
+    testImplementation("com.tngtech.archunit:archunit-junit5:1.4.2")
     implementation("se.deversity.common:common-license-lib:0.2.1")
     compileOnly("se.deversity.vibetags:vibetags-processor:0.9.7")
     annotationProcessor("se.deversity.vibetags:vibetags-processor:0.9.7")
+    compileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
 }
 
 tasks.test {

@@ -14,7 +14,7 @@ public class BusyWaitDetector {
 
     private static final long SPIN_THRESHOLD_ITERATIONS = 10_000;
 
-    private static class ThreadActivity {
+    private static final class ThreadActivity {
         long loopIterations;
         long spinStartTime;
         boolean inSpinLoop;

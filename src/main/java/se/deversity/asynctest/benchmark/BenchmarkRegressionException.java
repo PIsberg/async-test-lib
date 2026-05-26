@@ -6,7 +6,11 @@ package se.deversity.asynctest.benchmark;
  */
 public class BenchmarkRegressionException extends RuntimeException {
 
-    private final BenchmarkComparisonResult comparisonResult;
+    private static final long serialVersionUID = 1L;
+
+    // Not serialized: BenchmarkComparisonResult does not implement Serializable.
+    // The message string (from super) carries the human-readable detail.
+    private transient final BenchmarkComparisonResult comparisonResult;
 
     public BenchmarkRegressionException(String message, BenchmarkComparisonResult comparisonResult) {
         super(message);

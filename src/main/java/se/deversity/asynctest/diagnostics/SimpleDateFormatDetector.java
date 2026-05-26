@@ -1,7 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;

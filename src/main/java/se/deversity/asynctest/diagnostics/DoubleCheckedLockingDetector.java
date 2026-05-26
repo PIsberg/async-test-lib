@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -76,8 +79,8 @@ public class DoubleCheckedLockingDetector {
             Map<String, DCLInfo> dclRegistry,
             Set<String> brokenDCLs
         ) {
-            this.dclRegistry = dclRegistry;
-            this.brokenDCLs = brokenDCLs;
+            this.dclRegistry = Collections.unmodifiableMap(new HashMap<>(dclRegistry));
+            this.brokenDCLs = Collections.unmodifiableSet(new HashSet<>(brokenDCLs));
         }
 
         public boolean hasIssues() {
@@ -92,7 +95,6 @@ public class DoubleCheckedLockingDetector {
             if (!brokenDCLs.isEmpty()) {
                 sb.append("  Broken DCL Patterns (missing volatile):\n");
                 for (String fieldName : brokenDCLs) {
-                    DCLInfo info = dclRegistry.get(fieldName);
                     sb.append("    - ").append(fieldName).append("\n");
                     sb.append("      Problem: Double-checked locking without volatile keyword.\n");
                     sb.append("               Object may be partially constructed when accessed\n");

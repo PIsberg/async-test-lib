@@ -1,13 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.lang.management.ManagementFactory;
-import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import se.deversity.vibetags.annotations.AITestDriven;
@@ -216,7 +213,7 @@ public class VirtualThreadPinningDetector {
         }
         try {
             return (boolean) Thread.class.getMethod("isVirtual").invoke(thread);
-        } catch (Exception e) {
+        } catch (ReflectiveOperationException e) {
             return false;
         }
     }
@@ -239,7 +236,7 @@ public class VirtualThreadPinningDetector {
          * @return list of pinning event snapshots
          */
         public List<PinningEventSnapshot> getEvents() {
-            return events;
+            return Collections.unmodifiableList(events);
         }
 
         /**
@@ -362,7 +359,7 @@ public class VirtualThreadPinningDetector {
          * @return stack trace at pinning point
          */
         public StackTraceElement[] getStackTrace() {
-            return stackTrace;
+            return stackTrace == null ? null : stackTrace.clone();
         }
     }
 }

@@ -129,7 +129,7 @@ public class LazyInitRaceDetector {
                 report.races.add(String.format(
                         "%s: initialized %d time(s) by %d concurrent thread(s)%s — DUPLICATE INITIALIZATION RACE!",
                         state.fieldId, inits, concurrent, volatileNote));
-            } else if (concurrent > 1 && inits <= 1) {
+            } else if (concurrent > 1) {
                 // Multiple threads saw null simultaneously but only one initialized —
                 // still risky without visibility guarantee
                 if (!state.isVolatile) {

@@ -69,7 +69,7 @@ public final class SharedSecureRandomDetector {
         }
     }
 
-    private final java.util.Map<Integer, State> instances = new ConcurrentHashMap<>();
+    private final Map<Integer, State> instances = new ConcurrentHashMap<>();
 
     /**
      * Record an access (nextBytes/nextInt/nextLong/setSeed/etc.) to a
@@ -89,7 +89,7 @@ public final class SharedSecureRandomDetector {
                 String label = (name != null)
                         ? name
                         : random.getClass().getSimpleName() + "@" + k;
-                String algorithm = safeString(() -> random.getAlgorithm());
+                String algorithm = safeString(random::getAlgorithm);
                 String provider  = safeString(() -> random.getProvider() != null
                         ? random.getProvider().getName() : "unknown");
                 return new State(label, algorithm, provider);

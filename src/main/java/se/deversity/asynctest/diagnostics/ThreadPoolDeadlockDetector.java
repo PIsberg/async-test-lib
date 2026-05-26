@@ -4,10 +4,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import se.deversity.vibetags.annotations.AITestDriven;
 
@@ -233,7 +231,7 @@ public class ThreadPoolDeadlockDetector {
             if (pool instanceof java.util.concurrent.ThreadPoolExecutor) {
                 return ((java.util.concurrent.ThreadPoolExecutor) pool).getCorePoolSize();
             }
-        } catch (Exception e) {
+        } catch (Exception e) { // NOPMD EmptyCatchBlock — reflection probe fails silently; default pool size used
             // Ignore and return default
         }
         // Default assumption: small fixed pool
@@ -256,7 +254,7 @@ public class ThreadPoolDeadlockDetector {
          * @return list of pool-specific deadlock risks
          */
         public List<PoolDeadlockRisk> getRisks() {
-            return risks;
+            return Collections.unmodifiableList(risks);
         }
 
         /**
@@ -375,7 +373,7 @@ public class ThreadPoolDeadlockDetector {
          * @return list of nested submission snapshots
          */
         public List<NestedSubmissionSnapshot> getNestedSubmissions() {
-            return nestedSubmissions;
+            return Collections.unmodifiableList(nestedSubmissions);
         }
     }
 
@@ -411,7 +409,7 @@ public class ThreadPoolDeadlockDetector {
          * @return stack trace at submission point
          */
         public StackTraceElement[] getStackTrace() {
-            return stackTrace;
+            return stackTrace == null ? null : stackTrace.clone();
         }
     }
 }

@@ -327,41 +327,41 @@ final class DetectorRegistry {
 
         // ---- Phase 1 ----
         ifIssue(deadlockDetector,
-                d -> d.analyze(),
+                DeadlockDetector::analyze,
                 DeadlockDetector.DeadlockReport::hasIssues, out);
         ifIssue(visibilityMonitor,
-                d -> d.analyzeVisibility(),
+                VisibilityMonitor::analyzeVisibility,
                 VisibilityMonitor.VisibilityReport::hasIssues, out);
         ifIssue(livelockDetector,
-                d -> d.analyzeLivelocks(),
+                LivelockDetector::analyzeLivelocks,
                 LivelockDetector.LivelockReport::hasIssues, out);
 
         ifIssue(falseSharingDetector,
-                d -> d.analyzeFalseSharing(),
+                FalseSharingDetector::analyzeFalseSharing,
                 FalseSharingDetector.FalseSharingReport::hasIssues, out);
         ifIssue(wakeupDetector,
-                d -> d.analyzeWakeups(),
+                WakeupDetector::analyzeWakeups,
                 WakeupDetector.WakeupReport::hasIssues, out);
         ifIssue(constructorSafetyValidator,
-                d -> d.validateConstructorSafety(),
+                ConstructorSafetyValidator::validateConstructorSafety,
                 ConstructorSafetyValidator.ConstructorSafetyReport::hasIssues, out);
         ifIssue(abaProblemDetector,
-                d -> d.analyzeABA(),
+                ABAProblemDetector::analyzeABA,
                 ABAProblemDetector.ABAReport::hasIssues, out);
         ifIssue(lockOrderValidator,
-                d -> d.validateLockOrder(),
+                LockOrderValidator::validateLockOrder,
                 LockOrderValidator.LockOrderReport::hasIssues, out);
         ifIssue(synchronizerMonitor,
-                d -> d.analyzeSynchronizers(),
+                SynchronizerMonitor::analyzeSynchronizers,
                 SynchronizerMonitor.SynchronizerReport::hasIssues, out);
         ifIssue(threadPoolMonitor,
-                d -> d.analyzePoolHealth(),
+                ThreadPoolMonitor::analyzePoolHealth,
                 ThreadPoolMonitor.ThreadPoolReport::hasIssues, out);
         ifIssue(memoryOrderingMonitor,
-                d -> d.analyzeOrdering(),
+                MemoryOrderingMonitor::analyzeOrdering,
                 MemoryOrderingMonitor.MemoryOrderingReport::hasIssues, out);
         ifIssue(pipelineMonitor,
-                d -> d.analyzePipeline(),
+                PipelineMonitor::analyzePipeline,
                 PipelineMonitor.PipelineReport::hasIssues, out);
         // ReadWriteLock uses hasFairnessIssues() — report it as an issue when
         // writer starvation or imbalance is detected
@@ -370,10 +370,10 @@ final class DetectorRegistry {
             if (r.hasFairnessIssues()) out.add(r.toString());
         }
         ifIssue(semaphoreMisuseDetector,
-                d -> d.analyze(),
+                SemaphoreMisuseDetector::analyze,
                 SemaphoreMisuseDetector.SemaphoreMisuseReport::hasIssues, out);
         ifIssue(completableFutureExceptionDetector,
-                d -> d.analyze(),
+                CompletableFutureExceptionDetector::analyze,
                 CompletableFutureExceptionDetector.CompletableFutureExceptionReport::hasIssues, out);
         if (completableFutureCompletionLeakDetector != null) {
             CompletableFutureCompletionLeakDetector.CompletionLeakReport r = 
@@ -391,273 +391,273 @@ final class DetectorRegistry {
             if (r.hasDeadlockRisk()) out.add(r.toString());
         }
         ifIssue(concurrentModificationDetector,
-                d -> d.analyze(),
+                ConcurrentModificationDetector::analyze,
                 ConcurrentModificationDetector.ConcurrentModificationReport::hasIssues, out);
         ifIssue(lockLeakDetector,
-                d -> d.analyze(),
+                LockLeakDetector::analyze,
                 LockLeakDetector.LockLeakReport::hasIssues, out);
         ifIssue(sharedRandomDetector,
-                d -> d.analyze(),
+                SharedRandomDetector::analyze,
                 SharedRandomDetector.SharedRandomReport::hasIssues, out);
         ifIssue(blockingQueueDetector,
-                d -> d.analyze(),
+                BlockingQueueDetector::analyze,
                 BlockingQueueDetector.BlockingQueueReport::hasIssues, out);
         ifIssue(conditionVariableDetector,
-                d -> d.analyze(),
+                ConditionVariableDetector::analyze,
                 ConditionVariableDetector.ConditionVariableReport::hasIssues, out);
         ifIssue(simpleDateFormatDetector,
-                d -> d.analyze(),
+                SimpleDateFormatDetector::analyze,
                 SimpleDateFormatDetector.SimpleDateFormatReport::hasIssues, out);
         ifIssue(parallelStreamDetector,
-                d -> d.analyze(),
+                ParallelStreamDetector::analyze,
                 ParallelStreamDetector.ParallelStreamReport::hasIssues, out);
         ifIssue(resourceLeakDetector,
-                d -> d.analyze(),
+                ResourceLeakDetector::analyze,
                 ResourceLeakDetector.ResourceLeakReport::hasIssues, out);
         ifIssue(countDownLatchDetector,
-                d -> d.analyze(),
+                CountDownLatchDetector::analyze,
                 CountDownLatchDetector.CountDownLatchReport::hasIssues, out);
         ifIssue(cyclicBarrierDetector,
-                d -> d.analyze(),
+                CyclicBarrierDetector::analyze,
                 CyclicBarrierDetector.CyclicBarrierReport::hasIssues, out);
         ifIssue(reentrantLockDetector,
-                d -> d.analyze(),
+                ReentrantLockDetector::analyze,
                 ReentrantLockDetector.ReentrantLockReport::hasIssues, out);
         ifIssue(volatileArrayDetector,
-                d -> d.analyze(),
+                VolatileArrayDetector::analyze,
                 VolatileArrayDetector.VolatileArrayReport::hasIssues, out);
         ifIssue(doubleCheckedLockingDetector,
-                d -> d.analyze(),
+                DoubleCheckedLockingDetector::analyze,
                 DoubleCheckedLockingDetector.DoubleCheckedLockingReport::hasIssues, out);
         ifIssue(waitTimeoutDetector,
-                d -> d.analyze(),
+                WaitTimeoutDetector::analyze,
                 WaitTimeoutDetector.WaitTimeoutReport::hasIssues, out);
         ifIssue(lockContentionDetector,
-                d -> d.analyze(),
+                LockContentionDetector::analyze,
                 LockContentionDetector.LockContentionReport::hasIssues, out);
         ifIssue(synchronizedNonFinalDetector,
-                d -> d.analyze(),
+                SynchronizedNonFinalDetector::analyze,
                 SynchronizedNonFinalDetector.SynchronizedNonFinalReport::hasIssues, out);
         ifIssue(missedSignalDetector,
-                d -> d.analyze(),
+                MissedSignalDetector::analyze,
                 MissedSignalDetector.MissedSignalReport::hasIssues, out);
         ifIssue(lazyInitRaceDetector,
-                d -> d.analyze(),
+                LazyInitRaceDetector::analyze,
                 LazyInitRaceDetector.LazyInitRaceReport::hasIssues, out);
         ifIssue(phaserDetector,
-                d -> d.analyze(),
+                PhaserDetector::analyze,
                 PhaserDetector.PhaserReport::hasIssues, out);
         ifIssue(stampedLockDetector,
-                d -> d.analyze(),
+                StampedLockDetector::analyze,
                 StampedLockDetector.StampedLockReport::hasIssues, out);
         ifIssue(exchangerDetector,
-                d -> d.analyze(),
+                ExchangerDetector::analyze,
                 ExchangerDetector.ExchangerReport::hasIssues, out);
         ifIssue(scheduledExecutorDetector,
-                d -> d.analyze(),
+                ScheduledExecutorDetector::analyze,
                 ScheduledExecutorDetector.ScheduledExecutorReport::hasIssues, out);
         ifIssue(forkJoinPoolDetector,
-                d -> d.analyze(),
+                ForkJoinPoolDetector::analyze,
                 ForkJoinPoolDetector.ForkJoinPoolReport::hasIssues, out);
         ifIssue(threadFactoryDetector,
-                d -> d.analyze(),
+                ThreadFactoryDetector::analyze,
                 ThreadFactoryDetector.ThreadFactoryReport::hasIssues, out);
 
         // ---- Phase 3 ----
         ifIssue(raceConditionDetector,
-                d -> d.analyzeRaceConditions(),
+                RaceConditionDetector::analyzeRaceConditions,
                 RaceConditionDetector.RaceConditionReport::hasIssues, out);
         ifIssue(threadLocalMonitor,
-                d -> d.analyzeThreadLocalLeaks(),
+                ThreadLocalMonitor::analyzeThreadLocalLeaks,
                 ThreadLocalMonitor.ThreadLocalReport::hasIssues, out);
         ifIssue(busyWaitDetector,
-                d -> d.analyzeBusyWaiting(),
+                BusyWaitDetector::analyzeBusyWaiting,
                 BusyWaitDetector.BusyWaitReport::hasIssues, out);
         ifIssue(atomicityValidator,
-                d -> d.analyzeAtomicity(),
+                AtomicityValidator::analyzeAtomicity,
                 AtomicityValidator.AtomicityReport::hasIssues, out);
         ifIssue(interruptMonitor,
-                d -> d.analyzeInterruptHandling(),
+                InterruptMonitor::analyzeInterruptHandling,
                 InterruptMonitor.InterruptReport::hasIssues, out);
 
         // ---- Phase 4: Infrastructure & Resource Management ----
         ifIssue(threadLeakDetector,
-                d -> d.analyzeLeaks(),
+                ThreadLeakDetector::analyzeLeaks,
                 ThreadLeakDetector.ThreadLeakReport::hasIssues, out);
         ifIssue(sleepInLockDetector,
-                d -> d.analyze(),
+                SleepInLockDetector::analyze,
                 SleepInLockDetector.SleepInLockReport::hasIssues, out);
         ifIssue(unboundedQueueDetector,
-                d -> d.analyze(),
+                UnboundedQueueDetector::analyze,
                 UnboundedQueueDetector.UnboundedQueueReport::hasIssues, out);
         ifIssue(threadStarvationDetector,
-                d -> d.analyze(),
+                ThreadStarvationDetector::analyze,
                 ThreadStarvationDetector.ThreadStarvationReport::hasIssues, out);
 
         // ---- Phase 5: Thread-Safety of Common Types ----
         ifIssue(calendarDetector,
-                d -> d.analyze(),
+                CalendarDetector::analyze,
                 CalendarDetector.CalendarReport::hasIssues, out);
         ifIssue(sharedCollectionDetector,
-                d -> d.analyze(),
+                SharedCollectionDetector::analyze,
                 SharedCollectionDetector.SharedCollectionReport::hasIssues, out);
         ifIssue(timerDetector,
-                d -> d.analyze(),
+                TimerDetector::analyze,
                 TimerDetector.TimerReport::hasIssues, out);
         ifIssue(copyOnWriteCollectionDetector,
-                d -> d.analyze(),
+                CopyOnWriteCollectionDetector::analyze,
                 CopyOnWriteCollectionDetector.CopyOnWriteReport::hasIssues, out);
         ifIssue(stringBuilderDetector,
-                d -> d.analyze(),
+                StringBuilderDetector::analyze,
                 StringBuilderDetector.StringBuilderReport::hasIssues, out);
 
         // ---- Phase 6: Virtual Thread Concurrency ----
         ifIssue(structuredConcurrencyMisuseDetector,
-                d -> d.analyze(),
+                StructuredConcurrencyMisuseDetector::analyze,
                 StructuredConcurrencyMisuseDetector.StructuredConcurrencyReport::hasIssues, out);
         ifIssue(virtualThreadContextLeakDetector,
-                d -> d.analyze(),
+                VirtualThreadContextLeakDetector::analyze,
                 VirtualThreadContextLeakDetector.VirtualThreadContextLeakReport::hasIssues, out);
         ifIssue(scopedValueMisuseDetector,
-                d -> d.analyze(),
+                ScopedValueMisuseDetector::analyze,
                 ScopedValueMisuseDetector.ScopedValueMisuseReport::hasIssues, out);
         ifIssue(virtualThreadCpuBoundTaskDetector,
-                d -> d.analyze(),
+                VirtualThreadCpuBoundTaskDetector::analyze,
                 VirtualThreadCpuBoundTaskDetector.CpuBoundTaskReport::hasIssues, out);
         ifIssue(virtualThreadCarrierExhaustionDetector,
-                d -> d.analyze(),
+                VirtualThreadCarrierExhaustionDetector::analyze,
                 VirtualThreadCarrierExhaustionDetector.CarrierExhaustionReport::hasIssues, out);
 
         // ---- Phase 7: High-Level Concurrency Patterns ----
         ifIssue(httpClientConcurrencyDetector,
-                d -> d.analyze(),
+                HttpClientConcurrencyDetector::analyze,
                 HttpClientConcurrencyDetector.HttpClientConcurrencyReport::hasIssues, out);
         ifIssue(streamClosingDetector,
-                d -> d.analyze(),
+                StreamClosingDetector::analyze,
                 StreamClosingDetector.StreamClosingReport::hasIssues, out);
         ifIssue(cacheConcurrencyDetector,
-                d -> d.analyze(),
+                CacheConcurrencyDetector::analyze,
                 CacheConcurrencyDetector.CacheConcurrencyReport::hasIssues, out);
         ifIssue(completableFutureChainDetector,
-                d -> d.analyze(),
+                CompletableFutureChainDetector::analyze,
                 CompletableFutureChainDetector.CompletableFutureChainReport::hasIssues, out);
 
         // ---- Phase 8: Lifecycle & Structural Correctness ----
         ifIssue(executorShutdownDetector,
-                d -> d.analyze(),
+                ExecutorShutdownDetector::analyze,
                 ExecutorShutdownDetector.ExecutorShutdownReport::hasIssues, out);
         ifIssue(mutableMapKeyDetector,
-                d -> d.analyze(),
+                MutableMapKeyDetector::analyze,
                 MutableMapKeyDetector.MutableMapKeyReport::hasIssues, out);
         ifIssue(nestedMonitorLockoutDetector,
-                d -> d.analyze(),
+                NestedMonitorLockoutDetector::analyze,
                 NestedMonitorLockoutDetector.NestedMonitorLockoutReport::hasIssues, out);
         ifIssue(lockDowngradeDetector,
-                d -> d.analyze(),
+                LockDowngradeDetector::analyze,
                 LockDowngradeDetector.LockDowngradeReport::hasIssues, out);
         ifIssue(inheritableThreadLocalMisuseDetector,
-                d -> d.analyze(),
+                InheritableThreadLocalMisuseDetector::analyze,
                 InheritableThreadLocalMisuseDetector.InheritableThreadLocalReport::hasIssues, out);
         ifIssue(uncommittedChangesDetector,
-                d -> d.analyze(),
+                UncommittedChangesDetector::analyze,
                 UncommittedChangesDetector.UncommittedChangesReport::hasIssues, out);
 
         // ---- Phase 10: API Traps & Subtle Concurrency Bugs ----
         ifIssue(threadLocalContaminationDetector,
-                d -> d.analyze(),
+                ThreadLocalContaminationDetector::analyze,
                 ThreadLocalContaminationDetector.ThreadLocalContaminationReport::hasIssues, out);
         ifIssue(atomicNonAtomicUpdateDetector,
-                d -> d.analyze(),
+                AtomicNonAtomicUpdateDetector::analyze,
                 AtomicNonAtomicUpdateDetector.AtomicNonAtomicUpdateReport::hasIssues, out);
         ifIssue(synchronizedCollectionIterationDetector,
-                d -> d.analyze(),
+                SynchronizedCollectionIterationDetector::analyze,
                 SynchronizedCollectionIterationDetector.SynchronizedCollectionIterationReport::hasIssues, out);
         ifIssue(sharedFormatterDetector,
-                d -> d.analyze(),
+                SharedFormatterDetector::analyze,
                 SharedFormatterDetector.SharedFormatterReport::hasIssues, out);
         ifIssue(concurrentMapComputeRecursionDetector,
-                d -> d.analyze(),
+                ConcurrentMapComputeRecursionDetector::analyze,
                 ConcurrentMapComputeRecursionDetector.ConcurrentMapComputeRecursionReport::hasIssues, out);
         ifIssue(synchronizedOnLiteralDetector,
-                d -> d.analyze(),
+                SynchronizedOnLiteralDetector::analyze,
                 SynchronizedOnLiteralDetector.SynchronizedOnLiteralReport::hasIssues, out);
         ifIssue(publicLockExposureDetector,
-                d -> d.analyze(),
+                PublicLockExposureDetector::analyze,
                 PublicLockExposureDetector.PublicLockExposureReport::hasIssues, out);
         ifIssue(forkJoinTaskBlockingDetector,
-                d -> d.analyze(),
+                ForkJoinTaskBlockingDetector::analyze,
                 ForkJoinTaskBlockingDetector.ForkJoinTaskBlockingReport::hasIssues, out);
         ifIssue(optimisticReadValidationDetector,
-                d -> d.analyze(),
+                OptimisticReadValidationDetector::analyze,
                 OptimisticReadValidationDetector.OptimisticReadValidationReport::hasIssues, out);
         ifIssue(cfCommonPoolBlockingDetector,
-                d -> d.analyze(),
+                CompletableFutureCommonPoolBlockingDetector::analyze,
                 CompletableFutureCommonPoolBlockingDetector.CompletableFutureCommonPoolBlockingReport::hasIssues, out);
 
         // ---- Phase 11: Thread-Safety of Additional Types & Patterns ----
         ifIssue(sharedMatcherDetector,
-                d -> d.analyze(),
+                SharedMatcherDetector::analyze,
                 SharedMatcherDetector.SharedMatcherReport::hasIssues, out);
         ifIssue(sharedDecimalFormatDetector,
-                d -> d.analyze(),
+                SharedDecimalFormatDetector::analyze,
                 SharedDecimalFormatDetector.SharedDecimalFormatReport::hasIssues, out);
         ifIssue(weakReferenceRaceDetector,
-                d -> d.analyze(),
+                WeakReferenceRaceDetector::analyze,
                 WeakReferenceRaceDetector.WeakReferenceRaceReport::hasIssues, out);
         ifIssue(statefulLambdaDetector,
-                d -> d.analyze(),
+                StatefulLambdaDetector::analyze,
                 StatefulLambdaDetector.StatefulLambdaReport::hasIssues, out);
         ifIssue(sharedMessageDigestDetector,
-                d -> d.analyze(),
+                SharedMessageDigestDetector::analyze,
                 SharedMessageDigestDetector.SharedMessageDigestReport::hasIssues, out);
 
         // ---- Phase 12: Operational & Hygiene Concurrency Issues ----
         ifIssue(interruptSwallowingDetector,
-                d -> d.analyze(),
+                InterruptSwallowingDetector::analyze,
                 InterruptSwallowingDetector.InterruptSwallowingReport::hasIssues, out);
         ifIssue(mdcContextLeakDetector,
-                d -> d.analyze(),
+                MdcContextLeakDetector::analyze,
                 MdcContextLeakDetector.MdcContextLeakReport::hasIssues, out);
         ifIssue(systemPropertyMutationDetector,
-                d -> d.analyze(),
+                SystemPropertyMutationDetector::analyze,
                 SystemPropertyMutationDetector.SystemPropertyMutationReport::hasIssues, out);
         ifIssue(futureIgnoredDetector,
-                d -> d.analyze(),
+                FutureIgnoredDetector::analyze,
                 FutureIgnoredDetector.FutureIgnoredReport::hasIssues, out);
         ifIssue(explicitGcDetector,
-                d -> d.analyze(),
+                ExplicitGcDetector::analyze,
                 ExplicitGcDetector.ExplicitGcReport::hasIssues, out);
         ifIssue(deprecatedThreadApiDetector,
-                d -> d.analyze(),
+                DeprecatedThreadApiDetector::analyze,
                 DeprecatedThreadApiDetector.DeprecatedThreadApiReport::hasIssues, out);
         ifIssue(sharedXmlParserDetector,
-                d -> d.analyze(),
+                SharedXmlParserDetector::analyze,
                 SharedXmlParserDetector.SharedXmlParserReport::hasIssues, out);
         ifIssue(boxedPrimitiveLockDetector,
-                d -> d.analyze(),
+                BoxedPrimitiveLockDetector::analyze,
                 BoxedPrimitiveLockDetector.BoxedPrimitiveLockReport::hasIssues, out);
         ifIssue(sharedTimeZoneDetector,
-                d -> d.analyze(),
+                SharedTimeZoneDetector::analyze,
                 SharedTimeZoneDetector.SharedTimeZoneReport::hasIssues, out);
         ifIssue(uncaughtExceptionHandlerDetector,
-                d -> d.analyze(),
+                UncaughtExceptionHandlerDetector::analyze,
                 UncaughtExceptionHandlerDetector.UncaughtExceptionHandlerReport::hasIssues, out);
 
         // ---- Phase 13 (1.0.0+) ----
         ifIssue(daemonThreadHygieneDetector,
-                d -> d.analyze(),
+                DaemonThreadHygieneDetector::analyze,
                 DaemonThreadHygieneDetector.Report::hasIssues, out);
         ifIssue(notifyWithoutMonitorDetector,
-                d -> d.analyze(),
+                NotifyWithoutMonitorDetector::analyze,
                 NotifyWithoutMonitorDetector.Report::hasIssues, out);
         ifIssue(sharedSecureRandomDetector,
-                d -> d.analyze(),
+                SharedSecureRandomDetector::analyze,
                 SharedSecureRandomDetector.Report::hasIssues, out);
         ifIssue(weakHashMapSharedDetector,
-                d -> d.analyze(),
+                WeakHashMapSharedDetector::analyze,
                 WeakHashMapSharedDetector.Report::hasIssues, out);
         ifIssue(jdbcConnectionSharedDetector,
-                d -> d.analyze(),
+                JdbcConnectionSharedDetector::analyze,
                 JdbcConnectionSharedDetector.Report::hasIssues, out);
 
         return out;
