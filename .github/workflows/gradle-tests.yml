@@ -63,14 +63,49 @@ jobs:
       - name: Run consumer fixture tests
         run: ./gradlew -p consumer-fixture test
 
-      - name: Run all example tests
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        with:
+          list-files: shell
+          filters: |
+            lib:
+              - 'src/**'
+              - 'build.gradle.kts'
+              - 'settings.gradle.kts'
+              - 'gradle/**'
+              - 'consumer-fixture/**'
+              - '.github/workflows/gradle-tests.yml'
+              - 'examples/settings.gradle.kts'
+              - 'examples/build.gradle.kts'
+            examples:
+              - 'examples/**'
+
+      - name: Run all example tests (full reactor)
+        if: steps.filter.outputs.lib == 'true'
+        run: ./gradlew -p examples test --parallel --continue
+
+      - name: Run changed example tests
+        if: steps.filter.outputs.lib != 'true' && steps.filter.outputs.examples == 'true'
         run: |
-          for dir in examples/*/; do
-            if [ -f "$dir/build.gradle.kts" ]; then
-              echo "Running Gradle tests in $dir"
-              ./gradlew -p "$dir" test
+          tasks=""
+          for m in $(printf '%s\n' ${{ steps.filter.outputs.examples_files }} \
+              | awk -F/ 'NF>=3 && $1=="examples" {print $2}' \
+              | sort -u); do
+            if [ -f "examples/$m/build.gradle.kts" ]; then
+              tasks="$tasks :$m:test"
             fi
           done
+          if [ -z "$tasks" ]; then
+            echo "No Gradle example modules touched; skipping"
+            exit 0
+          fi
+          echo "Running example tasks:$tasks"
+          ./gradlew -p examples $tasks --parallel --continue
+
+      - name: Skip example tests (no relevant changes)
+        if: steps.filter.outputs.lib != 'true' && steps.filter.outputs.examples != 'true'
+        run: echo "No library or example changes detected; skipping Gradle example tests."
 
       - name: Check coverage file exists
         run: |

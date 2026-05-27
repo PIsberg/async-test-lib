@@ -59,14 +59,42 @@ jobs:
       - name: Run consumer fixture tests
         run: mvn -Dmaven.repo.local=.m2/repository -f consumer-fixture/pom.xml test
 
-      - name: Run all example tests
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        with:
+          list-files: shell
+          filters: |
+            lib:
+              - 'src/**'
+              - 'pom.xml'
+              - 'consumer-fixture/**'
+              - '.github/workflows/tests.yml'
+              - 'examples/pom.xml'
+            examples:
+              - 'examples/**'
+
+      - name: Run all example tests (full reactor)
+        if: steps.filter.outputs.lib == 'true'
+        run: mvn -Dmaven.repo.local=.m2/repository -f examples/pom.xml test -T 1C -fae
+
+      - name: Run changed example tests
+        if: steps.filter.outputs.lib != 'true' && steps.filter.outputs.examples == 'true'
         run: |
-          for dir in examples/*/; do
-            if [ -f "$dir/pom.xml" ]; then
-              echo "Running tests in $dir"
-              mvn -Dmaven.repo.local=.m2/repository -f "$dir/pom.xml" test
-            fi
-          done
+          modules=$(printf '%s\n' ${{ steps.filter.outputs.examples_files }} \
+            | awk -F/ 'NF>=3 && $1=="examples" {print $2}' \
+            | sort -u \
+            | paste -sd ',' -)
+          if [ -z "$modules" ]; then
+            echo "No example modules touched; skipping"
+            exit 0
+          fi
+          echo "Running example modules: $modules"
+          mvn -Dmaven.repo.local=.m2/repository -f examples/pom.xml -pl "$modules" test -T 1C -fae
+
+      - name: Skip example tests (no relevant changes)
+        if: steps.filter.outputs.lib != 'true' && steps.filter.outputs.examples != 'true'
+        run: echo "No library or example changes detected; skipping example tests."
 
       - name: Check coverage file exists
         run: |
