@@ -37,6 +37,76 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 | 30 | [False Sharing](30-false-sharing/) | `FalseSharingDetector` | Adjacent `volatile long` fields on the same cache line cause coherence traffic between threads updating independent counters | 🟡 High |
 | 31 | [Lock Order Violation](31-lock-order-violation/) | `LockOrderValidator` | Transfer service acquires account locks in source-first order — two concurrent opposite transfers create a circular dependency | 🔴 Critical |
 | 32 | [RW Lock Starvation](32-rwlock-starvation/) | `ReadWriteLockMonitor` | Non-fair `ReentrantReadWriteLock(false)` lets readers cut ahead of waiting writers indefinitely — writes never complete | 🟡 High |
+| 34 | [Blocking Queue](34-blocking-queue/) | `BlockingQueueDetector` | `offer()` silently drops items when the bounded queue is full; `poll()` NPE on null return | 🟡 High |
+| 35 | [Calendar Misuse](35-calendar-misuse/) | `CalendarDetector` | Shared `Calendar` instance mutated concurrently produces wrong date conversions | 🔴 Critical |
+| 36 | [Cache Concurrency](36-cache-concurrency/) | `CacheConcurrencyDetector` | Plain `HashMap` used as a concurrent cache causes data loss and `ConcurrentModificationException` | 🔴 Critical |
+| 37 | [CF Chain Issues](37-cf-chain/) | `CompletableFutureChainDetector` | Fire-and-forget `CompletableFuture` chains swallow exceptions silently | 🟡 High |
+| 38 | [CF Common-Pool Blocking](38-cf-common-pool-blocking/) | `CompletableFutureCommonPoolBlockingDetector` | `supplyAsync()` + blocking `.get()` inside the same common pool starves it | 🔴 Critical |
+| 39 | [CF Completion Leak](39-cf-completion-leak/) | `CompletableFutureCompletionLeakDetector` | `CompletableFuture` created but `complete()` never called — waiting threads block forever | 🟡 High |
+| 40 | [ConcurrentMap Recursion](40-concurrent-map-recursion/) | `ConcurrentMapComputeRecursionDetector` | `computeIfAbsent` lambda calls `computeIfAbsent` on the same map — recursive deadlock | 🔴 Critical |
+| 41 | [Concurrent Modification](41-concurrent-modification/) | `ConcurrentModificationDetector` | `ArrayList` iterated while another thread calls `add()` — `ConcurrentModificationException` | 🔴 Critical |
+| 42 | [Condition Variable](42-condition-variable/) | `ConditionVariableDetector` | `signal()` instead of `signalAll()` leaves threads waiting indefinitely | 🟡 High |
+| 43 | [Copy-On-Write Misuse](43-copy-on-write/) | `CopyOnWriteCollectionDetector` | `CopyOnWriteArrayList` on a write-heavy path — O(n) copy per write degrades throughput | 🟡 High |
+| 44 | [CountDownLatch Misuse](44-count-down-latch/) | `CountDownLatchDetector` | `countDown()` skipped in one code path — `await()` blocks forever | 🔴 Critical |
+| 45 | [CyclicBarrier Broken](45-cyclic-barrier/) | `CyclicBarrierDetector` | Exception before `await()` breaks the barrier — all subsequent arrivals get `BrokenBarrierException` | 🟡 High |
+| 46 | [Daemon Thread Hygiene](46-daemon-thread/) | `DaemonThreadHygieneDetector` | Non-daemon background threads prevent JVM from shutting down | 🟢 Low |
+| 47 | [Double-Checked Locking](47-double-checked-locking/) | `DoubleCheckedLockingDetector` | DCL without `volatile` — partially constructed singleton visible to other threads | 🔴 Critical |
+| 48 | [Exchanger Misuse](48-exchanger-misuse/) | `ExchangerDetector` | Odd-numbered callers leave one thread blocked in `exchange()` without a partner | 🟡 High |
+| 49 | [Executor Shutdown Leak](49-executor-shutdown/) | `ExecutorShutdownDetector` | `ExecutorService` created but `shutdown()` never called — threads leak per test run | 🟡 High |
+| 50 | [ForkJoin Pool Blocking](50-fork-join-pool/) | `ForkJoinPoolDetector` | Blocking I/O inside `ForkJoinPool.commonPool()` task starves work-stealing threads | 🟡 High |
+| 51 | [ForkJoin Task Blocking](51-fork-join-task-blocking/) | `ForkJoinTaskBlockingDetector` | `Thread.sleep()` inside `RecursiveTask.compute()` pins ForkJoin worker thread | 🟡 High |
+| 52 | [HTTP Client Concurrency](52-http-client-concurrency/) | `HttpClientConcurrencyDetector` | `HttpClient.newHttpClient()` per request wastes connections and bypasses pooling | 🟢 Low |
+| 53 | [InheritableThreadLocal Misuse](53-inheritable-thread-local/) | `InheritableThreadLocalMisuseDetector` | Thread pools inherit stale context from previous requests via `InheritableThreadLocal` | 🟡 High |
+| 54 | [JDBC Connection Shared](54-jdbc-connection-shared/) | `JdbcConnectionSharedDetector` | Single `Connection` shared across threads — concurrent queries corrupt each other | 🔴 Critical |
+| 55 | [Lazy Init Race](55-lazy-init-race/) | `LazyInitRaceDetector` | Unsynchronized null-check lazy init — multiple threads create separate instances | 🔴 Critical |
+| 56 | [Lock Downgrade](56-lock-downgrade/) | `LockDowngradeDetector` | Write lock released before read lock acquired — gap lets another thread write in between | 🔴 Critical |
+| 57 | [Lock Leak](57-lock-leak/) | `LockLeakDetector` | Exception between `lock()` and `unlock()` leaves lock permanently held | 🔴 Critical |
+| 58 | [Missed Signal](58-missed-signal/) | `MissedSignalDetector` | `notify()` fired before `wait()` — signal lost, waiter blocks forever | 🔴 Critical |
+| 59 | [Mutable Map Key](59-mutable-map-key/) | `MutableMapKeyDetector` | Mutable object used as `HashMap` key; mutation after insertion makes entry unreachable | 🟡 High |
+| 60 | [Nested Monitor Lockout](60-nested-monitor-lockout/) | `NestedMonitorLockoutDetector` | Thread holds monitor A and calls `wait()` on B; another holds B and notifies A — circular deadlock | 🔴 Critical |
+| 61 | [Notify Without Monitor](61-notify-without-monitor/) | `NotifyWithoutMonitorDetector` | `notify()` called without holding the object's monitor — `IllegalMonitorStateException` | 🔴 Critical |
+| 62 | [Optimistic Read Validation](62-optimistic-read-validation/) | `OptimisticReadValidationDetector` | `StampedLock.tryOptimisticRead()` used without `validate()` — stale data returned silently | 🟡 High |
+| 63 | [Parallel Stream Side-Effects](63-parallel-stream/) | `ParallelStreamDetector` | `parallelStream().forEach()` mutates shared `ArrayList` — lost updates and CME | 🔴 Critical |
+| 64 | [Phaser Misuse](64-phaser-misuse/) | `PhaserDetector` | Fewer parties registered than threads that arrive — `IllegalStateException` or early termination | 🟡 High |
+| 65 | [Public Lock Exposure](65-public-lock-exposure/) | `PublicLockExposureDetector` | `getLock()` exposes internal `ReentrantLock` — external callers can hold it indefinitely | 🟡 High |
+| 66 | [Reentrant Lock Imbalance](66-reentrant-lock/) | `ReentrantLockDetector` | `lock()` called twice, `unlock()` once — hold count stays at 1, starving all callers | 🔴 Critical |
+| 67 | [Resource Leak](67-resource-leak/) | `ResourceLeakDetector` | `InputStream` opened per call but never closed — file descriptor exhaustion | 🟡 High |
+| 68 | [Scheduled Executor Leak](68-scheduled-executor/) | `ScheduledExecutorDetector` | `ScheduledExecutorService` created but `shutdown()` never called — threads accumulate | 🟡 High |
+| 69 | [Scoped Value Misuse](69-scoped-value-misuse/) | `ScopedValueMisuseDetector` | Context read without null-guard outside binding scope — NPE or wrong-user processing | 🟡 High |
+| 70 | [Semaphore Misuse](70-semaphore-misuse/) | `SemaphoreMisuseDetector` | `release()` not in `finally` — exception permanently drains semaphore permits | 🔴 Critical |
+| 71 | [Shared Formatter](71-shared-formatter/) | `SharedFormatterDetector` | Shared `Formatter` instance concurrent calls produce garbled output | 🟡 High |
+| 72 | [Shared Random](72-shared-random/) | `SharedRandomDetector` | Static `Random` shared across threads — seed contention degrades performance | 🟢 Low |
+| 73 | [SimpleDateFormat Shared](73-simple-date-format/) | `SimpleDateFormatDetector` | Static `SimpleDateFormat` concurrent `format()`/`parse()` corrupts internal calendar state | 🔴 Critical |
+| 74 | [Sleep In Lock](74-sleep-in-lock/) | `SleepInLockDetector` | `Thread.sleep()` inside `synchronized` block serializes all callers for the sleep duration | 🟡 High |
+| 75 | [StampedLock Not Unlocked](75-stamped-lock/) | `StampedLockDetector` | `writeLock()` stamp not released in `finally` — lock permanently held, all callers block | 🔴 Critical |
+| 76 | [Stateful Lambda](76-stateful-lambda/) | `StatefulLambdaDetector` | Shared `int[]` captured by lambda mutated by multiple threads — non-atomic lost updates | 🔴 Critical |
+| 77 | [Stream Not Closed](77-stream-closing/) | `StreamClosingDetector` | `Stream` backed by I/O resource opened but `close()` never called — file descriptor leak | 🟡 High |
+| 78 | [StringBuilder Shared](78-string-builder-shared/) | `StringBuilderDetector` | Single `StringBuilder` appended concurrently — garbled output or `ArrayIndexOutOfBoundsException` | 🔴 Critical |
+| 79 | [Structured Concurrency Leak](79-structured-concurrency/) | `StructuredConcurrencyMisuseDetector` | Executor (scope) forked but `shutdown()` never called — threads and resources leak | 🟡 High |
+| 80 | [SynchronizedList Iteration](80-synchronized-collection-iteration/) | `SynchronizedCollectionIterationDetector` | `synchronizedList` iterated without external lock — iterator not thread-safe | 🔴 Critical |
+| 81 | [Synchronized Non-Final](81-synchronized-non-final/) | `SynchronizedNonFinalDetector` | Lock object is non-final and reassigned — two threads enter the critical section simultaneously | 🔴 Critical |
+| 82 | [Synchronized On Literal](82-synchronized-on-literal/) | `SynchronizedOnLiteralDetector` | `synchronized("string-literal")` uses a JVM-global interned monitor — unintended contention | 🟡 High |
+| 83 | [Thread Factory Missing](83-thread-factory/) | `ThreadFactoryDetector` | `newFixedThreadPool` without `ThreadFactory` — generic names, non-daemon, hard to debug | 🟢 Low |
+| 84 | [Thread Leak](84-thread-leak/) | `ThreadLeakDetector` | New `Thread` spawned per connection, `shutdown()` never called — idle threads accumulate | 🟡 High |
+| 85 | [ThreadLocal Contamination](85-thread-local-contamination/) | `ThreadLocalContaminationDetector` | `ThreadLocal.remove()` not called — pooled thread carries previous request's context | 🟡 High |
+| 86 | [Thread Pool Deadlock](86-thread-pool-deadlock/) | `ThreadPoolDeadlockDetector` | Task blocks waiting for another task on the same bounded pool — pool exhaustion deadlock | 🔴 Critical |
+| 87 | [Thread Starvation](87-thread-starvation/) | `ThreadStarvationDetector` | Non-fair lock held by high-priority tasks — low-priority threads never scheduled | 🟡 High |
+| 88 | [Timer Misuse](88-timer-misuse/) | `TimerDetector` | `java.util.Timer` never cancelled; slow task delays all subsequent scheduled tasks | 🟢 Low |
+| 89 | [Unbounded Queue](89-unbounded-queue/) | `UnboundedQueueDetector` | `newFixedThreadPool` backed by unbounded `LinkedBlockingQueue` — OOM under load | 🟡 High |
+| 90 | [VT Carrier Exhaustion](90-virtual-thread-carrier-exhaustion/) | `VirtualThreadCarrierExhaustionDetector` | `synchronized` + `Thread.sleep()` in virtual thread pins carrier, exhausting the pool | 🔴 Critical |
+| 91 | [VT CPU-Bound Task](91-virtual-thread-cpu-bound/) | `VirtualThreadCpuBoundTaskDetector` | CPU-intensive loop on virtual thread monopolises carrier, defeating work-stealing | 🟡 High |
+| 92 | [VT Pinning](92-virtual-thread-pinning/) | `VirtualThreadPinningDetector` | `synchronized` method with I/O inside pins virtual thread carrier — defeats Loom's purpose | 🔴 Critical |
+| 93 | [Volatile Array](93-volatile-array/) | `VolatileArrayDetector` | `volatile int[]` only guarantees reference visibility, not element visibility | 🟡 High |
+| 94 | [Wait Without Timeout](94-wait-timeout/) | `WaitTimeoutDetector` | `wait()` with no timeout — missed `notify()` causes permanent thread block | 🔴 Critical |
+| 95 | [Spurious Wakeup](95-wakeup-issues/) | `WakeupDetector` | `wait()` guarded by `if` not `while` — spurious wakeup proceeds on unmet condition | 🟡 High |
+| 96 | [WeakHashMap Shared](96-weak-hashmap-shared/) | `WeakHashMapSharedDetector` | `WeakHashMap` shared across threads — GC-triggered cleanup + concurrent puts corrupt structure | 🔴 Critical |
+| 97 | [WeakReference Race](97-weak-reference-race/) | `WeakReferenceRaceDetector` | `ref.get() != null` check then `ref.get().use()` — GC can clear between the two calls | 🟡 High |
+| 98 | [Async Pipeline Monitor](98-async-pipeline-monitor/) | `PipelineMonitor` | Uncoordinated pipeline stages with no back-pressure — slow stages lose events under load | 🟡 High |
+| 99 | [Atomic Non-Atomic Update](99-atomic-non-atomic/) | `AtomicNonAtomicUpdateDetector` | `counter.set(counter.get() + 1)` on `AtomicInteger` — non-atomic compound op loses updates | 🔴 Critical |
+| 100 | [Constructor Safety](100-constructor-safety/) | `ConstructorSafetyValidator` | `this` published to registry before fields initialised — partially constructed object visible | 🔴 Critical |
+| 101 | [Memory Ordering](101-memory-ordering/) | `MemoryOrderingMonitor` | Non-volatile `ready` + `value` fields — consumer may read stale values | 🟡 High |
+| 102 | [Synchronizer Monitor](102-synchronizer-monitor/) | `SynchronizerMonitor` | Three synchronizers (Semaphore + Lock + Latch) chained on one path — over-synchronised | 🟢 Low |
+| 103 | [Thread Pool Monitor](103-thread-pool-monitor/) | `ThreadPoolMonitor` | 2-thread pool saturated by 100 concurrent tasks — queue depth and rejection rate reported | 🟡 High |
 
 ## Phase 7: High-Level Concurrency Patterns (New!)
 
