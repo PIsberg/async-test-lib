@@ -27,12 +27,14 @@ public class CryptoService {
         }
         byte[] result = new byte[data.length];
         // Simulate CPU-heavy work — no I/O, no yield points.
-        long hash = 0;
+        // Key is derived from a constant seed (not the data) so the XOR is
+        // involutive and decrypt(encrypt(x)) == x.
+        long key = 0xC0FFEEDEADBEEFL;
         for (int i = 0; i < WORK_ITERATIONS; i++) {
-            hash ^= (long) data[i % data.length] * i;
+            key ^= key * 31 + i;
         }
         for (int i = 0; i < data.length; i++) {
-            result[i] = (byte) (data[i] ^ (hash >> (i % 8)));
+            result[i] = (byte) (data[i] ^ (key >> (i % 8)));
         }
         return result;
     }
