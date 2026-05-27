@@ -7,8 +7,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
+import java.io.Closeable;
 import java.util.List;
-import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -81,8 +82,9 @@ class DataPipelineServiceTest {
         service.openPipeline(List.of("line1", "line2", "line3"));
 
         // Register this stream with the detector so it tracks the lifecycle.
-        // The service never calls close(), so recordStreamClosed is never called.
-        Stream<String> opened = Stream.of("line1", "line2", "line3");
+        // The detector API takes a Closeable; use a ByteArrayInputStream as a
+        // stand-in for the unclosed I/O resource that the bug would leak.
+        Closeable opened = new ByteArrayInputStream(new byte[0]);
         String streamName = "data-pipeline-" + Thread.currentThread().getName();
         detector.recordStreamOpened(opened, streamName);
         // BUG: recordStreamClosed() is intentionally not called here.
