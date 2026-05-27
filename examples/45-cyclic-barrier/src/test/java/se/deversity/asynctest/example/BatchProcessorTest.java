@@ -7,6 +7,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.atomic.AtomicReference;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -50,17 +52,22 @@ class BatchProcessorTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void testProcessPhase_phase0_completesWithoutException() throws Exception {
-        // Phase 0 never throws — single-threaded, barrier.await() not reached
-        // because we have only 1 party but the barrier needs 4
-        // Just verify the service doesn't throw for non-broken phases
-        assertDoesNotThrow(() -> {
+    void testProcessPhase_phase0_doesNotThrowBeforeBarrier() throws Exception {
+        // CyclicBarrier(4) requires 4 parties; a single-thread invocation blocks
+        // indefinitely on barrier.await(). Run on a daemon thread and verify no
+        // exception escapes before the barrier wait.
+        AtomicReference<Throwable> error = new AtomicReference<>();
+        Thread t = new Thread(() -> {
             try {
                 processor.processPhase(0);
-            } catch (java.util.concurrent.BrokenBarrierException e) {
-                // timeout waiting for 4 parties with 1 thread — expected in test
+            } catch (Throwable th) {
+                error.set(th);
             }
         });
+        t.setDaemon(true);
+        t.start();
+        t.join(200);
+        assertNull(error.get(), "No exception expected before barrier wait");
     }
 
     @Test
