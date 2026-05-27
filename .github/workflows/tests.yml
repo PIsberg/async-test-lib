@@ -65,34 +65,6 @@ jobs:
       - name: Run consumer fixture tests
         run: mvn -Dmaven.repo.local=.m2/repository -f consumer-fixture/pom.xml test
 
-      - name: Detect changed paths
-        id: filter
-        if: github.event_name == 'pull_request'
-        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
-        with:
-          list-files: shell
-          filters: |
-            examples:
-              - 'examples/**'
-
-      - name: Run changed example tests (PR — targeted)
-        if: github.event_name == 'pull_request' && steps.filter.outputs.examples == 'true'
-        run: |
-          modules=$(printf '%s\n' ${{ steps.filter.outputs.examples_files }} \
-            | awk -F/ 'NF>=3 && $1=="examples" {print $2}' \
-            | sort -u \
-            | paste -sd ',' -)
-          if [ -z "$modules" ]; then
-            echo "No example modules touched; skipping"
-            exit 0
-          fi
-          echo "Running example modules: $modules"
-          mvn -Dmaven.repo.local=.m2/repository -f examples/pom.xml -pl "$modules" test -T 1C -fae
-
-      - name: Skip example tests (PR — no example changes)
-        if: github.event_name == 'pull_request' && steps.filter.outputs.examples != 'true'
-        run: echo "PR did not touch examples/; full reactor runs nightly + on push to main."
-
       - name: Check coverage file exists
         run: |
           if [ -f ./target/site/jacoco/jacoco.xml ]; then
@@ -123,6 +95,114 @@ jobs:
           fail_ci_if_error: false
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
+
+  examples-pr-detect:
+    name: Detect changed examples (PR)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    outputs:
+      modules: ${{ steps.compute.outputs.modules }}
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        with:
+          list-files: shell
+          filters: |
+            examples:
+              - 'examples/**'
+
+      - name: Compute changed example modules
+        id: compute
+        run: |
+          if [ "${{ steps.filter.outputs.examples }}" != "true" ]; then
+            echo "modules=" >> "$GITHUB_OUTPUT"
+            echo "No examples touched."
+            exit 0
+          fi
+          modules=$(printf '%s\n' ${{ steps.filter.outputs.examples_files }} \
+            | awk -F/ 'NF>=3 && $1=="examples" {print $2}' \
+            | while read m; do [ -f "examples/$m/pom.xml" ] && echo "$m"; done \
+            | sort -u \
+            | paste -sd ',' -)
+          echo "modules=$modules" >> "$GITHUB_OUTPUT"
+          echo "Changed example modules: $modules"
+
+  examples-pr:
+    name: Examples Shard ${{ matrix.shard }} (PR)
+    runs-on: ubuntu-latest
+    needs: examples-pr-detect
+    if: github.event_name == 'pull_request' && needs.examples-pr-detect.outputs.modules != ''
+
+    strategy:
+      fail-fast: false
+      matrix:
+        java-version: [ '21' ]
+        shard: [ 0, 1, 2, 3 ]
+
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Java
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Install library to local Maven repository
+        run: mvn -Dmaven.repo.local=.m2/repository -DskipTests clean install
+
+      - name: Run shard's slice of changed examples
+        run: |
+          set -euo pipefail
+          TOTAL=4
+          SHARD=${{ matrix.shard }}
+          slice=$(echo "${{ needs.examples-pr-detect.outputs.modules }}" \
+            | tr ',' '\n' \
+            | awk -v s="$SHARD" -v n="$TOTAL" 'NR%n==s' \
+            | paste -sd ',' -)
+          if [ -z "$slice" ]; then
+            echo "Shard $SHARD has no modules in the changed set"
+            exit 0
+          fi
+          echo "Shard $SHARD modules: $slice"
+          mvn -Dmaven.repo.local=.m2/repository -f examples/pom.xml -pl "$slice" test -T 1C -fae
+
+      - name: Upload shard test reports
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: example-pr-reports-shard-${{ matrix.shard }}
+          path: examples/*/target/surefire-reports/
+          retention-days: 7
 
   examples-full:
     name: Examples Reactor (shard ${{ matrix.shard }}/${{ strategy.job-total }})
