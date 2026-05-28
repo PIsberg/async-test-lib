@@ -67,4 +67,36 @@
         <Class name="se.deversity.asynctest.AsyncAssert"/>
     </Match>
 
+    <!-- ================================================================
+         SpinContentionBarrier padding fields — intentional cache-line
+         isolation to prevent false sharing between arrivalCount and
+         currentPhase. Removing them would defeat the entire purpose of
+         the spin barrier.
+         ================================================================ -->
+    <Match>
+        <Bug pattern="UUF_UNUSED_FIELD"/>
+        <Class name="se.deversity.asynctest.runner.SpinContentionBarrier"/>
+    </Match>
+
+    <!-- ================================================================
+         TelemetryEventBuffer.AccessEvent.sequence — accessed via VarHandle
+         (SEQ_VH.getAcquire / setRelease). SpotBugs' bytecode analyzer
+         cannot see through VarHandle indirection to detect the read.
+         ================================================================ -->
+    <Match>
+        <Bug pattern="URF_UNREAD_FIELD"/>
+        <Package name="se.deversity.asynctest.telemetry"/>
+    </Match>
+
+    <!-- ================================================================
+         TelemetryRegistry static-field null-outs in stop() — guarded by
+         the RUNNING CAS gate, which serializes start/stop transitions.
+         SpotBugs flags the read-then-null-assign as classic lazy-init,
+         but only one thread can ever pass the gate per transition.
+         ================================================================ -->
+    <Match>
+        <Bug pattern="LI_LAZY_INIT_STATIC"/>
+        <Class name="se.deversity.asynctest.telemetry.TelemetryRegistry"/>
+    </Match>
+
 </FindBugsFilter>

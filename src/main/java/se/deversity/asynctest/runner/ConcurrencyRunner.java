@@ -188,10 +188,14 @@ public class ConcurrencyRunner {
     /**
      * Abstraction over CyclicBarrier and SpinContentionBarrier.
      * Lets runSingleInvocationRound stay barrier-implementation-agnostic.
+     *
+     * <p>Declares the union of checked exceptions from both implementations:
+     * {@link InterruptedException} (both) and {@link BrokenBarrierException}
+     * (CyclicBarrier only — SpinContentionBarrier never throws it).
      */
     @FunctionalInterface
     private interface ContentionBarrier {
-        void arrive() throws Exception;
+        void arrive() throws InterruptedException, BrokenBarrierException;
     }
 
     /**
