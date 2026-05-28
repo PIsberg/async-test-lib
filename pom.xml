@@ -147,6 +147,25 @@
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
+                <executions>
+                    <!-- Error Prone runs on main sources only; test sources are excluded per project policy -->
+                    <execution>
+                        <id>default-testCompile</id>
+                        <phase>test-compile</phase>
+                        <goals><goal>testCompile</goal></goals>
+                        <configuration>
+                            <encoding>UTF-8</encoding>
+                            <compilerArgs combine.self="override"/>
+                            <annotationProcessorPaths>
+                                <path>
+                                    <groupId>se.deversity.vibetags</groupId>
+                                    <artifactId>vibetags-processor</artifactId>
+                                    <version>${vibetags.version}</version>
+                                </path>
+                            </annotationProcessorPaths>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

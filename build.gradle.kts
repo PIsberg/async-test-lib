@@ -37,6 +37,11 @@ dependencies {
     errorprone("com.google.errorprone:error_prone_core:2.36.0")
 }
 
+// Error Prone runs on main sources only; test sources are excluded per project policy
+tasks.named<JavaCompile>("compileTestJava") {
+    options.errorprone.isEnabled.set(false)
+}
+
 tasks.test {
     useJUnitPlatform()
     // Match Maven surefire forkCount=1, reuseForks=false: new JVM for each test class
