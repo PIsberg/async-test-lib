@@ -124,7 +124,8 @@ public final class TelemetryEventBuffer {
      */
     public int drain(DrainCallback callback) {
         int count = 0;
-        long next = consumerCursor + 1;
+        long localCursor = consumerCursor;
+        long next = localCursor + 1;
         while (true) {
             int index = (int) (next & mask);
             AccessEvent event = ringBuffer[index];
@@ -134,9 +135,16 @@ public final class TelemetryEventBuffer {
                 break; // slot not yet published by any producer
             }
             callback.onEvent(event.threadId, event.targetField, event.isWrite);
-            consumerCursor = next;
+            localCursor = next;
             next++;
             count++;
+        }
+        // Publish the cursor advance only once, at the end. Publishing it after every
+        // event would release a backpressured producer mid-drain, which could race
+        // ahead and overwrite a slot the drain loop is about to read — yielding a
+        // duplicated event count on slow runners.
+        if (count > 0) {
+            consumerCursor = localCursor;
         }
         return count;
     }
