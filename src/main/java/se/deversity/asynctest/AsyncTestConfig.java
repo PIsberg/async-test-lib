@@ -318,7 +318,7 @@ public final class AsyncTestConfig {
      * so that each matrix entry runs with its own thread count while sharing all
      * other annotation fields.
      *
-     * @since 1.5.0
+     * @since 1.6.0
      */
     public static AsyncTestConfig from(AsyncTest ann, int threadsOverride) {
         // Check for global benchmarking system property

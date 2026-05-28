@@ -4,7 +4,7 @@
 
 This document provides a comprehensive architectural overview of the async-test library using PlantUML diagrams. The library enables deterministic concurrency testing by forcing thread collisions and detecting **100 categories** of concurrency bugs across **13 detector phases**.
 
-> **Note (1.5.0):** Several public-API additions and an SPI introduced in 1.5.0 are described in [Reporting Pipeline](#reporting-pipeline-100), [Detector SPI](#detector-spi-100), and [License Guard](#license-guard-100) sections below. The Detector SPI now covers **every** `DetectorType` value via `LegacyDetectorFactories` (was canary-only at SPI introduction); see the Detector SPI section. Phase 13 (5 new detectors) was added end-to-end and is integrated through the same 13-point fan-out as the legacy 95. The PlantUML diagrams elsewhere in this document still reflect the pre-1.5.0 detector wiring; they remain accurate for the legacy registry. Diagrams will be regenerated as part of the next docs sweep.
+> **Note (1.6.0):** Several public-API additions and an SPI introduced in 1.6.0 are described in [Reporting Pipeline](#reporting-pipeline-100), [Detector SPI](#detector-spi-100), and [License Guard](#license-guard-100) sections below. The Detector SPI now covers **every** `DetectorType` value via `LegacyDetectorFactories` (was canary-only at SPI introduction); see the Detector SPI section. Phase 13 (5 new detectors) was added end-to-end and is integrated through the same 13-point fan-out as the legacy 95. The PlantUML diagrams elsewhere in this document still reflect the pre-1.6.0 detector wiring; they remain accurate for the legacy registry. Diagrams will be regenerated as part of the next docs sweep.
 
 ## Table of Contents
 
@@ -42,25 +42,25 @@ Shows the main containers/components within the async-test library JAR.
 
 **Main Containers:**
 - **Extension Layer**: JUnit 5 integration (`AsyncTestExtension`, `AsyncTestInvocationInterceptor`).
-  Since 1.5.0 the extension fans out one `TestTemplateInvocationContext` per
+  Since 1.6.0 the extension fans out one `TestTemplateInvocationContext` per
   `@AsyncTest(threadCounts={…})` entry for the schedule matrix.
 - **Configuration**: `AsyncTest` annotation, `AsyncTestConfig` (immutable), `Preset` enum
 - **Runner Core**: `ConcurrencyRunner`, `AsyncTestContext`, `VirtualThreadStressConfig`,
-  `LicenseGuard` (extracted in 1.5.0 — see [License Guard](#license-guard-100))
+  `LicenseGuard` (extracted in 1.6.0 — see [License Guard](#license-guard-100))
 - **Detector Modules** (~95+ detectors across 12 phases):
   - Phase 1: Core (3 detectors) — grouped via `Phase1DetectorSet`
   - Phases 2–12: managed by `DetectorRegistry`
-- **Reporting** (NEW in 1.5.0 — `se.deversity.asynctest.report`):
+- **Reporting** (NEW in 1.6.0 — `se.deversity.asynctest.report`):
   `Violation` record, `Formatter` interface, `MarkdownFormatter`, `JsonFormatter`
-- **Detector SPI** (NEW in 1.5.0 — `se.deversity.asynctest.spi`):
+- **Detector SPI** (NEW in 1.6.0 — `se.deversity.asynctest.spi`):
   `Detector`, `DetectorFactory`, SPI-driven `DetectorRegistry`, `adapters/` for canary migrations
-- **Diagnostics helpers**: `SiteCapture` (new in 1.5.0) for source-line attribution
+- **Diagnostics helpers**: `SiteCapture` (new in 1.6.0) for source-line attribution
 - **Benchmark Module**: 5 classes for performance tracking
 - **Lifecycle Annotations**: `BeforeEachInvocation`, `AfterEachInvocation`
 - **Observability**: `AsyncTestListener`, `AsyncTestListenerRegistry` (with scoped
-  `Registration` / `Snapshot` since 1.5.0), `NoopAsyncTestListener`
+  `Registration` / `Snapshot` since 1.6.0), `NoopAsyncTestListener`
 - **Assertion helpers**: `AsyncAssert.awaitUntil`, `AsyncAssert.capture`,
-  `AsyncAssert.awaitAsync` (new in 1.5.0)
+  `AsyncAssert.awaitAsync` (new in 1.6.0)
 
 ![Container Diagram](../docs/diagrams/ContainerDiagram.png)
 
@@ -406,9 +406,9 @@ If no listeners are registered, detector reports are printed to `System.err` (ba
 
 ---
 
-## Reporting Pipeline (1.5.0)
+## Reporting Pipeline (1.6.0)
 
-In 1.5.0 detector findings gained a structured representation alongside the
+In 1.6.0 detector findings gained a structured representation alongside the
 historical free-text `String` reports. Both flow through the runner unchanged;
 new tooling consumes the structured form.
 
@@ -446,7 +446,7 @@ and control characters (`\\u00xx`).
 
 ---
 
-## Detector SPI (1.5.0)
+## Detector SPI (1.6.0)
 
 The legacy detector architecture required synchronized edits across five places
 (annotation field, config field+builder+defaults, both `build()` branches,
@@ -480,7 +480,7 @@ List<Violation>                                  ← structured stream
   instantiates. Two lookup styles: typed `get(Class<T>)` and enum-keyed
   `get(DetectorType)`. `analyzeAll()` aggregates structured violations.
 
-**Full SPI coverage (1.5.0+).** Every `DetectorType` value — all 100 of them —
+**Full SPI coverage (1.6.0+).** Every `DetectorType` value — all 100 of them —
 is registered as a `DetectorFactory` and discoverable via `ServiceLoader`.
 Coverage is automated:
 
@@ -510,7 +510,7 @@ migration of each detector to expose structured violations natively.
 
 ---
 
-## License Guard (1.5.0)
+## License Guard (1.6.0)
 
 Previously `ConcurrencyRunner.execute()` constructed a fresh `LicenseGate` and
 called `gate.check(...)` on **every test invocation**, including in mock-mode CI
@@ -535,7 +535,7 @@ a single `LicenseGuard.check(config)` call.
 
 ---
 
-## Worker latch.countDown() guarantee (1.5.0)
+## Worker latch.countDown() guarantee (1.6.0)
 
 The per-worker code in `runSingleInvocationRound` previously placed the
 `AsyncTestContext.uninstall()` and `phase1.livelock.captureSnapshot()` calls
@@ -544,7 +544,7 @@ cleanup calls threw, `countDown()` was skipped and the runner blocked on
 `latch.await(roundTimeoutMs)` until the deadline elapsed — surfacing a
 misleading "timed out — possible deadlock" instead of the real cause.
 
-In 1.5.0 the structure is:
+In 1.6.0 the structure is:
 
 ```java
 boolean installed = false;
@@ -574,40 +574,40 @@ rule from `CLAUDE.md` (only uninstall what was installed).
 
 ```
 src/main/java/se/deversity/asynctest/
-├── AsyncTest.java                    # Main annotation (incl. threadCounts, preset, replaySeed since 1.5.0)
+├── AsyncTest.java                    # Main annotation (incl. threadCounts, preset, replaySeed since 1.6.0)
 ├── AsyncTestConfig.java              # Immutable configuration snapshot
 ├── AsyncTestContext.java             # ThreadLocal context + replaySeed accessor
 ├── AsyncTestListener.java            # Observability listener interface
-├── AsyncTestListenerRegistry.java    # Listener registry (+ scoped Registration/Snapshot since 1.5.0)
+├── AsyncTestListenerRegistry.java    # Listener registry (+ scoped Registration/Snapshot since 1.6.0)
 ├── NoopAsyncTestListener.java        # No-op listener for opt-out
 ├── DetectorRegistry.java             # Legacy detector lifecycle (powers existing 90+)
 ├── DetectorType.java                 # Detector enumeration
-├── Preset.java                       # NEW in 1.5.0 — curated detector bundles
+├── Preset.java                       # NEW in 1.6.0 — curated detector bundles
 ├── BeforeEachInvocation.java         # Lifecycle annotation
 ├── AfterEachInvocation.java          # Lifecycle annotation
-├── AsyncAssert.java                  # Async assertion helper (+ awaitAsync since 1.5.0)
+├── AsyncAssert.java                  # Async assertion helper (+ awaitAsync since 1.6.0)
 ├── extension/
-│   ├── AsyncTestExtension.java       # JUnit 5 extension (matrix fan-out since 1.5.0)
-│   └── AsyncTestInvocationInterceptor.java  # Interceptor (threadCount override since 1.5.0)
+│   ├── AsyncTestExtension.java       # JUnit 5 extension (matrix fan-out since 1.6.0)
+│   └── AsyncTestInvocationInterceptor.java  # Interceptor (threadCount override since 1.6.0)
 ├── runner/
 │   ├── ConcurrencyRunner.java        # Main execution engine
-│   └── LicenseGuard.java             # NEW in 1.5.0 — process-wide license cache
+│   └── LicenseGuard.java             # NEW in 1.6.0 — process-wide license cache
 ├── diagnostics/                      # 100 detector implementations across 13 phases
 │   ├── Phase1DetectorSet.java        # Phase 1 detector group
-│   ├── SiteCapture.java              # NEW in 1.5.0 — source-line attribution helper
+│   ├── SiteCapture.java              # NEW in 1.6.0 — source-line attribution helper
 │   ├── DeadlockDetector.java
 │   ├── ... (95 more across phases 1–12)
-│   ├── DaemonThreadHygieneDetector.java   # NEW in 1.5.0 — Phase 13
-│   ├── NotifyWithoutMonitorDetector.java  # NEW in 1.5.0 — Phase 13
-│   ├── SharedSecureRandomDetector.java    # NEW in 1.5.0 — Phase 13
-│   ├── WeakHashMapSharedDetector.java     # NEW in 1.5.0 — Phase 13
-│   ├── JdbcConnectionSharedDetector.java  # NEW in 1.5.0 — Phase 13
-├── report/                           # NEW package in 1.5.0 — structured reporting
+│   ├── DaemonThreadHygieneDetector.java   # NEW in 1.6.0 — Phase 13
+│   ├── NotifyWithoutMonitorDetector.java  # NEW in 1.6.0 — Phase 13
+│   ├── SharedSecureRandomDetector.java    # NEW in 1.6.0 — Phase 13
+│   ├── WeakHashMapSharedDetector.java     # NEW in 1.6.0 — Phase 13
+│   ├── JdbcConnectionSharedDetector.java  # NEW in 1.6.0 — Phase 13
+├── report/                           # NEW package in 1.6.0 — structured reporting
 │   ├── Violation.java                # (detector, severity, message, sites, attributes, when)
 │   ├── Formatter.java                # functional interface List<Violation> → String
 │   ├── MarkdownFormatter.java        # PR comments / CI logs
 │   └── JsonFormatter.java            # dashboards / SARIF / IDE plugins
-├── spi/                              # NEW package in 1.5.0 — Detector SPI
+├── spi/                              # NEW package in 1.6.0 — Detector SPI
 │   ├── Detector.java                 # SPI interface: type(), analyze(), lifecycle hooks
 │   ├── DetectorFactory.java          # ServiceLoader-discovered factory
 │   ├── DetectorRegistry.java         # SPI-driven registry (coexists with legacy)
@@ -623,7 +623,7 @@ src/main/java/se/deversity/asynctest/
     └── BenchmarkRegressionException.java
 
 src/main/resources/META-INF/services/
-└── se.deversity.asynctest.spi.DetectorFactory  # NEW in 1.5.0 — ServiceLoader registration
+└── se.deversity.asynctest.spi.DetectorFactory  # NEW in 1.6.0 — ServiceLoader registration
 ```
 
 ---
@@ -701,5 +701,192 @@ The following structural improvements were made to address code quality concerns
 
 ---
 
-**Last Updated**: March 2026
-**Version**: 1.2.0-SNAPSHOT
+## High-Precision Contention Engine (1.6.0+)
+
+Four architectural improvements that address the baseline's contention precision, observer
+effect, manual instrumentation overhead, and late detection of Loom pinning sites.
+
+---
+
+### 1. SpinContentionBarrier — Lock-Free Busy-Spin Barrier
+
+**Package:** `se.deversity.asynctest.runner`
+
+#### Baseline limitation
+`CyclicBarrier` parks threads via `LockSupport.park()`.  When the last thread arrives it
+wakes sleeping threads through the OS scheduler.  Threads are released staggered over
+20–100 µs, dispersing the execution window and reducing the probability of triggering
+true microsecond-level memory-ordering races.
+
+#### Design
+`SpinContentionBarrier` replaces OS-level parking with a VarHandle acquire/release spin:
+
+- A `volatile int currentPhase` field (protected with manual cache-line padding `long` fields
+  on both sides) tracks the barrier generation.
+- An `AtomicInteger arrivalCount` is incremented by each arriving thread.
+- The **last** thread to arrive resets `arrivalCount` to 0 and publishes the new phase via
+  `VarHandle.setRelease`.  All spinners observe the change via `VarHandle.getAcquire` and
+  return simultaneously within a sub-microsecond window.
+- `Thread.onSpinWait()` emits the `x86 PAUSE` / `ARM YIELD` hint to reduce pipeline stalls
+  during the spin, and the interrupt flag is checked every 64 iterations for clean teardown.
+
+#### Integration
+`ConcurrencyRunner.createBarrier(threads)` returns a `ContentionBarrier` functional interface.
+Enable the spin variant at runtime with:
+
+```
+-Dasyc-test.spin-barrier.enabled=true
+```
+
+The default remains `CyclicBarrier` to preserve compatibility with virtual-thread schedulers
+that are not benefit from busy-spinning platform threads.
+
+---
+
+### 2. TelemetryEventBuffer + TelemetryRegistry — Lock-Free Ring Buffer
+
+**Package:** `se.deversity.asynctest.telemetry`
+
+#### Baseline limitation
+Synchronous writes to thread-local lists during detector `recordAccess()` calls change the
+scheduling pattern of the recording thread — the overhead of a lock acquisition or stack
+trace capture slows the thread enough to prevent the race from manifesting
+(**Heisenbug / observer effect**).
+
+#### Design — TelemetryEventBuffer
+An MPSC (multi-producer single-consumer) ring buffer modelled after the
+[LMAX Disruptor](https://lmax-exchange.github.io/disruptor/) pattern:
+
+| Concern | Solution |
+|---------|----------|
+| Slot claim (producer) | `AtomicLong.getAndIncrement()` — no lock, no CAS loop |
+| Publication signal | `VarHandle.setRelease` on the per-slot `sequence` field |
+| Consumer ordering | `VarHandle.getAcquire` check before processing each slot |
+| Allocation on hot path | Zero — all `AccessEvent` slots are pre-allocated at construction |
+| Capacity | Power-of-two (default 16 384); oldest events overwritten on overflow |
+
+**Key API:**
+
+```java
+buffer.publish(threadId, "ClassName#fieldName", isWrite); // producer hot path
+buffer.drain(callback);                                    // single consumer thread
+```
+
+#### Design — TelemetryRegistry
+Global singleton that owns the shared buffer and a daemon drain thread (scheduled at 1 ms
+intervals).  The `recordAccess(threadId, className, methodName)` path is designed to be
+allocation-free and lock-free.
+
+---
+
+### 3. AsyncTestAgent — Java Agent Bytecode Instrumentation
+
+**Package:** `se.deversity.asynctest.agent`  
+**Dependency:** `net.bytebuddy:byte-buddy`
+
+#### Baseline limitation
+Detectors that rely on manual `recordFieldAccess("count", count)` calls require production
+code to carry testing hooks, coupling production and test concerns and polluting JIT profiling.
+
+#### Design
+`AsyncTestAgent` is a [Byte Buddy](https://bytebuddy.net) Java agent that instruments
+getter/setter methods at class-load time:
+
+```
+JVM startup → premain() → AgentBuilder intercepts non-JDK classes
+                        → FieldAccessAdvice.enter() injected before each getter/setter
+                        → TelemetryRegistry.recordAccess() called transparently
+```
+
+The `FieldAccessAdvice.enter` advice method is inlined at the call site by Byte Buddy (not
+called via reflection), so it does not appear in stack traces and incurs minimal overhead
+after JIT compilation.
+
+**Scope guards** prevent recursive instrumentation of `java.*`, `jdk.*`, `sun.*`, and
+`se.deversity.asynctest.*` itself.
+
+#### Attachment
+The library JAR is agent-capable — its MANIFEST contains:
+```
+Premain-Class: se.deversity.asynctest.agent.AsyncTestAgent
+Can-Retransform-Classes: true
+Can-Redefine-Classes: true
+```
+
+Attach with:
+```
+-javaagent:async-test-lib-<version>.jar
+```
+
+---
+
+### 4. StaticPinningScanner — Compile-Time Pinning Pre-Scanner
+
+**Package:** `se.deversity.asynctest.analysis`  
+**Dependency:** `org.ow2.asm:asm`
+
+#### Baseline limitation
+`VirtualThreadPinningDetector` finds pinning at runtime, but only if the pinning code path
+is exercised during the stress-test window.  Rarely-executed synchronized blocks that call
+blocking operations go undetected until production load triggers them.
+
+#### Design
+`StaticPinningScanner` walks compiled `.class` files using the ASM bytecode library and flags
+any method that calls a **blocking JDK method** while inside a `MONITORENTER` block:
+
+```
+MONITORENTER detected → monitorDepth++
+Method call detected  → if monitorDepth > 0 && isBlockingMethod(owner, name) → PinningSite
+MONITOREXIT detected  → monitorDepth--
+```
+
+The `BLOCKING_METHODS` set covers `Thread.sleep`, `Object.wait`, socket I/O,
+`FileInputStream/OutputStream`, `Selector.select`, `Process.waitFor`,
+`Condition.await*`, and `BlockingQueue.take/put`.
+
+**Key API:**
+
+```java
+// Scan a single class from its bytes
+List<PinningSite> sites = StaticPinningScanner.scanClass(classBytes);
+
+// Scan all .class files under a build output directory
+List<PinningSite> sites = StaticPinningScanner.scanDirectory(Path.of("target/classes"));
+
+// Use as a JUnit @BeforeAll guard
+@BeforeAll
+static void noPinningSites() throws IOException {
+    var sites = StaticPinningScanner.scanDirectory(Path.of("target/classes"));
+    assertTrue(sites.isEmpty(), "Pinning sites detected:\n" + sites);
+}
+```
+
+**Known limitation:** nesting depth is tracked per method body only.  Cross-method
+synchronization (e.g. a `synchronized` method calling a blocking helper) is not detected
+without inter-procedural analysis.
+
+---
+
+### Component Map (1.6.0)
+
+```
+runner/
+  SpinContentionBarrier      ← lock-free barrier; enabled via system property
+  ConcurrencyRunner          ← createBarrier() selects spin vs. cyclic at runtime
+
+telemetry/
+  TelemetryEventBuffer       ← MPSC ring buffer, zero allocation on publish()
+  TelemetryRegistry          ← global singleton; daemon drain thread
+
+agent/
+  AsyncTestAgent             ← premain entry; Byte Buddy AgentBuilder
+  FieldAccessAdvice          ← inlined Advice; calls TelemetryRegistry.recordAccess
+
+analysis/
+  StaticPinningScanner       ← ASM ClassVisitor; produces List<PinningSite>
+```
+
+---
+
+**Last Updated**: May 2026
+**Version**: 1.6.0-SNAPSHOT

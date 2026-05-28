@@ -296,7 +296,7 @@ public final class AsyncTestContext {
      *
      * <p>Returns {@code 0L} when called outside an {@code @AsyncTest} round.
      *
-     * @since 1.5.0
+     * @since 1.6.0
      */
     public static long replaySeed() {
         AsyncTestContext ctx = CURRENT.get();
@@ -1080,7 +1080,7 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link DaemonThreadHygieneDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectDaemonThreadHygiene = false}
-     * @since 1.5.0
+     * @since 1.6.0
      */
     public static DaemonThreadHygieneDetector daemonThreadHygieneDetector() {
         return require("detectDaemonThreadHygiene", c -> c.daemonThreadHygieneDetector);
@@ -1089,7 +1089,7 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link NotifyWithoutMonitorDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectNotifyWithoutMonitor = false}
-     * @since 1.5.0
+     * @since 1.6.0
      */
     public static NotifyWithoutMonitorDetector notifyWithoutMonitorDetector() {
         return require("detectNotifyWithoutMonitor", c -> c.notifyWithoutMonitorDetector);
@@ -1098,7 +1098,7 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link SharedSecureRandomDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedSecureRandom = false}
-     * @since 1.5.0
+     * @since 1.6.0
      */
     public static SharedSecureRandomDetector sharedSecureRandomDetector() {
         return require("detectSharedSecureRandom", c -> c.sharedSecureRandomDetector);
@@ -1107,7 +1107,7 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link WeakHashMapSharedDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectWeakHashMapShared = false}
-     * @since 1.5.0
+     * @since 1.6.0
      */
     public static WeakHashMapSharedDetector weakHashMapSharedDetector() {
         return require("detectWeakHashMapShared", c -> c.weakHashMapSharedDetector);
@@ -1116,7 +1116,7 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link JdbcConnectionSharedDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectJdbcConnectionShared = false}
-     * @since 1.5.0
+     * @since 1.6.0
      */
     public static JdbcConnectionSharedDetector jdbcConnectionSharedDetector() {
         return require("detectJdbcConnectionShared", c -> c.jdbcConnectionSharedDetector);

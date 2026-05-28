@@ -23,6 +23,8 @@ repositories {
 
 val junitVersion = "6.0.3"
 val jazzerVersion = "0.22.1"
+val byteBuddyVersion = "1.14.18"
+val asmVersion = "9.7.1"
 
 dependencies {
     api("org.junit.jupiter:junit-jupiter-api:$junitVersion")
@@ -31,6 +33,10 @@ dependencies {
     testImplementation("com.code-intelligence:jazzer-api:$jazzerVersion")
     testImplementation("com.tngtech.archunit:archunit-junit5:1.4.2")
     implementation("se.deversity.common:common-license-lib:0.2.1")
+    // Byte Buddy: Java agent instrumentation (AsyncTestAgent)
+    implementation("net.bytebuddy:byte-buddy:$byteBuddyVersion")
+    // ASM: static bytecode pre-scanner (StaticPinningScanner)
+    implementation("org.ow2.asm:asm:$asmVersion")
     compileOnly("se.deversity.vibetags:vibetags-processor:0.9.7")
     annotationProcessor("se.deversity.vibetags:vibetags-processor:0.9.7")
     compileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
@@ -66,6 +72,18 @@ tasks.jacocoTestReport {
     reports {
         xml.required = true
         html.required = true
+    }
+}
+
+// Configure the JAR manifest so this library is also usable as a Java agent.
+// Attach with: -javaagent:async-test-lib-<version>.jar
+tasks.jar {
+    manifest {
+        attributes(
+            "Premain-Class" to "se.deversity.asynctest.agent.AsyncTestAgent",
+            "Can-Retransform-Classes" to "true",
+            "Can-Redefine-Classes" to "true"
+        )
     }
 }
 

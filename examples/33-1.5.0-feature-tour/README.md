@@ -1,6 +1,6 @@
-# Example 33 — async-test-lib 1.5.0 feature tour
+# Example 33 — async-test-lib 1.6.0 feature tour
 
-Runnable demo of every public API added in 1.5.0. Each test method
+Runnable demo of every public API added in 1.6.0. Each test method
 in [`FeatureTourTest`](src/test/java/se/deversity/asynctest/example/FeatureTourTest.java)
 exercises one new surface:
 
@@ -17,7 +17,7 @@ exercises one new surface:
 
 ## Run
 
-Once 1.5.0 is published to Maven Central:
+Once 1.6.0 is published to Maven Central:
 
 ```bash
 cd examples/33-1.5.0-feature-tour
@@ -27,7 +27,7 @@ mvn test                       # or: ./gradlew test
 Before publication (or to test in-progress source), install the local artifact first:
 
 ```bash
-# 1. From the project root: install async-test-lib 1.5.0 to ~/.m2
+# 1. From the project root: install async-test-lib 1.6.0 to ~/.m2
 mvn install -DskipTests        # or: ./gradlew publishToMavenLocal
 
 # 2. Run the example

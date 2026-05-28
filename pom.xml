@@ -6,7 +6,7 @@
 
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>1.5.0</version>
+    <version>1.6.0</version>
     <packaging>jar</packaging>
 
     <name>Async Test Library</name>
@@ -64,6 +64,8 @@
         <maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
         <archunit.version>1.4.2</archunit.version>
         <error-prone.version>2.36.0</error-prone.version>
+        <bytebuddy.version>1.14.18</bytebuddy.version>
+        <asm.version>9.7.1</asm.version>
     </properties>
 
     <dependencies>
@@ -119,10 +121,36 @@
             <version>${error-prone.version}</version>
             <scope>provided</scope>
         </dependency>
+        <!-- Byte Buddy: Java agent field-access instrumentation (AsyncTestAgent) -->
+        <dependency>
+            <groupId>net.bytebuddy</groupId>
+            <artifactId>byte-buddy</artifactId>
+            <version>${bytebuddy.version}</version>
+        </dependency>
+        <!-- ASM: static bytecode pre-scanner for Loom pinning sites (StaticPinningScanner) -->
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm</artifactId>
+            <version>${asm.version}</version>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
+            <!-- Configure this JAR as a Java agent (attach with -javaagent:async-test-lib.jar) -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Premain-Class>se.deversity.asynctest.agent.AsyncTestAgent</Premain-Class>
+                            <Can-Retransform-Classes>true</Can-Retransform-Classes>
+                            <Can-Redefine-Classes>true</Can-Redefine-Classes>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>

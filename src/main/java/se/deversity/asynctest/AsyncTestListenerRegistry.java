@@ -211,7 +211,7 @@ public final class AsyncTestListenerRegistry {
      * @param listener the listener to register (must not be null)
      * @return an AutoCloseable Registration; closing it unregisters the listener
      * @throws IllegalArgumentException if listener is null
-     * @since 1.5.0
+     * @since 1.6.0
      */
     public static Registration registerScoped(AsyncTestListener listener) {
         register(listener);
@@ -224,7 +224,7 @@ public final class AsyncTestListenerRegistry {
      * listeners registered or unregistered during the block are reverted afterward.
      *
      * @return an immutable snapshot of the current listener set
-     * @since 1.5.0
+     * @since 1.6.0
      */
     public static Snapshot snapshot() {
         return new Snapshot(List.copyOf(LISTENERS));
@@ -235,7 +235,7 @@ public final class AsyncTestListenerRegistry {
      * Listeners added since the snapshot are removed; listeners removed are re-added.
      *
      * @param snapshot a snapshot previously obtained from {@link #snapshot()}
-     * @since 1.5.0
+     * @since 1.6.0
      */
     public static void restoreSnapshot(Snapshot snapshot) {
         if (snapshot == null) throw new IllegalArgumentException("Snapshot must not be null");

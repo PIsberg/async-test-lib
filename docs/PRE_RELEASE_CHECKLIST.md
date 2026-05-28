@@ -237,7 +237,7 @@ For each release, repeat:
 
 | Document | Length | Audience | Key Topics |
 |----------|--------|----------|-----------|
-| README.md | 1,500 words | Everyone | Overview, quick start, intro |
+| README.md | 1.6.0 words | Everyone | Overview, quick start, intro |
 | USAGE.md | 8,800 words | End users | Installation, configuration, examples |
 | RELEASE.md | 6,200 words | Maintainers | How to create releases |
 | DISTRIBUTION.md | 9,400 words | Maintainers | Architecture, channels, troubleshooting |

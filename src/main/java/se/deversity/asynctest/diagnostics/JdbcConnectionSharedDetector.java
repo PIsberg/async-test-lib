@@ -51,7 +51,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * }
  * }</pre>
  *
- * @since 1.5.0
+ * @since 1.6.0
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "ConcurrentHashMap-backed JDBC-resource tracking; per-resource State holds ConcurrentHashMap.newKeySet() for accessing threads.")
 @AITestDriven(

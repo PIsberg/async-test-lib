@@ -11,7 +11,7 @@ After your test suite runs with `JsonReportListener` registered, open the **asyn
 | Requirement | Version |
 |-------------|---------|
 | IntelliJ IDEA | 2024.1 or later (Community or Ultimate) |
-| async-test library | 1.5.0 or later |
+| async-test library | 1.6.0 or later |
 | Java | 17+ (plugin build); 21+ (library at runtime) |
 
 ---
@@ -186,7 +186,7 @@ The plugin build is independent of the main library build — it does not need t
 - Try running with `detectAll = true` (the default) to enable every detector.
 
 **Severity shows as UNKNOWN**
-- The JSON report was written by an older version of `JsonReportListener` (before 1.5.0). Upgrade the library dependency.
+- The JSON report was written by an older version of `JsonReportListener` (before 1.6.0). Upgrade the library dependency.
 
 **Plugin fails to install**
 - Ensure you're on IntelliJ IDEA 2024.1 or later.

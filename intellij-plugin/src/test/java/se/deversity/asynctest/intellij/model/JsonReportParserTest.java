@@ -38,7 +38,7 @@ class JsonReportParserTest {
     void parse_singleFinding_parsesDetectorName() throws IOException {
         Path file = writeJson("""
             {
-              "asyncTestVersion": "1.5.0",
+              "asyncTestVersion": "1.6.0",
               "generatedAt": "2026-05-16T10:00:00Z",
               "totalFindings": 1,
               "findings": [

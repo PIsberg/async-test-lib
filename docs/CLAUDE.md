@@ -35,11 +35,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `@AsyncTest` is a JUnit 5 `@TestTemplate`. The wiring is:
 
-1. **`AsyncTest` annotation** — declares `threads`, `invocations`, `timeoutMs`, ~90 detector flags, and (since 1.5.0) `threadCounts`, `preset`, and `replaySeed`. `detectAll = true` (the default) enables every detector at once; individual flags set to `false` opt out. `preset = Preset.X` overrides the detector set with a curated bundle (`ESSENTIALS` / `CI_FAST` / `STRICT` / `NONE` / `ALL`).
+1. **`AsyncTest` annotation** — declares `threads`, `invocations`, `timeoutMs`, ~90 detector flags, and (since 1.6.0) `threadCounts`, `preset`, and `replaySeed`. `detectAll = true` (the default) enables every detector at once; individual flags set to `false` opt out. `preset = Preset.X` overrides the detector set with a curated bundle (`ESSENTIALS` / `CI_FAST` / `STRICT` / `NONE` / `ALL`).
 2. **`AsyncTestExtension`** — `TestTemplateInvocationContextProvider` that produces one invocation per `@AsyncTest` method, or one per `threadCounts[]` entry when the matrix is non-empty. Each invocation gets its own `AsyncTestInvocationInterceptor` with the entry's thread count.
 3. **`AsyncTestInvocationInterceptor`** — converts the annotation into an `AsyncTestConfig` (immutable snapshot) via `AsyncTestConfig.from(ann, threadCount)` and calls `ConcurrencyRunner.execute(...)`.
-4. **`ConcurrencyRunner`** — the core orchestrator. Uses a `CyclicBarrier` to force all threads to collide on the test body simultaneously, repeating for `invocations` rounds. Calls `LicenseGuard.check(config)` (cached per JVM since 1.5.0), sets up Phase 1 and Phase 2 detectors, draws / pins a `replaySeed` per round, collects failures from all threads, and calls `DetectorRegistry.analyzeAll()` after the run. Per-worker `latch.countDown()` is guaranteed under every cleanup-failure path.
-5. **`DetectorRegistry`** — instantiates only the enabled detector objects (null otherwise) and runs `analyzeAll()` post-test to collect issue reports. **Note:** there is now a second, SPI-driven `DetectorRegistry` in `se.deversity.asynctest.spi` (see "Detector SPI" below); both coexist during the 1.5.0 cutover.
+4. **`ConcurrencyRunner`** — the core orchestrator. Uses a `CyclicBarrier` to force all threads to collide on the test body simultaneously, repeating for `invocations` rounds. Calls `LicenseGuard.check(config)` (cached per JVM since 1.6.0), sets up Phase 1 and Phase 2 detectors, draws / pins a `replaySeed` per round, collects failures from all threads, and calls `DetectorRegistry.analyzeAll()` after the run. Per-worker `latch.countDown()` is guaranteed under every cleanup-failure path.
+5. **`DetectorRegistry`** — instantiates only the enabled detector objects (null otherwise) and runs `analyzeAll()` post-test to collect issue reports. **Note:** there is now a second, SPI-driven `DetectorRegistry` in `se.deversity.asynctest.spi` (see "Detector SPI" below); both coexist during the 1.6.0 cutover.
 6. **`AsyncTestContext`** — ThreadLocal holder giving test code access to live detector instances via static accessors (e.g., `AsyncTestContext.falseSharingDetector()`), plus `replaySeed()` for RNG-driven test bodies.
 
 ### Detector Organization
@@ -58,7 +58,7 @@ Detectors live in `src/main/java/se/deversity/asynctest/diagnostics/` and are gr
 - **Phase 10** — API traps & subtle bugs: `ThreadLocalContaminationDetector`, `AtomicNonAtomicUpdateDetector`, `SynchronizedCollectionIterationDetector`, `SharedFormatterDetector`, `ConcurrentMapComputeRecursionDetector`, `SynchronizedOnLiteralDetector`, `PublicLockExposureDetector`, `ForkJoinTaskBlockingDetector`, `OptimisticReadValidationDetector`, `CompletableFutureCommonPoolBlockingDetector`
 - **Phase 11** — Thread-safety of additional types: `SharedMatcherDetector`, `SharedDecimalFormatDetector`, `WeakReferenceRaceDetector`, `StatefulLambdaDetector`, `SharedMessageDigestDetector`
 - **Phase 12** — Operational & hygiene: `InterruptSwallowingDetector`, `MdcContextLeakDetector`, `SystemPropertyMutationDetector`, `FutureIgnoredDetector`, `ExplicitGcDetector`, `DeprecatedThreadApiDetector`, `SharedXmlParserDetector`, `BoxedPrimitiveLockDetector`, `SharedTimeZoneDetector`, `UncaughtExceptionHandlerDetector`
-- **Phase 13** (1.5.0+) — Additional categories: `DaemonThreadHygieneDetector` (non-daemon thread leaks blocking JVM exit), `NotifyWithoutMonitorDetector` (illegal `notify*()` while not holding monitor), `SharedSecureRandomDetector` (`SecureRandom` provider-dependent thread safety), `WeakHashMapSharedDetector` (`WeakHashMap`/`IdentityHashMap` GC + probing hazards), `JdbcConnectionSharedDetector` (JDBC `Connection`/`Statement`/`ResultSet` not thread-safe per spec)
+- **Phase 13** (1.6.0+) — Additional categories: `DaemonThreadHygieneDetector` (non-daemon thread leaks blocking JVM exit), `NotifyWithoutMonitorDetector` (illegal `notify*()` while not holding monitor), `SharedSecureRandomDetector` (`SecureRandom` provider-dependent thread safety), `WeakHashMapSharedDetector` (`WeakHashMap`/`IdentityHashMap` GC + probing hazards), `JdbcConnectionSharedDetector` (JDBC `Connection`/`Statement`/`ResultSet` not thread-safe per spec)
 
 **Total: 100 detectors across 13 phases.** Each follows the same pattern: public recording methods called during the test run (using `ConcurrentHashMap` / `CopyOnWriteArrayList` for thread safety), then `analyze()` post-test returning a typed `*Report` inner class with `hasIssues(): boolean`. Disabled detectors are `null` in `DetectorRegistry` — zero overhead.
 
@@ -68,21 +68,21 @@ Detectors live in `src/main/java/se/deversity/asynctest/diagnostics/` and are gr
 
 - **`AsyncTestConfig`** — immutable record of all annotation parameters passed through the execution chain
 - **`DetectorType`** enum (`@AILocked`) — used in `excludes = {DetectorType.BUSY_WAITING}` to opt out of specific detectors
-- **`Preset`** enum (1.5.0+) — `ALL` / `STRICT` / `ESSENTIALS` / `CI_FAST` / `NONE`; resolved in `AsyncTestConfig.from` by deriving an effective `excludes` set
+- **`Preset`** enum (1.6.0+) — `ALL` / `STRICT` / `ESSENTIALS` / `CI_FAST` / `NONE`; resolved in `AsyncTestConfig.from` by deriving an effective `excludes` set
 - **`@BeforeEachInvocation` / `@AfterEachInvocation`** — hooks that fire per invocation round (not once per `@AsyncTest`)
-- **`AsyncTestListener` / `AsyncTestListenerRegistry`** — observability API; listeners must be thread-safe. Use `registerScoped(...)` for try-with-resources scoping (1.5.0+) to avoid JVM-wide leakage
-- **`AsyncAssert`** — `awaitUntil`, `capture`, plus `awaitAsync(stage, timeout)` (1.5.0+) for awaiting `CompletionStage` inside test bodies
+- **`AsyncTestListener` / `AsyncTestListenerRegistry`** — observability API; listeners must be thread-safe. Use `registerScoped(...)` for try-with-resources scoping (1.6.0+) to avoid JVM-wide leakage
+- **`AsyncAssert`** — `awaitUntil`, `capture`, plus `awaitAsync(stage, timeout)` (1.6.0+) for awaiting `CompletionStage` inside test bodies
 - **`BenchmarkRecorder`** — optional throughput regression tracking; baselines stored in `target/benchmark-data/`
 - **`Phase1DetectorSet`** — bundles the three Phase 1 detectors for cleaner hand-off to `ConcurrencyRunner`
 
-### Structured reporting (1.5.0+)
+### Structured reporting (1.6.0+)
 
 `se.deversity.asynctest.report`:
 - **`Violation`** record — `(detector, severity, message, sites, attributes, when)`. Detectors that have migrated populate `analyze().structuredViolations` alongside the legacy string `violations` list.
 - **`Formatter`** — functional interface `List<Violation> → String`.
 - **`MarkdownFormatter`** / **`JsonFormatter`** — built-in renderers. JSON is hand-rolled (no external dependency) with proper escape handling.
 
-### Detector SPI (1.5.0+)
+### Detector SPI (1.6.0+)
 
 `se.deversity.asynctest.spi` provides an alternative to the fan-out wiring rule documented in `CLAUDE.md`:
 - **`Detector`** — `type()`, `analyze() → List<Violation>`, optional `onTestStart` / `onTestEnd`.
@@ -98,7 +98,7 @@ The legacy `se.deversity.asynctest.DetectorRegistry` coexists with the SPI one; 
 
 ### License Gate
 
-`LicenseGuard` (extracted from `ConcurrencyRunner` in 1.5.0, lives in `se.deversity.asynctest.runner`) integrates `se.deversity.common:common-license-lib`. `LicenseGuard.check(config)` is a `ConcurrentHashMap.get()` on the resolved license-config fingerprint — the real gate fires at most once per fingerprint per JVM, not per test. In CI (`GITHUB_ACTIONS` or `CI` env var set) without a real API key, it automatically activates mock mode — no network calls are made. Locally, mock mode is enabled via `-Dlicense.mock.mode=true`.
+`LicenseGuard` (extracted from `ConcurrencyRunner` in 1.6.0, lives in `se.deversity.asynctest.runner`) integrates `se.deversity.common:common-license-lib`. `LicenseGuard.check(config)` is a `ConcurrentHashMap.get()` on the resolved license-config fingerprint — the real gate fires at most once per fingerprint per JVM, not per test. In CI (`GITHUB_ACTIONS` or `CI` env var set) without a real API key, it automatically activates mock mode — no network calls are made. Locally, mock mode is enabled via `-Dlicense.mock.mode=true`.
 
 ### Publishing
 

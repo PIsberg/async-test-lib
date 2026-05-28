@@ -52,7 +52,7 @@ public @interface AsyncTest {
      *
      * <p>Default empty array means "use {@link #threads()}" (legacy behavior).
      *
-     * @since 1.5.0
+     * @since 1.6.0
      */
     int[] threadCounts() default {};
 
@@ -134,7 +134,7 @@ public @interface AsyncTest {
      * <p>{@link #excludes()} still applies on top of the preset, letting you trim
      * one or two detectors from a curated bundle.
      *
-     * @since 1.5.0
+     * @since 1.6.0
      */
     Preset preset() default Preset.ALL;
 
@@ -163,7 +163,7 @@ public @interface AsyncTest {
      * }
      * }</pre>
      *
-     * @since 1.5.0
+     * @since 1.6.0
      */
     long replaySeed() default 0L;
 
@@ -681,7 +681,7 @@ public @interface AsyncTest {
      * Enable ThreadLocal cross-task contamination detection.
      * Detects ThreadLocal values set in one task that are read by the next task on the same
      * pooled thread without an intervening {@code remove()} or {@code set()}.
-     * @since 1.5.0
+     * @since 1.6.0
      */
     boolean detectThreadLocalContamination() default true;
 
@@ -689,7 +689,7 @@ public @interface AsyncTest {
      * Enable non-atomic Atomic* update detection.
      * Detects {@code get()} followed by {@code set()} on {@link java.util.concurrent.atomic.AtomicInteger},
      * {@link java.util.concurrent.atomic.AtomicLong}, etc. without {@code compareAndSet()}.
-     * @since 1.5.0
+     * @since 1.6.0
      */
     boolean detectAtomicNonAtomicUpdates() default true;
 
@@ -698,7 +698,7 @@ public @interface AsyncTest {
      * Detects iteration over {@link java.util.Collections#synchronizedList} /
      * {@code synchronizedMap} / {@code synchronizedSet} wrappers without holding the
      * wrapper's intrinsic lock.
-     * @since 1.5.0
+     * @since 1.6.0
      */
     boolean detectSynchronizedCollectionIteration() default true;
 
@@ -707,7 +707,7 @@ public @interface AsyncTest {
      * Detects {@link java.util.Formatter}, {@link java.io.PrintWriter}, and
      * {@link java.io.PrintStream} instances accessed from multiple threads without
      * external synchronization.
-     * @since 1.5.0
+     * @since 1.6.0
      */
     boolean detectSharedFormatter() default true;
 
@@ -716,7 +716,7 @@ public @interface AsyncTest {
      * Detects recursive {@link java.util.concurrent.ConcurrentHashMap#computeIfAbsent} /
      * {@code compute} / {@code merge} calls on the same map and key from the same thread,
      * causing an infinite loop (Java 8) or {@link IllegalStateException} (Java 9+).
-     * @since 1.5.0
+     * @since 1.6.0
      */
     boolean detectConcurrentMapComputeRecursion() default true;
 
@@ -724,7 +724,7 @@ public @interface AsyncTest {
      * Enable synchronized-on-literal detection.
      * Detects {@code synchronized} blocks on interned {@link String} literals or JVM-cached
      * {@link Integer} / {@link Long} values (range [-128, 127]) — monitors shared JVM-wide.
-     * @since 1.5.0
+     * @since 1.6.0
      */
     boolean detectSynchronizedOnLiteral() default true;
 
@@ -732,7 +732,7 @@ public @interface AsyncTest {
      * Enable public lock exposure detection.
      * Detects classes that use {@code synchronized(this)} while {@code this} is publicly
      * accessible, exposing the internal lock to external callers.
-     * @since 1.5.0
+     * @since 1.6.0
      */
     boolean detectPublicLockExposure() default true;
 
@@ -741,7 +741,7 @@ public @interface AsyncTest {
      * Detects blocking calls ({@link Thread#sleep}, {@link Object#wait}, {@code Future.get()},
      * blocking I/O) inside a {@link java.util.concurrent.ForkJoinTask} body, which starves
      * {@link java.util.concurrent.ForkJoinPool} carrier threads.
-     * @since 1.5.0
+     * @since 1.6.0
      */
     boolean detectForkJoinTaskBlocking() default true;
 
@@ -749,7 +749,7 @@ public @interface AsyncTest {
      * Enable StampedLock optimistic read validation detection.
      * Detects data accessed after {@link java.util.concurrent.locks.StampedLock#tryOptimisticRead()}
      * without calling {@code validate(stamp)}, or data used after a failed validation.
-     * @since 1.5.0
+     * @since 1.6.0
      */
     boolean detectOptimisticReadValidation() default true;
 
@@ -757,7 +757,7 @@ public @interface AsyncTest {
      * Enable CompletableFuture common-pool blocking detection.
      * Detects blocking operations inside {@link java.util.concurrent.CompletableFuture} stages
      * submitted to the common {@link java.util.concurrent.ForkJoinPool} without a dedicated executor.
-     * @since 1.5.0
+     * @since 1.6.0
      */
     boolean detectCFCommonPoolBlocking() default true;
 
@@ -903,7 +903,7 @@ public @interface AsyncTest {
      * registered with the detector that are still alive at analyze time — they will block
      * JVM exit and hang the test process. See
      * {@link se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector}.
-     * @since 1.5.0
+     * @since 1.6.0
      */
     boolean detectDaemonThreadHygiene() default true;
 
@@ -912,7 +912,7 @@ public @interface AsyncTest {
      * declared by user code without the calling thread holding the monitor — would throw
      * {@link IllegalMonitorStateException} at runtime and leave wait()-ers blocked. See
      * {@link se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector}.
-     * @since 1.5.0
+     * @since 1.6.0
      */
     boolean detectNotifyWithoutMonitor() default true;
 
@@ -922,7 +922,7 @@ public @interface AsyncTest {
      * {@code SecureRandom} thread safety is provider-dependent and concurrent access can
      * produce biased or duplicate cryptographic output. See
      * {@link se.deversity.asynctest.diagnostics.SharedSecureRandomDetector}.
-     * @since 1.5.0
+     * @since 1.6.0
      */
     boolean detectSharedSecureRandom() default true;
 
@@ -931,7 +931,7 @@ public @interface AsyncTest {
      * detection. Both have additional concurrency hazards beyond regular {@code HashMap}
      * (GC-driven removal and linear-probing collisions respectively). See
      * {@link se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector}.
-     * @since 1.5.0
+     * @since 1.6.0
      */
     boolean detectWeakHashMapShared() default true;
 
@@ -941,7 +941,7 @@ public @interface AsyncTest {
      * {@link java.sql.ResultSet} accessed from multiple threads. The JDBC spec does NOT
      * require any of these to be thread-safe; most drivers (PostgreSQL, MySQL, Oracle) aren't.
      * See {@link se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector}.
-     * @since 1.5.0
+     * @since 1.6.0
      */
     boolean detectJdbcConnectionShared() default true;
 

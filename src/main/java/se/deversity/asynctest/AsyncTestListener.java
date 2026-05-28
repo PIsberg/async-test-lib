@@ -74,7 +74,7 @@ public interface AsyncTestListener {
      * @param detectorName the name of the detector (e.g., "FalseSharingDetector")
      * @param severity      the severity level parsed from the detector's report
      * @param report        the detector's full report content
-     * @since 1.5.0
+     * @since 1.6.0
      */
     default void onStructuredReport(String detectorName, IssueSeverity severity, String report) { /* no-op default */ }
 }

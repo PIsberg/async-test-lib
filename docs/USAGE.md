@@ -228,7 +228,7 @@ void testSharedStringBuilder() {
 // Fix: use ThreadLocal<StringBuilder> or build strings per-thread and join at the end
 ```
 
-### Phase 8: Lifecycle & Structural Correctness (v1.5.0)
+### Phase 8: Lifecycle & Structural Correctness (v1.6.0)
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -248,7 +248,7 @@ AsyncTestContext.lockDowngradeMonitor()                // LockDowngradeDetector
 AsyncTestContext.inheritableThreadLocalMisuseMonitor() // InheritableThreadLocalMisuseDetector
 ```
 
-### Phase 10: API Traps & Subtle Concurrency Bugs (v1.5.0)
+### Phase 10: API Traps & Subtle Concurrency Bugs (v1.6.0)
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|

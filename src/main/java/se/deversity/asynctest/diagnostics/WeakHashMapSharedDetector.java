@@ -38,7 +38,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code HashSet}; this detector covers the two specialised maps that pattern
  * leaves out and which are frequently used as caches.
  *
- * @since 1.5.0
+ * @since 1.6.0
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "ConcurrentHashMap-backed instance tracking; per-instance State holds ConcurrentHashMap.newKeySet() for thread ids/names.")
 @AITestDriven(

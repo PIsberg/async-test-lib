@@ -38,8 +38,8 @@
 - [Comparison with Other Tools](#comparison-with-other-tools)
 - [Migration Guide](#migration-guide)
 - [Observability: Event Listeners (v1.2.0+)](#observability-event-listeners-v120)
-- [CI/CD Integration & Reporting (v1.5.0+)](#cicd-integration--reporting-v150)
-- [IntelliJ IDEA Plugin (v1.5.0+)](#intellij-idea-plugin-v150)
+- [CI/CD Integration & Reporting (v1.6.0+)](#cicd-integration--reporting-v150)
+- [IntelliJ IDEA Plugin (v1.6.0+)](#intellij-idea-plugin-v150)
 - [New Detectors (v1.2.0+)](#new-detectors-v120)
 - [Phase 6: Virtual Thread Concurrency (Java 21+)](#phase-6-virtual-thread-concurrency-java-21)
 - [Phase 7: High-Level Concurrency Patterns (v0.7.0)](#phase-7-high-level-concurrency-patterns-v070)
@@ -448,14 +448,14 @@ void stressWithVirtualThreads() {
 | `detectCacheConcurrency` | boolean | true | Detect HashMap/LinkedHashMap used as cache without synchronization |
 | `detectCompletableFutureChainIssues` | boolean | true | Detect missing exception handlers, unjoined futures, improper CF chain usage |
 
-### Phase 8: Lifecycle & Structural Correctness (v1.5.0)
+### Phase 8: Lifecycle & Structural Correctness (v1.6.0)
 | `detectExecutorShutdown` | boolean | true | Detect ExecutorService tasks submitted but never shut down, or shut down without `awaitTermination()` |
 | `detectMutableMapKeys` | boolean | true | Detect `HashMap`/`HashSet` keys mutated after insertion, silently breaking future lookups |
 | `detectNestedMonitorLockout` | boolean | true | Detect blocking ops (`wait`/`Future.get`/`lock`) attempted while holding a different monitor |
 | `detectLockDowngrade` | boolean | true | Detect illegal read-to-write upgrade on `ReentrantReadWriteLock` (deadlocks immediately) |
 | `detectInheritableThreadLocalMisuse` | boolean | true | Detect `InheritableThreadLocal` accessed from pooled threads (value frozen at thread-creation time) |
 
-### Phase 10: API Traps & Subtle Concurrency Bugs (v1.5.0)
+### Phase 10: API Traps & Subtle Concurrency Bugs (v1.6.0)
 | `detectThreadLocalContamination` | boolean | true | Detect `ThreadLocal` set in task A read by task B on the same reused pooled thread |
 | `detectAtomicNonAtomicUpdates` | boolean | true | Detect `get()` + `set()` on `Atomic*` without `compareAndSet()`, losing concurrent updates |
 | `detectSynchronizedCollectionIteration` | boolean | true | Detect `Collections.synchronized*` iterated without holding the wrapper lock |
@@ -1744,7 +1744,7 @@ public class ThreadSafeListener implements AsyncTestListener {
 | **Alerting** | Send Slack/Teams notifications on failures |
 | **Test Reporting** | Use `JsonReportListener` or `JUnitXmlReportListener` (see below) |
 
-### Structured Report: `onStructuredReport` (v1.5.0+)
+### Structured Report: `onStructuredReport` (v1.6.0+)
 
 In addition to `onDetectorReport(String, String)`, listeners receive a richer callback with the parsed severity:
 
@@ -1761,7 +1761,7 @@ Both `onDetectorReport` and `onStructuredReport` are fired for every finding. Ex
 
 ---
 
-## CI/CD Integration & Reporting (v1.5.0+)
+## CI/CD Integration & Reporting (v1.6.0+)
 
 async-test ships three ready-made listeners in `se.deversity.asynctest.report` for CI pipeline integration. Full details in [CI_INTEGRATION.md](CI_INTEGRATION.md).
 
@@ -1813,7 +1813,7 @@ static void setup() {
 Output format:
 ```json
 {
-  "asyncTestVersion": "1.5.0",
+  "asyncTestVersion": "1.6.0",
   "generatedAt": "2026-05-16T10:30:00Z",
   "totalFindings": 1,
   "findings": [
@@ -1840,7 +1840,7 @@ static void setup() {
 
 ---
 
-## IntelliJ IDEA Plugin (v1.5.0+)
+## IntelliJ IDEA Plugin (v1.6.0+)
 
 The async-test IntelliJ plugin reads `async-test-report.json` and surfaces every finding inside the IDE — no terminal, no log-grepping.
 

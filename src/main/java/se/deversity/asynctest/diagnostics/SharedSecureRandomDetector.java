@@ -44,7 +44,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * d.recordAccess(secureRandom, "session-id-source", Thread.currentThread());
  * }</pre>
  *
- * @since 1.5.0
+ * @since 1.6.0
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Per-instance state in ConcurrentHashMap with double-check (get-then-computeIfAbsent) hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().")
 @AITestDriven(
