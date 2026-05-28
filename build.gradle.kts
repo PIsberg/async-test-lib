@@ -1,3 +1,4 @@
+import net.ltgt.gradle.errorprone.errorprone
 import org.gradle.api.tasks.javadoc.Javadoc
 import org.gradle.external.javadoc.CoreJavadocOptions
 
@@ -5,6 +6,7 @@ plugins {
     `java-library`
     jacoco
     id("com.vanniktech.maven.publish") version "0.30.0"
+    id("net.ltgt.errorprone") version "4.1.0"
 }
 
 // group and version are read from gradle.properties
@@ -32,6 +34,13 @@ dependencies {
     compileOnly("se.deversity.vibetags:vibetags-processor:0.9.7")
     annotationProcessor("se.deversity.vibetags:vibetags-processor:0.9.7")
     compileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
+    compileOnly("com.google.errorprone:error_prone_annotations:2.36.0")
+    errorprone("com.google.errorprone:error_prone_core:2.36.0")
+}
+
+// Error Prone runs on main sources only; test sources are excluded per project policy
+tasks.named<JavaCompile>("compileTestJava") {
+    options.errorprone.isEnabled.set(false)
 }
 
 tasks.test {

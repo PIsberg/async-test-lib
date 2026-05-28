@@ -63,6 +63,7 @@
         <spotbugs.version>4.9.8</spotbugs.version>
         <maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
         <archunit.version>1.4.2</archunit.version>
+        <error-prone.version>2.36.0</error-prone.version>
     </properties>
 
     <dependencies>
@@ -112,6 +113,12 @@
             <version>${archunit.version}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.google.errorprone</groupId>
+            <artifactId>error_prone_annotations</artifactId>
+            <version>${error-prone.version}</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -122,7 +129,43 @@
                 <version>${maven-compiler-plugin.version}</version>
                 <configuration>
                     <encoding>UTF-8</encoding>
+                    <compilerArgs>
+                        <arg>-XDcompilePolicy=simple</arg>
+                        <arg>--should-stop=ifError=FLOW</arg>
+                        <arg>-Xplugin:ErrorProne</arg>
+                    </compilerArgs>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>com.google.errorprone</groupId>
+                            <artifactId>error_prone_core</artifactId>
+                            <version>${error-prone.version}</version>
+                        </path>
+                        <path>
+                            <groupId>se.deversity.vibetags</groupId>
+                            <artifactId>vibetags-processor</artifactId>
+                            <version>${vibetags.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
                 </configuration>
+                <executions>
+                    <!-- Error Prone runs on main sources only; test sources are excluded per project policy -->
+                    <execution>
+                        <id>default-testCompile</id>
+                        <phase>test-compile</phase>
+                        <goals><goal>testCompile</goal></goals>
+                        <configuration>
+                            <encoding>UTF-8</encoding>
+                            <compilerArgs combine.self="override"/>
+                            <annotationProcessorPaths>
+                                <path>
+                                    <groupId>se.deversity.vibetags</groupId>
+                                    <artifactId>vibetags-processor</artifactId>
+                                    <version>${vibetags.version}</version>
+                                </path>
+                            </annotationProcessorPaths>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
