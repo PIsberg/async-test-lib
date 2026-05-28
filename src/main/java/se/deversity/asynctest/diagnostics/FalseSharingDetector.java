@@ -139,13 +139,12 @@ public class FalseSharingDetector {
     
     private long estimateMemoryOffset(Class<?> clazz, String fieldName) {
         try {
-            // Verify field exists (throws NoSuchFieldException if not)
-            clazz.getDeclaredField(fieldName);
+            Field target = clazz.getDeclaredField(fieldName);
             // Approximate offset based on field declaration order
             Field[] fields = clazz.getDeclaredFields();
             long offset = 16; // Object header
             for (Field f : fields) {
-                if (f.getName().equals(fieldName)) {
+                if (f.equals(target)) {
                     return offset;
                 }
                 offset += getFieldSize(f.getType());

@@ -5,6 +5,7 @@ plugins {
     `java-library`
     jacoco
     id("com.vanniktech.maven.publish") version "0.30.0"
+    id("net.ltgt.errorprone") version "4.1.0"
 }
 
 // group and version are read from gradle.properties
@@ -32,6 +33,8 @@ dependencies {
     compileOnly("se.deversity.vibetags:vibetags-processor:0.9.7")
     annotationProcessor("se.deversity.vibetags:vibetags-processor:0.9.7")
     compileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
+    compileOnly("com.google.errorprone:error_prone_annotations:2.36.0")
+    errorprone("com.google.errorprone:error_prone_core:2.36.0")
 }
 
 tasks.test {

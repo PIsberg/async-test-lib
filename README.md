@@ -10,6 +10,9 @@
 [![Java](https://img.shields.io/badge/Java-21%2B-orange)](https://openjdk.org/projects/jdk/21/)
 [![Lines of Code](https://www.aschey.tech/tokei/github/PIsberg/async-test-lib?languages=Java&category=code)](https://github.com/PIsberg/async-test-lib)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/PIsberg/async-test-lib/badge)](https://securityscorecards.dev/viewer/?uri=github.com/PIsberg/async-test-lib)
+[![PMD](https://img.shields.io/badge/PMD-passing-brightgreen)](pmd-ruleset.xml)
+[![SpotBugs](https://img.shields.io/badge/SpotBugs-passing-brightgreen)](spotbugs-exclude.xml)
+[![Error Prone](https://img.shields.io/badge/Error_Prone-passing-brightgreen)](https://errorprone.info)
 
 ![async-test demo](docs/diagrams/demo.gif)
 
