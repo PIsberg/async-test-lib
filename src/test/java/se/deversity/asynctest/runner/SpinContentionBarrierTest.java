@@ -46,6 +46,7 @@ class SpinContentionBarrierTest {
         SpinContentionBarrier barrier = new SpinContentionBarrier(2);
         ExecutorService executor = Executors.newSingleThreadExecutor();
         CountDownLatch arrived = new CountDownLatch(1);
+        CountDownLatch interruptedLatch = new CountDownLatch(1);
         AtomicBoolean interrupted = new AtomicBoolean(false);
 
         Future<?> future = executor.submit(() -> {
@@ -54,6 +55,7 @@ class SpinContentionBarrierTest {
                 barrier.await();
             } catch (InterruptedException e) {
                 interrupted.set(true);
+                interruptedLatch.countDown();
             }
         });
 
@@ -68,6 +70,7 @@ class SpinContentionBarrierTest {
             // expected
         }
 
+        assertTrue(interruptedLatch.await(1, TimeUnit.SECONDS), "Worker thread did not catch InterruptedException in time");
         assertTrue(interrupted.get(), "Thread was not interrupted or did not throw InterruptedException");
         executor.shutdownNow();
     }
