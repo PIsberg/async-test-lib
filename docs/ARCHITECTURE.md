@@ -701,5 +701,192 @@ The following structural improvements were made to address code quality concerns
 
 ---
 
-**Last Updated**: March 2026
-**Version**: 1.2.0-SNAPSHOT
+## High-Precision Contention Engine (1.6.0+)
+
+Four architectural improvements that address the baseline's contention precision, observer
+effect, manual instrumentation overhead, and late detection of Loom pinning sites.
+
+---
+
+### 1. SpinContentionBarrier — Lock-Free Busy-Spin Barrier
+
+**Package:** `se.deversity.asynctest.runner`
+
+#### Baseline limitation
+`CyclicBarrier` parks threads via `LockSupport.park()`.  When the last thread arrives it
+wakes sleeping threads through the OS scheduler.  Threads are released staggered over
+20–100 µs, dispersing the execution window and reducing the probability of triggering
+true microsecond-level memory-ordering races.
+
+#### Design
+`SpinContentionBarrier` replaces OS-level parking with a VarHandle acquire/release spin:
+
+- A `volatile int currentPhase` field (protected with manual cache-line padding `long` fields
+  on both sides) tracks the barrier generation.
+- An `AtomicInteger arrivalCount` is incremented by each arriving thread.
+- The **last** thread to arrive resets `arrivalCount` to 0 and publishes the new phase via
+  `VarHandle.setRelease`.  All spinners observe the change via `VarHandle.getAcquire` and
+  return simultaneously within a sub-microsecond window.
+- `Thread.onSpinWait()` emits the `x86 PAUSE` / `ARM YIELD` hint to reduce pipeline stalls
+  during the spin, and the interrupt flag is checked every 64 iterations for clean teardown.
+
+#### Integration
+`ConcurrencyRunner.createBarrier(threads)` returns a `ContentionBarrier` functional interface.
+Enable the spin variant at runtime with:
+
+```
+-Dasyc-test.spin-barrier.enabled=true
+```
+
+The default remains `CyclicBarrier` to preserve compatibility with virtual-thread schedulers
+that are not benefit from busy-spinning platform threads.
+
+---
+
+### 2. TelemetryEventBuffer + TelemetryRegistry — Lock-Free Ring Buffer
+
+**Package:** `se.deversity.asynctest.telemetry`
+
+#### Baseline limitation
+Synchronous writes to thread-local lists during detector `recordAccess()` calls change the
+scheduling pattern of the recording thread — the overhead of a lock acquisition or stack
+trace capture slows the thread enough to prevent the race from manifesting
+(**Heisenbug / observer effect**).
+
+#### Design — TelemetryEventBuffer
+An MPSC (multi-producer single-consumer) ring buffer modelled after the
+[LMAX Disruptor](https://lmax-exchange.github.io/disruptor/) pattern:
+
+| Concern | Solution |
+|---------|----------|
+| Slot claim (producer) | `AtomicLong.getAndIncrement()` — no lock, no CAS loop |
+| Publication signal | `VarHandle.setRelease` on the per-slot `sequence` field |
+| Consumer ordering | `VarHandle.getAcquire` check before processing each slot |
+| Allocation on hot path | Zero — all `AccessEvent` slots are pre-allocated at construction |
+| Capacity | Power-of-two (default 16 384); oldest events overwritten on overflow |
+
+**Key API:**
+
+```java
+buffer.publish(threadId, "ClassName#fieldName", isWrite); // producer hot path
+buffer.drain(callback);                                    // single consumer thread
+```
+
+#### Design — TelemetryRegistry
+Global singleton that owns the shared buffer and a daemon drain thread (scheduled at 1 ms
+intervals).  The `recordAccess(threadId, className, methodName)` path is designed to be
+allocation-free and lock-free.
+
+---
+
+### 3. AsyncTestAgent — Java Agent Bytecode Instrumentation
+
+**Package:** `se.deversity.asynctest.agent`  
+**Dependency:** `net.bytebuddy:byte-buddy`
+
+#### Baseline limitation
+Detectors that rely on manual `recordFieldAccess("count", count)` calls require production
+code to carry testing hooks, coupling production and test concerns and polluting JIT profiling.
+
+#### Design
+`AsyncTestAgent` is a [Byte Buddy](https://bytebuddy.net) Java agent that instruments
+getter/setter methods at class-load time:
+
+```
+JVM startup → premain() → AgentBuilder intercepts non-JDK classes
+                        → FieldAccessAdvice.enter() injected before each getter/setter
+                        → TelemetryRegistry.recordAccess() called transparently
+```
+
+The `FieldAccessAdvice.enter` advice method is inlined at the call site by Byte Buddy (not
+called via reflection), so it does not appear in stack traces and incurs minimal overhead
+after JIT compilation.
+
+**Scope guards** prevent recursive instrumentation of `java.*`, `jdk.*`, `sun.*`, and
+`se.deversity.asynctest.*` itself.
+
+#### Attachment
+The library JAR is agent-capable — its MANIFEST contains:
+```
+Premain-Class: se.deversity.asynctest.agent.AsyncTestAgent
+Can-Retransform-Classes: true
+Can-Redefine-Classes: true
+```
+
+Attach with:
+```
+-javaagent:async-test-lib-<version>.jar
+```
+
+---
+
+### 4. StaticPinningScanner — Compile-Time Pinning Pre-Scanner
+
+**Package:** `se.deversity.asynctest.analysis`  
+**Dependency:** `org.ow2.asm:asm`
+
+#### Baseline limitation
+`VirtualThreadPinningDetector` finds pinning at runtime, but only if the pinning code path
+is exercised during the stress-test window.  Rarely-executed synchronized blocks that call
+blocking operations go undetected until production load triggers them.
+
+#### Design
+`StaticPinningScanner` walks compiled `.class` files using the ASM bytecode library and flags
+any method that calls a **blocking JDK method** while inside a `MONITORENTER` block:
+
+```
+MONITORENTER detected → monitorDepth++
+Method call detected  → if monitorDepth > 0 && isBlockingMethod(owner, name) → PinningSite
+MONITOREXIT detected  → monitorDepth--
+```
+
+The `BLOCKING_METHODS` set covers `Thread.sleep`, `Object.wait`, socket I/O,
+`FileInputStream/OutputStream`, `Selector.select`, `Process.waitFor`,
+`Condition.await*`, and `BlockingQueue.take/put`.
+
+**Key API:**
+
+```java
+// Scan a single class from its bytes
+List<PinningSite> sites = StaticPinningScanner.scanClass(classBytes);
+
+// Scan all .class files under a build output directory
+List<PinningSite> sites = StaticPinningScanner.scanDirectory(Path.of("target/classes"));
+
+// Use as a JUnit @BeforeAll guard
+@BeforeAll
+static void noPinningSites() throws IOException {
+    var sites = StaticPinningScanner.scanDirectory(Path.of("target/classes"));
+    assertTrue(sites.isEmpty(), "Pinning sites detected:\n" + sites);
+}
+```
+
+**Known limitation:** nesting depth is tracked per method body only.  Cross-method
+synchronization (e.g. a `synchronized` method calling a blocking helper) is not detected
+without inter-procedural analysis.
+
+---
+
+### Component Map (1.6.0)
+
+```
+runner/
+  SpinContentionBarrier      ← lock-free barrier; enabled via system property
+  ConcurrencyRunner          ← createBarrier() selects spin vs. cyclic at runtime
+
+telemetry/
+  TelemetryEventBuffer       ← MPSC ring buffer, zero allocation on publish()
+  TelemetryRegistry          ← global singleton; daemon drain thread
+
+agent/
+  AsyncTestAgent             ← premain entry; Byte Buddy AgentBuilder
+  FieldAccessAdvice          ← inlined Advice; calls TelemetryRegistry.recordAccess
+
+analysis/
+  StaticPinningScanner       ← ASM ClassVisitor; produces List<PinningSite>
+```
+
+---
+
+**Last Updated**: May 2026
+**Version**: 1.6.0-SNAPSHOT

@@ -185,6 +185,33 @@ public class ConcurrencyRunner {
         }
     }
 
+    /**
+     * Abstraction over CyclicBarrier and SpinContentionBarrier.
+     * Lets runSingleInvocationRound stay barrier-implementation-agnostic.
+     */
+    @FunctionalInterface
+    private interface ContentionBarrier {
+        void arrive() throws Exception;
+    }
+
+    /**
+     * Creates a {@link ContentionBarrier} for {@code threads} participants.
+     *
+     * <p>When the system property {@code async-test.spin-barrier.enabled} is {@code true},
+     * a lock-free {@link SpinContentionBarrier} is used, releasing all threads within a
+     * sub-microsecond window to maximise collision density. Otherwise the default
+     * {@link CyclicBarrier} is used for compatibility with virtual-thread schedulers that
+     * may not benefit from busy-spinning.
+     */
+    private static ContentionBarrier createBarrier(int threads) {
+        if (Boolean.getBoolean("async-test.spin-barrier.enabled")) {
+            SpinContentionBarrier spin = new SpinContentionBarrier(threads);
+            return spin::await;
+        }
+        CyclicBarrier cyclic = new CyclicBarrier(threads);
+        return () -> cyclic.await();
+    }
+
     @SuppressFBWarnings("RV_RETURN_VALUE_IGNORED_BAD_PRACTICE")
     private static void runSingleInvocationRound(ReflectiveInvocationContext<Method> context,
                                                  int threads,
@@ -194,7 +221,7 @@ public class ConcurrencyRunner {
                                                  long roundTimeoutMs,
                                                  Method method) throws Throwable {
 
-        CyclicBarrier barrier = new CyclicBarrier(threads);
+        ContentionBarrier barrier = createBarrier(threads);
         List<Throwable> failures = new CopyOnWriteArrayList<>();
         CountDownLatch latch = new CountDownLatch(threads);
 
@@ -212,7 +239,7 @@ public class ConcurrencyRunner {
                     AsyncTestContext.install(phase2Context);
                     installed = true;
                     try {
-                        barrier.await();
+                        barrier.arrive();
                         Object result = method.invoke(target, args);
                         // Async test body support: if the method returns a CompletionStage,
                         // wait for it to complete (or fail) before counting this worker done.
