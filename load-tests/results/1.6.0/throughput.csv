@@ -1,0 +1,7 @@
+# async-test-lib load-test throughput sweep
+# version=1.6.0 date=2026-05-28T16:46:41.233412500Z jdk=21.0.9
+threads,invocations,detectAll,medianMs,throughputRoundsPerSec
+2,10,false,108,92
+4,10,false,109,91
+2,10,true,108,92
+4,10,true,125,80

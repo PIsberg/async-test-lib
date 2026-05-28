@@ -26,6 +26,14 @@ The 1.6.0 release introduces the new high-precision contention engine, addressin
 - **`TelemetryEventBuffer` overflow protection** — Uses lock-free spin-wait catch-up checks to prevent slot data corruption under high publisher pressure.
 - **`TelemetryRegistry` cleanup** — Cleans up JVM shutdown hooks on stop and supports dynamic callback registrations.
 
+### Performance & Throughput Improvements
+Replacing intrinsic locking and OS-level thread scheduling with the lock-free MPSC event buffer and busy-spin barrier yielded significant latency and throughput improvements under full detector load:
+* **Overhead reduction (4 threads)**: Under `threads=4, invocations=10, detectAll=true`, the median round execution latency dropped from **139 ms** (v1.4.0) to **125 ms** (v1.6.0), representing a **~11.2% throughput increase** (from 71 to 80 rounds/sec).
+* **Overhead reduction (2 threads)**: Under `threads=2, invocations=10, detectAll=true`, the median round execution latency dropped from **123 ms** (v1.4.0) to **108 ms** (v1.6.0), representing a **~13.5% throughput increase** (from 81 to 92 rounds/sec).
+
+![Framework & detector overhead by release](../load-tests/results/_plots/detector-overhead-by-release.png)
+![Detector memory overhead vs invocations](../load-tests/results/_plots/memory-overhead-vs-invocations.png)
+
 
 ## [1.5.0] - 2026-05-20
 
