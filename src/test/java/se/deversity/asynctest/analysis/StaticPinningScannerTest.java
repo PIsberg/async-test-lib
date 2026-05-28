@@ -102,10 +102,16 @@ class StaticPinningScannerTest {
 
     @Test
     void testScanDirectory() throws Exception {
-        // Scan the directory where our classes are compiled.
-        Path compiledDir = Path.of("build/classes/java/test/se/deversity/asynctest/analysis");
+        // Derive the test-classes directory from the running class's code source,
+        // so the test works under both Gradle (build/classes/java/test/...) and
+        // Maven (target/test-classes/...). Hardcoding either path makes the test
+        // unportable across build tools and CI runners.
+        Path codeSourceRoot = Path.of(
+                StaticPinningScannerTest.class.getProtectionDomain()
+                        .getCodeSource().getLocation().toURI());
+        Path compiledDir = codeSourceRoot.resolve("se/deversity/asynctest/analysis");
         List<StaticPinningScanner.PinningSite> sites = StaticPinningScanner.scanDirectory(compiledDir);
-        
+
         // Assert that we found the sites in our synchronized fixtures.
         boolean foundBlock = false;
         boolean foundMethod = false;
