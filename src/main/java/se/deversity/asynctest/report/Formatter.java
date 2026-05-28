@@ -10,7 +10,7 @@ import java.util.List;
  * <p>Implementations live alongside the framework or are provided by users.
  * Build-in formatters: {@link MarkdownFormatter}, {@link JsonFormatter}.
  *
- * @since 1.5.0
+ * @since 1.6.0
  */
 @AIPublicAPI
 @FunctionalInterface

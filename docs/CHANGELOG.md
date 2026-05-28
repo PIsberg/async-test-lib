@@ -7,7 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-(empty — see 1.5.0 below for the most recent shipped work)
+(empty — see 1.6.0 below for the most recent shipped work)
+
+
+## [1.6.0] - 2026-05-28
+
+The 1.6.0 release introduces the new high-precision contention engine, addressing thread collision precision, compiler-transparent telemetry logging, compile-time pinning scanning, and comprehensive correctness improvements.
+
+### Added — High-Precision Contention Engine
+- **`SpinContentionBarrier`** — Lock-free busy-spin barrier using VarHandle acquire/release semantics. Releases all threads within a sub-microsecond window instead of the 20–100 µs stagger of CyclicBarrier.
+- **`TelemetryEventBuffer` / `TelemetryRegistry`** — MPSC lock-free ring buffer modeled after the LMAX Disruptor pattern. publish() is allocation-free and signals readiness via VarHandle setRelease. A background daemon thread drains it every 1 ms, eliminating Heisenbugs.
+- **`AsyncTestAgent`** — Byte Buddy Java agent that injects FieldAccessAdvice into every getter/setter at class-load time, routing to TelemetryRegistry.recordAccess.
+- **`StaticPinningScanner`** — ASM ClassVisitor that statically detects MONITORENTER + blocking-JDK-call patterns in compiled .class files.
+
+### Fixed & Hardened
+- **`StaticPinningScanner` implicit monitor detection** — Correctly parses method access flags to detect Loom pinning inside standard `synchronized` methods.
+- **`SpinContentionBarrier` overflow immunity** — Uses subtraction sequence checks to prevent barrier lockups or bypasses on Integer.MAX_VALUE boundaries.
+- **`TelemetryEventBuffer` overflow protection** — Uses lock-free spin-wait catch-up checks to prevent slot data corruption under high publisher pressure.
+- **`TelemetryRegistry` cleanup** — Cleans up JVM shutdown hooks on stop and supports dynamic callback registrations.
 
 
 ## [1.5.0] - 2026-05-20
@@ -746,6 +763,8 @@ First public release on Maven Central.
 - `02-visibility-volatile-flag` — demonstrates memory visibility bugs caused by a missing
   `volatile` keyword
 
+[1.6.0]: https://github.com/PIsberg/async-test-lib/releases/tag/v1.6.0
+[1.5.0]: https://github.com/PIsberg/async-test-lib/releases/tag/v1.5.0
 [1.4.0]: https://github.com/PIsberg/async-test-lib/releases/tag/v1.4.0
 [1.3.0]: https://github.com/PIsberg/async-test-lib/releases/tag/v1.3.0
 [0.8.0]: https://github.com/PIsberg/async-test-lib/releases/tag/v0.8.0

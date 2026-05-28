@@ -28,7 +28,7 @@ public class AsyncTestInvocationInterceptor implements InvocationInterceptor {
      * in {@code @AsyncTest(threadCounts=...)} where each matrix entry runs with
      * its own count.
      *
-     * @since 1.5.0
+     * @since 1.6.0
      */
     public AsyncTestInvocationInterceptor(AsyncTest asyncTest, int threadCount) {
         this.asyncTest = asyncTest;

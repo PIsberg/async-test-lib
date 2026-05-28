@@ -45,7 +45,7 @@
         <module>30-false-sharing</module>
         <module>31-lock-order-violation</module>
         <module>32-rwlock-starvation</module>
-        <module>33-1.5.0-feature-tour</module>
+        <module>33-1.6.0-feature-tour</module>
         <module>34-blocking-queue</module>
         <module>35-calendar-misuse</module>
         <module>36-cache-concurrency</module>

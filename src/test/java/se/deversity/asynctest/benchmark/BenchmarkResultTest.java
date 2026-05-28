@@ -84,7 +84,7 @@ class BenchmarkResultTest {
     @Test
     void formatTime_milliseconds() {
         assertEquals("1.00 ms", BenchmarkResult.formatTime(1_000_000));
-        assertEquals("1.50 ms", BenchmarkResult.formatTime(1_500_000));
+        assertEquals("1.50 ms", BenchmarkResult.formatTime(1.6.0_000));
     }
 
     @Test
@@ -171,7 +171,7 @@ class BenchmarkResultTest {
 
     @Test
     void toString_containsKeyInformation() {
-        BenchmarkResult r = sample(1_500_000L, 1_000_000L, 2_000_000L, List.of(1_500_000L));
+        BenchmarkResult r = sample(1.6.0_000L, 1_000_000L, 2_000_000L, List.of(1.6.0_000L));
         String s = r.toString();
         assertTrue(s.contains("com.example.MyTest"), "should contain class name");
         assertTrue(s.contains("myMethod"), "should contain method name");

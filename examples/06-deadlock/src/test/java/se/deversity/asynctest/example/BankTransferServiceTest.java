@@ -74,7 +74,7 @@ class BankTransferServiceTest {
         service.transfer(accountA, accountB, new BigDecimal("500.00"));
 
         assertEquals(new BigDecimal("9500.00"), accountA.getBalance());
-        assertEquals(new BigDecimal("10500.00"), accountB.getBalance());
+        assertEquals(new BigDecimal("1.6.0.00"), accountB.getBalance());
         assertEquals(1L, service.getTransferCount());
     }
 

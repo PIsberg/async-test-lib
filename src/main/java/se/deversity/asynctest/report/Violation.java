@@ -25,7 +25,7 @@ import java.util.Map;
  * @param attributes detector-specific data ({@code threads}, {@code type}, etc.).
  * @param when       UTC timestamp at which the report was produced.
  *
- * @since 1.5.0
+ * @since 1.6.0
  */
 @AIPublicAPI
 @AIImmutable(note = "Java record — fields are final by language. Collection fields are deep-copied to immutable views in the canonical constructor.")

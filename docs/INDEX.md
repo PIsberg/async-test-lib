@@ -18,7 +18,7 @@
 | [README.md](README.md) | 2,000 words | Project overview | You're new to the library |
 | [USAGE.md](USAGE.md) | 8,800 words | Complete user guide | You want to install and use it |
 | [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | 3,000 words | One-page cheatsheet | You need quick answers |
-| [CI_INTEGRATION.md](CI_INTEGRATION.md) | 1,500 words | CI/CD pipeline setup | You want findings in GitHub Actions / Jenkins / GitLab |
+| [CI_INTEGRATION.md](CI_INTEGRATION.md) | 1.6.0 words | CI/CD pipeline setup | You want findings in GitHub Actions / Jenkins / GitLab |
 | [intellij-plugin/README.md](../intellij-plugin/README.md) | 1,200 words | IntelliJ IDEA plugin | You want findings surfaced inside the IDE |
 
 ### For Library Maintainers (Releasing & Distributing)
@@ -121,13 +121,13 @@ TOTAL ....................... ~69,000 words
 - **Can I see examples?** → [USAGE.md](USAGE.md)
 - **What Java version?** → [USAGE.md](USAGE.md) or [QUICK_REFERENCE.md](QUICK_REFERENCE.md)
 
-### CI/CD Integration & Reporting (v1.5.0+)
+### CI/CD Integration & Reporting (v1.6.0+)
 - **CI pipeline setup (GitHub Actions / Jenkins / GitLab)** → [CI_INTEGRATION.md](CI_INTEGRATION.md)
 - **JUnit XML report for CI dashboards** → [CI_INTEGRATION.md](CI_INTEGRATION.md) — `JUnitXmlReportListener`
 - **Fail the build on any detector finding** → [CI_INTEGRATION.md](CI_INTEGRATION.md) — `StrictModeListener`
 - **Structured JSON output for dashboards/webhooks** → [CI_INTEGRATION.md](CI_INTEGRATION.md) — `JsonReportListener`
 
-### IntelliJ IDEA Plugin (v1.5.0+)
+### IntelliJ IDEA Plugin (v1.6.0+)
 - **Installing the plugin** → [intellij-plugin/README.md](../intellij-plugin/README.md)
 - **Wiring JsonReportListener** → [intellij-plugin/README.md](../intellij-plugin/README.md)
 - **Plugin settings** → [intellij-plugin/README.md](../intellij-plugin/README.md)

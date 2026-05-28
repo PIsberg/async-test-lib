@@ -28,7 +28,7 @@ import java.util.ServiceLoader;
  * detectors, the legacy registry preserves wiring for the existing 90+ until
  * each is migrated.
  *
- * @since 1.5.0
+ * @since 1.6.0
  */
 @AIPublicAPI
 @AIImmutable(note = "Effectively immutable after build() — the EnumMap is populated only in the private constructor and never mutated thereafter; safe to publish to multiple threads.")

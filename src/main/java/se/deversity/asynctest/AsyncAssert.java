@@ -116,7 +116,7 @@ public class AsyncAssert {
      * @param timeout maximum time to wait
      * @param <T>     the chain's result type
      * @return the resolved value, or throws on failure / timeout
-     * @since 1.5.0
+     * @since 1.6.0
      */
     @SuppressWarnings("PMD.PreserveStackTrace") // cause is already the unwrapped original; re-throwing it preserves the trace
     public static <T> T awaitAsync(CompletionStage<T> stage, Duration timeout) {

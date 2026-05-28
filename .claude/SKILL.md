@@ -15,14 +15,14 @@
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>1.5.0</version>
+    <version>1.6.0</version>
     <scope>test</scope>
 </dependency>
 ```
 
 **Gradle (Kotlin DSL)**
 ```kotlin
-testImplementation("se.deversity.async-test-lib:async-test-lib:1.5.0")
+testImplementation("se.deversity.async-test-lib:async-test-lib:1.6.0")
 ```
 
 ---
@@ -54,15 +54,15 @@ class CounterTest {
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `threads` | int | 10 | Concurrent threads per invocation round |
-| `threadCounts` | int[] | `{}` | **Schedule matrix.** When non-empty, one JUnit invocation per entry runs with that thread count; ignored when empty. Use to sweep `{2,4,8,16,32}` cheaply (1.5.0+) |
+| `threadCounts` | int[] | `{}` | **Schedule matrix.** When non-empty, one JUnit invocation per entry runs with that thread count; ignored when empty. Use to sweep `{2,4,8,16,32}` cheaply (1.6.0+) |
 | `invocations` | int | 100 | Number of invocation rounds |
 | `useVirtualThreads` | boolean | true | Use Project Loom virtual threads (Java 21+) |
 | `timeoutMs` | long | 5000 | Milliseconds before timeout (triggers deadlock analysis) |
 | `virtualThreadStressMode` | String | `"OFF"` | `OFF` / `LOW` / `MEDIUM` / `HIGH` / `EXTREME` — pins carrier threads to increase contention |
-| `preset` | `Preset` | `Preset.ALL` | **Curated detector bundle.** `ALL` / `STRICT` / `ESSENTIALS` / `CI_FAST` / `NONE`. Overrides `detectAll` for any value other than `ALL` (1.5.0+) |
+| `preset` | `Preset` | `Preset.ALL` | **Curated detector bundle.** `ALL` / `STRICT` / `ESSENTIALS` / `CI_FAST` / `NONE`. Overrides `detectAll` for any value other than `ALL` (1.6.0+) |
 | `detectAll` | boolean | **true** | Enable every detector at once. Honored when `preset = ALL`; ignored otherwise. Set `false` to only run individually-flagged detectors |
 | `excludes` | DetectorType[] | `{}` | Detectors to skip — layers on top of any preset |
-| `replaySeed` | long | 0 | **Per-round RNG seed.** `0` = fresh seed per round, printed on failure for paste-and-reproduce. Set explicitly to reproduce a failing schedule (1.5.0+) |
+| `replaySeed` | long | 0 | **Per-round RNG seed.** `0` = fresh seed per round, printed on failure for paste-and-reproduce. Set explicitly to reproduce a failing schedule (1.6.0+) |
 | `enableBenchmarking` | boolean | false | Record timing data for regression detection |
 | `benchmarkRegressionThreshold` | double | 0.2 | Regression threshold as a decimal (0.2 = 20%) |
 | `failOnBenchmarkRegression` | boolean | false | Fail the test if a regression is detected |
@@ -71,7 +71,7 @@ Every individual detector flag (the full `detect*` / `validate*` / `monitor*` li
 
 `virtualThreadStressMode` thread budgets: `LOW` ≈ 100, `MEDIUM` ≈ 1,000, `HIGH` ≈ 10,000, `EXTREME` ≈ 100,000+ (may need heap adjustment).
 
-### Preset bundles (1.5.0+)
+### Preset bundles (1.6.0+)
 
 | Preset | Detectors | Use case |
 |--------|-----------|----------|
@@ -93,7 +93,7 @@ void testMyService() {
 }
 ```
 
-### Curated preset for everyday CI (1.5.0+)
+### Curated preset for everyday CI (1.6.0+)
 ```java
 import se.deversity.asynctest.Preset;
 
@@ -103,7 +103,7 @@ void testMyService() {
 }
 ```
 
-### Sweep thread counts to find the contention sweet spot (1.5.0+)
+### Sweep thread counts to find the contention sweet spot (1.6.0+)
 ```java
 @AsyncTest(threadCounts = {2, 4, 8, 16, 32, 64})  // 6 separate JUnit invocations
 void testRacyCache() {
@@ -112,7 +112,7 @@ void testRacyCache() {
 ```
 Each entry produces a JUnit invocation with display name `[AsyncTest] N threads x M invocations`. Pair with a preset to scope detectors per run.
 
-### Async test body — await a `CompletionStage` (1.5.0+)
+### Async test body — await a `CompletionStage` (1.6.0+)
 ```java
 import se.deversity.asynctest.AsyncAssert;
 import java.time.Duration;
@@ -126,7 +126,7 @@ void testAsyncPipeline() {
 ```
 `awaitAsync` blocks until the chain completes and unwraps `ExecutionException` so user assertions/exceptions surface as their original types. This is the supported way to exercise async APIs from `@AsyncTest`, since JUnit Jupiter rejects non-void `@TestTemplate` return types at discovery.
 
-### Reproduce a flaky failure with `replaySeed` (1.5.0+)
+### Reproduce a flaky failure with `replaySeed` (1.6.0+)
 ```java
 import se.deversity.asynctest.AsyncTestContext;
 import java.util.Random;
@@ -141,7 +141,7 @@ void randomisedWorkload() {
 ```
 The runner draws a fresh `long` seed per round (visible to all N workers in that round via `AsyncTestContext.replaySeed()`) and prints it on failure. Setting `replaySeed = N` pins every round to `N`. Does NOT make thread scheduling deterministic — gives RNG-driven test inputs a stable starting point.
 
-### Scoped listener (no JVM-wide leak) (1.5.0+)
+### Scoped listener (no JVM-wide leak) (1.6.0+)
 ```java
 try (var ignored = AsyncTestListenerRegistry.registerScoped(myListener)) {
     runMyAsyncTest();   // myListener fires only inside this block
@@ -437,7 +437,7 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 | `detectSharedTimeZone` | `SHARED_TIMEZONE` | Mutating shared `TimeZone` via `setRawOffset`/`setID` from multiple threads |
 | `detectUncaughtExceptionHandler` | `UNCAUGHT_EXCEPTION_HANDLER` | Threads started without a custom `UncaughtExceptionHandler` that subsequently throw |
 
-### Phase 13 — Additional concurrency-bug categories (1.5.0+)
+### Phase 13 — Additional concurrency-bug categories (1.6.0+)
 | Annotation field | DetectorType | What it catches |
 |-----------------|-------------|-----------------|
 | `detectDaemonThreadHygiene` | `DAEMON_THREAD_HYGIENE` | Non-daemon `Thread` instances still alive at analyze time — they block JVM exit and can hang the test process. Distinct from `THREAD_LEAKS` which counts live threads regardless of daemon flag. Detector class: `DaemonThreadHygieneDetector`. |
@@ -483,7 +483,7 @@ Listeners may be called from multiple threads concurrently — implementations m
 
 ---
 
-## Structured violations & formatters (1.5.0+)
+## Structured violations & formatters (1.6.0+)
 
 Detector findings are also exposed as structured `Violation` records in `se.deversity.asynctest.report`. Two built-in formatters consume them:
 
@@ -501,7 +501,7 @@ Each `Violation` carries `detector`, `severity` (`IssueSeverity`), `message`, `s
 
 ---
 
-## Detector SPI (1.5.0+)
+## Detector SPI (1.6.0+)
 
 For custom detectors and tooling: `se.deversity.asynctest.spi.{Detector, DetectorFactory, DetectorRegistry}`. Register a `DetectorFactory` via `META-INF/services/se.deversity.asynctest.spi.DetectorFactory` and it's discovered by `ServiceLoader`:
 

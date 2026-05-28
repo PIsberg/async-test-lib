@@ -8,7 +8,7 @@ import java.util.List;
  * Renders violations as Markdown — useful for PR comments, README diagnostics,
  * and human-facing reports in CI logs.
  *
- * @since 1.5.0
+ * @since 1.6.0
  */
 @AIPublicAPI
 public final class MarkdownFormatter implements Formatter {

@@ -6,12 +6,12 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>se.deversity.async-test-lib</groupId>
-    <artifactId>async-example-1.5.0-feature-tour</artifactId>
-    <version>1.5.0</version>
+    <artifactId>async-example-1.6.0-feature-tour</artifactId>
+    <version>1.6.0</version>
     <packaging>jar</packaging>
 
-    <name>Async Test Lib - 1.5.0 Feature Tour</name>
-    <description>Runnable tour of 1.5.0 public APIs: Preset, threadCounts, replaySeed, awaitAsync, scoped listeners, MarkdownFormatter, and Phase 13 detectors.</description>
+    <name>Async Test Lib - 1.6.0 Feature Tour</name>
+    <description>Runnable tour of 1.6.0 public APIs: Preset, threadCounts, replaySeed, awaitAsync, scoped listeners, MarkdownFormatter, and Phase 13 detectors.</description>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
@@ -19,7 +19,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>5.10.2</junit.version>
         <!-- MUST match the parent project's <version>. -->
-        <async-test-lib.version>1.5.0</async-test-lib.version>
+        <async-test-lib.version>1.6.0</async-test-lib.version>
     </properties>
 
     <dependencies>
