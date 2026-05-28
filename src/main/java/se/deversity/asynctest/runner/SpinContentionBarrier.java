@@ -50,13 +50,21 @@ public final class SpinContentionBarrier {
     // Each group occupies its own 64-byte cache line.
     @SuppressWarnings("unused")
     private final AtomicInteger arrivalCount = new AtomicInteger(0);
-    @SuppressWarnings("unused")
-    private long pad1, pad2, pad3, pad4, pad5, pad6;
+    @SuppressWarnings("unused") private long pad1;
+    @SuppressWarnings("unused") private long pad2;
+    @SuppressWarnings("unused") private long pad3;
+    @SuppressWarnings("unused") private long pad4;
+    @SuppressWarnings("unused") private long pad5;
+    @SuppressWarnings("unused") private long pad6;
 
     @SuppressWarnings({"FieldMayBeFinal", "unused"})
     private volatile int currentPhase = 0;
-    @SuppressWarnings("unused")
-    private long pad7, pad8, pad9, pad10, pad11, pad12;
+    @SuppressWarnings("unused") private long pad7;
+    @SuppressWarnings("unused") private long pad8;
+    @SuppressWarnings("unused") private long pad9;
+    @SuppressWarnings("unused") private long pad10;
+    @SuppressWarnings("unused") private long pad11;
+    @SuppressWarnings("unused") private long pad12;
 
     public SpinContentionBarrier(int totalThreads) {
         if (totalThreads < 1) {
@@ -95,7 +103,8 @@ public final class SpinContentionBarrier {
                 Thread.onSpinWait();
                 // Periodically check for interruption so virtual threads can yield
                 // and so tests can be torn down cleanly on timeout.
-                if ((++spins & 63) == 0 && Thread.interrupted()) {
+                spins++;
+                if ((spins & 63) == 0 && Thread.interrupted()) {
                     throw new InterruptedException(
                             "SpinContentionBarrier interrupted while waiting for phase " + targetPhase);
                 }

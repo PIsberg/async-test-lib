@@ -209,7 +209,7 @@ public class ConcurrencyRunner {
             return spin::await;
         }
         CyclicBarrier cyclic = new CyclicBarrier(threads);
-        return () -> cyclic.await();
+        return cyclic::await;
     }
 
     @SuppressFBWarnings("RV_RETURN_VALUE_IGNORED_BAD_PRACTICE")

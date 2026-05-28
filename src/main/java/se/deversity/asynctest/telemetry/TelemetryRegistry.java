@@ -79,7 +79,13 @@ public final class TelemetryRegistry {
 
     /**
      * Flushes remaining events and shuts down the drain thread.  Idempotent.
+     *
+     * <p>The reads and writes of {@code shutdownHook} / {@code drainExecutor} are not
+     * protected by classic singleton synchronization because the {@code RUNNING} CAS
+     * above serializes start/stop transitions — only one thread can pass the gate per
+     * transition, so the seemingly racy null-check + null-out pattern is safe here.
      */
+    @SuppressWarnings("PMD.NonThreadSafeSingleton")
     public static void stop() {
         if (!RUNNING.compareAndSet(true, false)) {
             return;
@@ -87,8 +93,9 @@ public final class TelemetryRegistry {
         if (shutdownHook != null) {
             try {
                 Runtime.getRuntime().removeShutdownHook(shutdownHook);
-            } catch (IllegalStateException e) {
-                // JVM shutdown in progress.
+            } catch (IllegalStateException ignored) {
+                // JVM shutdown in progress — hook cannot be removed, which is fine.
+                shutdownHook = null;
             }
             shutdownHook = null;
         }
