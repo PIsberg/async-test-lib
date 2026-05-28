@@ -20,7 +20,7 @@ exercises one new surface:
 Once 1.6.0 is published to Maven Central:
 
 ```bash
-cd examples/33-1.6.0-feature-tour
+cd examples/33-1.5.0-feature-tour
 mvn test                       # or: ./gradlew test
 ```
 
@@ -31,7 +31,7 @@ Before publication (or to test in-progress source), install the local artifact f
 mvn install -DskipTests        # or: ./gradlew publishToMavenLocal
 
 # 2. Run the example
-cd examples/33-1.6.0-feature-tour
+cd examples/33-1.5.0-feature-tour
 mvn test                       # or: ./gradlew test
 ```
 

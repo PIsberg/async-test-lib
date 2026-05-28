@@ -6,7 +6,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>se.deversity.async-test-lib</groupId>
-    <artifactId>async-example-1.6.0-feature-tour</artifactId>
+    <artifactId>async-example-1.5.0-feature-tour</artifactId>
     <version>1.6.0</version>
     <packaging>jar</packaging>
 
