@@ -50,7 +50,11 @@ jobs:
           cache: maven
 
       - name: Generate SBOM with CycloneDX
-        run: mvn -B org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom
+        # skipNotDeployed=false is required because cyclonedx-maven-plugin 2.9+
+        # otherwise skips the goal whenever maven.deploy.skip is effectively true
+        # (which is the case for this single-module library), leaving no
+        # target/bom.xml for the release-upload step.
+        run: mvn -B org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom -Dcyclonedx.skipNotDeployed=false
 
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
