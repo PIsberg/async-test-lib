@@ -171,6 +171,13 @@ public final class AsyncTestConfig {
     public final boolean detectWeakHashMapShared;
     public final boolean detectJdbcConnectionShared;
 
+    // ---- Phase 14 (1.7.0+) ----
+    public final boolean detectSharedStatefulCrypto;
+    public final boolean detectConcurrentMapCheckThenAct;
+    public final boolean detectSharedDeflater;
+    public final boolean detectThisEscape;
+    public final boolean detectThreadLocalRandomMisuse;
+
     // ---- Benchmarking ----
     @AIFeatureFlag(flag = "async-test.benchmarking.enabled", defaultValue = false)
     public final boolean enableBenchmarking;
@@ -296,6 +303,12 @@ public final class AsyncTestConfig {
         detectSharedSecureRandom    = b.detectSharedSecureRandom;
         detectWeakHashMapShared     = b.detectWeakHashMapShared;
         detectJdbcConnectionShared  = b.detectJdbcConnectionShared;
+        // Phase 14
+        detectSharedStatefulCrypto      = b.detectSharedStatefulCrypto;
+        detectConcurrentMapCheckThenAct = b.detectConcurrentMapCheckThenAct;
+        detectSharedDeflater            = b.detectSharedDeflater;
+        detectThisEscape                = b.detectThisEscape;
+        detectThreadLocalRandomMisuse   = b.detectThreadLocalRandomMisuse;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -452,6 +465,11 @@ public final class AsyncTestConfig {
             .detectSharedSecureRandom(ann.detectSharedSecureRandom())
             .detectWeakHashMapShared(ann.detectWeakHashMapShared())
             .detectJdbcConnectionShared(ann.detectJdbcConnectionShared())
+            .detectSharedStatefulCrypto(ann.detectSharedStatefulCrypto())
+            .detectConcurrentMapCheckThenAct(ann.detectConcurrentMapCheckThenAct())
+            .detectSharedDeflater(ann.detectSharedDeflater())
+            .detectThisEscape(ann.detectThisEscape())
+            .detectThreadLocalRandomMisuse(ann.detectThreadLocalRandomMisuse())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -579,6 +597,12 @@ public final class AsyncTestConfig {
         private boolean detectSharedSecureRandom   = false;
         private boolean detectWeakHashMapShared    = false;
         private boolean detectJdbcConnectionShared = false;
+        // Phase 14
+        private boolean detectSharedStatefulCrypto      = false;
+        private boolean detectConcurrentMapCheckThenAct = false;
+        private boolean detectSharedDeflater            = false;
+        private boolean detectThisEscape                = false;
+        private boolean detectThreadLocalRandomMisuse   = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -698,6 +722,11 @@ public final class AsyncTestConfig {
         public Builder detectSharedSecureRandom(boolean v)             { detectSharedSecureRandom = v; return this; }
         public Builder detectWeakHashMapShared(boolean v)              { detectWeakHashMapShared = v; return this; }
         public Builder detectJdbcConnectionShared(boolean v)           { detectJdbcConnectionShared = v; return this; }
+        public Builder detectSharedStatefulCrypto(boolean v)           { detectSharedStatefulCrypto = v; return this; }
+        public Builder detectConcurrentMapCheckThenAct(boolean v)      { detectConcurrentMapCheckThenAct = v; return this; }
+        public Builder detectSharedDeflater(boolean v)                 { detectSharedDeflater = v; return this; }
+        public Builder detectThisEscape(boolean v)                     { detectThisEscape = v; return this; }
+        public Builder detectThreadLocalRandomMisuse(boolean v)        { detectThreadLocalRandomMisuse = v; return this; }
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
@@ -920,6 +949,17 @@ public final class AsyncTestConfig {
                     else detectWeakHashMapShared = false;
                 if (!excludes.contains(DetectorType.JDBC_CONNECTION_SHARED)) detectJdbcConnectionShared = true;
                     else detectJdbcConnectionShared = false;
+                // Phase 14
+                if (!excludes.contains(DetectorType.SHARED_STATEFUL_CRYPTO)) detectSharedStatefulCrypto = true;
+                    else detectSharedStatefulCrypto = false;
+                if (!excludes.contains(DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT)) detectConcurrentMapCheckThenAct = true;
+                    else detectConcurrentMapCheckThenAct = false;
+                if (!excludes.contains(DetectorType.SHARED_DEFLATER)) detectSharedDeflater = true;
+                    else detectSharedDeflater = false;
+                if (!excludes.contains(DetectorType.THIS_ESCAPE)) detectThisEscape = true;
+                    else detectThisEscape = false;
+                if (!excludes.contains(DetectorType.THREAD_LOCAL_RANDOM_MISUSE)) detectThreadLocalRandomMisuse = true;
+                    else detectThreadLocalRandomMisuse = false;
             } else {
                 // If detectAll is false, we still respect explicit enables,
                 // but we also apply excludes for consistency.
@@ -1015,6 +1055,12 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.SHARED_SECURE_RANDOM)) detectSharedSecureRandom = false;
                 if (excludes.contains(DetectorType.WEAK_HASH_MAP_SHARED)) detectWeakHashMapShared = false;
                 if (excludes.contains(DetectorType.JDBC_CONNECTION_SHARED)) detectJdbcConnectionShared = false;
+                // Phase 14
+                if (excludes.contains(DetectorType.SHARED_STATEFUL_CRYPTO)) detectSharedStatefulCrypto = false;
+                if (excludes.contains(DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT)) detectConcurrentMapCheckThenAct = false;
+                if (excludes.contains(DetectorType.SHARED_DEFLATER)) detectSharedDeflater = false;
+                if (excludes.contains(DetectorType.THIS_ESCAPE)) detectThisEscape = false;
+                if (excludes.contains(DetectorType.THREAD_LOCAL_RANDOM_MISUSE)) detectThreadLocalRandomMisuse = false;
             }
             return new AsyncTestConfig(this);
         }

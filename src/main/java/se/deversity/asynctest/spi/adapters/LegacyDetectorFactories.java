@@ -862,4 +862,46 @@ public final class LegacyDetectorFactories {
             return new LegacyDetectorAdapter<>(new JdbcConnectionSharedDetector(), DetectorType.JDBC_CONNECTION_SHARED, "JdbcConnectionShared");
         }
     }
+
+    // ---------- Phase 14 — additional thread-unsafe primitives & publication hazards (1.7.0+) ----------
+
+    public static final class SharedStatefulCrypto implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.SHARED_STATEFUL_CRYPTO; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectSharedStatefulCrypto; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new SharedStatefulCryptoDetector(), DetectorType.SHARED_STATEFUL_CRYPTO, "SharedStatefulCrypto");
+        }
+    }
+
+    public static final class ConcurrentMapCheckThenAct implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectConcurrentMapCheckThenAct; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new NonAtomicConcurrentMapUpdateDetector(), DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, "NonAtomicConcurrentMapUpdate");
+        }
+    }
+
+    public static final class SharedDeflater implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.SHARED_DEFLATER; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectSharedDeflater; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new SharedDeflaterDetector(), DetectorType.SHARED_DEFLATER, "SharedDeflater");
+        }
+    }
+
+    public static final class ThisEscape implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.THIS_ESCAPE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectThisEscape; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new ThisEscapeDetector(), DetectorType.THIS_ESCAPE, "ThisEscape");
+        }
+    }
+
+    public static final class ThreadLocalRandomMisuse implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.THREAD_LOCAL_RANDOM_MISUSE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectThreadLocalRandomMisuse; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new ThreadLocalRandomMisuseDetector(), DetectorType.THREAD_LOCAL_RANDOM_MISUSE, "ThreadLocalRandomMisuse");
+        }
+    }
 }

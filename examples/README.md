@@ -107,6 +107,11 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 | 101 | [Memory Ordering](101-memory-ordering/) | `MemoryOrderingMonitor` | Non-volatile `ready` + `value` fields — consumer may read stale values | 🟡 High |
 | 102 | [Synchronizer Monitor](102-synchronizer-monitor/) | `SynchronizerMonitor` | Three synchronizers (Semaphore + Lock + Latch) chained on one path — over-synchronised | 🟢 Low |
 | 103 | [Thread Pool Monitor](103-thread-pool-monitor/) | `ThreadPoolMonitor` | 2-thread pool saturated by 100 concurrent tasks — queue depth and rejection rate reported | 🟡 High |
+| 104 | [Shared Stateful Crypto](104-shared-stateful-crypto/) | `SharedStatefulCryptoDetector` | A `Cipher`/`Mac`/`Signature` shared across threads — interleaved `init`/`update`/`doFinal` corrupts ciphertext or breaks MAC/signature integrity | 🔴 Critical |
+| 105 | [Concurrent Map Check-Then-Act](105-concurrent-map-check-then-act/) | `NonAtomicConcurrentMapUpdateDetector` | `containsKey`-then-`put` on a `ConcurrentMap` — compound op is not atomic, concurrent callers lose updates | 🔴 Critical |
+| 106 | [Shared Deflater/Inflater](106-shared-deflater/) | `SharedDeflaterDetector` | A `java.util.zip.Deflater` shared across threads — stateful native zlib stream corrupts output or crashes on `end()` mid-stream | 🔴 Critical |
+| 107 | [This-Escape From Constructor](107-this-escape/) | `ThisEscapeDetector` | Constructor publishes `this` (registers a listener / starts a thread) before returning — other threads see a partially-constructed object | 🟡 High |
+| 108 | [ThreadLocalRandom Misuse](108-thread-local-random-misuse/) | `ThreadLocalRandomMisuseDetector` | A cached `ThreadLocalRandom.current()` reference used from other threads — defeats per-thread isolation, biases output | 🟡 High |
 
 ## Phase 7: High-Level Concurrency Patterns (New!)
 
