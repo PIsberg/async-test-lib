@@ -64,7 +64,7 @@
         <maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
         <archunit.version>1.4.2</archunit.version>
         <error-prone.version>2.36.0</error-prone.version>
-        <bytebuddy.version>1.14.18</bytebuddy.version>
+        <bytebuddy.version>1.18.8</bytebuddy.version>
         <asm.version>9.7.1</asm.version>
     </properties>
 
