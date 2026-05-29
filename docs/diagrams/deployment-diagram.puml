@@ -1,7 +1,7 @@
 @startuml DeploymentDiagram
 title Async Test Library - Deployment Diagram
 
-artifact "async-test-1.1.0.jar" as Jar {
+artifact "async-test-lib-1.6.0.jar" as Jar {
   folder "se/deversity/asynctest" {
     file "AsyncTest.class" as Annotation
     file "AsyncTestExtension.class" as Ext
@@ -55,24 +55,24 @@ artifact "async-test-1.1.0.jar" as Jar {
   }
 }
 
-artifact "async-test-1.1.0-sources.jar" as Sources {
+artifact "async-test-lib-1.6.0-sources.jar" as Sources {
   folder "src/main/java" {
     file "*.java (all source files)" as JavaSources
   }
 }
 
-artifact "async-test-1.1.0-javadoc.jar" as Javadoc {
+artifact "async-test-lib-1.6.0-javadoc.jar" as Javadoc {
   folder "api/" {
     file "*.html (API documentation)" as HtmlDocs
   }
 }
 
 database "Maven Repository" as Maven {
-  folder "se/deversity/asynctest/async-test/1.1.0/" {
-    file "async-test-1.1.0.jar"
-    file "async-test-1.1.0-sources.jar"
-    file "async-test-1.1.0-javadoc.jar"
-    file "async-test-1.1.0.pom"
+  folder "se/deversity/async-test-lib/async-test-lib/1.6.0/" {
+    file "async-test-lib-1.6.0.jar"
+    file "async-test-lib-1.6.0-sources.jar"
+    file "async-test-lib-1.6.0-javadoc.jar"
+    file "async-test-lib-1.6.0.pom"
   }
 }
 

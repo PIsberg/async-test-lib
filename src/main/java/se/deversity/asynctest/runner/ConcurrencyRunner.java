@@ -1,6 +1,8 @@
 package se.deversity.asynctest.runner;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICore;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -48,6 +50,8 @@ import java.util.concurrent.*;
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Coordinates concurrency using CyclicBarrier to maximize thread contention.")
 public class ConcurrencyRunner {
 
+    private static final Logger log = LoggerFactory.getLogger(ConcurrencyRunner.class);
+
     public static void execute(ReflectiveInvocationContext<Method> invocationContext,
                                AsyncTestConfig config) throws Throwable {
 
@@ -75,8 +79,7 @@ public class ConcurrencyRunner {
         MemoryModelValidator jmmValidator = new MemoryModelValidator();
         MemoryModelValidator.ValidationResult jmmResult = jmmValidator.validate();
         if (!jmmResult.isValid()) {
-            System.err.println("WARNING: JMM validation of test framework failed:");
-            System.err.println(jmmResult);
+            log.warn("JMM validation of test framework failed: {}", jmmResult);
         }
 
         // Determine actual thread count (stress mode overrides threads param)
@@ -179,7 +182,7 @@ public class ConcurrencyRunner {
                 try {
                     benchmarkRecorder.complete();
                 } catch (Exception e) {
-                    System.err.println("Warning: Benchmark completion failed: " + e.getMessage());
+                    log.warn("Benchmark completion failed: {}", e.getMessage());
                 }
             }
         }
@@ -275,8 +278,7 @@ public class ConcurrencyRunner {
                             phase1.livelock.captureSnapshot();
                         } catch (Throwable snapErr) {
                             // Diagnostic-only path; never fail the test on this.
-                            System.err.println(
-                                "Warning: livelock snapshot failed: " + snapErr.getMessage());
+                            log.warn("Livelock snapshot failed: {}", snapErr.getMessage());
                         }
                     }
                     latch.countDown();

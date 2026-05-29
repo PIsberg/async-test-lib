@@ -7,6 +7,8 @@ import se.deversity.common.license.LicenseResult;
 import se.deversity.vibetags.annotations.AIIdempotent;
 import se.deversity.vibetags.annotations.AISecure;
 import se.deversity.vibetags.annotations.AIThreadSafe;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -34,6 +36,7 @@ import java.util.concurrent.ConcurrentMap;
 @AISecure(aspect = "authorization")
 public final class LicenseGuard {
 
+    private static final Logger log = LoggerFactory.getLogger(LicenseGuard.class);
     private static final ConcurrentMap<Fingerprint, Boolean> CACHE = new ConcurrentHashMap<>();
     private static volatile boolean announcedCiMock = false;
     private static volatile boolean announcedGranted = false;
@@ -60,6 +63,7 @@ public final class LicenseGuard {
         boolean mock   = fp.licenseMockMode
                        || Boolean.getBoolean("license.mock.mode")
                        || (isCi && !hasKey);
+        String licenseIdentity   = System.getProperty("license.user.email", "");
         String keygenKeyForCheck = (fp.keygenApiKey == null) ? "dummy-key" : fp.keygenApiKey;
 
         LicenseGate gate = LicenseGate.of(
@@ -74,21 +78,23 @@ public final class LicenseGuard {
 
         if (mock && isCi && !hasKey && !announcedCiMock) {
             announcedCiMock = true;
-            System.out.println("LICENSE: Zero-Config CI mode active (Auto-Mocked)");
+            log.info("LICENSE: Zero-Config CI mode active (Auto-Mocked)");
         }
 
-        LicenseResult result = gate.check("user@example.com", fp.licenseKey);
+        LicenseResult result = gate.check(licenseIdentity, fp.licenseKey);
 
         if (result instanceof LicenseResult.Denied denied) {
             String msg = "LICENSE DENIED: " + denied.reason()
                 + (denied.message() != null ? " - " + denied.message() : "");
-            System.err.println(msg);
-            throw new SecurityException(msg);
+            String guidance = "\n  To run locally without a key: -Dlicense.mock.mode=true"
+                + "\n  In CI (GITHUB_ACTIONS or CI env var set, no key): mock mode activates automatically."
+                + "\n  To use a real license: -Dlicense.key=<key> -Dlicense.user.email=<email>";
+            log.error("{}{}", msg, guidance);
+            throw new SecurityException(msg + guidance);
         }
         if (!announcedGranted) {
             announcedGranted = true;
-            System.out.println("LICENSE GRANTED: "
-                + ((LicenseResult.Allowed) result).reason());
+            log.info("LICENSE GRANTED: {}", ((LicenseResult.Allowed) result).reason());
         }
     }
 

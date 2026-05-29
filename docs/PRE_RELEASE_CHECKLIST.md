@@ -23,24 +23,24 @@ The Async Test Library is now fully configured for public distribution via Maven
 
 ### Action 1: Replace GitHub Username
 
-Search and replace `yourusername` in these files:
+Search and replace `PIsberg` in these files:
 
 **File: pom.xml**
 ```
-Line 14:  <url>https://github.com/yourusername/async-test-lib</url>
-Line 26:  <url>https://github.com/yourusername/async-test-lib</url>
-Line 31:  <url>https://github.com/yourusername/async-test-lib</url>
-Line 32:  <connection>scm:git:https://github.com/yourusername/async-test-lib.git</connection>
-Line 33:  <developerConnection>scm:git:https://github.com/yourusername/async-test-lib.git</developerConnection>
-Line 38:  <url>https://github.com/yourusername/async-test-lib/issues</url>
-Line 164: <url>https://maven.pkg.github.com/yourusername/async-test-lib</url>
-Line 170: <url>https://maven.pkg.github.com/yourusername/async-test-lib</url>
+Line 14:  <url>https://github.com/PIsberg/async-test-lib</url>
+Line 26:  <url>https://github.com/PIsberg/async-test-lib</url>
+Line 31:  <url>https://github.com/PIsberg/async-test-lib</url>
+Line 32:  <connection>scm:git:https://github.com/PIsberg/async-test-lib.git</connection>
+Line 33:  <developerConnection>scm:git:https://github.com/PIsberg/async-test-lib.git</developerConnection>
+Line 38:  <url>https://github.com/PIsberg/async-test-lib/issues</url>
+Line 164: <url>https://repo1.maven.org/maven2</url>
+Line 170: <url>https://repo1.maven.org/maven2</url>
 ```
 
 **File: .github/workflows/publish.yml**
 ```
-Line 46: See documentation at: https://github.com/yourusername/async-test-lib
-Line 36: For GitHub Packages, see: https://github.com/yourusername/async-test-lib
+Line 46: See documentation at: https://github.com/PIsberg/async-test-lib
+Line 36: For GitHub Packages, see: https://github.com/PIsberg/async-test-lib
 ```
 
 ### Example: Quick Replace
@@ -49,8 +49,8 @@ If your GitHub username is `alice`:
 
 ```bash
 # Replace all occurrences
-sed -i 's/yourusername/alice/g' pom.xml
-sed -i 's/yourusername/alice/g' .github/workflows/publish.yml
+sed -i 's/PIsberg/alice/g' pom.xml
+sed -i 's/PIsberg/alice/g' .github/workflows/publish.yml
 ```
 
 ### Action 2: Verify Everything Works Locally
@@ -66,7 +66,7 @@ mvn clean test
 mvn javadoc:javadoc
 
 # Check artifact was created
-ls -lah target/async-test-1.1.0.jar
+ls -lah target/async-test-lib-1.6.0.jar
 ```
 
 Expected output:
@@ -74,9 +74,9 @@ Expected output:
 BUILD SUCCESS
 
 ...artifacts created in target/:
-- async-test-1.1.0.jar (~150KB)
-- async-test-1.1.0-sources.jar (~350KB)
-- async-test-1.1.0-javadoc.jar (~450KB)
+- async-test-lib-1.6.0.jar (~150KB)
+- async-test-lib-1.6.0-sources.jar (~350KB)
+- async-test-lib-1.6.0-javadoc.jar (~450KB)
 ```
 
 ### Action 3: Create First Release Tag
@@ -93,7 +93,7 @@ git add pom.xml .github/
 git commit -m "Configure distribution: GitHub Packages, Maven artifacts, and automated releases"
 
 # Create release tag (important: must be annotated tag)
-git tag -a v1.1.0 -m "Initial release: Async Test Library
+git tag -a v1.6.0 -m "Initial release: Async Test Library
 - 20+ concurrency problem detectors
 - JUnit 5 integration
 - Deadlock, visibility, race condition detection
@@ -103,19 +103,19 @@ git tag -a v1.1.0 -m "Initial release: Async Test Library
 
 # Push to trigger automated release
 git push origin main
-git push origin v1.1.0
+git push origin v1.6.0
 ```
 
 ## 🚀 After Tag Push: What Happens Automatically
 
-1. **GitHub detects tag** (v1.1.0)
+1. **GitHub detects tag** (v1.6.0)
 2. **Workflow starts** (.github/workflows/publish.yml)
 3. **Build runs** (Java 21, Maven)
-4. **Tests run** (all 49+ tests must pass)
+4. **Tests run** (all 147+ testss must pass)
 5. **Artifacts created**:
-   - async-test-1.1.0.jar
-   - async-test-1.1.0-sources.jar
-   - async-test-1.1.0-javadoc.jar
+   - async-test-lib-1.6.0.jar
+   - async-test-lib-1.6.0-sources.jar
+   - async-test-lib-1.6.0-javadoc.jar
 6. **Published** to GitHub Packages
 7. **GitHub Release created** with download links
 8. **Available** for users to install
@@ -128,14 +128,14 @@ After 10 minutes, verify at these locations:
 
 ### Check 1: GitHub Actions
 ```
-https://github.com/yourusername/async-test-lib/actions
+https://github.com/PIsberg/async-test-lib/actions
 - Look for "Publish Release" workflow
 - Should show: ✅ All jobs passed
 ```
 
 ### Check 2: GitHub Packages
 ```
-https://github.com/yourusername/async-test-lib/packages
+https://github.com/PIsberg/async-test-lib/packages
 - Should show: async-test package
 - With version: 1.1.0
 - 3 artifacts available
@@ -143,8 +143,8 @@ https://github.com/yourusername/async-test-lib/packages
 
 ### Check 3: GitHub Releases
 ```
-https://github.com/yourusername/async-test-lib/releases
-- Should show: v1.1.0 release
+https://github.com/PIsberg/async-test-lib/releases
+- Should show: v1.6.0 release
 - With download links
 - With release notes
 ```
@@ -170,7 +170,7 @@ Edit `pom.xml`:
 <repositories>
     <repository>
         <id>github</id>
-        <url>https://maven.pkg.github.com/yourusername/async-test-lib</url>
+        <url>https://repo1.maven.org/maven2</url>
     </repository>
 </repositories>
 
@@ -182,9 +182,9 @@ Edit `pom.xml`:
         <scope>test</scope>
     </dependency>
     <dependency>
-        <groupId>se.deversity.asynctest</groupId>
-        <artifactId>async-test</artifactId>
-        <version>1.1.0</version>
+        <groupId>se.deversity.async-test-lib</groupId>
+        <artifactId>async-test-lib</artifactId>
+        <version>1.6.0</version>
         <scope>test</scope>
     </dependency>
 </dependencies>
@@ -194,7 +194,7 @@ Create test file `src/test/java/com/example/AsyncTestExample.java`:
 ```java
 package com.example;
 
-import se.deversity.asynctest.AsyncTest;
+import se.deversity.async-test-lib.AsyncTest;
 import org.junit.jupiter.api.Test;
 
 public class AsyncTestExample {
@@ -229,8 +229,8 @@ After first 1.1.0 release:
 For each release, repeat:
 1. Update pom.xml version
 2. Commit: `git commit -m "Release 1.1.0"`
-3. Tag: `git tag -a v1.1.0 -m "..."`
-4. Push: `git push origin v1.1.0`
+3. Tag: `git tag -a v1.6.0 -m "..."`
+4. Push: `git push origin v1.6.0`
 5. Automatic publishing starts
 
 ## 📚 Distribution Documentation Summary
@@ -248,22 +248,22 @@ For each release, repeat:
 
 ## ✨ What Users Get
 
-When users install async-test-1.1.0:
+When users install async-test-lib-1.6.0:
 
 ```xml
 <dependency>
-    <groupId>se.deversity.asynctest</groupId>
-    <artifactId>async-test</artifactId>
-    <version>1.1.0</version>
+    <groupId>se.deversity.async-test-lib</groupId>
+    <artifactId>async-test-lib</artifactId>
+    <version>1.6.0</version>
     <scope>test</scope>
 </dependency>
 ```
 
 They receive:
-- ✅ Compiled library (async-test-1.1.0.jar)
-- ✅ Source code (async-test-1.1.0-sources.jar)
-- ✅ JavaDoc (async-test-1.1.0-javadoc.jar)
-- ✅ Full access to 20+ detectors
+- ✅ Compiled library (async-test-lib-1.6.0.jar)
+- ✅ Source code (async-test-lib-1.6.0-sources.jar)
+- ✅ JavaDoc (async-test-lib-1.6.0-javadoc.jar)
+- ✅ Full access to 93+ detectors
 - ✅ JUnit 5 integration (@AsyncTest annotation)
 - ✅ All documentation (GitHub wiki, USAGE.md)
 
@@ -279,10 +279,10 @@ They receive:
 - Workflows for CI/CD and publishing
 
 ### ⏳ TODO (Before First Release)
-1. Replace `yourusername` with actual GitHub username (5 min)
+1. Replace `PIsberg` with actual GitHub username (5 min)
 2. Verify local build works (5 min)
 3. Commit configuration changes (1 min)
-4. Create and push v1.1.0 tag (1 min)
+4. Create and push v1.6.0 tag (1 min)
 5. Verify GitHub Actions ran successfully (10 min)
 6. Test installation in another project (5 min)
 
@@ -299,7 +299,7 @@ They receive:
 ### If Tests Fail During Release
 1. Check GitHub Actions logs (Actions tab)
 2. Run `mvn clean test` locally
-3. Fix issue, commit, create new tag (v1.1.0)
+3. Fix issue, commit, create new tag (v1.6.0)
 
 ### If Users Can't Find Package
 1. Verify they added repository in pom.xml
@@ -309,8 +309,8 @@ They receive:
 ### If You Need to Rollback
 ```bash
 # Delete tag locally and remotely
-git tag -d v1.1.0
-git push origin :refs/tags/v1.1.0
+git tag -d v1.6.0
+git push origin :refs/tags/v1.6.0
 
 # Delete GitHub Release manually (GitHub UI)
 # Fix issue and create new tag
@@ -320,8 +320,8 @@ git push origin :refs/tags/v1.1.0
 
 ```bash
 # 1. Replace username
-sed -i 's/yourusername/YOUR_GITHUB_USERNAME/g' pom.xml
-sed -i 's/yourusername/YOUR_GITHUB_USERNAME/g' .github/workflows/publish.yml
+sed -i 's/PIsberg/YOUR_GITHUB_USERNAME/g' pom.xml
+sed -i 's/PIsberg/YOUR_GITHUB_USERNAME/g' .github/workflows/publish.yml
 
 # 2. Verify build
 mvn clean package
@@ -331,11 +331,11 @@ git add pom.xml .github/workflows/
 git commit -m "Configure distribution for public release"
 
 # 4. Tag (this triggers automatic release!)
-git tag -a v1.1.0 -m "Initial release"
+git tag -a v1.6.0 -m "Initial release"
 
 # 5. Push
 git push origin main
-git push origin v1.1.0
+git push origin v1.6.0
 
 # 6. Wait 10 minutes and check:
 #    https://github.com/YOUR_GITHUB_USERNAME/async-test-lib/releases

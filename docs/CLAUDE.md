@@ -9,13 +9,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./gradlew test
 
 # Run a single test class
-./gradlew test --tests "se.deversity.asynctest.AsyncTestContextTest"
+./gradlew test --tests "se.deversity.async-test-lib.AsyncTestContextTest"
 
 # Run a single test method
-./gradlew test --tests "se.deversity.asynctest.AsyncTestContextTest.someMethodName"
+./gradlew test --tests "se.deversity.async-test-lib.AsyncTestContextTest.someMethodName"
 
 # Run tests in a subpackage
-./gradlew test --tests "se.deversity.asynctest.diagnostics.*"
+./gradlew test --tests "se.deversity.async-test-lib.diagnostics.*"
 
 # Build without running tests
 ./gradlew build -x test
@@ -39,7 +39,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 2. **`AsyncTestExtension`** — `TestTemplateInvocationContextProvider` that produces one invocation per `@AsyncTest` method, or one per `threadCounts[]` entry when the matrix is non-empty. Each invocation gets its own `AsyncTestInvocationInterceptor` with the entry's thread count.
 3. **`AsyncTestInvocationInterceptor`** — converts the annotation into an `AsyncTestConfig` (immutable snapshot) via `AsyncTestConfig.from(ann, threadCount)` and calls `ConcurrencyRunner.execute(...)`.
 4. **`ConcurrencyRunner`** — the core orchestrator. Uses a `CyclicBarrier` to force all threads to collide on the test body simultaneously, repeating for `invocations` rounds. Calls `LicenseGuard.check(config)` (cached per JVM since 1.6.0), sets up Phase 1 and Phase 2 detectors, draws / pins a `replaySeed` per round, collects failures from all threads, and calls `DetectorRegistry.analyzeAll()` after the run. Per-worker `latch.countDown()` is guaranteed under every cleanup-failure path.
-5. **`DetectorRegistry`** — instantiates only the enabled detector objects (null otherwise) and runs `analyzeAll()` post-test to collect issue reports. **Note:** there is now a second, SPI-driven `DetectorRegistry` in `se.deversity.asynctest.spi` (see "Detector SPI" below); both coexist during the 1.6.0 cutover.
+5. **`DetectorRegistry`** — instantiates only the enabled detector objects (null otherwise) and runs `analyzeAll()` post-test to collect issue reports. **Note:** there is now a second, SPI-driven `DetectorRegistry` in `se.deversity.async-test-lib.spi` (see "Detector SPI" below); both coexist during the 1.6.0 cutover.
 6. **`AsyncTestContext`** — ThreadLocal holder giving test code access to live detector instances via static accessors (e.g., `AsyncTestContext.falseSharingDetector()`), plus `replaySeed()` for RNG-driven test bodies.
 
 ### Detector Organization
@@ -77,20 +77,20 @@ Detectors live in `src/main/java/se/deversity/asynctest/diagnostics/` and are gr
 
 ### Structured reporting (1.6.0+)
 
-`se.deversity.asynctest.report`:
+`se.deversity.async-test-lib.report`:
 - **`Violation`** record — `(detector, severity, message, sites, attributes, when)`. Detectors that have migrated populate `analyze().structuredViolations` alongside the legacy string `violations` list.
 - **`Formatter`** — functional interface `List<Violation> → String`.
 - **`MarkdownFormatter`** / **`JsonFormatter`** — built-in renderers. JSON is hand-rolled (no external dependency) with proper escape handling.
 
 ### Detector SPI (1.6.0+)
 
-`se.deversity.asynctest.spi` provides an alternative to the fan-out wiring rule documented in `CLAUDE.md`:
+`se.deversity.async-test-lib.spi` provides an alternative to the fan-out wiring rule documented in `CLAUDE.md`:
 - **`Detector`** — `type()`, `analyze() → List<Violation>`, optional `onTestStart` / `onTestEnd`.
-- **`DetectorFactory`** — `type()`, `isEnabledFor(config)`, `create(config)`. Registered via `META-INF/services/se.deversity.asynctest.spi.DetectorFactory`.
+- **`DetectorFactory`** — `type()`, `isEnabledFor(config)`, `create(config)`. Registered via `META-INF/services/se.deversity.async-test-lib.spi.DetectorFactory`.
 - **`DetectorRegistry`** — `build(config)` discovers via `ServiceLoader`, instantiates enabled factories. `get(Class<T>)` typed lookup, `get(DetectorType)` enum lookup, `analyzeAll()` aggregates structured violations.
 - **`adapters/SharedMessageDigestDetectorFactory`** — canary adapter wrapping the existing detector. The migration pattern for any of the legacy 90+: existing class unchanged, factory + adapter projects `analyze().structuredViolations`, one line added to the `META-INF/services` file.
 
-The legacy `se.deversity.asynctest.DetectorRegistry` coexists with the SPI one; both run independently. New detectors should use the SPI; existing ones migrate incrementally.
+The legacy `se.deversity.async-test-lib.DetectorRegistry` coexists with the SPI one; both run independently. New detectors should use the SPI; existing ones migrate incrementally.
 
 ### Consumer Fixture
 
@@ -98,7 +98,7 @@ The legacy `se.deversity.asynctest.DetectorRegistry` coexists with the SPI one; 
 
 ### License Gate
 
-`LicenseGuard` (extracted from `ConcurrencyRunner` in 1.6.0, lives in `se.deversity.asynctest.runner`) integrates `se.deversity.common:common-license-lib`. `LicenseGuard.check(config)` is a `ConcurrentHashMap.get()` on the resolved license-config fingerprint — the real gate fires at most once per fingerprint per JVM, not per test. In CI (`GITHUB_ACTIONS` or `CI` env var set) without a real API key, it automatically activates mock mode — no network calls are made. Locally, mock mode is enabled via `-Dlicense.mock.mode=true`.
+`LicenseGuard` (extracted from `ConcurrencyRunner` in 1.6.0, lives in `se.deversity.async-test-lib.runner`) integrates `se.deversity.common:common-license-lib`. `LicenseGuard.check(config)` is a `ConcurrentHashMap.get()` on the resolved license-config fingerprint — the real gate fires at most once per fingerprint per JVM, not per test. In CI (`GITHUB_ACTIONS` or `CI` env var set) without a real API key, it automatically activates mock mode — no network calls are made. Locally, mock mode is enabled via `-Dlicense.mock.mode=true`.
 
 ### Publishing
 

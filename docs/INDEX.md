@@ -196,7 +196,7 @@ Documentation/
 1. Read [PRE_RELEASE_CHECKLIST.md](PRE_RELEASE_CHECKLIST.md) - Overview
 2. Replace username in pom.xml
 3. Follow Pre-Release Checklist
-4. Create v1.1.0 tag
+4. Create v1.6.0 tag
 5. Watch GitHub Actions
 
 ### Path 3: "I'm creating a patch release" (10 minutes)
@@ -324,8 +324,8 @@ You've successfully understood everything if you can:
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Library Code | ✅ Complete | 20+ detectors |
-| Test Suite | ✅ Complete | 49+ tests |
+| Library Code | ✅ Complete | 93+ detectors |
+| Test Suite | ✅ Complete | 147+ testss |
 | Maven Config | ✅ Complete | Distribution ready |
 | GitHub Actions | ✅ Complete | Fully automated |
 | Documentation | ✅ Complete | 69,000+ words |

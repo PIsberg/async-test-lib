@@ -20,13 +20,13 @@ Making your library available for others to install and use via Maven/Gradle wit
 ```xml
 <repository>
     <id>github</id>
-    <url>https://maven.pkg.github.com/yourusername/async-test-lib</url>
+    <url>https://repo1.maven.org/maven2</url>
 </repository>
 
 <dependency>
-    <groupId>se.deversity.asynctest</groupId>
-    <artifactId>async-test</artifactId>
-    <version>1.1.0</version>
+    <groupId>se.deversity.async-test-lib</groupId>
+    <artifactId>async-test-lib</artifactId>
+    <version>1.6.0</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -34,18 +34,18 @@ Making your library available for others to install and use via Maven/Gradle wit
 ### How Others Install (Gradle)
 ```gradle
 repositories {
-    maven { url = uri("https://maven.pkg.github.com/yourusername/async-test-lib") }
+    maven { url = uri("https://repo1.maven.org/maven2") }
 }
 dependencies {
-    testImplementation 'se.deversity.asynctest:async-test:1.1.0'
+    testImplementation 'se.deversity.async-test-lib:async-test-lib:1.6.0'
 }
 ```
 
 ### Artifacts Created Per Release
 ```
-async-test-1.1.0.jar          (150 KB)  → Main library
-async-test-1.1.0-sources.jar  (350 KB)  → Source code
-async-test-1.1.0-javadoc.jar  (450 KB)  → API docs
+async-test-lib-1.6.0.jar          (150 KB)  → Main library
+async-test-lib-1.6.0-sources.jar  (350 KB)  → Source code
+async-test-lib-1.6.0-javadoc.jar  (450 KB)  → API docs
 ```
 
 ### Release Process (4 Steps)
@@ -97,40 +97,40 @@ Created:
 ```
 
 ### Before First Release: 3 Tasks
-1. Replace `yourusername` with your GitHub username in pom.xml and .github/workflows/
+1. Replace `PIsberg` with your GitHub username in pom.xml and .github/workflows/
 2. Run `mvn clean package` to verify build works locally
-3. Create tag: `git tag -a v1.1.0 -m "Initial release"`
+3. Create tag: `git tag -a v1.6.0 -m "Initial release"`
 
 ### Verify Release Succeeded
 ```
 Check 1: GitHub Actions
-  https://github.com/yourusername/async-test-lib/actions
+  https://github.com/PIsberg/async-test-lib/actions
   Look for: Publish Release - ✅ All jobs passed
 
 Check 2: GitHub Packages
-  https://github.com/yourusername/async-test-lib/packages
-  Look for: async-test v1.1.0
+  https://github.com/PIsberg/async-test-lib/packages
+  Look for: async-test v1.6.0
 
 Check 3: GitHub Releases
-  https://github.com/yourusername/async-test-lib/releases
-  Look for: v1.1.0 with download links
+  https://github.com/PIsberg/async-test-lib/releases
+  Look for: v1.6.0 with download links
 ```
 
 ### Maven Configuration Summary
 ```
-Group ID:     se.deversity.asynctest
+Group ID:     se.deversity.async-test-lib
 Artifact ID:  async-test
 Version:      1.1.0
 Scope:        test
 License:      MIT
-URL:          https://github.com/yourusername/async-test-lib
-Repository:   https://maven.pkg.github.com/yourusername/async-test-lib
+URL:          https://github.com/PIsberg/async-test-lib
+Repository:   https://repo1.maven.org/maven2
 ```
 
 ### Dependency Coordinates
 ```
-Maven:   se.deversity.asynctest:async-test:1.1.0
-Gradle:  'se.deversity.asynctest:async-test:1.1.0'
+Maven:   se.deversity.async-test-lib:async-test-lib:1.6.0
+Gradle:  'se.deversity.async-test-lib:async-test-lib:1.6.0'
 ```
 
 ### pom.xml Key Sections
@@ -138,13 +138,13 @@ Gradle:  'se.deversity.asynctest:async-test:1.1.0'
 <!-- Metadata -->
 <name>Async Test Library</name>
 <description>Enterprise-grade JUnit 5 concurrency testing...</description>
-<url>https://github.com/yourusername/async-test-lib</url>
+<url>https://github.com/PIsberg/async-test-lib</url>
 <license><name>MIT License</name></license>
 
 <!-- Distribution -->
 <distributionManagement>
   <repository>
-    <url>https://maven.pkg.github.com/yourusername/async-test-lib</url>
+    <url>https://repo1.maven.org/maven2</url>
   </repository>
 </distributionManagement>
 
@@ -158,8 +158,8 @@ Gradle:  'se.deversity.asynctest:async-test:1.1.0'
 ```yaml
 # publish.yml triggers on ANY tag matching v*
 # Examples that trigger:
-git tag -a v1.1.0 -m "..."     ✅ Triggers
-git tag -a v1.1.0 -m "..."     ✅ Triggers
+git tag -a v1.6.0 -m "..."     ✅ Triggers
+git tag -a v1.6.0 -m "..."     ✅ Triggers
 git tag -a v2.0.0 -m "..."     ✅ Triggers
 git tag -a myversion -m "..."  ❌ Does NOT trigger
 ```
@@ -255,8 +255,8 @@ mvn clean
 mvn deploy
 
 # Release tag
-git tag -a v1.1.0 -m "Description"
-git push origin v1.1.0
+git tag -a v1.6.0 -m "Description"
+git push origin v1.6.0
 ```
 
 ### Verify Everything
@@ -279,19 +279,19 @@ ls -lah target/async-test-*.jar
 
 Expected results:
 ```
-async-test-1.1.0.jar                 ~150 KB ✅
-async-test-1.1.0-sources.jar         ~350 KB ✅
-async-test-1.1.0-javadoc.jar         ~450 KB ✅
+async-test-lib-1.6.0.jar                 ~150 KB ✅
+async-test-lib-1.6.0-sources.jar         ~350 KB ✅
+async-test-lib-1.6.0-javadoc.jar         ~450 KB ✅
 BUILD SUCCESS                             ✅
 ```
 
 ### What Users See
 ```
 GitHub Releases page:
-  v1.1.0 release
-  ├── async-test-1.1.0.jar (download)
-  ├── async-test-1.1.0-sources.jar (download)
-  ├── async-test-1.1.0-javadoc.jar (download)
+  v1.6.0 release
+  ├── async-test-lib-1.6.0.jar (download)
+  ├── async-test-lib-1.6.0-sources.jar (download)
+  ├── async-test-lib-1.6.0-javadoc.jar (download)
   └── Release notes
 
 GitHub Packages:
@@ -299,7 +299,7 @@ GitHub Packages:
   └── 1.1.0 version
 
 Maven Central (in future):
-  se.deversity.asynctest:async-test:1.1.0
+  se.deversity.async-test-lib:async-test-lib:1.6.0
   └── Available with no special configuration
 ```
 
@@ -345,10 +345,10 @@ Question: Is it ready?
 
 ### Next Actions
 ```
-1. Replace yourusername in pom.xml (5 min)
+1. Replace PIsberg in pom.xml (5 min)
 2. Test build locally: mvn clean package (5 min)
-3. Commit and tag: git tag -a v1.1.0 (1 min)
-4. Push: git push origin v1.1.0 (1 min)
+3. Commit and tag: git tag -a v1.6.0 (1 min)
+4. Push: git push origin v1.6.0 (1 min)
 5. Wait for automation (5-10 min)
 6. Verify release on GitHub (2 min)
 

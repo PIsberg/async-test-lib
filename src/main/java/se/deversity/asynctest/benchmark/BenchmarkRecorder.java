@@ -4,6 +4,8 @@ import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.vibetags.annotations.AIFeatureFlag;
 import se.deversity.vibetags.annotations.AIObservability;
 import se.deversity.vibetags.annotations.AIPerformance;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -24,6 +26,7 @@ import java.util.List;
 @AIFeatureFlag(flag = "async-test.benchmarking.enabled", defaultValue = false)
 public class BenchmarkRecorder {
 
+    private static final Logger log = LoggerFactory.getLogger(BenchmarkRecorder.class);
     private static final String DEFAULT_BENCHMARK_STORE = "target/benchmark-data/baseline-store.dat";
 
     private final AsyncTestConfig config;
@@ -139,11 +142,11 @@ public class BenchmarkRecorder {
         if (updateBaseline || comparison.isFirstRun()) {
             comparator.saveBaseline(currentResult);
             if (comparison.isFirstRun()) {
-                System.out.println("[BENCHMARK] Baseline created for " + testClass + "#" + testMethod +
-                    ": avg=" + BenchmarkResult.formatTime(avgTime));
+                log.info("[BENCHMARK] Baseline created for {}#{}: avg={}",
+                    testClass, testMethod, BenchmarkResult.formatTime(avgTime));
             } else {
-                System.out.println("[BENCHMARK] Baseline updated for " + testClass + "#" + testMethod +
-                    ": avg=" + BenchmarkResult.formatTime(avgTime));
+                log.info("[BENCHMARK] Baseline updated for {}#{}: avg={}",
+                    testClass, testMethod, BenchmarkResult.formatTime(avgTime));
             }
         } else {
             // Print comparison result
@@ -171,8 +174,7 @@ public class BenchmarkRecorder {
         }
 
         String changeStr = String.format("%+.2f%%", result.getPercentChange());
-        System.out.println("[BENCHMARK] " + status + " for " + testClass + "#" + testMethod +
-            " (change: " + changeStr + ")");
+        log.info("[BENCHMARK] {} for {}#{} (change: {})", status, testClass, testMethod, changeStr);
     }
 
     /**

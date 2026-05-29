@@ -8,9 +8,9 @@ Add to your `pom.xml`:
 
 ```xml
 <dependency>
-    <groupId>se.deversity.asynctest</groupId>
-    <artifactId>async-test</artifactId>
-    <version>1.1.0</version>
+    <groupId>se.deversity.async-test-lib</groupId>
+    <artifactId>async-test-lib</artifactId>
+    <version>1.6.0</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -22,7 +22,7 @@ Configure the GitHub Packages repository in your `pom.xml`:
     <repository>
         <id>github</id>
         <name>GitHub Packages</name>
-        <url>https://maven.pkg.github.com/yourusername/async-test-lib</url>
+        <url>https://repo1.maven.org/maven2</url>
         <releases>
             <enabled>true</enabled>
         </releases>
@@ -38,7 +38,7 @@ Configure the GitHub Packages repository in your `pom.xml`:
 ```gradle
 repositories {
     maven {
-        url = uri("https://maven.pkg.github.com/yourusername/async-test-lib")
+        url = uri("https://repo1.maven.org/maven2")
         credentials {
             username = project.findProperty("gpr.user") ?: System.getenv("USERNAME")
             password = project.findProperty("gpr.key") ?: System.getenv("TOKEN")
@@ -47,7 +47,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation 'se.deversity.asynctest:async-test:1.1.0'
+    testImplementation 'se.deversity.async-test-lib:async-test-lib:1.6.0'
 }
 ```
 
@@ -56,8 +56,8 @@ dependencies {
 ### 1. Import the annotation
 
 ```java
-import se.deversity.asynctest.AsyncTest;
-import se.deversity.asynctest.DetectorType;
+import se.deversity.async-test-lib.AsyncTest;
+import se.deversity.async-test-lib.DetectorType;
 ```
 
 ### 2. Annotate your test method
@@ -447,8 +447,8 @@ void deepStressTest() { }
 ## Support
 
 For issues, questions, or feature requests:
-- GitHub Issues: https://github.com/yourusername/async-test-lib/issues
-- Documentation: https://github.com/yourusername/async-test-lib/wiki
+- GitHub Issues: https://github.com/PIsberg/async-test-lib/issues
+- Documentation: https://github.com/PIsberg/async-test-lib/wiki
 
 ## License
 

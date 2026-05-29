@@ -40,23 +40,23 @@ A **production-ready, fully automated, world-class library distribution system**
 
 ### Per Release (3 Artifacts)
 ```
-async-test-1.1.0.jar              (150 KB)   Compiled library
-async-test-1.1.0-sources.jar      (350 KB)   Source code
-async-test-1.1.0-javadoc.jar      (450 KB)   API documentation
+async-test-lib-1.6.0.jar              (150 KB)   Compiled library
+async-test-lib-1.6.0-sources.jar      (350 KB)   Source code
+async-test-lib-1.6.0-javadoc.jar      (450 KB)   API documentation
 ```
 
 ### Installation
 ```xml
 <!-- Maven -->
 <dependency>
-    <groupId>se.deversity.asynctest</groupId>
-    <artifactId>async-test</artifactId>
-    <version>1.1.0</version>
+    <groupId>se.deversity.async-test-lib</groupId>
+    <artifactId>async-test-lib</artifactId>
+    <version>1.6.0</version>
     <scope>test</scope>
 </dependency>
 
 <!-- Gradle -->
-testImplementation 'se.deversity.asynctest:async-test:1.1.0'
+testImplementation 'se.deversity.async-test-lib:async-test-lib:1.6.0'
 ```
 
 ---
@@ -67,8 +67,8 @@ testImplementation 'se.deversity.asynctest:async-test:1.1.0'
 ```bash
 1. Update version: sed -i 's/1.1.0/1.1.0/' pom.xml
 2. Commit:        git commit -am "Release 1.1.0"
-3. Tag:           git tag -a v1.1.0 -m "Release message"
-4. Push:          git push origin v1.1.0
+3. Tag:           git tag -a v1.6.0 -m "Release message"
+4. Push:          git push origin v1.6.0
 ```
 
 ### Automation
@@ -138,8 +138,8 @@ Publish to GitHub Packages → Create GitHub Release → Done
 ### Before First Release (30 minutes total)
 ```bash
 # 1. Replace username (5 min)
-sed -i 's/yourusername/YOUR_USERNAME/g' pom.xml
-sed -i 's/yourusername/YOUR_USERNAME/g' .github/workflows/publish.yml
+sed -i 's/PIsberg/YOUR_USERNAME/g' pom.xml
+sed -i 's/PIsberg/YOUR_USERNAME/g' .github/workflows/publish.yml
 
 # 2. Verify build (5 min)
 mvn clean package
@@ -147,8 +147,8 @@ mvn clean package
 # 3. Create release (1 min)
 git add pom.xml .github/
 git commit -m "Configure distribution"
-git tag -a v1.1.0 -m "Initial release"
-git push origin v1.1.0
+git tag -a v1.6.0 -m "Initial release"
+git push origin v1.6.0
 
 # 4. Wait for automation (5-10 min)
 # Visit: https://github.com/YOUR_USERNAME/async-test-lib/releases
@@ -173,13 +173,13 @@ git push origin v1.1.0
 ```xml
 <repository>
     <id>github</id>
-    <url>https://maven.pkg.github.com/yourusername/async-test-lib</url>
+    <url>https://repo1.maven.org/maven2</url>
 </repository>
 
 <dependency>
-    <groupId>se.deversity.asynctest</groupId>
-    <artifactId>async-test</artifactId>
-    <version>1.1.0</version>
+    <groupId>se.deversity.async-test-lib</groupId>
+    <artifactId>async-test-lib</artifactId>
+    <version>1.6.0</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -200,7 +200,7 @@ void testConcurrentCode() {
 
 | Aspect | Status | Details |
 |--------|--------|---------|
-| Library Code | ✅ Complete | 20+ detectors, fully tested |
+| Library Code | ✅ Complete | 93+ detectors, fully tested |
 | Artifact Config | ✅ Complete | Maven packaging ready |
 | Release Automation | ✅ Complete | GitHub Actions configured |
 | Documentation | ✅ Complete | 80,000+ words |
@@ -228,8 +228,8 @@ For quick access:
 ## 🎁 What's New
 
 ### Before This Session
-- Library code (20+ detectors)
-- Test suite (49+ tests)
+- Library code (93+ detectors)
+- Test suite (147+ testss)
 - README with intro
 - GitHub Actions for CI/CD
 
@@ -325,4 +325,4 @@ You now have:
 
 **Date**: 2026-03-24  
 **Status**: ✅ COMPLETE & READY TO DISTRIBUTE  
-**Next Action**: Create v1.1.0 tag (see PRE_RELEASE_CHECKLIST.md)
+**Next Action**: Create v1.6.0 tag (see PRE_RELEASE_CHECKLIST.md)

@@ -1,5 +1,8 @@
 package se.deversity.asynctest.benchmark;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -17,6 +20,7 @@ import java.util.Optional;
  */
 public class BenchmarkComparator {
 
+    private static final Logger log = LoggerFactory.getLogger(BenchmarkComparator.class);
     private final Path benchmarkStorePath;
     private final double regressionThresholdPercent;
     private final boolean failOnRegression;
@@ -91,11 +95,8 @@ public class BenchmarkComparator {
     private void handleRegression(BenchmarkComparisonResult result) {
         String message = buildRegressionMessage(result);
 
-        System.err.println("\n" + "=".repeat(80));
-        System.err.println("⚠️  BENCHMARK REGRESSION DETECTED ⚠️");
-        System.err.println("=".repeat(80));
-        System.err.println(message);
-        System.err.println("=".repeat(80) + "\n");
+        log.warn("\n{}\n⚠️  BENCHMARK REGRESSION DETECTED ⚠️\n{}\n{}\n{}",
+            "=".repeat(80), "=".repeat(80), message, "=".repeat(80));
 
         if (failOnRegression) {
             throw new BenchmarkRegressionException(message, result);
@@ -146,7 +147,7 @@ public class BenchmarkComparator {
 
         } catch (IOException | ClassNotFoundException e) {
             // If we can't read the baseline, treat as if it doesn't exist
-            System.err.println("Warning: Could not load benchmark baseline: " + e.getMessage());
+            log.warn("Could not load benchmark baseline: {}", e.getMessage());
             return Optional.empty();
         }
     }
@@ -174,7 +175,7 @@ public class BenchmarkComparator {
              ObjectInputStream ois = new ObjectInputStream(fis)) {
             return (Map<String, BenchmarkResult>) ois.readObject();
         } catch (IOException | ClassNotFoundException e) {
-            System.err.println("Warning: Could not load benchmark baselines, starting fresh: " + e.getMessage());
+            log.warn("Could not load benchmark baselines, starting fresh: {}", e.getMessage());
             return new HashMap<>();
         }
     }
@@ -188,7 +189,7 @@ public class BenchmarkComparator {
         if (parent != null) {
             File parentDir = parent.toFile();
             if (!parentDir.exists() && !parentDir.mkdirs()) {
-                System.err.println("Warning: Could not create benchmark baseline directory: " + parentDir);
+                log.warn("Could not create benchmark baseline directory: {}", parentDir);
                 return;
             }
         }
@@ -197,7 +198,7 @@ public class BenchmarkComparator {
              ObjectOutputStream oos = new ObjectOutputStream(fos)) {
             oos.writeObject(store);
         } catch (IOException e) {
-            System.err.println("Warning: Could not save benchmark baselines: " + e.getMessage());
+            log.warn("Could not save benchmark baselines: {}", e.getMessage());
         }
     }
 
@@ -207,7 +208,7 @@ public class BenchmarkComparator {
     public void clearAllBaselines() {
         File storeFile = benchmarkStorePath.toFile();
         if (storeFile.exists() && !storeFile.delete()) {
-            System.err.println("Warning: Could not delete benchmark baseline file: " + storeFile);
+            log.warn("Could not delete benchmark baseline file: {}", storeFile);
         }
     }
 }

@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-(empty — see 1.6.0 below for the most recent shipped work)
+### Production Readiness Pass
+
+#### Added
+- **slf4j-api** logging facade (`org.slf4j:slf4j-api:2.0.16`) — consumers bind their own backend; framework chatter (license banners, JMM warnings, benchmark comparator output, listener exception warnings) now routes through SLF4J instead of `System.out/err`.
+- **JaCoCo coverage check** (`mvn verify`) — enforces ≥70% line / ≥65% branch coverage at the bundle level; ratchet up after measuring baselines.
+- **Gradle build parity** — bumped to match Maven canonical versions (JUnit 6.1.0, Jazzer 0.30.0, Byte Buddy 1.18.8, ASM 9.10.1, vibetags 0.9.8); added PMD, SpotBugs, and CycloneDX SBOM tasks to Gradle build.
+- **License documentation** — README now documents CI auto-mock, `-Dlicense.mock.mode=true` for local keyless runs, and `-Dlicense.user.email` for real-key usage.
+
+#### Fixed
+- **LicenseGuard** — hardcoded `"user@example.com"` identity replaced by `-Dlicense.user.email` sysprop; denial message now includes actionable guidance on enabling mock mode or supplying a key.
+- **README agent claim** — corrected "no agent, no bytecode weaving" to accurately describe the Byte Buddy agent as optional/opt-in.
+- **Detector count** — unified across README, pom.xml, build.gradle.kts to `93+` (was inconsistent: "51+", "100", "20+").
+- **Stale docs** — replaced `yourusername` placeholder, GitHub Packages URL, old artifact coordinates (`se.deversity.asynctest:async-test:1.1.0`), and stale version strings across 8 docs files.
+- **load-tests.yml** — `asyncTestVersion` default updated from `1.4.0` to `1.6.0`.
 
 
 ## [1.6.0] - 2026-05-28
@@ -79,7 +92,7 @@ detectors), and the 0.9.7 vibetags annotation upgrade.
 - **`AsyncTestListenerRegistry.snapshot()` / `restoreSnapshot(s)`** —
   capture/restore the full registry around a block.
 
-### Added — Structured reporting (`se.deversity.asynctest.report`)
+### Added — Structured reporting (`se.deversity.async-test-lib.report`)
 
 - **`Violation` record** — `(detector, severity, message, sites, attributes,
   when)` with defensive defaults and validation. Replaces flat strings for
@@ -91,13 +104,13 @@ detectors), and the 0.9.7 vibetags annotation upgrade.
 - **`JsonFormatter`** — compact JSON array, no external dependency, with
   proper string escaping. Stable schema.
 
-### Added — Detector SPI (`se.deversity.asynctest.spi`)
+### Added — Detector SPI (`se.deversity.async-test-lib.spi`)
 
 - **`Detector`** — `type() → DetectorType`, `analyze() → List<Violation>`,
   optional `onTestStart()` / `onTestEnd()` lifecycle hooks.
 - **`DetectorFactory`** — `type()`, `isEnabledFor(config)`, `create(config)`.
   Discovered via `ServiceLoader` from
-  `META-INF/services/se.deversity.asynctest.spi.DetectorFactory`.
+  `META-INF/services/se.deversity.async-test-lib.spi.DetectorFactory`.
 - **`DetectorRegistry`** (new package) — `build(config)` instantiates enabled
   factories, `get(Class<T>)` typed lookup, `get(DetectorType)` enum lookup,
   `analyzeAll()` aggregates structured violations.
@@ -107,7 +120,7 @@ detectors), and the 0.9.7 vibetags annotation upgrade.
 - **`LegacyDetectorFactories`** — 99 inner-class factories registering every
   pre-existing `DetectorType` through the SPI (plus the dedicated typed
   `SharedMessageDigestDetectorFactory` for the canary). Coexists with the
-  legacy `se.deversity.asynctest.DetectorRegistry`.
+  legacy `se.deversity.async-test-lib.DetectorRegistry`.
 - **`AllDetectorsSpiCoverageTest`** — guards against drift: a new
   `DetectorType` value without a matching factory fails the build.
 
@@ -145,12 +158,12 @@ because each thread reads its own seed slot.
 
 ### Added — Diagnostics
 
-- **`SiteCapture`** helper (`se.deversity.asynctest.diagnostics`) — captures
+- **`SiteCapture`** helper (`se.deversity.async-test-lib.diagnostics`) — captures
   the first non-framework stack frame for any detector access event via
   `StackWalker`. Reports now carry `Access sites:` blocks pointing at the
   user-code line that produced the issue. Canary: `SharedMessageDigestDetector`.
 
-### Added — CI/CD-native fail gates (`se.deversity.asynctest.report`)
+### Added — CI/CD-native fail gates (`se.deversity.async-test-lib.report`)
 
 Three listener implementations make it straightforward to wire async-test into
 CI pipelines and IDE tooling without writing custom code.
@@ -274,7 +287,7 @@ install from disk. See [intellij-plugin/README.md](../intellij-plugin/README.md)
 
 ### Added
 
-#### CI/CD-native fail gates (`se.deversity.asynctest.report`)
+#### CI/CD-native fail gates (`se.deversity.async-test-lib.report`)
 
 Three new listener implementations make it straightforward to wire async-test into CI pipelines
 and IDE tooling without writing custom code.
@@ -526,7 +539,7 @@ count in 1.3.0 — about 45% lower at 500 invocations than either prior baseline
 
 ### Changed
 
-- **BREAKING**: Java package renamed from `com.github.asynctest` to `se.deversity.asynctest`. Consumers must update all `import` statements. Maven coordinates (`se.deversity.async-test-lib:async-test-lib`) are unchanged.
+- **BREAKING**: Java package renamed from `com.github.asynctest` to `se.deversity.async-test-lib`. Consumers must update all `import` statements. Maven coordinates (`se.deversity.async-test-lib:async-test-lib`) are unchanged.
   - Note: benchmark baselines stored under `load-tests/results/0.7.0/` and `load-tests/results/0.8.0/` reference the old package name in JMH output — this is expected and those files are left as historical data.
 
 ### Added

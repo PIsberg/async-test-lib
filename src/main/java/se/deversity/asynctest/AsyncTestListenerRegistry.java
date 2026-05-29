@@ -4,6 +4,8 @@ import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.vibetags.annotations.AIContract;
 import se.deversity.vibetags.annotations.AIIdempotent;
 import se.deversity.vibetags.annotations.AIPublicAPI;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -56,6 +58,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @AIPublicAPI
 public final class AsyncTestListenerRegistry {
 
+    private static final Logger log = LoggerFactory.getLogger(AsyncTestListenerRegistry.class);
     private static final List<AsyncTestListener> LISTENERS = new CopyOnWriteArrayList<>();
 
     // Prevent instantiation
@@ -97,7 +100,7 @@ public final class AsyncTestListenerRegistry {
                 listener.onInvocationStarted(round, threads);
             } catch (RuntimeException e) {
                 // Log but don't propagate listener exceptions
-                System.err.println("Warning: AsyncTestListener.onInvocationStarted threw: " + e.getMessage());
+                log.warn("AsyncTestListener.onInvocationStarted threw: {}", e.getMessage());
             }
         }
     }
@@ -113,7 +116,7 @@ public final class AsyncTestListenerRegistry {
             try {
                 listener.onInvocationCompleted(round, durationMs);
             } catch (RuntimeException e) {
-                System.err.println("Warning: AsyncTestListener.onInvocationCompleted threw: " + e.getMessage());
+                log.warn("AsyncTestListener.onInvocationCompleted threw: {}", e.getMessage());
             }
         }
     }
@@ -128,7 +131,7 @@ public final class AsyncTestListenerRegistry {
             try {
                 listener.onTestFailed(cause);
             } catch (RuntimeException e) {
-                System.err.println("Warning: AsyncTestListener.onTestFailed threw: " + e.getMessage());
+                log.warn("AsyncTestListener.onTestFailed threw: {}", e.getMessage());
             }
         }
     }
@@ -149,12 +152,12 @@ public final class AsyncTestListenerRegistry {
             try {
                 listener.onDetectorReport(detectorName, report);
             } catch (RuntimeException e) {
-                System.err.println("Warning: AsyncTestListener.onDetectorReport threw: " + e.getMessage());
+                log.warn("AsyncTestListener.onDetectorReport threw: {}", e.getMessage());
             }
             try {
                 listener.onStructuredReport(detectorName, severity, report);
             } catch (RuntimeException e) {
-                System.err.println("Warning: AsyncTestListener.onStructuredReport threw: " + e.getMessage());
+                log.warn("AsyncTestListener.onStructuredReport threw: {}", e.getMessage());
             }
         }
     }
@@ -173,7 +176,7 @@ public final class AsyncTestListenerRegistry {
             try {
                 listener.onTimeout(timeoutMs);
             } catch (RuntimeException e) {
-                System.err.println("Warning: AsyncTestListener.onTimeout threw: " + e.getMessage());
+                log.warn("AsyncTestListener.onTimeout threw: {}", e.getMessage());
             }
         }
     }

@@ -2,7 +2,7 @@
 
 # async-test-lib
 
-**JUnit 5 concurrency stress testing — one annotation, 100 detectors**
+**JUnit 5 concurrency stress testing — one annotation, 93+ detectors**
 
 [![Maven Central](https://img.shields.io/maven-central/v/se.deversity.async-test-lib/async-test-lib)](https://central.sonatype.com/artifact/se.deversity.async-test-lib/async-test-lib)
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm_Noncommercial-blue.svg)](LICENSE)
@@ -23,8 +23,8 @@
 ## Why async-test?
 
 - **One annotation** — `@AsyncTest` hammers your code with N threads × M invocations using a `CyclicBarrier` to force maximum contention. No executor boilerplate, no manual `CountDownLatch`, no `Thread.join` loops.
-- **100 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types, JDBC sharing, MessageDigest/SecureRandom integrity, and more — all on by default (`detectAll = true`), or pick a `Preset` for a curated subset.
-- **JUnit 5 native** — no agent, no bytecode weaving, no special JVM flags. Works anywhere JUnit 5 runs.
+- **93+ detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types, JDBC sharing, MessageDigest/SecureRandom integrity, and more — all on by default (`detectAll = true`), or pick a `Preset` for a curated subset.
+- **JUnit 5 native** — zero required configuration. Works anywhere JUnit 5 runs with no special JVM flags. An optional Java agent (`-javaagent:async-test-lib.jar`) enables deeper field-access instrumentation via Byte Buddy; default usage needs no agent.
 - **CI-ready out of the box** — ship JUnit XML reports, machine-readable JSON, or `AssertionError` fail-gates directly to GitHub Actions, Jenkins, and GitLab CI.
 
 ---
@@ -102,7 +102,7 @@ After the run, the **detector registry** analyses what was observed and reports 
 
 ## Detectors
 
-100 detectors enabled by default with a single flag, or cherry-pick:
+93+ detectors enabled by default with a single flag, or cherry-pick:
 
 ```java
 // Everything on (default for bare @AsyncTest)
@@ -356,3 +356,20 @@ See [intellij-plugin/README.md](intellij-plugin/README.md) for full instructions
 ## License
 
 [PolyForm Noncommercial License 1.0.0](LICENSE) — free for non-commercial use.
+
+### Running without a license key
+
+| Environment | Behavior |
+|---|---|
+| CI (any `GITHUB_ACTIONS` or `CI` env var set, no key) | Auto-mocked — tests run freely |
+| Local, no key, `-Dlicense.mock.mode=true` | Mock mode active — tests run freely |
+| Local, no key, no mock flag | License gate runs; outcome depends on the configured backend |
+| Real key via `-Dlicense.key=<key>` | Full validation against the licensing backend |
+
+To run locally without a key during development:
+```
+mvn test -Dlicense.mock.mode=true
+```
+Or add to your IDE's JVM args: `-Dlicense.mock.mode=true`
+
+Set your email identity when using a real key: `-Dlicense.user.email=you@example.com`

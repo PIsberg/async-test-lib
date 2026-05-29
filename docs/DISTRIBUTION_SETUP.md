@@ -25,11 +25,11 @@ This document summarizes the artifact distribution configuration for the Async T
 <distributionManagement>
     <repository>
         <id>github</id>
-        <url>https://maven.pkg.github.com/yourusername/async-test-lib</url>
+        <url>https://repo1.maven.org/maven2</url>
     </repository>
     <snapshotRepository>
         <id>github</id>
-        <url>https://maven.pkg.github.com/yourusername/async-test-lib</url>
+        <url>https://repo1.maven.org/maven2</url>
     </snapshotRepository>
 </distributionManagement>
 ```
@@ -38,8 +38,8 @@ This document summarizes the artifact distribution configuration for the Async T
 Creates automatic releases when you push version tags:
 
 ```bash
-git tag -a v1.1.0 -m "Release 1.1.0"
-git push origin v1.1.0
+git tag -a v1.6.0 -m "Release 1.1.0"
+git push origin v1.6.0
 ```
 
 **Workflow does**:
@@ -61,9 +61,9 @@ When released, three artifacts are created:
 
 | Artifact | Size | Purpose |
 |----------|------|---------|
-| async-test-1.1.0.jar | ~150KB | Runtime library (main) |
-| async-test-1.1.0-sources.jar | ~350KB | Source code for IDE |
-| async-test-1.1.0-javadoc.jar | ~450KB | API documentation |
+| async-test-lib-1.6.0.jar | ~150KB | Runtime library (main) |
+| async-test-lib-1.6.0-sources.jar | ~350KB | Source code for IDE |
+| async-test-lib-1.6.0-javadoc.jar | ~450KB | API documentation |
 
 ## 🚀 How to Create a Release
 
@@ -71,20 +71,20 @@ When released, three artifacts are created:
 ```bash
 # Edit pom.xml - change version from 1.1.0 to 1.1.0
 vim pom.xml
-# <version>1.1.0</version>
+# <version>1.6.0</version>
 ```
 
 ### Step 2: Commit and Tag
 ```bash
 git add pom.xml
 git commit -m "Release version 1.1.0"
-git tag -a v1.1.0 -m "Release 1.1.0: Bug fixes and improvements"
+git tag -a v1.6.0 -m "Release 1.1.0: Bug fixes and improvements"
 ```
 
 ### Step 3: Push to GitHub
 ```bash
 git push origin main
-git push origin v1.1.0
+git push origin v1.6.0
 ```
 
 ### Step 4: Automatic Publication
@@ -105,15 +105,15 @@ GitHub Actions will:
 <repositories>
     <repository>
         <id>github</id>
-        <url>https://maven.pkg.github.com/yourusername/async-test-lib</url>
+        <url>https://repo1.maven.org/maven2</url>
     </repository>
 </repositories>
 
 <!-- Add dependency -->
 <dependency>
-    <groupId>se.deversity.asynctest</groupId>
-    <artifactId>async-test</artifactId>
-    <version>1.1.0</version>
+    <groupId>se.deversity.async-test-lib</groupId>
+    <artifactId>async-test-lib</artifactId>
+    <version>1.6.0</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -122,17 +122,17 @@ GitHub Actions will:
 ```gradle
 repositories {
     maven {
-        url = uri("https://maven.pkg.github.com/yourusername/async-test-lib")
+        url = uri("https://repo1.maven.org/maven2")
     }
 }
 
 dependencies {
-    testImplementation 'se.deversity.asynctest:async-test:1.1.0'
+    testImplementation 'se.deversity.async-test-lib:async-test-lib:1.6.0'
 }
 ```
 
 ### Manual Download
-1. Visit: https://github.com/yourusername/async-test-lib/releases
+1. Visit: https://github.com/PIsberg/async-test-lib/releases
 2. Download JAR file
 3. Add to classpath
 
@@ -148,12 +148,12 @@ Two workflows in `.github/workflows/`:
 ## 📊 What's Packaged in JAR
 
 ```
-async-test-1.1.0.jar
+async-test-lib-1.6.0.jar
 ├── se/deversity/asynctest/
 │   ├── AsyncTest.class (Main annotation)
 │   ├── AsyncTestExtension.class (JUnit integration)
 │   ├── runner/ConcurrencyRunner.class
-│   ├── diagnostics/ (20+ detector classes)
+│   ├── diagnostics/ (93+ detector classes)
 │   └── ...
 ├── META-INF/
 │   ├── MANIFEST.MF (version info)
@@ -167,7 +167,7 @@ GitHub Actions uses `${{ secrets.GITHUB_TOKEN }}` automatically.
 
 For manual publishing:
 ```bash
-export GITHUB_ACTOR=yourusername
+export GITHUB_ACTOR=PIsberg
 export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 mvn deploy
 ```
@@ -176,13 +176,13 @@ mvn deploy
 
 Before first release:
 
-- [ ] Replace `yourusername` in pom.xml (lines 14, 26, 31-32, 38, 164, 170)
+- [ ] Replace `PIsberg` in pom.xml (lines 14, 26, 31-32, 38, 164, 170)
 - [ ] Verify Maven Central URLs (optional, for future)
 - [ ] Test local build: `mvn clean package`
-- [ ] Create initial release tag: `git tag -a v1.1.0 -m "Initial release"`
-- [ ] Push tag: `git push origin v1.1.0`
+- [ ] Create initial release tag: `git tag -a v1.6.0 -m "Initial release"`
+- [ ] Push tag: `git push origin v1.6.0`
 - [ ] Verify workflow runs: Check Actions tab
-- [ ] Check GitHub Packages: https://github.com/yourusername/async-test-lib/packages
+- [ ] Check GitHub Packages: https://github.com/PIsberg/async-test-lib/packages
 - [ ] Verify GitHub Release created
 
 ## 🎯 Next Steps (Recommended)
@@ -191,10 +191,10 @@ Before first release:
 - [x] Artifact distribution configured
 - [x] GitHub Packages ready
 - [x] Workflows automated
-- [ ] Replace `yourusername` placeholders
+- [ ] Replace `PIsberg` placeholders
 
 ### Medium Term (Month 1)
-- [ ] Create first release tag (v1.1.0)
+- [ ] Create first release tag (v1.6.0)
 - [ ] Verify artifact downloads work
 - [ ] Test installation in another project
 - [ ] Update README with "Installation" section
@@ -219,9 +219,9 @@ Before first release:
 ## 🆘 Troubleshooting
 
 ### "Artifact not found" error
-- Verify correct groupId: `se.deversity.asynctest`
+- Verify correct groupId: `se.deversity.async-test-lib`
 - Verify correct artifactId: `async-test`
-- Check version matches release (e.g., v1.1.0 → 1.1.0)
+- Check version matches release (e.g., v1.6.0 → 1.1.0)
 
 ### Workflow fails
 - Check GitHub Actions logs: Settings → Actions
@@ -253,4 +253,4 @@ For questions about distribution:
 
 **Last Updated**: 2026-03-24
 
-**Next Action**: Replace "yourusername" in pom.xml files and create first release tag
+**Next Action**: Replace "PIsberg" in pom.xml files and create first release tag

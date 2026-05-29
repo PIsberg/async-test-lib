@@ -1354,7 +1354,7 @@ testImplementation("se.deversity.async-test-lib:async-test-lib:0.9.0")
 To catch a concurrency bug, annotate your JUnit 5 test with `@AsyncTest`.
 
 ```java
-import se.deversity.asynctest.AsyncTest;
+import se.deversity.async-test-lib.AsyncTest;
 import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -1433,7 +1433,7 @@ void testLivelock() {
 Use `AsyncAssert` to wait for asynchronous changes cleanly:
 
 ```java
-import se.deversity.asynctest.AsyncAssert;
+import se.deversity.async-test-lib.AsyncAssert;
 import java.time.Duration;
 
 @Test
@@ -1659,7 +1659,7 @@ Listeners receive callbacks for:
 ### Creating a Custom Listener
 
 ```java
-import se.deversity.asynctest.AsyncTestListener;
+import se.deversity.async-test-lib.AsyncTestListener;
 
 public class MyCustomListener implements AsyncTestListener {
     
@@ -1695,7 +1695,7 @@ public class MyCustomListener implements AsyncTestListener {
 ### Registering Listeners
 
 ```java
-import se.deversity.asynctest.AsyncTestListenerRegistry;
+import se.deversity.async-test-lib.AsyncTestListenerRegistry;
 
 @BeforeAll
 static void setUp() {
@@ -1763,7 +1763,7 @@ Both `onDetectorReport` and `onStructuredReport` are fired for every finding. Ex
 
 ## CI/CD Integration & Reporting (v1.6.0+)
 
-async-test ships three ready-made listeners in `se.deversity.asynctest.report` for CI pipeline integration. Full details in [CI_INTEGRATION.md](CI_INTEGRATION.md).
+async-test ships three ready-made listeners in `se.deversity.async-test-lib.report` for CI pipeline integration. Full details in [CI_INTEGRATION.md](CI_INTEGRATION.md).
 
 ### JUnitXmlReportListener
 

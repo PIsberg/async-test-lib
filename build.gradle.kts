@@ -5,8 +5,11 @@ import org.gradle.external.javadoc.CoreJavadocOptions
 plugins {
     `java-library`
     jacoco
+    pmd
     id("com.vanniktech.maven.publish") version "0.30.0"
     id("net.ltgt.errorprone") version "4.1.0"
+    id("com.github.spotbugs") version "6.1.1"
+    id("org.cyclonedx.bom") version "2.1.0"
 }
 
 // group and version are read from gradle.properties
@@ -21,10 +24,14 @@ repositories {
     mavenCentral()
 }
 
-val junitVersion = "6.0.3"
-val jazzerVersion = "0.22.1"
-val byteBuddyVersion = "1.14.18"
-val asmVersion = "9.7.1"
+// ── Dependency versions ─────────────────────────────────────────────────────
+// Maven (pom.xml) is the canonical source of truth for versions.
+// Keep these in sync with the <properties> block in pom.xml.
+val junitVersion    = "6.1.0"   // pom: junit.jupiter.version
+val jazzerVersion   = "0.30.0"  // pom: jazzer.version
+val byteBuddyVersion = "1.18.8" // pom: bytebuddy.version
+val asmVersion      = "9.10.1"  // pom: asm.version
+val slf4jVersion    = "2.0.16"  // pom: slf4j.version
 
 dependencies {
     api("org.junit.jupiter:junit-jupiter-api:$junitVersion")
@@ -37,8 +44,9 @@ dependencies {
     implementation("net.bytebuddy:byte-buddy:$byteBuddyVersion")
     // ASM: static bytecode pre-scanner (StaticPinningScanner)
     implementation("org.ow2.asm:asm:$asmVersion")
-    compileOnly("se.deversity.vibetags:vibetags-processor:0.9.7")
-    annotationProcessor("se.deversity.vibetags:vibetags-processor:0.9.7")
+    api("org.slf4j:slf4j-api:$slf4jVersion")
+    compileOnly("se.deversity.vibetags:vibetags-processor:0.9.8")
+    annotationProcessor("se.deversity.vibetags:vibetags-processor:0.9.8")
     compileOnly("com.github.spotbugs:spotbugs-annotations:4.9.8")
     compileOnly("com.google.errorprone:error_prone_annotations:2.36.0")
     errorprone("com.google.errorprone:error_prone_core:2.36.0")
@@ -101,6 +109,37 @@ tasks.withType<Javadoc> {
     (options as CoreJavadocOptions).addStringOption("Xdoclint:none", "-quiet")
 }
 
+// ── PMD static analysis (matches Maven maven-pmd-plugin:3.28.0 / PMD 7.9.0) ─
+pmd {
+    toolVersion = "7.9.0"
+    ruleSets = listOf()
+    ruleSetFiles = files("pmd-ruleset.xml")
+    isConsoleOutput = true
+    isIgnoreFailures = false
+}
+tasks.named("pmdMain") { enabled = true }
+tasks.named("pmdTest") { enabled = false }
+
+// ── SpotBugs static analysis (matches Maven spotbugs-maven-plugin:4.9.8.3) ──
+spotbugs {
+    toolVersion.set("4.9.8")
+    excludeFilter.set(file("spotbugs-exclude.xml"))
+    effort.set(com.github.spotbugs.snom.Effort.MAX)
+    reportLevel.set(com.github.spotbugs.snom.Confidence.LOW)
+    ignoreFailures.set(false)
+}
+tasks.named("spotbugsMain") { enabled = true }
+tasks.named("spotbugsTest") { enabled = false }
+
+// ── CycloneDX SBOM (matches Maven cyclonedx-maven-plugin:2.9.1) ─────────────
+cyclonedxBom {
+    includeConfigs.set(listOf("runtimeClasspath"))
+    schemaVersion.set("1.6")
+    destination.set(project.file("build/reports"))
+    outputName.set("bom")
+    outputFormat.set("xml")
+}
+
 mavenPublishing {
     publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL, automaticRelease = true)
 
@@ -118,7 +157,7 @@ mavenPublishing {
 
     pom {
         name = "Async Test Library"
-        description = "Enterprise-grade JUnit 5 concurrency testing library with 51+ problem detectors " +
+        description = "Enterprise-grade JUnit 5 concurrency testing library with 93+ problem detectors " +
                 "for detecting deadlocks, visibility issues, false sharing, livelocks, and other subtle concurrency bugs."
         url = "https://github.com/PIsberg/async-test-lib"
 

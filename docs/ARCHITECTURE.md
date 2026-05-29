@@ -50,9 +50,9 @@ Shows the main containers/components within the async-test library JAR.
 - **Detector Modules** (~95+ detectors across 12 phases):
   - Phase 1: Core (3 detectors) — grouped via `Phase1DetectorSet`
   - Phases 2–12: managed by `DetectorRegistry`
-- **Reporting** (NEW in 1.6.0 — `se.deversity.asynctest.report`):
+- **Reporting** (NEW in 1.6.0 — `se.deversity.async-test-lib.report`):
   `Violation` record, `Formatter` interface, `MarkdownFormatter`, `JsonFormatter`
-- **Detector SPI** (NEW in 1.6.0 — `se.deversity.asynctest.spi`):
+- **Detector SPI** (NEW in 1.6.0 — `se.deversity.async-test-lib.spi`):
   `Detector`, `DetectorFactory`, SPI-driven `DetectorRegistry`, `adapters/` for canary migrations
 - **Diagnostics helpers**: `SiteCapture` (new in 1.6.0) for source-line attribution
 - **Benchmark Module**: 5 classes for performance tracking
@@ -212,14 +212,14 @@ Shows the decision flow during test execution.
 Shows how the library is deployed and used.
 
 **Artifacts:**
-- **async-test-1.1.0.jar**: Main library (~150 KB)
+- **async-test-lib-1.6.0.jar**: Main library (~150 KB)
   - Extension layer classes
   - Runner classes
   - 35 detector classes
   - 5 benchmark classes
   - META-INF/services (JUnit extension registration)
-- **async-test-1.1.0-sources.jar**: Source code (~350 KB)
-- **async-test-1.1.0-javadoc.jar**: API documentation (~450 KB)
+- **async-test-lib-1.6.0-sources.jar**: Source code (~350 KB)
+- **async-test-lib-1.6.0-javadoc.jar**: API documentation (~450 KB)
 
 **Deployment:**
 - Published to Maven repository (GitHub Packages)
@@ -424,7 +424,7 @@ analyze() → legacy String reports     +     analyze().structuredViolations: Li
                                      └── JsonFormatter      → dashboards / SARIF / IDE plugins
 ```
 
-`Violation` (`se.deversity.asynctest.report`) is an immutable record:
+`Violation` (`se.deversity.async-test-lib.report`) is an immutable record:
 `(detector, severity: IssueSeverity, message, sites: List<SiteCapture.Site>, attributes: Map<String,Object>, when: Instant)`.
 The canonical constructor enforces non-blank `detector`, defaults `sites` and
 `attributes` to empty immutables, and stamps `when` with `Instant.now()` if null.
@@ -451,11 +451,11 @@ and control characters (`\\u00xx`).
 The legacy detector architecture required synchronized edits across five places
 (annotation field, config field+builder+defaults, both `build()` branches,
 registry instantiation arm) — a documented fan-out risk in `CLAUDE.md`. The SPI
-in `se.deversity.asynctest.spi` collapses that to **one class + one
+in `se.deversity.async-test-lib.spi` collapses that to **one class + one
 META-INF/services line**.
 
 ```
-META-INF/services/se.deversity.asynctest.spi.DetectorFactory
+META-INF/services/se.deversity.async-test-lib.spi.DetectorFactory
         │
         ▼  ServiceLoader.load(...)
 DetectorFactory(s)                              ← user-implemented or built-in
@@ -503,7 +503,7 @@ Coverage is automated:
 
 **Coexistence with the legacy registry.** Both registries instantiate
 independently and run side-by-side. The legacy
-`se.deversity.asynctest.DetectorRegistry` continues to drive per-test
+`se.deversity.async-test-lib.DetectorRegistry` continues to drive per-test
 execution and owns the `AsyncTestContext` wiring; the SPI registry is the
 surface for programmatic discovery, custom user detectors, and incremental
 migration of each detector to expose structured violations natively.
@@ -518,7 +518,7 @@ runs. For a suite with 1000 `@AsyncTest` methods that meant 1000 redundant gate
 constructions — pure noise on the hot path and a layering smell (a concurrency
 engine should not know about license vendors).
 
-`LicenseGuard` (in `se.deversity.asynctest.runner`) now owns the concern:
+`LicenseGuard` (in `se.deversity.async-test-lib.runner`) now owns the concern:
 
 - `check(config)` is a `ConcurrentHashMap.get()` on a `Fingerprint` derived from
   the resolved license-config fields (account, key, product, store, license,
@@ -623,7 +623,7 @@ src/main/java/se/deversity/asynctest/
     └── BenchmarkRegressionException.java
 
 src/main/resources/META-INF/services/
-└── se.deversity.asynctest.spi.DetectorFactory  # NEW in 1.6.0 — ServiceLoader registration
+└── se.deversity.async-test-lib.spi.DetectorFactory  # NEW in 1.6.0 — ServiceLoader registration
 ```
 
 ---
@@ -693,11 +693,11 @@ The following structural improvements were made to address code quality concerns
 
 | Class | Package | Purpose |
 |-------|---------|---------|
-| `DetectorRegistry` | `se.deversity.asynctest` | Phase 1–3 detector lifecycle |
-| `Phase1DetectorSet` | `se.deversity.asynctest.diagnostics` | Phase 1 detector grouping |
-| `AsyncTestListener` | `se.deversity.asynctest` | Observability interface |
-| `AsyncTestListenerRegistry` | `se.deversity.asynctest` | Listener registration |
-| `NoopAsyncTestListener` | `se.deversity.asynctest` | No-op listener for opt-out |
+| `DetectorRegistry` | `se.deversity.async-test-lib` | Phase 1–3 detector lifecycle |
+| `Phase1DetectorSet` | `se.deversity.async-test-lib.diagnostics` | Phase 1 detector grouping |
+| `AsyncTestListener` | `se.deversity.async-test-lib` | Observability interface |
+| `AsyncTestListenerRegistry` | `se.deversity.async-test-lib` | Listener registration |
+| `NoopAsyncTestListener` | `se.deversity.async-test-lib` | No-op listener for opt-out |
 
 ---
 
@@ -710,7 +710,7 @@ effect, manual instrumentation overhead, and late detection of Loom pinning site
 
 ### 1. SpinContentionBarrier — Lock-Free Busy-Spin Barrier
 
-**Package:** `se.deversity.asynctest.runner`
+**Package:** `se.deversity.async-test-lib.runner`
 
 #### Baseline limitation
 `CyclicBarrier` parks threads via `LockSupport.park()`.  When the last thread arrives it
@@ -745,7 +745,7 @@ that are not benefit from busy-spinning platform threads.
 
 ### 2. TelemetryEventBuffer + TelemetryRegistry — Lock-Free Ring Buffer
 
-**Package:** `se.deversity.asynctest.telemetry`
+**Package:** `se.deversity.async-test-lib.telemetry`
 
 #### Baseline limitation
 Synchronous writes to thread-local lists during detector `recordAccess()` calls change the
@@ -781,7 +781,7 @@ allocation-free and lock-free.
 
 ### 3. AsyncTestAgent — Java Agent Bytecode Instrumentation
 
-**Package:** `se.deversity.asynctest.agent`  
+**Package:** `se.deversity.async-test-lib.agent`  
 **Dependency:** `net.bytebuddy:byte-buddy`
 
 #### Baseline limitation
@@ -803,12 +803,12 @@ called via reflection), so it does not appear in stack traces and incurs minimal
 after JIT compilation.
 
 **Scope guards** prevent recursive instrumentation of `java.*`, `jdk.*`, `sun.*`, and
-`se.deversity.asynctest.*` itself.
+`se.deversity.async-test-lib.*` itself.
 
 #### Attachment
 The library JAR is agent-capable — its MANIFEST contains:
 ```
-Premain-Class: se.deversity.asynctest.agent.AsyncTestAgent
+Premain-Class: se.deversity.async-test-lib.agent.AsyncTestAgent
 Can-Retransform-Classes: true
 Can-Redefine-Classes: true
 ```
@@ -822,7 +822,7 @@ Attach with:
 
 ### 4. StaticPinningScanner — Compile-Time Pinning Pre-Scanner
 
-**Package:** `se.deversity.asynctest.analysis`  
+**Package:** `se.deversity.async-test-lib.analysis`  
 **Dependency:** `org.ow2.asm:asm`
 
 #### Baseline limitation
