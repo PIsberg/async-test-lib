@@ -69,5 +69,13 @@
             with higher fidelity and also runs in the verify phase.
         -->
         <exclude name="CloseResource"/>
+
+        <!--
+            GuardLogStatement: This rule was designed for log frameworks that evaluate string
+            arguments eagerly (e.g. "val: " + obj). The project uses SLF4J parameterized logging
+            (log.warn("{}", x)) which defers toString() until the message is actually consumed —
+            so if(log.isWarnEnabled()) guards add boilerplate with no performance benefit.
+        -->
+        <exclude name="GuardLogStatement"/>
     </rule>
 </ruleset>

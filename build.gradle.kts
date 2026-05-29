@@ -132,7 +132,7 @@ tasks.named("spotbugsMain") { enabled = true }
 tasks.named("spotbugsTest") { enabled = false }
 
 // ── CycloneDX SBOM (matches Maven cyclonedx-maven-plugin:2.9.1) ─────────────
-cyclonedxBom {
+tasks.cyclonedxBom {
     includeConfigs.set(listOf("runtimeClasspath"))
     schemaVersion.set("1.6")
     destination.set(project.file("build/reports"))
