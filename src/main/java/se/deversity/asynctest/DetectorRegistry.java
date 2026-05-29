@@ -161,6 +161,13 @@ final class DetectorRegistry {
     final WeakHashMapSharedDetector         weakHashMapSharedDetector;
     final JdbcConnectionSharedDetector      jdbcConnectionSharedDetector;
 
+    // ---- Phase 14: Additional thread-unsafe primitives & publication hazards (1.7.0+) ----
+    final SharedStatefulCryptoDetector          sharedStatefulCryptoDetector;
+    final NonAtomicConcurrentMapUpdateDetector  nonAtomicConcurrentMapUpdateDetector;
+    final SharedDeflaterDetector                sharedDeflaterDetector;
+    final ThisEscapeDetector                    thisEscapeDetector;
+    final ThreadLocalRandomMisuseDetector       threadLocalRandomMisuseDetector;
+
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
      * Detectors whose flag is {@code false} are set to {@code null} and incur
@@ -311,6 +318,13 @@ final class DetectorRegistry {
         sharedSecureRandomDetector   = cfg.detectSharedSecureRandom   ? new SharedSecureRandomDetector()   : null;
         weakHashMapSharedDetector    = cfg.detectWeakHashMapShared    ? new WeakHashMapSharedDetector()    : null;
         jdbcConnectionSharedDetector = cfg.detectJdbcConnectionShared ? new JdbcConnectionSharedDetector() : null;
+
+        // ---- Phase 14: Additional thread-unsafe primitives & publication hazards (1.7.0+) ----
+        sharedStatefulCryptoDetector         = cfg.detectSharedStatefulCrypto      ? new SharedStatefulCryptoDetector()         : null;
+        nonAtomicConcurrentMapUpdateDetector = cfg.detectConcurrentMapCheckThenAct ? new NonAtomicConcurrentMapUpdateDetector() : null;
+        sharedDeflaterDetector               = cfg.detectSharedDeflater            ? new SharedDeflaterDetector()               : null;
+        thisEscapeDetector                   = cfg.detectThisEscape                ? new ThisEscapeDetector()                   : null;
+        threadLocalRandomMisuseDetector      = cfg.detectThreadLocalRandomMisuse   ? new ThreadLocalRandomMisuseDetector()      : null;
     }
 
     /**
@@ -659,6 +673,23 @@ final class DetectorRegistry {
         ifIssue(jdbcConnectionSharedDetector,
                 JdbcConnectionSharedDetector::analyze,
                 JdbcConnectionSharedDetector.Report::hasIssues, out);
+
+        // ---- Phase 14 (1.7.0+) ----
+        ifIssue(sharedStatefulCryptoDetector,
+                SharedStatefulCryptoDetector::analyze,
+                SharedStatefulCryptoDetector.Report::hasIssues, out);
+        ifIssue(nonAtomicConcurrentMapUpdateDetector,
+                NonAtomicConcurrentMapUpdateDetector::analyze,
+                NonAtomicConcurrentMapUpdateDetector.Report::hasIssues, out);
+        ifIssue(sharedDeflaterDetector,
+                SharedDeflaterDetector::analyze,
+                SharedDeflaterDetector.Report::hasIssues, out);
+        ifIssue(thisEscapeDetector,
+                ThisEscapeDetector::analyze,
+                ThisEscapeDetector.Report::hasIssues, out);
+        ifIssue(threadLocalRandomMisuseDetector,
+                ThreadLocalRandomMisuseDetector::analyze,
+                ThreadLocalRandomMisuseDetector.Report::hasIssues, out);
 
         return out;
     }

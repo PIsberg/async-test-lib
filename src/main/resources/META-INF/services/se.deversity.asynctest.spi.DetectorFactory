@@ -139,3 +139,10 @@ se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$NotifyWithoutMonitor
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedSecureRandom
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$WeakHashMapShared
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$JdbcConnectionShared
+
+# Phase 14 — additional thread-unsafe primitives & publication hazards (1.7.0+)
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedStatefulCrypto
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ConcurrentMapCheckThenAct
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedDeflater
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ThisEscape
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ThreadLocalRandomMisuse

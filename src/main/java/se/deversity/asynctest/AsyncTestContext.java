@@ -153,6 +153,13 @@ public final class AsyncTestContext {
     final WeakHashMapSharedDetector         weakHashMapSharedDetector;
     final JdbcConnectionSharedDetector      jdbcConnectionSharedDetector;
 
+    // ---- Phase 14: Additional thread-unsafe primitives & publication hazards (1.7.0+) ----
+    final SharedStatefulCryptoDetector          sharedStatefulCryptoDetector;
+    final NonAtomicConcurrentMapUpdateDetector  nonAtomicConcurrentMapUpdateDetector;
+    final SharedDeflaterDetector                sharedDeflaterDetector;
+    final ThisEscapeDetector                    thisEscapeDetector;
+    final ThreadLocalRandomMisuseDetector       threadLocalRandomMisuseDetector;
+
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
         // Mirror registry references so package-private field access still works
@@ -252,6 +259,12 @@ public final class AsyncTestContext {
         sharedSecureRandomDetector             = registry.sharedSecureRandomDetector;
         weakHashMapSharedDetector              = registry.weakHashMapSharedDetector;
         jdbcConnectionSharedDetector           = registry.jdbcConnectionSharedDetector;
+        // Phase 14
+        sharedStatefulCryptoDetector           = registry.sharedStatefulCryptoDetector;
+        nonAtomicConcurrentMapUpdateDetector   = registry.nonAtomicConcurrentMapUpdateDetector;
+        sharedDeflaterDetector                 = registry.sharedDeflaterDetector;
+        thisEscapeDetector                     = registry.thisEscapeDetector;
+        threadLocalRandomMisuseDetector        = registry.threadLocalRandomMisuseDetector;
     }
 
     // ---- Lifecycle (called by ConcurrencyRunner) ----
@@ -1120,6 +1133,51 @@ public final class AsyncTestContext {
      */
     public static JdbcConnectionSharedDetector jdbcConnectionSharedDetector() {
         return require("detectJdbcConnectionShared", c -> c.jdbcConnectionSharedDetector);
+    }
+
+    /**
+     * Returns the {@link SharedStatefulCryptoDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedStatefulCrypto = false}
+     * @since 1.7.0
+     */
+    public static SharedStatefulCryptoDetector sharedStatefulCryptoDetector() {
+        return require("detectSharedStatefulCrypto", c -> c.sharedStatefulCryptoDetector);
+    }
+
+    /**
+     * Returns the {@link NonAtomicConcurrentMapUpdateDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectConcurrentMapCheckThenAct = false}
+     * @since 1.7.0
+     */
+    public static NonAtomicConcurrentMapUpdateDetector nonAtomicConcurrentMapUpdateDetector() {
+        return require("detectConcurrentMapCheckThenAct", c -> c.nonAtomicConcurrentMapUpdateDetector);
+    }
+
+    /**
+     * Returns the {@link SharedDeflaterDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedDeflater = false}
+     * @since 1.7.0
+     */
+    public static SharedDeflaterDetector sharedDeflaterDetector() {
+        return require("detectSharedDeflater", c -> c.sharedDeflaterDetector);
+    }
+
+    /**
+     * Returns the {@link ThisEscapeDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectThisEscape = false}
+     * @since 1.7.0
+     */
+    public static ThisEscapeDetector thisEscapeDetector() {
+        return require("detectThisEscape", c -> c.thisEscapeDetector);
+    }
+
+    /**
+     * Returns the {@link ThreadLocalRandomMisuseDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectThreadLocalRandomMisuse = false}
+     * @since 1.7.0
+     */
+    public static ThreadLocalRandomMisuseDetector threadLocalRandomMisuseDetector() {
+        return require("detectThreadLocalRandomMisuse", c -> c.threadLocalRandomMisuseDetector);
     }
 
     // ---- Helper ----

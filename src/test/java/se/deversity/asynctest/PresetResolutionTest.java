@@ -233,6 +233,11 @@ class PresetResolutionTest {
         @Override public boolean detectSharedSecureRandom() { return def("detectSharedSecureRandom"); }
         @Override public boolean detectWeakHashMapShared() { return def("detectWeakHashMapShared"); }
         @Override public boolean detectJdbcConnectionShared() { return def("detectJdbcConnectionShared"); }
+        @Override public boolean detectSharedStatefulCrypto() { return def("detectSharedStatefulCrypto"); }
+        @Override public boolean detectConcurrentMapCheckThenAct() { return def("detectConcurrentMapCheckThenAct"); }
+        @Override public boolean detectSharedDeflater() { return def("detectSharedDeflater"); }
+        @Override public boolean detectThisEscape() { return def("detectThisEscape"); }
+        @Override public boolean detectThreadLocalRandomMisuse() { return def("detectThreadLocalRandomMisuse"); }
         @Override public boolean enableBenchmarking() { return def("enableBenchmarking"); }
         @Override public double benchmarkRegressionThreshold() { return def("benchmarkRegressionThreshold"); }
         @Override public boolean failOnBenchmarkRegression() { return def("failOnBenchmarkRegression"); }

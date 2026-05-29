@@ -112,5 +112,10 @@
         <module>97-weak-reference-race</module>
         <module>98-async-pipeline-monitor</module>
         <module>99-atomic-non-atomic</module>
+        <module>104-shared-stateful-crypto</module>
+        <module>105-concurrent-map-check-then-act</module>
+        <module>106-shared-deflater</module>
+        <module>107-this-escape</module>
+        <module>108-thread-local-random-misuse</module>
     </modules>
 </project>

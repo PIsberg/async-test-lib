@@ -139,5 +139,12 @@ public enum DetectorType {
     NOTIFY_WITHOUT_MONITOR,
     SHARED_SECURE_RANDOM,
     WEAK_HASH_MAP_SHARED,
-    JDBC_CONNECTION_SHARED
+    JDBC_CONNECTION_SHARED,
+
+    // Phase 14: Additional thread-unsafe primitives & publication hazards (1.7.0+)
+    SHARED_STATEFUL_CRYPTO,
+    CONCURRENT_MAP_CHECK_THEN_ACT,
+    SHARED_DEFLATER,
+    THIS_ESCAPE,
+    THREAD_LOCAL_RANDOM_MISUSE
 }

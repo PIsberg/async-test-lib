@@ -945,6 +945,54 @@ public @interface AsyncTest {
      */
     boolean detectJdbcConnectionShared() default true;
 
+    /**
+     * Enable shared stateful-crypto detection. Flags {@link javax.crypto.Cipher},
+     * {@link javax.crypto.Mac}, and {@link java.security.Signature} instances accessed from
+     * multiple threads. Unlike {@code MessageDigest}, these carry mutable per-operation state
+     * across {@code init → update → doFinal}; concurrent use corrupts ciphertext or breaks
+     * MAC/signature integrity. See
+     * {@link se.deversity.asynctest.diagnostics.SharedStatefulCryptoDetector}.
+     * @since 1.7.0
+     */
+    boolean detectSharedStatefulCrypto() default true;
+
+    /**
+     * Enable non-atomic {@link java.util.concurrent.ConcurrentMap} check-then-act detection.
+     * Flags {@code containsKey}/{@code get}-then-{@code put} compound sequences performed by
+     * multiple threads against the same map and key — a lost-update race that should use
+     * {@code putIfAbsent}/{@code computeIfAbsent}/{@code compute}/{@code merge}. See
+     * {@link se.deversity.asynctest.diagnostics.NonAtomicConcurrentMapUpdateDetector}.
+     * @since 1.7.0
+     */
+    boolean detectConcurrentMapCheckThenAct() default true;
+
+    /**
+     * Enable shared {@link java.util.zip.Deflater}/{@link java.util.zip.Inflater} detection.
+     * Both wrap a stateful native zlib stream and are not thread-safe; concurrent use corrupts
+     * output or crashes when one thread calls {@code end()} mid-stream. See
+     * {@link se.deversity.asynctest.diagnostics.SharedDeflaterDetector}.
+     * @since 1.7.0
+     */
+    boolean detectSharedDeflater() default true;
+
+    /**
+     * Enable {@code this}-escape detection. Flags constructors that publish {@code this}
+     * before returning (starting a thread, registering a listener, storing into shared state),
+     * exposing a partially-constructed object to other threads. See
+     * {@link se.deversity.asynctest.diagnostics.ThisEscapeDetector}.
+     * @since 1.7.0
+     */
+    boolean detectThisEscape() default true;
+
+    /**
+     * Enable {@link java.util.concurrent.ThreadLocalRandom} misuse detection. Flags a
+     * {@code ThreadLocalRandom.current()} reference cached and used from a thread other than
+     * the one that obtained it, which defeats its per-thread isolation. See
+     * {@link se.deversity.asynctest.diagnostics.ThreadLocalRandomMisuseDetector}.
+     * @since 1.7.0
+     */
+    boolean detectThreadLocalRandomMisuse() default true;
+
     // ============= License Gating (Integration) =============
 
     /** Keygen Account ID. Defaults to System property 'keygen.account.id' if empty. */
