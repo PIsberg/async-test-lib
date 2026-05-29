@@ -53,6 +53,15 @@ tasks.test {
     useJUnitPlatform()
     // Match Maven surefire forkCount=1, reuseForks=false: new JVM for each test class
     forkEvery = 1
+    // Run multiple test JVMs in parallel. forkEvery=1 already gives each class its own
+    // JVM, so concurrent forks share no static state (ThreadLocal contexts, static
+    // registries, per-JVM license/benchmark state) — isolation is identical to serial
+    // execution, only wall-clock time drops. Overridable with -PtestForks=N; defaults to
+    // half the available processors (min 1) to leave headroom for the heavily-threaded
+    // ConcurrencyRunner stress phases inside each fork.
+    val requestedForks = (project.findProperty("testForks") as String?)?.toIntOrNull()
+    maxParallelForks = requestedForks
+        ?: (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
     systemProperty("license.mock.mode", System.getProperty("license.mock.mode", "true"))
     systemProperty("license.key", System.getProperty("license.key", ""))
     
