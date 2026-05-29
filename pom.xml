@@ -63,7 +63,7 @@
         <spotbugs.version>4.9.8</spotbugs.version>
         <maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
         <archunit.version>1.4.2</archunit.version>
-        <error-prone.version>2.36.0</error-prone.version>
+        <error-prone.version>2.49.0</error-prone.version>
         <asm.version>9.10.1</asm.version>
         <bytebuddy.version>1.18.8</bytebuddy.version>
     </properties>
