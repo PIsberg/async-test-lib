@@ -3,7 +3,10 @@ package se.deversity.asynctest.extension;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.vibetags.annotations.AIContract;
 import se.deversity.vibetags.annotations.AIPublicAPI;
-import org.junit.jupiter.api.extension.*;
+import org.junit.jupiter.api.extension.Extension;
+import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.extension.TestTemplateInvocationContext;
+import org.junit.jupiter.api.extension.TestTemplateInvocationContextProvider;
 
 import java.util.Collections;
 import java.util.stream.IntStream;

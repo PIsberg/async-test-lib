@@ -10,7 +10,7 @@ public class BenchmarkRegressionException extends RuntimeException {
 
     // Not serialized: BenchmarkComparisonResult does not implement Serializable.
     // The message string (from super) carries the human-readable detail.
-    private transient final BenchmarkComparisonResult comparisonResult;
+    private final transient BenchmarkComparisonResult comparisonResult;
 
     public BenchmarkRegressionException(String message, BenchmarkComparisonResult comparisonResult) {
         super(message);
