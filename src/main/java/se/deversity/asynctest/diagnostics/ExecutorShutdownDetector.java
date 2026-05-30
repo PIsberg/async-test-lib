@@ -1,8 +1,11 @@
 package se.deversity.asynctest.diagnostics;
 
-import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
