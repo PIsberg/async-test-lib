@@ -1,7 +1,6 @@
 package se.deversity.asynctest.report;
 
 import se.deversity.vibetags.annotations.AIContract;
-import se.deversity.vibetags.annotations.AIExtensible;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
 import java.util.List;
@@ -16,7 +15,6 @@ import java.util.List;
  */
 @AIPublicAPI
 @AIContract(reason = "Public formatter SPI. format(List<Violation>) signature must not change — built-in formatters and user-provided lambdas bind to this exact type.")
-@AIExtensible(AIExtensible.Strategy.STRATEGY_PATTERN)
 @FunctionalInterface
 public interface Formatter {
 

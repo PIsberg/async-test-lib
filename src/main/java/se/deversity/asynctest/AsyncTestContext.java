@@ -99,7 +99,6 @@ import se.deversity.asynctest.diagnostics.WakeupDetector;
 import se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector;
 import se.deversity.asynctest.diagnostics.WeakReferenceRaceDetector;
 import se.deversity.vibetags.annotations.AIAudit;
-import se.deversity.vibetags.annotations.AICallersOnly;
 import se.deversity.vibetags.annotations.AICore;
 import se.deversity.vibetags.annotations.AIIdempotent;
 import se.deversity.vibetags.annotations.AIPublicAPI;
@@ -368,7 +367,6 @@ public final class AsyncTestContext {
     // ---- Lifecycle (called by ConcurrencyRunner) ----
 
     /** Installs {@code ctx} into the calling thread's ThreadLocal. */
-    @AICallersOnly({"se.deversity.asynctest.runner.ConcurrencyRunner"})
     public static void install(AsyncTestContext ctx) {
         CURRENT.set(ctx);
     }
