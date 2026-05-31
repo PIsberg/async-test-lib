@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AISecure;
 import se.deversity.vibetags.annotations.AITestDriven;
+import se.deversity.vibetags.annotations.AIThreadSafe;
 
 /**
  * Detects {@link java.security.MessageDigest} instances shared across multiple threads.
@@ -34,6 +35,7 @@ import se.deversity.vibetags.annotations.AITestDriven;
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedMessageDigestDetectorTest.java"
 )
 @AISecure(aspect = "cryptography (hash integrity / MAC / signature state)")
+@AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().")
 public class SharedMessageDigestDetector {
 
     private static class DigestState {
