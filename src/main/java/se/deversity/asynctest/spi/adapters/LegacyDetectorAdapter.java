@@ -4,6 +4,7 @@ import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.asynctest.spi.Detector;
+import se.deversity.vibetags.annotations.AILegacyBridge;
 import se.deversity.vibetags.annotations.AIPerformance;
 
 import java.lang.reflect.Method;
@@ -36,6 +37,7 @@ import java.util.Map;
  * @since 1.6.0
  */
 @AIPerformance(constraint = "analyze() does Method.getMethod + invoke each call; only invoked once per round per detector, not on the hot recordAccess path. If profiling shows reflection overhead, cache the Method handles in the constructor.")
+@AILegacyBridge
 public final class LegacyDetectorAdapter<D> implements Detector {
 
     private final D delegate;

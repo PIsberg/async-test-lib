@@ -6,7 +6,6 @@ import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AIIdempotent;
 import se.deversity.vibetags.annotations.AIImmutable;
 import se.deversity.vibetags.annotations.AIPublicAPI;
-import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -31,8 +30,7 @@ import java.util.ServiceLoader;
  * @since 1.6.0
  */
 @AIPublicAPI
-@AIImmutable(note = "Effectively immutable after build() — the EnumMap is populated only in the private constructor and never mutated thereafter; safe to publish to multiple threads.")
-@AIThreadSafe(strategy = AIThreadSafe.Strategy.IMMUTABLE, note = "All public methods are read-only views over an EnumMap populated once at construction.")
+@AIImmutable(note = "Effectively immutable after build() — the EnumMap is populated only in the private constructor and never mutated thereafter; safe to publish to multiple threads and read-only views over an EnumMap populated once at construction.")
 public final class DetectorRegistry {
 
     private final Map<DetectorType, Detector> byType = new EnumMap<>(DetectorType.class);

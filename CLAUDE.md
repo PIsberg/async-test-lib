@@ -84,6 +84,15 @@
     <element path="se.deversity.asynctest.extension.AsyncTestExtension">
       <reason>JUnit 5 TestTemplateInvocationContextProvider SPI. The two overridden methods (supportsTestTemplate, provideTestTemplateInvocationContexts) must preserve their exact signatures as mandated by JUnit.</reason>
     </element>
+    <element path="se.deversity.asynctest.report.Formatter">
+      <reason>Public formatter SPI. format(List<Violation>) signature must not change — built-in formatters and user-provided lambdas bind to this exact type.</reason>
+    </element>
+    <element path="se.deversity.asynctest.spi.Detector">
+      <reason>Public SPI interface. type(), analyze(), onTestStart(), and onTestEnd() signatures are part of the stable extension contract — implementors bind to these exact names and parameter types.</reason>
+    </element>
+    <element path="se.deversity.asynctest.spi.DetectorFactory">
+      <reason>Public SPI interface for ServiceLoader-based detector discovery. type(), isEnabledFor(), and create() signatures are part of the stable factory contract — implementors bind to these exact names and parameter types.</reason>
+    </element>
   </contract_signatures>
 
 <rule>You may refactor the internal logic of elements listed in <contract_signatures>, but you MUST NOT change their public signatures: method names, parameter types, parameter order, return types, or checked exceptions.</rule>
@@ -268,6 +277,11 @@
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/NestedMonitorLockoutDetectorTest.java</test_location>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.NonAtomicConcurrentMapUpdateDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/NonAtomicConcurrentMapUpdateDetectorTest.java</test_location>
+    </element>
     <element path="se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector">
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
@@ -328,6 +342,11 @@
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/SharedDecimalFormatDetectorTest.java</test_location>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.SharedDeflaterDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/SharedDeflaterDetectorTest.java</test_location>
+    </element>
     <element path="se.deversity.asynctest.diagnostics.SharedFormatterDetector">
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
@@ -352,6 +371,11 @@
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/SharedSecureRandomDetectorTest.java</test_location>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.SharedStatefulCryptoDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/SharedStatefulCryptoDetectorTest.java</test_location>
     </element>
     <element path="se.deversity.asynctest.diagnostics.SharedTimeZoneDetector">
       <coverage_goal>80</coverage_goal>
@@ -418,6 +442,11 @@
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/SystemPropertyMutationDetectorTest.java</test_location>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.ThisEscapeDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/ThisEscapeDetectorTest.java</test_location>
+    </element>
     <element path="se.deversity.asynctest.diagnostics.ThreadFactoryDetector">
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
@@ -432,6 +461,11 @@
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/ThreadLocalContaminationDetectorTest.java</test_location>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.ThreadLocalRandomMisuseDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/ThreadLocalRandomMisuseDetectorTest.java</test_location>
     </element>
     <element path="se.deversity.asynctest.diagnostics.ThreadPoolDeadlockDetector">
       <coverage_goal>80</coverage_goal>
@@ -523,13 +557,37 @@
       <strategy>OTHER</strategy>
       <note>ConcurrentHashMap-backed JDBC-resource tracking; per-resource State holds ConcurrentHashMap.newKeySet() for accessing threads.</note>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.NonAtomicConcurrentMapUpdateDetector">
+      <strategy>OTHER</strategy>
+      <note>Per (map,key) state in a ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().</note>
+    </element>
     <element path="se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector">
       <strategy>SYNCHRONIZED</strategy>
       <note>Attempts list mutated under a single intrinsic monitor on the list itself; sampling Thread.holdsLock requires no locking.</note>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.SharedDeflaterDetector">
+      <strategy>OTHER</strategy>
+      <note>Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().</note>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.SharedMessageDigestDetector">
+      <strategy>OTHER</strategy>
+      <note>Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().</note>
+    </element>
     <element path="se.deversity.asynctest.diagnostics.SharedSecureRandomDetector">
       <strategy>OTHER</strategy>
       <note>Per-instance state in ConcurrentHashMap with double-check (get-then-computeIfAbsent) hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().</note>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.SharedStatefulCryptoDetector">
+      <strategy>OTHER</strategy>
+      <note>Per-instance state in ConcurrentHashMap with double-check (get-then-computeIfAbsent) hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().</note>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.ThisEscapeDetector">
+      <strategy>OTHER</strategy>
+      <note>Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; escape descriptions and observer-thread sets are ConcurrentHashMap.newKeySet(); the completed flag is volatile.</note>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.ThreadLocalRandomMisuseDetector">
+      <strategy>OTHER</strategy>
+      <note>Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; misusing-thread sets are ConcurrentHashMap.newKeySet().</note>
     </element>
     <element path="se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector">
       <strategy>OTHER</strategy>
@@ -582,6 +640,13 @@
   </observability_instrumentation>
 
 <rule>Elements listed in <observability_instrumentation> publish metrics, traces, or log statements that downstream dashboards and alerts depend on. Never remove or rename instrumentation without flagging the corresponding dashboard update.</rule>
+  <legacy_bridge_elements>
+    <element path="se.deversity.asynctest.spi.adapters.LegacyDetectorAdapter">
+      <refactor>prohibited</refactor>
+    </element>
+  </legacy_bridge_elements>
+
+<rule>Do not modernise, elegant-ize, or refactor structural patterns of elements in <legacy_bridge_elements>. Only modify internal business logic as explicitly requested.</rule>
   <public_api_elements>
     <element path="se.deversity.asynctest.AsyncAssert">
       <api>public</api>
@@ -688,12 +753,42 @@
     <element path="se.deversity.asynctest.diagnostics.SharedSecureRandomDetector">
       <aspect>cryptography (RNG quality)</aspect>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.SharedStatefulCryptoDetector">
+      <aspect>cryptography (confidentiality / integrity / authenticity state)</aspect>
+    </element>
     <element path="se.deversity.asynctest.runner.LicenseGuard">
       <aspect>authorization</aspect>
     </element>
   </security_elements>
 
 <rule>Elements listed in <security_elements> are security-critical. Never weaken their security properties. Every proposed change must be explicitly reviewed for security impact.</rule>
+  <access_limitations>
+    <file path="se.deversity.asynctest.AsyncTestContext.install(se.deversity.asynctest.AsyncTestContext)">
+      <allowed_callers>se.deversity.asynctest.runner.ConcurrencyRunner</allowed_callers>
+    </file>
+  </access_limitations>
+
+<rule>Do not invoke elements in <access_limitations> from outside their specified allowed caller packages or classes.</rule>
+  <memory_budget_elements>
+    <file path="se.deversity.asynctest.benchmark.BenchmarkRecorder.recordInvocationStart()">
+      <allocation_policy>NO_AUTOBOXING</allocation_policy>
+    </file>
+    <file path="se.deversity.asynctest.benchmark.BenchmarkRecorder.recordInvocationEnd(long)">
+      <allocation_policy>NO_AUTOBOXING</allocation_policy>
+    </file>
+  </memory_budget_elements>
+
+<rule>Avoid runtime heap object allocations, autoboxing, or dynamic overhead within classes/methods in <memory_budget_elements>.</rule>
+  <extensible_patterns>
+    <file path="se.deversity.asynctest.report.Formatter">
+      <extension_pattern>STRATEGY_PATTERN</extension_pattern>
+    </file>
+    <file path="se.deversity.asynctest.spi.Detector">
+      <extension_pattern>STRATEGY_PATTERN</extension_pattern>
+    </file>
+  </extensible_patterns>
+
+<rule>Respect extensibility guidelines for elements in <extensible_patterns>. Implement strategy/visitor extensions rather than expanding branch conditional logic.</rule>
 </project_guardrails>
 
 <rule>Never propose edits to files listed in <locked_files>.</rule>
