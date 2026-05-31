@@ -2,7 +2,6 @@ package se.deversity.asynctest.benchmark;
 
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.vibetags.annotations.AIFeatureFlag;
-import se.deversity.vibetags.annotations.AIMemoryBudget;
 import se.deversity.vibetags.annotations.AIObservability;
 import se.deversity.vibetags.annotations.AIPerformance;
 import org.slf4j.Logger;
@@ -73,7 +72,6 @@ public class BenchmarkRecorder {
      * Record the start of an invocation round.
      * @return start time in nanoseconds
      */
-    @AIMemoryBudget(AIMemoryBudget.AllocationPolicy.NO_AUTOBOXING)
     public long recordInvocationStart() {
         if (!benchmarkingEnabled) {
             return 0;
@@ -85,7 +83,6 @@ public class BenchmarkRecorder {
      * Record the end of an invocation round.
      * @param startTimeNanos the start time returned by recordInvocationStart()
      */
-    @AIMemoryBudget(AIMemoryBudget.AllocationPolicy.NO_AUTOBOXING)
     public void recordInvocationEnd(long startTimeNanos) {
         if (!benchmarkingEnabled) {
             return;
