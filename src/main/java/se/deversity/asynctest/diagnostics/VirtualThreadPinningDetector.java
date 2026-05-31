@@ -1,7 +1,5 @@
 package se.deversity.asynctest.diagnostics;
 
-import java.lang.management.ManagementFactory;
-import java.lang.management.ThreadMXBean;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -57,16 +55,14 @@ public class VirtualThreadPinningDetector {
     private static class PinningEvent {
         final long virtualThreadId;
         final String virtualThreadName;
-        final long carrierThreadId;
         final long startTimeNanos;
         final String blockingOperation;
         final StackTraceElement[] stackTrace;
 
-        PinningEvent(long virtualThreadId, String virtualThreadName, long carrierThreadId,
+        PinningEvent(long virtualThreadId, String virtualThreadName,
                      String blockingOperation, StackTraceElement[] stackTrace) {
             this.virtualThreadId = virtualThreadId;
             this.virtualThreadName = virtualThreadName;
-            this.carrierThreadId = carrierThreadId;
             this.startTimeNanos = System.nanoTime();
             this.blockingOperation = blockingOperation;
             this.stackTrace = stackTrace;
@@ -81,7 +77,6 @@ public class VirtualThreadPinningDetector {
     private final AtomicInteger currentPinnedCount = new AtomicInteger(0);
     private final AtomicInteger maxPinnedCount = new AtomicInteger(0);
     private volatile boolean monitoring = false;
-    private final ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
 
     /**
      * Start monitoring for virtual thread pinning.
@@ -112,7 +107,6 @@ public class VirtualThreadPinningDetector {
         PinningEvent event = new PinningEvent(
             thread.threadId(),
             thread.getName(),
-            -1, // Carrier thread ID not directly accessible
             blockingOperation,
             stackTrace
         );
@@ -233,6 +227,8 @@ public class VirtualThreadPinningDetector {
         }
 
         /**
+         * Returns all captured pinning event snapshots.
+         *
          * @return list of pinning event snapshots
          */
         public List<PinningEventSnapshot> getEvents() {
@@ -240,6 +236,8 @@ public class VirtualThreadPinningDetector {
         }
 
         /**
+         * Returns the peak number of virtual threads that were pinned at the same time.
+         *
          * @return maximum number of threads pinned simultaneously
          */
         public int getMaxPinnedCount() {
@@ -247,6 +245,8 @@ public class VirtualThreadPinningDetector {
         }
 
         /**
+         * Indicates whether virtual threads are available on the current JVM.
+         *
          * @return true if virtual threads are supported on this JVM
          */
         public boolean isVirtualThreadSupported() {
@@ -254,6 +254,8 @@ public class VirtualThreadPinningDetector {
         }
 
         /**
+         * Indicates whether any virtual thread pinning was observed.
+         *
          * @return true if pinning issues were detected
          */
         public boolean hasPinningIssues() {
@@ -328,6 +330,8 @@ public class VirtualThreadPinningDetector {
         }
 
         /**
+         * Returns the ID of the pinned virtual thread.
+         *
          * @return virtual thread ID
          */
         public long getThreadId() {
@@ -335,6 +339,8 @@ public class VirtualThreadPinningDetector {
         }
 
         /**
+         * Returns the name of the pinned virtual thread.
+         *
          * @return virtual thread name
          */
         public String getThreadName() {
@@ -342,6 +348,8 @@ public class VirtualThreadPinningDetector {
         }
 
         /**
+         * Returns a description of the operation that caused the virtual thread to pin.
+         *
          * @return description of blocking operation
          */
         public String getBlockingOperation() {
@@ -349,6 +357,8 @@ public class VirtualThreadPinningDetector {
         }
 
         /**
+         * Returns how long the virtual thread was pinned to its carrier.
+         *
          * @return duration in milliseconds
          */
         public long getDurationMillis() {
@@ -356,6 +366,8 @@ public class VirtualThreadPinningDetector {
         }
 
         /**
+         * Returns the stack trace captured at the point the virtual thread became pinned.
+         *
          * @return stack trace at pinning point
          */
         public StackTraceElement[] getStackTrace() {

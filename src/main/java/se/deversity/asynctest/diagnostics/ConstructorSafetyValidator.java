@@ -20,7 +20,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ConstructorSafetyValidator {
     
     private static class ObjectState {
-        final int objectId;
         final String className;
         volatile boolean constructionComplete = false;
         final AtomicInteger threadsThatAccessedDuringConstruction = new AtomicInteger(0);
@@ -28,16 +27,14 @@ public class ConstructorSafetyValidator {
         volatile long constructionStartTime = 0;
         volatile long constructionEndTime = 0;
         final Map<String, FieldAccessInfo> fieldAccesses = new ConcurrentHashMap<>();
-        
-        ObjectState(int id, String className) {
-            this.objectId = id;
+
+        ObjectState(String className) {
             this.className = className;
             this.constructionStartTime = System.nanoTime();
         }
     }
-    
+
     private static final class FieldAccessInfo {
-        volatile long firstAccessTime = 0;
         final AtomicInteger accessCount = new AtomicInteger(0);
         final Set<Long> accessingThreadIds = ConcurrentHashMap.newKeySet();
     }
@@ -52,7 +49,7 @@ public class ConstructorSafetyValidator {
         if (!enabled || object == null) return;
 
         int id = System.identityHashCode(object);
-        objects.putIfAbsent(id, new ObjectState(id, object.getClass().getSimpleName()));
+        objects.putIfAbsent(id, new ObjectState(object.getClass().getSimpleName()));
     }
     
     /**
@@ -90,7 +87,6 @@ public class ConstructorSafetyValidator {
         state.accessingThreadIds.add(threadId);
         
         if (!state.constructionComplete && state.constructionStartTime > 0) {
-            fieldInfo.firstAccessTime = timestamp;
             // Different thread accessing object during construction
             if (threadId != Thread.currentThread().getId()) {
                 state.threadsThatAccessedDuringConstruction.incrementAndGet();

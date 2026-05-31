@@ -32,7 +32,6 @@ public class FalseSharingDetector {
         final Class<?> fieldType;
         final long memoryOffset;
         final AtomicLong accessCount = new AtomicLong(0);
-        volatile long lastAccessTime = 0;
         final Set<Long> accessingThreadIds = ConcurrentHashMap.newKeySet();
 
         FieldAccessInfo(String name, Class<?> type, long offset) {
@@ -41,18 +40,12 @@ public class FalseSharingDetector {
             this.memoryOffset = offset;
         }
     }
-    
+
     private static class AccessEvent {
-        final long timestamp;
         final long threadId;
-        final String fieldName;
-        final long offset;
-        
-        AccessEvent(long timestamp, long threadId, String fieldName, long offset) {
-            this.timestamp = timestamp;
+
+        AccessEvent(long threadId) {
             this.threadId = threadId;
-            this.fieldName = fieldName;
-            this.offset = offset;
         }
     }
     
@@ -72,12 +65,11 @@ public class FalseSharingDetector {
         );
 
         info.accessCount.incrementAndGet();
-        info.lastAccessTime = System.nanoTime();
         info.accessingThreadIds.add(Thread.currentThread().getId());
 
         // Record detailed access history for analysis
         accessHistory.computeIfAbsent(key, k -> Collections.synchronizedList(new ArrayList<>()))
-            .add(new AccessEvent(System.nanoTime(), Thread.currentThread().getId(), fieldName, offset));
+            .add(new AccessEvent(Thread.currentThread().getId()));
     }
     
     /**

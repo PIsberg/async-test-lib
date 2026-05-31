@@ -53,7 +53,6 @@ public class CompletableFutureExceptionDetector {
 
     private static class FutureState {
         final String name;
-        final CompletableFuture<?> future;
         final long createdTime = System.nanoTime();
         final long creatorThreadId = Thread.currentThread().threadId();
         volatile boolean exceptionHandlerRegistered = false;
@@ -64,7 +63,6 @@ public class CompletableFutureExceptionDetector {
         final AtomicInteger getJoinCalls = new AtomicInteger(0);
 
         FutureState(CompletableFuture<?> future, String name) {
-            this.future = future;
             this.name = name != null ? name : "future@" + System.identityHashCode(future);
         }
     }
@@ -99,7 +97,7 @@ public class CompletableFutureExceptionDetector {
         FutureState state = futures.get(System.identityHashCode(future));
         if (state != null) {
             state.exceptionHandlerRegistered = true;
-            state.lastException = exception instanceof Exception ? (Exception) exception : new Exception(exception);
+            state.lastException = exception instanceof Exception e ? e : new Exception(exception);
         }
     }
 

@@ -25,8 +25,6 @@ public class SynchronizerMonitor {
         final int expectedParties;
         final AtomicInteger arrivedCount = new AtomicInteger(0);
         final Set<Long> arrivedThreads = ConcurrentHashMap.newKeySet();
-        volatile boolean isReset = false;
-        volatile long lastArrivalTime = 0;
         final List<String> events = Collections.synchronizedList(new ArrayList<>());
         
         BarrierState(String name, int parties) {
@@ -64,8 +62,7 @@ public class SynchronizerMonitor {
         long threadId = Thread.currentThread().getId();
         state.arrivedCount.incrementAndGet();
         state.arrivedThreads.add(threadId);
-        state.lastArrivalTime = System.nanoTime();
-        state.events.add(String.format("T-%d arrived (%d/%d)", 
+        state.events.add(String.format("T-%d arrived (%d/%d)",
             threadId, state.arrivedCount.get(), state.expectedParties));
     }
     
@@ -93,7 +90,6 @@ public class SynchronizerMonitor {
         BarrierState state = synchronizers.get(id);
         if (state == null) return;
         
-        state.isReset = true;
         state.arrivedCount.set(0);
         state.arrivedThreads.clear();
         state.events.add("Barrier reset");

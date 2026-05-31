@@ -37,14 +37,10 @@ public class ABAProblemDetector {
     }
     
     private static class ValueChange {
-        final long timestamp;
-        final long threadId;
         final Object oldValue;
         final Object newValue;
-        
-        ValueChange(long threadId, Object old, Object neu) {
-            this.timestamp = System.nanoTime();
-            this.threadId = threadId;
+
+        ValueChange(Object old, Object neu) {
             this.oldValue = old;
             this.newValue = neu;
         }
@@ -58,19 +54,13 @@ public class ABAProblemDetector {
     }
     
     private static class CASAttempt {
-        final long threadId;
-        final long timestamp;
         final Object expectedValue;
         final Object newValue;
-        final boolean succeeded;
         volatile boolean wasABA = false;
-        
-        CASAttempt(long threadId, Object expected, Object neu, boolean success) {
-            this.threadId = threadId;
-            this.timestamp = System.nanoTime();
+
+        CASAttempt(Object expected, Object neu) {
             this.expectedValue = expected;
             this.newValue = neu;
-            this.succeeded = success;
         }
     }
     
@@ -87,7 +77,7 @@ public class ABAProblemDetector {
             AtomicValueHistory::new
         );
         
-        ValueChange change = new ValueChange(Thread.currentThread().getId(), oldValue, newValue);
+        ValueChange change = new ValueChange(oldValue, newValue);
         history.changes.add(change);
         
         // Detect cycles (A -> B -> A pattern)
@@ -105,8 +95,7 @@ public class ABAProblemDetector {
             AtomicValueHistory::new
         );
         
-        CASAttempt attempt = new CASAttempt(Thread.currentThread().getId(), 
-                                            expectedValue, newValue, succeeded);
+        CASAttempt attempt = new CASAttempt(expectedValue, newValue);
         
         // Detect ABA: Value changed but came back to expected
         if (succeeded && detectABA(history, attempt)) {
@@ -116,7 +105,7 @@ public class ABAProblemDetector {
         history.casAttempts.put((long) System.identityHashCode(attempt), attempt);
     }
     
-    @SuppressWarnings("PMD.UnusedFormalParameter") // newChange reserved for future cycle-context logging
+    @SuppressWarnings({"PMD.UnusedFormalParameter", "UnusedVariable"}) // newChange reserved for future cycle-context logging
     private void detectCycles(AtomicValueHistory history, ValueChange newChange) {
         List<ValueChange> changes = history.changes;
         if (changes.size() < 3) return;
@@ -229,13 +218,19 @@ public class ABAProblemDetector {
                 for (String cas : successfulABACases) {
                     sb.append("  - ").append(cas).append("\n");
                 }
-                sb.append("\nWhy: An ABA race occurs when a location holds value A, is changed to B, then changed back to A\n"
-                        + "     before a competing CAS reads it. The CAS sees A (as expected) and succeeds — but the underlying\n"
-                        + "     object may have been destroyed and recreated, or a linked list node may have been freed and\n"
-                        + "     reallocated, leaving the data structure in a corrupt state that the CAS cannot detect.\n");
-                sb.append("\nFix: Use AtomicStampedReference<V> (pairs value with an integer version stamp) or\n"
-                        + "     AtomicMarkableReference<V> (pairs value with a boolean mark) so the CAS compares both\n"
-                        + "     the value and the stamp/mark — an A→B→A cycle changes the stamp and the CAS correctly fails\n");
+                sb.append("""
+
+                          Why: An ABA race occurs when a location holds value A, is changed to B, then changed back to A
+                               before a competing CAS reads it. The CAS sees A (as expected) and succeeds — but the underlying
+                               object may have been destroyed and recreated, or a linked list node may have been freed and
+                               reallocated, leaving the data structure in a corrupt state that the CAS cannot detect.
+                          """);
+                sb.append("""
+
+                          Fix: Use AtomicStampedReference<V> (pairs value with an integer version stamp) or
+                               AtomicMarkableReference<V> (pairs value with a boolean mark) so the CAS compares both
+                               the value and the stamp/mark — an A→B→A cycle changes the stamp and the CAS correctly fails
+                          """);
             }
             
             sb.append("\nWarning: ABA problems are subtle and can cause:\n");

@@ -68,22 +68,19 @@ import se.deversity.vibetags.annotations.AITestDriven;
 public class ThreadPoolDeadlockDetector {
 
     private static class PoolState {
-        final ExecutorService pool;
         final String name;
         final int poolSize;
         final AtomicInteger activeTaskCount = new AtomicInteger(0);
         final AtomicInteger nestedSubmissionCount = new AtomicInteger(0);
         final List<NestedSubmissionEvent> nestedSubmissions = Collections.synchronizedList(new ArrayList<>());
 
-        PoolState(ExecutorService pool, String name, int poolSize) {
-            this.pool = pool;
+        PoolState(String name, int poolSize) {
             this.name = name;
             this.poolSize = poolSize;
         }
     }
 
     private static class NestedSubmissionEvent {
-        final long timestamp = System.nanoTime();
         final String poolName;
         final StackTraceElement[] stackTrace;
         final int activeTasksAtTime;
@@ -112,7 +109,7 @@ public class ThreadPoolDeadlockDetector {
 
         int identity = System.identityHashCode(pool);
         int poolSize = estimatePoolSize(pool);
-        registeredPools.put(identity, new PoolState(pool, name, poolSize));
+        registeredPools.put(identity, new PoolState(name, poolSize));
     }
 
     /**
@@ -228,8 +225,8 @@ public class ThreadPoolDeadlockDetector {
     private int estimatePoolSize(ExecutorService pool) {
         try {
             // Try to get pool size via reflection for common pool types
-            if (pool instanceof java.util.concurrent.ThreadPoolExecutor) {
-                return ((java.util.concurrent.ThreadPoolExecutor) pool).getCorePoolSize();
+            if (pool instanceof java.util.concurrent.ThreadPoolExecutor tpe) {
+                return tpe.getCorePoolSize();
             }
         } catch (Exception e) { // NOPMD EmptyCatchBlock — reflection probe fails silently; default pool size used
             // Ignore and return default
@@ -251,6 +248,8 @@ public class ThreadPoolDeadlockDetector {
         }
 
         /**
+         * Returns the per-pool deadlock risk entries found during analysis.
+         *
          * @return list of pool-specific deadlock risks
          */
         public List<PoolDeadlockRisk> getRisks() {
@@ -258,6 +257,8 @@ public class ThreadPoolDeadlockDetector {
         }
 
         /**
+         * Returns the aggregate count of deadlock risk scenarios across all registered pools.
+         *
          * @return total number of deadlock risk scenarios detected
          */
         public int getTotalDeadlockRisks() {
@@ -265,6 +266,8 @@ public class ThreadPoolDeadlockDetector {
         }
 
         /**
+         * Indicates whether at least one pool exhibited deadlock risk behavior.
+         *
          * @return true if any deadlock risks were detected
          */
         public boolean hasDeadlockRisk() {
@@ -342,6 +345,8 @@ public class ThreadPoolDeadlockDetector {
         }
 
         /**
+         * Returns the registered name of the executor service.
+         *
          * @return pool name
          */
         public String getPoolName() {
@@ -349,6 +354,8 @@ public class ThreadPoolDeadlockDetector {
         }
 
         /**
+         * Returns the configured thread-pool size used to evaluate saturation.
+         *
          * @return pool size
          */
         public int getPoolSize() {
@@ -356,6 +363,8 @@ public class ThreadPoolDeadlockDetector {
         }
 
         /**
+         * Returns how many times a task submitted new work to the same pool while holding a slot.
+         *
          * @return number of nested submissions
          */
         public int getNestedSubmissionCount() {
@@ -363,6 +372,8 @@ public class ThreadPoolDeadlockDetector {
         }
 
         /**
+         * Returns the highest observed number of concurrently active tasks in this pool.
+         *
          * @return peak number of active tasks
          */
         public int getPeakActiveTasks() {
@@ -370,6 +381,8 @@ public class ThreadPoolDeadlockDetector {
         }
 
         /**
+         * Returns snapshots of each nested-submission event recorded for this pool.
+         *
          * @return list of nested submission snapshots
          */
         public List<NestedSubmissionSnapshot> getNestedSubmissions() {
@@ -392,6 +405,8 @@ public class ThreadPoolDeadlockDetector {
         }
 
         /**
+         * Returns the name of the pool in which the nested submission occurred.
+         *
          * @return pool name
          */
         public String getPoolName() {
@@ -399,6 +414,8 @@ public class ThreadPoolDeadlockDetector {
         }
 
         /**
+         * Returns how many tasks were active in the pool at the moment of the nested submission.
+         *
          * @return number of active tasks when submission occurred
          */
         public int getActiveTasksAtTime() {
@@ -406,6 +423,8 @@ public class ThreadPoolDeadlockDetector {
         }
 
         /**
+         * Returns the call stack captured when the nested submission was recorded.
+         *
          * @return stack trace at submission point
          */
         public StackTraceElement[] getStackTrace() {

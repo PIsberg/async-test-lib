@@ -23,7 +23,6 @@ public class ThreadPoolMonitor {
     
     private static class PoolState {
         final String poolName;
-        final int coreSize;
         final int maxSize;
         final int queueCapacity;
         final AtomicInteger activeThreads = new AtomicInteger(0);
@@ -33,10 +32,9 @@ public class ThreadPoolMonitor {
         volatile long peakQueueSize = 0;
         volatile long maxTaskDuration = 0;
         final List<String> rejections = Collections.synchronizedList(new ArrayList<>());
-        
-        PoolState(String name, int core, int max, int queue) {
+
+        PoolState(String name, int max, int queue) {
             this.poolName = name;
-            this.coreSize = core;
             this.maxSize = max;
             this.queueCapacity = queue;
         }
@@ -52,7 +50,7 @@ public class ThreadPoolMonitor {
         if (!enabled) return;
         
         int id = System.identityHashCode(executor);
-        pools.putIfAbsent(id, new PoolState(name, coreSize, maxSize, queueCapacity));
+        pools.putIfAbsent(id, new PoolState(name, maxSize, queueCapacity));
     }
     
     /**
@@ -106,7 +104,7 @@ public class ThreadPoolMonitor {
         
         int id = System.identityHashCode(executor);
         PoolState state = pools.computeIfAbsent(id, k -> 
-            new PoolState("Unknown", 0, 0, 0)
+            new PoolState("Unknown", 0, 0)
         );
         
         state.rejectedTasks.incrementAndGet();
