@@ -1,5 +1,6 @@
 package se.deversity.asynctest;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import se.deversity.vibetags.annotations.AIImmutable;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
@@ -98,6 +99,7 @@ public enum Preset {
      * exactly this set", which matters when new detectors are added in future
      * releases.
      */
+    @SuppressFBWarnings(value = "EI_EXPOSE_REP", justification = "enabled is already an unmodifiable Set.copyOf snapshot stored in a final field")
     public Set<DetectorType> enabled() {
         return enabled;
     }
