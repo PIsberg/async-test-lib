@@ -61,6 +61,7 @@ public class AsyncAssert {
         private volatile boolean complete = false;
 
         @SuppressFBWarnings("EI_EXPOSE_REP2")
+        @SuppressWarnings("FutureReturnValueIgnored")
         public FutureCapture(CompletableFuture<T> future) {
             this.future = future;
             future.whenComplete((res, err) -> {

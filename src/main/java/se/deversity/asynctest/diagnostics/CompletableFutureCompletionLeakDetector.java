@@ -63,7 +63,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
 public class CompletableFutureCompletionLeakDetector {
 
     private static class FutureState {
-        final CompletableFuture<?> future;
         final String name;
         final long createdTimeNanos = System.nanoTime();
         final long creatorThreadId = Thread.currentThread().threadId();
@@ -74,7 +73,6 @@ public class CompletableFutureCompletionLeakDetector {
         final AtomicInteger completionAttempts = new AtomicInteger(0);
 
         FutureState(CompletableFuture<?> future, String name) {
-            this.future = future;
             this.name = name != null ? name : "future@" + System.identityHashCode(future);
         }
     }
@@ -89,6 +87,7 @@ public class CompletableFutureCompletionLeakDetector {
      * @param future the CompletableFuture to monitor
      * @param name a descriptive name for reporting (e.g., "user-lookup-future")
      */
+    @SuppressWarnings("FutureReturnValueIgnored")
     public void recordFutureCreated(CompletableFuture<?> future, String name) {
         if (!enabled || future == null) {
             return;
@@ -219,6 +218,8 @@ public class CompletableFutureCompletionLeakDetector {
         }
 
         /**
+         * Returns all futures that were registered but never completed.
+         *
          * @return list of leaked futures
          */
         public List<LeakedFuture> getLeakedFutures() {
@@ -226,6 +227,8 @@ public class CompletableFutureCompletionLeakDetector {
         }
 
         /**
+         * Indicates whether any uncompleted futures were detected.
+         *
          * @return true if any leaks were detected
          */
         public boolean hasLeaks() {
@@ -233,6 +236,8 @@ public class CompletableFutureCompletionLeakDetector {
         }
 
         /**
+         * Returns the number of futures that were never completed.
+         *
          * @return number of leaked futures
          */
         public int getLeakCount() {
@@ -301,6 +306,8 @@ public class CompletableFutureCompletionLeakDetector {
         }
 
         /**
+         * Returns the descriptive name assigned at registration time.
+         *
          * @return the descriptive name of the future
          */
         public String getName() {
@@ -308,6 +315,8 @@ public class CompletableFutureCompletionLeakDetector {
         }
 
         /**
+         * Returns the ID of the thread that created this future.
+         *
          * @return thread ID that created the future
          */
         public long getCreatorThreadId() {
@@ -315,6 +324,8 @@ public class CompletableFutureCompletionLeakDetector {
         }
 
         /**
+         * Returns the elapsed time since the future was registered.
+         *
          * @return age in milliseconds since creation
          */
         public long getAgeMillis() {
@@ -322,6 +333,8 @@ public class CompletableFutureCompletionLeakDetector {
         }
 
         /**
+         * Returns the stack trace captured when the future was registered.
+         *
          * @return stack trace at creation point
          */
         public StackTraceElement[] getCreationStackTrace() {

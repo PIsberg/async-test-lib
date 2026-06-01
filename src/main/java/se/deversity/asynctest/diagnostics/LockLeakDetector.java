@@ -46,7 +46,6 @@ public class LockLeakDetector {
 
     private static class LockState {
         final String name;
-        final Lock lock;
         final AtomicInteger acquireCount = new AtomicInteger(0);
         final AtomicInteger releaseCount = new AtomicInteger(0);
         final Set<Long> acquiringThreads = ConcurrentHashMap.newKeySet();
@@ -55,10 +54,8 @@ public class LockLeakDetector {
         final AtomicInteger maxHoldTimeMs = new AtomicInteger(0);
         volatile boolean currentlyHeld = false;
         volatile Long lastAcquireTime = null;
-        volatile Long lastReleaseTime = null;
 
         LockState(Lock lock, String name) {
-            this.lock = lock;
             this.name = name != null ? name : "lock@" + System.identityHashCode(lock);
         }
     }
@@ -115,8 +112,7 @@ public class LockLeakDetector {
             state.releaseCount.incrementAndGet();
             state.releasingThreads.add(Thread.currentThread().threadId());
             state.currentlyHeld = false;
-            state.lastReleaseTime = System.currentTimeMillis();
-            
+
             // Calculate hold time
             Long acquireTime = state.threadAcquireTime.remove(Thread.currentThread().threadId());
             if (acquireTime != null) {

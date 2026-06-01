@@ -20,14 +20,12 @@ import java.util.Set;
 public class MemoryOrderingMonitor {
     
     private static class MemoryAccess {
-        final long timestamp;
         final long threadId;
         final String operation;  // READ or WRITE
         final String location;
         final Object value;
-        
+
         MemoryAccess(long tid, String op, String loc, Object val) {
-            this.timestamp = System.nanoTime();
             this.threadId = tid;
             this.operation = op;
             this.location = loc;

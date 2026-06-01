@@ -48,7 +48,6 @@ public class ConcurrentModificationDetector {
 
     private static class CollectionState {
         final String name;
-        final Collection<?> collection;
         final AtomicInteger modificationCount = new AtomicInteger(0);
         final AtomicInteger activeIterators = new AtomicInteger(0);
         final AtomicInteger concurrentModifications = new AtomicInteger(0);
@@ -58,7 +57,6 @@ public class ConcurrentModificationDetector {
         volatile String lastModificationType = "none";
 
         CollectionState(Collection<?> collection, String name) {
-            this.collection = collection;
             this.name = name != null ? name : "collection@" + System.identityHashCode(collection);
         }
     }
@@ -260,11 +258,13 @@ public class ConcurrentModificationDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Why: Non-thread-safe collections track a modCount internally. Any structural change (add/remove) while another thread\n" +
-                       "       is iterating increments modCount, causing the iterator to throw ConcurrentModificationException or silently skip elements.\n" +
-                       "  Fix:\n" +
-                       "    - Remove during iteration via iterator.remove() (single-threaded) or Iterator from a synchronized block (multi-threaded)\n" +
-                       "    - Replace with CopyOnWriteArrayList (iteration sees a stable snapshot) or ConcurrentHashMap for map use-cases");
+            sb.append("""
+                          Why: Non-thread-safe collections track a modCount internally. Any structural change (add/remove) while another thread
+                               is iterating increments modCount, causing the iterator to throw ConcurrentModificationException or silently skip elements.
+                          Fix:
+                            - Remove during iteration via iterator.remove() (single-threaded) or Iterator from a synchronized block (multi-threaded)
+                            - Replace with CopyOnWriteArrayList (iteration sees a stable snapshot) or ConcurrentHashMap for map use-cases\
+                        """);
             return sb.toString();
         }
     }

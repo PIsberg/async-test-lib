@@ -26,7 +26,6 @@ public class ReadWriteLockMonitor {
         volatile long maxWriteWaitTime = 0;
         final Set<Long> currentReaders = ConcurrentHashMap.newKeySet();
         volatile long currentWriter = -1;
-        final AtomicInteger readerStarvations = new AtomicInteger(0);
         final AtomicInteger writerStarvations = new AtomicInteger(0);
         
         LockState(String name) {

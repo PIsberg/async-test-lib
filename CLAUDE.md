@@ -601,10 +601,6 @@
       <strategy>OTHER</strategy>
       <note>ConcurrentHashMap.computeIfAbsent guarantees at-most-once gate execution per fingerprint under contention; volatile announce flags collapse the GRANTED/CI banner to once-per-JVM.</note>
     </element>
-    <element path="se.deversity.asynctest.spi.DetectorRegistry">
-      <strategy>IMMUTABLE</strategy>
-      <note>All public methods are read-only views over an EnumMap populated once at construction.</note>
-    </element>
   </thread_safe_elements>
 
 <rule>Elements listed in <thread_safe_elements> are explicitly designed to be thread-safe via the named strategy. Any modification MUST preserve the synchronization invariant and document its reasoning in the change description.</rule>
@@ -622,7 +618,7 @@
       <note>Java record — fields are final by language. Collection fields are deep-copied to immutable views in the canonical constructor.</note>
     </type>
     <type path="se.deversity.asynctest.spi.DetectorRegistry">
-      <note>Effectively immutable after build() — the EnumMap is populated only in the private constructor and never mutated thereafter; safe to publish to multiple threads.</note>
+      <note>Effectively immutable after build() — the EnumMap is populated only in the private constructor and never mutated thereafter; safe to publish to multiple threads and read-only views over an EnumMap populated once at construction.</note>
     </type>
   </immutable_types>
 

@@ -26,8 +26,6 @@ public class LockOrderValidator {
         final long threadId;
         final List<String> lockOrder = Collections.synchronizedList(new ArrayList<>());
         final Set<String> acquiredLocks = ConcurrentHashMap.newKeySet();
-        volatile long lastAcquisitionTime = 0;
-        
         LockSequence(long tid) {
             this.threadId = tid;
         }
@@ -50,7 +48,6 @@ public class LockOrderValidator {
         synchronized (sequence) {
             sequence.lockOrder.add(lockId);
             sequence.acquiredLocks.add(lockId);
-            sequence.lastAcquisitionTime = System.nanoTime();
         }
     }
     
