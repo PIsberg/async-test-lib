@@ -67,7 +67,7 @@
         <archunit.version>1.4.2</archunit.version>
         <error-prone.version>2.49.0</error-prone.version>
         <asm.version>9.10.1</asm.version>
-        <bytebuddy.version>1.18.8</bytebuddy.version>
+        <bytebuddy.version>1.18.10</bytebuddy.version>
         <slf4j.version>2.0.18</slf4j.version>
     </properties>
 
