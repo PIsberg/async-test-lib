@@ -135,6 +135,8 @@ class PresetResolutionTest {
         @Override public Preset preset() { return preset; }
         @Override public long replaySeed() { return def("replaySeed"); }
         @Override public DetectorType[] excludes() { return excludes; }
+        @Override public DetectorType[] includes() { return def("includes"); }
+        @Override public FailOn failOn() { return def("failOn"); }
         @Override public boolean detectFalseSharing() { return def("detectFalseSharing"); }
         @Override public boolean detectWakeupIssues() { return def("detectWakeupIssues"); }
         @Override public boolean validateConstructorSafety() { return def("validateConstructorSafety"); }

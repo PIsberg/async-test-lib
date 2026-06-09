@@ -152,7 +152,9 @@ Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
     virtualThreadStressMode = "HIGH",        // OFF / LOW / MEDIUM / HIGH / EXTREME
     preset       = Preset.ESSENTIALS,        // curated detector bundle (overrides detectAll)
     detectAll    = true,                     // legacy umbrella when preset = ALL
-    excludes     = { DetectorType.FALSE_SHARING },  // prune even from a preset
+    includes     = { DetectorType.DEADLOCKS },      // OR: exactly these detectors, nothing else
+    excludes     = { DetectorType.FALSE_SHARING },  // prune even from a preset/includes
+    failOn       = FailOn.HIGH,              // findings at/above this severity fail the test
     replaySeed   = 0L                        // 0 = fresh per round; set on failure to reproduce
 )
 ```
@@ -166,8 +168,33 @@ Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
 | `useVirtualThreads` | true | Use `Thread.ofVirtual()` (Java 21+) |
 | `preset` | `Preset.ALL` | Curated bundle: `ALL` / `STRICT` / `ESSENTIALS` / `CI_FAST` / `NONE` |
 | `detectAll` | true | Enable all detectors in one shot (honored when `preset = ALL`) |
-| `excludes` | `{}` | Detectors to skip — layers on top of any preset |
+| `includes` | `{}` | Enable exactly these detectors — overrides `preset`/`detectAll`/per-detector flags when non-empty |
+| `excludes` | `{}` | Detectors to skip — layers on top of any preset or `includes` and wins on conflict |
+| `failOn` | `FailOn.NONE` | Severity gate: findings at/above this level (`LOW`/`MEDIUM`/`HIGH`/`CRITICAL`) fail the test; `NONE` = report-only |
 | `replaySeed` | 0 | Per-round RNG seed. `0` = fresh per round (printed on failure); set explicitly to reproduce a failing schedule |
+
+`@AsyncTest` can also be placed on a **class** (shared config for all `@TestTemplate`
+methods; method-level `@AsyncTest` wins) or on an **annotation** to compose reusable
+presets like `@EssentialsAsyncTest`.
+
+### Fail gates & baseline
+
+Gate CI on serious findings while adopting incrementally:
+
+```java
+@AsyncTest(failOn = FailOn.HIGH)   // HIGH and CRITICAL findings fail the test
+void checkout_concurrently() { ... }
+```
+
+For a legacy codebase, record the current findings once and ratchet them down:
+
+```bash
+mvn test -Dasync-test.baseline=async-test-baseline.txt -Dasync-test.baseline.update=true  # record
+mvn test -Dasync-test.baseline=async-test-baseline.txt                                    # enforce
+```
+
+Each baseline line is `com.example.MyTest#method | DetectorName` — diff-friendly and
+hand-editable; delete lines as you fix the findings.
 
 ---
 

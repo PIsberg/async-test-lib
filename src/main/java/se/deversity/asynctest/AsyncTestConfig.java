@@ -42,6 +42,13 @@ public final class AsyncTestConfig {
      */
     public final long replaySeed;
 
+    /**
+     * Severity threshold at or above which detector findings fail the test.
+     * {@link FailOn#NONE} (default) keeps the legacy report-only behavior.
+     * @since 1.7.0
+     */
+    public final FailOn failOn;
+
     // ---- Phase 1 ----
     public final boolean detectDeadlocks;
     public final boolean detectVisibility;
@@ -201,6 +208,7 @@ public final class AsyncTestConfig {
         virtualThreadStressMode        = b.virtualThreadStressMode;
         detectAll                      = b.detectAll;
         replaySeed                     = b.replaySeed;
+        failOn                         = b.failOn;
         detectDeadlocks                = b.detectDeadlocks;
         detectVisibility               = b.detectVisibility;
         detectLivelocks                = b.detectLivelocks;
@@ -337,15 +345,25 @@ public final class AsyncTestConfig {
         // Check for global benchmarking system property
         boolean globalBenchmarkingEnabled = Boolean.getBoolean("async-test.benchmarking.enabled");
 
-        // Resolve preset → effective detectAll + excludes set.
-        // ALL/STRICT preserve the legacy detectAll behavior; other presets force
-        // detectAll = true but exclude every DetectorType outside the preset's
-        // enabled set so that build()'s detectAll loop activates only the
-        // selected detectors. User-supplied excludes() always layer on top.
+        // Resolve includes/preset → effective detectAll + excludes set.
+        // A non-empty includes() is the most specific selection and wins over
+        // preset() and detectAll(): detectAll is forced true and every
+        // DetectorType outside the include set is excluded, so build()'s
+        // detectAll loop activates only the listed detectors. Otherwise
+        // ALL/STRICT preserve the legacy detectAll behavior, and other presets
+        // exclude everything outside the preset's enabled set the same way.
+        // User-supplied excludes() always layer on top and win on conflict.
         Preset preset = ann.preset();
         boolean effectiveDetectAll;
         Set<DetectorType> effectiveExcludes = EnumSet.noneOf(DetectorType.class);
-        if (preset.isAll()) {
+        if (ann.includes().length > 0) {
+            effectiveDetectAll = true;
+            Set<DetectorType> included = EnumSet.noneOf(DetectorType.class);
+            included.addAll(Arrays.asList(ann.includes()));
+            for (DetectorType t : DetectorType.values()) {
+                if (!included.contains(t)) effectiveExcludes.add(t);
+            }
+        } else if (preset.isAll()) {
             effectiveDetectAll = ann.detectAll();
         } else {
             effectiveDetectAll = true;
@@ -364,6 +382,7 @@ public final class AsyncTestConfig {
             .virtualThreadStressMode(ann.virtualThreadStressMode())
             .detectAll(effectiveDetectAll)
             .replaySeed(ann.replaySeed())
+            .failOn(ann.failOn())
             .detectDeadlocks(ann.detectDeadlocks())
             .detectVisibility(ann.detectVisibility())
             .detectLivelocks(ann.detectLivelocks())
@@ -495,6 +514,7 @@ public final class AsyncTestConfig {
         private String virtualThreadStressMode     = "OFF";
         private boolean detectAll                  = false;
         private long    replaySeed                 = 0L;
+        private FailOn  failOn                     = FailOn.NONE;
         private boolean detectDeadlocks            = true;
         private boolean detectVisibility           = false;
         private boolean detectLivelocks            = false;
@@ -613,6 +633,7 @@ public final class AsyncTestConfig {
         private String licenseKey = "";
         private boolean licenseMockMode = false;
         private Set<DetectorType> excludes = EnumSet.noneOf(DetectorType.class);
+        private Set<DetectorType> includes = EnumSet.noneOf(DetectorType.class);
 
         public Builder threads(int v)                        { threads = v; return this; }
         public Builder invocations(int v)                    { invocations = v; return this; }
@@ -621,6 +642,7 @@ public final class AsyncTestConfig {
         public Builder virtualThreadStressMode(String v)     { virtualThreadStressMode = v; return this; }
         public Builder detectAll(boolean v)                  { detectAll = v; return this; }
         public Builder replaySeed(long v)                    { replaySeed = v; return this; }
+        public Builder failOn(FailOn v)                      { failOn = (v != null) ? v : FailOn.NONE; return this; }
         public Builder detectDeadlocks(boolean v)            { detectDeadlocks = v; return this; }
         public Builder detectVisibility(boolean v)           { detectVisibility = v; return this; }
         public Builder detectLivelocks(boolean v)            { detectLivelocks = v; return this; }
@@ -744,7 +766,33 @@ public final class AsyncTestConfig {
             return this;
         }
 
+        /**
+         * Enable exactly the listed detectors and nothing else. Mirrors
+         * {@link AsyncTest#includes()}: when non-empty it overrides
+         * {@link #detectAll(boolean)} and the per-detector setters;
+         * {@link #excludes(DetectorType[])} still layers on top.
+         *
+         * @since 1.7.0
+         */
+        public Builder includes(DetectorType[] v) {
+            if (v != null && v.length > 0) {
+                this.includes.addAll(Arrays.asList(v));
+            }
+            return this;
+        }
+
         public AsyncTestConfig build() {
+            if (!includes.isEmpty()) {
+                // includes wins over detectAll/per-flag setters: force the
+                // detectAll path and exclude everything outside the include set.
+                // Explicit excludes are already in the set and thus still win.
+                detectAll = true;
+                for (DetectorType t : DetectorType.values()) {
+                    if (!includes.contains(t)) {
+                        excludes.add(t);
+                    }
+                }
+            }
             if (detectAll) {
                 if (!excludes.contains(DetectorType.DEADLOCKS)) detectDeadlocks = true;
                     else detectDeadlocks = false;
