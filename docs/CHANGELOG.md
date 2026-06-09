@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Detector selection & fail-gating (`@AsyncTest` extensions)
+
+- **`@AsyncTest(includes = {DetectorType...})`** — enable exactly the listed
+  detectors and nothing else. Takes precedence over `preset` / `detectAll` /
+  the legacy per-detector booleans; `excludes` still layers on top and wins on
+  conflict. Also available programmatically via
+  `AsyncTestConfig.Builder.includes(...)`. Prefer `preset` / `includes` /
+  `excludes` over the ~98 per-detector boolean attributes.
+
+- **Class-level and composed `@AsyncTest`** — `@Target` now includes `TYPE`
+  and `ANNOTATION_TYPE`:
+  - a class-level `@AsyncTest` provides shared configuration for every
+    `@TestTemplate` method in the class (a method-level `@AsyncTest` wins);
+  - reusable composed annotations are now possible, e.g.
+    `@AsyncTest(preset = Preset.ESSENTIALS) public @interface EssentialsAsyncTest {}`.
+  `AsyncTestExtension` resolves the annotation meta-aware (method first, then
+  class) via `AnnotationSupport.findAnnotation`.
+
+- **`@AsyncTest(failOn = FailOn.X)`** — severity threshold at or above which
+  detector findings fail the test (`NONE` / `LOW` / `MEDIUM` / `HIGH` /
+  `CRITICAL`). The runner now analyzes all enabled detectors **after a passing
+  run too** (previously findings only surfaced when the test body had already
+  failed or timed out), prints reports, and fires them to registered
+  listeners — so `JUnitXmlReportListener` / `JsonReportListener` /
+  `StrictModeListener` now see findings from passing tests. The default
+  `FailOn.NONE` preserves the legacy report-only behavior.
+
+- **Known-findings baseline** (`se.deversity.asynctest.report.Baseline`) —
+  adopt fail-gating on a legacy codebase without a red wall:
+  - `-Dasync-test.baseline=<file>` suppresses baselined findings from the
+    `failOn` gate (one diff-friendly line per finding:
+    `com.example.MyTest#method | DetectorName`);
+  - `-Dasync-test.baseline.update=true` records gate-failing findings into the
+    file instead of failing, so the baseline can be generated in one run and
+    ratcheted down over time.
+
 ### Production Readiness Pass
 
 #### Added

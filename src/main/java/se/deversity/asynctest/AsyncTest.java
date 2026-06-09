@@ -20,10 +20,33 @@ import java.lang.annotation.Target;
  * - Visibility issues (missing volatile keywords)
  * - Livelocks and thread starvation
  * - Virtual thread pinning issues (Java 21+)
+ *
+ * <h2>Placement</h2>
+ * <ul>
+ *   <li><b>Method</b> — the standard usage; the method becomes an async stress test.</li>
+ *   <li><b>Class</b> — provides shared configuration for every method in the class
+ *       annotated with {@link org.junit.jupiter.api.TestTemplate}. A method-level
+ *       {@code @AsyncTest} always takes precedence over the class-level one.</li>
+ *   <li><b>Annotation</b> — compose your own reusable annotation, e.g.
+ *       <pre>{@code
+ *       @Retention(RetentionPolicy.RUNTIME)
+ *       @Target(ElementType.METHOD)
+ *       @AsyncTest(preset = Preset.ESSENTIALS, threads = 8)
+ *       public @interface EssentialsAsyncTest {}
+ *       }</pre>
+ *       Composed annotations carry a fixed configuration; their attributes cannot be
+ *       overridden at the use site.</li>
+ * </ul>
+ *
+ * <h2>Selecting detectors</h2>
+ * Prefer {@link #preset()}, {@link #includes()}, and {@link #excludes()} over the
+ * legacy per-detector boolean attributes — they express the same intent without
+ * dozens of flags and are the only mechanisms new detector categories are
+ * guaranteed to support ergonomically.
  */
 @AIContract(reason = "Public annotation API used directly in user test methods. Attribute names, types, and defaults are part of the stable public API — any change is a breaking change for all consumers.")
 @AIPublicAPI
-@Target({ElementType.METHOD})
+@Target({ElementType.METHOD, ElementType.TYPE, ElementType.ANNOTATION_TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 @TestTemplate
 @ExtendWith(se.deversity.asynctest.extension.AsyncTestExtension.class)
@@ -173,6 +196,47 @@ public @interface AsyncTest {
      * <p>Example: {@code @AsyncTest(detectAll = true, excludes = {DetectorType.BUSY_WAITING})}
      */
     DetectorType[] excludes() default {};
+
+    /**
+     * Enable exactly the listed detectors and nothing else.
+     *
+     * <p>When non-empty, this attribute takes precedence over {@link #preset()},
+     * {@link #detectAll()}, and the legacy per-detector boolean attributes: only
+     * the listed {@link DetectorType}s are active. {@link #excludes()} still
+     * applies on top and wins on conflict.
+     *
+     * <p>Example: {@code @AsyncTest(includes = {DetectorType.DEADLOCKS, DetectorType.RACE_CONDITIONS})}
+     * — only deadlock and race-condition detection, expressed in one attribute
+     * instead of {@code detectAll = false} plus individual flags.
+     *
+     * <p>Default empty array means "no opinion" — {@link #preset()} /
+     * {@link #detectAll()} semantics apply unchanged.
+     *
+     * @since 1.7.0
+     */
+    DetectorType[] includes() default {};
+
+    /**
+     * Severity threshold at or above which detector findings fail this test.
+     *
+     * <p>After the N×M run completes, every enabled detector is analyzed.
+     * Findings at or above this threshold throw an {@link AssertionError};
+     * findings below it are printed and fired to registered
+     * {@link AsyncTestListener}s but do not fail the test.
+     *
+     * <p>The default {@link FailOn#NONE} preserves the legacy report-only
+     * behavior. Set {@code failOn = FailOn.HIGH} in CI to gate merges on
+     * serious findings while still surfacing lower-severity ones.
+     *
+     * <p>Known findings can be suppressed via a baseline file:
+     * {@code -Dasync-test.baseline=<path>} to apply,
+     * {@code -Dasync-test.baseline.update=true} to record current findings
+     * instead of failing. Each baseline line is
+     * {@code com.example.MyTest#myMethod | DetectorName}.
+     *
+     * @since 1.7.0
+     */
+    FailOn failOn() default FailOn.NONE;
 
     // ============= Phase 2: Advanced Detectors =============
 

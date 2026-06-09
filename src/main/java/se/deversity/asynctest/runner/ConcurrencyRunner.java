@@ -13,15 +13,19 @@ import se.deversity.asynctest.AsyncTestListenerRegistry;
 import se.deversity.asynctest.BeforeEachInvocation;
 import se.deversity.asynctest.benchmark.BenchmarkRecorder;
 import se.deversity.asynctest.diagnostics.DeadlockDetector;
+import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.MemoryModelValidator;
 import se.deversity.asynctest.diagnostics.Phase1DetectorSet;
 import se.deversity.asynctest.diagnostics.VirtualThreadStressConfig;
+import se.deversity.asynctest.report.Baseline;
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -194,6 +198,74 @@ public class ConcurrencyRunner {
                 }
             }
         }
+
+        // Success path only (the catch blocks above rethrow): analyze detectors,
+        // surface findings to stderr and listeners, and apply the failOn gate.
+        // Runs on the caller thread after all workers finished and the executor
+        // shut down — no shared mutable state is touched concurrently.
+        analyzeAndGate(config, testMethod, phase1, phase2Context);
+    }
+
+    /**
+     * Post-run detector analysis for tests whose body passed.
+     *
+     * <p>Before 1.7.0 detector findings were only reported when the test body had
+     * already failed or timed out; a passing test never surfaced findings. This
+     * method closes that gap: every enabled detector is analyzed, findings are
+     * printed and fired to listeners, and findings at or above
+     * {@link AsyncTestConfig#failOn} fail the test — unless suppressed by the
+     * baseline file ({@code -Dasync-test.baseline=<path>}) or recorded to it in
+     * update mode ({@code -Dasync-test.baseline.update=true}).
+     */
+    private static void analyzeAndGate(AsyncTestConfig config,
+                                       Method testMethod,
+                                       Phase1DetectorSet phase1,
+                                       AsyncTestContext phase2Context) {
+        Map<String, String> reports = new LinkedHashMap<>(phase1.collectReports());
+        for (String report : phase2Context.analyzeAll()) {
+            reports.putIfAbsent(extractDetectorName(report), "\n" + report);
+        }
+        if (reports.isEmpty()) {
+            return;
+        }
+
+        String testId = testMethod.getDeclaringClass().getName() + "#" + testMethod.getName();
+        Baseline baseline = Baseline.fromSystemProperties();
+
+        int suppressed = 0;
+        List<String> failing = new ArrayList<>();
+        for (Map.Entry<String, String> e : reports.entrySet()) {
+            if (baseline.contains(testId, e.getKey())) {
+                suppressed++;
+                continue;
+            }
+            System.err.println(e.getValue());
+            AsyncTestListenerRegistry.fireDetectorReport(e.getKey(), e.getValue());
+            if (config.failOn.triggeredBy(IssueSeverity.fromReport(e.getValue()))) {
+                failing.add(e.getKey());
+            }
+        }
+        if (suppressed > 0) {
+            log.info("[AsyncTest] {} baselined finding(s) suppressed for {}", suppressed, testId);
+        }
+        if (failing.isEmpty()) {
+            return;
+        }
+
+        if (Baseline.updateMode()) {
+            int added = Baseline.record(testId, failing);
+            log.warn("[AsyncTest] Baseline update mode: recorded {} finding(s) for {} instead of failing",
+                    added, testId);
+            return;
+        }
+
+        AssertionError error = new AssertionError(
+            "[AsyncTest] " + failing.size() + " detector finding(s) at or above failOn=" + config.failOn
+            + " for " + testId + ": " + String.join(", ", failing)
+            + ". Full reports above. To accept known findings, run with -D" + Baseline.PATH_PROPERTY
+            + "=<file> (add -D" + Baseline.UPDATE_PROPERTY + "=true once to record them).");
+        AsyncTestListenerRegistry.fireTestFailed(error);
+        throw error;
     }
 
     /**
