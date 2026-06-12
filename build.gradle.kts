@@ -157,7 +157,7 @@ mavenPublishing {
 
     pom {
         name = "Async Test Library"
-        description = "Enterprise-grade JUnit 5 concurrency testing library with 93+ problem detectors " +
+        description = "Enterprise-grade JUnit 5 concurrency testing library with 106 problem detectors " +
                 "for detecting deadlocks, visibility issues, false sharing, livelocks, and other subtle concurrency bugs."
         url = "https://github.com/PIsberg/async-test-lib"
 

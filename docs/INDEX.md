@@ -324,7 +324,7 @@ You've successfully understood everything if you can:
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Library Code | ✅ Complete | 93+ detectors |
+| Library Code | ✅ Complete | 106 detectors |
 | Test Suite | ✅ Complete | 147+ testss |
 | Maven Config | ✅ Complete | Distribution ready |
 | GitHub Actions | ✅ Complete | Fully automated |

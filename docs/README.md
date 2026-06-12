@@ -58,7 +58,7 @@ Concurrency bugs are the most elusive and costly bugs in production systems. The
 
 
 ### Key Insight
-The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **69 specialized detectors** identify the exact problem:
+The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **106 specialized detectors** identify the exact problem:
 
 - **Deadlocks** with lock chain analysis showing which threads are waiting for which locks
 - **Memory visibility issues** by tracking field values across invocations
@@ -133,7 +133,7 @@ Rather than deploying code hoping there are no concurrency bugs, `async-test` he
 
 ---
 
-A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **69 specialized problem detectors**.
+A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **106 specialized problem detectors**.
 
 Catches race conditions, deadlocks, memory visibility issues, livelocks, false sharing, ABA problems, lock ordering violations, constructor safety issues, thread pool problems, and more.
 
@@ -156,7 +156,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 
 ### Core Capabilities
 - ✅ **Race Condition Forcing**: CyclicBarrier synchronizes threads for maximum contention
-- ✅ **35 Problem Detectors**: Comprehensive coverage of concurrency issues
+- ✅ **106 Problem Detectors**: Comprehensive coverage of concurrency issues
 - ✅ **Virtual Threads Support**: Native support for Project Loom (Java 21+)
 - ✅ **Rich Diagnostics**: Detailed reports with actionable fix suggestions
 - ✅ **Zero Default Overhead**: Advanced features are opt-in
@@ -165,127 +165,153 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 
 ## Detector Coverage
 
-### Phase 1: Core Detectors (5)
+### Phase 1: Core (3)
 1. **Deadlock Detection** - Circular lock dependencies with lock chain analysis
-2. **Visibility Monitoring** - Missing volatile keywords and stale memory
-3. **Memory Model Validation** - JMM happens-before relationship verification
-4. **Livelock Detection** - Thread spinning and CPU starvation patterns
-5. **Virtual Thread Stress** - Massive thread counts (100k+) for pinning detection
+2. **Visibility Monitoring** - Missing `volatile` keywords and stale memory
+3. **Livelock Detection** - Thread spinning and CPU starvation patterns
 
-### Phase 2: Advanced Detectors (32)
-6. **False Sharing** - Cache line contention detection
-7. **Wakeup Issues** - Spurious wakeups and lost notifications
-8. **Constructor Safety** - Object initialization race detection
-9. **ABA Problems** - Lock-free algorithm bugs
-10. **Lock Ordering** - Deadlock vulnerability detection
-11. **Synchronizers** - Barrier/phaser progression monitoring
-12. **Thread Pools** - Executor health and saturation
-13. **Memory Ordering** - CPU reordering and stale reads
-14. **Async Pipelines** - Event flow and signal loss tracking
-15. **Read-Write Locks** - Fairness and writer starvation
-16. **Semaphore Misuse** - Permit leaks, over-release, and unreleased permits
-17. **CompletableFuture Exceptions** - Unhandled exceptions and missing handlers in async chains
-18. **Concurrent Modifications** - Collection modifications during iteration and concurrent mutations
-19. **Lock Leaks** - Locks acquired but never released, excessive hold times
-20. **Shared Random** - Concurrent access to non-thread-safe Random instances
-21. **BlockingQueue Misuse** - Silent failures, queue saturation, producer/consumer imbalance
-22. **Condition Variables** - Lost signals, stuck waiters, missing signals
-23. **SimpleDateFormat** - Concurrent access to non-thread-safe date formatters
-24. **Parallel Streams** - Stateful lambdas, non-thread-safe collectors, side effects
-25. **Resource Leaks** - AutoCloseable resources not properly closed
-26. **CountDownLatch Issues** - Timeout, missing countDown, extra countDown
-27. **CyclicBarrier Issues** - Timeout, broken barriers, missing participants
-28. **ReentrantLock Issues** - Starvation, unfair acquisition, timeouts
-29. **Volatile Array Issues** - Multi-thread access to non-volatile elements
-30. **Double-Checked Locking** - Broken DCL patterns without volatile
-31. **Wait Timeout** - wait() calls without timeout (potential deadlock)
-32. **Phaser Issues** - Missing arrive(), timeout, termination
-33. **StampedLock Issues** - Unvalidated optimistic reads, stamp not released
-34. **Exchanger Issues** - Timeout, missing partner, null exchanges
-35. **ScheduledExecutor Issues** - Missing shutdown, long-running tasks
-36. **ForkJoinPool Issues** - Fork without join, task exceptions
-37. **ThreadFactory Issues** - Missing exception handler, poor naming
+### Phase 2: Core (10)
+4. **False Sharing** - Cache line contention detection
+5. **Wakeup Issues** - Spurious wakeups and lost notifications
+6. **Constructor Safety** - Object initialization race detection
+7. **ABA Problem** - Lock-free algorithm bugs
+8. **Lock Ordering** - Deadlock vulnerability detection
+9. **Synchronizers** - Barrier/phaser progression monitoring
+10. **Thread Pools** - Executor health and saturation
+11. **Memory Ordering** - CPU reordering and stale reads
+12. **Async Pipelines** - Event flow and signal tracking
+13. **Read-Write Lock Fairness** - Writer starvation and lock imbalances
+
+### Phase 2: Monitors (13)
+14. **Semaphore** - Permit leaks, over-release, and unreleased permits
+15. **CompletableFuture Exceptions** - Unhandled exceptions and missing handlers in async chains
+16. **CompletableFuture Completion Leaks** - Futures that are never completed, causing thread/memory leaks
+17. **Virtual Thread Pinning** - `synchronized` blocks/methods inside virtual threads pinning them to carrier threads
+18. **Thread Pool Deadlock** - Exhaustion of pool threads when tasks wait on other tasks in the same pool
+19. **Concurrent Modifications** - Collection modifications during iteration and concurrent mutations
+20. **Lock Leaks** - Locks acquired but never released, excessive hold times
+21. **Shared Random** - Concurrent access to non-thread-safe `Random` instances
+22. **Blocking Queue** - Silent failures, queue saturation, producer/consumer imbalance
+23. **Condition Variables** - Lost signals, stuck waiters, missing signals
+24. **SimpleDateFormat** - Concurrent access to non-thread-safe simple date formatters
+25. **Parallel Streams** - Stateful lambdas, non-thread-safe collectors, side effects
+26. **Resource Leaks** - `AutoCloseable` resources not properly closed
+
+### Phase 2: Additional Concurrency (10)
+27. **CountDownLatch** - Timeout, missing countDown, extra countDown
+28. **CyclicBarrier** - Timeout, broken barriers, missing participants
+29. **ReentrantLock** - Starvation, unfair acquisition, timeouts
+30. **Volatile Array** - Multi-thread access to non-volatile elements
+31. **Double-Checked Locking** - Broken DCL patterns without volatile
+32. **Wait Timeout** - `wait()` calls without timeout (potential deadlock)
+33. **Lock Contention** - Excessive lock wait times and high-contention hot spots
+34. **Synchronized Non-Final** - Locking on non-final fields, allowing the monitor to change mid-test
+35. **Missed Signal** - Notification sent before the waiter is ready to receive it
+36. **Lazy Init Race** - Races during lazy initialization leading to multiple instances or partial publication
+
+### Phase 2: Advanced Concurrency Utilities (6)
+37. **Phaser** - Missing `arrive()`, timeout, termination
+38. **StampedLock** - Unvalidated optimistic reads, stamp not released
+39. **Exchanger** - Timeout, missing partner, null exchanges
+40. **Scheduled Executor** - Missing shutdown, long-running tasks
+41. **ForkJoinPool** - Fork without join, task exceptions
+42. **Thread Factory** - Missing exception handler, poor naming
 
 ### Phase 3: Correctness Monitors (5)
-26. **Race Conditions** - Cross-thread field access tracking
-27. **ThreadLocal Leaks** - Missing `remove()` cleanup detection
-28. **Busy Waiting** - Spin loop and tight polling detection
-29. **Atomicity Violations** - Check-then-act and TOCTOU validation
-30. **Interrupt Mishandling** - Ignored `InterruptedException` monitoring
-
-### Legacy Java Async Patterns (5)
-31. **Notify vs NotifyAll** - Multi-waiter signal misuse
-32. **Lazy Initialization** - Unsafe singleton and DCL validation
-33. **Future Blocking** - Bounded-pool starvation from `get()`/`join()`
-34. **Executor Self-Deadlock** - Sibling task waits on the same executor
-35. **Latch Misuse** - Missing or extra `countDown()` tracking
+43. **Race Conditions** - Cross-thread field access tracking
+44. **ThreadLocal Leaks** - Missing `remove()` cleanup detection
+45. **Busy Waiting** - Spin loop and tight polling detection
+46. **Atomicity Violations** - Check-then-act and TOCTOU validation
+47. **Interrupt Mishandling** - Ignored `InterruptedException` monitoring
 
 ### Phase 4: Infrastructure & Resource Management (4)
-36. **Thread Leaks** - Threads created but never terminated
-37. **Sleep in Lock** - `Thread.sleep()` while holding locks
-38. **Unbounded Queues** - `BlockingQueue` without capacity bounds
-39. **Thread Starvation** - Tasks waiting excessively before execution
+48. **Thread Leaks** - Threads created but never terminated
+49. **Sleep in Lock** - `Thread.sleep()` while holding locks
+50. **Unbounded Queues** - `BlockingQueue` without capacity bounds
+51. **Thread Starvation** - Tasks waiting excessively before execution
 
 ### Phase 5: Thread-Safety of Common Types (5)
-40. **Calendar** - `java.util.Calendar` shared across threads (not thread-safe)
-41. **Shared Collections** - `ArrayList`/`HashMap` mutated concurrently without synchronization
-42. **Timer** - `java.util.Timer` task failures that cancel all subsequent tasks
-43. **CopyOnWrite** - `CopyOnWriteArrayList` used in write-heavy loops (O(n) copy-per-write)
-44. **StringBuilder** - `StringBuilder` mutated by multiple threads (not thread-safe)
+52. **Calendar** - `java.util.Calendar` shared across threads (not thread-safe)
+53. **Shared Collections** - `ArrayList`/`HashMap` mutated concurrently without synchronization
+54. **Timer** - `java.util.Timer` task failures that cancel all subsequent tasks
+55. **Copy-on-Write Collections** - `CopyOnWriteArrayList` used in write-heavy loops (O(n) copy-per-write)
+56. **StringBuilder** - `StringBuilder` mutated by multiple threads (not thread-safe)
 
 ### Phase 6: Virtual Thread Concurrency (Java 21+) (5)
-45. **Structured Concurrency Misuse** - Unclosed `StructuredTaskScope`, skipped `join()`, or result accessed before `join()`
-46. **Virtual Thread Context Leaks** - `ThreadLocal` set in virtual threads but never removed; `InheritableThreadLocal` misuse
-47. **ScopedValue Misuse** - `ScopedValue.get()` called outside an active binding; unintentional re-binding in nested scopes
-48. **Virtual Thread CPU-Bound Tasks** - CPU-intensive tasks running on virtual threads without yielding, monopolizing carrier threads
-49. **Virtual Thread Carrier Exhaustion** - Concurrent blocking of virtual threads approaching or exceeding carrier thread count
+57. **Structured Concurrency** - Unclosed `StructuredTaskScope`, skipped `join()`, or result accessed before `join()`
+58. **Virtual Thread Context Leaks** - `ThreadLocal` set in virtual threads but never removed
+59. **Scoped Value** - `ScopedValue.get()` called outside an active binding; unintentional re-binding in nested scopes
+60. **Virtual Thread CPU-Bound** - CPU-intensive tasks running on virtual threads without yielding, monopolizing carrier threads
+61. **Virtual Thread Carrier Exhaustion** - Concurrent blocking of virtual threads approaching or exceeding carrier thread count
 
 ### Phase 7: High-Level Concurrency Patterns (4)
-50. **HTTP Client Concurrency** - Unclosed HTTP responses, connection pool exhaustion, incomplete operations
-51. **Stream Closing** - `InputStream`/`OutputStream`/`Reader`/`Writer` opened but never closed in concurrent code
-52. **Cache Concurrency** - `HashMap`/`LinkedHashMap` used as a cache without synchronization
-53. **CompletableFuture Chain Issues** - Missing exception handlers, unjoined futures, improper chain construction
+62. **HTTP Client** - Unclosed HTTP responses, connection pool exhaustion, incomplete operations
+63. **Stream Closing** - `InputStream`/`OutputStream`/`Reader`/`Writer` opened but never closed in concurrent code
+64. **Cache Concurrency** - `HashMap`/`LinkedHashMap` used as a cache without synchronization
+65. **CompletableFuture Chain** - Missing exception handlers, unjoined futures, improper chain construction
 
 ### Phase 8: Lifecycle & Structural Correctness (5)
-54. **Executor Shutdown** - `ExecutorService` tasks submitted but executor never shut down, or shut down without `awaitTermination()`
-55. **Mutable Map Key** - `HashMap`/`HashSet` keys mutated after insertion, breaking lookups silently
-56. **Nested Monitor Lockout** - Blocking op (`wait`, `Future.get`, `lock`) attempted while holding a different monitor
-57. **Lock Downgrade** - Illegal read-to-write upgrade on `ReentrantReadWriteLock` — deadlocks immediately
-58. **InheritableThreadLocal Misuse** - `InheritableThreadLocal` accessed in pooled threads (value frozen at thread-creation, not task-submission)
+66. **Executor Shutdown** - `ExecutorService` tasks submitted but executor never shut down, or shut down without `awaitTermination()`
+67. **Mutable Map Key** - `HashMap`/`HashSet` keys mutated after insertion, breaking lookups silently
+68. **Nested Monitor Lockout** - Blocking op (`wait`, `Future.get`, `lock`) attempted while holding a different monitor
+69. **Lock Downgrade** - Illegal read-to-write upgrade on `ReentrantReadWriteLock` — deadlocks immediately
+70. **Inheritable Thread Local** - `InheritableThreadLocal` accessed in pooled threads (value frozen at thread-creation, not task-submission)
 
 ### Phase 9: Repository & Environment State (1)
-59. **Uncommitted Changes** - Untracked or uncommitted Git files detected via `git status --porcelain`
+71. **Uncommitted Changes** - Untracked or uncommitted Git files detected via `git status --porcelain` (reproducibility gate)
 
 ### Phase 10: API Traps & Subtle Concurrency Bugs (10)
-60. **ThreadLocal Contamination** - ThreadLocal set in task A read by task B on the same reused pooled thread
-61. **Atomic Non-Atomic Update** - `get()` + `set()` on `AtomicInteger`/`Long`/`Reference` without `compareAndSet()`, losing concurrent updates
-62. **Synchronized Collection Iteration** - `Collections.synchronizedList/Map/Set` iterated without holding the wrapper lock
-63. **Shared Formatter** - `Formatter`, `PrintWriter`, or `PrintStream` accessed from multiple threads concurrently
-64. **ConcurrentMap Compute Recursion** - Recursive `computeIfAbsent` on same key from same thread — infinite loop (Java 8) or `IllegalStateException` (Java 9+)
-65. **Synchronized on Literal** - `synchronized` on interned `String` or cached `Integer`/`Long` [-128,127] — JVM-wide shared monitor
-66. **Public Lock Exposure** - `synchronized(this)` on publicly accessible object, enabling external callers to acquire the internal lock
-67. **ForkJoinTask Blocking** - Blocking call (`sleep`/`wait`/`Future.get`/IO) inside a `ForkJoinTask`, starving carrier threads
-68. **Optimistic Read Validation** - `StampedLock` optimistic-read data used without `validate(stamp)` or after failed validation
-69. **CF Common-Pool Blocking** - Blocking work inside `CompletableFuture` submitted without a custom `Executor`, starving the common pool
+72. **ThreadLocal Contamination** - ThreadLocal set in task A read by task B on the same reused pooled thread
+73. **Atomic Non-Atomic Update** - `get()` + `set()` on `AtomicInteger`/`Long`/`Reference` without `compareAndSet()`, losing concurrent updates
+74. **Synchronized Collection Iteration** - `Collections.synchronizedList/Map/Set` iterated without holding the wrapper lock
+75. **Shared Formatter** - `Formatter`, `PrintWriter`, or `PrintStream` accessed from multiple threads concurrently
+76. **ConcurrentMap Compute Recursion** - Recursive `computeIfAbsent` on same key from same thread — infinite loop (Java 8) or `IllegalStateException` (Java 9+)
+77. **Synchronized on Literal** - `synchronized` on interned `String` or cached `Integer`/`Long` [-128,127] — JVM-wide shared monitor
+78. **Public Lock Exposure** - `synchronized(this)` on publicly accessible object, enabling external callers to acquire the internal lock
+79. **ForkJoinTask Blocking** - Blocking call (`sleep`/`wait`/`Future.get`/IO) inside a `ForkJoinTask`, starving carrier threads
+80. **Optimistic Read Validation** - `StampedLock` optimistic-read data used without `validate(stamp)` or after failed validation
+81. **CF Common-Pool Blocking** - Blocking work inside `CompletableFuture` submitted without a custom `Executor`, starving the common pool
 
 ### Phase 11: Thread-Safety of Additional Types & Patterns (5)
-70. **Shared Matcher** - `java.util.regex.Matcher` instances shared across threads (holds mutable per-match state)
-71. **Shared DecimalFormat** - `DecimalFormat`/`NumberFormat` accessed concurrently (corrupts internal multiplier and grouping state)
-72. **Weak Reference Race** - `WeakReference`/`SoftReference` `get()` result used without null check or referent collected mid-test
-73. **Stateful Lambda** - Lambda/`Runnable`/`Callable` instances capturing mutable containers executed from multiple threads concurrently
-74. **Shared MessageDigest** - `java.security.MessageDigest` accessed concurrently (not thread-safe; corrupts hash state silently)
+82. **Shared Matcher** - `java.util.regex.Matcher` instances shared across threads (holds mutable per-match state)
+83. **Shared Decimal Format** - `DecimalFormat`/`NumberFormat` accessed concurrently (corrupts internal multiplier and grouping state)
+84. **Weak Reference Race** - `WeakReference`/`SoftReference` `get()` result used without null check or referent collected mid-test
+85. **Stateful Lambda** - Lambda/`Runnable`/`Callable` instances capturing mutable containers executed from multiple threads concurrently
+86. **Shared Message Digest** - `java.security.MessageDigest` accessed concurrently (not thread-safe; corrupts hash state silently)
 
 ### Phase 12: Operational & Hygiene Concurrency Issues (10)
-75. **Interrupt Swallowing** - `catch(InterruptedException)` without restoring the interrupt flag — suppresses cooperative cancellation permanently
-76. **MDC Context Leak** - SLF4J MDC entries not cleared at task end, leaking into the next task on a reused pooled thread
-77. **System Property Mutation** - Concurrent `System.setProperty()`/`clearProperty()` causing non-deterministic configuration and test pollution
-78. **Future Ignored** - `Future` from `submit()` never inspected — exceptions from failed tasks silently swallowed
-79. **Explicit GC** - `System.gc()`/`Runtime.gc()` triggering unpredictable STW pauses mid-test
-80. **Deprecated Thread API** - `Thread.stop()`/`suspend()`/`resume()`/`destroy()` — unsafe and removed in Java 20+
-81. **Shared XML Parser** - `DocumentBuilder`/`SAXParser`/`Transformer`/`XPath` shared across threads (not thread-safe)
-82. **Boxed Primitive Lock** - `synchronized` on cached `Integer`/`Long` (−128..127), `Boolean.TRUE/FALSE`, or interned `String` literals — JVM-global shared monitor
-83. **Shared TimeZone** - `TimeZone` mutated (`setRawOffset`/`setID`) from multiple threads — silently wrong date/time arithmetic
-84. **Uncaught Exception Handler** - Threads started without a custom `UncaughtExceptionHandler` that subsequently throw — exception silently discarded
+87. **Interrupt Swallowing** - `catch(InterruptedException)` without restoring the interrupt flag — suppresses cooperative cancellation permanently
+88. **MDC Context Leak** - SLF4J MDC entries not cleared at task end, leaking into the next task on a reused pooled thread
+89. **System Property Mutation** - Concurrent `System.setProperty()`/`clearProperty()` causing non-deterministic configuration and test pollution
+90. **Future Ignored** - `Future` from `submit()` never inspected — exceptions from failed tasks silently swallowed
+91. **Explicit GC** - `System.gc()`/`Runtime.gc()` triggering unpredictable STW pauses mid-test
+92. **Deprecated Thread API** - `Thread.stop()`/`suspend()`/`resume()`/`destroy()` — unsafe and removed in Java 20+
+93. **Shared XML Parser** - `DocumentBuilder`/`SAXParser`/`Transformer`/`XPath` shared across threads (not thread-safe)
+94. **Boxed Primitive Lock** - `synchronized` on cached `Integer`/`Long` (−128..127), `Boolean.TRUE/FALSE`, or interned `String` literals — JVM-global shared monitor
+95. **Shared TimeZone** - `TimeZone` mutated (`setRawOffset`/`setID`) from multiple threads — silently wrong date/time arithmetic
+96. **Uncaught Exception Handler** - Threads started without a custom `UncaughtExceptionHandler` that subsequently throw — exception silently discarded
+
+### Phase 13: Additional Concurrency-Bug Categories (5)
+97. **Daemon Thread Hygiene** - Daemon threads created without proper lifecycle management or resource cleanup
+98. **Notify Without Monitor** - Illegal `notify*()` calls without holding the monitor lock
+99. **Shared SecureRandom** - `SecureRandom` instance shared across threads causing contention or seed exhaustion
+100. **WeakHashMap Shared** - Non-thread-safe `WeakHashMap` accessed concurrently without synchronization
+101. **JDBC Connection Shared** - JDBC `Connection`, `Statement`, or `ResultSet` shared across concurrent threads
+
+### Phase 14: Additional Thread-Unsafe Primitives & Publication Hazards (5)
+102. **Shared Stateful Crypto** - Concurrent access to stateful `Cipher`, `Mac`, or `Signature` instances, corrupting security states
+103. **ConcurrentMap Check-Then-Act** - Non-atomic updates (e.g. `containsKey` followed by `put`) on `ConcurrentMap` instead of using atomic methods like `putIfAbsent`
+104. **Shared Deflater** - Sharing `Deflater` or `Inflater` instances across threads without synchronization
+105. **This Escape** - Publishing `this` reference from a constructor before initialization is complete, causing publication hazards
+106. **ThreadLocalRandom Misuse** - Caching and reusing `ThreadLocalRandom` instances off-thread or across multiple threads
+
+### Standalone Legacy Detectors (5)
+These detectors are not automatically registered by `@AsyncTest` but can be instantiated manually inside tests for targeted validation:
+- **Notify vs NotifyAll** - Multi-waiter signal misuse (`NotifyAllValidator`)
+- **Lazy Initialization Race** - Unsafe singleton and DCL validation (`LazyInitValidator`)
+- **Future Blocking Starvation** - Bounded-pool starvation from `get()`/`join()` (`FutureBlockingDetector`)
+- **Executor Self-Deadlock** - Sibling task waits on the same executor (`ExecutorDeadlockDetector`)
+- **Latch Misuse** - Missing or extra `countDown()` tracking (`LatchMisuseDetector`)
 
 ## Quick Start
 
@@ -322,7 +348,7 @@ void testPotentialDeadlock() {
     timeoutMs = 20000
 )
 void comprehensiveStress() {
-    // All 50+ detectors are automatically active by default!
+    // All 106 detectors are automatically active by default!
 }
 ```
 
