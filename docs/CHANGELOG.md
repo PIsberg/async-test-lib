@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   detectors and nothing else. Takes precedence over `preset` / `detectAll` /
   the legacy per-detector booleans; `excludes` still layers on top and wins on
   conflict. Also available programmatically via
-  `AsyncTestConfig.Builder.includes(...)`.  Prefer `preset` / `includes` / `excludes` over the 106 per-detector boolean attributes.
+  `AsyncTestConfig.Builder.includes(...)`.  Prefer `preset` / `includes` / `excludes` over the 111 per-detector boolean attributes.
 
 - **Class-level and composed `@AsyncTest`** — `@Target` now includes `TYPE`
   and `ANNOTATION_TYPE`:

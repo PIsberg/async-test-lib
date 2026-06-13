@@ -94,7 +94,7 @@ git commit -m "Configure distribution: GitHub Packages, Maven artifacts, and aut
 
 # Create release tag (important: must be annotated tag)
 git tag -a v1.6.0 -m "Initial release: Async Test Library
-- 106 concurrency problem detectors
+- 111 concurrency problem detectors
 - JUnit 5 integration
 - Deadlock, visibility, race condition detection
 - Virtual thread support (Java 21+)
@@ -263,7 +263,7 @@ They receive:
 - ✅ Compiled library (async-test-lib-1.6.0.jar)
 - ✅ Source code (async-test-lib-1.6.0-sources.jar)
 - ✅ JavaDoc (async-test-lib-1.6.0-javadoc.jar)
-- ✅ Full access to 106 detectors
+- ✅ Full access to 111 detectors
 - ✅ JUnit 5 integration (@AsyncTest annotation)
 - ✅ All documentation (GitHub wiki, USAGE.md)
 

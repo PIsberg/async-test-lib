@@ -185,6 +185,13 @@ public final class AsyncTestConfig {
     public final boolean detectThisEscape;
     public final boolean detectThreadLocalRandomMisuse;
 
+    // ---- Phase 15 (1.8.0+) ----
+    public final boolean detectCompletableFutureObtrudeAbuse;
+    public final boolean detectSpuriousWakeupHazard;
+    public final boolean detectLockUpgradeDeadlock;
+    public final boolean detectTryLockMisuse;
+    public final boolean detectCFBlockingCallback;
+
     // ---- Benchmarking ----
     @AIFeatureFlag(flag = "async-test.benchmarking.enabled", defaultValue = false)
     public final boolean enableBenchmarking;
@@ -317,6 +324,12 @@ public final class AsyncTestConfig {
         detectSharedDeflater            = b.detectSharedDeflater;
         detectThisEscape                = b.detectThisEscape;
         detectThreadLocalRandomMisuse   = b.detectThreadLocalRandomMisuse;
+        // Phase 15
+        detectCompletableFutureObtrudeAbuse = b.detectCompletableFutureObtrudeAbuse;
+        detectSpuriousWakeupHazard          = b.detectSpuriousWakeupHazard;
+        detectLockUpgradeDeadlock           = b.detectLockUpgradeDeadlock;
+        detectTryLockMisuse                 = b.detectTryLockMisuse;
+        detectCFBlockingCallback            = b.detectCFBlockingCallback;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -489,6 +502,11 @@ public final class AsyncTestConfig {
             .detectSharedDeflater(ann.detectSharedDeflater())
             .detectThisEscape(ann.detectThisEscape())
             .detectThreadLocalRandomMisuse(ann.detectThreadLocalRandomMisuse())
+            .detectCompletableFutureObtrudeAbuse(ann.detectCompletableFutureObtrudeAbuse())
+            .detectSpuriousWakeupHazard(ann.detectSpuriousWakeupHazard())
+            .detectLockUpgradeDeadlock(ann.detectLockUpgradeDeadlock())
+            .detectTryLockMisuse(ann.detectTryLockMisuse())
+            .detectCFBlockingCallback(ann.detectCFBlockingCallback())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -623,6 +641,12 @@ public final class AsyncTestConfig {
         private boolean detectSharedDeflater            = false;
         private boolean detectThisEscape                = false;
         private boolean detectThreadLocalRandomMisuse   = false;
+        // Phase 15
+        private boolean detectCompletableFutureObtrudeAbuse = false;
+        private boolean detectSpuriousWakeupHazard          = false;
+        private boolean detectLockUpgradeDeadlock           = false;
+        private boolean detectTryLockMisuse                 = false;
+        private boolean detectCFBlockingCallback            = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -749,6 +773,11 @@ public final class AsyncTestConfig {
         public Builder detectSharedDeflater(boolean v)                 { detectSharedDeflater = v; return this; }
         public Builder detectThisEscape(boolean v)                     { detectThisEscape = v; return this; }
         public Builder detectThreadLocalRandomMisuse(boolean v)        { detectThreadLocalRandomMisuse = v; return this; }
+        public Builder detectCompletableFutureObtrudeAbuse(boolean v)  { detectCompletableFutureObtrudeAbuse = v; return this; }
+        public Builder detectSpuriousWakeupHazard(boolean v)           { detectSpuriousWakeupHazard = v; return this; }
+        public Builder detectLockUpgradeDeadlock(boolean v)            { detectLockUpgradeDeadlock = v; return this; }
+        public Builder detectTryLockMisuse(boolean v)                  { detectTryLockMisuse = v; return this; }
+        public Builder detectCFBlockingCallback(boolean v)             { detectCFBlockingCallback = v; return this; }
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
@@ -1008,6 +1037,17 @@ public final class AsyncTestConfig {
                     else detectThisEscape = false;
                 if (!excludes.contains(DetectorType.THREAD_LOCAL_RANDOM_MISUSE)) detectThreadLocalRandomMisuse = true;
                     else detectThreadLocalRandomMisuse = false;
+                // Phase 15
+                if (!excludes.contains(DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE)) detectCompletableFutureObtrudeAbuse = true;
+                    else detectCompletableFutureObtrudeAbuse = false;
+                if (!excludes.contains(DetectorType.SPURIOUS_WAKEUP_HAZARD)) detectSpuriousWakeupHazard = true;
+                    else detectSpuriousWakeupHazard = false;
+                if (!excludes.contains(DetectorType.LOCK_UPGRADE_DEADLOCK)) detectLockUpgradeDeadlock = true;
+                    else detectLockUpgradeDeadlock = false;
+                if (!excludes.contains(DetectorType.TRY_LOCK_MISUSE)) detectTryLockMisuse = true;
+                    else detectTryLockMisuse = false;
+                if (!excludes.contains(DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK)) detectCFBlockingCallback = true;
+                    else detectCFBlockingCallback = false;
             } else {
                 // If detectAll is false, we still respect explicit enables,
                 // but we also apply excludes for consistency.
@@ -1109,6 +1149,12 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.SHARED_DEFLATER)) detectSharedDeflater = false;
                 if (excludes.contains(DetectorType.THIS_ESCAPE)) detectThisEscape = false;
                 if (excludes.contains(DetectorType.THREAD_LOCAL_RANDOM_MISUSE)) detectThreadLocalRandomMisuse = false;
+                // Phase 15
+                if (excludes.contains(DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE)) detectCompletableFutureObtrudeAbuse = false;
+                if (excludes.contains(DetectorType.SPURIOUS_WAKEUP_HAZARD)) detectSpuriousWakeupHazard = false;
+                if (excludes.contains(DetectorType.LOCK_UPGRADE_DEADLOCK)) detectLockUpgradeDeadlock = false;
+                if (excludes.contains(DetectorType.TRY_LOCK_MISUSE)) detectTryLockMisuse = false;
+                if (excludes.contains(DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK)) detectCFBlockingCallback = false;
             }
             return new AsyncTestConfig(this);
         }

@@ -58,7 +58,7 @@ Concurrency bugs are the most elusive and costly bugs in production systems. The
 
 
 ### Key Insight
-The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **106 specialized detectors** identify the exact problem:
+The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **111 specialized detectors** identify the exact problem:
 
 - **Deadlocks** with lock chain analysis showing which threads are waiting for which locks
 - **Memory visibility issues** by tracking field values across invocations
@@ -133,7 +133,7 @@ Rather than deploying code hoping there are no concurrency bugs, `async-test` he
 
 ---
 
-A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **106 specialized problem detectors**.
+A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **111 specialized problem detectors**.
 
 Catches race conditions, deadlocks, memory visibility issues, livelocks, false sharing, ABA problems, lock ordering violations, constructor safety issues, thread pool problems, and more.
 
@@ -156,7 +156,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 
 ### Core Capabilities
 - ✅ **Race Condition Forcing**: CyclicBarrier synchronizes threads for maximum contention
-- ✅ **106 Problem Detectors**: Comprehensive coverage of concurrency issues
+- ✅ **111 Problem Detectors**: Comprehensive coverage of concurrency issues
 - ✅ **Virtual Threads Support**: Native support for Project Loom (Java 21+)
 - ✅ **Rich Diagnostics**: Detailed reports with actionable fix suggestions
 - ✅ **Zero Default Overhead**: Advanced features are opt-in
@@ -305,6 +305,13 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 105. **This Escape** - Publishing `this` reference from a constructor before initialization is complete, causing publication hazards
 106. **ThreadLocalRandom Misuse** - Caching and reusing `ThreadLocalRandom` instances off-thread or across multiple threads
 
+### Phase 15: Concurrency Safety, Spurious Wakeups & Lock Hazards (5)
+107. **CompletableFuture Obtrude Abuse** - Using `obtrudeValue` or `obtrudeException` outside testing/recovery, causing unpredictable state overrides in concurrent pipelines
+108. **Spurious Wakeup Hazard** - Waiting on object monitors or condition variables without a loops check, leaving code vulnerable to spurious wakeups
+109. **Lock Upgrade Deadlock** - Attempting to acquire a write lock while holding a read lock, leading to a silent deadlock
+110. **TryLock Misuse** - Failing to check the return value of `tryLock()` or calling it without conditional guarding, leaving resources unprotected
+111. **CompletableFuture Blocking Callback** - Blocking operations inside asynchronous callbacks (like `thenApplyAsync`) on the common pool or task executors
+
 ### Standalone Legacy Detectors (5)
 These detectors are not automatically registered by `@AsyncTest` but can be instantiated manually inside tests for targeted validation:
 - **Notify vs NotifyAll** - Multi-waiter signal misuse (`NotifyAllValidator`)
@@ -348,7 +355,7 @@ void testPotentialDeadlock() {
     timeoutMs = 20000
 )
 void comprehensiveStress() {
-    // All 106 detectors are automatically active by default!
+    // All 111 detectors are automatically active by default!
 }
 ```
 

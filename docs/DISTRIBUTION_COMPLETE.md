@@ -100,7 +100,7 @@ dependencies {
 
 | Aspect | Status | Details |
 |--------|--------|---------|
-| Library Code | ✅ Complete | 106 detectors implemented |
+| Library Code | ✅ Complete | 111 detectors implemented |
 | Test Suite | ✅ Complete | 147+ testss, ~68% coverage |
 | Maven Config | ✅ Complete | pom.xml ready for distribution |
 | CI/CD Pipeline | ✅ Complete | tests.yml + publish.yml |

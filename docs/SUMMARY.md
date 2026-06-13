@@ -200,7 +200,7 @@ void testConcurrentCode() {
 
 | Aspect | Status | Details |
 |--------|--------|---------|
-| Library Code | ✅ Complete | 106 detectors, fully tested |
+| Library Code | ✅ Complete | 111 detectors, fully tested |
 | Artifact Config | ✅ Complete | Maven packaging ready |
 | Release Automation | ✅ Complete | GitHub Actions configured |
 | Documentation | ✅ Complete | 80,000+ words |
@@ -228,7 +228,7 @@ For quick access:
 ## 🎁 What's New
 
 ### Before This Session
-- Library code (106 detectors)
+- Library code (111 detectors)
 - Test suite (147+ testss)
 - README with intro
 - GitHub Actions for CI/CD

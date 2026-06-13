@@ -146,3 +146,10 @@ se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ConcurrentMapCheckTh
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedDeflater
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ThisEscape
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ThreadLocalRandomMisuse
+
+# Phase 15 — Asynchronous flow & lock-usage hazards (1.8.0+)
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CompletableFutureObtrudeAbuse
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SpuriousWakeupHazard
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$LockUpgradeDeadlock
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$TryLockMisuse
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CompletableFutureBlockingCallback

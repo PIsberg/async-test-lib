@@ -182,4 +182,22 @@ class Consumer1_0_0FeaturesTest {
         assertNotNull(AsyncTestContext.weakHashMapSharedDetector());
         assertNotNull(AsyncTestContext.jdbcConnectionSharedDetector());
     }
+
+    @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true)
+    void phase14_accessors_are_reachable() {
+        assertNotNull(AsyncTestContext.sharedStatefulCryptoDetector());
+        assertNotNull(AsyncTestContext.nonAtomicConcurrentMapUpdateDetector());
+        assertNotNull(AsyncTestContext.sharedDeflaterDetector());
+        assertNotNull(AsyncTestContext.thisEscapeDetector());
+        assertNotNull(AsyncTestContext.threadLocalRandomMisuseDetector());
+    }
+
+    @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true)
+    void phase15_accessors_are_reachable() {
+        assertNotNull(AsyncTestContext.completableFutureObtrudeDetector());
+        assertNotNull(AsyncTestContext.spuriousWakeupHazardDetector());
+        assertNotNull(AsyncTestContext.lockUpgradeDeadlockDetector());
+        assertNotNull(AsyncTestContext.tryLockMisuseDetector());
+        assertNotNull(AsyncTestContext.cfBlockingCallbackDetector());
+    }
 }

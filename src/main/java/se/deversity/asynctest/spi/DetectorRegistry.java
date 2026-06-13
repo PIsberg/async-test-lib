@@ -17,7 +17,7 @@ import java.util.ServiceLoader;
  * SPI-driven registry that complements the legacy
  * {@code se.deversity.asynctest.DetectorRegistry}.
  *
- * <p>While the legacy registry hard-codes 106 detector wirings as fields and
+ * <p>While the legacy registry hard-codes 111 detector wirings as fields and
  * if-blocks (one per type), this registry discovers detectors via
  * {@link ServiceLoader}, builds per-test instances from
  * {@link DetectorFactory#isEnabledFor(AsyncTestConfig) enabled} factories, and

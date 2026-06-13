@@ -98,6 +98,11 @@ import se.deversity.asynctest.diagnostics.WaitTimeoutDetector;
 import se.deversity.asynctest.diagnostics.WakeupDetector;
 import se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector;
 import se.deversity.asynctest.diagnostics.WeakReferenceRaceDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureObtrudeDetector;
+import se.deversity.asynctest.diagnostics.SpuriousWakeupDetector;
+import se.deversity.asynctest.diagnostics.LockUpgradeDeadlockDetector;
+import se.deversity.asynctest.diagnostics.TryLockMisuseDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICallersOnly;
 import se.deversity.vibetags.annotations.AICore;
@@ -258,6 +263,13 @@ public final class AsyncTestContext {
     final ThisEscapeDetector                    thisEscapeDetector;
     final ThreadLocalRandomMisuseDetector       threadLocalRandomMisuseDetector;
 
+    // ---- Phase 15: Asynchronous flow & lock-usage hazards (1.8.0+) ----
+    final CompletableFutureObtrudeDetector          completableFutureObtrudeDetector;
+    final SpuriousWakeupDetector                    spuriousWakeupHazardDetector;
+    final LockUpgradeDeadlockDetector               lockUpgradeDeadlockDetector;
+    final TryLockMisuseDetector                     tryLockMisuseDetector;
+    final CompletableFutureBlockingCallbackDetector cfBlockingCallbackDetector;
+
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
         // Mirror registry references so package-private field access still works
@@ -363,6 +375,12 @@ public final class AsyncTestContext {
         sharedDeflaterDetector                 = registry.sharedDeflaterDetector;
         thisEscapeDetector                     = registry.thisEscapeDetector;
         threadLocalRandomMisuseDetector        = registry.threadLocalRandomMisuseDetector;
+        // Phase 15
+        completableFutureObtrudeDetector       = registry.completableFutureObtrudeDetector;
+        spuriousWakeupHazardDetector           = registry.spuriousWakeupHazardDetector;
+        lockUpgradeDeadlockDetector            = registry.lockUpgradeDeadlockDetector;
+        tryLockMisuseDetector                  = registry.tryLockMisuseDetector;
+        cfBlockingCallbackDetector             = registry.cfBlockingCallbackDetector;
     }
 
     // ---- Lifecycle (called by ConcurrencyRunner) ----
@@ -1277,6 +1295,51 @@ public final class AsyncTestContext {
      */
     public static ThreadLocalRandomMisuseDetector threadLocalRandomMisuseDetector() {
         return require("detectThreadLocalRandomMisuse", c -> c.threadLocalRandomMisuseDetector);
+    }
+
+    /**
+     * Returns the {@link CompletableFutureObtrudeDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCompletableFutureObtrudeAbuse = false}
+     * @since 1.8.0
+     */
+    public static CompletableFutureObtrudeDetector completableFutureObtrudeDetector() {
+        return require("detectCompletableFutureObtrudeAbuse", c -> c.completableFutureObtrudeDetector);
+    }
+
+    /**
+     * Returns the {@link SpuriousWakeupDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSpuriousWakeupHazard = false}
+     * @since 1.8.0
+     */
+    public static SpuriousWakeupDetector spuriousWakeupHazardDetector() {
+        return require("detectSpuriousWakeupHazard", c -> c.spuriousWakeupHazardDetector);
+    }
+
+    /**
+     * Returns the {@link LockUpgradeDeadlockDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLockUpgradeDeadlock = false}
+     * @since 1.8.0
+     */
+    public static LockUpgradeDeadlockDetector lockUpgradeDeadlockDetector() {
+        return require("detectLockUpgradeDeadlock", c -> c.lockUpgradeDeadlockDetector);
+    }
+
+    /**
+     * Returns the {@link TryLockMisuseDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectTryLockMisuse = false}
+     * @since 1.8.0
+     */
+    public static TryLockMisuseDetector tryLockMisuseDetector() {
+        return require("detectTryLockMisuse", c -> c.tryLockMisuseDetector);
+    }
+
+    /**
+     * Returns the {@link CompletableFutureBlockingCallbackDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCFBlockingCallback = false}
+     * @since 1.8.0
+     */
+    public static CompletableFutureBlockingCallbackDetector cfBlockingCallbackDetector() {
+        return require("detectCFBlockingCallback", c -> c.cfBlockingCallbackDetector);
     }
 
     // ---- Helper ----
