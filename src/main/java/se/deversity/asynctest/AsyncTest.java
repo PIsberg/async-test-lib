@@ -1057,6 +1057,40 @@ public @interface AsyncTest {
      */
     boolean detectThreadLocalRandomMisuse() default true;
 
+    /**
+     * Enable CompletableFuture obtrude abuse detection. Flags calls to obtrudeValue()
+     * or obtrudeException() which bypass normal async pipelines.
+     * @since 1.8.0
+     */
+    boolean detectCompletableFutureObtrudeAbuse() default true;
+
+    /**
+     * Enable spurious wakeup hazard detection. Flags wait() or await() calls that
+     * are not wrapped inside a while loop condition check.
+     * @since 1.8.0
+     */
+    boolean detectSpuriousWakeupHazard() default true;
+
+    /**
+     * Enable read-write lock upgrade deadlock detection. Flags attempts to upgrade
+     * a read lock to a write lock on the same thread.
+     * @since 1.8.0
+     */
+    boolean detectLockUpgradeDeadlock() default true;
+
+    /**
+     * Enable tryLock misuse detection. Flags calls to unlock() without a successful tryLock().
+     * @since 1.8.0
+     */
+    boolean detectTryLockMisuse() default true;
+
+    /**
+     * Enable CompletableFuture blocking callback detection. Flags blocking calls inside
+     * CompletableFuture pipeline callbacks.
+     * @since 1.8.0
+     */
+    boolean detectCFBlockingCallback() default true;
+
     // ============= License Gating (Integration) =============
 
     /** Keygen Account ID. Defaults to System property 'keygen.account.id' if empty. */

@@ -240,6 +240,11 @@ class PresetResolutionTest {
         @Override public boolean detectSharedDeflater() { return def("detectSharedDeflater"); }
         @Override public boolean detectThisEscape() { return def("detectThisEscape"); }
         @Override public boolean detectThreadLocalRandomMisuse() { return def("detectThreadLocalRandomMisuse"); }
+        @Override public boolean detectCompletableFutureObtrudeAbuse() { return def("detectCompletableFutureObtrudeAbuse"); }
+        @Override public boolean detectSpuriousWakeupHazard() { return def("detectSpuriousWakeupHazard"); }
+        @Override public boolean detectLockUpgradeDeadlock() { return def("detectLockUpgradeDeadlock"); }
+        @Override public boolean detectTryLockMisuse() { return def("detectTryLockMisuse"); }
+        @Override public boolean detectCFBlockingCallback() { return def("detectCFBlockingCallback"); }
         @Override public boolean enableBenchmarking() { return def("enableBenchmarking"); }
         @Override public double benchmarkRegressionThreshold() { return def("benchmarkRegressionThreshold"); }
         @Override public boolean failOnBenchmarkRegression() { return def("failOnBenchmarkRegression"); }

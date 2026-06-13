@@ -116,7 +116,7 @@ These services are being sunset. Focus on Maven Central and GitHub Packages.
 ### async-test-lib-1.6.0.jar
 
 - Compiled library classes
-- All 93+ detectors
+- All 111 detectors
 - JUnit 5 extension
 - Manifest with version info
 

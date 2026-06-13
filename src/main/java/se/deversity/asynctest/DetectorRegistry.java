@@ -106,6 +106,11 @@ import se.deversity.asynctest.diagnostics.WaitTimeoutDetector;
 import se.deversity.asynctest.diagnostics.WakeupDetector;
 import se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector;
 import se.deversity.asynctest.diagnostics.WeakReferenceRaceDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureObtrudeDetector;
+import se.deversity.asynctest.diagnostics.SpuriousWakeupDetector;
+import se.deversity.asynctest.diagnostics.LockUpgradeDeadlockDetector;
+import se.deversity.asynctest.diagnostics.TryLockMisuseDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector;
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
@@ -273,6 +278,13 @@ final class DetectorRegistry {
     final ThisEscapeDetector                    thisEscapeDetector;
     final ThreadLocalRandomMisuseDetector       threadLocalRandomMisuseDetector;
 
+    // ---- Phase 15: Asynchronous flow & lock-usage hazards (1.8.0+) ----
+    final CompletableFutureObtrudeDetector          completableFutureObtrudeDetector;
+    final SpuriousWakeupDetector                    spuriousWakeupHazardDetector;
+    final LockUpgradeDeadlockDetector               lockUpgradeDeadlockDetector;
+    final TryLockMisuseDetector                     tryLockMisuseDetector;
+    final CompletableFutureBlockingCallbackDetector cfBlockingCallbackDetector;
+
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
      * Detectors whose flag is {@code false} are set to {@code null} and incur
@@ -430,6 +442,12 @@ final class DetectorRegistry {
         sharedDeflaterDetector               = cfg.detectSharedDeflater            ? new SharedDeflaterDetector()               : null;
         thisEscapeDetector                   = cfg.detectThisEscape                ? new ThisEscapeDetector()                   : null;
         threadLocalRandomMisuseDetector      = cfg.detectThreadLocalRandomMisuse   ? new ThreadLocalRandomMisuseDetector()      : null;
+        // Phase 15
+        completableFutureObtrudeDetector = cfg.detectCompletableFutureObtrudeAbuse ? new CompletableFutureObtrudeDetector() : null;
+        spuriousWakeupHazardDetector     = cfg.detectSpuriousWakeupHazard          ? new SpuriousWakeupDetector()           : null;
+        lockUpgradeDeadlockDetector      = cfg.detectLockUpgradeDeadlock           ? new LockUpgradeDeadlockDetector()      : null;
+        tryLockMisuseDetector            = cfg.detectTryLockMisuse                 ? new TryLockMisuseDetector()            : null;
+        cfBlockingCallbackDetector       = cfg.detectCFBlockingCallback            ? new CompletableFutureBlockingCallbackDetector() : null;
     }
 
     /**
@@ -795,6 +813,23 @@ final class DetectorRegistry {
         ifIssue(threadLocalRandomMisuseDetector,
                 ThreadLocalRandomMisuseDetector::analyze,
                 ThreadLocalRandomMisuseDetector.Report::hasIssues, out);
+
+        // ---- Phase 15 (1.8.0+) ----
+        ifIssue(completableFutureObtrudeDetector,
+                CompletableFutureObtrudeDetector::analyze,
+                CompletableFutureObtrudeDetector.Report::hasIssues, out);
+        ifIssue(spuriousWakeupHazardDetector,
+                SpuriousWakeupDetector::analyze,
+                SpuriousWakeupDetector.Report::hasIssues, out);
+        ifIssue(lockUpgradeDeadlockDetector,
+                LockUpgradeDeadlockDetector::analyze,
+                LockUpgradeDeadlockDetector.Report::hasIssues, out);
+        ifIssue(tryLockMisuseDetector,
+                TryLockMisuseDetector::analyze,
+                TryLockMisuseDetector.Report::hasIssues, out);
+        ifIssue(cfBlockingCallbackDetector,
+                CompletableFutureBlockingCallbackDetector::analyze,
+                CompletableFutureBlockingCallbackDetector.Report::hasIssues, out);
 
         return out;
     }

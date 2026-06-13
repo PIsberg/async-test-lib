@@ -107,6 +107,11 @@ import se.deversity.asynctest.diagnostics.WaitTimeoutDetector;
 import se.deversity.asynctest.diagnostics.WakeupDetector;
 import se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector;
 import se.deversity.asynctest.diagnostics.WeakReferenceRaceDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureObtrudeDetector;
+import se.deversity.asynctest.diagnostics.SpuriousWakeupDetector;
+import se.deversity.asynctest.diagnostics.LockUpgradeDeadlockDetector;
+import se.deversity.asynctest.diagnostics.TryLockMisuseDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector;
 import se.deversity.asynctest.spi.Detector;
 import se.deversity.asynctest.spi.DetectorFactory;
 
@@ -1006,6 +1011,46 @@ public final class LegacyDetectorFactories {
         @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectThreadLocalRandomMisuse; }
         @Override public Detector create(AsyncTestConfig c) {
             return new LegacyDetectorAdapter<>(new ThreadLocalRandomMisuseDetector(), DetectorType.THREAD_LOCAL_RANDOM_MISUSE, "ThreadLocalRandomMisuse");
+        }
+    }
+
+    public static final class CompletableFutureObtrudeAbuse implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectCompletableFutureObtrudeAbuse; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new CompletableFutureObtrudeDetector(), DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE, "CompletableFutureObtrude");
+        }
+    }
+
+    public static final class SpuriousWakeupHazard implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.SPURIOUS_WAKEUP_HAZARD; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectSpuriousWakeupHazard; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new SpuriousWakeupDetector(), DetectorType.SPURIOUS_WAKEUP_HAZARD, "SpuriousWakeup");
+        }
+    }
+
+    public static final class LockUpgradeDeadlock implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.LOCK_UPGRADE_DEADLOCK; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectLockUpgradeDeadlock; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new LockUpgradeDeadlockDetector(), DetectorType.LOCK_UPGRADE_DEADLOCK, "LockUpgradeDeadlock");
+        }
+    }
+
+    public static final class TryLockMisuse implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.TRY_LOCK_MISUSE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectTryLockMisuse; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new TryLockMisuseDetector(), DetectorType.TRY_LOCK_MISUSE, "TryLockMisuse");
+        }
+    }
+
+    public static final class CompletableFutureBlockingCallback implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectCFBlockingCallback; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new CompletableFutureBlockingCallbackDetector(), DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK, "CompletableFutureBlockingCallback");
         }
     }
 }

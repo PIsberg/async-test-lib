@@ -26,7 +26,7 @@ Shows the high-level system architecture and external dependencies.
 
 **Key Components:**
 - **JUnit 5 Platform**: Discovers and executes @AsyncTest methods
-- **Async Test Library**: Core testing framework with 35+ detectors
+- **Async Test Library**: Core testing framework with 111 detectors
 - **User Test Code**: Tests annotated with @AsyncTest
 - **Benchmark Storage**: Persistent baseline data for performance comparison
 
@@ -47,9 +47,9 @@ Shows the main containers/components within the async-test library JAR.
 - **Configuration**: `AsyncTest` annotation, `AsyncTestConfig` (immutable), `Preset` enum
 - **Runner Core**: `ConcurrencyRunner`, `AsyncTestContext`, `VirtualThreadStressConfig`,
   `LicenseGuard` (extracted in 1.6.0 — see [License Guard](#license-guard-100))
-- **Detector Modules** (~95+ detectors across 12 phases):
+- **Detector Modules** (111 detectors across 14 phases):
   - Phase 1: Core (3 detectors) — grouped via `Phase1DetectorSet`
-  - Phases 2–12: managed by `DetectorRegistry`
+  - Phases 2–14: managed by `DetectorRegistry`
 - **Reporting** (NEW in 1.6.0 — `se.deversity.async-test-lib.report`):
   `Violation` record, `Formatter` interface, `MarkdownFormatter`, `JsonFormatter`
 - **Detector SPI** (NEW in 1.6.0 — `se.deversity.async-test-lib.spi`):

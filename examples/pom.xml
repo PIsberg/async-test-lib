@@ -117,5 +117,10 @@
         <module>106-shared-deflater</module>
         <module>107-this-escape</module>
         <module>108-thread-local-random-misuse</module>
+        <module>109-completablefuture-obtrude-abuse</module>
+        <module>110-spurious-wakeup-hazard</module>
+        <module>111-lock-upgrade-deadlock</module>
+        <module>112-try-lock-misuse</module>
+        <module>113-completablefuture-blocking-callback</module>
     </modules>
 </project>

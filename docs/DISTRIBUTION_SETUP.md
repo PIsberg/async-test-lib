@@ -153,7 +153,7 @@ async-test-lib-1.6.0.jar
 │   ├── AsyncTest.class (Main annotation)
 │   ├── AsyncTestExtension.class (JUnit integration)
 │   ├── runner/ConcurrencyRunner.class
-│   ├── diagnostics/ (93+ detector classes)
+│   ├── diagnostics/ (111 detector classes)
 │   └── ...
 ├── META-INF/
 │   ├── MANIFEST.MF (version info)
