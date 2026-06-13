@@ -81,6 +81,7 @@ class LicenseGuardTest {
         try {
             AsyncTestConfig cfg = AsyncTestConfig.builder()
                     .licenseMockMode(false)
+                    .keygenApiKey("dummy-api-key") // prevent auto-mocking in CI
                     .licenseKey("expired-or-invalid-key")
                     .build();
 
