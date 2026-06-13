@@ -1,5 +1,8 @@
 package se.deversity.asynctest;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 
 /**
@@ -16,6 +19,7 @@ import se.deversity.asynctest.diagnostics.IssueSeverity;
  *
  * @since 1.7.0
  */
+@API(status = Status.STABLE)
 public enum FailOn {
 
     /** Never fail on detector findings (report-only mode, legacy default). */

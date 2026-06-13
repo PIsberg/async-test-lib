@@ -1,5 +1,8 @@
 package se.deversity.asynctest;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.vibetags.annotations.AIContract;
 import se.deversity.vibetags.annotations.AIPublicAPI;
@@ -21,6 +24,7 @@ import se.deversity.vibetags.annotations.AIPublicAPI;
  */
 @AIContract(reason = "Public SPI interface for observing async-test lifecycle events. Method signatures are part of the stable API — implementors bind to these exact names and parameter types.")
 @AIPublicAPI
+@API(status = Status.STABLE)
 public interface AsyncTestListener {
 
     /**

@@ -1,5 +1,8 @@
 package se.deversity.asynctest.spi;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.report.Violation;
@@ -31,6 +34,7 @@ import java.util.ServiceLoader;
  */
 @AIPublicAPI
 @AIImmutable(note = "Effectively immutable after build() — the EnumMap is populated only in the private constructor and never mutated thereafter; safe to publish to multiple threads and read-only views over an EnumMap populated once at construction.")
+@API(status = Status.STABLE)
 public final class DetectorRegistry {
 
     private final Map<DetectorType, Detector> byType = new EnumMap<>(DetectorType.class);

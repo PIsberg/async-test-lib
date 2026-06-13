@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 /**
  * Severity levels for concurrency issues detected by async-test.
  *
@@ -13,6 +16,7 @@ package se.deversity.asynctest.diagnostics;
  *
  * @since 1.3.0
  */
+@API(status = Status.STABLE)
 public enum IssueSeverity {
 
     /**

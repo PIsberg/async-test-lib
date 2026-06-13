@@ -14,7 +14,7 @@ import java.util.Map;
  * value-holder eliminates the 7-parameter method signatures in the runner.
  *
  * <p>This class also owns the {@link #printReports()} helper that was previously
- * spread across {@link se.deversity.asynctest.runner.ConcurrencyRunner#printPhase1Reports}.
+ * the private {@code printPhase1Reports} method in {@link se.deversity.asynctest.runner.ConcurrencyRunner}.
  */
 public final class Phase1DetectorSet {
 

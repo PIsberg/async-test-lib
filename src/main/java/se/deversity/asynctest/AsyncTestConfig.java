@@ -1,5 +1,8 @@
 package se.deversity.asynctest;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AICore;
 import se.deversity.vibetags.annotations.AIFeatureFlag;
@@ -23,6 +26,7 @@ import java.util.Set;
     avoids = "mutable state — this class must remain immutable after construction"
 )
 @AIImmutable(note = "Immutable snapshot of @AsyncTest parameters to ensure thread safety.")
+@API(status = Status.STABLE)
 public final class AsyncTestConfig {
 
     // ---- Execution ----

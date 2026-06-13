@@ -1,5 +1,8 @@
 package se.deversity.asynctest.spi;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AIContract;
@@ -44,6 +47,7 @@ import java.util.List;
 @AIPublicAPI
 @AIContract(reason = "Public SPI interface. type(), analyze(), onTestStart(), and onTestEnd() signatures are part of the stable extension contract — implementors bind to these exact names and parameter types.")
 @AIExtensible(AIExtensible.Strategy.STRATEGY_PATTERN)
+@API(status = Status.STABLE)
 public interface Detector {
 
     /**

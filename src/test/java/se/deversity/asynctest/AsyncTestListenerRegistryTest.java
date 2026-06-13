@@ -366,4 +366,29 @@ class AsyncTestListenerRegistryTest {
         assertThrows(IllegalArgumentException.class, () ->
                 AsyncTestListenerRegistry.restoreSnapshot(null));
     }
+
+    @Test
+    void test_concurrent_registry_mutations_and_events() throws Exception {
+        int threadCount = 8;
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(threadCount);
+        try {
+            var tasks = new ArrayList<java.util.concurrent.Callable<Void>>();
+            for (int i = 0; i < 100; i++) {
+                tasks.add(() -> {
+                    AsyncTestListener listener = new NoopAsyncTestListener();
+                    AsyncTestListenerRegistry.register(listener);
+                    AsyncTestListenerRegistry.fireInvocationStarted(1, 4);
+                    AsyncTestListenerRegistry.fireInvocationCompleted(1, 100);
+                    AsyncTestListenerRegistry.unregister(listener);
+                    return null;
+                });
+            }
+            var futures = executor.invokeAll(tasks);
+            for (var f : futures) {
+                f.get();
+            }
+        } finally {
+            executor.shutdown();
+        }
+    }
 }

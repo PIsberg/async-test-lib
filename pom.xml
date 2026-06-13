@@ -73,6 +73,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>org.apiguardian</groupId>
+            <artifactId>apiguardian-api</artifactId>
+            <version>1.1.2</version>
+        </dependency>
+        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>
             <version>${junit.jupiter.version}</version>
@@ -159,6 +164,39 @@
                         </manifestEntries>
                     </archive>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>com.github.siom79.japicmp</groupId>
+                <artifactId>japicmp-maven-plugin</artifactId>
+                <version>0.23.0</version>
+                <configuration>
+                    <oldVersion>
+                        <dependency>
+                            <groupId>se.deversity.async-test-lib</groupId>
+                            <artifactId>async-test-lib</artifactId>
+                            <version>1.6.0</version>
+                            <type>jar</type>
+                        </dependency>
+                    </oldVersion>
+                    <newVersion>
+                        <file>
+                            <path>${project.build.directory}/${project.build.finalName}.${project.packaging}</path>
+                        </file>
+                    </newVersion>
+                    <parameter>
+                        <onlyBinaryIncompatible>true</onlyBinaryIncompatible>
+                        <breakBuildOnBinaryIncompatibleModifications>true</breakBuildOnBinaryIncompatibleModifications>
+                        <ignoreMissingClasses>true</ignoreMissingClasses>
+                    </parameter>
+                </configuration>
+                <executions>
+                    <execution>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>cmp</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

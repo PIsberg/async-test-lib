@@ -1,5 +1,8 @@
 package se.deversity.asynctest;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import org.junit.jupiter.api.TestTemplate;
 import org.junit.jupiter.api.extension.ExtendWith;
 import se.deversity.vibetags.annotations.AIContract;
@@ -50,6 +53,7 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @TestTemplate
 @ExtendWith(se.deversity.asynctest.extension.AsyncTestExtension.class)
+@API(status = Status.STABLE)
 public @interface AsyncTest {
 
     /**
@@ -101,6 +105,8 @@ public @interface AsyncTest {
      * Enable deadlock detection with detailed lock analysis.
      * When test times out, provides information about which threads hold which locks.
      */
+    @Deprecated
+
     boolean detectDeadlocks() default true;
 
     /**
@@ -108,6 +114,8 @@ public @interface AsyncTest {
      * Detects missing volatile keywords and insufficient synchronization.
      * This adds overhead, so only enable when testing code with potential visibility issues.
      */
+    @Deprecated
+
     boolean detectVisibility() default false;
 
     /**
@@ -115,6 +123,8 @@ public @interface AsyncTest {
      * Monitors for threads that change state rapidly without making progress,
      * or threads that never get CPU time.
      */
+    @Deprecated
+
     boolean detectLivelocks() default false;
 
     /**
@@ -245,90 +255,120 @@ public @interface AsyncTest {
      * Detects when multiple threads access adjacent memory locations in the same cache line,
      * causing excessive cache coherency traffic.
      */
+    @Deprecated
+
     boolean detectFalseSharing() default true;
 
     /**
      * Enable wait/notify issue detection.
      * Detects spurious wakeups, lost notifications, and improper wait/notify coordination.
      */
+    @Deprecated
+
     boolean detectWakeupIssues() default true;
 
     /**
      * Enable constructor safety validation.
      * Verifies objects are fully constructed before being shared across threads.
      */
+    @Deprecated
+
     boolean validateConstructorSafety() default true;
 
     /**
      * Enable ABA problem detection.
      * Detects ABA scenarios in atomic operations and CAS loops that can cause data corruption.
      */
+    @Deprecated
+
     boolean detectABAProblem() default true;
 
     /**
      * Enable lock order validation.
      * Detects inconsistent lock orderings across threads that can cause deadlocks.
      */
+    @Deprecated
+
     boolean validateLockOrder() default true;
 
     /**
      * Enable synchronizer monitoring (barriers, phasers, latches).
      * Detects synchronization issues like incomplete barrier advances.
      */
+    @Deprecated
+
     boolean monitorSynchronizers() default true;
 
     /**
      * Enable thread pool health monitoring.
      * Detects queue saturation, task rejection, worker starvation.
      */
+    @Deprecated
+
     boolean monitorThreadPool() default true;
 
     /**
      * Enable memory ordering violation detection.
      * Detects compiler/CPU reordering that causes incorrect synchronization.
      */
+    @Deprecated
+
     boolean detectMemoryOrderingViolations() default true;
 
     /**
      * Enable async pipeline monitoring.
      * Detects signal loss, missing events, and processing failures in event pipelines.
      */
+    @Deprecated
+
     boolean monitorAsyncPipeline() default true;
 
     /**
      * Enable read-write lock fairness monitoring.
      * Detects writer starvation and unfair lock distributions.
      */
+    @Deprecated
+
     boolean monitorReadWriteLockFairness() default true;
 
     /**
      * Enable race condition detection.
      * Detects concurrent field access patterns and unsynchronized mutations.
      */
+    @Deprecated
+
     boolean detectRaceConditions() default true;
 
     /**
      * Enable ThreadLocal leak detection.
      * Detects ThreadLocal values not cleaned up, causing memory leaks in thread pools.
      */
+    @Deprecated
+
     boolean detectThreadLocalLeaks() default true;
 
     /**
      * Enable busy-waiting detection.
      * Detects CPU-intensive spin loops and polling patterns without proper synchronization.
      */
+    @Deprecated
+
     boolean detectBusyWaiting() default true;
 
     /**
      * Enable atomicity violation detection.
      * Detects check-then-act patterns and compound operations that aren't properly synchronized.
      */
+    @Deprecated
+
     boolean detectAtomicityViolations() default true;
 
     /**
      * Enable interrupt handling monitoring.
      * Detects caught but ignored InterruptException and improper thread cancellation handling.
      */
+    @Deprecated
+
     boolean detectInterruptMishandling() default true;
 
     // ============= Phase 2: Additional Monitors =============
@@ -337,12 +377,16 @@ public @interface AsyncTest {
      * Enable semaphore misuse monitoring.
      * Detects permit leaks, over-release, and unreleased permits at completion.
      */
+    @Deprecated
+
     boolean monitorSemaphore() default true;
 
     /**
      * Enable CompletableFuture exception monitoring.
      * Detects unhandled exceptions, missing handlers, and swallowed exceptions in async chains.
      */
+    @Deprecated
+
     boolean detectCompletableFutureExceptions() default true;
 
     /**
@@ -350,6 +394,8 @@ public @interface AsyncTest {
      * Detects CompletableFutures created but never completed (completable future leaks).
      * @since 1.2.0
      */
+    @Deprecated
+
     boolean detectCompletableFutureCompletionLeaks() default true;
 
     /**
@@ -358,6 +404,8 @@ public @interface AsyncTest {
      * Requires Java 21+ with virtual thread support.
      * @since 1.2.0
      */
+    @Deprecated
+
     boolean detectVirtualThreadPinning() default true;
 
     /**
@@ -365,54 +413,72 @@ public @interface AsyncTest {
      * Detects tasks submitting nested tasks to the same pool, which can cause deadlock.
      * @since 1.2.0
      */
+    @Deprecated
+
     boolean detectThreadPoolDeadlocks() default true;
 
     /**
      * Enable concurrent modification detection.
      * Detects collection modifications during iteration and concurrent mutations.
      */
+    @Deprecated
+
     boolean detectConcurrentModifications() default true;
 
     /**
      * Enable lock leak detection.
      * Detects locks acquired but never released and excessive hold times.
      */
+    @Deprecated
+
     boolean detectLockLeaks() default true;
 
     /**
      * Enable shared Random detection.
      * Detects concurrent access to non-thread-safe Random instances.
      */
+    @Deprecated
+
     boolean detectSharedRandom() default true;
 
     /**
      * Enable BlockingQueue misuse detection.
      * Detects silent failures, queue saturation, and producer/consumer imbalance.
      */
+    @Deprecated
+
     boolean detectBlockingQueueIssues() default true;
 
     /**
      * Enable Condition variable misuse detection.
      * Detects lost signals, stuck waiters, and missing signals.
      */
+    @Deprecated
+
     boolean detectConditionVariableIssues() default true;
 
     /**
      * Enable SimpleDateFormat misuse detection.
      * Detects concurrent access to non-thread-safe date formatters.
      */
+    @Deprecated
+
     boolean detectSimpleDateFormatIssues() default true;
 
     /**
      * Enable parallel stream misuse detection.
      * Detects stateful lambdas, non-thread-safe collectors, and side effects.
      */
+    @Deprecated
+
     boolean detectParallelStreamIssues() default true;
 
     /**
      * Enable resource leak detection.
      * Detects AutoCloseable resources not properly closed.
      */
+    @Deprecated
+
     boolean detectResourceLeaks() default true;
 
     // ============= Phase 2: Additional Concurrency Detectors =============
@@ -421,36 +487,48 @@ public @interface AsyncTest {
      * Enable CountDownLatch misuse detection.
      * Detects latch timeout, missing countDown, and extra countDown calls.
      */
+    @Deprecated
+
     boolean detectCountDownLatchIssues() default true;
 
     /**
      * Enable CyclicBarrier misuse detection.
      * Detects barrier timeout, broken barriers, and missing participants.
      */
+    @Deprecated
+
     boolean detectCyclicBarrierIssues() default true;
 
     /**
      * Enable ReentrantLock issue detection.
      * Detects lock starvation, unfair acquisition, and lock timeouts.
      */
+    @Deprecated
+
     boolean detectReentrantLockIssues() default true;
 
     /**
      * Enable volatile array issue detection.
      * Detects multi-thread access to volatile array elements (which are not volatile).
      */
+    @Deprecated
+
     boolean detectVolatileArrayIssues() default true;
 
     /**
      * Enable broken double-checked locking detection.
      * Detects DCL patterns without volatile keyword.
      */
+    @Deprecated
+
     boolean detectDoubleCheckedLocking() default true;
 
     /**
      * Enable wait timeout detection.
      * Detects wait() calls without timeout (potential deadlock).
      */
+    @Deprecated
+
     boolean detectWaitTimeout() default true;
 
     /**
@@ -458,6 +536,8 @@ public @interface AsyncTest {
      * Detects monitors where a high proportion of acquire attempts are blocked,
      * indicating a performance-degrading contention hotspot.
      */
+    @Deprecated
+
     boolean detectLockContention() default true;
 
     /**
@@ -465,6 +545,8 @@ public @interface AsyncTest {
      * Detects the anti-pattern of synchronizing on a field that is not declared
      * {@code final} and may be reassigned, breaking mutual exclusion guarantees.
      */
+    @Deprecated
+
     boolean detectSynchronizedNonFinal() default true;
 
     /**
@@ -472,6 +554,8 @@ public @interface AsyncTest {
      * Detects {@code notify()} and {@code notifyAll()} calls made when no thread
      * is waiting on the condition, causing the signal to be silently lost.
      */
+    @Deprecated
+
     boolean detectMissedSignals() default true;
 
     /**
@@ -479,6 +563,8 @@ public @interface AsyncTest {
      * Detects fields that are initialized by multiple concurrent threads because
      * the null-guard is not properly synchronized or the field is not volatile.
      */
+    @Deprecated
+
     boolean detectLazyInitRace() default true;
 
     // ============= Phase 2: Advanced Concurrency Utilities =============
@@ -487,36 +573,48 @@ public @interface AsyncTest {
      * Enable Phaser misuse detection.
      * Detects missing arrive() calls, timeouts, and termination issues.
      */
+    @Deprecated
+
     boolean detectPhaserIssues() default true;
 
     /**
      * Enable StampedLock issue detection.
      * Detects unvalidated optimistic reads and stamp release issues.
      */
+    @Deprecated
+
     boolean detectStampedLockIssues() default true;
 
     /**
      * Enable Exchanger misuse detection.
      * Detects exchange timeouts and missing partners.
      */
+    @Deprecated
+
     boolean detectExchangerIssues() default true;
 
     /**
      * Enable ScheduledExecutorService issue detection.
      * Detects missing shutdown, long-running tasks, and exceptions.
      */
+    @Deprecated
+
     boolean detectScheduledExecutorIssues() default true;
 
     /**
      * Enable ForkJoinPool issue detection.
      * Detects fork without join and task exceptions.
      */
+    @Deprecated
+
     boolean detectForkJoinPoolIssues() default true;
 
     /**
      * Enable ThreadFactory issue detection.
      * Detects missing exception handlers and poor thread naming.
      */
+    @Deprecated
+
     boolean detectThreadFactoryIssues() default true;
 
     // ============= Phase 4: Infrastructure & Resource Management =============
@@ -525,24 +623,32 @@ public @interface AsyncTest {
      * Enable thread leak detection.
      * Detects threads created but never terminated, leading to resource exhaustion.
      */
+    @Deprecated
+
     boolean detectThreadLeaks() default true;
 
     /**
      * Enable sleep-in-lock detection.
      * Detects Thread.sleep() calls while holding locks.
      */
+    @Deprecated
+
     boolean detectSleepInLock() default true;
 
     /**
      * Enable unbounded queue detection.
      * Detects BlockingQueue instances without capacity bounds.
      */
+    @Deprecated
+
     boolean detectUnboundedQueue() default true;
 
     /**
      * Enable thread starvation detection.
      * Detects tasks waiting excessively long before execution.
      */
+    @Deprecated
+
     boolean detectThreadStarvation() default true;
 
     // ============= Phase 5: Thread-Safety of Common Types =============
@@ -551,6 +657,8 @@ public @interface AsyncTest {
      * Enable {@code java.util.Calendar} misuse detection.
      * Detects shared Calendar instances accessed by multiple threads (not thread-safe).
      */
+    @Deprecated
+
     boolean detectCalendarIssues() default true;
 
     /**
@@ -558,6 +666,8 @@ public @interface AsyncTest {
      * Detects ArrayList, HashMap, HashSet, LinkedList, etc. accessed concurrently
      * without synchronization.
      */
+    @Deprecated
+
     boolean detectSharedCollections() default true;
 
     /**
@@ -565,6 +675,8 @@ public @interface AsyncTest {
      * Detects timer thread failures (uncaught exceptions kill all tasks) and
      * long-running tasks that starve subsequent tasks.
      */
+    @Deprecated
+
     boolean detectTimerIssues() default true;
 
     /**
@@ -572,12 +684,16 @@ public @interface AsyncTest {
      * Detects CopyOnWriteArrayList / CopyOnWriteArraySet used in write-heavy scenarios
      * where the O(n) copy-per-write overhead is significant.
      */
+    @Deprecated
+
     boolean detectCopyOnWriteCollectionIssues() default true;
 
     /**
      * Enable {@code StringBuilder} sharing detection.
      * Detects StringBuilder instances mutated by multiple threads (not thread-safe).
      */
+    @Deprecated
+
     boolean detectStringBuilderIssues() default true;
 
     // ============= Phase 6: Virtual Thread Concurrency (Java 21+) =============
@@ -588,6 +704,8 @@ public @interface AsyncTest {
      * subtask results accessed before {@code join()}, and empty scopes.
      * @since 0.7.0
      */
+    @Deprecated
+
     boolean detectStructuredConcurrencyIssues() default true;
 
     /**
@@ -597,6 +715,8 @@ public @interface AsyncTest {
      * per-thread ThreadLocal usage (prefer {@code ScopedValue}).
      * @since 0.7.0
      */
+    @Deprecated
+
     boolean detectVirtualThreadContextLeaks() default true;
 
     /**
@@ -606,6 +726,8 @@ public @interface AsyncTest {
      * nested scopes, and excessive simultaneous binding counts.
      * @since 0.7.0
      */
+    @Deprecated
+
     boolean detectScopedValueMisuse() default true;
 
     /**
@@ -614,6 +736,8 @@ public @interface AsyncTest {
      * which monopolizes carrier threads and reduces scalability.
      * @since 0.7.0
      */
+    @Deprecated
+
     boolean detectVirtualThreadCpuBoundTasks() default true;
 
     /**
@@ -623,6 +747,8 @@ public @interface AsyncTest {
      * starvation even without a classic deadlock.
      * @since 0.7.0
      */
+    @Deprecated
+
     boolean detectVirtualThreadCarrierExhaustion() default true;
 
     // ============= Phase 7: High-Level Concurrency Patterns =============
@@ -634,6 +760,8 @@ public @interface AsyncTest {
      * initiated but never awaited/completed.
      * @since 0.7.0
      */
+    @Deprecated
+
     boolean detectHttpClientIssues() default true;
 
     /**
@@ -643,6 +771,8 @@ public @interface AsyncTest {
      * and too many concurrently open streams (resource exhaustion risk).
      * @since 0.7.0
      */
+    @Deprecated
+
     boolean detectStreamClosing() default true;
 
     /**
@@ -652,6 +782,8 @@ public @interface AsyncTest {
      * modification, and cache stampede scenarios.
      * @since 0.7.0
      */
+    @Deprecated
+
     boolean detectCacheConcurrency() default true;
 
     /**
@@ -661,6 +793,8 @@ public @interface AsyncTest {
      * without proper exception handling.
      * @since 0.7.0
      */
+    @Deprecated
+
     boolean detectCompletableFutureChainIssues() default true;
 
     // ============= Benchmarking =============
@@ -694,6 +828,8 @@ public @interface AsyncTest {
      * without a subsequent {@code awaitTermination()} call.
      * @since 1.3.0
      */
+    @Deprecated
+
     boolean detectExecutorShutdown() default true;
 
     /**
@@ -702,6 +838,8 @@ public @interface AsyncTest {
      * (including hashCode-changing mutations) after insertion.
      * @since 1.3.0
      */
+    @Deprecated
+
     boolean detectMutableMapKeys() default true;
 
     /**
@@ -710,6 +848,8 @@ public @interface AsyncTest {
      * {@code Lock.lock()}) while holding a monitor on a different object.
      * @since 1.3.0
      */
+    @Deprecated
+
     boolean detectNestedMonitorLockout() default true;
 
     /**
@@ -718,6 +858,8 @@ public @interface AsyncTest {
      * which deadlock immediately because the upgrade is not supported.
      * @since 1.3.0
      */
+    @Deprecated
+
     boolean detectLockDowngrade() default true;
 
     /**
@@ -727,6 +869,8 @@ public @interface AsyncTest {
      * causing stale or cross-task context contamination.
      * @since 1.3.0
      */
+    @Deprecated
+
     boolean detectInheritableThreadLocalMisuse() default true;
 
     // ============= Phase 9: Repository & Environment State =============
@@ -737,6 +881,8 @@ public @interface AsyncTest {
      * Helps ensure tests are run against a clean and reproducible repository state.
      * @since 1.4.0
      */
+    @Deprecated
+
     boolean detectUncommittedChanges() default true;
 
     // ============= Phase 10: API Traps & Subtle Concurrency Bugs =============
@@ -747,6 +893,8 @@ public @interface AsyncTest {
      * pooled thread without an intervening {@code remove()} or {@code set()}.
      * @since 1.6.0
      */
+    @Deprecated
+
     boolean detectThreadLocalContamination() default true;
 
     /**
@@ -755,6 +903,8 @@ public @interface AsyncTest {
      * {@link java.util.concurrent.atomic.AtomicLong}, etc. without {@code compareAndSet()}.
      * @since 1.6.0
      */
+    @Deprecated
+
     boolean detectAtomicNonAtomicUpdates() default true;
 
     /**
@@ -764,6 +914,8 @@ public @interface AsyncTest {
      * wrapper's intrinsic lock.
      * @since 1.6.0
      */
+    @Deprecated
+
     boolean detectSynchronizedCollectionIteration() default true;
 
     /**
@@ -773,6 +925,8 @@ public @interface AsyncTest {
      * external synchronization.
      * @since 1.6.0
      */
+    @Deprecated
+
     boolean detectSharedFormatter() default true;
 
     /**
@@ -782,6 +936,8 @@ public @interface AsyncTest {
      * causing an infinite loop (Java 8) or {@link IllegalStateException} (Java 9+).
      * @since 1.6.0
      */
+    @Deprecated
+
     boolean detectConcurrentMapComputeRecursion() default true;
 
     /**
@@ -790,6 +946,8 @@ public @interface AsyncTest {
      * {@link Integer} / {@link Long} values (range [-128, 127]) — monitors shared JVM-wide.
      * @since 1.6.0
      */
+    @Deprecated
+
     boolean detectSynchronizedOnLiteral() default true;
 
     /**
@@ -798,6 +956,8 @@ public @interface AsyncTest {
      * accessible, exposing the internal lock to external callers.
      * @since 1.6.0
      */
+    @Deprecated
+
     boolean detectPublicLockExposure() default true;
 
     /**
@@ -807,6 +967,8 @@ public @interface AsyncTest {
      * {@link java.util.concurrent.ForkJoinPool} carrier threads.
      * @since 1.6.0
      */
+    @Deprecated
+
     boolean detectForkJoinTaskBlocking() default true;
 
     /**
@@ -815,6 +977,8 @@ public @interface AsyncTest {
      * without calling {@code validate(stamp)}, or data used after a failed validation.
      * @since 1.6.0
      */
+    @Deprecated
+
     boolean detectOptimisticReadValidation() default true;
 
     /**
@@ -823,6 +987,8 @@ public @interface AsyncTest {
      * submitted to the common {@link java.util.concurrent.ForkJoinPool} without a dedicated executor.
      * @since 1.6.0
      */
+    @Deprecated
+
     boolean detectCFCommonPoolBlocking() default true;
 
     // ============= Phase 11: Thread-Safety of Additional Types & Patterns =============
@@ -833,6 +999,8 @@ public @interface AsyncTest {
      * threads. {@code Pattern} is thread-safe but {@code Matcher} holds mutable match state.
      * @since 0.9.0
      */
+    @Deprecated
+
     boolean detectSharedMatcher() default true;
 
     /**
@@ -841,6 +1009,8 @@ public @interface AsyncTest {
      * accessed concurrently; neither is thread-safe.
      * @since 0.9.0
      */
+    @Deprecated
+
     boolean detectSharedDecimalFormat() default true;
 
     /**
@@ -849,6 +1019,8 @@ public @interface AsyncTest {
      * was collected mid-test — leaving some threads with null while others had non-null.
      * @since 0.9.0
      */
+    @Deprecated
+
     boolean detectWeakReferenceRace() default true;
 
     /**
@@ -857,6 +1029,8 @@ public @interface AsyncTest {
      * that capture mutable state and are executed concurrently from multiple threads.
      * @since 0.9.0
      */
+    @Deprecated
+
     boolean detectStatefulLambda() default true;
 
     /**
@@ -866,6 +1040,8 @@ public @interface AsyncTest {
      * calls silently corrupt the hash state.
      * @since 0.9.0
      */
+    @Deprecated
+
     boolean detectSharedMessageDigest() default true;
 
     // ============= Phase 12: Operational & Hygiene Concurrency Issues =============
@@ -877,6 +1053,8 @@ public @interface AsyncTest {
      * cooperative-cancellation signal.
      * @since 0.10.0
      */
+    @Deprecated
+
     boolean detectInterruptSwallowing() default true;
 
     /**
@@ -885,6 +1063,8 @@ public @interface AsyncTest {
      * to the next task run on a reused pooled thread.
      * @since 0.10.0
      */
+    @Deprecated
+
     boolean detectMdcContextLeak() default true;
 
     /**
@@ -893,6 +1073,8 @@ public @interface AsyncTest {
      * during the test run, which cause non-deterministic configuration and test pollution.
      * @since 0.10.0
      */
+    @Deprecated
+
     boolean detectSystemPropertyMutation() default true;
 
     /**
@@ -902,6 +1084,8 @@ public @interface AsyncTest {
      * to be silently swallowed.
      * @since 0.10.0
      */
+    @Deprecated
+
     boolean detectFutureIgnored() default true;
 
     /**
@@ -911,6 +1095,8 @@ public @interface AsyncTest {
      * measurements and concurrency tests.
      * @since 0.10.0
      */
+    @Deprecated
+
     boolean detectExplicitGc() default true;
 
     /**
@@ -921,6 +1107,8 @@ public @interface AsyncTest {
      * Java 20+.
      * @since 0.10.0
      */
+    @Deprecated
+
     boolean detectDeprecatedThreadApi() default true;
 
     /**
@@ -930,6 +1118,8 @@ public @interface AsyncTest {
      * accessed concurrently from multiple threads; all are non-thread-safe.
      * @since 0.10.0
      */
+    @Deprecated
+
     boolean detectSharedXmlParser() default true;
 
     /**
@@ -940,6 +1130,8 @@ public @interface AsyncTest {
      * shared instances that cause unexpected contention.
      * @since 0.10.0
      */
+    @Deprecated
+
     boolean detectBoxedPrimitiveLock() default true;
 
     /**
@@ -949,6 +1141,8 @@ public @interface AsyncTest {
      * arithmetic.
      * @since 0.10.0
      */
+    @Deprecated
+
     boolean detectSharedTimeZone() default true;
 
     /**
@@ -958,6 +1152,8 @@ public @interface AsyncTest {
      * perspective.
      * @since 0.10.0
      */
+    @Deprecated
+
     boolean detectUncaughtExceptionHandler() default true;
 
     // ============= Phase 13: Additional concurrency-bug categories (1.0.0+) =============
@@ -969,6 +1165,8 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector}.
      * @since 1.6.0
      */
+    @Deprecated
+
     boolean detectDaemonThreadHygiene() default true;
 
     /**
@@ -978,6 +1176,8 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector}.
      * @since 1.6.0
      */
+    @Deprecated
+
     boolean detectNotifyWithoutMonitor() default true;
 
     /**
@@ -988,6 +1188,8 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.SharedSecureRandomDetector}.
      * @since 1.6.0
      */
+    @Deprecated
+
     boolean detectSharedSecureRandom() default true;
 
     /**
@@ -997,6 +1199,8 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector}.
      * @since 1.6.0
      */
+    @Deprecated
+
     boolean detectWeakHashMapShared() default true;
 
     /**
@@ -1007,6 +1211,8 @@ public @interface AsyncTest {
      * See {@link se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector}.
      * @since 1.6.0
      */
+    @Deprecated
+
     boolean detectJdbcConnectionShared() default true;
 
     /**
@@ -1018,6 +1224,8 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.SharedStatefulCryptoDetector}.
      * @since 1.7.0
      */
+    @Deprecated
+
     boolean detectSharedStatefulCrypto() default true;
 
     /**
@@ -1028,6 +1236,8 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.NonAtomicConcurrentMapUpdateDetector}.
      * @since 1.7.0
      */
+    @Deprecated
+
     boolean detectConcurrentMapCheckThenAct() default true;
 
     /**
@@ -1037,6 +1247,8 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.SharedDeflaterDetector}.
      * @since 1.7.0
      */
+    @Deprecated
+
     boolean detectSharedDeflater() default true;
 
     /**
@@ -1046,6 +1258,8 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.ThisEscapeDetector}.
      * @since 1.7.0
      */
+    @Deprecated
+
     boolean detectThisEscape() default true;
 
     /**
@@ -1055,6 +1269,8 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.ThreadLocalRandomMisuseDetector}.
      * @since 1.7.0
      */
+    @Deprecated
+
     boolean detectThreadLocalRandomMisuse() default true;
 
     /**
@@ -1062,6 +1278,8 @@ public @interface AsyncTest {
      * or obtrudeException() which bypass normal async pipelines.
      * @since 1.8.0
      */
+    @Deprecated
+
     boolean detectCompletableFutureObtrudeAbuse() default true;
 
     /**
@@ -1069,6 +1287,8 @@ public @interface AsyncTest {
      * are not wrapped inside a while loop condition check.
      * @since 1.8.0
      */
+    @Deprecated
+
     boolean detectSpuriousWakeupHazard() default true;
 
     /**
@@ -1076,12 +1296,16 @@ public @interface AsyncTest {
      * a read lock to a write lock on the same thread.
      * @since 1.8.0
      */
+    @Deprecated
+
     boolean detectLockUpgradeDeadlock() default true;
 
     /**
      * Enable tryLock misuse detection. Flags calls to unlock() without a successful tryLock().
      * @since 1.8.0
      */
+    @Deprecated
+
     boolean detectTryLockMisuse() default true;
 
     /**
@@ -1089,6 +1313,8 @@ public @interface AsyncTest {
      * CompletableFuture pipeline callbacks.
      * @since 1.8.0
      */
+    @Deprecated
+
     boolean detectCFBlockingCallback() default true;
 
     // ============= License Gating (Integration) =============

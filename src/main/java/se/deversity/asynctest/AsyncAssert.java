@@ -1,5 +1,8 @@
 package se.deversity.asynctest;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import se.deversity.vibetags.annotations.AIContract;
 import se.deversity.vibetags.annotations.AIPublicAPI;
@@ -15,6 +18,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 @AIContract(reason = "Public assertion utility API for AsyncTest consumers. awaitUntil() and capture() are used directly in user test code — method signatures and semantics must not change without a major version bump.")
 @AIPublicAPI
+@API(status = Status.STABLE)
 public class AsyncAssert {
 
     /**

@@ -1,5 +1,8 @@
 package se.deversity.asynctest.report;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import se.deversity.asynctest.AsyncTestListener;
 
 /**
@@ -22,6 +25,7 @@ import se.deversity.asynctest.AsyncTestListener;
  *
  * @see JUnitXmlReportListener
  */
+@API(status = Status.STABLE)
 public final class StrictModeListener implements AsyncTestListener {
 
     @Override

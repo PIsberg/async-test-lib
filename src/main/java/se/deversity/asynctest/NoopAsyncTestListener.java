@@ -1,5 +1,8 @@
 package se.deversity.asynctest;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import se.deversity.vibetags.annotations.AIIgnore;
 
 /**
@@ -24,6 +27,7 @@ import se.deversity.vibetags.annotations.AIIgnore;
  * @see AsyncTestListenerRegistry#register(AsyncTestListener)
  */
 @AIIgnore(reason = "Trivial no-op implementation of AsyncTestListener. All methods are intentionally empty — no logic to review or change here.")
+@API(status = Status.STABLE)
 public class NoopAsyncTestListener implements AsyncTestListener {
 
     /**

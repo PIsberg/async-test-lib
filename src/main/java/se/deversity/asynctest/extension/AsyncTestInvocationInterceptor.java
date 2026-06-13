@@ -1,5 +1,8 @@
 package se.deversity.asynctest.extension;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.asynctest.runner.ConcurrencyRunner;
@@ -14,6 +17,7 @@ import java.lang.reflect.Method;
     sensitivity = "Critical",
     note = "invocation.skip() is intentional — ConcurrencyRunner owns the full N×M execution and must never call invocation.proceed(). Restoring proceed() would run the test body once outside the CyclicBarrier, bypassing all detectors."
 )
+@API(status = Status.STABLE)
 public class AsyncTestInvocationInterceptor implements InvocationInterceptor {
 
     private final AsyncTest asyncTest;
