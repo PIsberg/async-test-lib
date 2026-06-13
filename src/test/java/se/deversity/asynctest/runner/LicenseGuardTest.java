@@ -74,6 +74,32 @@ class LicenseGuardTest {
                 "Concurrent first-time checks for the same config must collapse to one cache entry");
     }
 
+    @Test
+    void expiredOrInvalidLicense_throwsSecurityException() {
+        String prevMockMode = System.getProperty("license.mock.mode");
+        System.setProperty("license.mock.mode", "false");
+        try {
+            AsyncTestConfig cfg = AsyncTestConfig.builder()
+                    .licenseMockMode(false)
+                    .keygenApiKey("dummy-api-key") // prevent auto-mocking in CI
+                    .licenseKey("expired-or-invalid-key")
+                    .build();
+
+            SecurityException ex = assertThrows(SecurityException.class, () -> {
+                LicenseGuard.check(cfg);
+            });
+
+            assertTrue(ex.getMessage().contains("LICENSE DENIED"));
+            assertTrue(ex.getMessage().contains("To run locally without a key"));
+        } finally {
+            if (prevMockMode != null) {
+                System.setProperty("license.mock.mode", prevMockMode);
+            } else {
+                System.clearProperty("license.mock.mode");
+            }
+        }
+    }
+
     private static void resetCache() {
         try {
             Method m = LicenseGuard.class.getDeclaredMethod("resetForTesting");

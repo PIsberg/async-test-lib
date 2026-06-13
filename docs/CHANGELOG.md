@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0-RC1] - 2026-06-13
+
+### Added — Concurrency Detectors (Phases 11 & 12)
+- **18 New Concurrency Detectors** — Synced the framework to support **111 total problem detectors**, including new checks for:
+  - Stateful Lambdas, Shared Message Digests, Weak Reference Races, Shared Matchers, and Shared Decimal Formats (Phase 11).
+  - Interrupt Swallowing, MDC Context Leaks, System Property Mutations, and Ignored Futures (Phase 12).
+  - Corresponding unit tests, code examples, and downstream validation fixtures.
+
+### Added — Failure Diagnostics & Documentation (Step 6 & 7)
+- **Circular Deadlock ASCII Visualization** — Formatted deadlock diagnostic output as a circular ASCII graph mapping out cycles, lock acquisition order, holding threads, and waiting threads.
+- **Educational Diagnostics & Recommendations** — Structured learning material and copy-paste ready auto-fix recommendations for all major concurrency bugs (visibility issues, false sharing, CompletableFuture leaks, thread-pool deadlocks, lock leaks, and busy-waiting).
+- **Onboarding Guides** — Created comprehensive guides:
+  - `docs/DETECTOR_CATALOG.md` detailing all 111 detectors with "Buggy Code" vs. "Fixed Code" examples.
+  - `docs/TROUBLESHOOTING.md` addressing flaky tests, timeouts, and optimized thread allocations.
+  - Updated `docs/CI_INTEGRATION.md` to include SonarQube Quality Gates configurations.
+
+### Added — Release Automation & Security (Step 8)
+- **Public API Stability Freeze** — Frozen public-facing APIs using `@API(status = Status.STABLE)` annotations and marked legacy per-detector boolean attributes as `@Deprecated`.
+- **Binary Compatibility Checking** — Integrated `japicmp-maven-plugin` to verify zero breaking API modifications against the `1.6.0` release.
+- **Central Staging Publishing** — Integrated publishing and GPG signing automated workflows using the new Sonatype Central Publishing Portal.
+- **LicenseGuard Fallback Validation** — Added a unit test validating that invalid/expired licenses trigger a clean, informative `SecurityException` instead of thread lockups or test report corruption.
+
 ### Added — Detector selection & fail-gating (`@AsyncTest` extensions)
 
 - **`@AsyncTest(includes = {DetectorType...})`** — enable exactly the listed
