@@ -1,5 +1,8 @@
 package se.deversity.asynctest;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import se.deversity.vibetags.annotations.AIImmutable;
 import se.deversity.vibetags.annotations.AIPublicAPI;
@@ -29,6 +32,7 @@ import java.util.Set;
  */
 @AIPublicAPI
 @AIImmutable(note = "Enum constants — JVM guarantees structural immutability. Internal enabled-set is captured at class init.")
+@API(status = Status.STABLE)
 public enum Preset {
 
     /**

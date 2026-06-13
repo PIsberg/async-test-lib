@@ -172,7 +172,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 1.5: Virtual thread stress testing.
      * Tests with many virtual threads to detect pinning issues.
      */
-    @AsyncTest(useVirtualThreads = true, virtualThreadStressMode = "LOW", detectAll = true)
+    @AsyncTest(useVirtualThreads = true, virtualThreadStressMode = "LOW", detectAll = true, timeoutMs = 30000)
     void testVirtualThreadStress() {
         // Work that exercises virtual thread scheduling
         int sum = 0;

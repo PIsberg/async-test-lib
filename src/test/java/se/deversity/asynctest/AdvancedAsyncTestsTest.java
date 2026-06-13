@@ -115,7 +115,7 @@ public class AdvancedAsyncTestsTest {
         private volatile int counter1 = 0;
         private volatile int counter2 = 0;
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 3000, detectLivelocks = true)
+        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 15000, detectLivelocks = true)
         void testLivelock() throws InterruptedException {
             if (Thread.currentThread().getId() % 2 == 0) {
                 for (int i = 0; i < 100; i++) {

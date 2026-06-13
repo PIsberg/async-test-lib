@@ -34,6 +34,7 @@ val asmVersion      = "9.10.1"  // pom: asm.version
 val slf4jVersion    = "2.0.16"  // pom: slf4j.version
 
 dependencies {
+    api("org.apiguardian:apiguardian-api:1.1.2")
     api("org.junit.jupiter:junit-jupiter-api:$junitVersion")
     api("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
     testImplementation("org.junit.platform:junit-platform-testkit:$junitVersion")

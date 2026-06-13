@@ -1,5 +1,8 @@
 package se.deversity.asynctest.spi;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.asynctest.DetectorType;
 import se.deversity.vibetags.annotations.AIContract;
@@ -19,6 +22,7 @@ import se.deversity.vibetags.annotations.AIPublicAPI;
  */
 @AIPublicAPI
 @AIContract(reason = "Public SPI interface for ServiceLoader-based detector discovery. type(), isEnabledFor(), and create() signatures are part of the stable factory contract — implementors bind to these exact names and parameter types.")
+@API(status = Status.STABLE)
 public interface DetectorFactory {
 
     /**

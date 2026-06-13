@@ -35,13 +35,11 @@ import se.deversity.vibetags.annotations.AITestDriven;
 public class UncaughtExceptionHandlerDetector {
 
     private static class ThreadRecord {
-        final long    threadId;
         final String  threadName;
         final boolean hasCustomHandler;
         volatile Throwable uncaughtException;
 
         ThreadRecord(long tid, String tname, boolean hasCustomHandler) {
-            this.threadId         = tid;
             this.threadName       = tname;
             this.hasCustomHandler = hasCustomHandler;
         }

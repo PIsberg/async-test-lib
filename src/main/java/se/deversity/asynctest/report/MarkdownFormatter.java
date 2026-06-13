@@ -1,5 +1,8 @@
 package se.deversity.asynctest.report;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
 import java.util.List;
@@ -11,6 +14,7 @@ import java.util.List;
  * @since 1.6.0
  */
 @AIPublicAPI
+@API(status = Status.STABLE)
 public final class MarkdownFormatter implements Formatter {
 
     @Override

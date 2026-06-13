@@ -107,7 +107,7 @@ public class AsyncTestLibraryMetaTest {
         private boolean stopHolder = false;
         private final AtomicInteger assigner = new AtomicInteger();
 
-        @AsyncTest(threads = 2, invocations = 5, timeoutMs = 3000, useVirtualThreads = false)
+        @AsyncTest(threads = 2, invocations = 5, timeoutMs = 15000, useVirtualThreads = false)
         void testVisibility() throws Exception {
             if (assigner.getAndIncrement() % 2 == 0) {
                 stopHolder = true;

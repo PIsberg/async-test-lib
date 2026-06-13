@@ -1,5 +1,8 @@
 package se.deversity.asynctest.report;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import se.deversity.asynctest.AsyncTestListener;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 
@@ -50,6 +53,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * @see JUnitXmlReportListener
  */
+@API(status = Status.STABLE)
 public final class JsonReportListener implements AsyncTestListener {
 
     private static final String REPORT_FILENAME = "async-test-report.json";

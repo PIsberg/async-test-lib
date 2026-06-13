@@ -1,5 +1,8 @@
 package se.deversity.asynctest;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import se.deversity.asynctest.diagnostics.ABAProblemDetector;
 import se.deversity.asynctest.diagnostics.AtomicNonAtomicUpdateDetector;
 import se.deversity.asynctest.diagnostics.BlockingQueueDetector;
@@ -143,6 +146,7 @@ import java.util.function.Function;
 @AIAudit(checkFor = {"Thread Safety issues"})
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.THREAD_LOCAL, note = "CURRENT ThreadLocal maintains context per active test thread symmetrically.")
 @AIPublicAPI
+@API(status = Status.STABLE)
 public final class AsyncTestContext {
 
     private static final ThreadLocal<AsyncTestContext> CURRENT = new ThreadLocal<>();

@@ -122,6 +122,11 @@
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/CalendarDetectorTest.java</test_location>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureBlockingCallbackDetectorTest.java</test_location>
+    </element>
     <element path="se.deversity.asynctest.diagnostics.CompletableFutureChainDetector">
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
@@ -141,6 +146,11 @@
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureExceptionDetectorTest.java</test_location>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.CompletableFutureObtrudeDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureObtrudeDetectorTest.java</test_location>
     </element>
     <element path="se.deversity.asynctest.diagnostics.ConcurrentMapComputeRecursionDetector">
       <coverage_goal>80</coverage_goal>
@@ -256,6 +266,11 @@
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/LockLeakDetectorTest.java</test_location>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.LockUpgradeDeadlockDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/LockUpgradeDeadlockDetectorTest.java</test_location>
     </element>
     <element path="se.deversity.asynctest.diagnostics.MdcContextLeakDetector">
       <coverage_goal>80</coverage_goal>
@@ -397,6 +412,11 @@
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/SleepInLockDetectorTest.java</test_location>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.SpuriousWakeupDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/SpuriousWakeupDetectorTest.java</test_location>
+    </element>
     <element path="se.deversity.asynctest.diagnostics.StampedLockDetector">
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
@@ -482,6 +502,11 @@
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/TimerDetectorTest.java</test_location>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.TryLockMisuseDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/TryLockMisuseDetectorTest.java</test_location>
+    </element>
     <element path="se.deversity.asynctest.diagnostics.UnboundedQueueDetector">
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
@@ -549,6 +574,14 @@
       <strategy>SYNCHRONIZED</strategy>
       <note>Guards conditional access to internal detector initialization and phase blocks.</note>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector">
+      <strategy>OTHER</strategy>
+      <note>ThreadLocal tracks active callbacks; ConcurrentHashMap stores violations.</note>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.CompletableFutureObtrudeDetector">
+      <strategy>OTHER</strategy>
+      <note>ConcurrentHashMap stores state per CF instance.</note>
+    </element>
     <element path="se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector">
       <strategy>OTHER</strategy>
       <note>Per-thread access map is a ConcurrentHashMap; first-registration-wins via putIfAbsent.</note>
@@ -556,6 +589,10 @@
     <element path="se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector">
       <strategy>OTHER</strategy>
       <note>ConcurrentHashMap-backed JDBC-resource tracking; per-resource State holds ConcurrentHashMap.newKeySet() for accessing threads.</note>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.LockUpgradeDeadlockDetector">
+      <strategy>OTHER</strategy>
+      <note>ConcurrentHashMap tracks read lock ownership and violations.</note>
     </element>
     <element path="se.deversity.asynctest.diagnostics.NonAtomicConcurrentMapUpdateDetector">
       <strategy>OTHER</strategy>
@@ -581,6 +618,10 @@
       <strategy>OTHER</strategy>
       <note>Per-instance state in ConcurrentHashMap with double-check (get-then-computeIfAbsent) hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().</note>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.SpuriousWakeupDetector">
+      <strategy>OTHER</strategy>
+      <note>ConcurrentHashMap stores state per monitor instance.</note>
+    </element>
     <element path="se.deversity.asynctest.diagnostics.ThisEscapeDetector">
       <strategy>OTHER</strategy>
       <note>Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; escape descriptions and observer-thread sets are ConcurrentHashMap.newKeySet(); the completed flag is volatile.</note>
@@ -588,6 +629,10 @@
     <element path="se.deversity.asynctest.diagnostics.ThreadLocalRandomMisuseDetector">
       <strategy>OTHER</strategy>
       <note>Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; misusing-thread sets are ConcurrentHashMap.newKeySet().</note>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.TryLockMisuseDetector">
+      <strategy>OTHER</strategy>
+      <note>ConcurrentHashMap tracks tryLock attempts, results, and unlock violations.</note>
     </element>
     <element path="se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector">
       <strategy>OTHER</strategy>

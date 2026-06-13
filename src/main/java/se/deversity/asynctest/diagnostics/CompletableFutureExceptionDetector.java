@@ -59,7 +59,6 @@ public class CompletableFutureExceptionDetector {
         volatile boolean completed = false;
         volatile boolean completedExceptionally = false;
         volatile Exception lastException = null;
-        volatile Long completedTime = null;
         final AtomicInteger getJoinCalls = new AtomicInteger(0);
 
         FutureState(CompletableFuture<?> future, String name) {
@@ -116,7 +115,6 @@ public class CompletableFutureExceptionDetector {
         if (state != null) {
             state.completed = true;
             state.completedExceptionally = !success;
-            state.completedTime = System.nanoTime();
         }
     }
 

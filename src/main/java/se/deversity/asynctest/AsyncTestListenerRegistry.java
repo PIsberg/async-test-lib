@@ -1,5 +1,8 @@
 package se.deversity.asynctest;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.vibetags.annotations.AIContract;
 import se.deversity.vibetags.annotations.AIIdempotent;
@@ -44,9 +47,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * AsyncTestListenerRegistry.unregister(myListener);
  * }</pre>
  *
- * <p><strong>Default Behavior:</strong> If no listeners are registered, a
- * built-in {@link DefaultStderrListener} prints detector reports to
- * {@code System.err} (backward-compatible behavior).
+ * <p><strong>Default Behavior:</strong> If no listeners are registered, the
+ * framework prints detector reports to {@code System.err} (backward-compatible behavior).
  *
  * <p><strong>Opt-out:</strong> To silence all output, register a
  * {@link NoopAsyncTestListener} instance.
@@ -56,6 +58,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 @AIContract(reason = "Public API for registering and unregistering AsyncTestListener instances. register(), unregister(), clearAll(), and fireXxx() methods are called by user code and infrastructure — signatures must not change.")
 @AIPublicAPI
+@API(status = Status.STABLE)
 public final class AsyncTestListenerRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(AsyncTestListenerRegistry.class);

@@ -1,5 +1,8 @@
 package se.deversity.asynctest.report;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import se.deversity.asynctest.AsyncTestListener;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 
@@ -44,6 +47,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * @see StrictModeListener
  */
+@API(status = Status.STABLE)
 public final class JUnitXmlReportListener implements AsyncTestListener {
 
     private static final String REPORT_FILENAME = "TEST-AsyncTestConcurrencyReport.xml";

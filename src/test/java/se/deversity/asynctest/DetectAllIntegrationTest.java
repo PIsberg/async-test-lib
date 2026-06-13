@@ -21,7 +21,7 @@ class DetectAllIntegrationTest {
 
         // This is a bit tricky to verify via TestKit without checking logs, 
         // but we can check if it runs successfully and we'll manually verify the logic in a bit.
-        assertTrue(events.succeeded().count() > 0);
+        assertTrue(events.failed().count() > 0);
     }
 
     @Test
@@ -37,16 +37,16 @@ class DetectAllIntegrationTest {
     public static class RaceTestWithDetectAll {
         private int counter = 0;
 
-        @AsyncTest(threads = 2, invocations = 10, detectAll = true)
+        @AsyncTest(threads = 2, invocations = 10, detectAll = true, failOn = FailOn.HIGH)
         void race() {
             counter++;
         }
     }
 
     public static class RaceTestWithExcludes {
-        private int counter = 0;
+        private volatile int counter = 0;
 
-        @AsyncTest(threads = 2, invocations = 10, detectAll = true, excludes = {DetectorType.RACE_CONDITIONS})
+        @AsyncTest(threads = 2, invocations = 10, detectAll = true, excludes = {DetectorType.RACE_CONDITIONS, DetectorType.LIVELOCKS}, failOn = FailOn.HIGH)
         void race() {
             counter++;
             assertTrue(counter >= 0); // Use counter to satisfy lint

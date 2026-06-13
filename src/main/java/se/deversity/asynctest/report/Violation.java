@@ -1,5 +1,8 @@
 package se.deversity.asynctest.report;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.SiteCapture;
 import se.deversity.vibetags.annotations.AIImmutable;
@@ -29,6 +32,7 @@ import java.util.Map;
  */
 @AIPublicAPI
 @AIImmutable(note = "Java record — fields are final by language. Collection fields are deep-copied to immutable views in the canonical constructor.")
+@API(status = Status.STABLE)
 public record Violation(
         String detector,
         IssueSeverity severity,
