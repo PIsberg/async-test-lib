@@ -31,45 +31,64 @@
 
 ---
 
-<details>
-<summary><b>⚡ Quick Start — add async-test in 60 seconds</b></summary>
+## ⚡ Quick Start
 
-<br>
+### Maven Quick Start
 
-**Maven** — add to `pom.xml`:
+1. **Add the dependency** to `pom.xml`:
+   ```xml
+   <dependency>
+       <groupId>se.deversity.async-test-lib</groupId>
+       <artifactId>async-test-lib</artifactId>
+       <version>1.7.0-RC1</version>
+       <scope>test</scope>
+   </dependency>
+   ```
 
-```xml
-<dependency>
-    <groupId>se.deversity.async-test-lib</groupId>
-    <artifactId>async-test-lib</artifactId>
-    <version>1.6.0</version>
-    <scope>test</scope>
-</dependency>
-```
+2. **Write your first stress test**:
+   ```java
+   import se.deversity.asynctest.AsyncTest;
 
-**Gradle** — add to `build.gradle.kts`:
+   class CounterTest {
+       private int counter = 0;
 
-```kotlin
-testImplementation("se.deversity.async-test-lib:async-test-lib:1.6.0")
-```
+       @AsyncTest(threads = 10, invocations = 100, detectAll = true)
+       void counter_mustBeThreadSafe() {
+           counter++;  // Race condition — async-test will catch it
+       }
+   }
+   ```
 
-**Write your first stress test:**
+3. **Run your tests**:
+   ```bash
+   mvn test
+   ```
 
-```java
-class CounterTest {
+### Gradle Quick Start
 
-    private int counter = 0;
+1. **Add the dependency** to `build.gradle.kts`:
+   ```kotlin
+   testImplementation("se.deversity.async-test-lib:async-test-lib:1.7.0-RC1")
+   ```
 
-    @AsyncTest(threads = 10, invocations = 100, detectAll = true)
-    void counter_mustBeThreadSafe() {
-        counter++;  // Race condition — async-test will catch it
-    }
-}
-```
+2. **Write your first stress test**:
+   ```java
+   import se.deversity.asynctest.AsyncTest;
 
-That's it. Run with `mvn test` or `./gradlew test`.
+   class CounterTest {
+       private int counter = 0;
 
-</details>
+       @AsyncTest(threads = 10, invocations = 100, detectAll = true)
+       void counter_mustBeThreadSafe() {
+           counter++;  // Race condition — async-test will catch it
+       }
+   }
+   ```
+
+3. **Run your tests**:
+   ```bash
+   ./gradlew test
+   ```
 
 ---
 
