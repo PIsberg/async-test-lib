@@ -112,6 +112,15 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 | 106 | [Shared Deflater/Inflater](106-shared-deflater/) | `SharedDeflaterDetector` | A `java.util.zip.Deflater` shared across threads — stateful native zlib stream corrupts output or crashes on `end()` mid-stream | 🔴 Critical |
 | 107 | [This-Escape From Constructor](107-this-escape/) | `ThisEscapeDetector` | Constructor publishes `this` (registers a listener / starts a thread) before returning — other threads see a partially-constructed object | 🟡 High |
 | 108 | [ThreadLocalRandom Misuse](108-thread-local-random-misuse/) | `ThreadLocalRandomMisuseDetector` | A cached `ThreadLocalRandom.current()` reference used from other threads — defeats per-thread isolation, biases output | 🟡 High |
+| 114 | [StableValue Misuse](114-stable-value-misuse/) | `StableValueMisuseDetector` *(standalone, JDK 25/26)* | `StableValue` (JEP 502) read before set (`NoSuchElementException`) or set twice (lost update) | 🔴 Critical |
+| 115 | [StructuredTaskScope Misuse](115-structured-task-scope-misuse/) | `StructuredTaskScopeMisuseDetector` *(standalone, JDK 25/26)* | `StructuredTaskScope.open(Joiner)` (JEP 505) lifecycle broken — fork-after-join, result-before-join, owner-confinement, missing join | 🔴 Critical |
+| 116 | [Gatherer Parallel Misuse](116-gatherer-parallel-misuse/) | `GathererConcurrencyMisuseDetector` *(standalone, JDK 24+)* | Stateful `Gatherer` (JEP 485) on a parallel stream with no combiner — per-thread states can't merge, results lost | 🟠 High |
+
+> Examples 114–116 use **standalone** JDK 25/26 detectors — they are not part of the
+> `@AsyncTest` `detectAll` pipeline (that requires a `DetectorType` enum constant, and the
+> enum is a locked file). Each test instantiates the detector directly, records events, and
+> asserts on `analyze()`. They depend on the in-progress build, so install the parent to
+> `mavenLocal` first (`mvn -f ../../pom.xml install -DskipTests -Dlicense.mock.mode=true`).
 
 ## Phase 7: High-Level Concurrency Patterns (New!)
 
@@ -661,6 +670,59 @@ void testWorker() {
 ```
 
 **Fix**: Call `worker.setUncaughtExceptionHandler(handler)` before `start()`, or use a `ThreadFactory` that installs a handler on every created thread.
+
+---
+
+## JDK 25/26 Preview-Era Examples (Standalone Detectors)
+
+Examples **114–116** target concurrency features introduced or finalized in JDK 24–26.
+The detectors are standalone — instantiate, record events, call `analyze()` — because
+wiring one into the `@AsyncTest` pipeline requires a `DetectorType` enum constant and that
+enum is a locked file. Each detector is implemented against `String` keys + `Thread`, so it
+compiles and runs on the Java 21 baseline while modeling APIs that exist only on JDK 24/25/26.
+
+### 114 — StableValue Misuse (JEP 502)
+**What**: `StableValue<T>` is a deferred-immutable holder, settable at most once and then
+constant-folded by the JVM. Detects read-before-set (`NoSuchElementException`), double-set
+(lost update / `IllegalStateException`), and reentrant `orElseSet` suppliers.
+
+**Detect**:
+```java
+var d = new StableValueMisuseDetector();
+d.recordRead("CONFIG", Thread.currentThread());   // before any set → flagged
+d.recordSet("CONFIG", Thread.currentThread());
+d.recordSet("CONFIG", Thread.currentThread());    // double set → flagged
+assertTrue(d.analyze().hasIssues());
+```
+
+### 115 — StructuredTaskScope Misuse (JEP 505)
+**What**: The JDK 25 `StructuredTaskScope.open(Joiner)` API enforces
+`open → fork* → join → get* → close`. Detects fork-after-join, `Subtask.get()` before join,
+owner-confinement violations (`WrongThreadException`), and close-without-join.
+
+**Detect**:
+```java
+var d = new StructuredTaskScopeMisuseDetector();
+Thread owner = Thread.currentThread();
+d.recordScopeOpened("s", owner);
+d.recordFork("s", "a", owner);
+d.recordJoin("s", owner);
+d.recordFork("s", "late", owner);     // fork after join → flagged
+assertTrue(d.analyze().hasIssues());
+```
+
+### 116 — Gatherer Parallel Misuse (JEP 485)
+**What**: A stateful `Gatherer` on a parallel stream needs a combiner to merge per-thread
+states. Detects a stateful gatherer with no combiner running on more than one thread (lost
+results) and concurrent-integrator shared-state races.
+
+**Detect**:
+```java
+var d = new GathererConcurrencyMisuseDetector();
+d.registerGatherer("running", /*hasCombiner*/ false, /*parallel*/ true);
+// integrator: d.recordIntegrate("running", Thread.currentThread());
+assertTrue(d.analyze().hasIssues());
+```
 
 ---
 

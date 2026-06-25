@@ -227,6 +227,11 @@
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/FutureIgnoredDetectorTest.java</test_location>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/GathererConcurrencyMisuseDetectorTest.java</test_location>
+    </element>
     <element path="se.deversity.asynctest.diagnostics.HttpClientConcurrencyDetector">
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
@@ -417,6 +422,11 @@
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/SpuriousWakeupDetectorTest.java</test_location>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.StableValueMisuseDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/StableValueMisuseDetectorTest.java</test_location>
+    </element>
     <element path="se.deversity.asynctest.diagnostics.StampedLockDetector">
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
@@ -441,6 +451,11 @@
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/StructuredConcurrencyMisuseDetectorTest.java</test_location>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.StructuredTaskScopeMisuseDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/StructuredTaskScopeMisuseDetectorTest.java</test_location>
     </element>
     <element path="se.deversity.asynctest.diagnostics.SynchronizedCollectionIterationDetector">
       <coverage_goal>80</coverage_goal>

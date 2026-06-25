@@ -48,3 +48,10 @@ mvn install -DskipTests && mvn -f consumer-fixture\pom.xml test
   imports.
 - `AsyncTestPublishedDependencyTest` — verifies the published POM exposes
   exactly the expected transitive dependencies.
+- `ConsumerJdk25And26DetectorsTest` — added in the 1.7.0 cycle; smoke-tests the
+  standalone JDK 25/26 detectors (`StableValueMisuseDetector`,
+  `StructuredTaskScopeMisuseDetector`, `GathererConcurrencyMisuseDetector`) through
+  their public `recordXxx` / `analyze()` API. These detectors are not wired into
+  `@AsyncTest` (no `DetectorType` constant — that enum is locked), so a consumer
+  reaches them directly; a passing run proves the classes and their report
+  accessors are part of the stable public surface.
