@@ -291,6 +291,42 @@ Shows the structure and common pattern of all detectors.
 
 ---
 
+## JDK 25/26 Preview-Era Detectors (Standalone, 1.7.0+)
+
+Three detectors target concurrency features introduced or finalized in JDK 24–26.
+They follow the **same `recordXxx(...)` → `analyze(): Report` pattern** as every other
+diagnostics detector and are thread-safe (`ConcurrentHashMap` / `newKeySet`-backed), but
+they are deliberately **not wired into the `@AsyncTest` execution pipeline**:
+
+- `se.deversity.asynctest.diagnostics.StableValueMisuseDetector` — `StableValue`
+  (JEP 502, preview JDK 25 → JDK 26): read-before-set, double-set, reentrant
+  `orElseSet` supplier, set-contention.
+- `se.deversity.asynctest.diagnostics.StructuredTaskScopeMisuseDetector` —
+  `StructuredTaskScope` (JEP 505, fifth preview JDK 25 → final JDK 26): fork-after-join,
+  `Subtask.get()` before join, owner-confinement violation, close-without-join.
+- `se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetector` — Stream
+  Gatherers (JEP 485, final JDK 24): stateful gatherer on a parallel stream with no
+  combiner, concurrent-integrator shared-state race.
+
+**Why standalone, not pipeline-wired.** Every pipeline detector is addressable via a
+`DetectorType` enum constant (used by `excludes` / `includes` / `Preset` / the SPI's
+`type()`). `DetectorType` is an `@AILocked` file: adding a constant requires the
+synchronized six-place change documented in `CLAUDE.md` (annotation field, config field +
+builder default, `from(AsyncTest)`, both `build()` branches, and the registry arm). Rather
+than make that locked change in isolation, these three ship as standalone, directly-usable
+detectors. They are implemented entirely against `String` keys and `Thread` (no
+`java.lang.StableValue` / new `StructuredTaskScope` imports), so they **compile and run on
+the project's Java 21 baseline** while modeling APIs that only exist on JDK 24/25/26.
+
+**Usage.** Instantiate the detector (one instance can be shared across an `@AsyncTest`'s
+worker threads), call its `recordXxx(...)` methods from the test body, then call
+`analyze()` and assert on the returned report's `hasIssues()`. To promote any of them to a
+full pipeline detector once a `DetectorType` slot is available: add the enum constant +
+config flag, then either add an `AsyncTestContext` accessor (legacy path) or a
+`DetectorFactory` + `META-INF/services` line (SPI path) — see [Detector SPI](#detector-spi-100).
+
+---
+
 ## Key Design Patterns
 
 ### 1. ThreadLocal Context Pattern
@@ -602,6 +638,9 @@ src/main/java/se/deversity/asynctest/
 │   ├── SharedSecureRandomDetector.java    # NEW in 1.6.0 — Phase 13
 │   ├── WeakHashMapSharedDetector.java     # NEW in 1.6.0 — Phase 13
 │   ├── JdbcConnectionSharedDetector.java  # NEW in 1.6.0 — Phase 13
+│   ├── StableValueMisuseDetector.java          # NEW in 1.7.0 — standalone, JDK 25/26 (JEP 502)
+│   ├── StructuredTaskScopeMisuseDetector.java  # NEW in 1.7.0 — standalone, JDK 25/26 (JEP 505)
+│   ├── GathererConcurrencyMisuseDetector.java  # NEW in 1.7.0 — standalone, JDK 24+ (JEP 485)
 ├── report/                           # NEW package in 1.6.0 — structured reporting
 │   ├── Violation.java                # (detector, severity, message, sites, attributes, when)
 │   ├── Formatter.java                # functional interface List<Violation> → String

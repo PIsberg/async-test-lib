@@ -154,8 +154,18 @@ After the run, the **detector registry** analyses what was observed and reports 
 | **Environment** | Uncommitted Git changes (reproducibility gate) |
 | **Phase 13** | Daemon-thread hygiene, illegal `notify*()`, shared `SecureRandom`, shared `WeakHashMap`/`IdentityHashMap`, shared JDBC `Connection`/`Statement`/`ResultSet` |
 | **Phase 14** (new) | Shared stateful crypto (`Cipher`/`Mac`/`Signature`), non-atomic `ConcurrentMap` check-then-act, shared `Deflater`/`Inflater`, constructor `this`-escape, cached `ThreadLocalRandom` used off-thread |
+| **JDK 25/26 preview** (new) | `StableValue` misuse (read-before-set / double-set / reentrant `orElseSet`), `StructuredTaskScope` lifecycle (fork-after-join, result-before-join, owner-confinement, missing join), parallel-`Gatherer` without a combiner |
 
 Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
+
+> **JDK 25/26 detectors are standalone.** `StableValueMisuseDetector`,
+> `StructuredTaskScopeMisuseDetector`, and `GathererConcurrencyMisuseDetector`
+> ship in `se.deversity.asynctest.diagnostics` and are used directly — instantiate,
+> record events, call `analyze()`. They are **not yet wired into the `@AsyncTest`
+> `detectAll` pipeline**: each pipeline detector needs a `DetectorType` enum
+> constant, and that enum is a locked file (adding a constant requires a
+> synchronized six-place change). They are ready to wire the moment a slot opens.
+> See [docs/DETECTOR_CATALOG.md](docs/DETECTOR_CATALOG.md#jdk-2526-preview-era-detectors-standalone).
 
 ---
 

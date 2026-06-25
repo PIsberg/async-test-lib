@@ -217,3 +217,113 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 | **Phase 10**| Collection Safety | 10 | SynchronizedCollection, CopyOnWrite, MutableKey | `HIGH` |
 | **Phase 11**| System / Global | 10 | SystemPropertyMutation, ExplicitGC, MDCLeak | `LOW`/`MEDIUM` |
 | **Phase 12**| Miscellaneous | 12 | Statefulness, StreamClosing, WeakReferenceRace | `LOW`/`MEDIUM` |
+
+---
+
+## JDK 25/26 Preview-Era Detectors (Standalone)
+
+Three detectors target concurrency features introduced or finalized in **JDK 24–26**.
+Unlike the catalog above, these are **not** part of the `@AsyncTest` `detectAll`
+pipeline — a pipeline detector needs a `DetectorType` enum constant, and that enum is a
+locked file. They ship in `se.deversity.asynctest.diagnostics` and are used **directly**:
+instantiate, record events from your test body, call `analyze()`, and assert on the
+report. Each is implemented against `String` keys + `Thread` (no preview-API imports), so
+it compiles and runs on the Java 21 baseline while modeling APIs that only exist on
+JDK 24/25/26.
+
+### A. StableValue Misuse Detector
+* **Class**: `StableValueMisuseDetector` · **JDK feature**: `StableValue` (JEP 502, preview JDK 25 → 26)
+* **Severity**: `CRITICAL` (read-before-set / reentrant) · `HIGH` (double-set) · `LOW` (contention)
+* **Description**: `StableValue<T>` is a deferred-immutable holder set at most once, then
+  constant-folded by the JVM — the modern replacement for double-checked-locking and
+  holder-class lazy init. The detector flags accesses that break the at-most-once contract.
+* **Buggy Code**:
+  ```java
+  static final StableValue<Config> CONFIG = StableValue.of();
+
+  Config get() {
+      return CONFIG.orElseThrow();   // BUG: read before any set → NoSuchElementException
+  }
+  void init() {
+      CONFIG.setOrThrow(load());
+      CONFIG.setOrThrow(reload());   // BUG: second set → IllegalStateException / lost update
+  }
+  ```
+* **Fixed Code**:
+  ```java
+  static final StableValue<Config> CONFIG = StableValue.of();
+
+  Config get() {
+      return CONFIG.orElseSet(() -> load());  // lazy, at-most-once, thread-safe; pure supplier
+  }
+  ```
+* **Detect**:
+  ```java
+  var d = new StableValueMisuseDetector();
+  d.recordRead("CONFIG", Thread.currentThread());          // before any recordSet → flagged
+  d.recordSet("CONFIG", Thread.currentThread());
+  d.recordSet("CONFIG", Thread.currentThread());           // double set → flagged
+  assertTrue(d.analyze().hasIssues());
+  ```
+
+### B. StructuredTaskScope Misuse Detector
+* **Class**: `StructuredTaskScopeMisuseDetector` · **JDK feature**: `StructuredTaskScope` (JEP 505, preview JDK 25 → final JDK 26)
+* **Severity**: `CRITICAL` (lifecycle violations) · `HIGH` (close-without-join)
+* **Description**: The JDK 25 API (`StructuredTaskScope.open(Joiner)`) enforces a strict
+  `open → fork* → join → get* → close` lifecycle. The detector models each scope as a small
+  state machine and flags the transitions the runtime rejects.
+* **Buggy Code**:
+  ```java
+  try (var scope = StructuredTaskScope.open(Joiner.<String>allSuccessfulOrThrow())) {
+      Subtask<String> a = scope.fork(() -> fetchA());
+      String early = a.get();        // BUG: read before join() → IllegalStateException
+      scope.join();
+      scope.fork(() -> fetchB());    // BUG: fork after join() → IllegalStateException
+  }   // (also: closing without join() would cancel running subtasks)
+  ```
+* **Fixed Code**:
+  ```java
+  try (var scope = StructuredTaskScope.open(Joiner.<String>allSuccessfulOrThrow())) {
+      Subtask<String> a = scope.fork(() -> fetchA());
+      Subtask<String> b = scope.fork(() -> fetchB());
+      scope.join();                              // wait first
+      return combine(a.get(), b.get());          // then read
+  }
+  ```
+* **Detect**:
+  ```java
+  var d = new StructuredTaskScopeMisuseDetector();
+  Thread owner = Thread.currentThread();
+  d.recordScopeOpened("s", owner);
+  d.recordFork("s", "a", owner);
+  d.recordJoin("s", owner);
+  d.recordFork("s", "late", owner);              // fork after join → flagged
+  assertTrue(d.analyze().hasIssues());
+  ```
+
+### C. Gatherer Concurrency Misuse Detector
+* **Class**: `GathererConcurrencyMisuseDetector` · **JDK feature**: Stream Gatherers (JEP 485, final JDK 24)
+* **Severity**: `HIGH` (missing combiner) · `MEDIUM` (concurrent integrator)
+* **Description**: On a parallel stream the runtime splits the input, runs the integrator on
+  independent per-thread state, then merges with the **combiner**. A stateful gatherer with
+  no combiner (or one whose integrator touches shared state) silently loses or corrupts
+  results. The detector confirms multi-thread execution and judges whether it was safe.
+* **Buggy Code**:
+  ```java
+  // Stateful integrator, NO combiner, used on a parallel stream → states can't merge
+  Gatherer<T,?,R> g = Gatherer.ofSequential(initializer, integrator, finisher);
+  list.parallelStream().gather(g).toList();   // forced sequential, or silently wrong if hand-rolled
+  ```
+* **Fixed Code**:
+  ```java
+  // Provide a combiner so per-thread states merge safely under parallelism:
+  Gatherer<T,?,R> g = Gatherer.of(initializer, integrator, combiner, finisher);
+  list.parallelStream().gather(g).toList();
+  ```
+* **Detect**:
+  ```java
+  var d = new GathererConcurrencyMisuseDetector();
+  d.registerGatherer("running", /*hasCombiner*/ false, /*parallel*/ true);
+  // integrator calls d.recordIntegrate("running", Thread.currentThread()) per element
+  assertTrue(d.analyze().hasIssues());   // fires once seen on >1 thread without a combiner
+  ```

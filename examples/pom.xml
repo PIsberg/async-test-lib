@@ -122,5 +122,8 @@
         <module>111-lock-upgrade-deadlock</module>
         <module>112-try-lock-misuse</module>
         <module>113-completablefuture-blocking-callback</module>
+        <module>114-stable-value-misuse</module>
+        <module>115-structured-task-scope-misuse</module>
+        <module>116-gatherer-parallel-misuse</module>
     </modules>
 </project>

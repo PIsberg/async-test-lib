@@ -1,6 +1,6 @@
 # async-test-lib — Usage Guide
 
-**async-test-lib** is a JUnit 5 extension for stress-testing concurrent Java code. It forces real thread collisions using a `CyclicBarrier`, then runs 111 specialized detectors across 14 phases to identify exactly what went wrong.
+**async-test-lib** is a JUnit 5 extension for stress-testing concurrent Java code. It forces real thread collisions using a `CyclicBarrier`, then runs 111 specialized detectors across 14 phases to identify exactly what went wrong — plus three standalone JDK 25/26 detectors (`StableValue`, `StructuredTaskScope`, parallel `Gatherer`) you can drive directly.
 
 - Replaces `@Test` with `@AsyncTest` — zero other changes needed
 - Requires Java 21 and JUnit 5 (Jupiter 6.0.3+)
@@ -454,6 +454,44 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 | `detectSharedDeflater` | `SHARED_DEFLATER` | `java.util.zip.Deflater`/`Inflater` accessed from multiple threads. Both wrap a stateful native zlib stream and are not thread-safe; concurrent use corrupts output or crashes when one thread calls `end()` mid-stream. Instrument via `recordAccess(deflater/inflater, name, thread)`. |
 | `detectThisEscape` | `THIS_ESCAPE` | A constructor that publishes `this` before returning (starts a thread, registers a listener, stores into shared state), exposing a partially-constructed object — no final-field visibility guarantee, fields may still be default. Instrument via `recordConstructorEscape(this, how, thread)`, plus optional `recordExternalAccess(instance, thread)` / `recordConstructionComplete(instance)`. MEDIUM, escalated to HIGH when another thread observes it before completion. |
 | `detectThreadLocalRandomMisuse` | `THREAD_LOCAL_RANDOM_MISUSE` | A `ThreadLocalRandom.current()` reference cached (e.g. in a field) and used from a thread other than the one that obtained it, defeating its per-thread isolation. Instrument via `recordObtain(rng, name, thread)` then `recordUse(rng, thread)`. Distinct from `SHARED_RANDOM` (`java.util.Random`) and `SHARED_SECURE_RANDOM`. |
+
+### JDK 25/26 preview-era detectors — standalone (1.7.0+)
+
+These three detectors target concurrency features introduced/finalized in JDK 24–26.
+They are **not** wired into the `@AsyncTest` `detectAll` pipeline (a pipeline detector
+needs a `DetectorType` enum constant, and that enum is a locked file). Use them
+**directly**: instantiate, record events from your test body, then call `analyze()`
+and assert on the report. They live in `se.deversity.asynctest.diagnostics` and are
+thread-safe (`ConcurrentHashMap`-backed), so a single instance can be shared across
+the worker threads of an `@AsyncTest`.
+
+| Detector | JDK feature | Record API | What it catches |
+|----------|-------------|------------|-----------------|
+| `StableValueMisuseDetector` | `StableValue` — JEP 502 (preview JDK 25 → 26) | `recordSet(name, thread)`, `recordRead(name, thread)`, `recordSupplierStart/End(name, thread)` | read-before-set (`NoSuchElementException`), double-set (lost update / `IllegalStateException`), reentrant `orElseSet` supplier, set-contention |
+| `StructuredTaskScopeMisuseDetector` | `StructuredTaskScope` — JEP 505 (preview JDK 25 → final JDK 26) | `recordScopeOpened(id, owner)`, `recordFork(id, subtaskId, thread)`, `recordJoin(id, thread)`, `recordResultRead(id, subtaskId, thread)`, `recordScopeClosed(id, thread)` | fork-after-join, `Subtask.get()` before join, owner-confinement (`WrongThreadException`), close-without-join (subtasks cancelled) |
+| `GathererConcurrencyMisuseDetector` | Stream Gatherers — JEP 485 (final JDK 24) | `registerGatherer(name, hasCombiner, parallel)`, `recordIntegrate(name, thread)` | stateful gatherer on a parallel stream with no combiner (lost results), concurrent-integrator shared-state race |
+
+```java
+import se.deversity.asynctest.diagnostics.StableValueMisuseDetector;
+
+@AsyncTest(threads = 16, invocations = 50, detectAll = false)  // drive the contention
+void stableValueLazyInit() {
+    detector.recordSupplierStart("CONFIG", Thread.currentThread());
+    Config c = configHolderUnderTest();           // models StableValue.orElseSet(...)
+    detector.recordSupplierEnd("CONFIG", Thread.currentThread());
+    detector.recordRead("CONFIG", Thread.currentThread());
+}
+
+@AfterEach
+void assertNoMisuse() {
+    var report = detector.analyze();
+    assertFalse(report.hasIssues(), report::toString);   // shared field: private final ...Detector detector = new ...();
+}
+```
+
+Each `analyze()` returns a typed `*Report` with `hasIssues()`, per-category issue
+lists, and a `toString()` that includes a `📚 LEARNING` block — same shape as every
+other detector report.
 
 ---
 
