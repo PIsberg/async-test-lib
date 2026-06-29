@@ -7,20 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added — JDK 25/26 standalone detectors
+### Added — JDK 25/26 detectors (Phase 16), now wired into the pipeline
 - **Three new concurrency detectors** for features introduced/finalized in JDK 24–26,
-  shipped as **standalone** diagnostics (used directly via `recordXxx(...)` → `analyze()`),
-  not wired into the `@AsyncTest` `detectAll` pipeline — a pipeline detector needs a
-  `DetectorType` enum constant and that enum is a locked file:
-  - `StableValueMisuseDetector` — `StableValue` (JEP 502, preview JDK 25 → 26):
-    read-before-set, double-set, reentrant `orElseSet`, set-contention.
-  - `StructuredTaskScopeMisuseDetector` — `StructuredTaskScope.open(Joiner)` (JEP 505,
+  **wired into the `@AsyncTest` `detectAll` pipeline** (Phase 16) — each has a `DetectorType`
+  constant, an `@AsyncTest` flag, full `AsyncTestConfig` plumbing, legacy `DetectorRegistry`
+  wiring, an `AsyncTestContext` accessor, and an SPI factory. Detector count: **111 → 114**.
+  - `StableValueMisuseDetector` (`DetectorType.STABLE_VALUE_MISUSE`, `detectStableValueMisuse`)
+    — `StableValue` (JEP 502, preview JDK 25 → 26): read-before-set, double-set, reentrant
+    `orElseSet`, set-contention.
+  - `StructuredTaskScopeMisuseDetector` (`DetectorType.STRUCTURED_TASK_SCOPE_MISUSE`,
+    `detectStructuredTaskScopeMisuse`) — `StructuredTaskScope.open(Joiner)` (JEP 505,
     preview JDK 25 → final JDK 26): fork-after-join, result-before-join, owner-confinement,
     close-without-join.
-  - `GathererConcurrencyMisuseDetector` — Stream Gatherers (JEP 485, final JDK 24):
-    stateful gatherer on a parallel stream without a combiner, concurrent-integrator races.
+  - `GathererConcurrencyMisuseDetector` (`DetectorType.GATHERER_CONCURRENCY_MISUSE`,
+    `detectGathererConcurrencyMisuse`) — Stream Gatherers (JEP 485, final JDK 24): stateful
+    gatherer on a parallel stream without a combiner, concurrent-integrator races.
+- Record events via `AsyncTestContext.stableValueMisuseDetector()` /
+  `structuredTaskScopeMisuseDetector()` / `gathererConcurrencyMisuseDetector()`; findings
+  surface through the standard report and `failOn` gate like any other detector.
 - Each detector compiles on the Java 21 baseline (modeled via `String` keys + `Thread`,
-  no preview-API imports), with full JUnit 5 test suites (34 tests).
+  no preview-API imports), with full JUnit 5 test suites plus a legacy-registry wiring test.
 - Documentation: README detector table, `.claude/SKILL.md`, `docs/ARCHITECTURE.md`,
   `docs/DETECTOR_CATALOG.md`; examples **114–116** (`stable-value-misuse`,
   `structured-task-scope-misuse`, `gatherer-parallel-misuse`); and a

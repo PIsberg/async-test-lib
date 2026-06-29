@@ -53,12 +53,13 @@ license gate and licensing model. Below is what's left, by priority.
      v1.6.0 tag instructions) — it is stale.
    - Pick one authoritative detector count and version, regenerate the rest.
 
-6. **JDK 25/26 detectors are not wired into `detectAll`.**
-   `StableValueMisuseDetector`, `StructuredTaskScopeMisuseDetector`,
-   `GathererConcurrencyMisuseDetector` ship standalone (instantiate → record → `analyze()`)
-   because `DetectorType` is a locked file requiring a synchronized 6-place change. README
-   is honest about this, but until they're wired, the headline "111 detectors, all on by
-   default" overstates the out-of-box behavior for these three.
+6. **JDK 25/26 detectors are not wired into `detectAll`.** ✅ **RESOLVED.**
+   `StableValueMisuseDetector`, `StructuredTaskScopeMisuseDetector`, and
+   `GathererConcurrencyMisuseDetector` are now wired into the pipeline as **Phase 16**
+   (count 111 → 114) — `DetectorType` constants, `@AsyncTest` flags, full `AsyncTestConfig`
+   plumbing, legacy `DetectorRegistry` wiring, `AsyncTestContext` accessors, and SPI
+   factories — with the `DetectorType` edit done under explicit owner authorization.
+   Covered by `AllDetectorsSpiCoverageTest` and a new `Jdk2526DetectorWiringTest`.
 
 ## P2 — Polish before GA
 

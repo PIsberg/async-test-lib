@@ -2,7 +2,7 @@
 
 > ⚠️ **Historical / superseded.** This file documents the *first* distribution setup and
 > still references `v1.6.0`, the `1.1.0` progression, and "147 tests" — none of which are
-> current. The project is at **1.7.0-RC1** with **111 detectors**. The `PIsberg` username
+> current. The project is at **1.7.0-RC1** with **114 detectors**. The `PIsberg` username
 > is already in place and the release is automated via `.github/workflows/publish.yml`
 > (`mvn deploy -P release`). For current numbers see [README](../README.md) and
 > [CHANGELOG.md](CHANGELOG.md); for the release process see [RELEASE.md](RELEASE.md). Kept

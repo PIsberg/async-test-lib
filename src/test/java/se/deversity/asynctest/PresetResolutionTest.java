@@ -245,6 +245,9 @@ class PresetResolutionTest {
         @Override public boolean detectLockUpgradeDeadlock() { return def("detectLockUpgradeDeadlock"); }
         @Override public boolean detectTryLockMisuse() { return def("detectTryLockMisuse"); }
         @Override public boolean detectCFBlockingCallback() { return def("detectCFBlockingCallback"); }
+        @Override public boolean detectStableValueMisuse() { return def("detectStableValueMisuse"); }
+        @Override public boolean detectStructuredTaskScopeMisuse() { return def("detectStructuredTaskScopeMisuse"); }
+        @Override public boolean detectGathererConcurrencyMisuse() { return def("detectGathererConcurrencyMisuse"); }
         @Override public boolean enableBenchmarking() { return def("enableBenchmarking"); }
         @Override public double benchmarkRegressionThreshold() { return def("benchmarkRegressionThreshold"); }
         @Override public boolean failOnBenchmarkRegression() { return def("failOnBenchmarkRegression"); }

@@ -196,6 +196,11 @@ public final class AsyncTestConfig {
     public final boolean detectTryLockMisuse;
     public final boolean detectCFBlockingCallback;
 
+    // ---- Phase 16: JDK 25/26 preview-era detectors ----
+    public final boolean detectStableValueMisuse;
+    public final boolean detectStructuredTaskScopeMisuse;
+    public final boolean detectGathererConcurrencyMisuse;
+
     // ---- Benchmarking ----
     @AIFeatureFlag(flag = "async-test.benchmarking.enabled", defaultValue = false)
     public final boolean enableBenchmarking;
@@ -334,6 +339,10 @@ public final class AsyncTestConfig {
         detectLockUpgradeDeadlock           = b.detectLockUpgradeDeadlock;
         detectTryLockMisuse                 = b.detectTryLockMisuse;
         detectCFBlockingCallback            = b.detectCFBlockingCallback;
+        // Phase 16 (JDK 25/26)
+        detectStableValueMisuse             = b.detectStableValueMisuse;
+        detectStructuredTaskScopeMisuse     = b.detectStructuredTaskScopeMisuse;
+        detectGathererConcurrencyMisuse     = b.detectGathererConcurrencyMisuse;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -511,6 +520,9 @@ public final class AsyncTestConfig {
             .detectLockUpgradeDeadlock(ann.detectLockUpgradeDeadlock())
             .detectTryLockMisuse(ann.detectTryLockMisuse())
             .detectCFBlockingCallback(ann.detectCFBlockingCallback())
+            .detectStableValueMisuse(ann.detectStableValueMisuse())
+            .detectStructuredTaskScopeMisuse(ann.detectStructuredTaskScopeMisuse())
+            .detectGathererConcurrencyMisuse(ann.detectGathererConcurrencyMisuse())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -651,6 +663,10 @@ public final class AsyncTestConfig {
         private boolean detectLockUpgradeDeadlock           = false;
         private boolean detectTryLockMisuse                 = false;
         private boolean detectCFBlockingCallback            = false;
+        // Phase 16 (JDK 25/26)
+        private boolean detectStableValueMisuse             = false;
+        private boolean detectStructuredTaskScopeMisuse     = false;
+        private boolean detectGathererConcurrencyMisuse     = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -782,6 +798,9 @@ public final class AsyncTestConfig {
         public Builder detectLockUpgradeDeadlock(boolean v)            { detectLockUpgradeDeadlock = v; return this; }
         public Builder detectTryLockMisuse(boolean v)                  { detectTryLockMisuse = v; return this; }
         public Builder detectCFBlockingCallback(boolean v)             { detectCFBlockingCallback = v; return this; }
+        public Builder detectStableValueMisuse(boolean v)              { detectStableValueMisuse = v; return this; }
+        public Builder detectStructuredTaskScopeMisuse(boolean v)      { detectStructuredTaskScopeMisuse = v; return this; }
+        public Builder detectGathererConcurrencyMisuse(boolean v)      { detectGathererConcurrencyMisuse = v; return this; }
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
@@ -1052,6 +1071,13 @@ public final class AsyncTestConfig {
                     else detectTryLockMisuse = false;
                 if (!excludes.contains(DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK)) detectCFBlockingCallback = true;
                     else detectCFBlockingCallback = false;
+                // Phase 16 (JDK 25/26)
+                if (!excludes.contains(DetectorType.STABLE_VALUE_MISUSE)) detectStableValueMisuse = true;
+                    else detectStableValueMisuse = false;
+                if (!excludes.contains(DetectorType.STRUCTURED_TASK_SCOPE_MISUSE)) detectStructuredTaskScopeMisuse = true;
+                    else detectStructuredTaskScopeMisuse = false;
+                if (!excludes.contains(DetectorType.GATHERER_CONCURRENCY_MISUSE)) detectGathererConcurrencyMisuse = true;
+                    else detectGathererConcurrencyMisuse = false;
             } else {
                 // If detectAll is false, we still respect explicit enables,
                 // but we also apply excludes for consistency.
@@ -1159,6 +1185,10 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.LOCK_UPGRADE_DEADLOCK)) detectLockUpgradeDeadlock = false;
                 if (excludes.contains(DetectorType.TRY_LOCK_MISUSE)) detectTryLockMisuse = false;
                 if (excludes.contains(DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK)) detectCFBlockingCallback = false;
+                // Phase 16 (JDK 25/26)
+                if (excludes.contains(DetectorType.STABLE_VALUE_MISUSE)) detectStableValueMisuse = false;
+                if (excludes.contains(DetectorType.STRUCTURED_TASK_SCOPE_MISUSE)) detectStructuredTaskScopeMisuse = false;
+                if (excludes.contains(DetectorType.GATHERER_CONCURRENCY_MISUSE)) detectGathererConcurrencyMisuse = false;
             }
             return new AsyncTestConfig(this);
         }

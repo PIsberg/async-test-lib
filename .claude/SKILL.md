@@ -1,6 +1,6 @@
 # async-test-lib — Usage Guide
 
-**async-test-lib** is a JUnit 5 extension for stress-testing concurrent Java code. It forces real thread collisions using a `CyclicBarrier`, then runs 111 specialized detectors across 14 phases to identify exactly what went wrong — plus three standalone JDK 25/26 detectors (`StableValue`, `StructuredTaskScope`, parallel `Gatherer`) you can drive directly.
+**async-test-lib** is a JUnit 5 extension for stress-testing concurrent Java code. It forces real thread collisions using a `CyclicBarrier`, then runs 114 specialized detectors across 16 phases to identify exactly what went wrong — including three JDK 25/26 detectors (Phase 16) (`StableValue`, `StructuredTaskScope`, parallel `Gatherer`) you can also drive directly via AsyncTestContext accessors.
 
 - Replaces `@Test` with `@AsyncTest` — zero other changes needed
 - Requires Java 21 and JUnit 5 (Jupiter 6.0.3+)

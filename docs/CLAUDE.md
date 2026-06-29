@@ -67,16 +67,19 @@ Detectors live in `src/main/java/se/deversity/asynctest/diagnostics/` and are gr
 - **Phase 12** — Operational & hygiene: `InterruptSwallowingDetector`, `MdcContextLeakDetector`, `SystemPropertyMutationDetector`, `FutureIgnoredDetector`, `ExplicitGcDetector`, `DeprecatedThreadApiDetector`, `SharedXmlParserDetector`, `BoxedPrimitiveLockDetector`, `SharedTimeZoneDetector`, `UncaughtExceptionHandlerDetector`
 - **Phase 13** (1.6.0+) — Additional categories: `DaemonThreadHygieneDetector` (non-daemon thread leaks blocking JVM exit), `NotifyWithoutMonitorDetector` (illegal `notify*()` while not holding monitor), `SharedSecureRandomDetector` (`SecureRandom` provider-dependent thread safety), `WeakHashMapSharedDetector` (`WeakHashMap`/`IdentityHashMap` GC + probing hazards), `JdbcConnectionSharedDetector` (JDBC `Connection`/`Statement`/`ResultSet` not thread-safe per spec)
 - **Phase 14** — Additional types & escape hazards: `SharedStatefulCryptoDetector` (`Cipher`/`Mac`/`Signature` shared mid-operation), `NonAtomicConcurrentMapUpdateDetector` (check-then-act on a `ConcurrentMap`), `SharedDeflaterDetector` (`Deflater`/`Inflater` shared across threads), `ThisEscapeDetector` (constructor `this`-escape), `ThreadLocalRandomMisuseDetector` (cached `ThreadLocalRandom` used off-thread)
+- **Phase 15** — Asynchronous flow & lock-usage hazards: `CompletableFutureObtrudeDetector`, `SpuriousWakeupDetector`, `LockUpgradeDeadlockDetector`, `TryLockMisuseDetector`, `CompletableFutureBlockingCallbackDetector`
+- **Phase 16** — JDK 25/26 preview-era: `StableValueMisuseDetector` (read-before-set / double-set / reentrant `orElseSet`), `StructuredTaskScopeMisuseDetector` (fork-after-join / result-before-join / owner-confinement / missing join), `GathererConcurrencyMisuseDetector` (stateful parallel gatherer without a combiner)
 
-**Total: 111 detectors wired into the `@AsyncTest` pipeline** (one `DetectorType` enum
-constant each), spanning 14 phases. Each follows the same pattern: public recording methods called during the test run (using `ConcurrentHashMap` / `CopyOnWriteArrayList` for thread safety), then `analyze()` post-test returning a typed `*Report` inner class with `hasIssues(): boolean`. Disabled detectors are `null` in `DetectorRegistry` — zero overhead.
+**Total: 114 detectors wired into the `@AsyncTest` pipeline** (one `DetectorType` enum
+constant each), spanning 16 phases. Each follows the same pattern: public recording methods called during the test run (using `ConcurrentHashMap` / `CopyOnWriteArrayList` for thread safety), then `analyze()` post-test returning a typed `*Report` inner class with `hasIssues(): boolean`. Disabled detectors are `null` in `DetectorRegistry` — zero overhead.
 
-> **Standalone (not in the 111).** Three JDK 25/26 detectors —
-> `StableValueMisuseDetector`, `StructuredTaskScopeMisuseDetector`,
-> `GathererConcurrencyMisuseDetector` — ship in `diagnostics/` but are **not** wired into
-> the pipeline: each would need a `DetectorType` constant and that enum is a locked file
-> (see `<locked_files>` in the repo-root `CLAUDE.md`). They are used directly:
-> instantiate → `recordXxx(...)` → `analyze()`.
+> **Wiring a new pipeline detector** is a synchronized change across `DetectorType`
+> (a `<locked_files>` enum — edit only with explicit owner sign-off), the `@AsyncTest`
+> flag, `AsyncTestConfig` (field / builder default / setter / `from()` / both `build()`
+> blocks), the legacy `DetectorRegistry` (field / constructor / `analyzeAll`), the
+> `AsyncTestContext` accessor, and the SPI (`LegacyDetectorFactories` class +
+> `META-INF/services` line). `AllDetectorsSpiCoverageTest` fails loudly if the SPI side is
+> incomplete. The Phase 16 detectors were wired this way.
 
 **Source-line attribution.** Detectors that have adopted `SiteCapture` (canary: `SharedMessageDigestDetector`) include an `Access sites:` block in their reports pointing at the user-code line that produced the issue. Adding it to a detector is a small mechanical change: declare `Set<SiteCapture.Site> accessSites`, call `SiteCapture.capture().ifPresent(accessSites::add)` in `recordAccess`, render in `analyze()`.
 

@@ -153,3 +153,8 @@ se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SpuriousWakeupHazard
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$LockUpgradeDeadlock
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$TryLockMisuse
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CompletableFutureBlockingCallback
+
+# Phase 16 — JDK 25/26 preview-era concurrency detectors
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$StableValueMisuse
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$StructuredTaskScopeMisuse
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$GathererConcurrencyMisuse

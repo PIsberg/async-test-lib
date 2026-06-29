@@ -58,7 +58,7 @@ Concurrency bugs are the most elusive and costly bugs in production systems. The
 
 
 ### Key Insight
-The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **111 specialized detectors** identify the exact problem:
+The problem with testing concurrent code is that most runs succeed randomly. `async-test` uses **barrier synchronization** to guarantee all threads collide on your code simultaneously, maximizing the probability of race conditions. Then, if something goes wrong, **114 specialized detectors** identify the exact problem:
 
 - **Deadlocks** with lock chain analysis showing which threads are waiting for which locks
 - **Memory visibility issues** by tracking field values across invocations
@@ -133,7 +133,7 @@ Rather than deploying code hoping there are no concurrency bugs, `async-test` he
 
 ---
 
-A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **111 specialized problem detectors**.
+A comprehensive enterprise-grade JUnit 5 extension library for stress-testing concurrent Java code with **114 specialized problem detectors**.
 
 Catches race conditions, deadlocks, memory visibility issues, livelocks, false sharing, ABA problems, lock ordering violations, constructor safety issues, thread pool problems, and more.
 
@@ -156,7 +156,7 @@ Concurrency bugs are notoriously difficult to catch because they depend on non-d
 
 ### Core Capabilities
 - ✅ **Race Condition Forcing**: CyclicBarrier synchronizes threads for maximum contention
-- ✅ **111 Problem Detectors**: Comprehensive coverage of concurrency issues
+- ✅ **114 Problem Detectors**: Comprehensive coverage of concurrency issues
 - ✅ **Virtual Threads Support**: Native support for Project Loom (Java 21+)
 - ✅ **Rich Diagnostics**: Detailed reports with actionable fix suggestions
 - ✅ **Zero Default Overhead**: Advanced features are opt-in
@@ -355,7 +355,7 @@ void testPotentialDeadlock() {
     timeoutMs = 20000
 )
 void comprehensiveStress() {
-    // All 111 detectors are automatically active by default!
+    // All 114 detectors are automatically active by default!
 }
 ```
 

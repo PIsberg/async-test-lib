@@ -1,6 +1,6 @@
 # Detector Catalog
 
-`async-test-lib` includes **111 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
+`async-test-lib` includes **114 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
 
 ---
 
@@ -220,7 +220,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ---
 
-## JDK 25/26 Preview-Era Detectors (Standalone)
+## JDK 25/26 Preview-Era Detectors (Phase 16 — wired into detectAll)
 
 Three detectors target concurrency features introduced or finalized in **JDK 24–26**.
 Unlike the catalog above, these are **not** part of the `@AsyncTest` `detectAll`
