@@ -66,8 +66,17 @@ Detectors live in `src/main/java/se/deversity/asynctest/diagnostics/` and are gr
 - **Phase 11** — Thread-safety of additional types: `SharedMatcherDetector`, `SharedDecimalFormatDetector`, `WeakReferenceRaceDetector`, `StatefulLambdaDetector`, `SharedMessageDigestDetector`
 - **Phase 12** — Operational & hygiene: `InterruptSwallowingDetector`, `MdcContextLeakDetector`, `SystemPropertyMutationDetector`, `FutureIgnoredDetector`, `ExplicitGcDetector`, `DeprecatedThreadApiDetector`, `SharedXmlParserDetector`, `BoxedPrimitiveLockDetector`, `SharedTimeZoneDetector`, `UncaughtExceptionHandlerDetector`
 - **Phase 13** (1.6.0+) — Additional categories: `DaemonThreadHygieneDetector` (non-daemon thread leaks blocking JVM exit), `NotifyWithoutMonitorDetector` (illegal `notify*()` while not holding monitor), `SharedSecureRandomDetector` (`SecureRandom` provider-dependent thread safety), `WeakHashMapSharedDetector` (`WeakHashMap`/`IdentityHashMap` GC + probing hazards), `JdbcConnectionSharedDetector` (JDBC `Connection`/`Statement`/`ResultSet` not thread-safe per spec)
+- **Phase 14** — Additional types & escape hazards: `SharedStatefulCryptoDetector` (`Cipher`/`Mac`/`Signature` shared mid-operation), `NonAtomicConcurrentMapUpdateDetector` (check-then-act on a `ConcurrentMap`), `SharedDeflaterDetector` (`Deflater`/`Inflater` shared across threads), `ThisEscapeDetector` (constructor `this`-escape), `ThreadLocalRandomMisuseDetector` (cached `ThreadLocalRandom` used off-thread)
 
-**Total: 100 detectors across 13 phases.** Each follows the same pattern: public recording methods called during the test run (using `ConcurrentHashMap` / `CopyOnWriteArrayList` for thread safety), then `analyze()` post-test returning a typed `*Report` inner class with `hasIssues(): boolean`. Disabled detectors are `null` in `DetectorRegistry` — zero overhead.
+**Total: 111 detectors wired into the `@AsyncTest` pipeline** (one `DetectorType` enum
+constant each), spanning 14 phases. Each follows the same pattern: public recording methods called during the test run (using `ConcurrentHashMap` / `CopyOnWriteArrayList` for thread safety), then `analyze()` post-test returning a typed `*Report` inner class with `hasIssues(): boolean`. Disabled detectors are `null` in `DetectorRegistry` — zero overhead.
+
+> **Standalone (not in the 111).** Three JDK 25/26 detectors —
+> `StableValueMisuseDetector`, `StructuredTaskScopeMisuseDetector`,
+> `GathererConcurrencyMisuseDetector` — ship in `diagnostics/` but are **not** wired into
+> the pipeline: each would need a `DetectorType` constant and that enum is a locked file
+> (see `<locked_files>` in the repo-root `CLAUDE.md`). They are used directly:
+> instantiate → `recordXxx(...)` → `analyze()`.
 
 **Source-line attribution.** Detectors that have adopted `SiteCapture` (canary: `SharedMessageDigestDetector`) include an `Access sites:` block in their reports pointing at the user-code line that produced the issue. Adding it to a detector is a small mechanical change: declare `Set<SiteCapture.Site> accessSites`, call `SiteCapture.capture().ifPresent(accessSites::add)` in `recordAccess`, render in `analyze()`.
 
