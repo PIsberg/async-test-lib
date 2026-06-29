@@ -55,7 +55,6 @@ public class ParallelStreamDetector {
         final AtomicBoolean hasNonThreadSafeCollector = new AtomicBoolean(false);
         final AtomicBoolean hasSideEffects = new AtomicBoolean(false);
         volatile Long firstAccessTime = null;
-        volatile Long lastAccessTime = null;
 
         StreamState(String name) {
             this.name = name != null ? name : "stream@" + System.identityHashCode(this);
@@ -154,7 +153,6 @@ public class ParallelStreamDetector {
         if (state.firstAccessTime == null) {
             state.firstAccessTime = now;
         }
-        state.lastAccessTime = now;
     }
 
     /**

@@ -47,12 +47,10 @@ public class DeprecatedThreadApiDetector {
 
     private static class ApiUseEvent {
         final String apiName;
-        final long   threadId;
         final String threadName;
 
-        ApiUseEvent(String apiName, long threadId, String threadName) {
+        ApiUseEvent(String apiName, String threadName) {
             this.apiName    = apiName;
-            this.threadId   = threadId;
             this.threadName = threadName;
         }
     }
@@ -69,10 +67,10 @@ public class DeprecatedThreadApiDetector {
      */
     public void recordApiUse(String apiName, Thread thread) {
         if (apiName == null || thread == null) return;
-        events.add(new ApiUseEvent(apiName, thread.getId(), thread.getName()));
+        events.add(new ApiUseEvent(apiName, thread.getName()));
     }
 
-    /** @return report of deprecated Thread API usages */
+    /** {@return report of deprecated Thread API usages} */
     public DeprecatedThreadApiReport analyze() {
         DeprecatedThreadApiReport r = new DeprecatedThreadApiReport();
         for (ApiUseEvent e : events) {

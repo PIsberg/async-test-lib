@@ -30,6 +30,7 @@ import se.deversity.asynctest.diagnostics.FalseSharingDetector;
 import se.deversity.asynctest.diagnostics.ForkJoinPoolDetector;
 import se.deversity.asynctest.diagnostics.ForkJoinTaskBlockingDetector;
 import se.deversity.asynctest.diagnostics.FutureIgnoredDetector;
+import se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetector;
 import se.deversity.asynctest.diagnostics.HttpClientConcurrencyDetector;
 import se.deversity.asynctest.diagnostics.InheritableThreadLocalMisuseDetector;
 import se.deversity.asynctest.diagnostics.InterruptMonitor;
@@ -73,11 +74,13 @@ import se.deversity.asynctest.diagnostics.SharedTimeZoneDetector;
 import se.deversity.asynctest.diagnostics.SharedXmlParserDetector;
 import se.deversity.asynctest.diagnostics.SimpleDateFormatDetector;
 import se.deversity.asynctest.diagnostics.SleepInLockDetector;
+import se.deversity.asynctest.diagnostics.StableValueMisuseDetector;
 import se.deversity.asynctest.diagnostics.StampedLockDetector;
 import se.deversity.asynctest.diagnostics.StatefulLambdaDetector;
 import se.deversity.asynctest.diagnostics.StreamClosingDetector;
 import se.deversity.asynctest.diagnostics.StringBuilderDetector;
 import se.deversity.asynctest.diagnostics.StructuredConcurrencyMisuseDetector;
+import se.deversity.asynctest.diagnostics.StructuredTaskScopeMisuseDetector;
 import se.deversity.asynctest.diagnostics.SynchronizedCollectionIterationDetector;
 import se.deversity.asynctest.diagnostics.SynchronizedNonFinalDetector;
 import se.deversity.asynctest.diagnostics.SynchronizedOnLiteralDetector;
@@ -285,6 +288,11 @@ final class DetectorRegistry {
     final TryLockMisuseDetector                     tryLockMisuseDetector;
     final CompletableFutureBlockingCallbackDetector cfBlockingCallbackDetector;
 
+    // ---- Phase 16: JDK 25/26 preview-era concurrency detectors ----
+    final StableValueMisuseDetector             stableValueMisuseDetector;
+    final StructuredTaskScopeMisuseDetector     structuredTaskScopeMisuseDetector;
+    final GathererConcurrencyMisuseDetector     gathererConcurrencyMisuseDetector;
+
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
      * Detectors whose flag is {@code false} are set to {@code null} and incur
@@ -448,6 +456,10 @@ final class DetectorRegistry {
         lockUpgradeDeadlockDetector      = cfg.detectLockUpgradeDeadlock           ? new LockUpgradeDeadlockDetector()      : null;
         tryLockMisuseDetector            = cfg.detectTryLockMisuse                 ? new TryLockMisuseDetector()            : null;
         cfBlockingCallbackDetector       = cfg.detectCFBlockingCallback            ? new CompletableFutureBlockingCallbackDetector() : null;
+        // ---- Phase 16: JDK 25/26 preview-era concurrency detectors ----
+        stableValueMisuseDetector         = cfg.detectStableValueMisuse            ? new StableValueMisuseDetector()         : null;
+        structuredTaskScopeMisuseDetector = cfg.detectStructuredTaskScopeMisuse    ? new StructuredTaskScopeMisuseDetector() : null;
+        gathererConcurrencyMisuseDetector = cfg.detectGathererConcurrencyMisuse    ? new GathererConcurrencyMisuseDetector() : null;
     }
 
     /**
@@ -830,6 +842,17 @@ final class DetectorRegistry {
         ifIssue(cfBlockingCallbackDetector,
                 CompletableFutureBlockingCallbackDetector::analyze,
                 CompletableFutureBlockingCallbackDetector.Report::hasIssues, out);
+
+        // ---- Phase 16: JDK 25/26 preview-era concurrency detectors ----
+        ifIssue(stableValueMisuseDetector,
+                StableValueMisuseDetector::analyze,
+                StableValueMisuseDetector.StableValueMisuseReport::hasIssues, out);
+        ifIssue(structuredTaskScopeMisuseDetector,
+                StructuredTaskScopeMisuseDetector::analyze,
+                StructuredTaskScopeMisuseDetector.StructuredTaskScopeMisuseReport::hasIssues, out);
+        ifIssue(gathererConcurrencyMisuseDetector,
+                GathererConcurrencyMisuseDetector::analyze,
+                GathererConcurrencyMisuseDetector.GathererConcurrencyMisuseReport::hasIssues, out);
 
         return out;
     }

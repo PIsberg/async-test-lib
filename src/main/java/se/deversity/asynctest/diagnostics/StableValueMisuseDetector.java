@@ -245,7 +245,7 @@ public class StableValueMisuseDetector {
             this.totalSets = totalSets;
         }
 
-        /** @return true if any correctness-affecting StableValue misuse was detected */
+        /** {@return true if any correctness-affecting StableValue misuse was detected} */
         public boolean hasIssues() {
             return !readBeforeSetIssues.isEmpty()
                 || !doubleSetIssues.isEmpty()

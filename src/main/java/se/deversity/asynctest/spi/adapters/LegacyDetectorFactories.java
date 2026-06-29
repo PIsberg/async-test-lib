@@ -32,6 +32,7 @@ import se.deversity.asynctest.diagnostics.FalseSharingDetector;
 import se.deversity.asynctest.diagnostics.ForkJoinPoolDetector;
 import se.deversity.asynctest.diagnostics.ForkJoinTaskBlockingDetector;
 import se.deversity.asynctest.diagnostics.FutureIgnoredDetector;
+import se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetector;
 import se.deversity.asynctest.diagnostics.HttpClientConcurrencyDetector;
 import se.deversity.asynctest.diagnostics.InheritableThreadLocalMisuseDetector;
 import se.deversity.asynctest.diagnostics.InterruptMonitor;
@@ -74,11 +75,13 @@ import se.deversity.asynctest.diagnostics.SharedTimeZoneDetector;
 import se.deversity.asynctest.diagnostics.SharedXmlParserDetector;
 import se.deversity.asynctest.diagnostics.SimpleDateFormatDetector;
 import se.deversity.asynctest.diagnostics.SleepInLockDetector;
+import se.deversity.asynctest.diagnostics.StableValueMisuseDetector;
 import se.deversity.asynctest.diagnostics.StampedLockDetector;
 import se.deversity.asynctest.diagnostics.StatefulLambdaDetector;
 import se.deversity.asynctest.diagnostics.StreamClosingDetector;
 import se.deversity.asynctest.diagnostics.StringBuilderDetector;
 import se.deversity.asynctest.diagnostics.StructuredConcurrencyMisuseDetector;
+import se.deversity.asynctest.diagnostics.StructuredTaskScopeMisuseDetector;
 import se.deversity.asynctest.diagnostics.SynchronizedCollectionIterationDetector;
 import se.deversity.asynctest.diagnostics.SynchronizedNonFinalDetector;
 import se.deversity.asynctest.diagnostics.SynchronizedOnLiteralDetector;
@@ -1051,6 +1054,32 @@ public final class LegacyDetectorFactories {
         @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectCFBlockingCallback; }
         @Override public Detector create(AsyncTestConfig c) {
             return new LegacyDetectorAdapter<>(new CompletableFutureBlockingCallbackDetector(), DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK, "CompletableFutureBlockingCallback");
+        }
+    }
+
+    // ---- Phase 16: JDK 25/26 preview-era concurrency detectors ----
+
+    public static final class StableValueMisuse implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.STABLE_VALUE_MISUSE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectStableValueMisuse; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new StableValueMisuseDetector(), DetectorType.STABLE_VALUE_MISUSE, "StableValueMisuse");
+        }
+    }
+
+    public static final class StructuredTaskScopeMisuse implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.STRUCTURED_TASK_SCOPE_MISUSE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectStructuredTaskScopeMisuse; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new StructuredTaskScopeMisuseDetector(), DetectorType.STRUCTURED_TASK_SCOPE_MISUSE, "StructuredTaskScopeMisuse");
+        }
+    }
+
+    public static final class GathererConcurrencyMisuse implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.GATHERER_CONCURRENCY_MISUSE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectGathererConcurrencyMisuse; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new GathererConcurrencyMisuseDetector(), DetectorType.GATHERER_CONCURRENCY_MISUSE, "GathererConcurrencyMisuse");
         }
     }
 }

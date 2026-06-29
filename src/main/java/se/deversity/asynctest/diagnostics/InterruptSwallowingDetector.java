@@ -38,13 +38,11 @@ import se.deversity.vibetags.annotations.AITestDriven;
 public class InterruptSwallowingDetector {
 
     private static class CatchEvent {
-        final long   threadId;
         final String threadName;
         final String location;
         final boolean restored;
 
-        CatchEvent(long threadId, String threadName, String location, boolean restored) {
-            this.threadId   = threadId;
+        CatchEvent(String threadName, String location, boolean restored) {
             this.threadName = threadName;
             this.location   = location;
             this.restored   = restored;
@@ -63,11 +61,11 @@ public class InterruptSwallowingDetector {
      */
     public void recordCatch(Thread thread, String location, boolean restored) {
         if (thread == null) return;
-        events.add(new CatchEvent(thread.getId(), thread.getName(),
+        events.add(new CatchEvent(thread.getName(),
                 location != null ? location : "unknown", restored));
     }
 
-    /** @return report of threads that swallowed an InterruptedException */
+    /** {@return report of threads that swallowed an InterruptedException} */
     public InterruptSwallowingReport analyze() {
         InterruptSwallowingReport r = new InterruptSwallowingReport();
         for (CatchEvent e : events) {

@@ -33,12 +33,10 @@ import se.deversity.vibetags.annotations.AITestDriven;
 public class ExplicitGcDetector {
 
     private static class GcEvent {
-        final long   threadId;
         final String threadName;
         final String location;
 
-        GcEvent(long threadId, String threadName, String location) {
-            this.threadId   = threadId;
+        GcEvent(String threadName, String location) {
             this.threadName = threadName;
             this.location   = location;
         }
@@ -54,11 +52,11 @@ public class ExplicitGcDetector {
      */
     public void recordGcInvocation(Thread thread, String location) {
         if (thread == null) return;
-        events.add(new GcEvent(thread.getId(), thread.getName(),
+        events.add(new GcEvent(thread.getName(),
                 location != null ? location : "unknown"));
     }
 
-    /** @return report of explicit GC invocations */
+    /** {@return report of explicit GC invocations} */
     public ExplicitGcReport analyze() {
         ExplicitGcReport r = new ExplicitGcReport();
         for (GcEvent e : events) {

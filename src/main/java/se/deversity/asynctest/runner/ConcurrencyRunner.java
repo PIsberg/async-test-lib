@@ -300,6 +300,10 @@ public class ConcurrencyRunner {
     }
 
     @SuppressFBWarnings("RV_RETURN_VALUE_IGNORED_BAD_PRACTICE")
+    // executor.submit(...) Future is intentionally not retained: worker completion is
+    // tracked via the CountDownLatch and exceptions are caught inside the lambda into
+    // `failures`, so no exception is suppressed by ignoring the Future.
+    @SuppressWarnings("FutureReturnValueIgnored")
     private static void runSingleInvocationRound(ReflectiveInvocationContext<Method> context,
                                                  int threads,
                                                  ExecutorService executor,

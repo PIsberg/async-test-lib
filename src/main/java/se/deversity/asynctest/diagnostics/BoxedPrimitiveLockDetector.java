@@ -37,15 +37,11 @@ import se.deversity.vibetags.annotations.AITestDriven;
 public class BoxedPrimitiveLockDetector {
 
     private static class LockEvent {
-        final Object lockObject;
-        final long   threadId;
         final String threadName;
         final String location;
         final String reason;
 
-        LockEvent(Object lockObject, long tid, String tname, String location, String reason) {
-            this.lockObject = lockObject;
-            this.threadId   = tid;
+        LockEvent(String tname, String location, String reason) {
             this.threadName = tname;
             this.location   = location;
             this.reason     = reason;
@@ -68,7 +64,7 @@ public class BoxedPrimitiveLockDetector {
         if (lockObject == null || thread == null) return;
         String reason = detectCachedPrimitive(lockObject);
         if (reason != null) {
-            events.add(new LockEvent(lockObject, thread.getId(), thread.getName(),
+            events.add(new LockEvent(thread.getName(),
                     location != null ? location : "unknown", reason));
         }
     }
@@ -81,12 +77,10 @@ public class BoxedPrimitiveLockDetector {
         if (obj instanceof Boolean) {
             return "Boolean cached instance (" + obj + ")";
         }
-        if (obj instanceof Integer) {
-            int v = (Integer) obj;
+        if (obj instanceof Integer v) {
             if (v >= -128 && v <= 127) return "cached Integer(" + v + ")";
         }
-        if (obj instanceof Long) {
-            long v = (Long) obj;
+        if (obj instanceof Long v) {
             if (v >= -128 && v <= 127) return "cached Long(" + v + ")";
         }
         if (obj instanceof String && obj == ((String) obj).intern()) {
@@ -95,7 +89,7 @@ public class BoxedPrimitiveLockDetector {
         return null;
     }
 
-    /** @return report of synchronizations on cached boxed primitives */
+    /** {@return report of synchronizations on cached boxed primitives} */
     public BoxedPrimitiveLockReport analyze() {
         BoxedPrimitiveLockReport r = new BoxedPrimitiveLockReport();
         for (LockEvent e : events) {

@@ -76,7 +76,7 @@ public class SystemPropertyMutationDetector {
         events.add(new MutationEvent(key, null, thread.getId(), thread.getName(), "clear"));
     }
 
-    /** @return report of concurrent system property mutations */
+    /** {@return report of concurrent system property mutations} */
     public SystemPropertyMutationReport analyze() {
         SystemPropertyMutationReport r = new SystemPropertyMutationReport();
 

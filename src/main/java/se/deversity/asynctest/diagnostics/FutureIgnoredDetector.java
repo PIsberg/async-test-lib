@@ -35,16 +35,12 @@ import se.deversity.vibetags.annotations.AITestDriven;
 public class FutureIgnoredDetector {
 
     private static class SubmitRecord {
-        final int    futureId;
         final String taskName;
-        final long   submitterThreadId;
         final String submitterThreadName;
         volatile boolean inspected = false;
 
-        SubmitRecord(int futureId, String taskName, long tid, String tname) {
-            this.futureId           = futureId;
+        SubmitRecord(String taskName, String tname) {
             this.taskName           = taskName;
-            this.submitterThreadId  = tid;
             this.submitterThreadName = tname;
         }
     }
@@ -63,8 +59,7 @@ public class FutureIgnoredDetector {
         String label = taskName != null ? taskName
                 : "task@" + Integer.toHexString(System.identityHashCode(future));
         submits.put(System.identityHashCode(future),
-                new SubmitRecord(System.identityHashCode(future),
-                        label, thread.getId(), thread.getName()));
+                new SubmitRecord(label, thread.getName()));
     }
 
     /**
@@ -80,7 +75,7 @@ public class FutureIgnoredDetector {
         if (rec != null) rec.inspected = true;
     }
 
-    /** @return report of Futures that were submitted but never inspected */
+    /** {@return report of Futures that were submitted but never inspected} */
     public FutureIgnoredReport analyze() {
         FutureIgnoredReport r = new FutureIgnoredReport();
         for (SubmitRecord rec : submits.values()) {

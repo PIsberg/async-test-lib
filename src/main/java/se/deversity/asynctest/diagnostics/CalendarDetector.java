@@ -53,17 +53,14 @@ public class CalendarDetector {
 
     private static class CalendarState {
         final String name;
-        final Calendar calendar;
         final AtomicInteger getCount   = new AtomicInteger(0);
         final AtomicInteger setCount   = new AtomicInteger(0);
         final AtomicInteger addCount   = new AtomicInteger(0);
         final AtomicInteger errorCount = new AtomicInteger(0);
         final Set<Long> accessingThreads = ConcurrentHashMap.newKeySet();
         volatile long firstAccessTime = 0;
-        volatile long lastAccessTime  = 0;
 
         CalendarState(Calendar calendar, String name) {
-            this.calendar = calendar;
             this.name = name != null ? name : "calendar@" + System.identityHashCode(calendar);
         }
     }
@@ -137,7 +134,6 @@ public class CalendarDetector {
         long now = System.currentTimeMillis();
         state.accessingThreads.add(Thread.currentThread().threadId());
         if (state.firstAccessTime == 0) state.firstAccessTime = now;
-        state.lastAccessTime = now;
 
         switch (method) {
             case "get" -> state.getCount.incrementAndGet();

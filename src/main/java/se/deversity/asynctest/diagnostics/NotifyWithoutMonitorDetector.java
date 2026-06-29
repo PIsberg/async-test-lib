@@ -53,13 +53,11 @@ public final class NotifyWithoutMonitorDetector {
         final String monitorLabel;
         final String threadName;
         final long   threadId;
-        final boolean heldAtCall;
 
-        Attempt(String monitorLabel, String threadName, long threadId, boolean heldAtCall) {
+        Attempt(String monitorLabel, String threadName, long threadId) {
             this.monitorLabel = monitorLabel;
             this.threadName = threadName;
             this.threadId = threadId;
-            this.heldAtCall = heldAtCall;
         }
     }
 
@@ -88,8 +86,7 @@ public final class NotifyWithoutMonitorDetector {
         synchronized (attempts) {
             attempts.add(new Attempt(effectiveLabel,
                     Thread.currentThread().getName(),
-                    Thread.currentThread().getId(),
-                    false));
+                    Thread.currentThread().getId()));
         }
     }
 

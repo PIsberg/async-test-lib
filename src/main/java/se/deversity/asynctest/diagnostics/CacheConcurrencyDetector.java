@@ -50,7 +50,6 @@ public class CacheConcurrencyDetector {
         final AtomicInteger concurrentAccess = new AtomicInteger(0);
         final AtomicInteger maxConcurrentAccess = new AtomicInteger(0);
         volatile boolean iterationDetected = false;
-        volatile boolean concurrentReadWrite = false;
 
         CacheState(Map<Object, Object> cache, String name) {
             this.cache = cache;
@@ -117,12 +116,6 @@ public class CacheConcurrencyDetector {
         int current = state.concurrentAccess.incrementAndGet();
         try {
             state.maxConcurrentAccess.updateAndGet(max -> Math.max(max, current));
-
-            // Detect concurrent read+write or mixed access across threads
-            if ((state.writeCount.get() > 0 && current > 1) ||
-                (!state.writerThreads.isEmpty() && !state.writerThreads.contains(Thread.currentThread().threadId()))) {
-                state.concurrentReadWrite = true;
-            }
         } finally {
             state.concurrentAccess.decrementAndGet();
         }
@@ -155,12 +148,6 @@ public class CacheConcurrencyDetector {
         int current = state.concurrentAccess.incrementAndGet();
         try {
             state.maxConcurrentAccess.updateAndGet(max -> Math.max(max, current));
-
-            // Detect concurrent read+write or mixed access across threads
-            if ((state.readCount.get() > 0 && current > 1) ||
-                (!state.readerThreads.isEmpty() && !state.readerThreads.contains(Thread.currentThread().threadId()))) {
-                state.concurrentReadWrite = true;
-            }
         } finally {
             state.concurrentAccess.decrementAndGet();
         }

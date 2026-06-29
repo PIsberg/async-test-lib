@@ -69,7 +69,7 @@ public class PublicLockExposureDetector {
         if (context != null) publishContexts.put(id, context);
     }
 
-    /** @return report of publicly exposed internal locks */
+    /** {@return report of publicly exposed internal locks} */
     public PublicLockExposureReport analyze() {
         PublicLockExposureReport r = new PublicLockExposureReport();
         for (int id : synchronizedObjects) {

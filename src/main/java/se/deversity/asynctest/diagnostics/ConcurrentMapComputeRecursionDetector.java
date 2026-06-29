@@ -73,7 +73,7 @@ public class ConcurrentMapComputeRecursionDetector {
         activeComputes.remove(slot(map, key, thread));
     }
 
-    /** @return report of recursive compute calls */
+    /** {@return report of recursive compute calls} */
     public ConcurrentMapComputeRecursionReport analyze() {
         ConcurrentMapComputeRecursionReport r = new ConcurrentMapComputeRecursionReport();
         r.recursions.addAll(recursions);

@@ -67,7 +67,7 @@ public class ForkJoinTaskBlockingDetector {
             thread.getName(), type));
     }
 
-    /** @return report of blocking calls inside ForkJoin tasks */
+    /** {@return report of blocking calls inside ForkJoin tasks} */
     public ForkJoinTaskBlockingReport analyze() {
         ForkJoinTaskBlockingReport r = new ForkJoinTaskBlockingReport();
         r.blockingCalls.addAll(blockingCalls);

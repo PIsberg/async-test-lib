@@ -25,6 +25,8 @@ import se.deversity.vibetags.annotations.AITestDriven;
 )
 public class VolatileArrayDetector {
 
+    private static final java.util.regex.Pattern COLON = java.util.regex.Pattern.compile(":");
+
     private final Map<ArrayInfo, Set<String>> elementAccesses = new ConcurrentHashMap<>();
     private final Set<ArrayInfo> problematicArrays = ConcurrentHashMap.newKeySet();
 
@@ -50,7 +52,7 @@ public class VolatileArrayDetector {
                 // If multiple threads write to same array, it's problematic
                 long uniqueThreads = accesses.stream()
                     .filter(a -> a.contains(":write:"))
-                    .map(a -> a.split(":")[0])
+                    .map(a -> COLON.split(a, -1)[0])
                     .distinct()
                     .count();
                     
@@ -157,6 +159,7 @@ public class VolatileArrayDetector {
         }
 
         @Override
+        @SuppressWarnings("EqualsGetClass") // subclass-distinct equality is intended for this non-final class
         public boolean equals(Object o) {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;

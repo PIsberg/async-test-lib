@@ -171,7 +171,7 @@ public class GathererConcurrencyMisuseDetector {
             this.totalIntegrations = totalIntegrations;
         }
 
-        /** @return true if any unsafe parallel-gatherer usage was detected */
+        /** {@return true if any unsafe parallel-gatherer usage was detected} */
         public boolean hasIssues() {
             return !missingCombinerIssues.isEmpty() || !sharedStateIssues.isEmpty();
         }

@@ -153,6 +153,7 @@ public class WaitTimeoutDetector {
         }
 
         @Override
+        @SuppressWarnings("EqualsGetClass") // subclass-distinct equality is intended for this non-final class
         public boolean equals(Object o) {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;

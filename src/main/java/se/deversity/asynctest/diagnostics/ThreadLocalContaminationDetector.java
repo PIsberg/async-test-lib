@@ -82,7 +82,7 @@ public class ThreadLocalContaminationDetector {
         }
     }
 
-    /** @return report of cross-task ThreadLocal contaminations */
+    /** {@return report of cross-task ThreadLocal contaminations} */
     public ThreadLocalContaminationReport analyze() {
         ThreadLocalContaminationReport r = new ThreadLocalContaminationReport();
         r.contaminations.addAll(contaminations);

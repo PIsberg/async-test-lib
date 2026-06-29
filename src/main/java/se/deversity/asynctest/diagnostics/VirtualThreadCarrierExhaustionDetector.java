@@ -180,7 +180,7 @@ public class VirtualThreadCarrierExhaustionDetector {
             this.carrierCount = carrierCount;
         }
 
-        /** @return true if carrier exhaustion was reached or approached */
+        /** {@return true if carrier exhaustion was reached or approached} */
         public boolean hasIssues() {
             return exhaustionEventCount > 0;
         }

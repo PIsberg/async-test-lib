@@ -42,7 +42,6 @@ public class SharedRandomDetector {
 
     private static class RandomState {
         final String name;
-        final Random random;
         final AtomicInteger accessCount = new AtomicInteger(0);
         final Set<Long> accessingThreads = ConcurrentHashMap.newKeySet();
         final Map<String, AtomicInteger> methodCounts = new ConcurrentHashMap<>();
@@ -50,7 +49,6 @@ public class SharedRandomDetector {
         volatile Long lastAccessTime = null;
 
         RandomState(Random random, String name) {
-            this.random = random;
             this.name = name != null ? name : "random@" + System.identityHashCode(random);
         }
     }

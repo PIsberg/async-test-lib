@@ -96,7 +96,7 @@ public class OptimisticReadValidationDetector {
         }
     }
 
-    /** @return report of optimistic read validation failures */
+    /** {@return report of optimistic read validation failures} */
     public OptimisticReadValidationReport analyze() {
         OptimisticReadValidationReport r = new OptimisticReadValidationReport();
         // reads still pending at analysis time were never validated

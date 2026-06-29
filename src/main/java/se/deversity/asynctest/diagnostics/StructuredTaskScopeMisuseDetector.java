@@ -234,7 +234,7 @@ public class StructuredTaskScopeMisuseDetector {
             this.totalForks = totalForks;
         }
 
-        /** @return true if any StructuredTaskScope misuse was detected */
+        /** {@return true if any StructuredTaskScope misuse was detected} */
         public boolean hasIssues() {
             return !forkAfterJoinIssues.isEmpty()
                 || !resultBeforeJoinIssues.isEmpty()

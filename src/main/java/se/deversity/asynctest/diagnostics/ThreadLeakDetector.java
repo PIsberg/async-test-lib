@@ -54,16 +54,13 @@ public class ThreadLeakDetector {
         final String name;
         final Thread thread;
         final long startTime;
-        final long startThreadId;
         final StackTraceElement[] creationStack;
-        volatile long endTime = 0;
         volatile boolean terminated = false;
 
         ThreadState(Thread thread, String name) {
             this.thread = thread;
             this.name = name;
             this.startTime = System.currentTimeMillis();
-            this.startThreadId = thread.getId();
             this.creationStack = Thread.currentThread().getStackTrace();
         }
     }
@@ -112,7 +109,6 @@ public class ThreadLeakDetector {
         }
         ThreadState state = trackedThreads.get(System.identityHashCode(thread));
         if (state != null) {
-            state.endTime = System.currentTimeMillis();
             state.terminated = true;
         }
     }

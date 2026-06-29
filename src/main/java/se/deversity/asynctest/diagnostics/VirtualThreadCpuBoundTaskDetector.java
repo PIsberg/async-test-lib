@@ -56,7 +56,6 @@ public class VirtualThreadCpuBoundTaskDetector {
     private final long cpuThresholdMs;
 
     private static class TaskRecord {
-        final String taskId;
         final String taskName;
         final long threadId;
         final boolean isVirtual;
@@ -65,8 +64,7 @@ public class VirtualThreadCpuBoundTaskDetector {
         final AtomicInteger yieldCount = new AtomicInteger(0);
         volatile long lastYieldNanos;
 
-        TaskRecord(String taskId, String taskName, Thread thread) {
-            this.taskId = taskId;
+        TaskRecord(String taskName, Thread thread) {
             this.taskName = taskName;
             this.threadId = thread.threadId();
             this.isVirtual = isVirtual(thread);
@@ -121,7 +119,7 @@ public class VirtualThreadCpuBoundTaskDetector {
     public String recordTaskStart(String taskName, Thread thread) {
         String id = (taskName != null ? taskName : "task") + "#" + ID_GEN.incrementAndGet()
                     + "@" + thread.threadId();
-        activeTasks.put(id, new TaskRecord(id, taskName != null ? taskName : "unnamed", thread));
+        activeTasks.put(id, new TaskRecord(taskName != null ? taskName : "unnamed", thread));
         totalTasks.incrementAndGet();
         return id;
     }
@@ -225,7 +223,7 @@ public class VirtualThreadCpuBoundTaskDetector {
             this.thresholdMs = thresholdMs;
         }
 
-        /** @return true if any CPU-bound tasks were detected on virtual threads */
+        /** {@return true if any CPU-bound tasks were detected on virtual threads} */
         public boolean hasIssues() {
             return !violations.isEmpty();
         }

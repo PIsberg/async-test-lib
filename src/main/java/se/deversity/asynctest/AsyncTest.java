@@ -1317,6 +1317,39 @@ public @interface AsyncTest {
 
     boolean detectCFBlockingCallback() default true;
 
+    /**
+     * Enable {@code StableValue} misuse detection (JEP 502, preview JDK 25 → 26). Flags
+     * read-before-set, double-set, reentrant {@code orElseSet}, and set-contention on a
+     * stable value. See
+     * {@link se.deversity.asynctest.diagnostics.StableValueMisuseDetector}.
+     * @since 1.7.0
+     */
+    @Deprecated
+
+    boolean detectStableValueMisuse() default true;
+
+    /**
+     * Enable {@code StructuredTaskScope} lifecycle-misuse detection (JEP 505, preview JDK 25
+     * → final JDK 26). Flags fork-after-join, result-before-join, owner-confinement
+     * violations, and close-without-join. See
+     * {@link se.deversity.asynctest.diagnostics.StructuredTaskScopeMisuseDetector}.
+     * @since 1.7.0
+     */
+    @Deprecated
+
+    boolean detectStructuredTaskScopeMisuse() default true;
+
+    /**
+     * Enable parallel-{@code Gatherer} concurrency-misuse detection (JEP 485, final JDK 24).
+     * Flags a stateful gatherer used on a parallel stream without a combiner, and
+     * concurrent-integrator races. See
+     * {@link se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetector}.
+     * @since 1.7.0
+     */
+    @Deprecated
+
+    boolean detectGathererConcurrencyMisuse() default true;
+
     // ============= License Gating (Integration) =============
 
     /** Keygen Account ID. Defaults to System property 'keygen.account.id' if empty. */

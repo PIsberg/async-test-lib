@@ -39,7 +39,7 @@ public class UncaughtExceptionHandlerDetector {
         final boolean hasCustomHandler;
         volatile Throwable uncaughtException;
 
-        ThreadRecord(long tid, String tname, boolean hasCustomHandler) {
+        ThreadRecord(String tname, boolean hasCustomHandler) {
             this.threadName       = tname;
             this.hasCustomHandler = hasCustomHandler;
         }
@@ -60,7 +60,7 @@ public class UncaughtExceptionHandlerDetector {
         boolean hasCustom = thread.getUncaughtExceptionHandler() != null
                 && !(thread.getUncaughtExceptionHandler() instanceof ThreadGroup);
         threads.put(thread.getId(),
-                new ThreadRecord(thread.getId(), thread.getName(), hasCustom));
+                new ThreadRecord(thread.getName(), hasCustom));
     }
 
     /**
@@ -75,7 +75,7 @@ public class UncaughtExceptionHandlerDetector {
         if (rec != null) rec.uncaughtException = throwable;
     }
 
-    /** @return report of threads that threw without a custom UncaughtExceptionHandler */
+    /** {@return report of threads that threw without a custom UncaughtExceptionHandler} */
     public UncaughtExceptionHandlerReport analyze() {
         UncaughtExceptionHandlerReport r = new UncaughtExceptionHandlerReport();
         for (ThreadRecord rec : threads.values()) {

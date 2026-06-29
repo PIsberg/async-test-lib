@@ -56,7 +56,7 @@ public class SharedFormatterDetector {
         s.accessingThreadNames.add(thread.getName());
     }
 
-    /** @return report of formatters accessed from multiple threads */
+    /** {@return report of formatters accessed from multiple threads} */
     public SharedFormatterReport analyze() {
         SharedFormatterReport r = new SharedFormatterReport();
         for (FormatterState s : formatters.values()) {

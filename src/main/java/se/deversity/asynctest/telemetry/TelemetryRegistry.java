@@ -55,6 +55,9 @@ public final class TelemetryRegistry {
      * @param callback consumer invoked on each drained event; may be {@code null} to
      *                 use a no-op default (events are simply discarded after drain)
      */
+    // The scheduleAtFixedRate ScheduledFuture is intentionally not retained: the periodic
+    // drain is stopped by shutting down drainExecutor in stop(), not by cancelling the Future.
+    @SuppressWarnings("FutureReturnValueIgnored")
     public static void start(TelemetryEventBuffer.DrainCallback callback) {
         if (!RUNNING.compareAndSet(false, true)) {
             // Already running, but allow updating the callback.
@@ -118,10 +121,15 @@ public final class TelemetryRegistry {
 
     private static void drainOnce() {
         TelemetryEventBuffer.DrainCallback cb = drainCallback;
-        if (cb != null) {
-            BUFFER.drain(cb);
-        } else {
-            BUFFER.drain((tid, field, write) -> { /* discard */ });
+        try {
+            if (cb != null) {
+                BUFFER.drain(cb);
+            } else {
+                BUFFER.drain((tid, field, write) -> { /* discard */ });
+            }
+        } catch (RuntimeException e) { // NOPMD EmptyCatchBlock — best-effort drain must survive a misbehaving callback
+            // scheduleAtFixedRate cancels all future executions if the task throws;
+            // telemetry is best-effort, so swallow and keep the periodic drainer alive.
         }
     }
 }

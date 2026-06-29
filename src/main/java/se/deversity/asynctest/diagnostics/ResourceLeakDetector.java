@@ -46,17 +46,14 @@ public class ResourceLeakDetector {
     private static class ResourceState {
         final String name;
         final String resourceType;
-        final Object resource;
         final AtomicInteger openCount = new AtomicInteger(0);
         final AtomicInteger closeCount = new AtomicInteger(0);
         final Set<Long> openingThreads = ConcurrentHashMap.newKeySet();
         final Set<Long> closingThreads = ConcurrentHashMap.newKeySet();
         volatile boolean currentlyOpen = false;
         volatile Long lastOpenTime = null;
-        volatile Long lastCloseTime = null;
 
         ResourceState(Object resource, String name, String resourceType) {
-            this.resource = resource;
             this.name = name != null ? name : resourceType + "@" + System.identityHashCode(resource);
             this.resourceType = resourceType != null ? resourceType : resource.getClass().getSimpleName();
         }
@@ -113,7 +110,6 @@ public class ResourceLeakDetector {
             state.closeCount.incrementAndGet();
             state.closingThreads.add(Thread.currentThread().threadId());
             state.currentlyOpen = false;
-            state.lastCloseTime = System.currentTimeMillis();
         }
     }
 

@@ -67,7 +67,7 @@ public class SharedXmlParserDetector {
         s.accessingThreadNames.add(thread.getName());
     }
 
-    /** @return report of XML parser instances accessed from multiple threads */
+    /** {@return report of XML parser instances accessed from multiple threads} */
     public SharedXmlParserReport analyze() {
         SharedXmlParserReport r = new SharedXmlParserReport();
         for (ParserState s : parsers.values()) {

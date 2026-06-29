@@ -30,6 +30,7 @@ import se.deversity.asynctest.diagnostics.FalseSharingDetector;
 import se.deversity.asynctest.diagnostics.ForkJoinPoolDetector;
 import se.deversity.asynctest.diagnostics.ForkJoinTaskBlockingDetector;
 import se.deversity.asynctest.diagnostics.FutureIgnoredDetector;
+import se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetector;
 import se.deversity.asynctest.diagnostics.HttpClientConcurrencyDetector;
 import se.deversity.asynctest.diagnostics.InheritableThreadLocalMisuseDetector;
 import se.deversity.asynctest.diagnostics.InterruptSwallowingDetector;
@@ -70,11 +71,13 @@ import se.deversity.asynctest.diagnostics.SharedTimeZoneDetector;
 import se.deversity.asynctest.diagnostics.SharedXmlParserDetector;
 import se.deversity.asynctest.diagnostics.SimpleDateFormatDetector;
 import se.deversity.asynctest.diagnostics.SleepInLockDetector;
+import se.deversity.asynctest.diagnostics.StableValueMisuseDetector;
 import se.deversity.asynctest.diagnostics.StampedLockDetector;
 import se.deversity.asynctest.diagnostics.StatefulLambdaDetector;
 import se.deversity.asynctest.diagnostics.StreamClosingDetector;
 import se.deversity.asynctest.diagnostics.StringBuilderDetector;
 import se.deversity.asynctest.diagnostics.StructuredConcurrencyMisuseDetector;
+import se.deversity.asynctest.diagnostics.StructuredTaskScopeMisuseDetector;
 import se.deversity.asynctest.diagnostics.SynchronizedCollectionIterationDetector;
 import se.deversity.asynctest.diagnostics.SynchronizedNonFinalDetector;
 import se.deversity.asynctest.diagnostics.SynchronizedOnLiteralDetector;
@@ -274,6 +277,11 @@ public final class AsyncTestContext {
     final TryLockMisuseDetector                     tryLockMisuseDetector;
     final CompletableFutureBlockingCallbackDetector cfBlockingCallbackDetector;
 
+    // ---- Phase 16: JDK 25/26 preview-era concurrency detectors ----
+    final StableValueMisuseDetector             stableValueMisuseDetector;
+    final StructuredTaskScopeMisuseDetector     structuredTaskScopeMisuseDetector;
+    final GathererConcurrencyMisuseDetector     gathererConcurrencyMisuseDetector;
+
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
         // Mirror registry references so package-private field access still works
@@ -385,6 +393,10 @@ public final class AsyncTestContext {
         lockUpgradeDeadlockDetector            = registry.lockUpgradeDeadlockDetector;
         tryLockMisuseDetector                  = registry.tryLockMisuseDetector;
         cfBlockingCallbackDetector             = registry.cfBlockingCallbackDetector;
+        // Phase 16 (JDK 25/26)
+        stableValueMisuseDetector              = registry.stableValueMisuseDetector;
+        structuredTaskScopeMisuseDetector      = registry.structuredTaskScopeMisuseDetector;
+        gathererConcurrencyMisuseDetector      = registry.gathererConcurrencyMisuseDetector;
     }
 
     // ---- Lifecycle (called by ConcurrencyRunner) ----
@@ -1344,6 +1356,33 @@ public final class AsyncTestContext {
      */
     public static CompletableFutureBlockingCallbackDetector cfBlockingCallbackDetector() {
         return require("detectCFBlockingCallback", c -> c.cfBlockingCallbackDetector);
+    }
+
+    /**
+     * Returns the {@link StableValueMisuseDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectStableValueMisuse = false}
+     * @since 1.7.0
+     */
+    public static StableValueMisuseDetector stableValueMisuseDetector() {
+        return require("detectStableValueMisuse", c -> c.stableValueMisuseDetector);
+    }
+
+    /**
+     * Returns the {@link StructuredTaskScopeMisuseDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectStructuredTaskScopeMisuse = false}
+     * @since 1.7.0
+     */
+    public static StructuredTaskScopeMisuseDetector structuredTaskScopeMisuseDetector() {
+        return require("detectStructuredTaskScopeMisuse", c -> c.structuredTaskScopeMisuseDetector);
+    }
+
+    /**
+     * Returns the {@link GathererConcurrencyMisuseDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectGathererConcurrencyMisuse = false}
+     * @since 1.7.0
+     */
+    public static GathererConcurrencyMisuseDetector gathererConcurrencyMisuseDetector() {
+        return require("detectGathererConcurrencyMisuse", c -> c.gathererConcurrencyMisuseDetector);
     }
 
     // ---- Helper ----

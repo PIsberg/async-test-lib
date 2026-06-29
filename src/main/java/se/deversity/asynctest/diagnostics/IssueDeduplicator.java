@@ -156,44 +156,32 @@ public class IssueDeduplicator<T extends DeduplicatableEvent> {
             threadIds.add(event.getThreadId());
         }
 
-        /**
-         * @return the fingerprint identifying this group
-         */
+        /** {@return the fingerprint identifying this group} */
         public String getFingerprint() {
             return fingerprint;
         }
 
-        /**
-         * @return number of occurrences in this group
-         */
+        /** {@return number of occurrences in this group} */
         public int getCount() {
             return events.size();
         }
 
-        /**
-         * @return number of unique threads affected
-         */
+        /** {@return number of unique threads affected} */
         public int getAffectedThreadCount() {
             return threadIds.size();
         }
 
-        /**
-         * @return set of affected thread IDs
-         */
+        /** {@return set of affected thread IDs} */
         public Set<Long> getAffectedThreadIds() {
             return Collections.unmodifiableSet(threadIds);
         }
 
-        /**
-         * @return the first event in this group (representative)
-         */
+        /** {@return the first event in this group (representative)} */
         public T getFirstEvent() {
             return events.isEmpty() ? null : events.get(0);
         }
 
-        /**
-         * @return all events in this group
-         */
+        /** {@return all events in this group} */
         public List<T> getEvents() {
             return Collections.unmodifiableList(events);
         }

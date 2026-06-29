@@ -65,14 +65,11 @@ public class VirtualThreadContextLeakDetector {
         final String key;
         final long threadId;
         final boolean isVirtual;
-        final boolean isInheritable;
-        volatile boolean removed = false;
 
-        ThreadLocalEntry(String key, long threadId, boolean isVirtual, boolean isInheritable) {
+        ThreadLocalEntry(String key, long threadId, boolean isVirtual) {
             this.key = key;
             this.threadId = threadId;
             this.isVirtual = isVirtual;
-            this.isInheritable = isInheritable;
         }
     }
 
@@ -108,7 +105,7 @@ public class VirtualThreadContextLeakDetector {
         long tid = thread.threadId();
         String entryKey = tid + ":" + variableName;
 
-        ThreadLocalEntry entry = new ThreadLocalEntry(variableName, tid, isVirtual, isInheritable);
+        ThreadLocalEntry entry = new ThreadLocalEntry(variableName, tid, isVirtual);
         activeEntries.put(entryKey, entry);
         totalSets.incrementAndGet();
 
@@ -141,7 +138,6 @@ public class VirtualThreadContextLeakDetector {
         String entryKey = tid + ":" + variableName;
         ThreadLocalEntry entry = activeEntries.remove(entryKey);
         if (entry != null) {
-            entry.removed = true;
             totalRemoves.incrementAndGet();
         }
     }
@@ -218,7 +214,7 @@ public class VirtualThreadContextLeakDetector {
             this.totalRemoves = totalRemoves;
         }
 
-        /** @return true if any context leak issues were detected */
+        /** {@return true if any context leak issues were detected} */
         public boolean hasIssues() {
             return !leaks.isEmpty() || !inheritableInVirtualIssues.isEmpty();
         }

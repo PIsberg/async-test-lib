@@ -26,26 +26,14 @@ import java.util.concurrent.ConcurrentHashMap;
 public class LivelockDetector {
     
     private static final class ThreadSnapshot {
-        final long threadId;
         final String threadName;
         final Thread.State state;
         final long cpuTime;
-        final long userTime;
-        final long blockedCount;
-        final long waitedCount;
-        final long timestamp;
-        
-        ThreadSnapshot(long threadId, String threadName, Thread.State state, 
-                      long cpuTime, long userTime, long blockedCount, 
-                      long waitedCount, long timestamp) {
-            this.threadId = threadId;
+
+        ThreadSnapshot(String threadName, Thread.State state, long cpuTime) {
             this.threadName = threadName;
             this.state = state;
             this.cpuTime = cpuTime;
-            this.userTime = userTime;
-            this.blockedCount = blockedCount;
-            this.waitedCount = waitedCount;
-            this.timestamp = timestamp;
         }
     }
     
@@ -59,23 +47,16 @@ public class LivelockDetector {
     public void captureSnapshot() {
         if (!enabled) return;
         
-        long timestamp = System.currentTimeMillis();
         ThreadInfo[] allThreads = threadMXBean.dumpAllThreads(false, false);
-        
+
         for (ThreadInfo ti : allThreads) {
             long threadId = ti.getThreadId();
             long cpuTime = threadMXBean.getThreadCpuTime(threadId);
-            long userTime = threadMXBean.getThreadUserTime(threadId);
-            
+
             ThreadSnapshot snapshot = new ThreadSnapshot(
-                threadId,
                 ti.getThreadName(),
                 ti.getThreadState(),
-                cpuTime,
-                userTime,
-                ti.getBlockedCount(),
-                ti.getWaitedCount(),
-                timestamp
+                cpuTime
             );
             
             threadHistory.computeIfAbsent(threadId, k -> 

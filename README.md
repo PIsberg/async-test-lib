@@ -2,7 +2,7 @@
 
 # async-test-lib
 
-**JUnit 5 concurrency stress testing — one annotation, 111 detectors**
+**JUnit 5 concurrency stress testing — one annotation, 114 detectors**
 
 [![Maven Central](https://img.shields.io/maven-central/v/se.deversity.async-test-lib/async-test-lib)](https://central.sonatype.com/artifact/se.deversity.async-test-lib/async-test-lib)
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm_Noncommercial-blue.svg)](LICENSE)
@@ -25,7 +25,7 @@
 ## Why async-test?
 
 - **One annotation** — `@AsyncTest` hammers your code with N threads × M invocations using a `CyclicBarrier` to force maximum contention. No executor boilerplate, no manual `CountDownLatch`, no `Thread.join` loops.
-- **111 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types, JDBC sharing, MessageDigest/SecureRandom/Cipher integrity, and more — all on by default (`detectAll = true`), or pick a `Preset` for a curated subset.
+- **114 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types, JDBC sharing, MessageDigest/SecureRandom/Cipher integrity, and more — all on by default (`detectAll = true`), or pick a `Preset` for a curated subset.
 - **JUnit 5 native** — zero required configuration. Works anywhere JUnit 5 runs with no special JVM flags. An optional Java agent (`-javaagent:async-test-lib.jar`) enables deeper field-access instrumentation via Byte Buddy; default usage needs no agent.
 - **CI-ready out of the box** — ship JUnit XML reports, machine-readable JSON, or `AssertionError` fail-gates directly to GitHub Actions, Jenkins, and GitLab CI.
 
@@ -123,7 +123,7 @@ After the run, the **detector registry** analyses what was observed and reports 
 
 ## Detectors
 
-111 detectors enabled by default with a single flag, or cherry-pick:
+114 detectors enabled by default with a single flag, or cherry-pick:
 
 ```java
 // Everything on (default for bare @AsyncTest)
@@ -154,18 +154,19 @@ After the run, the **detector registry** analyses what was observed and reports 
 | **Environment** | Uncommitted Git changes (reproducibility gate) |
 | **Phase 13** | Daemon-thread hygiene, illegal `notify*()`, shared `SecureRandom`, shared `WeakHashMap`/`IdentityHashMap`, shared JDBC `Connection`/`Statement`/`ResultSet` |
 | **Phase 14** (new) | Shared stateful crypto (`Cipher`/`Mac`/`Signature`), non-atomic `ConcurrentMap` check-then-act, shared `Deflater`/`Inflater`, constructor `this`-escape, cached `ThreadLocalRandom` used off-thread |
-| **JDK 25/26 preview** (new) | `StableValue` misuse (read-before-set / double-set / reentrant `orElseSet`), `StructuredTaskScope` lifecycle (fork-after-join, result-before-join, owner-confinement, missing join), parallel-`Gatherer` without a combiner |
+| **Phase 16 — JDK 25/26 preview** (new) | `StableValue` misuse (read-before-set / double-set / reentrant `orElseSet`), `StructuredTaskScope` lifecycle (fork-after-join, result-before-join, owner-confinement, missing join), parallel-`Gatherer` without a combiner |
 
 Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
 
-> **JDK 25/26 detectors are standalone.** `StableValueMisuseDetector`,
-> `StructuredTaskScopeMisuseDetector`, and `GathererConcurrencyMisuseDetector`
-> ship in `se.deversity.asynctest.diagnostics` and are used directly — instantiate,
-> record events, call `analyze()`. They are **not yet wired into the `@AsyncTest`
-> `detectAll` pipeline**: each pipeline detector needs a `DetectorType` enum
-> constant, and that enum is a locked file (adding a constant requires a
-> synchronized six-place change). They are ready to wire the moment a slot opens.
-> See [docs/DETECTOR_CATALOG.md](docs/DETECTOR_CATALOG.md#jdk-2526-preview-era-detectors-standalone).
+> **JDK 25/26 detectors are wired into the pipeline** (Phase 16). `StableValueMisuseDetector`,
+> `StructuredTaskScopeMisuseDetector`, and `GathererConcurrencyMisuseDetector` are part of
+> `detectAll` and the `Preset.ALL` / `STRICT` bundles, each with a `DetectorType` constant
+> (`STABLE_VALUE_MISUSE`, `STRUCTURED_TASK_SCOPE_MISUSE`, `GATHERER_CONCURRENCY_MISUSE`) and
+> an `@AsyncTest` flag (`detectStableValueMisuse`, `detectStructuredTaskScopeMisuse`,
+> `detectGathererConcurrencyMisuse`). Record events against them via the
+> `AsyncTestContext.stableValueMisuseDetector()` / `structuredTaskScopeMisuseDetector()` /
+> `gathererConcurrencyMisuseDetector()` accessors; findings surface through the standard
+> report and `failOn` gate. See [docs/DETECTOR_CATALOG.md](docs/DETECTOR_CATALOG.md).
 
 ---
 

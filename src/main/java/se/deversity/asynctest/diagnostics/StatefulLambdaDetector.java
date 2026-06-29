@@ -85,7 +85,7 @@ public class StatefulLambdaDetector {
         s.mutationEvents.add(thread.getName() + " → " + label);
     }
 
-    /** @return report of lambdas with concurrent captured-state mutations */
+    /** {@return report of lambdas with concurrent captured-state mutations} */
     public StatefulLambdaReport analyze() {
         StatefulLambdaReport r = new StatefulLambdaReport();
         for (LambdaState s : lambdas.values()) {

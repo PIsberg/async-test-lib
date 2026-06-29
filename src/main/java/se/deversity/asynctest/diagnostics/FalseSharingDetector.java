@@ -29,14 +29,12 @@ public class FalseSharingDetector {
     
     private static class FieldAccessInfo {
         final String fieldName;
-        final Class<?> fieldType;
         final long memoryOffset;
         final AtomicLong accessCount = new AtomicLong(0);
         final Set<Long> accessingThreadIds = ConcurrentHashMap.newKeySet();
 
-        FieldAccessInfo(String name, Class<?> type, long offset) {
+        FieldAccessInfo(String name, long offset) {
             this.fieldName = name;
-            this.fieldType = type;
             this.memoryOffset = offset;
         }
     }
@@ -61,7 +59,7 @@ public class FalseSharingDetector {
         long offset = estimateMemoryOffset(object.getClass(), fieldName);
 
         FieldAccessInfo info = fieldAccess.computeIfAbsent(key,
-            k -> new FieldAccessInfo(fieldName, fieldType, offset)
+            k -> new FieldAccessInfo(fieldName, offset)
         );
 
         info.accessCount.incrementAndGet();

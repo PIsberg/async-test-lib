@@ -104,7 +104,7 @@ public class DeadlockDetector {
             for (long threadId : deadlockedThreads) {
                 ThreadInfo ti = threadMap.get(threadId);
                 if (ti != null) {
-                    printLockChain(ti, threadInfos, threadMap);
+                    printLockChain(ti, threadMap);
                 }
             }
         } else {
@@ -131,8 +131,7 @@ public class DeadlockDetector {
         System.err.println("\n=======================================================\n");
     }
 
-    @SuppressWarnings("PMD.UnusedFormalParameter") // allThreads reserved for future multi-hop chain traversal
-    private static void printLockChain(ThreadInfo thread, ThreadInfo[] allThreads, Map<Long, ThreadInfo> threadMap) {
+    private static void printLockChain(ThreadInfo thread, Map<Long, ThreadInfo> threadMap) {
         System.err.println("Thread-" + thread.getThreadId() + " (" + thread.getThreadName() + "):");
         System.err.println("  State: " + thread.getThreadState());
         

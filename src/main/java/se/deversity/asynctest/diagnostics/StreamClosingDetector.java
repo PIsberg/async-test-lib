@@ -43,14 +43,12 @@ public class StreamClosingDetector {
 
     private static class StreamState {
         final String name;
-        final Closeable stream;
         final long openTime;
         final long openedByThread;
         volatile boolean closed;
         volatile long closedByThread = -1;
 
-        StreamState(Closeable stream, String name) {
-            this.stream = stream;
+        StreamState(String name) {
             this.name = name;
             this.openTime = System.currentTimeMillis();
             this.openedByThread = Thread.currentThread().threadId();
@@ -102,7 +100,7 @@ public class StreamClosingDetector {
         if (!enabled || stream == null) {
             return;
         }
-        StreamState state = new StreamState(stream, name);
+        StreamState state = new StreamState(name);
         openStreams.put(System.identityHashCode(stream), state);
         totalOpened.incrementAndGet();
         int current = currentOpen.incrementAndGet();
