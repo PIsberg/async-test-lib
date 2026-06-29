@@ -121,10 +121,15 @@ public final class TelemetryRegistry {
 
     private static void drainOnce() {
         TelemetryEventBuffer.DrainCallback cb = drainCallback;
-        if (cb != null) {
-            BUFFER.drain(cb);
-        } else {
-            BUFFER.drain((tid, field, write) -> { /* discard */ });
+        try {
+            if (cb != null) {
+                BUFFER.drain(cb);
+            } else {
+                BUFFER.drain((tid, field, write) -> { /* discard */ });
+            }
+        } catch (RuntimeException e) { // NOPMD EmptyCatchBlock — best-effort drain must survive a misbehaving callback
+            // scheduleAtFixedRate cancels all future executions if the task throws;
+            // telemetry is best-effort, so swallow and keep the periodic drainer alive.
         }
     }
 }
