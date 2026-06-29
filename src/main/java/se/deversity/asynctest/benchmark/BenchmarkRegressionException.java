@@ -22,11 +22,12 @@ public class BenchmarkRegressionException extends RuntimeException {
     }
 
     @Override
-    public String getMessage() {
-        // Explicit override (returns the stored message unchanged) so the toString() below
-        // can keep its simple-class-name prefix without tripping Error Prone's
-        // OverrideThrowableToString, which only flags a toString() override when getMessage()
-        // is not also overridden.
+    public String getMessage() { // NOPMD UselessOverridingMethod — see comment below
+        // Returns the stored message unchanged. This override exists only so the custom
+        // toString() below (which keeps the simple-class-name prefix) does not trip Error
+        // Prone's OverrideThrowableToString, which flags a toString() override on a Throwable
+        // unless getMessage() is also overridden. PMD's UselessOverridingMethod is therefore
+        // suppressed: the override is deliberate, not accidental boilerplate.
         return super.getMessage();
     }
 
