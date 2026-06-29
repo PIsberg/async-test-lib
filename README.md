@@ -123,7 +123,9 @@ After the run, the **detector registry** analyses what was observed and reports 
 
 ## Detectors
 
-111 detectors enabled by default with a single flag, or cherry-pick:
+111 detectors enabled by default with a single flag, or cherry-pick. (The three
+JDK 25/26 detectors in the last table row are **standalone** and not part of the 111 —
+see the note below the table.)
 
 ```java
 // Everything on (default for bare @AsyncTest)
@@ -154,7 +156,7 @@ After the run, the **detector registry** analyses what was observed and reports 
 | **Environment** | Uncommitted Git changes (reproducibility gate) |
 | **Phase 13** | Daemon-thread hygiene, illegal `notify*()`, shared `SecureRandom`, shared `WeakHashMap`/`IdentityHashMap`, shared JDBC `Connection`/`Statement`/`ResultSet` |
 | **Phase 14** (new) | Shared stateful crypto (`Cipher`/`Mac`/`Signature`), non-atomic `ConcurrentMap` check-then-act, shared `Deflater`/`Inflater`, constructor `this`-escape, cached `ThreadLocalRandom` used off-thread |
-| **JDK 25/26 preview** (new) | `StableValue` misuse (read-before-set / double-set / reentrant `orElseSet`), `StructuredTaskScope` lifecycle (fork-after-join, result-before-join, owner-confinement, missing join), parallel-`Gatherer` without a combiner |
+| **JDK 25/26 preview** ⚠️ _standalone — not in `detectAll`_ | `StableValue` misuse (read-before-set / double-set / reentrant `orElseSet`), `StructuredTaskScope` lifecycle (fork-after-join, result-before-join, owner-confinement, missing join), parallel-`Gatherer` without a combiner |
 
 Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
 
