@@ -4,6 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Test Commands
 
+> **Two build systems coexist.** Maven (`pom.xml`) is canonical — CI (`tests.yml`) and
+> releases (`publish.yml`) run `mvn`. Gradle (`build.gradle.kts`) is a secondary developer
+> build for fast local iteration; keep both in sync. See [Publishing](#publishing).
+> Maven equivalents: `mvn test`, `mvn -Dtest=AsyncTestContextTest test`,
+> `mvn clean install`, `mvn javadoc:javadoc`. Run locally without a license key with
+> `-Dlicense.mock.mode=true`.
+
 ```bash
 # Build and run all tests
 ./gradlew test
@@ -102,4 +109,17 @@ The legacy `se.deversity.async-test-lib.DetectorRegistry` coexists with the SPI 
 
 ### Publishing
 
-Published to Maven Central via `com.vanniktech.maven.publish`. Group/version come from `gradle.properties`. Signing is skipped unless `signingInMemoryKey` gradle property is present (set only in the release workflow).
+**Maven is the canonical release build.** Releases are cut by `.github/workflows/publish.yml`
+on a `v*` tag via `mvn --batch-mode clean deploy -P release`, which uses
+`central-publishing-maven-plugin` (Sonatype Central Portal) with GPG signing from the
+`release` profile, then cosign-signs the artifacts and creates the GitHub Release. Version
+and group are the `pom.xml` `<version>`/`<groupId>` (kept in sync with `gradle.properties`).
+
+The Gradle build (`build.gradle.kts`, `com.vanniktech.maven.publish`) is a **secondary
+developer build** kept in lockstep with the POM. It is *not* the release path — CI only
+runs `./gradlew test` / `publishToMavenLocal` (`gradle-tests.yml`) as a smoke test. Its
+`mavenPublishing { ... }` block is configured for parity but is not invoked by any release
+workflow; Gradle signing is skipped unless the `signingInMemoryKey` property is present.
+
+> When changing build config (deps, plugin versions, artifact metadata), update **both**
+> `pom.xml` and `build.gradle.kts` so they don't drift.
