@@ -58,7 +58,7 @@ public class SharedDecimalFormatDetector {
         s.accessingThreadNames.add(thread.getName());
     }
 
-    /** @return report of DecimalFormat/NumberFormat instances accessed from multiple threads */
+    /** {@return report of DecimalFormat/NumberFormat instances accessed from multiple threads} */
     public SharedDecimalFormatReport analyze() {
         SharedDecimalFormatReport r = new SharedDecimalFormatReport();
         for (FormatState s : formats.values()) {

@@ -43,6 +43,8 @@ public enum FailOn {
      * @param severity the severity of a detector finding; {@code null} returns {@code false}
      * @return whether the finding should fail the test
      */
+    // IssueSeverity declaration order IS the intended severity rank (CRITICAL(0)..LOW(3)).
+    @SuppressWarnings("EnumOrdinal")
     public boolean triggeredBy(IssueSeverity severity) {
         if (this == NONE || severity == null) {
             return false;

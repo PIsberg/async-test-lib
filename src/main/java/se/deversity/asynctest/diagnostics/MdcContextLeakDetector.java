@@ -46,13 +46,11 @@ import se.deversity.vibetags.annotations.AITestDriven;
 public class MdcContextLeakDetector {
 
     private static class TaskSnapshot {
-        final long                threadId;
         final String              threadName;
         final Map<String, String> startMdc;
         volatile Map<String, String> endMdc;
 
-        TaskSnapshot(long threadId, String threadName, Map<String, String> startMdc) {
-            this.threadId   = threadId;
+        TaskSnapshot(String threadName, Map<String, String> startMdc) {
             this.threadName = threadName;
             this.startMdc   = startMdc != null ? new LinkedHashMap<>(startMdc) : Collections.emptyMap();
         }
@@ -69,7 +67,7 @@ public class MdcContextLeakDetector {
     public void recordTaskStart(Thread thread, Map<String, String> mdcSnapshot) {
         if (thread == null) return;
         snapshots.put(thread.getId(),
-                new TaskSnapshot(thread.getId(), thread.getName(), mdcSnapshot));
+                new TaskSnapshot(thread.getName(), mdcSnapshot));
     }
 
     /**
@@ -85,7 +83,7 @@ public class MdcContextLeakDetector {
         snap.endMdc = mdcSnapshot != null ? new LinkedHashMap<>(mdcSnapshot) : Collections.emptyMap();
     }
 
-    /** @return report of threads that left MDC entries behind after task completion */
+    /** {@return report of threads that left MDC entries behind after task completion} */
     public MdcContextLeakReport analyze() {
         MdcContextLeakReport r = new MdcContextLeakReport();
         for (TaskSnapshot snap : snapshots.values()) {

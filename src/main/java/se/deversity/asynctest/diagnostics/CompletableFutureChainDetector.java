@@ -41,6 +41,8 @@ import se.deversity.vibetags.annotations.AITestDriven;
 )
 public class CompletableFutureChainDetector {
 
+    private static final java.util.regex.Pattern ARROW = java.util.regex.Pattern.compile("->");
+
     private static class FutureState {
         final String name;
         final long createdTime;
@@ -48,7 +50,6 @@ public class CompletableFutureChainDetector {
         volatile boolean joined;
         volatile boolean exceptionallyAdded;
         volatile boolean handled;
-        volatile String lastOperation;
         final java.util.List<String> chainOperations = new java.util.ArrayList<>();
 
         FutureState(String name) {
@@ -111,7 +112,6 @@ public class CompletableFutureChainDetector {
         FutureState state = futures.get(key);
         if (state != null) {
             state.chainOperations.add(operation);
-            state.lastOperation = operation;
         }
         
         // Track the new future too
@@ -139,7 +139,7 @@ public class CompletableFutureChainDetector {
         if (state != null) {
             state.exceptionallyAdded = true;
             // Mark all futures in this chain
-            String baseName = state.name.split("->")[0];
+            String baseName = ARROW.split(state.name, -1)[0];
             for (FutureState otherState : futures.values()) {
                 if (otherState.name.startsWith(baseName)) {
                     otherState.exceptionallyAdded = true;
@@ -163,7 +163,7 @@ public class CompletableFutureChainDetector {
         if (state != null) {
             state.handled = true;
             // Mark all futures in this chain
-            String baseName = state.name.split("->")[0];
+            String baseName = ARROW.split(state.name, -1)[0];
             for (FutureState otherState : futures.values()) {
                 if (otherState.name.startsWith(baseName)) {
                     otherState.handled = true;

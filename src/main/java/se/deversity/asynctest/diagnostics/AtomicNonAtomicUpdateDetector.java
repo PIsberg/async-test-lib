@@ -80,7 +80,7 @@ public class AtomicNonAtomicUpdateDetector {
         stateFor(atomic, name).pendingGetByThread.remove(thread.getId());
     }
 
-    /** @return report of non-atomic compound updates */
+    /** {@return report of non-atomic compound updates} */
     public AtomicNonAtomicUpdateReport analyze() {
         AtomicNonAtomicUpdateReport r = new AtomicNonAtomicUpdateReport();
         for (AtomicState s : atomics.values()) {

@@ -46,15 +46,13 @@ public class UnboundedQueueDetector {
 
     private static class QueueState {
         final String name;
-        final BlockingQueue<?> queue;
         final int capacity; // -1 for unbounded
         final AtomicInteger peakSize = new AtomicInteger(0);
         final AtomicInteger enqueueCount = new AtomicInteger(0);
         final AtomicInteger dequeueCount = new AtomicInteger(0);
         final StackTraceElement[] creationStack;
 
-        QueueState(BlockingQueue<?> queue, String name, int capacity) {
-            this.queue = queue;
+        QueueState(String name, int capacity) {
             this.name = name;
             this.capacity = capacity;
             this.creationStack = Thread.currentThread().getStackTrace();
@@ -79,7 +77,7 @@ public class UnboundedQueueDetector {
         }
 
         boolean isUnbounded = capacity < 0 || capacity == Integer.MAX_VALUE;
-        QueueState state = new QueueState(queue, name, capacity);
+        QueueState state = new QueueState(name, capacity);
         trackedQueues.put(System.identityHashCode(queue), state);
 
         if (isUnbounded) {

@@ -96,7 +96,7 @@ public class SharedMessageDigestDetector {
         SiteCapture.capture().ifPresent(s.accessSites::add);
     }
 
-    /** @return report of JCA instances accessed from multiple threads */
+    /** {@return report of JCA instances accessed from multiple threads} */
     public SharedMessageDigestReport analyze() {
         SharedMessageDigestReport r = new SharedMessageDigestReport();
         for (DigestState s : digests.values()) {

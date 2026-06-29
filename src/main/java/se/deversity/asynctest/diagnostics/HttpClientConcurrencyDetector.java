@@ -59,14 +59,11 @@ public class HttpClientConcurrencyDetector {
 
     private static class RequestState {
         final String name;
-        final long startTime;
         volatile boolean completed;
         volatile boolean responseRecorded;
-        volatile String status = "sent";
 
         RequestState(String name) {
             this.name = name;
-            this.startTime = System.currentTimeMillis();
         }
     }
 

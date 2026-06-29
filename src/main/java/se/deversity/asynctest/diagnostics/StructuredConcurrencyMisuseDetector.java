@@ -67,21 +67,13 @@ public class StructuredConcurrencyMisuseDetector {
     private static class ScopeRecord {
         final String id;
         final String scopeType;
-        final long openedAtNanos;
-        final long openedByThread;
         volatile boolean joined = false;
-        volatile boolean closed = false;
         final AtomicInteger subtaskCount = new AtomicInteger(0);
         final AtomicInteger resultAccessBeforeJoin = new AtomicInteger(0);
-        volatile int nestingDepth = 0;
-        final StackTraceElement[] openedStack;
 
-        ScopeRecord(String id, String scopeType, StackTraceElement[] stack) {
+        ScopeRecord(String id, String scopeType) {
             this.id = id;
             this.scopeType = scopeType;
-            this.openedAtNanos = System.nanoTime();
-            this.openedByThread = Thread.currentThread().threadId();
-            this.openedStack = stack;
         }
     }
 
@@ -103,14 +95,12 @@ public class StructuredConcurrencyMisuseDetector {
     public String recordScopeOpened(String scopeType) {
         String id = scopeType + "#" + SCOPE_ID_GEN.incrementAndGet()
                     + "@" + Thread.currentThread().threadId();
-        StackTraceElement[] stack = captureStack();
-        ScopeRecord rec = new ScopeRecord(id, scopeType != null ? scopeType : "StructuredTaskScope", stack);
+        ScopeRecord rec = new ScopeRecord(id, scopeType != null ? scopeType : "StructuredTaskScope");
 
         // Track nesting depth for this thread
         long tid = Thread.currentThread().threadId();
         AtomicInteger depth = threadNesting.computeIfAbsent(tid, k -> new AtomicInteger(0));
         int d = depth.incrementAndGet();
-        rec.nestingDepth = d;
         maxNestingDepth.updateAndGet(max -> Math.max(max, d));
 
         openScopes.put(id, rec);
@@ -166,8 +156,6 @@ public class StructuredConcurrencyMisuseDetector {
     public void recordScopeClosed(String scopeId) {
         ScopeRecord rec = openScopes.remove(scopeId);
         if (rec != null) {
-            rec.closed = true;
-
             // Decrement nesting depth for this thread
             long tid = Thread.currentThread().threadId();
             AtomicInteger depth = threadNesting.get(tid);
@@ -206,15 +194,6 @@ public class StructuredConcurrencyMisuseDetector {
         );
     }
 
-    private static StackTraceElement[] captureStack() {
-        StackTraceElement[] full = Thread.currentThread().getStackTrace();
-        // Skip getStackTrace + captureStack + recordScopeOpened
-        int skip = Math.min(3, full.length);
-        StackTraceElement[] trimmed = new StackTraceElement[Math.min(5, full.length - skip)];
-        System.arraycopy(full, skip, trimmed, 0, trimmed.length);
-        return trimmed;
-    }
-
     /**
      * Report of structured concurrency misuse analysis.
      */
@@ -238,7 +217,7 @@ public class StructuredConcurrencyMisuseDetector {
             this.maxNestingDepth = maxNestingDepth;
         }
 
-        /** @return true if any structured concurrency issues were detected */
+        /** {@return true if any structured concurrency issues were detected} */
         public boolean hasIssues() {
             return !unclosedScopes.isEmpty()
                 || !closedWithoutJoin.isEmpty()

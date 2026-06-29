@@ -44,17 +44,14 @@ public class SimpleDateFormatDetector {
 
     private static class FormatterState {
         final String name;
-        final SimpleDateFormat formatter;
         final AtomicInteger formatCount = new AtomicInteger(0);
         final AtomicInteger parseCount = new AtomicInteger(0);
         final AtomicInteger errorCount = new AtomicInteger(0);
         final Set<Long> accessingThreads = ConcurrentHashMap.newKeySet();
         final Map<String, AtomicInteger> methodCounts = new ConcurrentHashMap<>();
         volatile Long firstAccessTime = null;
-        volatile Long lastAccessTime = null;
 
         FormatterState(SimpleDateFormat formatter, String name) {
-            this.formatter = formatter;
             this.name = name != null ? name : "formatter@" + System.identityHashCode(formatter);
         }
     }
@@ -135,7 +132,6 @@ public class SimpleDateFormatDetector {
         if (state.firstAccessTime == null) {
             state.firstAccessTime = now;
         }
-        state.lastAccessTime = now;
 
         state.methodCounts.computeIfAbsent(methodName, k -> new AtomicInteger(0))
             .incrementAndGet();

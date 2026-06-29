@@ -99,7 +99,7 @@ public class WeakReferenceRaceDetector {
         s.nullDerefs.add(thread.getName());
     }
 
-    /** @return report of weak-reference race and null-dereference issues */
+    /** {@return report of weak-reference race and null-dereference issues} */
     public WeakReferenceRaceReport analyze() {
         WeakReferenceRaceReport r = new WeakReferenceRaceReport();
         for (RefState s : refs.values()) {

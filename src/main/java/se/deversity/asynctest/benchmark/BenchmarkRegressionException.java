@@ -22,6 +22,17 @@ public class BenchmarkRegressionException extends RuntimeException {
     }
 
     @Override
+    public String getMessage() {
+        // Explicit override (returns the stored message unchanged) so the toString() below
+        // can keep its simple-class-name prefix without tripping Error Prone's
+        // OverrideThrowableToString, which only flags a toString() override when getMessage()
+        // is not also overridden.
+        return super.getMessage();
+    }
+
+    // Overrides toString() to use the simple class name prefix (not the FQN that
+    // Throwable.toString() would emit); the human-readable detail is the super message.
+    @Override
     public String toString() {
         return "BenchmarkRegressionException: " + getMessage();
     }

@@ -57,7 +57,7 @@ public class SharedMatcherDetector {
         s.accessingThreadNames.add(thread.getName());
     }
 
-    /** @return report of Matchers accessed from multiple threads */
+    /** {@return report of Matchers accessed from multiple threads} */
     public SharedMatcherReport analyze() {
         SharedMatcherReport r = new SharedMatcherReport();
         for (MatcherState s : matchers.values()) {

@@ -67,23 +67,22 @@ public class SynchronizedOnLiteralDetector {
     }
 
     @SuppressFBWarnings("ES_COMPARING_STRINGS_WITH_EQ")
-    @SuppressWarnings({"PMD.CompareObjectsWithEquals", "PMD.UseEqualsToCompareStrings"}) // intentional: s == s.intern() detects literal/interned strings
+    @SuppressWarnings({"PMD.CompareObjectsWithEquals", "PMD.UseEqualsToCompareStrings", "ReferenceEquality"}) // intentional: s == s.intern() detects literal/interned strings via identity
     private static String describeIfLiteral(Object obj) {
-        if (obj instanceof String) {
-            String s = (String) obj;
+        if (obj instanceof String s) {
             // Intentional reference comparison: s == s.intern() is true only for interned (literal) strings
             if (s == s.intern()) return "String literal \"" + s + "\"";
-        } else if (obj instanceof Integer) {
-            int v = (Integer) obj;
+        } else if (obj instanceof Integer i) {
+            int v = i;
             if (v >= -128 && v <= 127) return "Integer.valueOf(" + v + ") [JVM cached]";
-        } else if (obj instanceof Long) {
-            long v = (Long) obj;
+        } else if (obj instanceof Long l) {
+            long v = l;
             if (v >= -128L && v <= 127L) return "Long.valueOf(" + v + ") [JVM cached]";
         }
         return null;
     }
 
-    /** @return report of synchronized-on-literal usages */
+    /** {@return report of synchronized-on-literal usages} */
     public SynchronizedOnLiteralReport analyze() {
         SynchronizedOnLiteralReport r = new SynchronizedOnLiteralReport();
         for (LiteralUsage u : literals.values()) {

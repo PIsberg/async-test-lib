@@ -47,7 +47,6 @@ public class MutableMapKeyDetector {
         final int originalHashCode;
         final String keyDescription;
         final AtomicInteger mutationCount = new AtomicInteger(0);
-        volatile int hashCodeAtLastMutation = -1;
 
         KeyRegistration(String mapName, int originalHashCode, String keyDescription) {
             this.mapName        = mapName;
@@ -92,7 +91,6 @@ public class MutableMapKeyDetector {
         reg.mutationCount.incrementAndGet();
         int currentHash = key.hashCode();
         if (currentHash != reg.originalHashCode) {
-            reg.hashCodeAtLastMutation = currentHash;
             mutationDetails.add(String.format(
                 "%s in map '%s': field '%s' changed %s→%s; hashCode changed %d→%d — key is now in wrong bucket",
                 reg.keyDescription, reg.mapName, fieldName, oldValue, newValue,

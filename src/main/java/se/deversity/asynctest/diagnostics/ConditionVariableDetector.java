@@ -52,7 +52,6 @@ public class ConditionVariableDetector {
 
     private static class ConditionState {
         final String name;
-        final Condition condition;
         final AtomicInteger awaitCount = new AtomicInteger(0);
         final AtomicInteger signalCount = new AtomicInteger(0);
         final AtomicInteger signalAllCount = new AtomicInteger(0);
@@ -61,10 +60,8 @@ public class ConditionVariableDetector {
         final Set<Long> waitingThreads = ConcurrentHashMap.newKeySet();
         final Set<Long> signalingThreads = ConcurrentHashMap.newKeySet();
         volatile Long lastSignalTime = null;
-        volatile Long lastAwaitTime = null;
 
         ConditionState(Condition condition, String name) {
-            this.condition = condition;
             this.name = name != null ? name : "condition@" + System.identityHashCode(condition);
         }
     }
@@ -100,7 +97,6 @@ public class ConditionVariableDetector {
             state.awaitCount.incrementAndGet();
             state.currentWaiters.incrementAndGet();
             state.waitingThreads.add(Thread.currentThread().threadId());
-            state.lastAwaitTime = System.currentTimeMillis();
         }
     }
 

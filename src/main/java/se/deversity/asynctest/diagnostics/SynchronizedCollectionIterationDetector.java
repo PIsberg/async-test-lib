@@ -76,7 +76,7 @@ public class SynchronizedCollectionIterationDetector {
             thread.getName(), info.name, info.name));
     }
 
-    /** @return report of unsafe iterations */
+    /** {@return report of unsafe iterations} */
     public SynchronizedCollectionIterationReport analyze() {
         SynchronizedCollectionIterationReport r = new SynchronizedCollectionIterationReport();
         for (WrapperInfo w : wrappers.values()) {

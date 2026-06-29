@@ -23,14 +23,10 @@ public class VisibilityMonitor {
     private static final class FieldSnapshot {
         final long invocationId;
         final Object value;
-        final Thread thread;
-        final StackTraceElement[] stackTrace;
-        
-        FieldSnapshot(long invocationId, Object value, Thread thread) {
+
+        FieldSnapshot(long invocationId, Object value) {
             this.invocationId = invocationId;
             this.value = value;
-            this.thread = thread;
-            this.stackTrace = thread.getStackTrace();
         }
     }
     
@@ -47,8 +43,7 @@ public class VisibilityMonitor {
         if (!enabled) return;
         
         long invId = invocationCounter.get();
-        Thread currentThread = Thread.currentThread();
-        FieldSnapshot snapshot = new FieldSnapshot(invId, value, currentThread);
+        FieldSnapshot snapshot = new FieldSnapshot(invId, value);
         
         fieldSnapshots.computeIfAbsent(fieldIdentifier, k -> 
             Collections.synchronizedList(new ArrayList<>())

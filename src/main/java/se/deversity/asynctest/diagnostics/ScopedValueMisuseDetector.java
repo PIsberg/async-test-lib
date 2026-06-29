@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
@@ -61,21 +60,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
 public class ScopedValueMisuseDetector {
 
     private static final int HIGH_BINDING_COUNT_THRESHOLD = 8;
-
-    private static class BindingRecord {
-        final String variableName;
-        final long threadId;
-        final long enteredAtNanos;
-        volatile boolean exited = false;
-
-        BindingRecord(String variableName, long threadId) {
-            this.variableName = variableName;
-            this.threadId = threadId;
-            this.enteredAtNanos = System.nanoTime();
-        }
-    }
-
-    private static final AtomicLong SEQ = new AtomicLong(0);
 
     // Per-thread active binding set: threadId → Set<variableName>
     private final Map<Long, Set<String>> activeBindings = new ConcurrentHashMap<>();
@@ -204,7 +188,7 @@ public class ScopedValueMisuseDetector {
             this.unboundGetCount = unboundGetCount;
         }
 
-        /** @return true if any ScopedValue misuse issues were detected */
+        /** {@return true if any ScopedValue misuse issues were detected} */
         public boolean hasIssues() {
             return !unboundGetIssues.isEmpty() || !rebindIssues.isEmpty();
         }

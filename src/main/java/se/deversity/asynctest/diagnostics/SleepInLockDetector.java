@@ -46,7 +46,6 @@ public class SleepInLockDetector {
         final String threadName;
         final long sleepDuration;
         final StackTraceElement[] stackTrace;
-        final long timestamp;
         final String lockType; // "synchronized" or "ReentrantLock"
 
         SleepInLockEvent(String lockName, String threadName, long sleepDuration,
@@ -55,7 +54,6 @@ public class SleepInLockDetector {
             this.threadName = threadName;
             this.sleepDuration = sleepDuration;
             this.stackTrace = stackTrace;
-            this.timestamp = System.currentTimeMillis();
             this.lockType = lockType;
         }
     }

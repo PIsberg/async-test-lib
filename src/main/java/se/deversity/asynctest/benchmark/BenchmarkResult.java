@@ -2,6 +2,7 @@ package se.deversity.asynctest.benchmark;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -155,7 +156,7 @@ public final class BenchmarkResult implements Serializable {
     public static class Builder {
         private String testClass;
         private String testMethod;
-        private LocalDateTime timestamp = LocalDateTime.now();
+        private LocalDateTime timestamp = LocalDateTime.now(ZoneId.systemDefault());
         private int threads;
         private int invocations;
         private long totalExecutionTimeNanos;

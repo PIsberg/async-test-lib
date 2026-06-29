@@ -90,6 +90,8 @@ public enum Preset {
      */
     NONE(EnumSet.noneOf(DetectorType.class));
 
+    // effectively immutable: captured once at class init, stored unmodifiable
+    @SuppressWarnings("ImmutableEnumChecker")
     private final Set<DetectorType> enabled;
 
     Preset(Set<DetectorType> enabled) {

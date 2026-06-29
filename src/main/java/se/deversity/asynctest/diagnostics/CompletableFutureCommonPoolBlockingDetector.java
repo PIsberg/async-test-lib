@@ -76,7 +76,7 @@ public class CompletableFutureCommonPoolBlockingDetector {
             thread.getName(), type, name));
     }
 
-    /** @return report of blocking calls in common-pool futures */
+    /** {@return report of blocking calls in common-pool futures} */
     public CompletableFutureCommonPoolBlockingReport analyze() {
         CompletableFutureCommonPoolBlockingReport r = new CompletableFutureCommonPoolBlockingReport();
         r.violations.addAll(violations);

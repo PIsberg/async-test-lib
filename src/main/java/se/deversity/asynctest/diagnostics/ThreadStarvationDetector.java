@@ -56,39 +56,27 @@ public class ThreadStarvationDetector {
 
     private static class ExecutorState {
         final String name;
-        final ExecutorService executor;
-        final int poolSize;
         final AtomicInteger submittedTasks = new AtomicInteger(0);
         final AtomicInteger startedTasks = new AtomicInteger(0);
         final AtomicInteger completedTasks = new AtomicInteger(0);
         final AtomicLong totalWaitTime = new AtomicLong(0);
         final AtomicLong maxWaitTime = new AtomicLong(0);
-        final AtomicLong totalExecutionTime = new AtomicLong(0);
-        final AtomicLong maxExecutionTime = new AtomicLong(0);
         volatile int peakQueueDepth = 0;
         final AtomicInteger currentQueueDepth = new AtomicInteger(0);
 
-        ExecutorState(ExecutorService executor, String name, int poolSize) {
-            this.executor = executor;
+        ExecutorState(String name) {
             this.name = name;
-            this.poolSize = poolSize;
         }
     }
 
     private static class TaskEvent {
         final String executorName;
-        final long submitTime;
-        final long startTime;
-        final long endTime;
         final long waitTime;
         final long executionTime;
         final String threadName;
 
         TaskEvent(String executorName, long submitTime, long startTime, long endTime) {
             this.executorName = executorName;
-            this.submitTime = submitTime;
-            this.startTime = startTime;
-            this.endTime = endTime;
             this.waitTime = startTime - submitTime;
             this.executionTime = endTime - startTime;
             this.threadName = Thread.currentThread().getName();
@@ -111,7 +99,7 @@ public class ThreadStarvationDetector {
         if (!enabled || executor == null) return;
 
         trackedExecutors.put(System.identityHashCode(executor),
-            new ExecutorState(executor, name, poolSize));
+            new ExecutorState(name));
     }
 
     /**

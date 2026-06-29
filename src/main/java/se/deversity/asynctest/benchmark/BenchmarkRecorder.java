@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -127,7 +128,7 @@ public class BenchmarkRecorder {
         BenchmarkResult currentResult = BenchmarkResult.builder()
             .testClass(testClass)
             .testMethod(testMethod)
-            .timestamp(LocalDateTime.now())
+            .timestamp(LocalDateTime.now(ZoneId.systemDefault()))
             .threads(config.threads)
             .invocations(config.invocations)
             .totalExecutionTimeNanos(totalExecutionTimeNanos)

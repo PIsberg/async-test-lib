@@ -59,7 +59,7 @@ public class SharedTimeZoneDetector {
         s.mutatingThreadNames.add(thread.getName());
     }
 
-    /** @return report of TimeZone instances mutated from multiple threads */
+    /** {@return report of TimeZone instances mutated from multiple threads} */
     public SharedTimeZoneReport analyze() {
         SharedTimeZoneReport r = new SharedTimeZoneReport();
         for (TzState s : timezones.values()) {
