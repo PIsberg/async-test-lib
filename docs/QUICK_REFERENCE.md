@@ -85,15 +85,13 @@ Done! (5-10 minutes)
 Modified:
   pom.xml (added plugins, metadata, distribution config)
 
-Created:
+Key docs:
   .github/workflows/publish.yml (release automation)
   USAGE.md (how to use)
   RELEASE.md (how to release)
-  DISTRIBUTION.md (architecture)
-  ARCHITECTURE.md (technical details)
-  DISTRIBUTION_SETUP.md (setup summary)
-  PRE_RELEASE_CHECKLIST.md (checklist)
-  DISTRIBUTION_COMPLETE.md (completion summary)
+  DISTRIBUTION.md (distribution/technical reference)
+  ARCHITECTURE.md (architecture)
+  INDEX.md (full documentation map)
 ```
 
 ### Before First Release: 3 Tasks
@@ -175,15 +173,12 @@ git tag -a myversion -m "..."  ❌ Does NOT trigger
 
 ### Documentation Files
 ```
-USAGE.md ..................... 8,800 words (for end users)
-RELEASE.md ................... 6,200 words (for maintainers)
-DISTRIBUTION.md ............. 9,400 words (technical)
-ARCHITECTURE.md ............ 12,700 words (system design)
-DISTRIBUTION_SETUP.md ...... 7,300 words (configuration)
-PRE_RELEASE_CHECKLIST.md ... 9,875 words (first release)
-DISTRIBUTION_COMPLETE.md .... 8,439 words (summary)
-
-Total: 62,714 words of documentation
+USAGE.md ............ for end users
+RELEASE.md .......... release process (canonical)
+DISTRIBUTION.md ..... distribution/technical reference
+ARCHITECTURE.md ..... system design
+DETECTOR_CATALOG.md . all 114 detectors with examples
+INDEX.md ............ full documentation map
 ```
 
 ### Distribution Channels (Current & Future)
@@ -308,10 +303,9 @@ Maven Central (in future):
 Main config:        pom.xml
 Release workflow:   .github/workflows/publish.yml
 Test workflow:      .github/workflows/tests.yml
-Distribution docs:  DISTRIBUTION*.md files
+Distribution docs:  DISTRIBUTION.md
 Release guide:      RELEASE.md
 User guide:         USAGE.md
-Quick start:        PRE_RELEASE_CHECKLIST.md
 ```
 
 ### Support Resources
@@ -320,16 +314,13 @@ Question: How do I install?
   → Read: USAGE.md
 
 Question: How do I release?
-  → Read: RELEASE.md or PRE_RELEASE_CHECKLIST.md
+  → Read: RELEASE.md
 
 Question: What's the architecture?
   → Read: ARCHITECTURE.md or DISTRIBUTION.md
 
-Question: What's been configured?
-  → Read: DISTRIBUTION_SETUP.md
-
-Question: Is it ready?
-  → Read: DISTRIBUTION_COMPLETE.md
+Question: What's left before GA?
+  → Read: PRODUCTION_READINESS_EVAL.md
 ```
 
 ### Success Metrics
@@ -343,22 +334,14 @@ Question: Is it ready?
 ✅ Users can install and use
 ```
 
-### Next Actions
+### Releasing a version
 ```
-1. Replace PIsberg in pom.xml (5 min)
-2. Test build locally: mvn clean package (5 min)
-3. Commit and tag: git tag -a v1.6.0 (1 min)
-4. Push: git push origin v1.6.0 (1 min)
-5. Wait for automation (5-10 min)
-6. Verify release on GitHub (2 min)
-
-Total: ~20-25 minutes to first release
+1. Bump the version in pom.xml and gradle.properties
+2. Build and test locally: mvn clean verify
+3. Commit, then create an annotated tag: git tag -a vX.Y.Z
+4. Push: git push && git push --tags
+5. publish.yml runs `mvn deploy -P release` → Maven Central + GitHub Release
 ```
 
----
-
-## Distribution Status: ✅ COMPLETE
-
-Everything is configured and documented. You're ready to distribute!
-
-See **PRE_RELEASE_CHECKLIST.md** for exact steps to your first release.
+See **RELEASE.md** for the full release process and **DISTRIBUTION.md** for
+artifact/channel details.

@@ -63,18 +63,18 @@ license gate and licensing model. Below is what's left, by priority.
 
 ## P2 — Polish before GA
 
-7. **Error Prone warnings (100).** Mostly `MissingSummary`, `UnusedVariable`,
-   `PatternMatchingInstanceof`. None block, but a library publishing Javadoc artifacts
-   should clear `MissingSummary` and dead fields/params (`BoxedPrimitiveLockDetector.lockObject`,
-   `UncaughtExceptionHandlerDetector` unused `tid`/param).
+7. **Error Prone warnings (100).** ✅ **RESOLVED.** All Error Prone warnings cleared
+   (124 → 0, the extra 24 had been hidden by javac's 100-warning display cap); build is clean.
 
-8. **Stale/duplicative docs.** `docs/` has `DISTRIBUTION.md`, `DISTRIBUTION_COMPLETE.md`,
-   `DISTRIBUTION_SETUP.md`, `SUMMARY.md`, `PRE_RELEASE_CHECKLIST.md` — overlapping and
-   partly stale. Consolidate to one release/distribution guide.
+8. **Stale/duplicative docs.** ✅ **RESOLVED.** Consolidated to two canonical docs —
+   `RELEASE.md` (release process) and `DISTRIBUTION.md` (distribution/technical reference).
+   Removed the redundant/stale `DISTRIBUTION_COMPLETE.md`, `DISTRIBUTION_SETUP.md`,
+   `SUMMARY.md`, and `PRE_RELEASE_CHECKLIST.md`; rewrote `INDEX.md` as a clean documentation
+   map and fixed dangling links in `QUICK_REFERENCE.md`.
 
-9. **Repo hygiene.** Working tree carries build/log artifacts (`vibetags.log` ~213 KB,
-   `.vibetags-mod-_root_` ~69 KB, `build/`, `target/`, `.gradle/`, `.pytest_cache/`).
-   Confirm `.gitignore` covers these so they aren't shipped or committed.
+9. **Repo hygiene.** ✅ **RESOLVED.** Confirmed `.gitignore` covers all build/log artifacts
+   and that none are tracked (nothing stray would be committed); added explicit
+   `.pytest_cache/` and `.antigravitycli/` entries.
 
 ## Not blockers (already strong)
 
