@@ -14,3 +14,7 @@ build/
 vibetags.log
 .vibetags-cache
 .vibetags-mod-*
+
+# AI / tooling caches
+.antigravitycli/
+.pytest_cache/
