@@ -23,11 +23,27 @@ public class AsyncAssert {
 
     /**
      * Polls the condition until it returns true. Throws AssertionError if the timeout is reached.
+     *
+     * @param condition the predicate to poll; exceptions thrown during polling are treated as
+     *                   "not yet true" and ignored
+     * @param timeout   maximum time to wait before failing
+     * @throws AssertionError if {@code timeout} elapses before {@code condition} returns {@code true}
      */
     public static void awaitUntil(Callable<Boolean> condition, Duration timeout) {
         awaitUntil(condition, timeout, Duration.ofMillis(10));
     }
 
+    /**
+     * Polls the condition until it returns true, sleeping {@code pollInterval} between attempts.
+     * Throws AssertionError if the timeout is reached.
+     *
+     * @param condition    the predicate to poll; exceptions thrown during polling are treated as
+     *                     "not yet true" and ignored
+     * @param timeout      maximum time to wait before failing
+     * @param pollInterval time to sleep between poll attempts
+     * @throws AssertionError if {@code timeout} elapses before {@code condition} returns {@code true},
+     *                        or if the polling thread is interrupted
+     */
     public static void awaitUntil(Callable<Boolean> condition, Duration timeout, Duration pollInterval) {
         long deadline = System.nanoTime() + timeout.toNanos();
 
@@ -51,19 +67,36 @@ public class AsyncAssert {
     }
 
     /**
-     * Captures the result or exception of a CompletableFuture non-blockingly, 
+     * Captures the result or exception of a CompletableFuture non-blockingly,
      * making it available for later assertions without blocking the current thread.
+     *
+     * @param future the future to observe (non-null)
+     * @param <T>    the future's result type
+     * @return a {@link FutureCapture} that records the future's outcome as it completes
      */
     public static <T> FutureCapture<T> capture(CompletableFuture<T> future) {
         return new FutureCapture<>(future);
     }
-    
+
+    /**
+     * Observes a {@link CompletableFuture} non-blockingly, recording its result or
+     * exception as soon as it completes so later assertions can inspect it without
+     * blocking. Obtain an instance via {@link #capture(CompletableFuture)}.
+     *
+     * @param <T> the future's result type
+     */
     public static class FutureCapture<T> {
         private final CompletableFuture<T> future;
         private final AtomicReference<T> result = new AtomicReference<>();
         private final AtomicReference<Throwable> error = new AtomicReference<>();
         private volatile boolean complete = false;
 
+        /**
+         * Registers a completion callback on {@code future} so its result or exception
+         * is captured as soon as it completes.
+         *
+         * @param future the future to observe (non-null)
+         */
         @SuppressFBWarnings("EI_EXPOSE_REP2")
         @SuppressWarnings("FutureReturnValueIgnored")
         public FutureCapture(CompletableFuture<T> future) {
@@ -75,6 +108,13 @@ public class AsyncAssert {
             });
         }
 
+        /**
+         * Blocks until the observed future completes, or throws if {@code timeout} elapses first.
+         *
+         * @param timeout maximum time to wait
+         * @throws AssertionError if the future does not complete within {@code timeout},
+         *                        or if the waiting thread is interrupted
+         */
         public void awaitDone(Duration timeout) {
             try {
                 future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
@@ -91,8 +131,21 @@ public class AsyncAssert {
             awaitUntil(() -> complete, timeout, Duration.ofMillis(1));
         }
 
+        /**
+         * @return the future's resolved value, or {@code null} if it has not completed
+         *         successfully yet (or completed exceptionally)
+         */
         public T getResult() { return result.get(); }
+
+        /**
+         * @return the exception the future completed with, or {@code null} if it has not
+         *         completed exceptionally
+         */
         public Throwable getError() { return error.get(); }
+
+        /**
+         * @return {@code true} once the observed future has completed, successfully or not
+         */
         public boolean isComplete() { return complete; }
     }
 
