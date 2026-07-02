@@ -109,6 +109,13 @@ import se.deversity.asynctest.diagnostics.SpuriousWakeupDetector;
 import se.deversity.asynctest.diagnostics.LockUpgradeDeadlockDetector;
 import se.deversity.asynctest.diagnostics.TryLockMisuseDetector;
 import se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector;
+import se.deversity.asynctest.diagnostics.SharedByteBufferDetector;
+import se.deversity.asynctest.diagnostics.SharedCharsetCoderDetector;
+import se.deversity.asynctest.diagnostics.SharedChecksumDetector;
+import se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector;
+import se.deversity.asynctest.diagnostics.SharedIteratorDetector;
+import se.deversity.asynctest.diagnostics.HighContentionAtomicDetector;
+import se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICallersOnly;
 import se.deversity.vibetags.annotations.AICore;
@@ -282,6 +289,15 @@ public final class AsyncTestContext {
     final StructuredTaskScopeMisuseDetector     structuredTaskScopeMisuseDetector;
     final GathererConcurrencyMisuseDetector     gathererConcurrencyMisuseDetector;
 
+    // ---- Phase 17: Shared stateful JDK objects, I/O position races & contention advisories ----
+    final SharedByteBufferDetector              sharedByteBufferDetector;
+    final SharedCharsetCoderDetector            sharedCharsetCoderDetector;
+    final SharedChecksumDetector                sharedChecksumDetector;
+    final FileChannelPositionRaceDetector       fileChannelPositionRaceDetector;
+    final SharedIteratorDetector                sharedIteratorDetector;
+    final HighContentionAtomicDetector          highContentionAtomicDetector;
+    final SharedJsonMapperReconfigDetector      sharedJsonMapperReconfigDetector;
+
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
         // Mirror registry references so package-private field access still works
@@ -397,6 +413,14 @@ public final class AsyncTestContext {
         stableValueMisuseDetector              = registry.stableValueMisuseDetector;
         structuredTaskScopeMisuseDetector      = registry.structuredTaskScopeMisuseDetector;
         gathererConcurrencyMisuseDetector      = registry.gathererConcurrencyMisuseDetector;
+        // Phase 17
+        sharedByteBufferDetector               = registry.sharedByteBufferDetector;
+        sharedCharsetCoderDetector             = registry.sharedCharsetCoderDetector;
+        sharedChecksumDetector                 = registry.sharedChecksumDetector;
+        fileChannelPositionRaceDetector        = registry.fileChannelPositionRaceDetector;
+        sharedIteratorDetector                 = registry.sharedIteratorDetector;
+        highContentionAtomicDetector           = registry.highContentionAtomicDetector;
+        sharedJsonMapperReconfigDetector       = registry.sharedJsonMapperReconfigDetector;
     }
 
     // ---- Lifecycle (called by ConcurrencyRunner) ----
@@ -1383,6 +1407,69 @@ public final class AsyncTestContext {
      */
     public static GathererConcurrencyMisuseDetector gathererConcurrencyMisuseDetector() {
         return require("detectGathererConcurrencyMisuse", c -> c.gathererConcurrencyMisuseDetector);
+    }
+
+    /**
+     * Returns the {@link SharedByteBufferDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedByteBuffer = false}
+     * @since 1.7.0
+     */
+    public static SharedByteBufferDetector sharedByteBufferDetector() {
+        return require("detectSharedByteBuffer", c -> c.sharedByteBufferDetector);
+    }
+
+    /**
+     * Returns the {@link SharedCharsetCoderDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedCharsetCoder = false}
+     * @since 1.7.0
+     */
+    public static SharedCharsetCoderDetector sharedCharsetCoderDetector() {
+        return require("detectSharedCharsetCoder", c -> c.sharedCharsetCoderDetector);
+    }
+
+    /**
+     * Returns the {@link SharedChecksumDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedChecksum = false}
+     * @since 1.7.0
+     */
+    public static SharedChecksumDetector sharedChecksumDetector() {
+        return require("detectSharedChecksum", c -> c.sharedChecksumDetector);
+    }
+
+    /**
+     * Returns the {@link FileChannelPositionRaceDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectFileChannelPositionRace = false}
+     * @since 1.7.0
+     */
+    public static FileChannelPositionRaceDetector fileChannelPositionRaceDetector() {
+        return require("detectFileChannelPositionRace", c -> c.fileChannelPositionRaceDetector);
+    }
+
+    /**
+     * Returns the {@link SharedIteratorDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedIterator = false}
+     * @since 1.7.0
+     */
+    public static SharedIteratorDetector sharedIteratorDetector() {
+        return require("detectSharedIterator", c -> c.sharedIteratorDetector);
+    }
+
+    /**
+     * Returns the {@link HighContentionAtomicDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectHighContentionAtomic = false}
+     * @since 1.7.0
+     */
+    public static HighContentionAtomicDetector highContentionAtomicDetector() {
+        return require("detectHighContentionAtomic", c -> c.highContentionAtomicDetector);
+    }
+
+    /**
+     * Returns the {@link SharedJsonMapperReconfigDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedJsonMapperReconfig = false}
+     * @since 1.7.0
+     */
+    public static SharedJsonMapperReconfigDetector sharedJsonMapperReconfigDetector() {
+        return require("detectSharedJsonMapperReconfig", c -> c.sharedJsonMapperReconfigDetector);
     }
 
     // ---- Helper ----

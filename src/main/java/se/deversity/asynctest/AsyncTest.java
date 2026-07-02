@@ -1350,6 +1350,80 @@ public @interface AsyncTest {
 
     boolean detectGathererConcurrencyMisuse() default true;
 
+    /**
+     * Enable shared {@link java.nio.Buffer}/{@link java.nio.ByteBuffer} detection. Flags
+     * buffer instances whose mutable position/limit/mark state is concurrently mutated by
+     * two or more threads. See
+     * {@link se.deversity.asynctest.diagnostics.SharedByteBufferDetector}.
+     * @since 1.7.0
+     */
+    @Deprecated
+
+    boolean detectSharedByteBuffer() default true;
+
+    /**
+     * Enable shared {@link java.nio.charset.CharsetEncoder}/{@link java.nio.charset.CharsetDecoder}
+     * detection. Both hold mutable coding state; sharing an instance across threads corrupts
+     * that state and garbles output. See
+     * {@link se.deversity.asynctest.diagnostics.SharedCharsetCoderDetector}.
+     * @since 1.7.0
+     */
+    @Deprecated
+
+    boolean detectSharedCharsetCoder() default true;
+
+    /**
+     * Enable shared {@link java.util.zip.Checksum} detection ({@code CRC32}, {@code CRC32C},
+     * {@code Adler32}). These accumulate state internally and are not thread-safe; concurrent
+     * updates without synchronization yield corrupt checksums. See
+     * {@link se.deversity.asynctest.diagnostics.SharedChecksumDetector}.
+     * @since 1.7.0
+     */
+    @Deprecated
+
+    boolean detectSharedChecksum() default true;
+
+    /**
+     * Enable {@link java.nio.channels.FileChannel}/{@link java.nio.channels.SeekableByteChannel}
+     * position-race detection. Flags channels whose implicit position is accessed from more
+     * than one thread. See
+     * {@link se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector}.
+     * @since 1.7.0
+     */
+    @Deprecated
+
+    boolean detectFileChannelPositionRace() default true;
+
+    /**
+     * Enable shared {@link java.util.Iterator}/{@link java.util.ListIterator}/{@link java.util.Spliterator}
+     * detection. Flags a single iterator instance being driven from more than one thread. See
+     * {@link se.deversity.asynctest.diagnostics.SharedIteratorDetector}.
+     * @since 1.7.0
+     */
+    @Deprecated
+
+    boolean detectSharedIterator() default true;
+
+    /**
+     * Enable high-contention atomic detection (advisory). Flags shared atomics under
+     * high-contention CAS churn that would benefit from {@code LongAdder}/{@code LongAccumulator}.
+     * See {@link se.deversity.asynctest.diagnostics.HighContentionAtomicDetector}.
+     * @since 1.7.0
+     */
+    @Deprecated
+
+    boolean detectHighContentionAtomic() default true;
+
+    /**
+     * Enable shared JSON/serializer mapper reconfiguration detection. Flags mapper instances
+     * (e.g. {@code ObjectMapper}, {@code Gson}) reconfigured after concurrent use has begun.
+     * See {@link se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector}.
+     * @since 1.7.0
+     */
+    @Deprecated
+
+    boolean detectSharedJsonMapperReconfig() default true;
+
     // ============= License Gating (Integration) =============
 
     /** Keygen Account ID. Defaults to System property 'keygen.account.id' if empty. */

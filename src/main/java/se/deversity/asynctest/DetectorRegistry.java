@@ -114,6 +114,13 @@ import se.deversity.asynctest.diagnostics.SpuriousWakeupDetector;
 import se.deversity.asynctest.diagnostics.LockUpgradeDeadlockDetector;
 import se.deversity.asynctest.diagnostics.TryLockMisuseDetector;
 import se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector;
+import se.deversity.asynctest.diagnostics.SharedByteBufferDetector;
+import se.deversity.asynctest.diagnostics.SharedCharsetCoderDetector;
+import se.deversity.asynctest.diagnostics.SharedChecksumDetector;
+import se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector;
+import se.deversity.asynctest.diagnostics.SharedIteratorDetector;
+import se.deversity.asynctest.diagnostics.HighContentionAtomicDetector;
+import se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector;
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
@@ -293,6 +300,15 @@ final class DetectorRegistry {
     final StructuredTaskScopeMisuseDetector     structuredTaskScopeMisuseDetector;
     final GathererConcurrencyMisuseDetector     gathererConcurrencyMisuseDetector;
 
+    // ---- Phase 17: Shared stateful JDK objects, I/O position races & contention advisories ----
+    final SharedByteBufferDetector              sharedByteBufferDetector;
+    final SharedCharsetCoderDetector            sharedCharsetCoderDetector;
+    final SharedChecksumDetector                sharedChecksumDetector;
+    final FileChannelPositionRaceDetector       fileChannelPositionRaceDetector;
+    final SharedIteratorDetector                sharedIteratorDetector;
+    final HighContentionAtomicDetector          highContentionAtomicDetector;
+    final SharedJsonMapperReconfigDetector      sharedJsonMapperReconfigDetector;
+
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
      * Detectors whose flag is {@code false} are set to {@code null} and incur
@@ -460,6 +476,14 @@ final class DetectorRegistry {
         stableValueMisuseDetector         = cfg.detectStableValueMisuse            ? new StableValueMisuseDetector()         : null;
         structuredTaskScopeMisuseDetector = cfg.detectStructuredTaskScopeMisuse    ? new StructuredTaskScopeMisuseDetector() : null;
         gathererConcurrencyMisuseDetector = cfg.detectGathererConcurrencyMisuse    ? new GathererConcurrencyMisuseDetector() : null;
+        // ---- Phase 17: Shared stateful JDK objects, I/O position races & contention advisories ----
+        sharedByteBufferDetector         = cfg.detectSharedByteBuffer         ? new SharedByteBufferDetector()         : null;
+        sharedCharsetCoderDetector       = cfg.detectSharedCharsetCoder       ? new SharedCharsetCoderDetector()       : null;
+        sharedChecksumDetector           = cfg.detectSharedChecksum           ? new SharedChecksumDetector()           : null;
+        fileChannelPositionRaceDetector  = cfg.detectFileChannelPositionRace  ? new FileChannelPositionRaceDetector()  : null;
+        sharedIteratorDetector           = cfg.detectSharedIterator           ? new SharedIteratorDetector()           : null;
+        highContentionAtomicDetector     = cfg.detectHighContentionAtomic     ? new HighContentionAtomicDetector()     : null;
+        sharedJsonMapperReconfigDetector = cfg.detectSharedJsonMapperReconfig ? new SharedJsonMapperReconfigDetector() : null;
     }
 
     /**
@@ -853,6 +877,29 @@ final class DetectorRegistry {
         ifIssue(gathererConcurrencyMisuseDetector,
                 GathererConcurrencyMisuseDetector::analyze,
                 GathererConcurrencyMisuseDetector.GathererConcurrencyMisuseReport::hasIssues, out);
+
+        // ---- Phase 17: Shared stateful JDK objects, I/O position races & contention advisories ----
+        ifIssue(sharedByteBufferDetector,
+                SharedByteBufferDetector::analyze,
+                SharedByteBufferDetector.Report::hasIssues, out);
+        ifIssue(sharedCharsetCoderDetector,
+                SharedCharsetCoderDetector::analyze,
+                SharedCharsetCoderDetector.Report::hasIssues, out);
+        ifIssue(sharedChecksumDetector,
+                SharedChecksumDetector::analyze,
+                SharedChecksumDetector.Report::hasIssues, out);
+        ifIssue(fileChannelPositionRaceDetector,
+                FileChannelPositionRaceDetector::analyze,
+                FileChannelPositionRaceDetector.Report::hasIssues, out);
+        ifIssue(sharedIteratorDetector,
+                SharedIteratorDetector::analyze,
+                SharedIteratorDetector.Report::hasIssues, out);
+        ifIssue(highContentionAtomicDetector,
+                HighContentionAtomicDetector::analyze,
+                HighContentionAtomicDetector.Report::hasIssues, out);
+        ifIssue(sharedJsonMapperReconfigDetector,
+                SharedJsonMapperReconfigDetector::analyze,
+                SharedJsonMapperReconfigDetector.Report::hasIssues, out);
 
         return out;
     }

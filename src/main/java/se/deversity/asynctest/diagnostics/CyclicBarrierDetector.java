@@ -26,6 +26,7 @@ public class CyclicBarrierDetector {
     private final Map<CyclicBarrier, BarrierInfo> barrierRegistry = new ConcurrentHashMap<>();
     private final Set<CyclicBarrier> timedOutBarriers = ConcurrentHashMap.newKeySet();
     private final Set<CyclicBarrier> brokenBarriers = ConcurrentHashMap.newKeySet();
+    private final Set<CyclicBarrier> reuseAfterBrokenBarriers = ConcurrentHashMap.newKeySet();
 
     /**
      * Register a CyclicBarrier for monitoring.
@@ -59,6 +60,25 @@ public class CyclicBarrierDetector {
     }
 
     /**
+     * Record a barrier that was reset, repairing it after it broke.
+     * Subsequent await() calls are no longer considered reuse-after-broken.
+     */
+    public void recordReset(CyclicBarrier barrier) {
+        brokenBarriers.remove(barrier);
+    }
+
+    /**
+     * Record a thread calling await() on the barrier. If the barrier is
+     * currently broken and has not been reset since, this is flagged as
+     * reuse of a broken barrier without an intervening reset().
+     */
+    public void recordAwait(CyclicBarrier barrier) {
+        if (brokenBarriers.contains(barrier)) {
+            reuseAfterBrokenBarriers.add(barrier);
+        }
+    }
+
+    /**
      * Record successful barrier completion.
      */
     public void recordBarrierComplete(CyclicBarrier barrier) {
@@ -75,7 +95,8 @@ public class CyclicBarrierDetector {
         return new CyclicBarrierReport(
             barrierRegistry,
             timedOutBarriers,
-            brokenBarriers
+            brokenBarriers,
+            reuseAfterBrokenBarriers
         );
     }
 
@@ -86,19 +107,26 @@ public class CyclicBarrierDetector {
         private final Map<CyclicBarrier, BarrierInfo> barrierRegistry;
         private final Set<CyclicBarrier> timedOutBarriers;
         private final Set<CyclicBarrier> brokenBarriers;
+        private final Set<CyclicBarrier> reuseAfterBrokenBarriers;
 
         public CyclicBarrierReport(
             Map<CyclicBarrier, BarrierInfo> barrierRegistry,
             Set<CyclicBarrier> timedOutBarriers,
-            Set<CyclicBarrier> brokenBarriers
+            Set<CyclicBarrier> brokenBarriers,
+            Set<CyclicBarrier> reuseAfterBrokenBarriers
         ) {
             this.barrierRegistry = Collections.unmodifiableMap(new HashMap<>(barrierRegistry));
             this.timedOutBarriers = Collections.unmodifiableSet(new HashSet<>(timedOutBarriers));
             this.brokenBarriers = Collections.unmodifiableSet(new HashSet<>(brokenBarriers));
+            this.reuseAfterBrokenBarriers = Collections.unmodifiableSet(new HashSet<>(reuseAfterBrokenBarriers));
+        }
+
+        public Set<CyclicBarrier> getReuseAfterBrokenBarriers() {
+            return reuseAfterBrokenBarriers;
         }
 
         public boolean hasIssues() {
-            return !timedOutBarriers.isEmpty() || !brokenBarriers.isEmpty();
+            return !timedOutBarriers.isEmpty() || !brokenBarriers.isEmpty() || !reuseAfterBrokenBarriers.isEmpty();
         }
 
         @Override
@@ -129,6 +157,21 @@ public class CyclicBarrierDetector {
                 sb.append("  Why: A thread timing out or being interrupted breaks the barrier for all other waiting parties,\n");
                 sb.append("       leaving them stuck unless the barrier is explicitly reset.\n");
                 sb.append("  Fix: Catch BrokenBarrierException, call barrier.reset() before reuse, and restore interrupt status on InterruptedException\n");
+            }
+
+            if (!reuseAfterBrokenBarriers.isEmpty()) {
+                sb.append("  Reuse After Broken Barriers:\n");
+                for (CyclicBarrier barrier : reuseAfterBrokenBarriers) {
+                    BarrierInfo info = barrierRegistry.get(barrier);
+                    String label = info != null ? info.name : "unknown";
+                    sb.append("    - ").append(label)
+                      .append(" (await() called on a barrier that was already broken)\n");
+                }
+                sb.append("  Why: await() on a broken barrier throws BrokenBarrierException immediately for every caller;\n");
+                sb.append("       the barrier stays broken until reset() is called, so repeated reuse without a reset\n");
+                sb.append("       keeps failing every participant.\n");
+                sb.append("  Fix: Call barrier.reset() after handling BrokenBarrierException, or replace the barrier instance;\n");
+                sb.append("       consider Phaser for more flexible recovery when barriers break frequently.\n");
             }
 
             if (!hasIssues()) {

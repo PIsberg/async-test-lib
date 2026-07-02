@@ -162,5 +162,14 @@ public enum DetectorType {
     // Phase 16: JDK 25/26 preview-era concurrency detectors
     STABLE_VALUE_MISUSE,
     STRUCTURED_TASK_SCOPE_MISUSE,
-    GATHERER_CONCURRENCY_MISUSE
+    GATHERER_CONCURRENCY_MISUSE,
+
+    // Phase 17: Shared stateful JDK objects, I/O position races & contention advisories
+    SHARED_BYTE_BUFFER,
+    SHARED_CHARSET_CODER,
+    SHARED_CHECKSUM,
+    FILE_CHANNEL_POSITION_RACE,
+    SHARED_ITERATOR,
+    HIGH_CONTENTION_ATOMIC,
+    SHARED_JSON_MAPPER_RECONFIG
 }

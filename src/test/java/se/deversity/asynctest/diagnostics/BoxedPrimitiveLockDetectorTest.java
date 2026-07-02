@@ -1,5 +1,9 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -93,5 +97,88 @@ public class BoxedPrimitiveLockDetectorTest {
         String s = d.analyze().toString();
         assertTrue(s.contains("BOXED PRIMITIVE LOCK"));
         assertTrue(s.contains("Fix"));
+    }
+
+    @Test
+    void testDetectsOptionalAsValueBased() {
+        var d = new BoxedPrimitiveLockDetector();
+        Optional<String> lock = Optional.of("x");
+        d.recordLockAcquire(lock, Thread.currentThread(), "E:1");
+        var report = d.analyze();
+        assertTrue(report.hasIssues());
+        assertTrue(report.violations.get(0).contains("value-based"));
+        assertTrue(report.violations.get(0).contains("Optional"));
+    }
+
+    @Test
+    void testDetectsInstantAsValueBased() {
+        var d = new BoxedPrimitiveLockDetector();
+        Instant lock = Instant.now();
+        d.recordLockAcquire(lock, Thread.currentThread(), "E:2");
+        var report = d.analyze();
+        assertTrue(report.hasIssues());
+        assertTrue(report.violations.get(0).contains("value-based"));
+        assertTrue(report.violations.get(0).contains("Instant"));
+    }
+
+    @Test
+    void testDetectsDurationAsValueBased() {
+        var d = new BoxedPrimitiveLockDetector();
+        Duration lock = Duration.ofSeconds(5);
+        d.recordLockAcquire(lock, Thread.currentThread(), "E:3");
+        var report = d.analyze();
+        assertTrue(report.hasIssues());
+        assertTrue(report.violations.get(0).contains("value-based"));
+        assertTrue(report.violations.get(0).contains("Duration"));
+    }
+
+    @Test
+    void testDetectsProcessHandleAsValueBased() {
+        var d = new BoxedPrimitiveLockDetector();
+        ProcessHandle lock = ProcessHandle.current();
+        d.recordLockAcquire(lock, Thread.currentThread(), "E:4");
+        var report = d.analyze();
+        assertTrue(report.hasIssues());
+        assertTrue(report.violations.get(0).contains("value-based"));
+        assertTrue(report.violations.get(0).contains("ProcessHandle"));
+    }
+
+    @Test
+    void testDetectsImmutableListAsValueBased() {
+        var d = new BoxedPrimitiveLockDetector();
+        List<Integer> lock = List.of(1, 2, 3); // java.util.ImmutableCollections$...
+        d.recordLockAcquire(lock, Thread.currentThread(), "E:5");
+        var report = d.analyze();
+        assertTrue(report.hasIssues());
+        assertTrue(report.violations.get(0).contains("value-based"));
+    }
+
+    @Test
+    void testNoIssueForMutableArrayList() {
+        var d = new BoxedPrimitiveLockDetector();
+        // A regular mutable ArrayList is not value-based and must remain unflagged.
+        d.recordLockAcquire(new java.util.ArrayList<Integer>(), Thread.currentThread(), "F:1");
+        assertFalse(d.analyze().hasIssues());
+    }
+
+    @Test
+    void testValueBasedReportIncludesValueBasedFixHint() {
+        var d = new BoxedPrimitiveLockDetector();
+        d.recordLockAcquire(Optional.empty(), Thread.currentThread(), "G:1");
+        String s = d.analyze().toString();
+        assertTrue(s.contains("value-based"));
+        assertTrue(s.contains("Fix (value-based classes)"));
+    }
+
+    @Test
+    void testMixedBoxedAndValueBasedViolations() {
+        var d = new BoxedPrimitiveLockDetector();
+        d.recordLockAcquire(Boolean.TRUE, Thread.currentThread(), "H:1");
+        d.recordLockAcquire(Instant.now(), Thread.currentThread(), "H:2");
+        var report = d.analyze();
+        assertEquals(2, report.violations.size());
+        String s = report.toString();
+        assertTrue(s.contains("Fix:"));
+        assertTrue(s.contains("Fix (value-based classes)"));
     }
 }

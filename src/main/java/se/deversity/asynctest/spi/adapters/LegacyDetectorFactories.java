@@ -115,6 +115,13 @@ import se.deversity.asynctest.diagnostics.SpuriousWakeupDetector;
 import se.deversity.asynctest.diagnostics.LockUpgradeDeadlockDetector;
 import se.deversity.asynctest.diagnostics.TryLockMisuseDetector;
 import se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector;
+import se.deversity.asynctest.diagnostics.SharedByteBufferDetector;
+import se.deversity.asynctest.diagnostics.SharedCharsetCoderDetector;
+import se.deversity.asynctest.diagnostics.SharedChecksumDetector;
+import se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector;
+import se.deversity.asynctest.diagnostics.SharedIteratorDetector;
+import se.deversity.asynctest.diagnostics.HighContentionAtomicDetector;
+import se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector;
 import se.deversity.asynctest.spi.Detector;
 import se.deversity.asynctest.spi.DetectorFactory;
 
@@ -1080,6 +1087,64 @@ public final class LegacyDetectorFactories {
         @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectGathererConcurrencyMisuse; }
         @Override public Detector create(AsyncTestConfig c) {
             return new LegacyDetectorAdapter<>(new GathererConcurrencyMisuseDetector(), DetectorType.GATHERER_CONCURRENCY_MISUSE, "GathererConcurrencyMisuse");
+        }
+    }
+
+    // ---- Phase 17: Shared stateful JDK objects, I/O position races & contention advisories ----
+
+    public static final class SharedByteBuffer implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.SHARED_BYTE_BUFFER; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectSharedByteBuffer; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new SharedByteBufferDetector(), DetectorType.SHARED_BYTE_BUFFER, "SharedByteBuffer");
+        }
+    }
+
+    public static final class SharedCharsetCoder implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.SHARED_CHARSET_CODER; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectSharedCharsetCoder; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new SharedCharsetCoderDetector(), DetectorType.SHARED_CHARSET_CODER, "SharedCharsetCoder");
+        }
+    }
+
+    public static final class SharedChecksum implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.SHARED_CHECKSUM; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectSharedChecksum; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new SharedChecksumDetector(), DetectorType.SHARED_CHECKSUM, "SharedChecksum");
+        }
+    }
+
+    public static final class FileChannelPositionRace implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.FILE_CHANNEL_POSITION_RACE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectFileChannelPositionRace; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new FileChannelPositionRaceDetector(), DetectorType.FILE_CHANNEL_POSITION_RACE, "FileChannelPositionRace");
+        }
+    }
+
+    public static final class SharedIterator implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.SHARED_ITERATOR; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectSharedIterator; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new SharedIteratorDetector(), DetectorType.SHARED_ITERATOR, "SharedIterator");
+        }
+    }
+
+    public static final class HighContentionAtomic implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.HIGH_CONTENTION_ATOMIC; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectHighContentionAtomic; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new HighContentionAtomicDetector(), DetectorType.HIGH_CONTENTION_ATOMIC, "HighContentionAtomic");
+        }
+    }
+
+    public static final class SharedJsonMapperReconfig implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.SHARED_JSON_MAPPER_RECONFIG; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectSharedJsonMapperReconfig; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new SharedJsonMapperReconfigDetector(), DetectorType.SHARED_JSON_MAPPER_RECONFIG, "SharedJsonMapperReconfig");
         }
     }
 }

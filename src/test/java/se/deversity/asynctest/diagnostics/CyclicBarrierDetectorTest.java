@@ -88,4 +88,78 @@ public class CyclicBarrierDetectorTest {
         assertTrue(reportStr.contains("CYCLICBARRIER ISSUES DETECTED"), "Report should have header");
         assertTrue(reportStr.contains("Timed Out"), "Report should mention timeout");
     }
+
+    @Test
+    void testAwaitOnBrokenBarrierIsFlagged() {
+        CyclicBarrierDetector detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = new CyclicBarrier(2);
+
+        detector.registerBarrier(barrier, "reuseAfterBrokenBarrier", 2);
+        detector.recordArrival(barrier);
+        detector.recordBroken(barrier);
+        detector.recordAwait(barrier);  // Reused without reset - should be flagged
+
+        CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
+
+        assertNotNull(report);
+        assertTrue(report.hasIssues(), "Should detect reuse of a broken barrier");
+        assertTrue(report.getReuseAfterBrokenBarriers().contains(barrier),
+            "Barrier should be tracked as reused after broken");
+    }
+
+    @Test
+    void testAwaitAfterResetIsNotFlagged() {
+        CyclicBarrierDetector detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = new CyclicBarrier(2);
+
+        detector.registerBarrier(barrier, "resetBarrier", 2);
+        detector.recordArrival(barrier);
+        detector.recordBroken(barrier);
+        detector.recordReset(barrier);  // Repaired before reuse
+        detector.recordAwait(barrier);
+
+        CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
+
+        assertNotNull(report);
+        assertFalse(report.getReuseAfterBrokenBarriers().contains(barrier),
+            "Barrier reset before reuse should not be flagged");
+        assertFalse(report.hasIssues(), "Reset barrier reused correctly should not report issues");
+    }
+
+    @Test
+    void testAwaitOnNeverBrokenBarrierIsNotFlagged() {
+        CyclicBarrierDetector detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = new CyclicBarrier(2);
+
+        detector.registerBarrier(barrier, "healthyBarrier", 2);
+        detector.recordArrival(barrier);
+        detector.recordAwait(barrier);
+        detector.recordAwait(barrier);
+        detector.recordBarrierComplete(barrier);
+
+        CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
+
+        assertNotNull(report);
+        assertFalse(report.getReuseAfterBrokenBarriers().contains(barrier),
+            "Barrier that never broke should not be flagged");
+        assertFalse(report.hasIssues(), "Healthy barrier usage should not report issues");
+    }
+
+    @Test
+    void testReuseAfterBrokenDescribedInReport() {
+        CyclicBarrierDetector detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = new CyclicBarrier(2);
+
+        detector.registerBarrier(barrier, "describedBarrier", 2);
+        detector.recordArrival(barrier);
+        detector.recordBroken(barrier);
+        detector.recordAwait(barrier);
+
+        CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
+
+        String reportStr = report.toString();
+        assertTrue(reportStr.contains("Reuse After Broken Barriers"), "Report should have a reuse section");
+        assertTrue(reportStr.contains("BrokenBarrierException"), "Report should explain the hazard");
+        assertTrue(reportStr.contains("reset()"), "Report should mention the fix");
+    }
 }

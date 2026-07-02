@@ -248,6 +248,13 @@ class PresetResolutionTest {
         @Override public boolean detectStableValueMisuse() { return def("detectStableValueMisuse"); }
         @Override public boolean detectStructuredTaskScopeMisuse() { return def("detectStructuredTaskScopeMisuse"); }
         @Override public boolean detectGathererConcurrencyMisuse() { return def("detectGathererConcurrencyMisuse"); }
+        @Override public boolean detectSharedByteBuffer() { return def("detectSharedByteBuffer"); }
+        @Override public boolean detectSharedCharsetCoder() { return def("detectSharedCharsetCoder"); }
+        @Override public boolean detectSharedChecksum() { return def("detectSharedChecksum"); }
+        @Override public boolean detectFileChannelPositionRace() { return def("detectFileChannelPositionRace"); }
+        @Override public boolean detectSharedIterator() { return def("detectSharedIterator"); }
+        @Override public boolean detectHighContentionAtomic() { return def("detectHighContentionAtomic"); }
+        @Override public boolean detectSharedJsonMapperReconfig() { return def("detectSharedJsonMapperReconfig"); }
         @Override public boolean enableBenchmarking() { return def("enableBenchmarking"); }
         @Override public double benchmarkRegressionThreshold() { return def("benchmarkRegressionThreshold"); }
         @Override public boolean failOnBenchmarkRegression() { return def("failOnBenchmarkRegression"); }

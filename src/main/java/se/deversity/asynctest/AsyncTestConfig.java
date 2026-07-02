@@ -201,6 +201,15 @@ public final class AsyncTestConfig {
     public final boolean detectStructuredTaskScopeMisuse;
     public final boolean detectGathererConcurrencyMisuse;
 
+    // ---- Phase 17: Shared stateful JDK objects, I/O position races & contention advisories ----
+    public final boolean detectSharedByteBuffer;
+    public final boolean detectSharedCharsetCoder;
+    public final boolean detectSharedChecksum;
+    public final boolean detectFileChannelPositionRace;
+    public final boolean detectSharedIterator;
+    public final boolean detectHighContentionAtomic;
+    public final boolean detectSharedJsonMapperReconfig;
+
     // ---- Benchmarking ----
     @AIFeatureFlag(flag = "async-test.benchmarking.enabled", defaultValue = false)
     public final boolean enableBenchmarking;
@@ -343,6 +352,14 @@ public final class AsyncTestConfig {
         detectStableValueMisuse             = b.detectStableValueMisuse;
         detectStructuredTaskScopeMisuse     = b.detectStructuredTaskScopeMisuse;
         detectGathererConcurrencyMisuse     = b.detectGathererConcurrencyMisuse;
+        // Phase 17
+        detectSharedByteBuffer          = b.detectSharedByteBuffer;
+        detectSharedCharsetCoder        = b.detectSharedCharsetCoder;
+        detectSharedChecksum            = b.detectSharedChecksum;
+        detectFileChannelPositionRace   = b.detectFileChannelPositionRace;
+        detectSharedIterator            = b.detectSharedIterator;
+        detectHighContentionAtomic      = b.detectHighContentionAtomic;
+        detectSharedJsonMapperReconfig  = b.detectSharedJsonMapperReconfig;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -523,6 +540,13 @@ public final class AsyncTestConfig {
             .detectStableValueMisuse(ann.detectStableValueMisuse())
             .detectStructuredTaskScopeMisuse(ann.detectStructuredTaskScopeMisuse())
             .detectGathererConcurrencyMisuse(ann.detectGathererConcurrencyMisuse())
+            .detectSharedByteBuffer(ann.detectSharedByteBuffer())
+            .detectSharedCharsetCoder(ann.detectSharedCharsetCoder())
+            .detectSharedChecksum(ann.detectSharedChecksum())
+            .detectFileChannelPositionRace(ann.detectFileChannelPositionRace())
+            .detectSharedIterator(ann.detectSharedIterator())
+            .detectHighContentionAtomic(ann.detectHighContentionAtomic())
+            .detectSharedJsonMapperReconfig(ann.detectSharedJsonMapperReconfig())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -667,6 +691,14 @@ public final class AsyncTestConfig {
         private boolean detectStableValueMisuse             = false;
         private boolean detectStructuredTaskScopeMisuse     = false;
         private boolean detectGathererConcurrencyMisuse     = false;
+        // Phase 17
+        private boolean detectSharedByteBuffer          = false;
+        private boolean detectSharedCharsetCoder        = false;
+        private boolean detectSharedChecksum            = false;
+        private boolean detectFileChannelPositionRace   = false;
+        private boolean detectSharedIterator            = false;
+        private boolean detectHighContentionAtomic      = false;
+        private boolean detectSharedJsonMapperReconfig  = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -801,6 +833,13 @@ public final class AsyncTestConfig {
         public Builder detectStableValueMisuse(boolean v)              { detectStableValueMisuse = v; return this; }
         public Builder detectStructuredTaskScopeMisuse(boolean v)      { detectStructuredTaskScopeMisuse = v; return this; }
         public Builder detectGathererConcurrencyMisuse(boolean v)      { detectGathererConcurrencyMisuse = v; return this; }
+        public Builder detectSharedByteBuffer(boolean v)               { detectSharedByteBuffer = v; return this; }
+        public Builder detectSharedCharsetCoder(boolean v)             { detectSharedCharsetCoder = v; return this; }
+        public Builder detectSharedChecksum(boolean v)                 { detectSharedChecksum = v; return this; }
+        public Builder detectFileChannelPositionRace(boolean v)        { detectFileChannelPositionRace = v; return this; }
+        public Builder detectSharedIterator(boolean v)                 { detectSharedIterator = v; return this; }
+        public Builder detectHighContentionAtomic(boolean v)           { detectHighContentionAtomic = v; return this; }
+        public Builder detectSharedJsonMapperReconfig(boolean v)       { detectSharedJsonMapperReconfig = v; return this; }
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
@@ -1078,6 +1117,21 @@ public final class AsyncTestConfig {
                     else detectStructuredTaskScopeMisuse = false;
                 if (!excludes.contains(DetectorType.GATHERER_CONCURRENCY_MISUSE)) detectGathererConcurrencyMisuse = true;
                     else detectGathererConcurrencyMisuse = false;
+                // Phase 17
+                if (!excludes.contains(DetectorType.SHARED_BYTE_BUFFER)) detectSharedByteBuffer = true;
+                    else detectSharedByteBuffer = false;
+                if (!excludes.contains(DetectorType.SHARED_CHARSET_CODER)) detectSharedCharsetCoder = true;
+                    else detectSharedCharsetCoder = false;
+                if (!excludes.contains(DetectorType.SHARED_CHECKSUM)) detectSharedChecksum = true;
+                    else detectSharedChecksum = false;
+                if (!excludes.contains(DetectorType.FILE_CHANNEL_POSITION_RACE)) detectFileChannelPositionRace = true;
+                    else detectFileChannelPositionRace = false;
+                if (!excludes.contains(DetectorType.SHARED_ITERATOR)) detectSharedIterator = true;
+                    else detectSharedIterator = false;
+                if (!excludes.contains(DetectorType.HIGH_CONTENTION_ATOMIC)) detectHighContentionAtomic = true;
+                    else detectHighContentionAtomic = false;
+                if (!excludes.contains(DetectorType.SHARED_JSON_MAPPER_RECONFIG)) detectSharedJsonMapperReconfig = true;
+                    else detectSharedJsonMapperReconfig = false;
             } else {
                 // If detectAll is false, we still respect explicit enables,
                 // but we also apply excludes for consistency.
@@ -1189,6 +1243,14 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.STABLE_VALUE_MISUSE)) detectStableValueMisuse = false;
                 if (excludes.contains(DetectorType.STRUCTURED_TASK_SCOPE_MISUSE)) detectStructuredTaskScopeMisuse = false;
                 if (excludes.contains(DetectorType.GATHERER_CONCURRENCY_MISUSE)) detectGathererConcurrencyMisuse = false;
+                // Phase 17
+                if (excludes.contains(DetectorType.SHARED_BYTE_BUFFER)) detectSharedByteBuffer = false;
+                if (excludes.contains(DetectorType.SHARED_CHARSET_CODER)) detectSharedCharsetCoder = false;
+                if (excludes.contains(DetectorType.SHARED_CHECKSUM)) detectSharedChecksum = false;
+                if (excludes.contains(DetectorType.FILE_CHANNEL_POSITION_RACE)) detectFileChannelPositionRace = false;
+                if (excludes.contains(DetectorType.SHARED_ITERATOR)) detectSharedIterator = false;
+                if (excludes.contains(DetectorType.HIGH_CONTENTION_ATOMIC)) detectHighContentionAtomic = false;
+                if (excludes.contains(DetectorType.SHARED_JSON_MAPPER_RECONFIG)) detectSharedJsonMapperReconfig = false;
             }
             return new AsyncTestConfig(this);
         }

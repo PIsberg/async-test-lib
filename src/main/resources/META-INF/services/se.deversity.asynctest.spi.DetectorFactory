@@ -158,3 +158,12 @@ se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CompletableFutureBlo
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$StableValueMisuse
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$StructuredTaskScopeMisuse
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$GathererConcurrencyMisuse
+
+# Phase 17 — Shared stateful JDK objects, I/O position races & contention advisories
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedByteBuffer
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedCharsetCoder
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedChecksum
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$FileChannelPositionRace
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedIterator
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$HighContentionAtomic
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedJsonMapperReconfig
