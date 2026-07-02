@@ -29,4 +29,33 @@ class CompletableFutureBlockingCallbackDetectorTest {
         assertEquals("CompletableFutureBlockingCallback", report.structuredViolations.get(0).detector());
         assertEquals(IssueSeverity.HIGH, report.structuredViolations.get(0).severity());
     }
+
+    @Test
+    void nullThreadIsIgnoredForAllRecordMethods() {
+        var d = new CompletableFutureBlockingCallbackDetector();
+        d.recordEnterCallback("thenApply", null);
+        d.recordBlockingCall(null, "CompletableFuture.get");
+        d.recordExitCallback(null);
+        assertFalse(d.analyze().hasIssues());
+    }
+
+    @Test
+    void blockingCallOutsideCallbackIsIgnored() {
+        var d = new CompletableFutureBlockingCallbackDetector();
+        d.recordBlockingCall(Thread.currentThread(), "CompletableFuture.get");
+        assertFalse(d.analyze().hasIssues());
+    }
+
+    @Test
+    void reportToStringReflectsState() {
+        var clean = new CompletableFutureBlockingCallbackDetector().analyze();
+        assertEquals("COMPLETABLE FUTURE BLOCKING CALLBACK — clean", clean.toString());
+
+        var d = new CompletableFutureBlockingCallbackDetector();
+        d.recordEnterCallback("thenApply", Thread.currentThread());
+        d.recordBlockingCall(Thread.currentThread(), "CompletableFuture.get");
+        String rendered = d.analyze().toString();
+        assertTrue(rendered.contains("COMPLETABLE FUTURE BLOCKING CALLBACK DETECTED"));
+        assertTrue(rendered.contains("thenApply"));
+    }
 }
