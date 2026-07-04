@@ -807,14 +807,18 @@ An MPSC (multi-producer single-consumer) ring buffer modelled after the
 **Key API:**
 
 ```java
-buffer.publish(threadId, "ClassName#fieldName", isWrite); // producer hot path
-buffer.drain(callback);                                    // single consumer thread
+buffer.publish(threadId, "com.example.OrderService.setCount", isWrite); // producer hot path
+buffer.drain(callback);                                                 // single consumer thread
 ```
 
 #### Design — TelemetryRegistry
 Global singleton that owns the shared buffer and a daemon drain thread (scheduled at 1 ms
-intervals).  The `recordAccess(threadId, className, methodName)` path is designed to be
-allocation-free and lock-free.
+intervals).  The advice hot path is `recordAccess(threadId, qualifiedName, isWrite)`
+(1.7.0+): it receives an already-combined constant-pool identifier and a pre-decided
+`isWrite` flag from the split getter/setter advice, so it does no string work and stays
+allocation-free and lock-free.  A convenience `recordAccess(threadId, className, methodName)`
+overload (which composes the identifier and derives `isWrite` from the method prefix) is
+retained for tests and documented examples but is not used on the hot path.
 
 ---
 
@@ -833,13 +837,17 @@ getter/setter methods at class-load time:
 
 ```
 JVM startup → premain() → AgentBuilder intercepts non-JDK classes
-                        → FieldAccessAdvice.enter() injected before each getter/setter
-                        → TelemetryRegistry.recordAccess() called transparently
+                        → ReadAccessAdvice.enter()  injected before each getter (isWrite=false)
+                        → WriteAccessAdvice.enter()  injected before each setter (isWrite=true)
+                        → TelemetryRegistry.recordAccess(threadId, qualifiedName, isWrite) called transparently
 ```
 
-The `FieldAccessAdvice.enter` advice method is inlined at the call site by Byte Buddy (not
-called via reflection), so it does not appear in stack traces and incurs minimal overhead
-after JIT compilation.
+The advice `enter` methods are inlined at the call site by Byte Buddy (not called via
+reflection), so they do not appear in stack traces and incur minimal overhead after JIT
+compilation.  Splitting the advice by read/write moves the access-kind decision to
+instrumentation time, and each advice passes a single `@Advice.Origin("#t.#m")` identifier
+— a constant-pool string (`declaringClass.methodName`) — so the prologue performs no string
+concatenation and allocates nothing per call.
 
 **Scope guards** prevent recursive instrumentation of `java.*`, `jdk.*`, `sun.*`, and
 `se.deversity.async-test-lib.*` itself.
@@ -919,7 +927,8 @@ telemetry/
 
 agent/
   AsyncTestAgent             ← premain entry; Byte Buddy AgentBuilder
-  FieldAccessAdvice          ← inlined Advice; calls TelemetryRegistry.recordAccess
+  ReadAccessAdvice           ← inlined getter Advice (isWrite=false); calls TelemetryRegistry.recordAccess
+  WriteAccessAdvice          ← inlined setter Advice (isWrite=true);  calls TelemetryRegistry.recordAccess
 
 analysis/
   StaticPinningScanner       ← ASM ClassVisitor; produces List<PinningSite>

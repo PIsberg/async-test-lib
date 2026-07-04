@@ -10,7 +10,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * {@link TelemetryEventBuffer} and drains them asynchronously via a background thread.
  *
  * <p>Called from the {@code AsyncTestAgent} advice on every intercepted field access.
- * The path through {@link #recordAccess} must remain allocation-free and lock-free.
+ * The advice hot path uses {@link #recordAccess(long, String, boolean)}, which must
+ * remain allocation-free and lock-free: it receives an already-combined identifier
+ * (a constant-pool string produced by {@code @Advice.Origin}) and a pre-decided
+ * {@code isWrite} flag, so it performs no string work.
  *
  * <p>Lifecycle:
  * <ol>
@@ -36,16 +39,41 @@ public final class TelemetryRegistry {
     private TelemetryRegistry() {}
 
     /**
-     * Records a field access from the instrumented thread.
+     * Records a field access from the instrumented thread — the agent advice hot path.
      *
-     * <p>Hot path — must remain allocation-free and lock-free.
+     * <p>Allocation-free and lock-free: it forwards the already-combined identifier and
+     * the pre-decided {@code isWrite} flag straight to the ring buffer with no string
+     * concatenation or prefix inspection. The read/write decision is bound at
+     * instrumentation time by {@code AsyncTestAgent}'s split getter/setter advice.
+     *
+     * @param threadId       {@code Thread.currentThread().threadId()}
+     * @param qualifiedName  combined {@code declaringClass.methodName} identifier
+     *                       (a constant-pool string produced by {@code @Advice.Origin})
+     * @param isWrite        {@code true} for a write access (setter), {@code false} for
+     *                       a read access (getter)
+     * @since 1.7.0
+     */
+    public static void recordAccess(long threadId, String qualifiedName, boolean isWrite) {
+        BUFFER.publish(threadId, qualifiedName, isWrite);
+    }
+
+    /**
+     * Records a field access from a class name and method name.
+     *
+     * <p>Convenience overload for callers that have the declaring class and method name
+     * as separate strings (used by tests and documented examples). It composes the
+     * {@code className + "#" + methodName} identifier and derives {@code isWrite} from
+     * the method-name prefix, then delegates to
+     * {@link #recordAccess(long, String, boolean)}. Unlike that overload it is
+     * <em>not</em> allocation-free (it builds the identifier), so it must not be used on
+     * the agent advice hot path.
      *
      * @param threadId    {@code Thread.currentThread().threadId()}
      * @param className   declaring class of the intercepted getter/setter
      * @param methodName  intercepted method name (e.g. {@code "getCount"}, {@code "setCount"})
      */
     public static void recordAccess(long threadId, String className, String methodName) {
-        BUFFER.publish(threadId, className + "#" + methodName,
+        recordAccess(threadId, className + "#" + methodName,
                 methodName.startsWith("set") || methodName.startsWith("put"));
     }
 

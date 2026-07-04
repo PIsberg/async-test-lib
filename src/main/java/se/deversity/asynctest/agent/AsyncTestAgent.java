@@ -24,9 +24,15 @@ import java.lang.instrument.Instrumentation;
  *
  * <h2>Approach</h2>
  * Using <a href="https://bytebuddy.net">Byte Buddy</a>, this agent intercepts every
- * getter and setter (matched by {@link ElementMatchers#isGetter()} /
- * {@link ElementMatchers#isSetter()}) at class-load time and inserts an
- * {@link Advice @Advice} prologue that routes to {@link TelemetryRegistry#recordAccess}.
+ * getter and setter at class-load time and inserts an {@link Advice @Advice} prologue
+ * that routes to {@link TelemetryRegistry#recordAccess(long, String, boolean)}. The
+ * read/write decision is bound at instrumentation time rather than recomputed on every
+ * call: getters (matched by {@link ElementMatchers#isGetter()}) are woven with
+ * {@link ReadAccessAdvice} and setters (matched by {@link ElementMatchers#isSetter()})
+ * with {@link WriteAccessAdvice}. Each advice supplies a single
+ * {@link Advice.Origin @Advice.Origin}-derived identifier — a compile-time constant
+ * baked into the woven class's constant pool — and a hardcoded {@code isWrite} flag, so
+ * the prologue performs no string concatenation and no allocation per intercepted call.
  * The intercepted classes themselves require no modification.
  *
  * <h2>Attachment</h2>
@@ -77,10 +83,10 @@ public final class AsyncTestAgent {
                         typeIgnore.matches(typeDescription) || bootstrapIgnore.matches(classLoader))
                 .type(ElementMatchers.any())
                 .transform((builder, typeDescription, classLoader, module, protectionDomain) ->
-                        builder.visit(
-                                Advice.to(FieldAccessAdvice.class)
-                                      .on(ElementMatchers.isGetter()
-                                              .or(ElementMatchers.isSetter()))))
+                        builder.visit(Advice.to(ReadAccessAdvice.class)
+                                            .on(ElementMatchers.isGetter()))
+                               .visit(Advice.to(WriteAccessAdvice.class)
+                                            .on(ElementMatchers.isSetter())))
                 .installOn(inst);
     }
 
@@ -113,29 +119,73 @@ public final class AsyncTestAgent {
 
     /**
      * Byte Buddy {@link Advice} class injected at the entry of every intercepted
-     * getter/setter method.
+     * <em>getter</em> (read accessor).
      *
      * <p>The {@code @Advice.OnMethodEnter} method executes inline at the call site,
      * not via reflection, so it does not appear in stack traces and incurs minimal
-     * overhead after JIT compilation.
+     * overhead after JIT compilation. The identifier is supplied by
+     * {@link Advice.Origin @Advice.Origin} as a constant-pool string, and the
+     * {@code isWrite} flag is hardcoded to {@code false}, so the prologue allocates
+     * nothing per call.
+     *
+     * @since 1.7.0
      */
-    public static final class FieldAccessAdvice {
+    public static final class ReadAccessAdvice {
 
-        private FieldAccessAdvice() {}
+        private ReadAccessAdvice() {}
 
         /**
-         * Advice prologue: records the accessing thread and target field before
-         * the original method body executes.
+         * Advice prologue for read accessors: records the accessing thread and the
+         * combined {@code declaringClass.methodName} identifier as a read access before
+         * the original getter body executes.
          *
-         * @param className  fully-qualified declaring class name (compile-time constant)
-         * @param methodName intercepted method name (compile-time constant)
+         * <p>The identifier uses the {@code #t.#m} origin pattern (fully-qualified
+         * declaring class name, a literal {@code '.'} separator, then the method name)
+         * because Byte Buddy's origin parser rejects a doubled {@code ##} escape.
+         *
+         * @param identifier fully-qualified {@code declaringClass.methodName} of the
+         *                   intercepted getter (compile-time constant)
          */
         @Advice.OnMethodEnter
-        public static void enter(
-                @Advice.Origin("#t") String className,
-                @Advice.Origin("#m") String methodName) {
+        public static void enter(@Advice.Origin("#t.#m") String identifier) {
             TelemetryRegistry.recordAccess(
-                    Thread.currentThread().threadId(), className, methodName);
+                    Thread.currentThread().threadId(), identifier, false);
+        }
+    }
+
+    /**
+     * Byte Buddy {@link Advice} class injected at the entry of every intercepted
+     * <em>setter</em> (write accessor).
+     *
+     * <p>The {@code @Advice.OnMethodEnter} method executes inline at the call site,
+     * not via reflection, so it does not appear in stack traces and incurs minimal
+     * overhead after JIT compilation. The identifier is supplied by
+     * {@link Advice.Origin @Advice.Origin} as a constant-pool string, and the
+     * {@code isWrite} flag is hardcoded to {@code true}, so the prologue allocates
+     * nothing per call.
+     *
+     * @since 1.7.0
+     */
+    public static final class WriteAccessAdvice {
+
+        private WriteAccessAdvice() {}
+
+        /**
+         * Advice prologue for write accessors: records the accessing thread and the
+         * combined {@code declaringClass.methodName} identifier as a write access before
+         * the original setter body executes.
+         *
+         * <p>The identifier uses the {@code #t.#m} origin pattern (fully-qualified
+         * declaring class name, a literal {@code '.'} separator, then the method name)
+         * because Byte Buddy's origin parser rejects a doubled {@code ##} escape.
+         *
+         * @param identifier fully-qualified {@code declaringClass.methodName} of the
+         *                   intercepted setter (compile-time constant)
+         */
+        @Advice.OnMethodEnter
+        public static void enter(@Advice.Origin("#t.#m") String identifier) {
+            TelemetryRegistry.recordAccess(
+                    Thread.currentThread().threadId(), identifier, true);
         }
     }
 }

@@ -6,14 +6,13 @@ import net.bytebuddy.description.modifier.SyntheticState;
 import net.bytebuddy.description.modifier.Visibility;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
-import net.bytebuddy.implementation.FixedValue;
+import net.bytebuddy.implementation.FieldAccessor;
 import net.bytebuddy.matcher.ElementMatchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
-import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -31,7 +30,7 @@ class AsyncTestAgentTest {
     }
 
     @Test
-    void testFieldAccessAdviceDirectly() throws Exception {
+    void testWriteAccessAdviceDirectly() throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
         List<String> recorded = Collections.synchronizedList(new ArrayList<>());
 
@@ -40,16 +39,34 @@ class AsyncTestAgentTest {
             latch.countDown();
         });
 
-        // Trigger the Advice enter method directly.
-        AsyncTestAgent.FieldAccessAdvice.enter("TestClass", "setCount");
+        // Trigger the write advice enter method directly with a pre-combined identifier.
+        AsyncTestAgent.WriteAccessAdvice.enter("TestClass.setCount");
 
         assertTrue(latch.await(500, TimeUnit.MILLISECONDS), "Direct advice enter did not trigger registry callback");
-        assertEquals(List.of("TestClass#setCount:true"), recorded);
+        assertEquals(List.of("TestClass.setCount:true"), recorded);
+    }
+
+    @Test
+    void testReadAccessAdviceDirectly() throws Exception {
+        CountDownLatch latch = new CountDownLatch(1);
+        List<String> recorded = Collections.synchronizedList(new ArrayList<>());
+
+        TelemetryRegistry.start((tid, targetField, isWrite) -> {
+            recorded.add(targetField + ":" + isWrite);
+            latch.countDown();
+        });
+
+        // Trigger the read advice enter method directly with a pre-combined identifier.
+        AsyncTestAgent.ReadAccessAdvice.enter("TestClass.getCount");
+
+        assertTrue(latch.await(500, TimeUnit.MILLISECONDS), "Direct advice enter did not trigger registry callback");
+        assertEquals(List.of("TestClass.getCount:false"), recorded);
     }
 
     @Test
     void testDynamicByteBuddyInstrumentation() throws Exception {
-        CountDownLatch latch = new CountDownLatch(1);
+        // Two events expected: one from the getter, one from the setter.
+        CountDownLatch latch = new CountDownLatch(2);
         List<String> recorded = Collections.synchronizedList(new ArrayList<>());
 
         TelemetryRegistry.start((tid, targetField, isWrite) -> {
@@ -57,26 +74,75 @@ class AsyncTestAgentTest {
             latch.countDown();
         });
 
-        // Use Byte Buddy to dynamically construct and instrument a class at runtime
-        // matching the exact getter/setter advice routing.
+        // Use Byte Buddy to dynamically construct a bean with a real backing field and a
+        // genuine getter/setter, then weave BOTH split advices via isGetter()/isSetter().
         Class<?> dynamicType = new ByteBuddy()
                 .subclass(Object.class)
-                .name("se.deversity.asynctest.agent.DynamicTargetClass")
-                .defineMethod("setValue", void.class, Modifier.PUBLIC)
-                .intercept(FixedValue.originType()) // No-op body
-                .visit(Advice.to(AsyncTestAgent.FieldAccessAdvice.class)
-                        .on(ElementMatchers.named("setValue")))
+                .name("se.deversity.asynctest.agent.DynamicBean")
+                .defineField("value", int.class, Visibility.PRIVATE)
+                .defineMethod("getValue", int.class, Visibility.PUBLIC)
+                .intercept(FieldAccessor.ofField("value"))
+                .defineMethod("setValue", void.class, Visibility.PUBLIC)
+                .withParameters(int.class)
+                .intercept(FieldAccessor.ofField("value"))
+                .visit(Advice.to(AsyncTestAgent.ReadAccessAdvice.class)
+                        .on(ElementMatchers.isGetter()))
+                .visit(Advice.to(AsyncTestAgent.WriteAccessAdvice.class)
+                        .on(ElementMatchers.isSetter()))
                 .make()
                 .load(getClass().getClassLoader(), ClassLoadingStrategy.Default.WRAPPER)
                 .getLoaded();
 
-        // Instantiate and invoke the instrumented method.
+        // Instantiate and drive real field access through the instrumented accessors.
         Object instance = dynamicType.getDeclaredConstructor().newInstance();
-        dynamicType.getMethod("setValue").invoke(instance);
+        dynamicType.getMethod("setValue", int.class).invoke(instance, 42);
+        int read = (int) dynamicType.getMethod("getValue").invoke(instance);
+        assertEquals(42, read, "instrumentation must not alter getter/setter semantics");
 
-        assertTrue(latch.await(500, TimeUnit.MILLISECONDS), "Instrumented method call was not captured by telemetry");
-        assertEquals(1, recorded.size());
-        assertTrue(recorded.get(0).contains("DynamicTargetClass#setValue:true"));
+        assertTrue(latch.await(2, TimeUnit.SECONDS), "Instrumented accessor calls were not captured by telemetry");
+        assertEquals(2, recorded.size());
+        assertTrue(recorded.contains("se.deversity.asynctest.agent.DynamicBean.setValue:true"),
+                "setter must record a write access with the combined identifier; got " + recorded);
+        assertTrue(recorded.contains("se.deversity.asynctest.agent.DynamicBean.getValue:false"),
+                "getter must record a read access with the combined identifier; got " + recorded);
+    }
+
+    @Test
+    void testOriginIdentifierIsInternedConstant() throws Exception {
+        // Two invocations of the same instrumented method must publish the SAME String
+        // reference: @Advice.Origin bakes the identifier into the constant pool (ldc), so
+        // no per-call allocation occurs on the hot path.
+        CountDownLatch latch = new CountDownLatch(2);
+        List<String> rawIdentifiers = Collections.synchronizedList(new ArrayList<>());
+
+        TelemetryRegistry.start((tid, targetField, isWrite) -> {
+            rawIdentifiers.add(targetField);
+            latch.countDown();
+        });
+
+        Class<?> dynamicType = new ByteBuddy()
+                .subclass(Object.class)
+                .name("se.deversity.asynctest.agent.InternTarget")
+                .defineField("value", int.class, Visibility.PRIVATE)
+                .defineMethod("setValue", void.class, Visibility.PUBLIC)
+                .withParameters(int.class)
+                .intercept(FieldAccessor.ofField("value"))
+                .visit(Advice.to(AsyncTestAgent.WriteAccessAdvice.class)
+                        .on(ElementMatchers.isSetter()))
+                .make()
+                .load(getClass().getClassLoader(), ClassLoadingStrategy.Default.WRAPPER)
+                .getLoaded();
+
+        Object instance = dynamicType.getDeclaredConstructor().newInstance();
+        java.lang.reflect.Method setter = dynamicType.getMethod("setValue", int.class);
+        setter.invoke(instance, 1);
+        setter.invoke(instance, 2);
+
+        assertTrue(latch.await(2, TimeUnit.SECONDS), "Both instrumented calls should have been drained");
+        assertEquals(2, rawIdentifiers.size());
+        assertSame(rawIdentifiers.get(0), rawIdentifiers.get(1),
+                "the origin identifier must be the same interned constant on every call "
+                        + "(proving the hot path allocates no per-call identifier string)");
     }
 
     @Test
