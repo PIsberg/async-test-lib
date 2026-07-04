@@ -308,6 +308,34 @@ AsyncTestContext.sharedTimeZoneDetector()             // SharedTimeZoneDetector
 AsyncTestContext.uncaughtExceptionHandlerDetector()   // UncaughtExceptionHandlerDetector
 ```
 
+## Agent Instrumentation (optional)
+
+Detectors normally observe field access via explicit recording calls (e.g.
+`AsyncTestContext.*Detector().recordAccess(...)`). The optional
+`se.deversity.asynctest.agent.AsyncTestAgent` — a [Byte Buddy](https://bytebuddy.net) Java
+agent — records getter/setter access **automatically, with no source changes**, and can feed
+those events straight into a live `AtomicityValidator` via `TelemetryBridge`.
+
+Attach it one of three ways:
+
+```
+# 1. Launch flag (static), optionally scoped:
+-javaagent:async-test-lib-<version>.jar=includes=com.myapp;excludes=com.myapp.dto,debug=true
+```
+
+```java
+// 2. Runtime self-attach from test setup (needs -Djdk.attach.allowAttachSelf=true):
+@BeforeAll
+static void attachAgent() {
+    se.deversity.asynctest.agent.AsyncTestAgent.selfAttach("includes=com.myapp");
+}
+```
+
+It is strictly opt-in — if you do not attach the agent, nothing changes. See
+**[AGENT.md](AGENT.md)** for the full guide: the WHY (observer-effect / Heisenbug), all three
+attachment paths with Maven and Gradle snippets, consuming events via `TelemetryBridge`, scope
+and filtering, `debug=true` diagnostics, limitations, and a troubleshooting table.
+
 ## Manual Legacy Diagnostics
 
 For older Java async patterns that need explicit instrumentation, instantiate the diagnostics directly:

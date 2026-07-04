@@ -689,8 +689,9 @@ To regenerate diagrams, see [`docs/diagrams/README.md`](../docs/diagrams/README.
 
 ## Related Documentation
 
+- [AGENT.md](AGENT.md) - Byte Buddy agent instrumentation: attach, consume, filter, troubleshoot
 - [BENCHMARKING.md](BENCHMARKING.md) - Detailed benchmarking guide
-- [USAGE.md](../USAGE.md) - User guide with examples
+- [USAGE.md](USAGE.md) - User guide with examples
 - [README.md](../README.md) - Project overview
 
 ---
@@ -802,26 +803,33 @@ An MPSC (multi-producer single-consumer) ring buffer modelled after the
 | Publication signal | `VarHandle.setRelease` on the per-slot `sequence` field |
 | Consumer ordering | `VarHandle.getAcquire` check before processing each slot |
 | Allocation on hot path | Zero — all `AccessEvent` slots are pre-allocated at construction |
-| Capacity | Power-of-two (default 16 384); oldest events overwritten on overflow |
+| Capacity | Power-of-two (default 16 384); on overflow producers **spin-wait** (`Thread.onSpinWait()`) until the consumer drains — slots are never overwritten |
 
 **Key API:**
 
 ```java
-buffer.publish(threadId, "ClassName#fieldName", isWrite); // producer hot path
-buffer.drain(callback);                                    // single consumer thread
+buffer.publish(threadId, "com.example.OrderService.setCount", isWrite); // producer hot path
+buffer.drain(callback);                                                 // single consumer thread
 ```
 
 #### Design — TelemetryRegistry
 Global singleton that owns the shared buffer and a daemon drain thread (scheduled at 1 ms
-intervals).  The `recordAccess(threadId, className, methodName)` path is designed to be
-allocation-free and lock-free.
+intervals).  The advice hot path is `recordAccess(threadId, qualifiedName, isWrite)`
+(1.7.0+): it receives an already-combined constant-pool identifier and a pre-decided
+`isWrite` flag from the split getter/setter advice, so it does no string work and stays
+allocation-free and lock-free.  A convenience `recordAccess(threadId, className, methodName)`
+overload (which composes the identifier and derives `isWrite` from the method prefix) is
+retained for tests and documented examples but is not used on the hot path.
 
 ---
 
 ### 3. AsyncTestAgent — Java Agent Bytecode Instrumentation
 
-**Package:** `se.deversity.async-test-lib.agent`  
-**Dependency:** `net.bytebuddy:byte-buddy`
+**Package:** `se.deversity.asynctest.agent`  
+**Dependency:** `net.bytebuddy:byte-buddy`, `net.bytebuddy:byte-buddy-agent` (self-attach)
+
+> **User-facing guide:** [AGENT.md](AGENT.md) — attachment (all three ways), event
+> consumption, scope/filtering, diagnostics, limitations, and troubleshooting.
 
 #### Baseline limitation
 Detectors that rely on manual `recordFieldAccess("count", count)` calls require production
@@ -832,30 +840,70 @@ code to carry testing hooks, coupling production and test concerns and polluting
 getter/setter methods at class-load time:
 
 ```
-JVM startup → premain() → AgentBuilder intercepts non-JDK classes
-                        → FieldAccessAdvice.enter() injected before each getter/setter
-                        → TelemetryRegistry.recordAccess() called transparently
+attach → premain()/agentmain()/selfAttach() → install() (shared, at-most-once via AtomicBoolean CAS)
+       → AgentBuilder with DiagnosticListener
+       → ignore(): java.*, jdk.*, sun.*, com.sun.*, net.bytebuddy.*, se.deversity.asynctest.*,
+                   synthetic types, bootstrap-loaded types (+ any excludes= prefixes)
+       → type(): any()  OR  the OR of includes= prefixes
+       → ReadAccessAdvice.enter()  injected before each getter (isWrite=false)
+       → WriteAccessAdvice.enter()  injected before each setter (isWrite=true)
+       → TelemetryRegistry.recordAccess(threadId, qualifiedName, isWrite) called transparently
 ```
 
-The `FieldAccessAdvice.enter` advice method is inlined at the call site by Byte Buddy (not
-called via reflection), so it does not appear in stack traces and incurs minimal overhead
-after JIT compilation.
+The advice `enter` methods are inlined at the call site by Byte Buddy (not called via
+reflection), so they do not appear in stack traces and incur minimal overhead after JIT
+compilation.  Splitting the advice by read/write moves the access-kind decision to
+instrumentation time, and each advice passes a single `@Advice.Origin("#t.#m")` identifier
+— a constant-pool string (`declaringClass.methodName`, e.g. `com.example.OrderService.setCount`)
+— so the prologue performs no string concatenation and allocates nothing per call. (The `#t.#m`
+pattern uses a literal `.` separator because Byte Buddy's origin parser rejects a doubled `##`
+escape.) The deprecated 1.6.0 `FieldAccessAdvice` is retained for binary compatibility but is
+no longer bound.
 
-**Scope guards** prevent recursive instrumentation of `java.*`, `jdk.*`, `sun.*`, and
-`se.deversity.async-test-lib.*` itself.
+**Scope guards** re-establish Byte Buddy's default ignores (a bare `ignore(...)` would replace
+them), preventing recursive instrumentation of `java.*`, `jdk.*`, `sun.*`, `com.sun.*`,
+`net.bytebuddy.*`, and `se.deversity.asynctest.*` itself, plus synthetic and bootstrap-loaded
+types. `agentArgs` (parsed by `AgentOptions`) tunes scope: `includes=` narrows the positive
+match to the named prefixes; `excludes=` appends extra ignore prefixes; `debug=true` turns on
+the `DiagnosticListener`'s verbose logging (per-type `Instrumented` lines + full error stack
+traces). Absent/blank args preserve the default `any()` behavior. A `DiagnosticListener`
+(installed always) logs a one-line `[ASYNC-TEST-AGENT] Failed to instrument <type>: <throwable>`
+for weaving errors that Byte Buddy would otherwise swallow.
 
 #### Attachment
 The library JAR is agent-capable — its MANIFEST contains:
 ```
-Premain-Class: se.deversity.async-test-lib.agent.AsyncTestAgent
+Premain-Class: se.deversity.asynctest.agent.AsyncTestAgent
+Agent-Class:   se.deversity.asynctest.agent.AsyncTestAgent
 Can-Retransform-Classes: true
 Can-Redefine-Classes: true
 ```
 
-Attach with:
-```
--javaagent:async-test-lib-<version>.jar
-```
+Three attachment paths, all routed through the shared `install(...)`:
+
+- **Static attach** — `-javaagent:async-test-lib-<version>.jar[=<agentArgs>]` → `premain`.
+  Classes are woven as they load; no retransformation.
+- **Dynamic attach** — the Attach API or `selfAttach` → `agentmain`. Installs with
+  `RedefinitionStrategy.RETRANSFORMATION` + `disableClassFormatChanges()`, so accessors of
+  classes loaded **before** attach are re-woven in place (the `@Advice` adds no members, so the
+  schema is unchanged and retransformation is schema-safe — verified by `SelfAttachTest`).
+- **`AsyncTestAgent.selfAttach()` / `selfAttach(String)`** — obtains an `Instrumentation` via
+  `ByteBuddyAgent.install()` and routes through the dynamic path; idempotent via the shared CAS
+  gate; throws `IllegalStateException` (with `-javaagent` fallback advice) when the JVM forbids
+  self-attach (needs `-Djdk.attach.allowAttachSelf=true`).
+
+#### Consuming events — `TelemetryBridge`
+The install path starts `TelemetryRegistry` with a **no-op** callback, so drained events are
+discarded unless a consumer is registered. `TelemetryBridge` (in
+`se.deversity.asynctest.telemetry`) is the built-in consumer: `activate(AtomicityValidator,
+Set<Long> workerThreadIds)` registers it as the drain callback and forwards worker-thread
+events into the validator via the explicit-thread-id overload
+`AtomicityValidator.recordFieldAccess(String, Object, boolean, long)` (attributing the access
+to the originating worker thread, not the drain thread). It routes to `AtomicityValidator`
+**only** — `VisibilityMonitor` needs field values, which the agent does not capture. The bridge
+is `AutoCloseable` (try-with-resources), idempotent on `close()`, and filters out non-worker
+thread ids. `forCurrentContext(Set<Long>)` resolves the validator via
+`AsyncTestContext.atomicityValidator()`.
 
 ---
 
@@ -914,12 +962,15 @@ runner/
   ConcurrencyRunner          ← createBarrier() selects spin vs. cyclic at runtime
 
 telemetry/
-  TelemetryEventBuffer       ← MPSC ring buffer, zero allocation on publish()
-  TelemetryRegistry          ← global singleton; daemon drain thread
+  TelemetryEventBuffer       ← MPSC ring buffer, zero allocation on publish(); spin-wait backpressure
+  TelemetryRegistry          ← global singleton; daemon drain thread; setCallback() hook
+  TelemetryBridge            ← DrainCallback → AtomicityValidator; AutoCloseable, worker-id filtered
 
 agent/
-  AsyncTestAgent             ← premain entry; Byte Buddy AgentBuilder
-  FieldAccessAdvice          ← inlined Advice; calls TelemetryRegistry.recordAccess
+  AsyncTestAgent             ← premain / agentmain / selfAttach; shared install(); DiagnosticListener
+  AgentOptions               ← parses includes=/excludes=/debug= from agentArgs
+  ReadAccessAdvice           ← inlined getter Advice (isWrite=false); calls TelemetryRegistry.recordAccess
+  WriteAccessAdvice          ← inlined setter Advice (isWrite=true);  calls TelemetryRegistry.recordAccess
 
 analysis/
   StaticPinningScanner       ← ASM ClassVisitor; produces List<PinningSite>

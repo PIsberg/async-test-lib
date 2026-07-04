@@ -11,6 +11,7 @@ Start here to find the right doc. All paths are relative to the repository root.
 | [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | One-page cheatsheet |
 | [CONFIGURATION.md](CONFIGURATION.md) | Configuration options in depth |
 | [DETECTOR_CATALOG.md](DETECTOR_CATALOG.md) | All 114 detectors with buggy-vs-fixed examples |
+| [AGENT.md](AGENT.md) | Optional Byte Buddy agent — auto-record field access without manual hooks |
 | [CI_INTEGRATION.md](CI_INTEGRATION.md) | GitHub Actions / Jenkins / GitLab CI setup |
 | [BENCHMARKING.md](BENCHMARKING.md) | Optional throughput-regression tracking |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common issues and fixes |

@@ -24,9 +24,10 @@ import java.lang.invoke.VarHandle;
  * {@link TelemetryRegistry}) calls {@link #drain(DrainCallback)} to process all
  * available events without blocking producers.
  *
- * <p><strong>Capacity:</strong> must be a power of two. Overflow is handled by wrapping
- * (oldest events are overwritten). For typical async-test invocation sizes the buffer is
- * never full.
+ * <p><strong>Capacity:</strong> must be a power of two. When the buffer fills, producers
+ * apply backpressure by spin-waiting in {@link #publish} until the single consumer drains a
+ * slot — events are never overwritten or dropped on overflow. For typical async-test
+ * invocation sizes the buffer is never full and the spin path is never taken.
  *
  * @since 1.6.0
  */
@@ -95,7 +96,9 @@ public final class TelemetryEventBuffer {
      * no lock acquisition, and no blocking.
      *
      * @param threadId    {@code Thread.currentThread().threadId()}
-     * @param targetField field or method identifier (e.g. {@code "ClassName#fieldName"})
+     * @param targetField field or method identifier (e.g.
+     *                    {@code "com.example.OrderService.setCount"} as produced by the
+     *                    agent's {@code @Advice.Origin("#t.#m")} pattern)
      * @param isWrite     {@code true} for a write access, {@code false} for a read
      */
     public void publish(long threadId, String targetField, boolean isWrite) {

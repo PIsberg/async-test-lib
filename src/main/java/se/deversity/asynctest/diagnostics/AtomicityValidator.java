@@ -56,11 +56,38 @@ public class AtomicityValidator {
     }
 
     public void recordFieldAccess(String fieldName, Object value, boolean isWrite) {
+        recordFieldAccess(fieldName, value, isWrite, Thread.currentThread().threadId());
+    }
+
+    /**
+     * Records a field access attributed to an explicit thread id, rather than
+     * {@code Thread.currentThread()}.
+     *
+     * <p>This overload exists for callers that observe an access from a thread other than
+     * the one performing the recording — most notably the telemetry drain thread, which
+     * replays field-access events captured on the stress-test worker threads (see
+     * {@code se.deversity.asynctest.telemetry.TelemetryBridge}). Passing the originating
+     * {@code threadId} keeps cross-thread atomicity analysis correct; the three-argument
+     * {@link #recordFieldAccess(String, Object, boolean)} overload simply forwards
+     * {@code Thread.currentThread().threadId()} here.
+     *
+     * <p>The {@code value} may be {@code null}: {@code null} values are tolerated (the
+     * cross-thread mixed read/write analysis relies only on {@code threadId} and
+     * {@code isWrite}, and the compound-operation first-read tracking skips {@code null}
+     * reads), so access-pattern-only sources such as the agent — which has method-name
+     * granularity but no field value — can feed this detector meaningfully.
+     *
+     * @param fieldName the qualified field/accessor identifier; {@code null}/blank is ignored
+     * @param value     the observed value, or {@code null} when unavailable
+     * @param isWrite   {@code true} for a write access, {@code false} for a read
+     * @param threadId  the id of the thread the access is attributed to
+     * @since 1.7.0
+     */
+    public void recordFieldAccess(String fieldName, Object value, boolean isWrite, long threadId) {
         if (!enabled || fieldName == null || fieldName.isBlank()) {
             return;
         }
 
-        long threadId = Thread.currentThread().threadId();
         List<FieldAccessRecord> history = fieldHistory.computeIfAbsent(fieldName, ignored -> new ArrayList<>());
         synchronized (history) {
             history.add(new FieldAccessRecord(threadId, isWrite));

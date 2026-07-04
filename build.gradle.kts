@@ -27,11 +27,11 @@ repositories {
 // ── Dependency versions ─────────────────────────────────────────────────────
 // Maven (pom.xml) is the canonical source of truth for versions.
 // Keep these in sync with the <properties> block in pom.xml.
-val junitVersion    = "6.1.0"   // pom: junit.jupiter.version
+val junitVersion    = "6.1.1"   // pom: junit.jupiter.version
 val jazzerVersion   = "0.30.0"  // pom: jazzer.version
-val byteBuddyVersion = "1.18.8" // pom: bytebuddy.version
+val byteBuddyVersion = "1.18.10" // pom: bytebuddy.version
 val asmVersion      = "9.10.1"  // pom: asm.version
-val slf4jVersion    = "2.0.16"  // pom: slf4j.version
+val slf4jVersion    = "2.0.18"  // pom: slf4j.version
 
 dependencies {
     api("org.apiguardian:apiguardian-api:1.1.2")
@@ -43,6 +43,8 @@ dependencies {
     implementation("se.deversity.common:common-license-lib:0.2.1")
     // Byte Buddy: Java agent instrumentation (AsyncTestAgent)
     implementation("net.bytebuddy:byte-buddy:$byteBuddyVersion")
+    // Byte Buddy Agent: runtime self-attach (AsyncTestAgent.selfAttach)
+    implementation("net.bytebuddy:byte-buddy-agent:$byteBuddyVersion")
     // ASM: static bytecode pre-scanner (StaticPinningScanner)
     implementation("org.ow2.asm:asm:$asmVersion")
     api("org.slf4j:slf4j-api:$slf4jVersion")
@@ -73,6 +75,9 @@ tasks.test {
         ?: (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
     systemProperty("license.mock.mode", System.getProperty("license.mock.mode", "true"))
     systemProperty("license.key", System.getProperty("license.key", ""))
+    // Permit AsyncTestAgent.selfAttach() to attach to the forked test JVM
+    // (self-attach is disabled by default since JDK 9). Mirrors the Maven surefire argLine.
+    jvmArgs("-Djdk.attach.allowAttachSelf=true")
     
     finalizedBy(tasks.jacocoTestReport)
 
@@ -99,6 +104,7 @@ tasks.jar {
     manifest {
         attributes(
             "Premain-Class" to "se.deversity.asynctest.agent.AsyncTestAgent",
+            "Agent-Class" to "se.deversity.asynctest.agent.AsyncTestAgent",
             "Can-Retransform-Classes" to "true",
             "Can-Redefine-Classes" to "true"
         )
