@@ -12,6 +12,12 @@ on:
 permissions:
   contents: write
 
+# Back-to-back merges to main each trigger a recording; only the newest
+# result matters, so drop superseded runs instead of racing them to push.
+concurrency:
+  group: demo-gif
+  cancel-in-progress: true
+
 jobs:
   record:
     runs-on: ubuntu-latest
@@ -73,6 +79,16 @@ jobs:
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add docs/diagrams/demo.cast docs/diagrams/demo.gif
             git commit -m "chore: update demo GIF [skip ci]"
+            # main may have moved while we recorded; rebase our one commit
+            # onto the current tip and retry so the push is never rejected.
+            for attempt in 1 2 3; do
+              if git push origin HEAD:main; then
+                exit 0
+              fi
+              echo "Push rejected (attempt ${attempt}) — rebasing onto latest main"
+              git fetch origin main
+              git rebase origin/main
+            done
             git push origin HEAD:main
           else
             echo "GIF unchanged — nothing to push"
