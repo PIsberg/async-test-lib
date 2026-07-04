@@ -27,11 +27,11 @@ repositories {
 // ── Dependency versions ─────────────────────────────────────────────────────
 // Maven (pom.xml) is the canonical source of truth for versions.
 // Keep these in sync with the <properties> block in pom.xml.
-val junitVersion    = "6.1.0"   // pom: junit.jupiter.version
+val junitVersion    = "6.1.1"   // pom: junit.jupiter.version
 val jazzerVersion   = "0.30.0"  // pom: jazzer.version
-val byteBuddyVersion = "1.18.8" // pom: bytebuddy.version
+val byteBuddyVersion = "1.18.10" // pom: bytebuddy.version
 val asmVersion      = "9.10.1"  // pom: asm.version
-val slf4jVersion    = "2.0.16"  // pom: slf4j.version
+val slf4jVersion    = "2.0.18"  // pom: slf4j.version
 
 dependencies {
     api("org.apiguardian:apiguardian-api:1.1.2")
