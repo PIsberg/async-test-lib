@@ -194,4 +194,69 @@ class AsyncTestAgentTest {
         assertFalse(AsyncTestAgent.ignoreMatcher().matches(appType),
                 "ordinary application classes must remain instrumentation candidates");
     }
+
+    @Test
+    void typeMatcher_emptyIncludes_matchesAnyType() {
+        TypeDescription appType = new ByteBuddy()
+                .subclass(Object.class)
+                .name("org.other.Bar")
+                .make()
+                .getTypeDescription();
+
+        assertTrue(AsyncTestAgent.typeMatcher(List.of()).matches(appType),
+                "empty includes must fall back to any() — every non-ignored type is a candidate");
+    }
+
+    @Test
+    void typeMatcher_withIncludes_acceptsPrefixMatchAndRejectsOthers() {
+        TypeDescription included = new ByteBuddy()
+                .subclass(Object.class)
+                .name("com.myapp.Foo")
+                .make()
+                .getTypeDescription();
+        TypeDescription excluded = new ByteBuddy()
+                .subclass(Object.class)
+                .name("org.other.Bar")
+                .make()
+                .getTypeDescription();
+
+        var matcher = AsyncTestAgent.typeMatcher(List.of("com.myapp"));
+        assertTrue(matcher.matches(included), "includes=com.myapp must accept com.myapp.Foo");
+        assertFalse(matcher.matches(excluded), "includes=com.myapp must reject org.other.Bar");
+    }
+
+    @Test
+    void ignoreMatcher_withExcludes_ignoresExcludedPrefixInAdditionToBuiltins() {
+        TypeDescription excludedByArg = new ByteBuddy()
+                .subclass(Object.class)
+                .name("com.myapp.dto.Order")
+                .make()
+                .getTypeDescription();
+        TypeDescription plainApp = new ByteBuddy()
+                .subclass(Object.class)
+                .name("com.myapp.service.OrderService")
+                .make()
+                .getTypeDescription();
+
+        var matcher = AsyncTestAgent.ignoreMatcher(List.of("com.myapp.dto"));
+        assertTrue(matcher.matches(excludedByArg),
+                "excludes=com.myapp.dto must be appended to the ignore matcher");
+        assertFalse(matcher.matches(plainApp),
+                "types outside the exclude prefix (and built-ins) remain candidates");
+        // Built-in exclusions still apply alongside the user-supplied excludes.
+        assertTrue(matcher.matches(TypeDescription.ForLoadedType.of(ByteBuddy.class)),
+                "built-in net.bytebuddy.* exclusion must survive the excludes composition");
+    }
+
+    @Test
+    void ignoreMatcher_withEmptyExcludes_equalsBuiltinMatcher() {
+        TypeDescription plainApp = new ByteBuddy()
+                .subclass(Object.class)
+                .name("com.example.app.OrderService")
+                .make()
+                .getTypeDescription();
+
+        assertFalse(AsyncTestAgent.ignoreMatcher(List.of()).matches(plainApp),
+                "empty excludes must yield exactly the built-in ignore behavior");
+    }
 }

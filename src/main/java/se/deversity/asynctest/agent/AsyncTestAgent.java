@@ -8,6 +8,7 @@ import net.bytebuddy.matcher.ElementMatchers;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
 import java.lang.instrument.Instrumentation;
+import java.util.List;
 
 /**
  * Java instrumentation agent that transparently injects field-access telemetry into
@@ -54,6 +55,12 @@ import java.lang.instrument.Instrumentation;
  * call would otherwise replace, preventing recursive instrumentation of JDK internals
  * and Byte Buddy itself.
  *
+ * <p>The candidate set can be narrowed and widened via {@code agentArgs} (see
+ * {@link AgentOptions}): {@code includes=} restricts the positive match to the named
+ * package prefixes, while {@code excludes=} appends extra prefixes to the ignore
+ * matcher. With no arguments the agent instruments every non-ignored class, exactly as
+ * before.
+ *
  * @since 1.6.0
  */
 public final class AsyncTestAgent {
@@ -63,25 +70,57 @@ public final class AsyncTestAgent {
     /**
      * JVM agent entry point invoked before {@code main()}.
      *
-     * @param agentArgs  optional comma-separated configuration (reserved for future use)
+     * <p>The {@code agentArgs} string is an optional list of {@code key=value} entries
+     * (separated by {@code ,} or {@code ;}) parsed by {@link AgentOptions}:
+     * <ul>
+     *   <li>{@code includes=<prefix>[;<prefix>...]} — instrument only types whose name
+     *       starts with one of the prefixes (narrows the positive match).</li>
+     *   <li>{@code excludes=<prefix>[;<prefix>...]} — never instrument types whose name
+     *       starts with one of the prefixes (appended to the ignore matcher).</li>
+     * </ul>
+     * Example:
+     * <pre>{@code -javaagent:async-test-lib.jar=includes=com.myapp;excludes=com.myapp.dto}</pre>
+     * Whitespace is trimmed, empty entries are skipped, and unknown keys are ignored.
+     * A {@code null} or blank argument leaves the default behavior (instrument every
+     * non-ignored class) unchanged. Parsing never throws — an exception thrown from
+     * {@code premain} would abort JVM startup.
+     *
+     * @param agentArgs  optional {@code includes}/{@code excludes} configuration, or
+     *                   {@code null}
      * @param inst       the instrumentation handle provided by the JVM
      */
     public static void premain(String agentArgs, Instrumentation inst) {
+        install(agentArgs, inst);
+    }
+
+    /**
+     * Shared installation path used by {@code premain} (and, in a later revision,
+     * dynamic self-attach). Parses {@code agentArgs}, builds the ignore/type matchers
+     * from the resulting {@link AgentOptions}, and installs the weaving agent on
+     * {@code inst}.
+     *
+     * @param agentArgs  the raw agent argument string, or {@code null}
+     * @param inst       the instrumentation handle to install on
+     */
+    private static void install(String agentArgs, Instrumentation inst) {
         TelemetryRegistry.start();
+
+        AgentOptions options = AgentOptions.parse(agentArgs);
 
         // Byte Buddy's AgentBuilder.ignore(...) REPLACES the built-in default ignore
         // matcher, so this call must re-establish every exclusion the default provided:
         // name-based prefixes and synthetic types (see ignoreMatcher()) plus every type
-        // loaded by the bootstrap class loader. A RawMatcher lambda composes these with
-        // OR semantics (the two-argument ignore(typeMatcher, classLoaderMatcher) overload
-        // would AND them, which is not what we want here).
-        ElementMatcher<? super TypeDescription> typeIgnore = ignoreMatcher();
+        // loaded by the bootstrap class loader. Any user-supplied excludes= prefixes are
+        // folded into the same type-level matcher. A RawMatcher lambda composes these
+        // with OR semantics (the two-argument ignore(typeMatcher, classLoaderMatcher)
+        // overload would AND them, which is not what we want here).
+        ElementMatcher<? super TypeDescription> typeIgnore = ignoreMatcher(options.excludes());
         ElementMatcher<? super ClassLoader> bootstrapIgnore = ElementMatchers.isBootstrapClassLoader();
 
         new AgentBuilder.Default()
                 .ignore((typeDescription, classLoader, module, classBeingRedefined, protectionDomain) ->
                         typeIgnore.matches(typeDescription) || bootstrapIgnore.matches(classLoader))
-                .type(ElementMatchers.any())
+                .type(typeMatcher(options.includes()))
                 .transform((builder, typeDescription, classLoader, module, protectionDomain) ->
                         builder.visit(Advice.to(ReadAccessAdvice.class)
                                             .on(ElementMatchers.isGetter()))
@@ -115,6 +154,57 @@ public final class AsyncTestAgent {
                 .or(ElementMatchers.nameStartsWith("net.bytebuddy."))
                 .or(ElementMatchers.nameStartsWith("se.deversity.asynctest."))
                 .or(ElementMatchers.isSynthetic());
+    }
+
+    /**
+     * Builds the type-level ignore matcher, extending the built-in {@link #ignoreMatcher()}
+     * with any user-supplied {@code excludes=} name prefixes.
+     *
+     * <p>Each exclude prefix is OR-ed onto the base matcher via
+     * {@link ElementMatchers#nameStartsWith(String)}, so a type is ignored when it is
+     * caught by the built-in exclusions <em>or</em> by any exclude prefix. An empty list
+     * yields exactly the built-in matcher.
+     *
+     * <p>Package-private so it can be unit-tested without a live {@link Instrumentation}
+     * handle.
+     *
+     * @param excludes user-supplied name prefixes to also ignore (never {@code null})
+     * @return an ignore matcher over {@link TypeDescription}
+     * @since 1.7.0
+     */
+    static ElementMatcher.Junction<TypeDescription> ignoreMatcher(List<String> excludes) {
+        ElementMatcher.Junction<TypeDescription> matcher = ignoreMatcher();
+        for (String prefix : excludes) {
+            matcher = matcher.or(ElementMatchers.nameStartsWith(prefix));
+        }
+        return matcher;
+    }
+
+    /**
+     * Builds the positive type matcher passed to {@code AgentBuilder.type(...)} from the
+     * user-supplied {@code includes=} name prefixes.
+     *
+     * <p>When {@code includes} is empty the matcher is {@link ElementMatchers#any()} —
+     * every non-ignored type is a candidate, preserving the default behavior. Otherwise
+     * the matcher is the OR of {@link ElementMatchers#nameStartsWith(String)} over each
+     * prefix, so only types under one of those prefixes are instrumented.
+     *
+     * <p>Package-private so it can be unit-tested without a live {@link Instrumentation}
+     * handle.
+     *
+     * @param includes user-supplied name prefixes to instrument (never {@code null})
+     * @return a positive type matcher over {@link TypeDescription}
+     * @since 1.7.0
+     */
+    static ElementMatcher.Junction<TypeDescription> typeMatcher(List<String> includes) {
+        if (includes.isEmpty()) {
+            return ElementMatchers.any();
+        }
+        ElementMatcher.Junction<TypeDescription> matcher = ElementMatchers.none();
+        for (String prefix : includes) {
+            matcher = matcher.or(ElementMatchers.nameStartsWith(prefix));
+        }
+        return matcher;
     }
 
     /**
