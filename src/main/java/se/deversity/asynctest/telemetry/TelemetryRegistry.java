@@ -89,7 +89,7 @@ public final class TelemetryRegistry {
     public static void start(TelemetryEventBuffer.DrainCallback callback) {
         if (!RUNNING.compareAndSet(false, true)) {
             // Already running, but allow updating the callback.
-            drainCallback = callback;
+            setCallback(callback);
             return;
         }
         drainCallback = callback;
@@ -106,6 +106,29 @@ public final class TelemetryRegistry {
     /** Starts the registry with a no-op drain callback (events counted but not forwarded). */
     public static void start() {
         start(null);
+    }
+
+    /**
+     * Replaces the active drain callback without affecting the running/stopped state of the
+     * registry.
+     *
+     * <p>The callback field is {@code volatile}, so a swap is immediately visible to the
+     * single drain thread on its next cycle. Passing {@code null} restores the no-op
+     * default (drained events are discarded). This is the clear, intention-revealing hook
+     * that {@link #start(TelemetryEventBuffer.DrainCallback)} delegates to when it is called
+     * while the registry is already running, and the mechanism
+     * {@code se.deversity.asynctest.telemetry.TelemetryBridge} uses to attach and detach
+     * itself.
+     *
+     * <p>Because the registry holds a single callback, callers share it: the last
+     * {@code setCallback} wins. It does not start or stop the drain thread — pair it with
+     * {@link #start()} / {@link #stop()} for lifecycle control.
+     *
+     * @param callback the new drain callback, or {@code null} for the no-op default
+     * @since 1.7.0
+     */
+    public static void setCallback(TelemetryEventBuffer.DrainCallback callback) {
+        drainCallback = callback;
     }
 
     /**

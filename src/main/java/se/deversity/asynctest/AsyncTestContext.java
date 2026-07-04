@@ -5,6 +5,7 @@ import org.apiguardian.api.API.Status;
 
 import se.deversity.asynctest.diagnostics.ABAProblemDetector;
 import se.deversity.asynctest.diagnostics.AtomicNonAtomicUpdateDetector;
+import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.diagnostics.BlockingQueueDetector;
 import se.deversity.asynctest.diagnostics.BoxedPrimitiveLockDetector;
 import se.deversity.asynctest.diagnostics.CacheConcurrencyDetector;
@@ -298,6 +299,11 @@ public final class AsyncTestContext {
     final HighContentionAtomicDetector          highContentionAtomicDetector;
     final SharedJsonMapperReconfigDetector      sharedJsonMapperReconfigDetector;
 
+    // ---- Agent-telemetry bridge target (1.7.0+) ----
+    // Exposed via atomicityValidator() so se.deversity.asynctest.telemetry.TelemetryBridge
+    // can route drained agent field-access events into the live per-test detector.
+    final AtomicityValidator                    atomicityValidator;
+
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
         // Mirror registry references so package-private field access still works
@@ -421,6 +427,8 @@ public final class AsyncTestContext {
         sharedIteratorDetector                 = registry.sharedIteratorDetector;
         highContentionAtomicDetector           = registry.highContentionAtomicDetector;
         sharedJsonMapperReconfigDetector       = registry.sharedJsonMapperReconfigDetector;
+        // Agent-telemetry bridge target
+        atomicityValidator                     = registry.atomicityValidator;
     }
 
     // ---- Lifecycle (called by ConcurrencyRunner) ----
@@ -1473,6 +1481,22 @@ public final class AsyncTestContext {
     }
 
     // ---- Helper ----
+
+    /**
+     * Returns the {@link AtomicityValidator} for the current test.
+     *
+     * <p>Primarily intended for {@code se.deversity.asynctest.telemetry.TelemetryBridge},
+     * which routes drained agent field-access events into this live detector so that
+     * agent-captured accesses participate in the same cross-thread atomicity analysis as
+     * manually recorded ones.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or
+     *                               {@code detectAtomicityViolations = false}
+     * @since 1.7.0
+     */
+    public static AtomicityValidator atomicityValidator() {
+        return require("detectAtomicityViolations", c -> c.atomicityValidator);
+    }
 
     private static <T> T require(String flag, Function<AsyncTestContext, T> fn) {
         AsyncTestContext ctx = CURRENT.get();
