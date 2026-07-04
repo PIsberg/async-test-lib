@@ -37,10 +37,9 @@ import se.deversity.asynctest.diagnostics.VisibilityMonitor;
  *       invocation rounds), so an access stream with no values carries no signal for it.
  *       Worse, {@code VisibilityMonitor.recordFieldAccess(id, null)} throws
  *       {@link NullPointerException} because it stores the value in a
- *       {@code ConcurrentHashMap}-backed set, which forbids {@code null}. The
- *       {@code activate} signature still accepts a {@link VisibilityMonitor} for API
- *       symmetry and forward compatibility, but the bridge never calls it; you may pass
- *       {@code null}.</li>
+ *       {@code ConcurrentHashMap}-backed set, which forbids {@code null}. Should a future
+ *       agent version capture values, a value-aware overload of {@code activate} can be
+ *       added without breaking this one.</li>
  * </ul>
  *
  * <h2>Thread safety</h2>
@@ -52,7 +51,7 @@ import se.deversity.asynctest.diagnostics.VisibilityMonitor;
  * detector's own bookkeeping.
  *
  * <h2>Lifecycle</h2>
- * {@link #activate(VisibilityMonitor, AtomicityValidator, Set)} registers the bridge as the
+ * {@link #activate(AtomicityValidator, Set)} registers the bridge as the
  * registry callback and returns it; {@link #close()} (equivalently {@link #deactivate()})
  * detaches it by restoring the registry's no-op callback. {@code close()} is idempotent, so
  * the bridge is usable with try-with-resources:
@@ -60,7 +59,7 @@ import se.deversity.asynctest.diagnostics.VisibilityMonitor;
  * <pre>{@code
  * Set<Long> workerIds = ...;            // ids of the stress-test worker threads
  * AtomicityValidator av = ...;          // the live per-test detector
- * try (TelemetryBridge bridge = TelemetryBridge.activate(null, av, workerIds)) {
+ * try (TelemetryBridge bridge = TelemetryBridge.activate(av, workerIds)) {
  *     // ... run the code under test; agent events flow into av ...
  * }                                     // bridge detaches here
  * }</pre>
@@ -96,8 +95,6 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      * per-round analysis and dropped. The set is defensively copied
      * ({@link Set#copyOf}) so later mutation of the caller's set has no effect.
      *
-     * @param visibilityMonitor accepted for API symmetry but <em>not</em> used — see the
-     *                           class Javadoc routing decision; may be {@code null}
      * @param atomicityValidator the live detector to feed; must not be {@code null}
      * @param workerThreadIds    ids of the stress-test worker threads whose events should be
      *                           forwarded; must not be {@code null} (may be empty, which
@@ -107,8 +104,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      *                              is {@code null}
      * @since 1.7.0
      */
-    public static TelemetryBridge activate(VisibilityMonitor visibilityMonitor,
-                                           AtomicityValidator atomicityValidator,
+    public static TelemetryBridge activate(AtomicityValidator atomicityValidator,
                                            Set<Long> workerThreadIds) {
         if (atomicityValidator == null) {
             throw new NullPointerException("atomicityValidator must not be null");
@@ -116,7 +112,6 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         if (workerThreadIds == null) {
             throw new NullPointerException("workerThreadIds must not be null");
         }
-        // visibilityMonitor is intentionally unused: the bridge cannot feed it (no values).
         TelemetryBridge bridge = new TelemetryBridge(atomicityValidator, workerThreadIds);
         bridge.active = true;
         TelemetryRegistry.start(bridge);
@@ -129,8 +124,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      *
      * <p>Resolves the live {@link AtomicityValidator} via
      * {@link AsyncTestContext#atomicityValidator()} and activates a bridge for the supplied
-     * worker-thread ids. Because the bridge does not route to a {@link VisibilityMonitor}
-     * (see the class routing decision), {@code null} is passed for it.
+     * worker-thread ids.
      *
      * @param workerThreadIds ids of the stress-test worker threads whose events should be
      *                        forwarded; must not be {@code null}
@@ -142,7 +136,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      * @since 1.7.0
      */
     public static TelemetryBridge forCurrentContext(Set<Long> workerThreadIds) {
-        return activate(null, AsyncTestContext.atomicityValidator(), workerThreadIds);
+        return activate(AsyncTestContext.atomicityValidator(), workerThreadIds);
     }
 
     /**

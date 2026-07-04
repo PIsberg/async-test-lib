@@ -32,7 +32,7 @@ class TelemetryBridgeTest {
     void forwardsWorkerEventsAndDropsNonWorkerEvents() {
         AtomicityValidator av = new AtomicityValidator();
         try (TelemetryBridge bridge =
-                     TelemetryBridge.activate(null, av, Set.of(WORKER_A, WORKER_B))) {
+                     TelemetryBridge.activate(av, Set.of(WORKER_A, WORKER_B))) {
 
             // A mixed read/write on the SAME identifier across two worker threads is the
             // signal AtomicityValidator surfaces as a cross-thread hazard.
@@ -50,7 +50,7 @@ class TelemetryBridgeTest {
         // A second detector fed only by non-worker events must see nothing.
         AtomicityValidator filtered = new AtomicityValidator();
         try (TelemetryBridge bridge =
-                     TelemetryBridge.activate(null, filtered, Set.of(WORKER_A, WORKER_B))) {
+                     TelemetryBridge.activate(filtered, Set.of(WORKER_A, WORKER_B))) {
             bridge.onEvent(NON_WORKER, "com.example.Account.balance", false);
             bridge.onEvent(NON_WORKER, "com.example.Account.balance", true);
         }
@@ -62,7 +62,7 @@ class TelemetryBridgeTest {
     void endToEndThroughRegistry() throws InterruptedException {
         AtomicityValidator av = new AtomicityValidator();
         try (TelemetryBridge ignored =
-                     TelemetryBridge.activate(null, av, Set.of(WORKER_A, WORKER_B))) {
+                     TelemetryBridge.activate(av, Set.of(WORKER_A, WORKER_B))) {
 
             // Publish agent-style events; the registry drain thread (1 ms) forwards them
             // through the bridge into the detector.
@@ -81,7 +81,7 @@ class TelemetryBridgeTest {
     void closeIsIdempotentAndStopsForwarding() {
         AtomicityValidator av = new AtomicityValidator();
         TelemetryBridge bridge =
-                TelemetryBridge.activate(null, av, Set.of(WORKER_A, WORKER_B));
+                TelemetryBridge.activate(av, Set.of(WORKER_A, WORKER_B));
 
         bridge.close();
         // Second/extra close() and the deactivate() alias must not throw.
@@ -104,7 +104,7 @@ class TelemetryBridgeTest {
         // thread-id overload is used.
         AtomicityValidator av = new AtomicityValidator();
         try (TelemetryBridge bridge =
-                     TelemetryBridge.activate(null, av, Set.of(WORKER_A, WORKER_B))) {
+                     TelemetryBridge.activate(av, Set.of(WORKER_A, WORKER_B))) {
             bridge.onEvent(WORKER_A, "com.example.Ledger.entry", true);
             bridge.onEvent(WORKER_B, "com.example.Ledger.entry", true);
 
@@ -117,9 +117,9 @@ class TelemetryBridgeTest {
     @Test
     void activateRejectsNullDetectorAndNullWorkerSet() {
         assertThrows(NullPointerException.class,
-                () -> TelemetryBridge.activate(null, null, Set.of(WORKER_A)));
+                () -> TelemetryBridge.activate(null, Set.of(WORKER_A)));
         assertThrows(NullPointerException.class,
-                () -> TelemetryBridge.activate(null, new AtomicityValidator(), null));
+                () -> TelemetryBridge.activate(new AtomicityValidator(), null));
     }
 
     private static boolean awaitIssues(AtomicityValidator av, long timeout, TimeUnit unit)
