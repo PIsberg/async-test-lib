@@ -1,5 +1,6 @@
 package se.deversity.asynctest.agent;
 
+import net.bytebuddy.agent.ByteBuddyAgent;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.type.TypeDescription;
@@ -11,6 +12,7 @@ import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
 import java.lang.instrument.Instrumentation;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Java instrumentation agent that transparently injects field-access telemetry into
@@ -39,10 +41,22 @@ import java.util.List;
  * The intercepted classes themselves require no modification.
  *
  * <h2>Attachment</h2>
- * Add to the JVM launch command:
- * <pre>{@code -javaagent:async-test-lib-<version>.jar}</pre>
- * The library JAR is agent-capable: its MANIFEST includes {@code Premain-Class} and
- * {@code Can-Retransform-Classes: true}.
+ * There are two ways to attach the agent:
+ * <ul>
+ *   <li><b>Launch flag (static attach).</b> Add to the JVM launch command:
+ *       <pre>{@code -javaagent:async-test-lib-<version>.jar}</pre>
+ *       This routes through {@link #premain(String, Instrumentation)} before
+ *       {@code main()} runs, so every subsequently loaded class is woven at load time.</li>
+ *   <li><b>Runtime self-attach (dynamic attach).</b> Call
+ *       {@link #selfAttach()} / {@link #selfAttach(String)} from test setup (for example
+ *       a JUnit {@code @BeforeAll} method). This uses Byte Buddy's
+ *       {@code byte-buddy-agent} to attach the very same agent to the running JVM via
+ *       {@link #agentmain(String, Instrumentation)} — no launch-flag edit required. See
+ *       {@link #selfAttach(String)} for the retransformation semantics that let it also
+ *       re-weave already-loaded classes.</li>
+ * </ul>
+ * The library JAR is agent-capable: its MANIFEST includes {@code Premain-Class},
+ * {@code Agent-Class}, and {@code Can-Retransform-Classes: true}.
  *
  * <h2>Scope</h2>
  * Instrumentation candidates are filtered by the ignore matcher built in
@@ -66,6 +80,17 @@ import java.util.List;
  * @since 1.6.0
  */
 public final class AsyncTestAgent {
+
+    /**
+     * At-most-once install gate, shared by every entry point ({@link #premain},
+     * {@link #agentmain}, and {@link #selfAttach}). The first entry point to win the
+     * {@code compareAndSet(false, true)} performs the weaving install; all later calls —
+     * whether a redundant {@code premain}/{@code agentmain} or a {@code selfAttach} that
+     * follows a launch-flag attach — return as no-ops. This makes self-attach idempotent
+     * and guarantees a single transformer is installed per JVM, so a class's accessors are
+     * never double-woven.
+     */
+    private static final AtomicBoolean INSTALLED = new AtomicBoolean(false);
 
     private AsyncTestAgent() {}
 
@@ -95,19 +120,139 @@ public final class AsyncTestAgent {
      * @param inst       the instrumentation handle provided by the JVM
      */
     public static void premain(String agentArgs, Instrumentation inst) {
-        install(agentArgs, inst);
+        // Static attach: classes are woven as they load, so retransformation of
+        // already-loaded classes is unnecessary.
+        install(agentArgs, inst, false);
     }
 
     /**
-     * Shared installation path used by {@code premain} (and, in a later revision,
-     * dynamic self-attach). Parses {@code agentArgs}, builds the ignore/type matchers
-     * from the resulting {@link AgentOptions}, and installs the weaving agent on
-     * {@code inst}.
+     * JVM agent entry point invoked when the agent is attached to an <em>already
+     * running</em> JVM (dynamic attach) — either through the Attach API or via
+     * {@link #selfAttach(String)}.
      *
-     * @param agentArgs  the raw agent argument string, or {@code null}
-     * @param inst       the instrumentation handle to install on
+     * <p>Unlike {@link #premain}, dynamic attach happens after arbitrary application
+     * classes have already been loaded. To weave those already-loaded classes this entry
+     * point installs with
+     * {@link AgentBuilder.RedefinitionStrategy#RETRANSFORMATION} and
+     * {@link AgentBuilder.Default#disableClassFormatChanges()}. The injected
+     * {@link Advice} only inlines a method-entry prologue — it adds no fields, methods, or
+     * interfaces — so the class schema is unchanged and retransformation is safe;
+     * accessors of classes loaded <em>before</em> attach are therefore re-woven in place,
+     * exactly like classes loaded afterwards. This behaviour is verified by
+     * {@code SelfAttachTest}.
+     *
+     * <p>The {@code agentArgs} string is parsed identically to {@link #premain} (see
+     * {@link AgentOptions}). Guarded by the shared at-most-once install gate, so a
+     * {@code premain} attach followed by a dynamic attach installs only one transformer.
+     *
+     * @param agentArgs optional {@code includes}/{@code excludes}/{@code debug}
+     *                  configuration, or {@code null}
+     * @param inst      the instrumentation handle provided by the attach mechanism; must
+     *                  support retransformation
+     * @since 1.7.0
      */
-    private static void install(String agentArgs, Instrumentation inst) {
+    public static void agentmain(String agentArgs, Instrumentation inst) {
+        // Dynamic attach: re-weave classes that were already loaded before attach.
+        install(agentArgs, inst, true);
+    }
+
+    /**
+     * Attaches the agent to the currently running JVM at runtime, with no
+     * {@code agentArgs}, so that <em>every</em> non-ignored class is instrumented.
+     * Equivalent to {@code selfAttach(null)}.
+     *
+     * @throws IllegalStateException if the JVM forbids self-attachment; see
+     *                               {@link #selfAttach(String)}
+     * @since 1.7.0
+     */
+    public static void selfAttach() {
+        selfAttach(null);
+    }
+
+    /**
+     * Attaches the agent to the currently running JVM at runtime — no
+     * {@code -javaagent:} launch flag required.
+     *
+     * <p>Obtains an {@link Instrumentation} handle via Byte Buddy's
+     * {@link ByteBuddyAgent#install()} and routes it through the same install path as
+     * {@link #agentmain}. Because dynamic attach runs after classes have loaded, the
+     * install uses retransformation: accessors of classes loaded <em>before</em> the call
+     * are re-woven in place, in addition to classes loaded afterwards (verified by
+     * {@code SelfAttachTest}).
+     *
+     * <h2>When to call</h2>
+     * Call once from test setup — for example a JUnit {@code @BeforeAll} method — before
+     * the code under test exercises the accessors you want to observe. Then consume the
+     * events through {@link TelemetryRegistry} (or a higher-level bridge).
+     *
+     * <h2>Idempotency and interaction with {@code -javaagent}</h2>
+     * This method is idempotent and at-most-once per JVM: it shares the
+     * {@link #INSTALLED} gate with {@link #premain} and {@link #agentmain}. If the agent
+     * was already attached (via the launch flag or a prior {@code selfAttach}), the call
+     * returns immediately without attaching again or double-weaving. It is therefore safe
+     * to call unconditionally even when a {@code -javaagent:} flag may already be present,
+     * and safe to call concurrently from multiple threads.
+     *
+     * <h2>Failure</h2>
+     * Self-attachment is disabled by default on JDK&nbsp;9+ unless the target JVM was
+     * started with {@code -Djdk.attach.allowAttachSelf=true}. When attachment is refused
+     * (or otherwise fails) this method throws an {@link IllegalStateException} rather than
+     * swallowing the error, so the failure is visible; the message directs the caller to
+     * fall back to the {@code -javaagent:} launch flag.
+     *
+     * @param agentArgs optional {@code includes}/{@code excludes}/{@code debug}
+     *                  configuration (see {@link AgentOptions}), or {@code null} to
+     *                  instrument every non-ignored class
+     * @throws IllegalStateException if the JVM forbids self-attachment (for example
+     *                               {@code jdk.attach.allowAttachSelf=false}) or the
+     *                               attach otherwise fails
+     * @since 1.7.0
+     */
+    public static void selfAttach(String agentArgs) {
+        // Fast path: if a launch-flag premain (or a prior selfAttach) already installed the
+        // transformer, skip the attach entirely. The authoritative at-most-once guarantee
+        // is still the INSTALLED CAS inside install(), which also makes concurrent
+        // selfAttach() calls safe: at most one wins and installs.
+        if (INSTALLED.get()) {
+            return;
+        }
+        Instrumentation inst;
+        try {
+            inst = ByteBuddyAgent.install();
+        } catch (RuntimeException | Error ex) {
+            throw new IllegalStateException(
+                    "AsyncTestAgent.selfAttach() could not attach to the current JVM. "
+                    + "Self-attachment is disabled by default on JDK 9+; start the JVM with "
+                    + "-Djdk.attach.allowAttachSelf=true, or fall back to launching with "
+                    + "-javaagent:async-test-lib-<version>.jar.", ex);
+        }
+        install(agentArgs, inst, true);
+    }
+
+    /**
+     * Shared installation path used by {@link #premain} (static attach) and
+     * {@link #agentmain} / {@link #selfAttach} (dynamic attach). Parses {@code agentArgs},
+     * builds the ignore/type matchers from the resulting {@link AgentOptions}, and
+     * installs the weaving agent on {@code inst}.
+     *
+     * <p>Guarded by the {@link #INSTALLED} at-most-once gate: the first caller to win the
+     * CAS installs the transformer; every later call returns without installing, so a
+     * single transformer is active per JVM and accessors are never double-woven.
+     *
+     * @param agentArgs   the raw agent argument string, or {@code null}
+     * @param inst        the instrumentation handle to install on
+     * @param retransform when {@code true}, install with
+     *                    {@link AgentBuilder.RedefinitionStrategy#RETRANSFORMATION} and
+     *                    {@link AgentBuilder.Default#disableClassFormatChanges()} so
+     *                    already-loaded classes are re-woven (dynamic attach); when
+     *                    {@code false}, only classes loaded after install are woven
+     *                    (static attach)
+     */
+    private static void install(String agentArgs, Instrumentation inst, boolean retransform) {
+        if (!INSTALLED.compareAndSet(false, true)) {
+            // Another entry point already installed the transformer for this JVM.
+            return;
+        }
         TelemetryRegistry.start();
 
         AgentOptions options = AgentOptions.parse(agentArgs);
@@ -122,16 +267,24 @@ public final class AsyncTestAgent {
         ElementMatcher<? super TypeDescription> typeIgnore = ignoreMatcher(options.excludes());
         ElementMatcher<? super ClassLoader> bootstrapIgnore = ElementMatchers.isBootstrapClassLoader();
 
-        new AgentBuilder.Default()
-                .with(new DiagnosticListener(options.debug()))
+        AgentBuilder builder = new AgentBuilder.Default()
+                .with(new DiagnosticListener(options.debug()));
+        if (retransform) {
+            // Dynamic attach: re-weave already-loaded classes. Advice inlining adds no
+            // new members, so disableClassFormatChanges() keeps retransformation schema-safe.
+            builder = builder
+                    .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+                    .disableClassFormatChanges();
+        }
+        builder
                 .ignore((typeDescription, classLoader, module, classBeingRedefined, protectionDomain) ->
                         typeIgnore.matches(typeDescription) || bootstrapIgnore.matches(classLoader))
                 .type(typeMatcher(options.includes()))
-                .transform((builder, typeDescription, classLoader, module, protectionDomain) ->
-                        builder.visit(Advice.to(ReadAccessAdvice.class)
-                                            .on(ElementMatchers.isGetter()))
-                               .visit(Advice.to(WriteAccessAdvice.class)
-                                            .on(ElementMatchers.isSetter())))
+                .transform((b, typeDescription, classLoader, module, protectionDomain) ->
+                        b.visit(Advice.to(ReadAccessAdvice.class)
+                                       .on(ElementMatchers.isGetter()))
+                         .visit(Advice.to(WriteAccessAdvice.class)
+                                       .on(ElementMatchers.isSetter())))
                 .installOn(inst);
     }
 

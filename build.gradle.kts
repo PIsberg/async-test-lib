@@ -43,6 +43,8 @@ dependencies {
     implementation("se.deversity.common:common-license-lib:0.2.1")
     // Byte Buddy: Java agent instrumentation (AsyncTestAgent)
     implementation("net.bytebuddy:byte-buddy:$byteBuddyVersion")
+    // Byte Buddy Agent: runtime self-attach (AsyncTestAgent.selfAttach)
+    implementation("net.bytebuddy:byte-buddy-agent:$byteBuddyVersion")
     // ASM: static bytecode pre-scanner (StaticPinningScanner)
     implementation("org.ow2.asm:asm:$asmVersion")
     api("org.slf4j:slf4j-api:$slf4jVersion")
@@ -73,6 +75,9 @@ tasks.test {
         ?: (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
     systemProperty("license.mock.mode", System.getProperty("license.mock.mode", "true"))
     systemProperty("license.key", System.getProperty("license.key", ""))
+    // Permit AsyncTestAgent.selfAttach() to attach to the forked test JVM
+    // (self-attach is disabled by default since JDK 9). Mirrors the Maven surefire argLine.
+    jvmArgs("-Djdk.attach.allowAttachSelf=true")
     
     finalizedBy(tasks.jacocoTestReport)
 
@@ -99,6 +104,7 @@ tasks.jar {
     manifest {
         attributes(
             "Premain-Class" to "se.deversity.asynctest.agent.AsyncTestAgent",
+            "Agent-Class" to "se.deversity.asynctest.agent.AsyncTestAgent",
             "Can-Retransform-Classes" to "true",
             "Can-Redefine-Classes" to "true"
         )

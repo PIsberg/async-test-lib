@@ -135,6 +135,12 @@
             <artifactId>byte-buddy</artifactId>
             <version>${bytebuddy.version}</version>
         </dependency>
+        <!-- Byte Buddy Agent: runtime self-attach (AsyncTestAgent.selfAttach) -->
+        <dependency>
+            <groupId>net.bytebuddy</groupId>
+            <artifactId>byte-buddy-agent</artifactId>
+            <version>${bytebuddy.version}</version>
+        </dependency>
         <!-- ASM: static bytecode pre-scanner for Loom pinning sites (StaticPinningScanner) -->
         <dependency>
             <groupId>org.ow2.asm</groupId>
@@ -159,6 +165,7 @@
                     <archive>
                         <manifestEntries>
                             <Premain-Class>se.deversity.asynctest.agent.AsyncTestAgent</Premain-Class>
+                            <Agent-Class>se.deversity.asynctest.agent.AsyncTestAgent</Agent-Class>
                             <Can-Retransform-Classes>true</Can-Retransform-Classes>
                             <Can-Redefine-Classes>true</Can-Redefine-Classes>
                         </manifestEntries>
@@ -250,6 +257,10 @@
                 <configuration>
                     <forkCount>1</forkCount>
                     <reuseForks>false</reuseForks>
+                    <!-- @{argLine} preserves JaCoCo's late-bound agent argLine; the extra flag
+                         permits AsyncTestAgent.selfAttach() to attach to the forked test JVM
+                         (self-attach is disabled by default since JDK 9). -->
+                    <argLine>@{argLine} -Djdk.attach.allowAttachSelf=true</argLine>
                     <systemPropertyVariables>
                         <license.mock.mode>${license.mock.mode}</license.mock.mode>
                     </systemPropertyVariables>
