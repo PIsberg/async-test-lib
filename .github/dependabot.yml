@@ -4,6 +4,13 @@ updates:
     directory: /
     schedule:
       interval: daily
+    # codeql-action's init/analyze/upload-sarif steps must run the SAME
+    # version — separate per-step bump PRs fail CI with "Loaded a
+    # configuration file for version X, but running version Y".
+    groups:
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
 
   - package-ecosystem: maven
     directory: /
