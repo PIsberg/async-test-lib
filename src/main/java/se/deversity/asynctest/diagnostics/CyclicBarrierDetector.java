@@ -121,6 +121,22 @@ public class CyclicBarrierDetector {
             this.reuseAfterBrokenBarriers = Collections.unmodifiableSet(new HashSet<>(reuseAfterBrokenBarriers));
         }
 
+        /**
+         * Legacy constructor retained for binary compatibility with 1.6.0, before
+         * reuse-after-broken tracking was added.
+         *
+         * @deprecated since 1.7.0 — use the four-argument constructor; this overload
+         *             reports no reuse-after-broken barriers.
+         */
+        @Deprecated(since = "1.7.0")
+        public CyclicBarrierReport(
+            Map<CyclicBarrier, BarrierInfo> barrierRegistry,
+            Set<CyclicBarrier> timedOutBarriers,
+            Set<CyclicBarrier> brokenBarriers
+        ) {
+            this(barrierRegistry, timedOutBarriers, brokenBarriers, Collections.emptySet());
+        }
+
         public Set<CyclicBarrier> getReuseAfterBrokenBarriers() {
             return reuseAfterBrokenBarriers;
         }

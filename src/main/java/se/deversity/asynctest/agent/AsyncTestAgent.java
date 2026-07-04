@@ -358,4 +358,39 @@ public final class AsyncTestAgent {
                     Thread.currentThread().threadId(), identifier, true);
         }
     }
+
+    /**
+     * Legacy Byte Buddy {@link Advice} class retained for binary compatibility with 1.6.0.
+     *
+     * <p>The agent no longer binds this advice: getters and setters are woven with
+     * {@link ReadAccessAdvice} and {@link WriteAccessAdvice}, whose single
+     * constant-pool {@code @Advice.Origin} identifier keeps the prologue
+     * allocation-free. This class remains functional for external code that applied
+     * {@code Advice.to(FieldAccessAdvice.class)} against a 1.6.0 artifact.
+     *
+     * @deprecated since 1.7.0 — use {@link ReadAccessAdvice} / {@link WriteAccessAdvice};
+     *             this variant concatenates the identifier on every intercepted call.
+     */
+    @Deprecated(since = "1.7.0")
+    public static final class FieldAccessAdvice {
+
+        private FieldAccessAdvice() {}
+
+        /**
+         * Advice prologue: records the accessing thread and target field before
+         * the original method body executes.
+         *
+         * @param className  fully-qualified declaring class name (compile-time constant)
+         * @param methodName intercepted method name (compile-time constant)
+         * @deprecated since 1.7.0 — see class-level note
+         */
+        @Deprecated(since = "1.7.0")
+        @Advice.OnMethodEnter
+        public static void enter(
+                @Advice.Origin("#t") String className,
+                @Advice.Origin("#m") String methodName) {
+            TelemetryRegistry.recordAccess(
+                    Thread.currentThread().threadId(), className, methodName);
+        }
+    }
 }
