@@ -2,6 +2,8 @@ package se.deversity.asynctest.agent;
 
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
+import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
@@ -34,9 +36,17 @@ import java.lang.instrument.Instrumentation;
  * {@code Can-Retransform-Classes: true}.
  *
  * <h2>Scope</h2>
- * Instrumentation is intentionally scoped to non-JDK, non-agent packages via
- * {@link ElementMatchers#not(net.bytebuddy.matcher.ElementMatcher) not(isBootstrapClassLoader())}
- * to avoid recursive instrumentation of JDK internals.
+ * Instrumentation candidates are filtered by the ignore matcher built in
+ * {@link #ignoreMatcher()}, which excludes types by name prefix
+ * ({@code java.}, {@code jdk.}, {@code sun.}, {@code com.sun.}, {@code net.bytebuddy.}
+ * and this library's own {@code se.deversity.asynctest.} package) as well as
+ * {@linkplain ElementMatchers#isSynthetic() synthetic} types (e.g. lambda classes).
+ * In addition, {@code premain} ignores every type loaded by the
+ * {@linkplain ElementMatchers#isBootstrapClassLoader() bootstrap class loader}. This
+ * combined matcher restores the exclusions that Byte Buddy applies by default (its own
+ * classes, synthetic types, bootstrap-loaded types), which a bare {@code ignore(...)}
+ * call would otherwise replace, preventing recursive instrumentation of JDK internals
+ * and Byte Buddy itself.
  *
  * @since 1.6.0
  */
@@ -53,13 +63,18 @@ public final class AsyncTestAgent {
     public static void premain(String agentArgs, Instrumentation inst) {
         TelemetryRegistry.start();
 
+        // Byte Buddy's AgentBuilder.ignore(...) REPLACES the built-in default ignore
+        // matcher, so this call must re-establish every exclusion the default provided:
+        // name-based prefixes and synthetic types (see ignoreMatcher()) plus every type
+        // loaded by the bootstrap class loader. A RawMatcher lambda composes these with
+        // OR semantics (the two-argument ignore(typeMatcher, classLoaderMatcher) overload
+        // would AND them, which is not what we want here).
+        ElementMatcher<? super TypeDescription> typeIgnore = ignoreMatcher();
+        ElementMatcher<? super ClassLoader> bootstrapIgnore = ElementMatchers.isBootstrapClassLoader();
+
         new AgentBuilder.Default()
-                // Skip bootstrap-loaded classes (java.*, jdk.*, sun.*) to avoid
-                // infinite recursion when our advice itself calls into the JDK.
-                .ignore(ElementMatchers.nameStartsWith("java.")
-                        .or(ElementMatchers.nameStartsWith("jdk."))
-                        .or(ElementMatchers.nameStartsWith("sun."))
-                        .or(ElementMatchers.nameStartsWith("se.deversity.asynctest.")))
+                .ignore((typeDescription, classLoader, module, classBeingRedefined, protectionDomain) ->
+                        typeIgnore.matches(typeDescription) || bootstrapIgnore.matches(classLoader))
                 .type(ElementMatchers.any())
                 .transform((builder, typeDescription, classLoader, module, protectionDomain) ->
                         builder.visit(
@@ -67,6 +82,33 @@ public final class AsyncTestAgent {
                                       .on(ElementMatchers.isGetter()
                                               .or(ElementMatchers.isSetter()))))
                 .installOn(inst);
+    }
+
+    /**
+     * Builds the type-level ignore matcher used by {@link #premain} to keep
+     * instrumentation off the JDK, Byte Buddy, this library, and synthetic types.
+     *
+     * <p>A type is ignored when its fully-qualified name starts with any of
+     * {@code java.}, {@code jdk.}, {@code sun.}, {@code com.sun.},
+     * {@code net.bytebuddy.} or {@code se.deversity.asynctest.}, or when the type is
+     * {@linkplain ElementMatchers#isSynthetic() synthetic} (for example, a lambda
+     * class). {@code premain} additionally ignores bootstrap-loaded types via a class
+     * loader matcher; that check is class-loader-scoped and therefore lives at the call
+     * site rather than in this type-only matcher.
+     *
+     * <p>Package-private so it can be unit-tested against {@code TypeDescription}
+     * instances without a live {@link Instrumentation} handle.
+     *
+     * @return an ignore matcher over {@link TypeDescription}
+     */
+    static ElementMatcher.Junction<TypeDescription> ignoreMatcher() {
+        return ElementMatchers.<TypeDescription>nameStartsWith("java.")
+                .or(ElementMatchers.nameStartsWith("jdk."))
+                .or(ElementMatchers.nameStartsWith("sun."))
+                .or(ElementMatchers.nameStartsWith("com.sun."))
+                .or(ElementMatchers.nameStartsWith("net.bytebuddy."))
+                .or(ElementMatchers.nameStartsWith("se.deversity.asynctest."))
+                .or(ElementMatchers.isSynthetic());
     }
 
     /**
