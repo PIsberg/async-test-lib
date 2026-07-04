@@ -32,6 +32,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `structured-task-scope-misuse`, `gatherer-parallel-misuse`); and a
   `ConsumerJdk25And26DetectorsTest` public-surface fixture.
 
+### Agent instrumentation (Byte Buddy) — auto-record field access, no source hooks
+
+The `se.deversity.asynctest.agent.AsyncTestAgent` pipeline was hardened and completed so
+agent-captured getter/setter access can drive detectors with zero manual `recordFieldAccess`
+calls. All items ship with tests and full Javadoc (`@since 1.7.0`). See the new
+[AGENT.md](AGENT.md) guide.
+
+#### Fixed
+- **Restored Byte Buddy default ignores + corrected scope Javadoc.** `AgentBuilder.ignore(...)`
+  *replaces* Byte Buddy's built-in ignore matcher; the agent now re-establishes every default
+  exclusion — name prefixes `java.` / `jdk.` / `sun.` / `com.sun.` / `net.bytebuddy.` /
+  `se.deversity.asynctest.`, synthetic types, and bootstrap-class-loader types — preventing
+  recursive instrumentation of the JDK and Byte Buddy itself. Matcher construction is extracted
+  to package-private `ignoreMatcher()` / `typeMatcher(...)` for unit testing, and the class
+  Javadoc now describes the real name-prefix mechanism (previously it falsely claimed
+  `not(isBootstrapClassLoader())`).
+
+#### Performance
+- **Allocation-free advice hot path with compile-time origins.** The single `FieldAccessAdvice`
+  is split into `ReadAccessAdvice` (`isGetter()`, `isWrite=false`) and `WriteAccessAdvice`
+  (`isSetter()`, `isWrite=true`), moving the read/write decision to instrumentation time. Each
+  advice supplies one `@Advice.Origin("#t.#m")` constant-pool identifier
+  (`declaringClass.methodName`, e.g. `com.example.OrderService.setCount`) — a literal `.`
+  separator because Byte Buddy's origin parser rejects a doubled `##` escape. New
+  `TelemetryRegistry.recordAccess(long, String, boolean)` publishes with no string work; the
+  legacy 3-arg `recordAccess(long, String, String)` overload is retained (non-hot-path) for
+  tests/examples. The old `FieldAccessAdvice` is kept `@Deprecated` for binary compatibility.
+
+#### Added
+- **`agentArgs` include/exclude/debug package filters (`AgentOptions`).** `-javaagent:…jar=…`
+  now accepts `includes=<prefix>[;<prefix>…]` (narrows the positive `type(...)` match),
+  `excludes=<prefix>[;…]` (appended to the ignore matcher), and `debug=true`. Entries are
+  separated by `,` or `;`; a bare token appends to the current key; keys are case-insensitive;
+  unknown keys, empty entries, and whitespace are tolerated. Parsing never throws (an exception
+  in `premain` would abort JVM startup). Absent/blank/null args preserve the fully
+  backward-compatible `any()` behavior.
+- **Transform-error listener with optional debug logging (`DiagnosticListener`).** An
+  `AgentBuilder.Listener` now surfaces weaving failures Byte Buddy would otherwise swallow:
+  one line per error to `System.err` —
+  `[ASYNC-TEST-AGENT] Failed to instrument <type>: <throwable>` (message only). With
+  `debug=true` it also logs `[ASYNC-TEST-AGENT] Instrumented <type>` per success and appends
+  full stack traces on error.
+- **Dynamic self-attach — no `-javaagent` flag (`selfAttach` / `agentmain`).** Adds the
+  `net.bytebuddy:byte-buddy-agent` dependency and an `Agent-Class` manifest entry (Maven +
+  Gradle). `AsyncTestAgent.selfAttach()` / `selfAttach(String)` attach the agent to the running
+  JVM via `ByteBuddyAgent.install()` (e.g. from `@BeforeAll`). Dynamic attach installs with
+  `RETRANSFORMATION` + `disableClassFormatChanges()`, so accessors of classes loaded *before*
+  attach are re-woven in place (the `@Advice` adds no members — schema-safe; verified by
+  `SelfAttachTest`). Idempotent and at-most-once per JVM via a shared `AtomicBoolean` CAS gate
+  (a `premain` attach followed by `selfAttach` installs one transformer, never double-weaves).
+  Throws `IllegalStateException` with `-javaagent` fallback advice when the JVM forbids
+  self-attach (needs `-Djdk.attach.allowAttachSelf=true`).
+- **`TelemetryBridge` — bridge agent events into live detectors.** New public
+  `se.deversity.asynctest.telemetry.TelemetryBridge` registers as the `TelemetryRegistry` drain
+  callback and forwards agent field-access events — filtered to the stress-test worker-thread
+  ids — into an `AtomicityValidator` via the new explicit-thread-id overload
+  `recordFieldAccess(String, Object, boolean, long)` (attributing access to the originating
+  worker thread, not the drain thread). Routes to `AtomicityValidator` **only**;
+  `VisibilityMonitor` is deliberately not routed (its analysis is value-based and the agent has
+  no field values). `AutoCloseable` for try-with-resources, idempotent `close()` /
+  `deactivate()`, plus `forCurrentContext(Set<Long>)` and
+  `AsyncTestContext.atomicityValidator()`. `TelemetryRegistry` gains `setCallback(...)` as the
+  clear attach/detach hook.
+
+#### Changed
+- **`TelemetryEventBuffer` overflow is spin-wait, not overwrite.** Corrected the stale class
+  Javadoc: when the 16 384-slot buffer fills, producers spin-wait (`Thread.onSpinWait()`) in
+  `publish()` until the consumer drains — events are never overwritten or dropped on overflow.
+
 ## [1.7.0-RC1] - 2026-06-13
 
 ### Added — Concurrency Detectors (Phases 11 & 12)

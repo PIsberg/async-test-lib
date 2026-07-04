@@ -24,9 +24,10 @@ import java.lang.invoke.VarHandle;
  * {@link TelemetryRegistry}) calls {@link #drain(DrainCallback)} to process all
  * available events without blocking producers.
  *
- * <p><strong>Capacity:</strong> must be a power of two. Overflow is handled by wrapping
- * (oldest events are overwritten). For typical async-test invocation sizes the buffer is
- * never full.
+ * <p><strong>Capacity:</strong> must be a power of two. When the buffer fills, producers
+ * apply backpressure by spin-waiting in {@link #publish} until the single consumer drains a
+ * slot — events are never overwritten or dropped on overflow. For typical async-test
+ * invocation sizes the buffer is never full and the spin path is never taken.
  *
  * @since 1.6.0
  */
