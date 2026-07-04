@@ -20,6 +20,11 @@ import java.util.Locale;
  *       (the positive {@code type(...)} match is narrowed).</li>
  *   <li>{@code excludes} — one or more name prefixes appended to the built-in ignore
  *       matcher, so matching types are never instrumented.</li>
+ *   <li>{@code debug} — a boolean flag ({@code debug=true}) that turns on verbose agent
+ *       diagnostics: every successfully instrumented type is logged and instrumentation
+ *       errors carry a full stack trace. Any value other than {@code true} (case
+ *       insensitive) — or the key's absence — leaves diagnostics at the default
+ *       errors-only, one-line level.</li>
  * </ul>
  *
  * <h2>Examples</h2>
@@ -29,6 +34,9 @@ import java.util.Locale;
  *
  * // Instrument two roots (semicolon-separated value list):
  * -javaagent:async-test-lib.jar=includes=com.myapp;com.other
+ *
+ * // Instrument com.myapp.* with verbose transform diagnostics:
+ * -javaagent:async-test-lib.jar=includes=com.myapp,debug=true
  * }</pre>
  *
  * <h2>Robustness</h2>
@@ -47,10 +55,12 @@ final class AgentOptions {
 
     private final List<String> includes;
     private final List<String> excludes;
+    private final boolean debug;
 
-    private AgentOptions(List<String> includes, List<String> excludes) {
+    private AgentOptions(List<String> includes, List<String> excludes, boolean debug) {
         this.includes = List.copyOf(includes);
         this.excludes = List.copyOf(excludes);
+        this.debug = debug;
     }
 
     /**
@@ -66,6 +76,7 @@ final class AgentOptions {
     static AgentOptions parse(String agentArgs) {
         List<String> includes = new ArrayList<>();
         List<String> excludes = new ArrayList<>();
+        boolean debug = false;
         if (agentArgs != null) {
             String currentKey = null;
             for (String token : agentArgs.split("[,;]")) {
@@ -86,11 +97,13 @@ final class AgentOptions {
                     includes.add(value);
                 } else if ("excludes".equals(currentKey)) {
                     excludes.add(value);
+                } else if ("debug".equals(currentKey)) {
+                    debug = Boolean.parseBoolean(value);
                 }
                 // Unknown keys (and bare values before any key) are ignored on purpose.
             }
         }
-        return new AgentOptions(includes, excludes);
+        return new AgentOptions(includes, excludes, debug);
     }
 
     /**
@@ -110,5 +123,20 @@ final class AgentOptions {
      */
     List<String> excludes() {
         return excludes;
+    }
+
+    /**
+     * Whether verbose agent diagnostics are enabled.
+     *
+     * <p>When {@code true}, the agent's {@code AgentBuilder.Listener} additionally logs
+     * every successfully instrumented type and emits full stack traces for
+     * instrumentation errors. When {@code false} (the default), only a single-line
+     * message is logged per instrumentation error.
+     *
+     * @return {@code true} if {@code debug=true} was supplied, {@code false} otherwise
+     * @since 1.7.0
+     */
+    boolean debug() {
+        return debug;
     }
 }

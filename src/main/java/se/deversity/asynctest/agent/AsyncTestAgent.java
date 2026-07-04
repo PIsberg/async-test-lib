@@ -3,8 +3,10 @@ package se.deversity.asynctest.agent;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
+import net.bytebuddy.utility.JavaModule;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
 import java.lang.instrument.Instrumentation;
@@ -77,6 +79,9 @@ public final class AsyncTestAgent {
      *       starts with one of the prefixes (narrows the positive match).</li>
      *   <li>{@code excludes=<prefix>[;<prefix>...]} — never instrument types whose name
      *       starts with one of the prefixes (appended to the ignore matcher).</li>
+     *   <li>{@code debug=true} — enable verbose diagnostics: log every instrumented type
+     *       and emit full stack traces for instrumentation errors (see
+     *       {@link DiagnosticListener}).</li>
      * </ul>
      * Example:
      * <pre>{@code -javaagent:async-test-lib.jar=includes=com.myapp;excludes=com.myapp.dto}</pre>
@@ -118,6 +123,7 @@ public final class AsyncTestAgent {
         ElementMatcher<? super ClassLoader> bootstrapIgnore = ElementMatchers.isBootstrapClassLoader();
 
         new AgentBuilder.Default()
+                .with(new DiagnosticListener(options.debug()))
                 .ignore((typeDescription, classLoader, module, classBeingRedefined, protectionDomain) ->
                         typeIgnore.matches(typeDescription) || bootstrapIgnore.matches(classLoader))
                 .type(typeMatcher(options.includes()))
@@ -205,6 +211,80 @@ public final class AsyncTestAgent {
             matcher = matcher.or(ElementMatchers.nameStartsWith(prefix));
         }
         return matcher;
+    }
+
+    /**
+     * Byte Buddy {@link AgentBuilder.Listener} that surfaces instrumentation outcomes
+     * which would otherwise be swallowed silently.
+     *
+     * <p>By default (non-debug) it logs a single line to {@code System.err} for each
+     * failed transformation, in the format
+     * <pre>{@code [ASYNC-TEST-AGENT] Failed to instrument <typeName>: <throwable>}</pre>
+     * with the throwable's {@code toString()} only — no stack trace — so that a class the
+     * agent could not weave is visible without flooding CI logs.
+     *
+     * <p>When {@code debug} is {@code true} (via {@code agentArgs=debug=true}) it also
+     * logs one line per successfully instrumented type
+     * (<pre>{@code [ASYNC-TEST-AGENT] Instrumented <typeName>}</pre>) and appends a full
+     * stack trace after each error line.
+     *
+     * <p>Package-private and constructed with an explicit {@code debug} flag so its
+     * behavior can be unit-tested by invoking {@link #onError} / {@link #onTransformation}
+     * directly against a swapped-in {@code System.err}.
+     *
+     * @since 1.7.0
+     */
+    static final class DiagnosticListener extends AgentBuilder.Listener.Adapter {
+
+        private final boolean debug;
+
+        /**
+         * Creates a listener.
+         *
+         * @param debug {@code true} to also log successful transformations and full error
+         *              stack traces; {@code false} for errors-only, one line each
+         */
+        DiagnosticListener(boolean debug) {
+            this.debug = debug;
+        }
+
+        /**
+         * Logs a one-line diagnostic for a type the agent successfully wove — only when
+         * {@code debug} is enabled; a no-op otherwise.
+         *
+         * @param typeDescription  the instrumented type
+         * @param classLoader      the type's class loader (unused)
+         * @param module           the type's module (unused)
+         * @param loaded           whether the type was already loaded (unused)
+         * @param dynamicType      the transformed type (unused)
+         */
+        @Override
+        public void onTransformation(TypeDescription typeDescription, ClassLoader classLoader,
+                                     JavaModule module, boolean loaded, DynamicType dynamicType) {
+            if (debug) {
+                System.err.println("[ASYNC-TEST-AGENT] Instrumented " + typeDescription.getName());
+            }
+        }
+
+        /**
+         * Logs a single-line diagnostic for a type the agent failed to instrument. When
+         * {@code debug} is enabled the throwable's full stack trace is appended after the
+         * summary line.
+         *
+         * @param typeName    the fully-qualified name of the type that could not be woven
+         * @param classLoader the type's class loader (unused)
+         * @param module      the type's module (unused)
+         * @param loaded      whether the type was already loaded (unused)
+         * @param throwable   the failure raised during instrumentation
+         */
+        @Override
+        public void onError(String typeName, ClassLoader classLoader, JavaModule module,
+                            boolean loaded, Throwable throwable) {
+            System.err.println("[ASYNC-TEST-AGENT] Failed to instrument " + typeName + ": " + throwable);
+            if (debug) {
+                throwable.printStackTrace();
+            }
+        }
     }
 
     /**

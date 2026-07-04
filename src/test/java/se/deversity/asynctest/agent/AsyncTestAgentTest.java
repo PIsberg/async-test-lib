@@ -13,6 +13,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -258,5 +261,68 @@ class AsyncTestAgentTest {
 
         assertFalse(AsyncTestAgent.ignoreMatcher(List.of()).matches(plainApp),
                 "empty excludes must yield exactly the built-in ignore behavior");
+    }
+
+    @Test
+    void diagnosticListener_onError_logsSingleLine_nonDebug() {
+        String out = captureErr(() ->
+                new AsyncTestAgent.DiagnosticListener(false).onError(
+                        "com.example.Foo", null, null, false, new RuntimeException("boom")));
+
+        assertEquals("[ASYNC-TEST-AGENT] Failed to instrument com.example.Foo: "
+                        + "java.lang.RuntimeException: boom",
+                out.strip(),
+                "non-debug onError must emit exactly one summary line, message only");
+        assertFalse(out.contains("\tat "), "non-debug onError must not print a stack trace");
+    }
+
+    @Test
+    void diagnosticListener_onError_debug_appendsStackTrace() {
+        String out = captureErr(() ->
+                new AsyncTestAgent.DiagnosticListener(true).onError(
+                        "com.example.Foo", null, null, false, new RuntimeException("boom")));
+
+        assertTrue(out.contains("[ASYNC-TEST-AGENT] Failed to instrument com.example.Foo: "
+                        + "java.lang.RuntimeException: boom"),
+                "debug onError must still emit the summary line; got: " + out);
+        assertTrue(out.contains("\tat "),
+                "debug onError must append the throwable's full stack trace; got: " + out);
+    }
+
+    @Test
+    void diagnosticListener_onTransformation_logsOnlyWhenDebug() {
+        TypeDescription type = TypeDescription.ForLoadedType.of(String.class);
+
+        String debugOut = captureErr(() ->
+                new AsyncTestAgent.DiagnosticListener(true)
+                        .onTransformation(type, null, null, false, null));
+        assertEquals("[ASYNC-TEST-AGENT] Instrumented java.lang.String", debugOut.strip(),
+                "debug onTransformation must log one instrumented-type line");
+    }
+
+    @Test
+    void diagnosticListener_onTransformation_silentWhenNotDebug() {
+        TypeDescription type = TypeDescription.ForLoadedType.of(String.class);
+
+        String out = captureErr(() ->
+                new AsyncTestAgent.DiagnosticListener(false)
+                        .onTransformation(type, null, null, false, null));
+        assertTrue(out.isEmpty(), "non-debug onTransformation must be silent; got: " + out);
+    }
+
+    /**
+     * Runs {@code body} with {@code System.err} redirected to an in-memory buffer,
+     * always restoring the original stream, and returns what was written.
+     */
+    private static String captureErr(Runnable body) {
+        PrintStream original = System.err;
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        System.setErr(new PrintStream(buffer, true, StandardCharsets.UTF_8));
+        try {
+            body.run();
+        } finally {
+            System.setErr(original);
+        }
+        return buffer.toString(StandardCharsets.UTF_8);
     }
 }
