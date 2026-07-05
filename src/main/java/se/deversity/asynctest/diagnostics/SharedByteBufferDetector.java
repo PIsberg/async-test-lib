@@ -88,7 +88,7 @@ public final class SharedByteBufferDetector {
         if (buffer == null) return;
         State s = resolve(buffer);
         Thread thread = Thread.currentThread();
-        s.positionalThreadIds.add(thread.getId());
+        s.positionalThreadIds.add(thread.threadId());
         s.positionalThreadNames.add(thread.getName());
         s.positionalOperations.add(operation != null ? operation : "unknown");
     }
@@ -106,7 +106,7 @@ public final class SharedByteBufferDetector {
         if (buffer == null) return;
         State s = resolve(buffer);
         Thread thread = Thread.currentThread();
-        s.absoluteThreadIds.add(thread.getId());
+        s.absoluteThreadIds.add(thread.threadId());
         s.absoluteThreadNames.add(thread.getName());
         s.absoluteOperations.add(operation != null ? operation : "unknown");
     }

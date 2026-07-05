@@ -89,7 +89,7 @@ public class SharedMessageDigestDetector {
                 return new DigestState(label, type);
             });
         }
-        s.accessingThreadIds.add(thread.getId());
+        s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
         // Capture the user-code site once per distinct call site. The Set's hashing
         // gives us per-(class, line) dedupe so a tight loop doesn't accumulate frames.

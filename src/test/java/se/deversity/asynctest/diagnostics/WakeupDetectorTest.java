@@ -85,4 +85,18 @@ class WakeupDetectorTest {
         assertFalse(report.hasIssues());
         detector.enable();
     }
+
+    @Test
+    void analyze_delegatesToAnalyzeWakeups() {
+        WakeupDetector detector = new WakeupDetector();
+        Object monitor = new Object();
+        detector.recordWaitEnter(monitor);
+        detector.recordWaitExit(monitor, false);
+
+        WakeupDetector.WakeupReport viaAnalyze = detector.analyze();
+        WakeupDetector.WakeupReport viaAnalyzeWakeups = detector.analyzeWakeups();
+
+        assertEquals(viaAnalyzeWakeups.hasIssues(), viaAnalyze.hasIssues());
+        assertEquals(viaAnalyzeWakeups.toString(), viaAnalyze.toString());
+    }
 }

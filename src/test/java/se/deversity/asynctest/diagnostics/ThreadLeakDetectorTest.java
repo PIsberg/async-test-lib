@@ -108,6 +108,44 @@ class ThreadLeakDetectorTest {
     }
 
     @Test
+    void terminatedThread_doesNotRetainStrongReference() throws InterruptedException {
+        Thread thread = new Thread(() -> {});
+        detector.recordThreadStart(thread, "gc-test-thread");
+        detector.recordThreadEnd(thread);
+
+        java.lang.ref.WeakReference<Thread> weakRef = new java.lang.ref.WeakReference<>(thread);
+        thread = null;
+
+        // Nudge the collector; the detector must not be holding a strong Thread
+        // reference once the thread has been marked terminated.
+        for (int i = 0; i < 10 && weakRef.get() != null; i++) {
+            System.gc();
+            Thread.sleep(50);
+        }
+
+        assertNull(weakRef.get(), "Detector should not retain a strong reference to a terminated thread");
+
+        // Report generation must still work correctly once the reference is cleared.
+        ThreadLeakDetector.ThreadLeakReport report = detector.analyzeLeaks();
+        assertFalse(report.hasIssues());
+        assertTrue(report.toString().contains("Total tracked: 1"));
+        assertTrue(report.toString().contains("Terminated: 1"));
+    }
+
+    @Test
+    void analyze_delegatesToAnalyzeLeaks() {
+        Thread thread = new Thread(() -> {});
+        detector.recordThreadStart(thread, "delegate-test");
+        detector.recordThreadEnd(thread);
+
+        ThreadLeakDetector.ThreadLeakReport viaAnalyze = detector.analyze();
+        ThreadLeakDetector.ThreadLeakReport viaAnalyzeLeaks = detector.analyzeLeaks();
+
+        assertEquals(viaAnalyzeLeaks.hasIssues(), viaAnalyze.hasIssues());
+        assertEquals(viaAnalyzeLeaks.toString(), viaAnalyze.toString());
+    }
+
+    @Test
     void report_showsCorrectSummary() {
         Thread t1 = new Thread(() -> {});
         t1.setName("t1");

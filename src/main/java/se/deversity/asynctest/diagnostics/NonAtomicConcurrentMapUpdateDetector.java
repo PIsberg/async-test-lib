@@ -99,7 +99,7 @@ public final class NonAtomicConcurrentMapUpdateDetector {
             final String op = (operation != null) ? operation : "check-then-act";
             s = sites.computeIfAbsent(compositeKey, k -> new State(label, keyStr, op));
         }
-        s.threadIds.add(thread.getId());
+        s.threadIds.add(thread.threadId());
         s.threadNames.add(thread.getName());
     }
 

@@ -10,6 +10,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -96,5 +97,18 @@ class AsyncTestContextAccessorCoverageTest {
         assertTrue(ex.getMessage().contains("Detector not active"),
                 "message should explain the detector is disabled: " + ex.getMessage());
         assertFalse(ex.getMessage().isBlank());
+    }
+
+    @AsyncTest(threads = 1, invocations = 1)
+    void deprecatedMonitorAlias_returnsSameInstance_asRenamedDetectorAccessor() {
+        // Several xxxMonitor() accessors were misnamed — they return *Detector instances,
+        // not *Monitor instances. Each was kept (now @Deprecated) and given a same-behavior
+        // xxxDetector() alias that simply delegates to it. Spot-check that the delegation
+        // yields the identical instance, not a second one, for a representative sample.
+        assertSame(AsyncTestContext.lockLeakMonitor(), AsyncTestContext.lockLeakDetector());
+        assertSame(AsyncTestContext.sharedRandomMonitor(), AsyncTestContext.sharedRandomDetector());
+        assertSame(AsyncTestContext.conditionMonitor(), AsyncTestContext.conditionVariableDetector());
+        assertSame(AsyncTestContext.nestedMonitorLockoutMonitor(), AsyncTestContext.nestedMonitorLockoutDetector());
+        assertSame(AsyncTestContext.cfCommonPoolBlockingMonitor(), AsyncTestContext.cfCommonPoolBlockingDetector());
     }
 }

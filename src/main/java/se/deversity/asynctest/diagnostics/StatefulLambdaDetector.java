@@ -63,7 +63,7 @@ public class StatefulLambdaDetector {
                 : lambda.getClass().getSimpleName() + "@" + System.identityHashCode(lambda);
         LambdaState s = lambdas.computeIfAbsent(
                 System.identityHashCode(lambda), id -> new LambdaState(label));
-        s.executingThreadIds.add(thread.getId());
+        s.executingThreadIds.add(thread.threadId());
         s.executingThreadNames.add(thread.getName());
     }
 

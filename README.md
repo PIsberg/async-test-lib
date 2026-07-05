@@ -377,6 +377,8 @@ static void setup() {
 
 Findings appear as named test-case failures in the Actions UI — not just as `stderr` noise.
 
+**Flaky-test policy:** the build does not configure Surefire's `rerunFailingTestsCount` — an intermittently failing `@AsyncTest` is a detector finding a real concurrency bug, not infrastructure noise, so we don't auto-rerun it away.
+
 Full CI/CD setup guide: [docs/CI_INTEGRATION.md](docs/CI_INTEGRATION.md)
 
 ---

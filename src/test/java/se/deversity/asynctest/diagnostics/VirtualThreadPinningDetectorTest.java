@@ -135,9 +135,21 @@ class VirtualThreadPinningDetectorTest {
     @Test
     void constructor_initializesCorrectly() {
         VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
-        
+
         // Fresh detector should have no events
         VirtualThreadPinningDetector.PinningReport report = detector.analyzePinning();
         assertEquals(0, report.getEvents().size());
+    }
+
+    @Test
+    void analyze_delegatesToAnalyzePinning() {
+        VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
+        detector.startMonitoring();
+
+        VirtualThreadPinningDetector.PinningReport viaAnalyze = detector.analyze();
+        VirtualThreadPinningDetector.PinningReport viaAnalyzePinning = detector.analyzePinning();
+
+        assertEquals(viaAnalyzePinning.hasPinningIssues(), viaAnalyze.hasPinningIssues());
+        assertEquals(viaAnalyzePinning.toString(), viaAnalyze.toString());
     }
 }

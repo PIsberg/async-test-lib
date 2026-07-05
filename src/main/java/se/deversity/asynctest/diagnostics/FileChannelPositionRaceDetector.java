@@ -89,7 +89,7 @@ public final class FileChannelPositionRaceDetector {
             s.operations.add(operation);
         }
         Thread thread = Thread.currentThread();
-        s.accessingThreadIds.add(thread.getId());
+        s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
     }
 

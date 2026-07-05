@@ -93,7 +93,7 @@ public final class SharedJsonMapperReconfigDetector {
         if (mapper == null) return;
         State s = stateFor(mapper);
         Thread thread = Thread.currentThread();
-        s.usingThreadIds.add(thread.getId());
+        s.usingThreadIds.add(thread.threadId());
         s.usingThreadNames.add(thread.getName());
     }
 
@@ -119,7 +119,7 @@ public final class SharedJsonMapperReconfigDetector {
         }
         Thread thread = Thread.currentThread();
         boolean usedByMultipleThreads = s.usingThreadIds.size() >= 2;
-        boolean fromNonUsingThread = !s.usingThreadIds.contains(thread.getId());
+        boolean fromNonUsingThread = !s.usingThreadIds.contains(thread.threadId());
         if (usedByMultipleThreads || fromNonUsingThread) {
             String desc = (mutationDescription != null) ? mutationDescription : "configuration change";
             s.violatingMutations.add(new MutationRecord(desc, thread.getName()));

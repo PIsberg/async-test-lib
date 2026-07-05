@@ -48,9 +48,9 @@ public class WakeupDetector {
         
         synchronized (state) {
             state.waitingThreads++;
-            state.currentlyWaiting.add(Thread.currentThread().getId());
+            state.currentlyWaiting.add(Thread.currentThread().threadId());
             state.events.add(String.format("T-%d WAIT_ENTER (waiting: %d)",
-                Thread.currentThread().getId(), state.waitingThreads));
+                Thread.currentThread().threadId(), state.waitingThreads));
         }
     }
     
@@ -65,15 +65,15 @@ public class WakeupDetector {
         
         synchronized (state) {
             state.waitingThreads--;
-            state.currentlyWaiting.remove(Thread.currentThread().getId());
+            state.currentlyWaiting.remove(Thread.currentThread().threadId());
             
             if (!wasNotified) {
                 state.spuriousWakeups.incrementAndGet();
                 state.events.add(String.format("T-%d SPURIOUS_WAKEUP (waiting: %d)",
-                    Thread.currentThread().getId(), state.waitingThreads));
+                    Thread.currentThread().threadId(), state.waitingThreads));
             } else {
                 state.events.add(String.format("T-%d WAIT_EXIT_NOTIFIED (waiting: %d)",
-                    Thread.currentThread().getId(), state.waitingThreads));
+                    Thread.currentThread().threadId(), state.waitingThreads));
             }
         }
     }
@@ -94,10 +94,10 @@ public class WakeupDetector {
             if (state.waitingThreads == 0) {
                 state.lostNotifications.incrementAndGet();
                 state.events.add(String.format("T-%d NOTIFY_LOST (no waiters)",
-                    Thread.currentThread().getId()));
+                    Thread.currentThread().threadId()));
             } else {
                 state.events.add(String.format("T-%d NOTIFY%s (waiting: %d)",
-                    Thread.currentThread().getId(), 
+                    Thread.currentThread().threadId(), 
                     notifyAll ? "_ALL" : "",
                     state.waitingThreads));
             }
@@ -136,7 +136,14 @@ public class WakeupDetector {
         
         return report;
     }
-    
+
+    /**
+     * Standardized alias for {@link #analyzeWakeups()}.
+     */
+    public WakeupReport analyze() {
+        return analyzeWakeups();
+    }
+
     public void reset() {
         monitors.clear();
     }

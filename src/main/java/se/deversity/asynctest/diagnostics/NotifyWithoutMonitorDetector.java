@@ -86,7 +86,7 @@ public final class NotifyWithoutMonitorDetector {
         synchronized (attempts) {
             attempts.add(new Attempt(effectiveLabel,
                     Thread.currentThread().getName(),
-                    Thread.currentThread().getId()));
+                    Thread.currentThread().threadId()));
         }
     }
 

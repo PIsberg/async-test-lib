@@ -85,7 +85,7 @@ public final class DaemonThreadHygieneDetector {
      */
     public void recordThread(Thread thread, String label) {
         if (thread == null) return;
-        long id = thread.getId();
+        long id = thread.threadId();
         if (tracked.containsKey(id)) return; // first-registration wins, like SharedMessageDigestDetector
         String effectiveLabel = (label != null) ? label : thread.getName();
         StackTraceElement site = firstUserFrame(Thread.currentThread().getStackTrace());
@@ -147,7 +147,7 @@ public final class DaemonThreadHygieneDetector {
         int n = root.enumerate(all, true);
         for (int i = 0; i < n; i++) {
             Thread t = all[i];
-            if (t != null && t.getId() == id && t.isAlive()) return t;
+            if (t != null && t.threadId() == id && t.isAlive()) return t;
         }
         return null;
     }

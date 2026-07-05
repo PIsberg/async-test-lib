@@ -437,7 +437,7 @@ public class Phase2DetectorsTest {
             .registerCollection(list, "mutated-list");
         
         // Multiple threads modifying same collection
-        list.add("item-" + Thread.currentThread().getId());
+        list.add("item-" + Thread.currentThread().threadId());
         AsyncTestContext.concurrentModificationMonitor()
             .recordModification(list, "mutated-list", "add");
     }
@@ -505,7 +505,7 @@ public class Phase2DetectorsTest {
             .registerQueue(queue, "work-queue", 10);
         
         // Producer
-        boolean added = queue.offer("item-" + Thread.currentThread().getId());
+        boolean added = queue.offer("item-" + Thread.currentThread().threadId());
         AsyncTestContext.blockingQueueMonitor()
             .recordOffer(queue, "work-queue", added);
         

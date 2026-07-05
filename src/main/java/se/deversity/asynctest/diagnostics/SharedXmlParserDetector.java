@@ -63,7 +63,7 @@ public class SharedXmlParserDetector {
                 : parser.getClass().getSimpleName();
         ParserState s = parsers.computeIfAbsent(
                 System.identityHashCode(parser), id -> new ParserState(label));
-        s.accessingThreadIds.add(thread.getId());
+        s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
     }
 

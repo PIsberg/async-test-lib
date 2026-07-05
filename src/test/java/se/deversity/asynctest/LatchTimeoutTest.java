@@ -48,7 +48,7 @@ class LatchTimeoutTest {
         @AsyncTest(threads = 2, invocations = 1, timeoutMs = 300, detectDeadlocks = false,
                    useVirtualThreads = false)
         void oneThreadHangsForever() throws InterruptedException {
-            if (Thread.currentThread().getId() % 2 != 0) {
+            if (Thread.currentThread().threadId() % 2 != 0) {
                 // spin — this thread never calls latch.countDown()
                 Thread.sleep(60_000);
             }

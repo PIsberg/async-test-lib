@@ -75,4 +75,17 @@ class MemoryOrderingMonitorTest {
         assertFalse(report.hasIssues());
         monitor.enable();
     }
+
+    @Test
+    void analyze_delegatesToAnalyzeOrdering() {
+        MemoryOrderingMonitor monitor = new MemoryOrderingMonitor();
+        monitor.recordWrite("fieldA", "hello");
+        monitor.recordRead("fieldA", "stale");
+
+        MemoryOrderingMonitor.MemoryOrderingReport viaAnalyze = monitor.analyze();
+        MemoryOrderingMonitor.MemoryOrderingReport viaAnalyzeOrdering = monitor.analyzeOrdering();
+
+        assertEquals(viaAnalyzeOrdering.hasIssues(), viaAnalyze.hasIssues());
+        assertEquals(viaAnalyzeOrdering.toString(), viaAnalyze.toString());
+    }
 }

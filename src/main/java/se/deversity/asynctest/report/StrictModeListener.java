@@ -11,7 +11,7 @@ import se.deversity.asynctest.AsyncTestListener;
  * <p>Register this listener in a strict CI pipeline where <em>any</em> concurrency finding
  * should break the build — not just test-body assertion failures.
  *
- * <h3>Usage</h3>
+ * <h2>Usage</h2>
  * <pre>{@code
  * @BeforeAll
  * static void setup() {

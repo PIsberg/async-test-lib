@@ -142,6 +142,13 @@ public class RaceConditionDetector {
         return report;
     }
 
+    /**
+     * Standardized alias for {@link #analyzeRaceConditions()}.
+     */
+    public RaceConditionReport analyze() {
+        return analyzeRaceConditions();
+    }
+
     public void reset() {
         objects.clear();
         deduplicator.clear();

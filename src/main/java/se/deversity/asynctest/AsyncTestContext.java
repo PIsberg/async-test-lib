@@ -8,6 +8,7 @@ import se.deversity.asynctest.diagnostics.AtomicNonAtomicUpdateDetector;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.diagnostics.BlockingQueueDetector;
 import se.deversity.asynctest.diagnostics.BoxedPrimitiveLockDetector;
+import se.deversity.asynctest.diagnostics.BusyWaitDetector;
 import se.deversity.asynctest.diagnostics.CacheConcurrencyDetector;
 import se.deversity.asynctest.diagnostics.CalendarDetector;
 import se.deversity.asynctest.diagnostics.CompletableFutureChainDetector;
@@ -34,9 +35,11 @@ import se.deversity.asynctest.diagnostics.FutureIgnoredDetector;
 import se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetector;
 import se.deversity.asynctest.diagnostics.HttpClientConcurrencyDetector;
 import se.deversity.asynctest.diagnostics.InheritableThreadLocalMisuseDetector;
+import se.deversity.asynctest.diagnostics.InterruptMonitor;
 import se.deversity.asynctest.diagnostics.InterruptSwallowingDetector;
 import se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector;
 import se.deversity.asynctest.diagnostics.LazyInitRaceDetector;
+import se.deversity.asynctest.diagnostics.LivelockDetector;
 import se.deversity.asynctest.diagnostics.LockContentionDetector;
 import se.deversity.asynctest.diagnostics.LockDowngradeDetector;
 import se.deversity.asynctest.diagnostics.LockLeakDetector;
@@ -53,6 +56,7 @@ import se.deversity.asynctest.diagnostics.ParallelStreamDetector;
 import se.deversity.asynctest.diagnostics.PhaserDetector;
 import se.deversity.asynctest.diagnostics.PipelineMonitor;
 import se.deversity.asynctest.diagnostics.PublicLockExposureDetector;
+import se.deversity.asynctest.diagnostics.RaceConditionDetector;
 import se.deversity.asynctest.diagnostics.ReadWriteLockMonitor;
 import se.deversity.asynctest.diagnostics.ReentrantLockDetector;
 import se.deversity.asynctest.diagnostics.ResourceLeakDetector;
@@ -88,6 +92,7 @@ import se.deversity.asynctest.diagnostics.ThisEscapeDetector;
 import se.deversity.asynctest.diagnostics.ThreadFactoryDetector;
 import se.deversity.asynctest.diagnostics.ThreadLeakDetector;
 import se.deversity.asynctest.diagnostics.ThreadLocalContaminationDetector;
+import se.deversity.asynctest.diagnostics.ThreadLocalMonitor;
 import se.deversity.asynctest.diagnostics.ThreadLocalRandomMisuseDetector;
 import se.deversity.asynctest.diagnostics.ThreadPoolDeadlockDetector;
 import se.deversity.asynctest.diagnostics.ThreadPoolMonitor;
@@ -100,6 +105,7 @@ import se.deversity.asynctest.diagnostics.VirtualThreadCarrierExhaustionDetector
 import se.deversity.asynctest.diagnostics.VirtualThreadContextLeakDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadCpuBoundTaskDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadPinningDetector;
+import se.deversity.asynctest.diagnostics.VisibilityMonitor;
 import se.deversity.asynctest.diagnostics.VolatileArrayDetector;
 import se.deversity.asynctest.diagnostics.WaitTimeoutDetector;
 import se.deversity.asynctest.diagnostics.WakeupDetector;
@@ -431,6 +437,104 @@ public final class AsyncTestContext {
         atomicityValidator                     = registry.atomicityValidator;
     }
 
+    // ---- Phase 1/3 instance convergence (used by Phase1DetectorSet.from) ----
+    //
+    // VisibilityMonitor, LivelockDetector, RaceConditionDetector, ThreadLocalMonitor,
+    // BusyWaitDetector, AtomicityValidator and InterruptMonitor were previously
+    // constructed BOTH here (via DetectorRegistry) AND independently by
+    // Phase1DetectorSet.from(config) in the runner. Whichever instance actually
+    // received events (e.g. AtomicityValidator via the telemetry bridge below, or a
+    // future instrumentation source) was silently disconnected from the other
+    // instance's analysis pass, which always saw an empty detector.
+    //
+    // These package-crossing accessors let Phase1DetectorSet.from(config, ctx) reuse
+    // this context's registry-backed instances instead of constructing duplicates, so
+    // recording and analysis always observe the same object per detector. They
+    // deliberately return null (rather than throwing, like the public require()-based
+    // accessors) when the corresponding flag is disabled, matching
+    // DetectorRegistry's null-when-disabled convention.
+
+    /**
+     * Internal: registry-backed {@link VisibilityMonitor} for this context, or
+     * {@code null} when {@code detectVisibility = false}.
+     *
+     * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
+     * which lives in a different package, can call it; not part of the stable public API.
+     */
+    public VisibilityMonitor sharedVisibilityMonitor() {
+        return registry.visibilityMonitor;
+    }
+
+    /**
+     * Internal: registry-backed {@link LivelockDetector} for this context, or
+     * {@code null} when {@code detectLivelocks = false}.
+     *
+     * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
+     * which lives in a different package, can call it; not part of the stable public API.
+     */
+    public LivelockDetector sharedLivelockDetector() {
+        return registry.livelockDetector;
+    }
+
+    /**
+     * Internal: registry-backed {@link RaceConditionDetector} for this context, or
+     * {@code null} when {@code detectRaceConditions = false}.
+     *
+     * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
+     * which lives in a different package, can call it; not part of the stable public API.
+     */
+    public RaceConditionDetector sharedRaceConditionDetector() {
+        return registry.raceConditionDetector;
+    }
+
+    /**
+     * Internal: registry-backed {@link ThreadLocalMonitor} for this context, or
+     * {@code null} when {@code detectThreadLocalLeaks = false}.
+     *
+     * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
+     * which lives in a different package, can call it; not part of the stable public API.
+     */
+    public ThreadLocalMonitor sharedThreadLocalMonitor() {
+        return registry.threadLocalMonitor;
+    }
+
+    /**
+     * Internal: registry-backed {@link BusyWaitDetector} for this context, or
+     * {@code null} when {@code detectBusyWaiting = false}.
+     *
+     * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
+     * which lives in a different package, can call it; not part of the stable public API.
+     */
+    public BusyWaitDetector sharedBusyWaitDetector() {
+        return registry.busyWaitDetector;
+    }
+
+    /**
+     * Internal: registry-backed {@link AtomicityValidator} for this context, or
+     * {@code null} when {@code detectAtomicityViolations = false}.
+     *
+     * <p>Same instance as the public {@link #atomicityValidator()} accessor (and thus
+     * the same instance {@code TelemetryBridge} feeds); unlike that accessor this one
+     * returns {@code null} instead of throwing when disabled.
+     *
+     * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
+     * which lives in a different package, can call it; not part of the stable public API.
+     */
+    public AtomicityValidator sharedAtomicityValidator() {
+        return registry.atomicityValidator;
+    }
+
+    /**
+     * Internal: registry-backed {@link InterruptMonitor} for this context, or
+     * {@code null} when {@code detectInterruptMishandling = false}.
+     *
+     * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
+     * which lives in a different package, can call it; not part of the stable public API.
+     */
+    public InterruptMonitor sharedInterruptMonitor() {
+        return registry.interruptMonitor;
+    }
+
     // ---- Lifecycle (called by ConcurrencyRunner) ----
 
     /** Installs {@code ctx} into the calling thread's ThreadLocal. */
@@ -583,17 +687,37 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link SemaphoreMisuseDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code monitorSemaphore = false}
+     * @deprecated use {@link #semaphoreMisuseDetector()}
      */
+    @Deprecated
     public static SemaphoreMisuseDetector semaphoreMonitor() {
         return require("monitorSemaphore", c -> c.semaphoreMisuseDetector);
+    }
+
+    /**
+     * Returns the {@link SemaphoreMisuseDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code monitorSemaphore = false}
+     */
+    public static SemaphoreMisuseDetector semaphoreMisuseDetector() {
+        return semaphoreMonitor();
+    }
+
+    /**
+     * Returns the {@link CompletableFutureExceptionDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCompletableFutureExceptions = false}
+     * @deprecated use {@link #completableFutureExceptionDetector()}
+     */
+    @Deprecated
+    public static CompletableFutureExceptionDetector completableFutureMonitor() {
+        return require("detectCompletableFutureExceptions", c -> c.completableFutureExceptionDetector);
     }
 
     /**
      * Returns the {@link CompletableFutureExceptionDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCompletableFutureExceptions = false}
      */
-    public static CompletableFutureExceptionDetector completableFutureMonitor() {
-        return require("detectCompletableFutureExceptions", c -> c.completableFutureExceptionDetector);
+    public static CompletableFutureExceptionDetector completableFutureExceptionDetector() {
+        return completableFutureMonitor();
     }
 
     /**
@@ -626,113 +750,253 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link ConcurrentModificationDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectConcurrentModifications = false}
+     * @deprecated use {@link #concurrentModificationDetector()}
      */
+    @Deprecated
     public static ConcurrentModificationDetector concurrentModificationMonitor() {
         return require("detectConcurrentModifications", c -> c.concurrentModificationDetector);
+    }
+
+    /**
+     * Returns the {@link ConcurrentModificationDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectConcurrentModifications = false}
+     */
+    public static ConcurrentModificationDetector concurrentModificationDetector() {
+        return concurrentModificationMonitor();
+    }
+
+    /**
+     * Returns the {@link LockLeakDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLockLeaks = false}
+     * @deprecated use {@link #lockLeakDetector()}
+     */
+    @Deprecated
+    public static LockLeakDetector lockLeakMonitor() {
+        return require("detectLockLeaks", c -> c.lockLeakDetector);
     }
 
     /**
      * Returns the {@link LockLeakDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLockLeaks = false}
      */
-    public static LockLeakDetector lockLeakMonitor() {
-        return require("detectLockLeaks", c -> c.lockLeakDetector);
+    public static LockLeakDetector lockLeakDetector() {
+        return lockLeakMonitor();
+    }
+
+    /**
+     * Returns the {@link SharedRandomDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedRandom = false}
+     * @deprecated use {@link #sharedRandomDetector()}
+     */
+    @Deprecated
+    public static SharedRandomDetector sharedRandomMonitor() {
+        return require("detectSharedRandom", c -> c.sharedRandomDetector);
     }
 
     /**
      * Returns the {@link SharedRandomDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedRandom = false}
      */
-    public static SharedRandomDetector sharedRandomMonitor() {
-        return require("detectSharedRandom", c -> c.sharedRandomDetector);
+    public static SharedRandomDetector sharedRandomDetector() {
+        return sharedRandomMonitor();
+    }
+
+    /**
+     * Returns the {@link BlockingQueueDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectBlockingQueueIssues = false}
+     * @deprecated use {@link #blockingQueueDetector()}
+     */
+    @Deprecated
+    public static BlockingQueueDetector blockingQueueMonitor() {
+        return require("detectBlockingQueueIssues", c -> c.blockingQueueDetector);
     }
 
     /**
      * Returns the {@link BlockingQueueDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectBlockingQueueIssues = false}
      */
-    public static BlockingQueueDetector blockingQueueMonitor() {
-        return require("detectBlockingQueueIssues", c -> c.blockingQueueDetector);
+    public static BlockingQueueDetector blockingQueueDetector() {
+        return blockingQueueMonitor();
+    }
+
+    /**
+     * Returns the {@link ConditionVariableDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectConditionVariableIssues = false}
+     * @deprecated use {@link #conditionVariableDetector()}
+     */
+    @Deprecated
+    public static ConditionVariableDetector conditionMonitor() {
+        return require("detectConditionVariableIssues", c -> c.conditionVariableDetector);
     }
 
     /**
      * Returns the {@link ConditionVariableDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectConditionVariableIssues = false}
      */
-    public static ConditionVariableDetector conditionMonitor() {
-        return require("detectConditionVariableIssues", c -> c.conditionVariableDetector);
+    public static ConditionVariableDetector conditionVariableDetector() {
+        return conditionMonitor();
+    }
+
+    /**
+     * Returns the {@link SimpleDateFormatDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSimpleDateFormatIssues = false}
+     * @deprecated use {@link #simpleDateFormatDetector()}
+     */
+    @Deprecated
+    public static SimpleDateFormatDetector simpleDateFormatMonitor() {
+        return require("detectSimpleDateFormatIssues", c -> c.simpleDateFormatDetector);
     }
 
     /**
      * Returns the {@link SimpleDateFormatDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSimpleDateFormatIssues = false}
      */
-    public static SimpleDateFormatDetector simpleDateFormatMonitor() {
-        return require("detectSimpleDateFormatIssues", c -> c.simpleDateFormatDetector);
+    public static SimpleDateFormatDetector simpleDateFormatDetector() {
+        return simpleDateFormatMonitor();
+    }
+
+    /**
+     * Returns the {@link ParallelStreamDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectParallelStreamIssues = false}
+     * @deprecated use {@link #parallelStreamDetector()}
+     */
+    @Deprecated
+    public static ParallelStreamDetector parallelStreamMonitor() {
+        return require("detectParallelStreamIssues", c -> c.parallelStreamDetector);
     }
 
     /**
      * Returns the {@link ParallelStreamDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectParallelStreamIssues = false}
      */
-    public static ParallelStreamDetector parallelStreamMonitor() {
-        return require("detectParallelStreamIssues", c -> c.parallelStreamDetector);
+    public static ParallelStreamDetector parallelStreamDetector() {
+        return parallelStreamMonitor();
+    }
+
+    /**
+     * Returns the {@link ResourceLeakDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectResourceLeaks = false}
+     * @deprecated use {@link #resourceLeakDetector()}
+     */
+    @Deprecated
+    public static ResourceLeakDetector resourceLeakMonitor() {
+        return require("detectResourceLeaks", c -> c.resourceLeakDetector);
     }
 
     /**
      * Returns the {@link ResourceLeakDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectResourceLeaks = false}
      */
-    public static ResourceLeakDetector resourceLeakMonitor() {
-        return require("detectResourceLeaks", c -> c.resourceLeakDetector);
+    public static ResourceLeakDetector resourceLeakDetector() {
+        return resourceLeakMonitor();
+    }
+
+    /**
+     * Returns the {@link CountDownLatchDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCountDownLatchIssues = false}
+     * @deprecated use {@link #countDownLatchDetector()}
+     */
+    @Deprecated
+    public static CountDownLatchDetector countDownLatchMonitor() {
+        return require("detectCountDownLatchIssues", c -> c.countDownLatchDetector);
     }
 
     /**
      * Returns the {@link CountDownLatchDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCountDownLatchIssues = false}
      */
-    public static CountDownLatchDetector countDownLatchMonitor() {
-        return require("detectCountDownLatchIssues", c -> c.countDownLatchDetector);
+    public static CountDownLatchDetector countDownLatchDetector() {
+        return countDownLatchMonitor();
+    }
+
+    /**
+     * Returns the {@link CyclicBarrierDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCyclicBarrierIssues = false}
+     * @deprecated use {@link #cyclicBarrierDetector()}
+     */
+    @Deprecated
+    public static CyclicBarrierDetector cyclicBarrierMonitor() {
+        return require("detectCyclicBarrierIssues", c -> c.cyclicBarrierDetector);
     }
 
     /**
      * Returns the {@link CyclicBarrierDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCyclicBarrierIssues = false}
      */
-    public static CyclicBarrierDetector cyclicBarrierMonitor() {
-        return require("detectCyclicBarrierIssues", c -> c.cyclicBarrierDetector);
+    public static CyclicBarrierDetector cyclicBarrierDetector() {
+        return cyclicBarrierMonitor();
+    }
+
+    /**
+     * Returns the {@link ReentrantLockDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectReentrantLockIssues = false}
+     * @deprecated use {@link #reentrantLockDetector()}
+     */
+    @Deprecated
+    public static ReentrantLockDetector reentrantLockMonitor() {
+        return require("detectReentrantLockIssues", c -> c.reentrantLockDetector);
     }
 
     /**
      * Returns the {@link ReentrantLockDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectReentrantLockIssues = false}
      */
-    public static ReentrantLockDetector reentrantLockMonitor() {
-        return require("detectReentrantLockIssues", c -> c.reentrantLockDetector);
+    public static ReentrantLockDetector reentrantLockDetector() {
+        return reentrantLockMonitor();
+    }
+
+    /**
+     * Returns the {@link VolatileArrayDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVolatileArrayIssues = false}
+     * @deprecated use {@link #volatileArrayDetector()}
+     */
+    @Deprecated
+    public static VolatileArrayDetector volatileArrayMonitor() {
+        return require("detectVolatileArrayIssues", c -> c.volatileArrayDetector);
     }
 
     /**
      * Returns the {@link VolatileArrayDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVolatileArrayIssues = false}
      */
-    public static VolatileArrayDetector volatileArrayMonitor() {
-        return require("detectVolatileArrayIssues", c -> c.volatileArrayDetector);
+    public static VolatileArrayDetector volatileArrayDetector() {
+        return volatileArrayMonitor();
+    }
+
+    /**
+     * Returns the {@link DoubleCheckedLockingDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectDoubleCheckedLocking = false}
+     * @deprecated use {@link #doubleCheckedLockingDetector()}
+     */
+    @Deprecated
+    public static DoubleCheckedLockingDetector doubleCheckedLockingMonitor() {
+        return require("detectDoubleCheckedLocking", c -> c.doubleCheckedLockingDetector);
     }
 
     /**
      * Returns the {@link DoubleCheckedLockingDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectDoubleCheckedLocking = false}
      */
-    public static DoubleCheckedLockingDetector doubleCheckedLockingMonitor() {
-        return require("detectDoubleCheckedLocking", c -> c.doubleCheckedLockingDetector);
+    public static DoubleCheckedLockingDetector doubleCheckedLockingDetector() {
+        return doubleCheckedLockingMonitor();
+    }
+
+    /**
+     * Returns the {@link WaitTimeoutDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectWaitTimeout = false}
+     * @deprecated use {@link #waitTimeoutDetector()}
+     */
+    @Deprecated
+    public static WaitTimeoutDetector waitTimeoutMonitor() {
+        return require("detectWaitTimeout", c -> c.waitTimeoutDetector);
     }
 
     /**
      * Returns the {@link WaitTimeoutDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectWaitTimeout = false}
      */
-    public static WaitTimeoutDetector waitTimeoutMonitor() {
-        return require("detectWaitTimeout", c -> c.waitTimeoutDetector);
+    public static WaitTimeoutDetector waitTimeoutDetector() {
+        return waitTimeoutMonitor();
     }
 
     /**
@@ -770,49 +1034,109 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link PhaserDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectPhaserIssues = false}
+     * @deprecated use {@link #phaserDetector()}
      */
+    @Deprecated
     public static PhaserDetector phaserMonitor() {
         return require("detectPhaserIssues", c -> c.phaserDetector);
+    }
+
+    /**
+     * Returns the {@link PhaserDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectPhaserIssues = false}
+     */
+    public static PhaserDetector phaserDetector() {
+        return phaserMonitor();
+    }
+
+    /**
+     * Returns the {@link StampedLockDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectStampedLockIssues = false}
+     * @deprecated use {@link #stampedLockDetector()}
+     */
+    @Deprecated
+    public static StampedLockDetector stampedLockMonitor() {
+        return require("detectStampedLockIssues", c -> c.stampedLockDetector);
     }
 
     /**
      * Returns the {@link StampedLockDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectStampedLockIssues = false}
      */
-    public static StampedLockDetector stampedLockMonitor() {
-        return require("detectStampedLockIssues", c -> c.stampedLockDetector);
+    public static StampedLockDetector stampedLockDetector() {
+        return stampedLockMonitor();
+    }
+
+    /**
+     * Returns the {@link ExchangerDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectExchangerIssues = false}
+     * @deprecated use {@link #exchangerDetector()}
+     */
+    @Deprecated
+    public static ExchangerDetector exchangerMonitor() {
+        return require("detectExchangerIssues", c -> c.exchangerDetector);
     }
 
     /**
      * Returns the {@link ExchangerDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectExchangerIssues = false}
      */
-    public static ExchangerDetector exchangerMonitor() {
-        return require("detectExchangerIssues", c -> c.exchangerDetector);
+    public static ExchangerDetector exchangerDetector() {
+        return exchangerMonitor();
+    }
+
+    /**
+     * Returns the {@link ScheduledExecutorDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectScheduledExecutorIssues = false}
+     * @deprecated use {@link #scheduledExecutorDetector()}
+     */
+    @Deprecated
+    public static ScheduledExecutorDetector scheduledExecutorMonitor() {
+        return require("detectScheduledExecutorIssues", c -> c.scheduledExecutorDetector);
     }
 
     /**
      * Returns the {@link ScheduledExecutorDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectScheduledExecutorIssues = false}
      */
-    public static ScheduledExecutorDetector scheduledExecutorMonitor() {
-        return require("detectScheduledExecutorIssues", c -> c.scheduledExecutorDetector);
+    public static ScheduledExecutorDetector scheduledExecutorDetector() {
+        return scheduledExecutorMonitor();
+    }
+
+    /**
+     * Returns the {@link ForkJoinPoolDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectForkJoinPoolIssues = false}
+     * @deprecated use {@link #forkJoinPoolDetector()}
+     */
+    @Deprecated
+    public static ForkJoinPoolDetector forkJoinPoolMonitor() {
+        return require("detectForkJoinPoolIssues", c -> c.forkJoinPoolDetector);
     }
 
     /**
      * Returns the {@link ForkJoinPoolDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectForkJoinPoolIssues = false}
      */
-    public static ForkJoinPoolDetector forkJoinPoolMonitor() {
-        return require("detectForkJoinPoolIssues", c -> c.forkJoinPoolDetector);
+    public static ForkJoinPoolDetector forkJoinPoolDetector() {
+        return forkJoinPoolMonitor();
+    }
+
+    /**
+     * Returns the {@link ThreadFactoryDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectThreadFactoryIssues = false}
+     * @deprecated use {@link #threadFactoryDetector()}
+     */
+    @Deprecated
+    public static ThreadFactoryDetector threadFactoryMonitor() {
+        return require("detectThreadFactoryIssues", c -> c.threadFactoryDetector);
     }
 
     /**
      * Returns the {@link ThreadFactoryDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectThreadFactoryIssues = false}
      */
-    public static ThreadFactoryDetector threadFactoryMonitor() {
-        return require("detectThreadFactoryIssues", c -> c.threadFactoryDetector);
+    public static ThreadFactoryDetector threadFactoryDetector() {
+        return threadFactoryMonitor();
     }
 
     // ---- Phase 4: Infrastructure & Resource Management ----
@@ -854,41 +1178,91 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link CalendarDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCalendarIssues = false}
+     * @deprecated use {@link #calendarDetector()}
      */
+    @Deprecated
     public static CalendarDetector calendarMonitor() {
         return require("detectCalendarIssues", c -> c.calendarDetector);
+    }
+
+    /**
+     * Returns the {@link CalendarDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCalendarIssues = false}
+     */
+    public static CalendarDetector calendarDetector() {
+        return calendarMonitor();
+    }
+
+    /**
+     * Returns the {@link SharedCollectionDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedCollections = false}
+     * @deprecated use {@link #sharedCollectionDetector()}
+     */
+    @Deprecated
+    public static SharedCollectionDetector sharedCollectionMonitor() {
+        return require("detectSharedCollections", c -> c.sharedCollectionDetector);
     }
 
     /**
      * Returns the {@link SharedCollectionDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedCollections = false}
      */
-    public static SharedCollectionDetector sharedCollectionMonitor() {
-        return require("detectSharedCollections", c -> c.sharedCollectionDetector);
+    public static SharedCollectionDetector sharedCollectionDetector() {
+        return sharedCollectionMonitor();
+    }
+
+    /**
+     * Returns the {@link TimerDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectTimerIssues = false}
+     * @deprecated use {@link #timerDetector()}
+     */
+    @Deprecated
+    public static TimerDetector timerMonitor() {
+        return require("detectTimerIssues", c -> c.timerDetector);
     }
 
     /**
      * Returns the {@link TimerDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectTimerIssues = false}
      */
-    public static TimerDetector timerMonitor() {
-        return require("detectTimerIssues", c -> c.timerDetector);
+    public static TimerDetector timerDetector() {
+        return timerMonitor();
+    }
+
+    /**
+     * Returns the {@link CopyOnWriteCollectionDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCopyOnWriteCollectionIssues = false}
+     * @deprecated use {@link #copyOnWriteCollectionDetector()}
+     */
+    @Deprecated
+    public static CopyOnWriteCollectionDetector copyOnWriteMonitor() {
+        return require("detectCopyOnWriteCollectionIssues", c -> c.copyOnWriteCollectionDetector);
     }
 
     /**
      * Returns the {@link CopyOnWriteCollectionDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCopyOnWriteCollectionIssues = false}
      */
-    public static CopyOnWriteCollectionDetector copyOnWriteMonitor() {
-        return require("detectCopyOnWriteCollectionIssues", c -> c.copyOnWriteCollectionDetector);
+    public static CopyOnWriteCollectionDetector copyOnWriteCollectionDetector() {
+        return copyOnWriteMonitor();
+    }
+
+    /**
+     * Returns the {@link StringBuilderDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectStringBuilderIssues = false}
+     * @deprecated use {@link #stringBuilderDetector()}
+     */
+    @Deprecated
+    public static StringBuilderDetector stringBuilderMonitor() {
+        return require("detectStringBuilderIssues", c -> c.stringBuilderDetector);
     }
 
     /**
      * Returns the {@link StringBuilderDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectStringBuilderIssues = false}
      */
-    public static StringBuilderDetector stringBuilderMonitor() {
-        return require("detectStringBuilderIssues", c -> c.stringBuilderDetector);
+    public static StringBuilderDetector stringBuilderDetector() {
+        return stringBuilderMonitor();
     }
 
     // ---- Phase 6: Virtual Thread Concurrency (Java 21+) ----
@@ -978,129 +1352,289 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link ExecutorShutdownDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectExecutorShutdown = false}
+     * @deprecated use {@link #executorShutdownDetector()}
      */
+    @Deprecated
     public static ExecutorShutdownDetector executorShutdownMonitor() {
         return require("detectExecutorShutdown", c -> c.executorShutdownDetector);
+    }
+
+    /**
+     * Returns the {@link ExecutorShutdownDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectExecutorShutdown = false}
+     */
+    public static ExecutorShutdownDetector executorShutdownDetector() {
+        return executorShutdownMonitor();
+    }
+
+    /**
+     * Returns the {@link MutableMapKeyDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectMutableMapKeys = false}
+     * @deprecated use {@link #mutableMapKeyDetector()}
+     */
+    @Deprecated
+    public static MutableMapKeyDetector mutableMapKeyMonitor() {
+        return require("detectMutableMapKeys", c -> c.mutableMapKeyDetector);
     }
 
     /**
      * Returns the {@link MutableMapKeyDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectMutableMapKeys = false}
      */
-    public static MutableMapKeyDetector mutableMapKeyMonitor() {
-        return require("detectMutableMapKeys", c -> c.mutableMapKeyDetector);
+    public static MutableMapKeyDetector mutableMapKeyDetector() {
+        return mutableMapKeyMonitor();
+    }
+
+    /**
+     * Returns the {@link NestedMonitorLockoutDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectNestedMonitorLockout = false}
+     * @deprecated use {@link #nestedMonitorLockoutDetector()}
+     */
+    @Deprecated
+    public static NestedMonitorLockoutDetector nestedMonitorLockoutMonitor() {
+        return require("detectNestedMonitorLockout", c -> c.nestedMonitorLockoutDetector);
     }
 
     /**
      * Returns the {@link NestedMonitorLockoutDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectNestedMonitorLockout = false}
      */
-    public static NestedMonitorLockoutDetector nestedMonitorLockoutMonitor() {
-        return require("detectNestedMonitorLockout", c -> c.nestedMonitorLockoutDetector);
+    public static NestedMonitorLockoutDetector nestedMonitorLockoutDetector() {
+        return nestedMonitorLockoutMonitor();
+    }
+
+    /**
+     * Returns the {@link LockDowngradeDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLockDowngrade = false}
+     * @deprecated use {@link #lockDowngradeDetector()}
+     */
+    @Deprecated
+    public static LockDowngradeDetector lockDowngradeMonitor() {
+        return require("detectLockDowngrade", c -> c.lockDowngradeDetector);
     }
 
     /**
      * Returns the {@link LockDowngradeDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLockDowngrade = false}
      */
-    public static LockDowngradeDetector lockDowngradeMonitor() {
-        return require("detectLockDowngrade", c -> c.lockDowngradeDetector);
+    public static LockDowngradeDetector lockDowngradeDetector() {
+        return lockDowngradeMonitor();
+    }
+
+    /**
+     * Returns the {@link InheritableThreadLocalMisuseDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectInheritableThreadLocalMisuse = false}
+     * @deprecated use {@link #inheritableThreadLocalMisuseDetector()}
+     */
+    @Deprecated
+    public static InheritableThreadLocalMisuseDetector inheritableThreadLocalMisuseMonitor() {
+        return require("detectInheritableThreadLocalMisuse", c -> c.inheritableThreadLocalMisuseDetector);
     }
 
     /**
      * Returns the {@link InheritableThreadLocalMisuseDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectInheritableThreadLocalMisuse = false}
      */
-    public static InheritableThreadLocalMisuseDetector inheritableThreadLocalMisuseMonitor() {
-        return require("detectInheritableThreadLocalMisuse", c -> c.inheritableThreadLocalMisuseDetector);
+    public static InheritableThreadLocalMisuseDetector inheritableThreadLocalMisuseDetector() {
+        return inheritableThreadLocalMisuseMonitor();
+    }
+
+    /**
+     * Returns the {@link UncommittedChangesDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectUncommittedChanges = false}
+     * @deprecated use {@link #uncommittedChangesDetector()}
+     */
+    @Deprecated
+    public static UncommittedChangesDetector uncommittedChangesMonitor() {
+        return require("detectUncommittedChanges", c -> c.uncommittedChangesDetector);
     }
 
     /**
      * Returns the {@link UncommittedChangesDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectUncommittedChanges = false}
      */
-    public static UncommittedChangesDetector uncommittedChangesMonitor() {
-        return require("detectUncommittedChanges", c -> c.uncommittedChangesDetector);
+    public static UncommittedChangesDetector uncommittedChangesDetector() {
+        return uncommittedChangesMonitor();
+    }
+
+    /**
+     * Returns the {@link ThreadLocalContaminationDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectThreadLocalContamination = false}
+     * @deprecated use {@link #threadLocalContaminationDetector()}
+     */
+    @Deprecated
+    public static ThreadLocalContaminationDetector threadLocalContaminationMonitor() {
+        return require("detectThreadLocalContamination", c -> c.threadLocalContaminationDetector);
     }
 
     /**
      * Returns the {@link ThreadLocalContaminationDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectThreadLocalContamination = false}
      */
-    public static ThreadLocalContaminationDetector threadLocalContaminationMonitor() {
-        return require("detectThreadLocalContamination", c -> c.threadLocalContaminationDetector);
+    public static ThreadLocalContaminationDetector threadLocalContaminationDetector() {
+        return threadLocalContaminationMonitor();
+    }
+
+    /**
+     * Returns the {@link AtomicNonAtomicUpdateDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectAtomicNonAtomicUpdates = false}
+     * @deprecated use {@link #atomicNonAtomicUpdateDetector()}
+     */
+    @Deprecated
+    public static AtomicNonAtomicUpdateDetector atomicNonAtomicUpdateMonitor() {
+        return require("detectAtomicNonAtomicUpdates", c -> c.atomicNonAtomicUpdateDetector);
     }
 
     /**
      * Returns the {@link AtomicNonAtomicUpdateDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectAtomicNonAtomicUpdates = false}
      */
-    public static AtomicNonAtomicUpdateDetector atomicNonAtomicUpdateMonitor() {
-        return require("detectAtomicNonAtomicUpdates", c -> c.atomicNonAtomicUpdateDetector);
+    public static AtomicNonAtomicUpdateDetector atomicNonAtomicUpdateDetector() {
+        return atomicNonAtomicUpdateMonitor();
+    }
+
+    /**
+     * Returns the {@link SynchronizedCollectionIterationDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSynchronizedCollectionIteration = false}
+     * @deprecated use {@link #synchronizedCollectionIterationDetector()}
+     */
+    @Deprecated
+    public static SynchronizedCollectionIterationDetector synchronizedCollectionIterationMonitor() {
+        return require("detectSynchronizedCollectionIteration", c -> c.synchronizedCollectionIterationDetector);
     }
 
     /**
      * Returns the {@link SynchronizedCollectionIterationDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSynchronizedCollectionIteration = false}
      */
-    public static SynchronizedCollectionIterationDetector synchronizedCollectionIterationMonitor() {
-        return require("detectSynchronizedCollectionIteration", c -> c.synchronizedCollectionIterationDetector);
+    public static SynchronizedCollectionIterationDetector synchronizedCollectionIterationDetector() {
+        return synchronizedCollectionIterationMonitor();
+    }
+
+    /**
+     * Returns the {@link SharedFormatterDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedFormatter = false}
+     * @deprecated use {@link #sharedFormatterDetector()}
+     */
+    @Deprecated
+    public static SharedFormatterDetector sharedFormatterMonitor() {
+        return require("detectSharedFormatter", c -> c.sharedFormatterDetector);
     }
 
     /**
      * Returns the {@link SharedFormatterDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedFormatter = false}
      */
-    public static SharedFormatterDetector sharedFormatterMonitor() {
-        return require("detectSharedFormatter", c -> c.sharedFormatterDetector);
+    public static SharedFormatterDetector sharedFormatterDetector() {
+        return sharedFormatterMonitor();
+    }
+
+    /**
+     * Returns the {@link ConcurrentMapComputeRecursionDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectConcurrentMapComputeRecursion = false}
+     * @deprecated use {@link #concurrentMapComputeRecursionDetector()}
+     */
+    @Deprecated
+    public static ConcurrentMapComputeRecursionDetector concurrentMapComputeRecursionMonitor() {
+        return require("detectConcurrentMapComputeRecursion", c -> c.concurrentMapComputeRecursionDetector);
     }
 
     /**
      * Returns the {@link ConcurrentMapComputeRecursionDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectConcurrentMapComputeRecursion = false}
      */
-    public static ConcurrentMapComputeRecursionDetector concurrentMapComputeRecursionMonitor() {
-        return require("detectConcurrentMapComputeRecursion", c -> c.concurrentMapComputeRecursionDetector);
+    public static ConcurrentMapComputeRecursionDetector concurrentMapComputeRecursionDetector() {
+        return concurrentMapComputeRecursionMonitor();
+    }
+
+    /**
+     * Returns the {@link SynchronizedOnLiteralDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSynchronizedOnLiteral = false}
+     * @deprecated use {@link #synchronizedOnLiteralDetector()}
+     */
+    @Deprecated
+    public static SynchronizedOnLiteralDetector synchronizedOnLiteralMonitor() {
+        return require("detectSynchronizedOnLiteral", c -> c.synchronizedOnLiteralDetector);
     }
 
     /**
      * Returns the {@link SynchronizedOnLiteralDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSynchronizedOnLiteral = false}
      */
-    public static SynchronizedOnLiteralDetector synchronizedOnLiteralMonitor() {
-        return require("detectSynchronizedOnLiteral", c -> c.synchronizedOnLiteralDetector);
+    public static SynchronizedOnLiteralDetector synchronizedOnLiteralDetector() {
+        return synchronizedOnLiteralMonitor();
+    }
+
+    /**
+     * Returns the {@link PublicLockExposureDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectPublicLockExposure = false}
+     * @deprecated use {@link #publicLockExposureDetector()}
+     */
+    @Deprecated
+    public static PublicLockExposureDetector publicLockExposureMonitor() {
+        return require("detectPublicLockExposure", c -> c.publicLockExposureDetector);
     }
 
     /**
      * Returns the {@link PublicLockExposureDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectPublicLockExposure = false}
      */
-    public static PublicLockExposureDetector publicLockExposureMonitor() {
-        return require("detectPublicLockExposure", c -> c.publicLockExposureDetector);
+    public static PublicLockExposureDetector publicLockExposureDetector() {
+        return publicLockExposureMonitor();
+    }
+
+    /**
+     * Returns the {@link ForkJoinTaskBlockingDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectForkJoinTaskBlocking = false}
+     * @deprecated use {@link #forkJoinTaskBlockingDetector()}
+     */
+    @Deprecated
+    public static ForkJoinTaskBlockingDetector forkJoinTaskBlockingMonitor() {
+        return require("detectForkJoinTaskBlocking", c -> c.forkJoinTaskBlockingDetector);
     }
 
     /**
      * Returns the {@link ForkJoinTaskBlockingDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectForkJoinTaskBlocking = false}
      */
-    public static ForkJoinTaskBlockingDetector forkJoinTaskBlockingMonitor() {
-        return require("detectForkJoinTaskBlocking", c -> c.forkJoinTaskBlockingDetector);
+    public static ForkJoinTaskBlockingDetector forkJoinTaskBlockingDetector() {
+        return forkJoinTaskBlockingMonitor();
+    }
+
+    /**
+     * Returns the {@link OptimisticReadValidationDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectOptimisticReadValidation = false}
+     * @deprecated use {@link #optimisticReadValidationDetector()}
+     */
+    @Deprecated
+    public static OptimisticReadValidationDetector optimisticReadValidationMonitor() {
+        return require("detectOptimisticReadValidation", c -> c.optimisticReadValidationDetector);
     }
 
     /**
      * Returns the {@link OptimisticReadValidationDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectOptimisticReadValidation = false}
      */
-    public static OptimisticReadValidationDetector optimisticReadValidationMonitor() {
-        return require("detectOptimisticReadValidation", c -> c.optimisticReadValidationDetector);
+    public static OptimisticReadValidationDetector optimisticReadValidationDetector() {
+        return optimisticReadValidationMonitor();
+    }
+
+    /**
+     * Returns the {@link CompletableFutureCommonPoolBlockingDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCFCommonPoolBlocking = false}
+     * @deprecated use {@link #cfCommonPoolBlockingDetector()}
+     */
+    @Deprecated
+    public static CompletableFutureCommonPoolBlockingDetector cfCommonPoolBlockingMonitor() {
+        return require("detectCFCommonPoolBlocking", c -> c.cfCommonPoolBlockingDetector);
     }
 
     /**
      * Returns the {@link CompletableFutureCommonPoolBlockingDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCFCommonPoolBlocking = false}
      */
-    public static CompletableFutureCommonPoolBlockingDetector cfCommonPoolBlockingMonitor() {
-        return require("detectCFCommonPoolBlocking", c -> c.cfCommonPoolBlockingDetector);
+    public static CompletableFutureCommonPoolBlockingDetector cfCommonPoolBlockingDetector() {
+        return cfCommonPoolBlockingMonitor();
     }
 
     // ---- Phase 11: Thread-Safety of Additional Types & Patterns ----

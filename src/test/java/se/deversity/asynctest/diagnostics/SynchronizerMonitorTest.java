@@ -100,4 +100,18 @@ class SynchronizerMonitorTest {
         assertDoesNotThrow(() -> monitor.recordBarrierAdvance(null));
         assertDoesNotThrow(() -> monitor.recordBarrierReset(null));
     }
+
+    @Test
+    void analyze_delegatesToAnalyzeSynchronizers() {
+        SynchronizerMonitor monitor = new SynchronizerMonitor();
+        Object barrier = new Object();
+        monitor.registerSynchronizer(barrier, 2);
+        monitor.recordBarrierArrival(barrier);
+
+        SynchronizerMonitor.SynchronizerReport viaAnalyze = monitor.analyze();
+        SynchronizerMonitor.SynchronizerReport viaAnalyzeSynchronizers = monitor.analyzeSynchronizers();
+
+        assertEquals(viaAnalyzeSynchronizers.hasIssues(), viaAnalyze.hasIssues());
+        assertEquals(viaAnalyzeSynchronizers.toString(), viaAnalyze.toString());
+    }
 }

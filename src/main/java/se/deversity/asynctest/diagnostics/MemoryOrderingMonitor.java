@@ -41,7 +41,7 @@ public class MemoryOrderingMonitor {
      */
     public void recordRead(String location, Object value) {
         if (!enabled) return;
-        accessLog.add(new MemoryAccess(Thread.currentThread().getId(), "READ", location, value));
+        accessLog.add(new MemoryAccess(Thread.currentThread().threadId(), "READ", location, value));
     }
     
     /**
@@ -49,7 +49,7 @@ public class MemoryOrderingMonitor {
      */
     public void recordWrite(String location, Object value) {
         if (!enabled) return;
-        accessLog.add(new MemoryAccess(Thread.currentThread().getId(), "WRITE", location, value));
+        accessLog.add(new MemoryAccess(Thread.currentThread().threadId(), "WRITE", location, value));
     }
     
     /**
@@ -116,7 +116,14 @@ public class MemoryOrderingMonitor {
         
         return report;
     }
-    
+
+    /**
+     * Standardized alias for {@link #analyzeOrdering()}.
+     */
+    public MemoryOrderingReport analyze() {
+        return analyzeOrdering();
+    }
+
     public void reset() {
         accessLog.clear();
     }

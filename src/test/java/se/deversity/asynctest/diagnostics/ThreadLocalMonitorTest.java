@@ -127,4 +127,17 @@ public class ThreadLocalMonitorTest {
         ThreadLocalMonitor.ThreadLocalReport report = monitor.analyzeThreadLocalLeaks();
         assertFalse(report.hasIssues(), "After reset() all state should be cleared");
     }
+
+    @Test
+    void analyze_delegatesToAnalyzeThreadLocalLeaks() {
+        ThreadLocalMonitor monitor = new ThreadLocalMonitor();
+        ThreadLocal<String> threadLocal = new ThreadLocal<>();
+        monitor.recordThreadLocalInit(threadLocal, "leaked");
+
+        ThreadLocalMonitor.ThreadLocalReport viaAnalyze = monitor.analyze();
+        ThreadLocalMonitor.ThreadLocalReport viaAnalyzeThreadLocalLeaks = monitor.analyzeThreadLocalLeaks();
+
+        assertEquals(viaAnalyzeThreadLocalLeaks.hasIssues(), viaAnalyze.hasIssues());
+        assertEquals(viaAnalyzeThreadLocalLeaks.toString(), viaAnalyze.toString());
+    }
 }

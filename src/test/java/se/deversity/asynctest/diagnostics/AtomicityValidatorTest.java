@@ -118,4 +118,16 @@ public class AtomicityValidatorTest {
         AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
         assertFalse(report.hasIssues(), "After reset() all recorded violations must be cleared");
     }
+
+    @Test
+    void analyze_delegatesToAnalyzeAtomicity() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.detectCheckThenActViolation("balance", 100, 0, true);
+
+        AtomicityValidator.AtomicityReport viaAnalyze = validator.analyze();
+        AtomicityValidator.AtomicityReport viaAnalyzeAtomicity = validator.analyzeAtomicity();
+
+        assertEquals(viaAnalyzeAtomicity.hasIssues(), viaAnalyze.hasIssues());
+        assertEquals(viaAnalyzeAtomicity.toString(), viaAnalyze.toString());
+    }
 }

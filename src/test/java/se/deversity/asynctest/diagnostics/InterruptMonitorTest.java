@@ -118,4 +118,16 @@ public class InterruptMonitorTest {
         assertTrue(text.contains("INTERRUPT HANDLING ISSUES"), "toString() should contain the issue header");
         assertTrue(text.contains("interrupt"), "toString() should describe the interrupt problem");
     }
+
+    @Test
+    void analyze_delegatesToAnalyzeInterruptHandling() {
+        InterruptMonitor monitor = new InterruptMonitor();
+        monitor.recordInterruptException(new InterruptedException("not restored"));
+
+        InterruptMonitor.InterruptReport viaAnalyze = monitor.analyze();
+        InterruptMonitor.InterruptReport viaAnalyzeInterruptHandling = monitor.analyzeInterruptHandling();
+
+        assertEquals(viaAnalyzeInterruptHandling.hasIssues(), viaAnalyze.hasIssues());
+        assertEquals(viaAnalyzeInterruptHandling.toString(), viaAnalyze.toString());
+    }
 }

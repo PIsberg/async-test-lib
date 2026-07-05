@@ -63,7 +63,7 @@ public final class LicenseGuard {
         boolean mock   = fp.licenseMockMode
                        || Boolean.getBoolean("license.mock.mode")
                        || (isCi && !hasKey);
-        String licenseIdentity   = System.getProperty("license.user.email", "");
+        String licenseIdentity   = fp.licenseUserEmail;
         String keygenKeyForCheck = (fp.keygenApiKey == null) ? "dummy-key" : fp.keygenApiKey;
 
         LicenseGate gate = LicenseGate.of(
@@ -116,6 +116,7 @@ public final class LicenseGuard {
         String keygenProductId,
         String lemonSqueezyStore,
         String licenseKey,
+        String licenseUserEmail,
         boolean licenseMockMode
     ) {
         static Fingerprint from(AsyncTestConfig c) {
@@ -125,6 +126,7 @@ public final class LicenseGuard {
                 resolve(c.keygenProductId,   "keygen.product.id", "dummy-prod"),
                 resolve(c.lemonSqueezyStore, "ls.store.subdomain", null),
                 resolve(c.licenseKey,        "license.key",        null),
+                System.getProperty("license.user.email", ""),
                 c.licenseMockMode
             );
         }

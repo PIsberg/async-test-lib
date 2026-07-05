@@ -52,7 +52,7 @@ public class SharedFormatterDetector {
                 : formatter.getClass().getSimpleName() + "@" + System.identityHashCode(formatter);
         FormatterState s = formatters.computeIfAbsent(
             System.identityHashCode(formatter), id -> new FormatterState(label));
-        s.accessingThreadIds.add(thread.getId());
+        s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
     }
 

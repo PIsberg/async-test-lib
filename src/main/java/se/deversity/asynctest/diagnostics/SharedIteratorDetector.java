@@ -101,7 +101,7 @@ public final class SharedIteratorDetector {
             final String label = kind + "@" + id;
             s = instances.computeIfAbsent(id, k -> new State(label, kind));
         }
-        s.accessingThreadIds.add(thread.getId());
+        s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
         if (operation != null) s.operations.add(operation);
     }

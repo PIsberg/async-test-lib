@@ -92,7 +92,14 @@ public class VisibilityMonitor {
         
         return report;
     }
-    
+
+    /**
+     * Standardized alias for {@link #analyzeVisibility()}.
+     */
+    public VisibilityReport analyze() {
+        return analyzeVisibility();
+    }
+
     public void reset() {
         fieldSnapshots.clear();
         seenValues.clear();

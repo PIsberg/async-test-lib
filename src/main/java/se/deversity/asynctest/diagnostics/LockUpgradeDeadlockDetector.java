@@ -42,7 +42,7 @@ public final class LockUpgradeDeadlockDetector {
     public void recordReadLockAcquired(ReentrantReadWriteLock lock, String lockName, Thread thread) {
         if (lock == null || thread == null) return;
         int id = System.identityHashCode(lock);
-        readHolders.computeIfAbsent(id, k -> ConcurrentHashMap.newKeySet()).add(thread.getId());
+        readHolders.computeIfAbsent(id, k -> ConcurrentHashMap.newKeySet()).add(thread.threadId());
     }
 
     /**
@@ -53,7 +53,7 @@ public final class LockUpgradeDeadlockDetector {
         int id = System.identityHashCode(lock);
         Set<Long> holders = readHolders.get(id);
         if (holders != null) {
-            holders.remove(thread.getId());
+            holders.remove(thread.threadId());
         }
     }
 
@@ -64,7 +64,7 @@ public final class LockUpgradeDeadlockDetector {
         if (lock == null || thread == null) return;
         int id = System.identityHashCode(lock);
         Set<Long> holders = readHolders.get(id);
-        if (holders != null && holders.contains(thread.getId())) {
+        if (holders != null && holders.contains(thread.threadId())) {
             State s = violations.computeIfAbsent(id, k -> new State(
                 lockName != null ? lockName : "ReentrantReadWriteLock@" + id
             ));

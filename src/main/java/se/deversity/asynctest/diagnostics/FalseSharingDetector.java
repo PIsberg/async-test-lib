@@ -63,11 +63,11 @@ public class FalseSharingDetector {
         );
 
         info.accessCount.incrementAndGet();
-        info.accessingThreadIds.add(Thread.currentThread().getId());
+        info.accessingThreadIds.add(Thread.currentThread().threadId());
 
         // Record detailed access history for analysis
         accessHistory.computeIfAbsent(key, k -> Collections.synchronizedList(new ArrayList<>()))
-            .add(new AccessEvent(Thread.currentThread().getId()));
+            .add(new AccessEvent(Thread.currentThread().threadId()));
     }
     
     /**
@@ -109,10 +109,17 @@ public class FalseSharingDetector {
         
         // Analyze contention patterns from history
         analyzeContentionPatterns(report);
-        
+
         return report;
     }
-    
+
+    /**
+     * Standardized alias for {@link #analyzeFalseSharing()}.
+     */
+    public FalseSharingReport analyze() {
+        return analyzeFalseSharing();
+    }
+
     private void analyzeContentionPatterns(FalseSharingReport report) {
         for (Map.Entry<String, List<AccessEvent>> entry : accessHistory.entrySet()) {
             List<AccessEvent> history = entry.getValue();

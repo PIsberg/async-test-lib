@@ -88,4 +88,18 @@ class PipelineMonitorTest {
         assertFalse(report.hasIssues());
         monitor.enable();
     }
+
+    @Test
+    void analyze_delegatesToAnalyzePipeline() {
+        PipelineMonitor monitor = new PipelineMonitor();
+        monitor.registerStage("stage1");
+        monitor.recordEventPublished("stage1", "evt-001");
+        monitor.recordEventFailed("stage1", "evt-001", "boom");
+
+        PipelineMonitor.PipelineReport viaAnalyze = monitor.analyze();
+        PipelineMonitor.PipelineReport viaAnalyzePipeline = monitor.analyzePipeline();
+
+        assertEquals(viaAnalyzePipeline.hasIssues(), viaAnalyze.hasIssues());
+        assertEquals(viaAnalyzePipeline.toString(), viaAnalyze.toString());
+    }
 }

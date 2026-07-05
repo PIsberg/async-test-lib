@@ -123,7 +123,7 @@ public final class SharedStatefulCryptoDetector {
             final String label = (name != null) ? name : type.getSimpleName() + "@" + id;
             s = instances.computeIfAbsent(id, k -> new State(label, kind, algorithm));
         }
-        s.accessingThreadIds.add(thread.getId());
+        s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
     }
 

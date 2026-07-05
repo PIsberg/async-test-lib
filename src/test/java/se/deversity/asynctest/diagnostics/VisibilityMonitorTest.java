@@ -123,4 +123,18 @@ public class VisibilityMonitorTest {
         VisibilityMonitor.VisibilityReport report = monitor.analyzeVisibility();
         assertTrue(report.hasIssues(), "Monitor should record after re-enable");
     }
+
+    @Test
+    void analyze_delegatesToAnalyzeVisibility() {
+        VisibilityMonitor monitor = new VisibilityMonitor();
+        monitor.recordFieldAccess("A.field", 1);
+        monitor.markInvocationStart();
+        monitor.recordFieldAccess("A.field", 2);
+
+        VisibilityMonitor.VisibilityReport viaAnalyze = monitor.analyze();
+        VisibilityMonitor.VisibilityReport viaAnalyzeVisibility = monitor.analyzeVisibility();
+
+        assertEquals(viaAnalyzeVisibility.hasIssues(), viaAnalyze.hasIssues());
+        assertEquals(viaAnalyzeVisibility.toString(), viaAnalyze.toString());
+    }
 }

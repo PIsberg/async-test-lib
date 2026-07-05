@@ -82,4 +82,17 @@ class FalseSharingDetectorTest {
         FalseSharingDetector detector = new FalseSharingDetector();
         assertDoesNotThrow(() -> detector.recordFieldAccess(null, "field", int.class));
     }
+
+    @Test
+    void analyze_delegatesToAnalyzeFalseSharing() {
+        FalseSharingDetector detector = new FalseSharingDetector();
+        Object obj = new Object();
+        detector.recordFieldAccess(obj, "field", int.class);
+
+        FalseSharingDetector.FalseSharingReport viaAnalyze = detector.analyze();
+        FalseSharingDetector.FalseSharingReport viaAnalyzeFalseSharing = detector.analyzeFalseSharing();
+
+        assertEquals(viaAnalyzeFalseSharing.hasIssues(), viaAnalyze.hasIssues());
+        assertEquals(viaAnalyzeFalseSharing.toString(), viaAnalyze.toString());
+    }
 }

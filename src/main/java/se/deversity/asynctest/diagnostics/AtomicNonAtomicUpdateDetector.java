@@ -54,7 +54,7 @@ public class AtomicNonAtomicUpdateDetector {
     /** Call after {@code atomic.get()}. */
     public void recordGet(Object atomic, String name, Thread thread) {
         if (atomic == null || thread == null) return;
-        stateFor(atomic, name).pendingGetByThread.put(thread.getId(), 1);
+        stateFor(atomic, name).pendingGetByThread.put(thread.threadId(), 1);
     }
 
     /**
@@ -65,7 +65,7 @@ public class AtomicNonAtomicUpdateDetector {
     public void recordSet(Object atomic, String name, Thread thread) {
         if (atomic == null || thread == null) return;
         AtomicState s = stateFor(atomic, name);
-        Integer pending = s.pendingGetByThread.remove(thread.getId());
+        Integer pending = s.pendingGetByThread.remove(thread.threadId());
         if (pending != null) {
             s.nonAtomicUpdates.incrementAndGet();
             s.details.add(String.format(
@@ -77,7 +77,7 @@ public class AtomicNonAtomicUpdateDetector {
     /** Call after a successful {@code atomic.compareAndSet()} — clears the pending-get flag. */
     public void recordCas(Object atomic, String name, Thread thread) {
         if (atomic == null || thread == null) return;
-        stateFor(atomic, name).pendingGetByThread.remove(thread.getId());
+        stateFor(atomic, name).pendingGetByThread.remove(thread.threadId());
     }
 
     /** {@return report of non-atomic compound updates} */

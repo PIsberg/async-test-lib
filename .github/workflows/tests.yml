@@ -18,15 +18,20 @@ concurrency:
 jobs:
   test:
     name: Test Suite
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    # ubuntu-latest is the required leg (unchanged behavior); windows-latest and
+    # macos-latest are experimental legs that must not block the required leg.
+    continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
 
     strategy:
       fail-fast: false
       matrix:
         java-version: [ '21', '25' ]
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
 
     steps:
       - name: Harden the runner (Block unexpected outbound calls)
+        if: runner.os == 'Linux'
         uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
         with:
           egress-policy: block
@@ -57,6 +62,7 @@ jobs:
           cache: maven
 
       - name: Prepare local Maven repository
+        shell: bash
         run: mkdir -p .m2/repository
       
       - name: Run library tests and install artifact
@@ -66,6 +72,7 @@ jobs:
         run: mvn -Dmaven.repo.local=.m2/repository -f consumer-fixture/pom.xml test
 
       - name: Check coverage file exists
+        shell: bash
         run: |
           if [ -f ./target/site/jacoco/jacoco.xml ]; then
             echo "✓ Coverage file found"
@@ -80,13 +87,15 @@ jobs:
           fi
 
       - name: Import Codecov GPG key
+        if: matrix.os == 'ubuntu-latest' && matrix.java-version == '21'
+        shell: bash
         run: |
           gpg --keyserver hkps://keys.openpgp.org --recv-keys 27034E7FDB850E0BBC2C62FF806BB28AED779869 || \
           gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys 27034E7FDB850E0BBC2C62FF806BB28AED779869 || \
           echo "WARNING: Could not import GPG key, proceeding without verification"
 
       - name: Upload coverage to Codecov
-        if: matrix.java-version == '21'
+        if: matrix.os == 'ubuntu-latest' && matrix.java-version == '21'
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: ./target/site/jacoco/jacoco.xml

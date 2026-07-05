@@ -147,4 +147,18 @@ public class RaceConditionDetectorTest {
         RaceConditionDetector.RaceConditionReport report = detector.analyzeRaceConditions();
         assertFalse(report.hasIssues(), "After reset() all recorded accesses must be cleared");
     }
+
+    @Test
+    void analyze_delegatesToAnalyzeRaceConditions() {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Object obj = new Object();
+        detector.recordFieldWrite(obj, "field");
+        detector.recordFieldWrite(obj, "field");
+
+        RaceConditionDetector.RaceConditionReport viaAnalyze = detector.analyze();
+        RaceConditionDetector.RaceConditionReport viaAnalyzeRaceConditions = detector.analyzeRaceConditions();
+
+        assertEquals(viaAnalyzeRaceConditions.hasIssues(), viaAnalyze.hasIssues());
+        assertEquals(viaAnalyzeRaceConditions.toString(), viaAnalyze.toString());
+    }
 }
