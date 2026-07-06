@@ -233,11 +233,26 @@ class ConcurrencyRunnerTest {
     }
 
     @Test
-    void resolveTimeoutMultiplier_missingSysprop_defaultsToOne() throws Exception {
+    void resolveTimeoutMultiplier_missingSysprop_fallsBackToEnvVarThenOne() throws Exception {
         String previous = System.getProperty("async-test.timeout.multiplier");
         try {
             System.clearProperty("async-test.timeout.multiplier");
-            assertEquals(1.0, invokeResolveTimeoutMultiplier(), 0.0001);
+            // CI sets ASYNC_TEST_TIMEOUT_MULTIPLIER on slow-runner legs, and the env
+            // cannot be cleared from within the JVM — so the expectation mirrors the
+            // documented fallback chain: a valid positive env var wins, else 1.0.
+            double expected = 1.0;
+            String env = System.getenv("ASYNC_TEST_TIMEOUT_MULTIPLIER");
+            if (env != null && !env.isBlank()) {
+                try {
+                    double parsed = Double.parseDouble(env.trim());
+                    if (parsed > 0.0) {
+                        expected = parsed;
+                    }
+                } catch (NumberFormatException ignored) {
+                    // malformed env var — resolver falls back to 1.0
+                }
+            }
+            assertEquals(expected, invokeResolveTimeoutMultiplier(), 0.0001);
         } finally {
             restoreProperty("async-test.timeout.multiplier", previous);
         }
