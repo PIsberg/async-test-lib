@@ -89,7 +89,7 @@ public final class ThisEscapeDetector {
         State s = instances.get(id);
         if (s == null) {
             final String label = instance.getClass().getSimpleName() + "@" + id;
-            s = instances.computeIfAbsent(id, k -> new State(label, thread.getId()));
+            s = instances.computeIfAbsent(id, k -> new State(label, thread.threadId()));
         }
         s.escapes.add(how != null ? how : "this published from constructor");
     }
@@ -106,8 +106,8 @@ public final class ThisEscapeDetector {
         if (instance == null || thread == null) return;
         State s = instances.get(System.identityHashCode(instance));
         if (s == null) return; // no escape recorded for this instance — nothing to correlate
-        if (!s.completed && thread.getId() != s.constructingThreadId) {
-            s.observerThreads.add(thread.getId());
+        if (!s.completed && thread.threadId() != s.constructingThreadId) {
+            s.observerThreads.add(thread.threadId());
         }
     }
 

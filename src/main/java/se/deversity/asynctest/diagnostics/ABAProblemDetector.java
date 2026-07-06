@@ -175,7 +175,14 @@ public class ABAProblemDetector {
         
         return report;
     }
-    
+
+    /**
+     * Standardized alias for {@link #analyzeABA()}.
+     */
+    public ABAReport analyze() {
+        return analyzeABA();
+    }
+
     public void reset() {
         trackedVariables.clear();
     }

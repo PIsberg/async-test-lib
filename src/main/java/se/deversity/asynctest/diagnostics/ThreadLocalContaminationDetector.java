@@ -48,7 +48,7 @@ public class ThreadLocalContaminationDetector {
     /** Call at the start of each task submitted to a thread pool. */
     public void recordNewTask(Thread thread, String taskName) {
         if (thread == null) return;
-        ThreadState s = threadStates.computeIfAbsent(thread.getId(), id -> new ThreadState());
+        ThreadState s = threadStates.computeIfAbsent(thread.threadId(), id -> new ThreadState());
         s.taskCount++;
         s.currentTaskName = taskName != null ? taskName : "task-" + s.taskCount;
     }
@@ -56,7 +56,7 @@ public class ThreadLocalContaminationDetector {
     /** Call after each {@code ThreadLocal.set()} inside a task. */
     public void recordSet(Thread thread, Object tl, String name) {
         if (thread == null || tl == null) return;
-        ThreadState s = threadStates.get(thread.getId());
+        ThreadState s = threadStates.get(thread.threadId());
         if (s == null) return;
         int id = System.identityHashCode(tl);
         s.lastSetInTask.put(id, s.taskCount);
@@ -70,7 +70,7 @@ public class ThreadLocalContaminationDetector {
      */
     public void recordGet(Thread thread, Object tl, String name, boolean hasValue) {
         if (thread == null || tl == null || !hasValue) return;
-        ThreadState s = threadStates.get(thread.getId());
+        ThreadState s = threadStates.get(thread.threadId());
         if (s == null) return;
         int id = System.identityHashCode(tl);
         Integer setTask = s.lastSetInTask.get(id);

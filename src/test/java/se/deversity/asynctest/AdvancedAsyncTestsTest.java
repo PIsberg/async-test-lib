@@ -117,7 +117,7 @@ public class AdvancedAsyncTestsTest {
 
         @AsyncTest(threads = 2, invocations = 1, timeoutMs = 15000, detectLivelocks = true)
         void testLivelock() throws InterruptedException {
-            if (Thread.currentThread().getId() % 2 == 0) {
+            if (Thread.currentThread().threadId() % 2 == 0) {
                 for (int i = 0; i < 100; i++) {
                     counter1++;
                     if (counter2 > counter1) {

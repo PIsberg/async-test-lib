@@ -91,4 +91,18 @@ class ThreadPoolMonitorTest {
         assertNotNull(report);
         assertFalse(report.hasIssues());
     }
+
+    @Test
+    void analyze_delegatesToAnalyzePoolHealth() {
+        ThreadPoolMonitor monitor = new ThreadPoolMonitor();
+        Object executor = new Object();
+        monitor.registerPool(executor, "pool1", 4, 4, 10);
+        monitor.recordTaskRejected(executor, "queue full");
+
+        ThreadPoolMonitor.ThreadPoolReport viaAnalyze = monitor.analyze();
+        ThreadPoolMonitor.ThreadPoolReport viaAnalyzePoolHealth = monitor.analyzePoolHealth();
+
+        assertEquals(viaAnalyzePoolHealth.hasIssues(), viaAnalyze.hasIssues());
+        assertEquals(viaAnalyzePoolHealth.toString(), viaAnalyze.toString());
+    }
 }

@@ -164,6 +164,13 @@ public class AtomicityValidator {
         return report;
     }
 
+    /**
+     * Standardized alias for {@link #analyzeAtomicity()}.
+     */
+    public AtomicityReport analyze() {
+        return analyzeAtomicity();
+    }
+
     private String operationKey(String operationName) {
         return Thread.currentThread().threadId() + ":" + operationName;
     }

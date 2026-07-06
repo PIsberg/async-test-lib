@@ -59,7 +59,7 @@ public class SynchronizerMonitor {
         BarrierState state = synchronizers.get(id);
         if (state == null) return;
         
-        long threadId = Thread.currentThread().getId();
+        long threadId = Thread.currentThread().threadId();
         state.arrivedCount.incrementAndGet();
         state.arrivedThreads.add(threadId);
         state.events.add(String.format("T-%d arrived (%d/%d)",
@@ -77,7 +77,7 @@ public class SynchronizerMonitor {
         if (state == null) return;
         
         state.events.add(String.format("T-%d advanced past barrier", 
-            Thread.currentThread().getId()));
+            Thread.currentThread().threadId()));
     }
     
     /**
@@ -123,7 +123,14 @@ public class SynchronizerMonitor {
         
         return report;
     }
-    
+
+    /**
+     * Standardized alias for {@link #analyzeSynchronizers()}.
+     */
+    public SynchronizerReport analyze() {
+        return analyzeSynchronizers();
+    }
+
     public void reset() {
         synchronizers.clear();
     }

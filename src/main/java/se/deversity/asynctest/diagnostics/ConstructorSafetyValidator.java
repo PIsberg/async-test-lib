@@ -76,7 +76,7 @@ public class ConstructorSafetyValidator {
         ObjectState state = objects.get(objectId);
         if (state == null) return;
         
-        long threadId = Thread.currentThread().getId();
+        long threadId = Thread.currentThread().threadId();
         
         FieldAccessInfo fieldInfo = state.fieldAccesses.computeIfAbsent(fieldName,
             k -> new FieldAccessInfo()
@@ -88,7 +88,7 @@ public class ConstructorSafetyValidator {
         
         if (!state.constructionComplete && state.constructionStartTime > 0) {
             // Different thread accessing object during construction
-            if (threadId != Thread.currentThread().getId()) {
+            if (threadId != Thread.currentThread().threadId()) {
                 state.threadsThatAccessedDuringConstruction.incrementAndGet();
             }
         }

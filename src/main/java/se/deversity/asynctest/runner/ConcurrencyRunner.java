@@ -1,6 +1,5 @@
 package se.deversity.asynctest.runner;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import se.deversity.vibetags.annotations.AIAudit;
@@ -34,7 +33,9 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Orchestrates the N-invocations × M-threads test execution pattern for
@@ -64,6 +65,20 @@ public class ConcurrencyRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ConcurrencyRunner.class);
 
+    /** See {@link #resolveTimeoutMultiplier()}. */
+    private static final String TIMEOUT_MULTIPLIER_PROPERTY = "async-test.timeout.multiplier";
+
+    /** See {@link #resolveTimeoutMultiplier()}. */
+    private static final String TIMEOUT_MULTIPLIER_ENV_VAR = "ASYNC_TEST_TIMEOUT_MULTIPLIER";
+
+    /**
+     * Runs {@code testMethod} N×M times (see the class Javadoc), scaling
+     * {@link AsyncTestConfig#timeoutMs} by {@link #resolveTimeoutMultiplier()} before it
+     * becomes the effective budget for the overall deadline, each round's timeout, and —
+     * transitively, since both are derived from the round timeout — the {@code CyclicBarrier}
+     * await and the async-body {@code CompletionStage} wait. See
+     * {@link #resolveTimeoutMultiplier()} for the CI-scaling mechanism itself.
+     */
     public static void execute(ReflectiveInvocationContext<Method> invocationContext,
                                AsyncTestConfig config) throws Throwable {
 
@@ -71,36 +86,45 @@ public class ConcurrencyRunner {
         // a ConcurrentHashMap hit after the first invocation per JVM.
         LicenseGuard.check(config);
 
-        // Benchmarking setup
-        BenchmarkRecorder benchmarkRecorder = null;
-        if (config.enableBenchmarking) {
-            Object testInstance = invocationContext.getTarget().orElse(null);
-            String testClass = testInstance != null ? testInstance.getClass().getName() : "unknown";
-            String testMethod = invocationContext.getExecutable().getName();
-            benchmarkRecorder = new BenchmarkRecorder(config, testClass, testMethod);
-        }
-
-        // Phase 2 context — shared across all threads for this test run
-        AsyncTestContext phase2Context = new AsyncTestContext(config);
-
-        // Phase 1 + Phase 3 detectors — grouped in a value-holder to avoid
-        // long parameter lists in helper methods
-        Phase1DetectorSet phase1 = Phase1DetectorSet.from(config);
-
-        // Validate JMM on the test framework itself
-        MemoryModelValidator jmmValidator = new MemoryModelValidator();
-        MemoryModelValidator.ValidationResult jmmResult = jmmValidator.validate();
-        if (!jmmResult.isValid()) {
-            log.warn("JMM validation of test framework failed: {}", jmmResult);
-        }
-
-        // Determine actual thread count (stress mode overrides threads param)
+        // Determine actual thread count (stress mode overrides threads param). Computed
+        // before the benchmark recorder so the recorder can label baselines with the
+        // thread count actually used, not the possibly-overridden config.threads.
         final int actualThreads;
         if (config.virtualThreadStressMode != null && !"OFF".equals(config.virtualThreadStressMode)) {
             actualThreads = VirtualThreadStressConfig.StressLevel
                 .valueOf(config.virtualThreadStressMode).threadCount;
         } else {
             actualThreads = config.threads;
+        }
+
+        // Benchmarking setup
+        BenchmarkRecorder benchmarkRecorder = null;
+        if (config.enableBenchmarking) {
+            Object testInstance = invocationContext.getTarget().orElse(null);
+            String testClass = testInstance != null ? testInstance.getClass().getName() : "unknown";
+            String testMethod = invocationContext.getExecutable().getName();
+            benchmarkRecorder = new BenchmarkRecorder(config, testClass, testMethod, actualThreads);
+        }
+
+        // Phase 2 context — shared across all threads for this test run
+        AsyncTestContext phase2Context = new AsyncTestContext(config);
+
+        // Memoizes phase2Context.analyzeAll() so it runs at most once per execute(),
+        // regardless of how many report/gate call sites need the result — see the
+        // Phase2Analysis Javadoc.
+        Phase2Analysis phase2Analysis = new Phase2Analysis(phase2Context);
+
+        // Phase 1 + Phase 3 detectors — grouped in a value-holder to avoid
+        // long parameter lists in helper methods. Passing phase2Context lets these
+        // detectors reuse phase2Context's DetectorRegistry-backed instances instead of
+        // constructing disconnected duplicates (see Phase1DetectorSet.from javadoc).
+        Phase1DetectorSet phase1 = Phase1DetectorSet.from(config, phase2Context);
+
+        // Validate JMM on the test framework itself
+        MemoryModelValidator jmmValidator = new MemoryModelValidator();
+        MemoryModelValidator.ValidationResult jmmResult = jmmValidator.validate();
+        if (!jmmResult.isValid()) {
+            log.warn("JMM validation of test framework failed: {}", jmmResult);
         }
 
         ExecutorService executor = config.useVirtualThreads
@@ -116,7 +140,17 @@ public class ConcurrencyRunner {
         List<Method> beforeInvocationMethods = findLifecycleMethods(testInstance, BeforeEachInvocation.class);
         List<Method> afterInvocationMethods  = findLifecycleMethods(testInstance, AfterEachInvocation.class);
 
-        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(config.timeoutMs);
+        // Single choke point where config.timeoutMs becomes the effective budget: every
+        // downstream timing value (deadlineNanos below, each round's remainingMs, the
+        // CyclicBarrier await in createBarrier, and the CompletionStage wait in
+        // runSingleInvocationRound) is derived from effectiveTimeoutMs, never from
+        // config.timeoutMs directly, so scaling happens exactly once per execute() call.
+        double timeoutMultiplier = resolveTimeoutMultiplier();
+        long effectiveTimeoutMs = (timeoutMultiplier == 1.0)
+            ? config.timeoutMs
+            : Math.max(1L, Math.round(config.timeoutMs * timeoutMultiplier));
+
+        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(effectiveTimeoutMs);
 
         // Replay-seed source: explicit @AsyncTest(replaySeed=N) makes every
         // round use N; default 0 generates a fresh seed per round so failures
@@ -130,7 +164,7 @@ public class ConcurrencyRunner {
             for (int i = 0; i < config.invocations; i++) {
                 long remainingMs = remainingMillis(deadlineNanos);
                 if (remainingMs <= 0) {
-                    throw timeoutError(config.timeoutMs, null, phase1, phase2Context,
+                    throw timeoutError(effectiveTimeoutMs, null, phase1, phase2Analysis,
                             config.detectDeadlocks);
                 }
 
@@ -164,7 +198,7 @@ public class ConcurrencyRunner {
             }
         } catch (AssertionError e) {
             if (isTimeoutLike(e)) {
-                throw timeoutError(config.timeoutMs, e, phase1, phase2Context,
+                throw timeoutError(effectiveTimeoutMs, e, phase1, phase2Analysis,
                         config.detectDeadlocks);
             }
             // Surface the seed of the failing round so the user can reproduce by
@@ -173,14 +207,18 @@ public class ConcurrencyRunner {
                     + "L — paste into @AsyncTest(replaySeed=...) to reproduce.");
             AsyncTestListenerRegistry.fireTestFailed(e);
             phase1.printReports();
-            printPhase2Reports(phase2Context);
+            // Report-only: the failOn gate (analyzeAndGate, below) intentionally runs
+            // only on the success path — a test that already failed doesn't need a
+            // second, synthetic failure from detector findings on top of its own.
+            printPhase2Reports(phase2Analysis);
             throw e;
         } catch (Throwable t) {
             System.err.println("[AsyncTest] Failure with replaySeed=" + currentSeed
                     + "L — paste into @AsyncTest(replaySeed=...) to reproduce.");
             AsyncTestListenerRegistry.fireTestFailed(t);
             phase1.printReports();
-            printPhase2Reports(phase2Context);
+            // Report-only — see the comment in the AssertionError branch above.
+            printPhase2Reports(phase2Analysis);
             throw unwrap(t);
         } finally {
             executor.shutdownNow();
@@ -202,8 +240,57 @@ public class ConcurrencyRunner {
         // Success path only (the catch blocks above rethrow): analyze detectors,
         // surface findings to stderr and listeners, and apply the failOn gate.
         // Runs on the caller thread after all workers finished and the executor
-        // shut down — no shared mutable state is touched concurrently.
-        analyzeAndGate(config, testMethod, phase1, phase2Context);
+        // shut down — no shared mutable state is touched concurrently. The failOn
+        // gate is intentionally success-path-only; failure/timeout paths above are
+        // report-only (see the comments in the catch blocks and in timeoutError).
+        analyzeAndGate(config, testMethod, phase1, phase2Analysis);
+    }
+
+    /**
+     * Resolves the CI timeout-scaling multiplier applied to {@link AsyncTestConfig#timeoutMs}
+     * for the current {@link #execute} call.
+     *
+     * <p><strong>Motivation:</strong> {@code timeoutMs} is a fixed per-test budget, but the
+     * clock in {@link #execute} starts before {@code detectAll}'s ~120 detectors finish their
+     * setup — overhead that is negligible on a fast, dedicated runner but can consume a
+     * meaningful slice of a short (3-5s) budget on a slow or oversubscribed shared runner
+     * (e.g. a 3-core macOS CI runner), producing a timeout that reflects runner speed rather
+     * than a real concurrency bug. Rather than bumping every {@code @AsyncTest(timeoutMs=...)}
+     * annotation across the suite, CI can scale every budget globally with one knob.
+     *
+     * <p><strong>Resolution order</strong> (first present wins):
+     * <ol>
+     *   <li>System property {@code async-test.timeout.multiplier} — set per-invocation via
+     *       {@code -Dasync-test.timeout.multiplier=3}.</li>
+     *   <li>Environment variable {@code ASYNC_TEST_TIMEOUT_MULTIPLIER} — unlike a system
+     *       property passed on the {@code mvn} command line, an environment variable is
+     *       automatically inherited by Surefire's forked test JVMs, which is why CI sets
+     *       this one rather than {@code -D}.</li>
+     *   <li>{@code 1.0} — identical to pre-multiplier behavior.</li>
+     * </ol>
+     *
+     * <p>Parsing is defensive: a missing, blank, non-numeric, zero, or negative value falls
+     * back to {@code 1.0} rather than throwing, so a CI misconfiguration degrades to today's
+     * behavior instead of failing every test.
+     *
+     * <p>Resolved fresh on every {@link #execute} call — deliberately not cached in a
+     * {@code static final} — so the property/env var can still be changed between test runs
+     * within the same JVM (as the accompanying unit tests do).
+     */
+    private static double resolveTimeoutMultiplier() {
+        String raw = System.getProperty(TIMEOUT_MULTIPLIER_PROPERTY);
+        if (raw == null || raw.isBlank()) {
+            raw = System.getenv(TIMEOUT_MULTIPLIER_ENV_VAR);
+        }
+        if (raw == null || raw.isBlank()) {
+            return 1.0;
+        }
+        try {
+            double parsed = Double.parseDouble(raw.trim());
+            return parsed > 0.0 ? parsed : 1.0;
+        } catch (NumberFormatException e) {
+            return 1.0;
+        }
     }
 
     /**
@@ -216,13 +303,16 @@ public class ConcurrencyRunner {
      * {@link AsyncTestConfig#failOn} fail the test — unless suppressed by the
      * baseline file ({@code -Dasync-test.baseline=<path>}) or recorded to it in
      * update mode ({@code -Dasync-test.baseline.update=true}).
+     *
+     * <p>Only called on the success path (see {@link #execute}); failure/timeout paths
+     * call {@link #printPhase2Reports} directly and never reach the failOn gate below.
      */
     private static void analyzeAndGate(AsyncTestConfig config,
                                        Method testMethod,
                                        Phase1DetectorSet phase1,
-                                       AsyncTestContext phase2Context) {
+                                       Phase2Analysis phase2Analysis) {
         Map<String, String> reports = new LinkedHashMap<>(phase1.collectReports());
-        for (String report : phase2Context.analyzeAll()) {
+        for (String report : phase2Analysis.get()) {
             reports.putIfAbsent(extractDetectorName(report), "\n" + report);
         }
         if (reports.isEmpty()) {
@@ -273,12 +363,16 @@ public class ConcurrencyRunner {
      * Lets runSingleInvocationRound stay barrier-implementation-agnostic.
      *
      * <p>Declares the union of checked exceptions from both implementations:
-     * {@link InterruptedException} (both) and {@link BrokenBarrierException}
-     * (CyclicBarrier only — SpinContentionBarrier never throws it).
+     * {@link InterruptedException} (both), {@link BrokenBarrierException}
+     * (CyclicBarrier only — SpinContentionBarrier never throws it) and
+     * {@link TimeoutException} (the CyclicBarrier path only — see
+     * {@link #createBarrier}; SpinContentionBarrier has no timed {@code await}
+     * overload, so that path never throws it, but the interface must still declare it
+     * for the CyclicBarrier lambda to type-check).
      */
     @FunctionalInterface
     private interface ContentionBarrier {
-        void arrive() throws InterruptedException, BrokenBarrierException;
+        void arrive() throws InterruptedException, BrokenBarrierException, TimeoutException;
     }
 
     /**
@@ -289,21 +383,37 @@ public class ConcurrencyRunner {
      * sub-microsecond window to maximise collision density. Otherwise the default
      * {@link CyclicBarrier} is used for compatibility with virtual-thread schedulers that
      * may not benefit from busy-spinning.
+     *
+     * <p>The {@link CyclicBarrier} path waits with {@code timeoutMs} (the full round
+     * timeout — generous enough that a healthy round, where all {@code threads}
+     * participants arrive promptly, never trips it) rather than the bare no-arg
+     * {@code await()}. Without this, a worker that dies (or throws) before ever calling
+     * {@code arrive()} — e.g. {@code AsyncTestContext.install} failing — leaves every
+     * other worker parked at the barrier forever: {@code CyclicBarrier} has no way to
+     * notice a party will never show up, so only the outer {@code latch.await} timeout
+     * and the final {@code executor.shutdownNow()} would eventually reclaim them. With
+     * the timed {@code await}, the first stranded peer to hit {@code timeoutMs} breaks
+     * the barrier for all the others too (they each get {@link BrokenBarrierException}
+     * immediately rather than waiting out their own timeout), so the round fails fast
+     * with a clear diagnosis instead of hanging silently.
+     *
+     * <p>{@link SpinContentionBarrier} has no timed {@code await} overload to mirror
+     * this with (see its class Javadoc — it's a hand-tuned lock-free spin, not
+     * something to graft a deadline onto here). Its periodic
+     * {@link Thread#interrupted()} check still responds promptly to the
+     * {@code Future.cancel(true)} calls added to {@code runSingleInvocationRound} for
+     * the same scenario, so stranded spin-barrier workers are still reclaimed at the
+     * round-timeout boundary rather than only at the final {@code shutdownNow()}.
      */
-    private static ContentionBarrier createBarrier(int threads) {
+    private static ContentionBarrier createBarrier(int threads, long timeoutMs) {
         if (Boolean.getBoolean("async-test.spin-barrier.enabled")) {
             SpinContentionBarrier spin = new SpinContentionBarrier(threads);
             return spin::await;
         }
         CyclicBarrier cyclic = new CyclicBarrier(threads);
-        return cyclic::await;
+        return () -> cyclic.await(timeoutMs, TimeUnit.MILLISECONDS);
     }
 
-    @SuppressFBWarnings("RV_RETURN_VALUE_IGNORED_BAD_PRACTICE")
-    // executor.submit(...) Future is intentionally not retained: worker completion is
-    // tracked via the CountDownLatch and exceptions are caught inside the lambda into
-    // `failures`, so no exception is suppressed by ignoring the Future.
-    @SuppressWarnings("FutureReturnValueIgnored")
     private static void runSingleInvocationRound(ReflectiveInvocationContext<Method> context,
                                                  int threads,
                                                  ExecutorService executor,
@@ -312,15 +422,21 @@ public class ConcurrencyRunner {
                                                  long roundTimeoutMs,
                                                  Method method) throws Throwable {
 
-        ContentionBarrier barrier = createBarrier(threads);
+        ContentionBarrier barrier = createBarrier(threads, roundTimeoutMs);
         List<Throwable> failures = new CopyOnWriteArrayList<>();
         CountDownLatch latch = new CountDownLatch(threads);
 
         Object target = context.getTarget().orElse(null);
         Object[] args = context.getArguments().toArray();
 
+        // Futures are retained (not ignored) so a round timeout below can cancel(true)
+        // any worker still stuck, instead of leaving it to linger until execute()'s
+        // outer executor.shutdownNow(). Worker completion itself is still tracked via
+        // the CountDownLatch; exceptions are still caught inside the lambda into
+        // `failures`, so nothing here changes normal (non-timeout) behavior.
+        List<Future<?>> workerFutures = new ArrayList<>(threads);
         for (int t = 0; t < threads; t++) {
-            executor.submit(() -> {
+            workerFutures.add(executor.submit(() -> {
                 // latch.countDown() MUST always run, regardless of any failure in
                 // install / test body / uninstall / snapshot. Without this guarantee
                 // the runner blocks on latch.await() until timeoutMs, turning any
@@ -367,11 +483,19 @@ public class ConcurrencyRunner {
                     }
                     latch.countDown();
                 }
-            });
+            }));
         }
 
         boolean completed = latch.await(roundTimeoutMs, TimeUnit.MILLISECONDS);
         if (!completed) {
+            // Interrupt any worker still stuck (e.g. blocked on a now-broken barrier, or
+            // never reached it at all) instead of leaving it to run until execute()'s
+            // outer executor.shutdownNow(). cancel(true) on an already-finished future
+            // is a documented no-op, so this is safe regardless of how many of the
+            // `threads` workers are actually still outstanding.
+            for (Future<?> future : workerFutures) {
+                future.cancel(true);
+            }
             throw new AssertionError(
                 "Invocation round timed out: " + (threads - (int) latch.getCount()) + "/" + threads
                     + " threads completed within " + roundTimeoutMs + "ms. "
@@ -431,7 +555,7 @@ public class ConcurrencyRunner {
     private static AssertionError timeoutError(long timeoutMs,
                                                Throwable cause,
                                                Phase1DetectorSet phase1,
-                                               AsyncTestContext phase2Context,
+                                               Phase2Analysis phase2Analysis,
                                                boolean detectDeadlocks) {
         AsyncTestListenerRegistry.fireTimeout(timeoutMs);
         if (detectDeadlocks) {
@@ -439,7 +563,9 @@ public class ConcurrencyRunner {
             DeadlockDetector.printLearningAndFix();
         }
         phase1.printReports();
-        printPhase2Reports(phase2Context);
+        // Report-only: this is a failure/timeout path, so the failOn gate in
+        // analyzeAndGate (success-path-only) is never reached for this run.
+        printPhase2Reports(phase2Analysis);
         AssertionError error = new AssertionError(
             "Test timed out after " + timeoutMs + "ms. Possible deadlock, starvation, or visibility issue.");
         if (cause != null) {
@@ -448,12 +574,51 @@ public class ConcurrencyRunner {
         return error;
     }
 
-    private static void printPhase2Reports(AsyncTestContext ctx) {
-        for (String report : ctx.analyzeAll()) {
+    private static void printPhase2Reports(Phase2Analysis phase2Analysis) {
+        for (String report : phase2Analysis.get()) {
             System.err.println("\n" + report);
             // Extract detector name from report (first line before newline)
             String detectorName = extractDetectorName(report);
             AsyncTestListenerRegistry.fireDetectorReport(detectorName, report);
+        }
+    }
+
+    /**
+     * Memoizes {@link AsyncTestContext#analyzeAll()} so it runs at most once per
+     * {@link #execute}, no matter how many of the report/gate call sites
+     * ({@link #printPhase2Reports}, {@link #timeoutError}, {@link #analyzeAndGate})
+     * need the result.
+     *
+     * <p>{@code analyzeAll} is not guaranteed idempotent for stateful legacy detectors —
+     * some accumulate state (deduplicators, violation lists) across calls rather than
+     * computing purely from immutable snapshots — so calling it twice in the same run
+     * risked double-counting or diverging findings between the two callers. Before this
+     * cache existed, the pre-round deadline check in {@link #execute} could trigger
+     * exactly that: it throws via {@link #timeoutError} (one {@code analyzeAll} call),
+     * and since the resulting {@link AssertionError}'s message satisfies
+     * {@link #isTimeoutLike}, the surrounding {@code catch (AssertionError e)} block
+     * re-wrapped it via a second {@code timeoutError} call — running {@code analyzeAll}
+     * a second time for the same test run.
+     *
+     * <p>Not synchronized: {@link #execute} only ever calls {@code get()} from the
+     * single caller thread, after all worker threads for the current round have
+     * finished (see the class Javadoc on {@link AsyncTestContext#analyzeAll()}).
+     */
+    private static final class Phase2Analysis {
+        private final AsyncTestContext ctx;
+        private List<String> reports;
+        private boolean computed;
+
+        Phase2Analysis(AsyncTestContext ctx) {
+            this.ctx = ctx;
+        }
+
+        List<String> get() {
+            if (!computed) {
+                reports = ctx.analyzeAll();
+                computed = true;
+            }
+            return reports;
         }
     }
 

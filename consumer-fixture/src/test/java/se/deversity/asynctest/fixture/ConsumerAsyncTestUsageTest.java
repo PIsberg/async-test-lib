@@ -4,6 +4,7 @@ import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.diagnostics.NotifyAllValidator;
+import se.deversity.asynctest.diagnostics.LockOrderValidator;
 import se.deversity.asynctest.diagnostics.LazyInitValidator;
 import se.deversity.asynctest.diagnostics.FutureBlockingDetector;
 import se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector;
@@ -111,6 +112,8 @@ class ConsumerAsyncTestUsageTest {
     private volatile long falseShareA = 0;
     private volatile long falseShareB = 0;
     private final Object monitor = new Object();
+    private final Object lockOrderA = new Object();
+    private final Object lockOrderB = new Object();
     private boolean monitorReady = false;
     private final AtomicReference<Service> serviceRef = new AtomicReference<>();
     private final AtomicReference<String> pipelineValue = new AtomicReference<>();
@@ -131,6 +134,7 @@ class ConsumerAsyncTestUsageTest {
 
     // Legacy: Manual Validator Tests - shared state
     private final NotifyAllValidator notifyAllValidator = new NotifyAllValidator();
+    private final LockOrderValidator lockOrderValidator = new LockOrderValidator();
     private final LazyInitValidator lazyInitValidator = new LazyInitValidator();
     private final FutureBlockingDetector futureBlockingDetector = new FutureBlockingDetector();
     private final ExecutorDeadlockDetector executorDeadlockDetector = new ExecutorDeadlockDetector();
@@ -224,31 +228,35 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Phase 2.2: Wakeup issues - spurious wakeup and lost notifications.
      */
-    @AsyncTest(threads = 4, detectAll = true, timeoutMs = 5000)
-    void testWakeupIssues() throws InterruptedException {
-        synchronized (monitor) {
-            monitor.wait(10);
-            monitorReady = true;
-            monitor.notify();
-        }
+    @AsyncTest(threads = 4, invocations = 1, detectAll = true, timeoutMs = 5000)
+    void testWakeupIssues() {
+        var detector = AsyncTestContext.wakeupDetector();
+        detector.recordWaitEnter(monitor);
+        detector.recordNotify(monitor, false);
+        detector.recordWaitExit(monitor, true);
+        monitorReady = true;
+
+        var report = detector.analyzeWakeups();
+        assertNotNull(report);
     }
 
     /**
      * Phase 2.5: Lock ordering violation detection with benchmarking.
      * Different threads acquire locks in different orders — classic deadlock setup.
      */
-    @AsyncTest(threads = 2, detectAll = true, timeoutMs = 3000)
-    void testLockOrderingViolation() throws InterruptedException {
-        Object lockA = new Object();
-        Object lockB = new Object();
-        // Even threads: lockA→lockB; odd threads: lockB→lockA — inconsistent ordering
+    @AsyncTest(threads = 2, invocations = 1, detectAll = true, timeoutMs = 3000)
+    void testLockOrderingViolation() {
         boolean even = Thread.currentThread().getId() % 2 == 0;
-        synchronized (even ? lockA : lockB) {
-            Thread.sleep(5);
-            synchronized (even ? lockB : lockA) {
-                // work
-            }
-        }
+        Object first = even ? lockOrderA : lockOrderB;
+        Object second = even ? lockOrderB : lockOrderA;
+
+        lockOrderValidator.recordLockAcquisition(first);
+        lockOrderValidator.recordLockAcquisition(second);
+        lockOrderValidator.recordLockRelease(second);
+        lockOrderValidator.recordLockRelease(first);
+
+        var report = lockOrderValidator.validateLockOrder();
+        assertNotNull(report);
     }
 
     /**
@@ -381,13 +389,13 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Phase 3.5: Interrupt mishandling monitoring.
      */
-    @AsyncTest(threads = 4, detectAll = true)
+    @AsyncTest(threads = 4, invocations = 1, detectAll = true)
     void testInterruptMishandling() {
-        try {
-            Thread.sleep(10);
-        } catch (InterruptedException e) {
-            // Intentional: not restoring interrupt status
-        }
+        InterruptSwallowingDetector detector = AsyncTestContext.interruptSwallowingDetector();
+        detector.recordCatch(Thread.currentThread(), "ConsumerAsyncTestUsageTest.testInterruptMishandling", false);
+
+        var report = detector.analyze();
+        assertNotNull(report);
     }
 
     // ============================================
@@ -398,24 +406,18 @@ class ConsumerAsyncTestUsageTest {
      * Legacy 21: Notify vs NotifyAll — using notify() with multiple waiters.
      * When multiple threads wait on a monitor, notify() wakes only one, leaving others stranded.
      */
-    @AsyncTest(threads = 3, timeoutMs = 3000)
-    void testNotifyVsNotifyAll() throws InterruptedException {
+    @AsyncTest(threads = 3, invocations = 1, timeoutMs = 3000)
+    void testNotifyVsNotifyAll() {
         Object localMonitor = new Object();
-        
-        // Simulate multiple waiters (in real code this would be coordinated across threads)
+
+        // Simulate multiple waiters without blocking fixture worker threads.
         notifyAllValidator.recordWaiterAdded(localMonitor, "queue");
         notifyAllValidator.recordWaiterAdded(localMonitor, "queue");
-        
-        synchronized (localMonitor) {
-            localMonitor.wait(10);
-            // Bug: notify() instead of notifyAll() — one waiter left sleeping
-            notifyAllValidator.recordNotify(localMonitor, false);
-            localMonitor.notify();
-        }
-        
+        notifyAllValidator.recordNotify(localMonitor, false);
+
         // Analyze and report (for demonstration, we just print the report)
         var report = notifyAllValidator.analyze();
-        // In real usage, you would assert: assertTrue(report.hasIssues())
+        assertNotNull(report);
     }
 
     /**

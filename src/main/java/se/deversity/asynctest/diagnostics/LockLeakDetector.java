@@ -87,14 +87,17 @@ public class LockLeakDetector {
             return;
         }
         LockState state = locks.get(System.identityHashCode(lock));
-        if (state != null) {
-            state.acquireCount.incrementAndGet();
-            state.acquiringThreads.add(Thread.currentThread().threadId());
-            state.currentlyHeld = true;
-            long now = System.currentTimeMillis();
-            state.lastAcquireTime = now;
-            state.threadAcquireTime.put(Thread.currentThread().threadId(), now);
+        if (state == null) {
+            // Auto-register
+            state = new LockState(lock, name);
+            locks.put(System.identityHashCode(lock), state);
         }
+        state.acquireCount.incrementAndGet();
+        state.acquiringThreads.add(Thread.currentThread().threadId());
+        state.currentlyHeld = true;
+        long now = System.currentTimeMillis();
+        state.lastAcquireTime = now;
+        state.threadAcquireTime.put(Thread.currentThread().threadId(), now);
     }
 
     /**
@@ -108,17 +111,20 @@ public class LockLeakDetector {
             return;
         }
         LockState state = locks.get(System.identityHashCode(lock));
-        if (state != null) {
-            state.releaseCount.incrementAndGet();
-            state.releasingThreads.add(Thread.currentThread().threadId());
-            state.currentlyHeld = false;
+        if (state == null) {
+            // Auto-register
+            state = new LockState(lock, name);
+            locks.put(System.identityHashCode(lock), state);
+        }
+        state.releaseCount.incrementAndGet();
+        state.releasingThreads.add(Thread.currentThread().threadId());
+        state.currentlyHeld = false;
 
-            // Calculate hold time
-            Long acquireTime = state.threadAcquireTime.remove(Thread.currentThread().threadId());
-            if (acquireTime != null) {
-                int holdTimeMs = (int) (System.currentTimeMillis() - acquireTime);
-                state.maxHoldTimeMs.updateAndGet(max -> Math.max(max, holdTimeMs));
-            }
+        // Calculate hold time
+        Long acquireTime = state.threadAcquireTime.remove(Thread.currentThread().threadId());
+        if (acquireTime != null) {
+            int holdTimeMs = (int) (System.currentTimeMillis() - acquireTime);
+            state.maxHoldTimeMs.updateAndGet(max -> Math.max(max, holdTimeMs));
         }
     }
 

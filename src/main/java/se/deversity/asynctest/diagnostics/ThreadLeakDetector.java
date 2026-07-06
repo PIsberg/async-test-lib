@@ -40,7 +40,7 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * }
  * }</pre>
  *
- * <p>Automatic detection mode also monitors {@code Thread.getAllThreads()}
+ * <p>Automatic detection mode also monitors {@code Thread.activeCount()}
  * growth across invocations to detect leaked threads.
  */
 @AITestDriven(
@@ -52,9 +52,12 @@ public class ThreadLeakDetector {
 
     private static final class ThreadState {
         final String name;
-        final Thread thread;
         final long startTime;
         final StackTraceElement[] creationStack;
+        // Descriptive name (above) is captured at registration and is all the report
+        // needs once terminated, so the Thread itself can be dropped below without
+        // losing any information reports rely on.
+        volatile Thread thread;
         volatile boolean terminated = false;
 
         ThreadState(Thread thread, String name) {
@@ -65,6 +68,14 @@ public class ThreadLeakDetector {
         }
     }
 
+    /**
+     * Allowed slack between the initial and current active thread count before
+     * auto mode reports a leak. JVM housekeeping threads (GC, JIT compiler, etc.)
+     * can transiently come and go, so a small variance is tolerated to avoid
+     * false positives.
+     */
+    private static final int THREAD_COUNT_VARIANCE_ALLOWANCE = 2;
+
     private final Map<Integer, ThreadState> trackedThreads = new ConcurrentHashMap<>();
     private final AtomicInteger initialThreadCount = new AtomicInteger(0);
     private volatile int maxThreadCount = 0;
@@ -73,7 +84,7 @@ public class ThreadLeakDetector {
 
     /**
      * Enable automatic thread counting mode.
-     * Monitors Thread.getAllThreads() growth across invocations.
+     * Monitors Thread.activeCount() growth across invocations.
      */
     public void enableAutoMode() {
         this.autoMode = true;
@@ -110,6 +121,9 @@ public class ThreadLeakDetector {
         ThreadState state = trackedThreads.get(System.identityHashCode(thread));
         if (state != null) {
             state.terminated = true;
+            // Drop the strong Thread reference now that it's accounted for; the
+            // descriptive name was captured at registration time so reports remain accurate.
+            state.thread = null;
         }
     }
 
@@ -128,11 +142,13 @@ public class ThreadLeakDetector {
         // Check tracked threads
         for (ThreadState state : trackedThreads.values()) {
             if (!state.terminated) {
-                boolean isAlive = state.thread.isAlive();
-                if (isAlive) {
+                // Snapshot the volatile reference once: a concurrent recordThreadEnd()
+                // could otherwise null it out between the terminated check and this read.
+                Thread trackedThread = state.thread;
+                if (trackedThread != null && trackedThread.isAlive()) {
                     leaks.add(new ThreadLeakEvent(
                         state.name,
-                        state.thread,
+                        trackedThread,
                         state.startTime,
                         state.creationStack,
                         "Thread started but never terminated (still alive)"
@@ -144,7 +160,7 @@ public class ThreadLeakDetector {
         // Auto mode: check thread count growth
         if (autoMode) {
             int currentCount = Thread.activeCount();
-            if (currentCount > initialThreadCount.get() + 2) { // Allow some variance
+            if (currentCount > initialThreadCount.get() + THREAD_COUNT_VARIANCE_ALLOWANCE) {
                 leaks.add(new ThreadLeakEvent(
                     "global-thread-count",
                     null,
@@ -163,6 +179,15 @@ public class ThreadLeakDetector {
             maxThreadCount,
             autoMode
         );
+    }
+
+    /**
+     * Analyze thread usage and detect leaks.
+     *
+     * @return a report of thread leaks detected
+     */
+    public ThreadLeakReport analyze() {
+        return analyzeLeaks();
     }
 
     /**

@@ -55,7 +55,7 @@ public class SharedTimeZoneDetector {
         TzState s = timezones.computeIfAbsent(System.identityHashCode(timeZone),
                 id -> new TzState());
         if (s.firstOperation == null) s.firstOperation = operation != null ? operation : "mutate";
-        s.mutatingThreadIds.add(thread.getId());
+        s.mutatingThreadIds.add(thread.threadId());
         s.mutatingThreadNames.add(thread.getName());
     }
 

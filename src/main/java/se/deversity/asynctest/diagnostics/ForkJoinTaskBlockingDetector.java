@@ -41,13 +41,13 @@ public class ForkJoinTaskBlockingDetector {
     /** Call at the start of a {@code ForkJoinTask.compute()} or {@code exec()} body. */
     public void recordForkJoinTaskEntered(Thread thread) {
         if (thread == null) return;
-        activeForkJoinThreads.add(thread.getId());
+        activeForkJoinThreads.add(thread.threadId());
     }
 
     /** Call at the end of a {@code ForkJoinTask.compute()} or {@code exec()} body. */
     public void recordForkJoinTaskExited(Thread thread) {
         if (thread == null) return;
-        activeForkJoinThreads.remove(thread.getId());
+        activeForkJoinThreads.remove(thread.threadId());
     }
 
     /**
@@ -59,7 +59,7 @@ public class ForkJoinTaskBlockingDetector {
      */
     public void recordBlockingCallAttempted(Thread thread, String callType) {
         if (thread == null) return;
-        if (!activeForkJoinThreads.contains(thread.getId())) return;
+        if (!activeForkJoinThreads.contains(thread.threadId())) return;
         String type = callType != null ? callType : "blocking call";
         blockingCalls.add(String.format(
             "Thread '%s' called %s inside a ForkJoinTask — "

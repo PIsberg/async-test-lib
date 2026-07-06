@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Records benchmark execution times and manages comparison with baselines.
@@ -34,15 +35,34 @@ public class BenchmarkRecorder {
     private final AsyncTestConfig config;
     private final String testClass;
     private final String testMethod;
+    private final int actualThreads;
     private final List<Long> invocationTimesNanos;
     private final long startTimeNanos;
     private BenchmarkComparator comparator;
     private boolean benchmarkingEnabled;
 
+    /**
+     * @see #BenchmarkRecorder(AsyncTestConfig, String, String, int) — prefer that
+     * overload when the actual thread count may differ from {@code config.threads}
+     * (e.g. {@code virtualThreadStressMode} overrides it). This overload records
+     * {@code config.threads} as-is and exists for direct/unit-test construction.
+     */
     public BenchmarkRecorder(AsyncTestConfig config, String testClass, String testMethod) {
+        this(config, testClass, testMethod, config.threads);
+    }
+
+    /**
+     * @param actualThreads the thread count actually used for this run, which may
+     *                      differ from {@code config.threads} when
+     *                      {@code virtualThreadStressMode} overrides it; recorded on
+     *                      the baseline so comparisons are labeled correctly.
+     * @since 1.9.0
+     */
+    public BenchmarkRecorder(AsyncTestConfig config, String testClass, String testMethod, int actualThreads) {
         this.config = config;
         this.testClass = testClass;
         this.testMethod = testMethod;
+        this.actualThreads = actualThreads;
         this.invocationTimesNanos = new ArrayList<>();
         this.startTimeNanos = System.nanoTime();
         this.benchmarkingEnabled = config.enableBenchmarking;
@@ -120,16 +140,21 @@ public class BenchmarkRecorder {
             return null;
         }
 
-        // Calculate statistics
+        // Calculate statistics. avgTime is derived from the sum of the recorded
+        // per-round samples (same source as min/max) rather than
+        // totalExecutionTimeNanos / count — the latter is wall-clock time for the whole
+        // run, which also includes barrier waits, lifecycle methods, and other overhead
+        // between rounds, so it isn't comparable to the true per-round min/max.
         long minTime = timesCopy.stream().mapToLong(Long::longValue).min().orElse(0);
         long maxTime = timesCopy.stream().mapToLong(Long::longValue).max().orElse(0);
-        long avgTime = totalExecutionTimeNanos / timesCopy.size();
+        long sumTime = timesCopy.stream().mapToLong(Long::longValue).sum();
+        long avgTime = sumTime / timesCopy.size();
 
         BenchmarkResult currentResult = BenchmarkResult.builder()
             .testClass(testClass)
             .testMethod(testMethod)
             .timestamp(LocalDateTime.now(ZoneId.systemDefault()))
-            .threads(config.threads)
+            .threads(actualThreads)
             .invocations(config.invocations)
             .totalExecutionTimeNanos(totalExecutionTimeNanos)
             .avgTimePerInvocationNanos(avgTime)
@@ -177,7 +202,7 @@ public class BenchmarkRecorder {
             status = "✓ STABLE";
         }
 
-        String changeStr = String.format("%+.2f%%", result.getPercentChange());
+        String changeStr = String.format(Locale.ROOT, "%+.2f%%", result.getPercentChange());
         log.info("[BENCHMARK] {} for {}#{} (change: {})", status, testClass, testMethod, changeStr);
     }
 

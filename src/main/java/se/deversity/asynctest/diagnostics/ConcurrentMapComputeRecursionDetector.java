@@ -44,7 +44,7 @@ public class ConcurrentMapComputeRecursionDetector {
 
     private static String slot(Object map, Object key, Thread thread) {
         return System.identityHashCode(map) + ":" + System.identityHashCode(key)
-                + ":" + thread.getId();
+                + ":" + thread.threadId();
     }
 
     /**

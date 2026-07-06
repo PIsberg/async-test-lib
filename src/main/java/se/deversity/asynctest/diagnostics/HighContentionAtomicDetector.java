@@ -146,7 +146,7 @@ public final class HighContentionAtomicDetector {
     }
 
     private static void track(State s, Thread thread) {
-        s.threadIds.add(thread.getId());
+        s.threadIds.add(thread.threadId());
         s.threadNames.add(thread.getName());
     }
 

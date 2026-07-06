@@ -59,6 +59,56 @@ class LicenseGuardTest {
     }
 
     @Test
+    void changedLicenseUserEmailSysProp_producesDistinctFingerprint() {
+        String prevEmail = System.getProperty("license.user.email");
+        try {
+            AsyncTestConfig cfg = AsyncTestConfig.builder()
+                    .licenseMockMode(true)
+                    .build();
+
+            System.setProperty("license.user.email", "first@example.com");
+            LicenseGuard.check(cfg);
+            assertEquals(1, LicenseGuard.cacheSize());
+
+            System.setProperty("license.user.email", "second@example.com");
+            LicenseGuard.check(cfg);
+            assertEquals(2, LicenseGuard.cacheSize(),
+                    "Changing license.user.email must invalidate the cached grant for an otherwise identical config");
+        } finally {
+            if (prevEmail != null) {
+                System.setProperty("license.user.email", prevEmail);
+            } else {
+                System.clearProperty("license.user.email");
+            }
+        }
+    }
+
+    @Test
+    void changedLicenseKeySysProp_producesDistinctFingerprint() {
+        String prevKey = System.getProperty("license.key");
+        try {
+            AsyncTestConfig cfg = AsyncTestConfig.builder()
+                    .licenseMockMode(true)
+                    .build();
+
+            System.setProperty("license.key", "key-one");
+            LicenseGuard.check(cfg);
+            assertEquals(1, LicenseGuard.cacheSize());
+
+            System.setProperty("license.key", "key-two");
+            LicenseGuard.check(cfg);
+            assertEquals(2, LicenseGuard.cacheSize(),
+                    "Changing license.key must invalidate the cached grant for an otherwise identical config");
+        } finally {
+            if (prevKey != null) {
+                System.setProperty("license.key", prevKey);
+            } else {
+                System.clearProperty("license.key");
+            }
+        }
+    }
+
+    @Test
     void cacheIsThreadSafe() throws Exception {
         AsyncTestConfig cfg = AsyncTestConfig.builder()
                 .licenseMockMode(true)

@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>Async Test Library</name>
-    <description>Enterprise-grade JUnit 5 concurrency testing library with 111 problem detectors for detecting deadlocks, visibility issues, false sharing, livelocks, and other subtle concurrency bugs.</description>
+    <description>Enterprise-grade JUnit 5 concurrency testing library with 121 problem detectors for detecting deadlocks, visibility issues, false sharing, livelocks, and other subtle concurrency bugs.</description>
     <url>https://github.com/PIsberg/async-test-lib</url>
 
     <licenses>
@@ -264,6 +264,11 @@
                     <systemPropertyVariables>
                         <license.mock.mode>${license.mock.mode}</license.mock.mode>
                     </systemPropertyVariables>
+                    <!-- Deliberately no <rerunFailingTestsCount>: this library exists to surface
+                         concurrency bugs (races, deadlocks, missed signals) under maximum thread
+                         contention. A test that fails intermittently is reporting a real detector
+                         finding, not infrastructure noise — auto-rerunning it would mask the exact
+                         signal this project is built to catch. Flaky == signal here, not noise. -->
                 </configuration>
             </plugin>
             <!-- JAR with sources -->
@@ -294,7 +299,7 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <doclint>none</doclint>
+                    <doclint>all,-missing</doclint>
                     <encoding>UTF-8</encoding>
                     <docencoding>UTF-8</docencoding>
                 </configuration>

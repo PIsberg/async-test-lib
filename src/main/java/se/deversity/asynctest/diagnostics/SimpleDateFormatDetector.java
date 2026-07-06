@@ -17,7 +17,7 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * 
  * Note: SimpleDateFormat is NOT thread-safe. For concurrent scenarios, use:
  * - DateTimeFormatter (Java 8+) which is immutable and thread-safe
- * - ThreadLocal<SimpleDateFormat> for legacy code
+ * - {@code ThreadLocal<SimpleDateFormat>} for legacy code
  * - Synchronized access blocks
  * 
  * Usage:
@@ -48,6 +48,7 @@ public class SimpleDateFormatDetector {
         final AtomicInteger parseCount = new AtomicInteger(0);
         final AtomicInteger errorCount = new AtomicInteger(0);
         final Set<Long> accessingThreads = ConcurrentHashMap.newKeySet();
+        final Set<String> errorTypes = ConcurrentHashMap.newKeySet();
         final Map<String, AtomicInteger> methodCounts = new ConcurrentHashMap<>();
         volatile Long firstAccessTime = null;
 
@@ -104,8 +105,14 @@ public class SimpleDateFormatDetector {
             return;
         }
         FormatterState state = formatters.get(System.identityHashCode(formatter));
-        if (state != null) {
-            state.errorCount.incrementAndGet();
+        if (state == null) {
+            // Auto-register
+            state = new FormatterState(formatter, name != null ? name : "formatter@" + System.identityHashCode(formatter));
+            formatters.put(System.identityHashCode(formatter), state);
+        }
+        state.errorCount.incrementAndGet();
+        if (errorType != null) {
+            state.errorTypes.add(errorType);
         }
     }
 
@@ -165,9 +172,12 @@ public class SimpleDateFormatDetector {
 
             // Check for errors (potential corruption)
             if (state.errorCount.get() > 0) {
+                String errorTypesSummary = state.errorTypes.isEmpty()
+                    ? "unknown"
+                    : String.join(", ", state.errorTypes);
                 report.formattingErrors.add(String.format(
-                    "%s: %d formatting/parsing errors detected (potential data corruption)",
-                    state.name, state.errorCount.get()));
+                    "%s: %d formatting/parsing errors detected (types: %s) (potential data corruption)",
+                    state.name, state.errorCount.get(), errorTypesSummary));
             }
 
             // Track activity

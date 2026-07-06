@@ -180,12 +180,12 @@ public final class AsyncTestAgent {
      * are re-woven in place, in addition to classes loaded afterwards (verified by
      * {@code SelfAttachTest}).
      *
-     * <h2>When to call</h2>
+     * <h4>When to call</h4>
      * Call once from test setup — for example a JUnit {@code @BeforeAll} method — before
      * the code under test exercises the accessors you want to observe. Then consume the
      * events through {@link TelemetryRegistry} (or a higher-level bridge).
      *
-     * <h2>Idempotency and interaction with {@code -javaagent}</h2>
+     * <h4>Idempotency and interaction with {@code -javaagent}</h4>
      * This method is idempotent and at-most-once per JVM: it shares the
      * {@link #INSTALLED} gate with {@link #premain} and {@link #agentmain}. If the agent
      * was already attached (via the launch flag or a prior {@code selfAttach}), the call
@@ -193,7 +193,7 @@ public final class AsyncTestAgent {
      * to call unconditionally even when a {@code -javaagent:} flag may already be present,
      * and safe to call concurrently from multiple threads.
      *
-     * <h2>Failure</h2>
+     * <h4>Failure</h4>
      * Self-attachment is disabled by default on JDK&nbsp;9+ unless the target JVM was
      * started with {@code -Djdk.attach.allowAttachSelf=true}. When attachment is refused
      * (or otherwise fails) this method throws an {@link IllegalStateException} rather than

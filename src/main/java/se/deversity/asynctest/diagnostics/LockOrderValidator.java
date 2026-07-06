@@ -40,7 +40,7 @@ public class LockOrderValidator {
     public void recordLockAcquisition(Object lock) {
         if (!enabled || lock == null) return;
 
-        long threadId = Thread.currentThread().getId();
+        long threadId = Thread.currentThread().threadId();
         String lockId = lock.getClass().getSimpleName() + "@" + System.identityHashCode(lock);
         
         LockSequence sequence = threadLockOrders.computeIfAbsent(threadId, LockSequence::new);
@@ -57,7 +57,7 @@ public class LockOrderValidator {
     public void recordLockRelease(Object lock) {
         if (!enabled || lock == null) return;
 
-        long threadId = Thread.currentThread().getId();
+        long threadId = Thread.currentThread().threadId();
         String lockId = lock.getClass().getSimpleName() + "@" + System.identityHashCode(lock);
         
         LockSequence sequence = threadLockOrders.get(threadId);

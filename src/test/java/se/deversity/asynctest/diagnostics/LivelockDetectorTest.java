@@ -89,4 +89,16 @@ public class LivelockDetectorTest {
         assertFalse(report.hasIssues(),
                 "Single snapshot is insufficient for livelock/starvation detection");
     }
+
+    @Test
+    void analyze_delegatesToAnalyzeLivelocks() {
+        LivelockDetector detector = new LivelockDetector();
+        detector.captureSnapshot();
+
+        LivelockDetector.LivelockReport viaAnalyze = detector.analyze();
+        LivelockDetector.LivelockReport viaAnalyzeLivelocks = detector.analyzeLivelocks();
+
+        assertEquals(viaAnalyzeLivelocks.hasIssues(), viaAnalyze.hasIssues());
+        assertEquals(viaAnalyzeLivelocks.toString(), viaAnalyze.toString());
+    }
 }

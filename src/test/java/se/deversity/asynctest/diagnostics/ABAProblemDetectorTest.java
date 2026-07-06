@@ -85,4 +85,18 @@ class ABAProblemDetectorTest {
         assertFalse(report.hasIssues());
         detector.enable();
     }
+
+    @Test
+    void analyze_delegatesToAnalyzeABA() {
+        ABAProblemDetector detector = new ABAProblemDetector();
+        detector.recordValueChange("x", "start", "A");
+        detector.recordValueChange("x", "A", "B");
+        detector.recordValueChange("x", "B", "A");
+
+        ABAProblemDetector.ABAReport viaAnalyze = detector.analyze();
+        ABAProblemDetector.ABAReport viaAnalyzeABA = detector.analyzeABA();
+
+        assertEquals(viaAnalyzeABA.hasIssues(), viaAnalyze.hasIssues());
+        assertEquals(viaAnalyzeABA.toString(), viaAnalyze.toString());
+    }
 }

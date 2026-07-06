@@ -59,7 +59,7 @@ public class UncaughtExceptionHandlerDetector {
         if (thread == null) return;
         boolean hasCustom = thread.getUncaughtExceptionHandler() != null
                 && !(thread.getUncaughtExceptionHandler() instanceof ThreadGroup);
-        threads.put(thread.getId(),
+        threads.put(thread.threadId(),
                 new ThreadRecord(thread.getName(), hasCustom));
     }
 
@@ -71,7 +71,7 @@ public class UncaughtExceptionHandlerDetector {
      */
     public void recordUncaughtException(Thread thread, Throwable throwable) {
         if (thread == null) return;
-        ThreadRecord rec = threads.get(thread.getId());
+        ThreadRecord rec = threads.get(thread.threadId());
         if (rec != null) rec.uncaughtException = throwable;
     }
 

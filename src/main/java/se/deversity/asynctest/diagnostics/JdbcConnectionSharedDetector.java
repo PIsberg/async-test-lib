@@ -100,7 +100,7 @@ public final class JdbcConnectionSharedDetector {
                     (name != null) ? name : finalType + "@" + k,
                     finalType));
         }
-        s.accessingThreadIds.add(thread.getId());
+        s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
     }
 

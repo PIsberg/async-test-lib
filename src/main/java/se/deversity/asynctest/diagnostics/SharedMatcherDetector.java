@@ -53,7 +53,7 @@ public class SharedMatcherDetector {
                 : matcher.getClass().getSimpleName() + "@" + System.identityHashCode(matcher);
         MatcherState s = matchers.computeIfAbsent(
                 System.identityHashCode(matcher), id -> new MatcherState(label));
-        s.accessingThreadIds.add(thread.getId());
+        s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
     }
 

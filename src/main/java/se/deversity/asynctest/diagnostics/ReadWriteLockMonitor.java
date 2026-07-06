@@ -58,7 +58,7 @@ public class ReadWriteLockMonitor {
         
         state.readLockCount.incrementAndGet();
         state.readWaitTime.addAndGet(waitTimeMs);
-        state.currentReaders.add(Thread.currentThread().getId());
+        state.currentReaders.add(Thread.currentThread().threadId());
     }
     
     /**
@@ -71,7 +71,7 @@ public class ReadWriteLockMonitor {
         LockState state = locks.get(id);
         if (state == null) return;
         
-        state.currentReaders.remove(Thread.currentThread().getId());
+        state.currentReaders.remove(Thread.currentThread().threadId());
     }
     
     /**
@@ -87,7 +87,7 @@ public class ReadWriteLockMonitor {
         state.writeLockCount.incrementAndGet();
         state.writeWaitTime.addAndGet(waitTimeMs);
         state.maxWriteWaitTime = Math.max(state.maxWriteWaitTime, waitTimeMs);
-        state.currentWriter = Thread.currentThread().getId();
+        state.currentWriter = Thread.currentThread().threadId();
         
         // Check for writer starvation (lots of readers, high write wait time)
         if (waitTimeMs > 100 && state.readLockCount.get() > state.writeLockCount.get() * 2) {
@@ -157,7 +157,14 @@ public class ReadWriteLockMonitor {
         
         return report;
     }
-    
+
+    /**
+     * Standardized alias for {@link #analyzeFairness()}.
+     */
+    public ReadWriteLockReport analyze() {
+        return analyzeFairness();
+    }
+
     public void reset() {
         locks.clear();
     }

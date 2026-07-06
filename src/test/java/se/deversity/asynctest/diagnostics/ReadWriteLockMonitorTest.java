@@ -78,4 +78,18 @@ class ReadWriteLockMonitorTest {
         assertDoesNotThrow(() -> monitor.recordReadLockAcquired(null, 0L));
         assertDoesNotThrow(() -> monitor.recordReadLockReleased(null));
     }
+
+    @Test
+    void analyze_delegatesToAnalyzeFairness() {
+        ReadWriteLockMonitor monitor = new ReadWriteLockMonitor();
+        Object lock = new Object();
+        monitor.registerLock(lock, "lock1");
+        monitor.recordWriteLockAcquired(lock, 150L);
+
+        ReadWriteLockMonitor.ReadWriteLockReport viaAnalyze = monitor.analyze();
+        ReadWriteLockMonitor.ReadWriteLockReport viaAnalyzeFairness = monitor.analyzeFairness();
+
+        assertEquals(viaAnalyzeFairness.hasFairnessIssues(), viaAnalyze.hasFairnessIssues());
+        assertEquals(viaAnalyzeFairness.toString(), viaAnalyze.toString());
+    }
 }

@@ -43,11 +43,27 @@ public final class LegacyDetectorAdapter<D> implements Detector {
     private final D delegate;
     private final DetectorType type;
     private final String detectorName;
+    private final Method analyzeMethod;
+    private final NoSuchMethodException analyzeMethodLookupFailure;
+    private final Method hasIssuesMethod;
 
     public LegacyDetectorAdapter(D delegate, DetectorType type, String detectorName) {
         this.delegate = delegate;
         this.type = type;
         this.detectorName = detectorName;
+
+        Method resolvedAnalyze;
+        NoSuchMethodException resolvedFailure;
+        try {
+            resolvedAnalyze = delegate.getClass().getMethod("analyze");
+            resolvedFailure = null;
+        } catch (NoSuchMethodException e) {
+            resolvedAnalyze = null;
+            resolvedFailure = e;
+        }
+        this.analyzeMethod = resolvedAnalyze;
+        this.analyzeMethodLookupFailure = resolvedFailure;
+        this.hasIssuesMethod = (resolvedAnalyze == null) ? null : findHasIssues(resolvedAnalyze.getReturnType());
     }
 
     @Override
@@ -58,13 +74,12 @@ public final class LegacyDetectorAdapter<D> implements Detector {
     @Override
     public List<Violation> analyze() {
         try {
-            Method analyze = delegate.getClass().getMethod("analyze");
-            Object report = analyze.invoke(delegate);
+            if (analyzeMethodLookupFailure != null) throw analyzeMethodLookupFailure;
+            Object report = analyzeMethod.invoke(delegate);
             if (report == null) return List.of();
 
-            Method hasIssues = findHasIssues(report.getClass());
-            if (hasIssues == null) return List.of();
-            boolean has = (boolean) hasIssues.invoke(report);
+            if (hasIssuesMethod == null) return List.of();
+            boolean has = (boolean) hasIssuesMethod.invoke(report);
             if (!has) return List.of();
 
             return List.of(new Violation(

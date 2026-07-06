@@ -56,7 +56,7 @@ public class OptimisticReadValidationDetector {
     private final List<String>                violations   = new CopyOnWriteArrayList<>();
 
     private static String key(Object lock, Thread thread) {
-        return System.identityHashCode(lock) + ":" + thread.getId();
+        return System.identityHashCode(lock) + ":" + thread.threadId();
     }
 
     /** Call immediately after {@code StampedLock.tryOptimisticRead()}. */

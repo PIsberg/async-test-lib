@@ -114,7 +114,14 @@ public class PipelineMonitor {
         
         return report;
     }
-    
+
+    /**
+     * Standardized alias for {@link #analyzePipeline()}.
+     */
+    public PipelineReport analyze() {
+        return analyzePipeline();
+    }
+
     public void reset() {
         stages.clear();
         eventLog.clear();

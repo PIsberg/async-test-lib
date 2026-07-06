@@ -78,7 +78,7 @@ public final class SharedChecksumDetector {
             s = instances.computeIfAbsent(id, k -> new State(label));
         }
         if (operation != null) s.operations.add(operation);
-        s.accessingThreadIds.add(thread.getId());
+        s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
     }
 

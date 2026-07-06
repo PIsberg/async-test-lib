@@ -62,7 +62,7 @@ public class SynchronizedOnLiteralDetector {
         if (description == null) return;
         int id = System.identityHashCode(monitor);
         LiteralUsage u = literals.computeIfAbsent(id, i -> new LiteralUsage(description));
-        u.threadIds.add(thread.getId());
+        u.threadIds.add(thread.threadId());
         if (context != null) u.contexts.add(context);
     }
 

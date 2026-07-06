@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * in their dashboards. Registering this listener ensures every concurrency finding appears
  * as a named test case failure visible in the CI run, not just as stderr noise.
  *
- * <h3>Usage</h3>
+ * <h2>Usage</h2>
  * <pre>{@code
  * @BeforeAll
  * static void setup() {

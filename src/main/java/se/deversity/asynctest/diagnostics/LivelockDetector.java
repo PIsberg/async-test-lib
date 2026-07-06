@@ -95,7 +95,14 @@ public class LivelockDetector {
         
         return report;
     }
-    
+
+    /**
+     * Standardized alias for {@link #analyzeLivelocks()}.
+     */
+    public LivelockReport analyze() {
+        return analyzeLivelocks();
+    }
+
     private boolean isStarved(List<ThreadSnapshot> snapshots) {
         if (snapshots.size() < 3) return false;
         

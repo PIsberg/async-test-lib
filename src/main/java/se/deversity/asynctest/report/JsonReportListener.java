@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * quality gates, or any toolchain that understands JSON but not JUnit XML. Findings include the
  * detector name, parsed {@link IssueSeverity}, full report text, and a Unix timestamp.
  *
- * <h3>Usage</h3>
+ * <h2>Usage</h2>
  * <pre>{@code
  * @BeforeAll
  * static void setup() {

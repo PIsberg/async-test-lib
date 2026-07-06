@@ -62,7 +62,7 @@ public class SystemPropertyMutationDetector {
      */
     public void recordSet(String key, String value, Thread thread) {
         if (key == null || thread == null) return;
-        events.add(new MutationEvent(key, value, thread.getId(), thread.getName(), "set"));
+        events.add(new MutationEvent(key, value, thread.threadId(), thread.getName(), "set"));
     }
 
     /**
@@ -73,7 +73,7 @@ public class SystemPropertyMutationDetector {
      */
     public void recordClear(String key, Thread thread) {
         if (key == null || thread == null) return;
-        events.add(new MutationEvent(key, null, thread.getId(), thread.getName(), "clear"));
+        events.add(new MutationEvent(key, null, thread.threadId(), thread.getName(), "clear"));
     }
 
     /** {@return report of concurrent system property mutations} */

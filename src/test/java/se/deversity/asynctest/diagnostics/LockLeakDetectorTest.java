@@ -137,6 +137,48 @@ public class LockLeakDetectorTest {
     }
 
     @Test
+    void testRecordLockAcquiredAutoRegisters() {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+
+        // Note: no registerLock() call - recordLockAcquired must auto-register
+        lock.lock();
+        detector.recordLockAcquired(lock, "auto-registered-lock");
+        // Bug: never releasing the lock!
+
+        LockLeakDetector.LockLeakReport report = detector.analyze();
+
+        assertTrue(report.hasIssues(), "Auto-registered lock leak should be detected");
+        assertFalse(report.lockLeaks.isEmpty(), "Should report lock leak for auto-registered lock");
+    }
+
+    @Test
+    void testRecordLockReleasedAutoRegisters() {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+
+        // Note: no registerLock() call anywhere in this test. recordLockReleased is
+        // exercised first (on a lock the detector has never seen) so it must auto-register
+        // rather than silently drop the event; the state it creates is then verified by
+        // running a full acquire/release cycle and confirming it lands on that same state
+        // (tracked, balanced, no leak).
+        lock.lock();
+        lock.unlock();
+        detector.recordLockReleased(lock, "release-first-lock");
+
+        lock.lock();
+        detector.recordLockAcquired(lock, "release-first-lock");
+        lock.unlock();
+        detector.recordLockReleased(lock, "release-first-lock");
+
+        LockLeakDetector.LockLeakReport report = detector.analyze();
+
+        assertNotNull(report);
+        assertFalse(report.threadActivity.isEmpty(), "Auto-registered lock should be tracked");
+        assertTrue(report.lockLeaks.isEmpty(), "Balanced acquire/release should not report a leak");
+    }
+
+    @Test
     void testNullSafety() {
         LockLeakDetector detector = new LockLeakDetector();
         

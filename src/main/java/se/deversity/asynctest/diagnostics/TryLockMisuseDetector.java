@@ -41,7 +41,7 @@ public final class TryLockMisuseDetector {
     public void recordTryLockResult(Object lock, String lockName, boolean acquired, Thread thread) {
         if (lock == null || thread == null) return;
         int id = System.identityHashCode(lock);
-        lockResults.computeIfAbsent(id, k -> new ConcurrentHashMap<>()).put(thread.getId(), acquired);
+        lockResults.computeIfAbsent(id, k -> new ConcurrentHashMap<>()).put(thread.threadId(), acquired);
     }
 
     /**
@@ -52,14 +52,14 @@ public final class TryLockMisuseDetector {
         int id = System.identityHashCode(lock);
         Map<Long, Boolean> threadResults = lockResults.get(id);
         if (threadResults != null) {
-            Boolean acquired = threadResults.get(thread.getId());
+            Boolean acquired = threadResults.get(thread.threadId());
             if (acquired != null && !acquired) {
                 State s = violations.computeIfAbsent(id, k -> new State(
                     lockName != null ? lockName : "Lock@" + id
                 ));
                 s.threadsWithViolations.add(thread.getName());
             }
-            threadResults.remove(thread.getId());
+            threadResults.remove(thread.threadId());
         }
     }
 

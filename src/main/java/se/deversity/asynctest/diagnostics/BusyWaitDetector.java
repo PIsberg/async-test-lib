@@ -136,6 +136,13 @@ public class BusyWaitDetector {
         return report;
     }
 
+    /**
+     * Standardized alias for {@link #analyzeBusyWaiting()}.
+     */
+    public BusyWaitReport analyze() {
+        return analyzeBusyWaiting();
+    }
+
     public void reset() {
         threadActivities.clear();
     }

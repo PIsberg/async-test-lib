@@ -95,7 +95,7 @@ public final class SharedSecureRandomDetector {
                 return new State(label, algorithm, provider);
             });
         }
-        s.accessingThreadIds.add(thread.getId());
+        s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
     }
 

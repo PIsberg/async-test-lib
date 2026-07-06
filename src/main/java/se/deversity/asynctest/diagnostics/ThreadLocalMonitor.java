@@ -99,6 +99,13 @@ public class ThreadLocalMonitor {
         return report;
     }
 
+    /**
+     * Standardized alias for {@link #analyzeThreadLocalLeaks()}.
+     */
+    public ThreadLocalReport analyze() {
+        return analyzeThreadLocalLeaks();
+    }
+
     public void reset() {
         threadLocals.clear();
         threadLocalsByThread.clear();

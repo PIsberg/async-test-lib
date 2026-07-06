@@ -127,4 +127,19 @@ public class BusyWaitDetectorTest {
         assertFalse(report.hasIssues(),
                 "Two separate below-threshold bursts separated by yield should not trigger detection");
     }
+
+    @Test
+    void analyze_delegatesToAnalyzeBusyWaiting() {
+        BusyWaitDetector detector = new BusyWaitDetector();
+        for (long i = 0; i < THRESHOLD; i++) {
+            detector.recordLoopIteration();
+        }
+        detector.recordYield();
+
+        BusyWaitDetector.BusyWaitReport viaAnalyze = detector.analyze();
+        BusyWaitDetector.BusyWaitReport viaAnalyzeBusyWaiting = detector.analyzeBusyWaiting();
+
+        assertEquals(viaAnalyzeBusyWaiting.hasIssues(), viaAnalyze.hasIssues());
+        assertEquals(viaAnalyzeBusyWaiting.toString(), viaAnalyze.toString());
+    }
 }

@@ -128,6 +128,13 @@ public class InterruptMonitor {
         return report;
     }
 
+    /**
+     * Standardized alias for {@link #analyzeInterruptHandling()}.
+     */
+    public InterruptReport analyze() {
+        return analyzeInterruptHandling();
+    }
+
     public void reset() {
         synchronized (interruptEvents) {
             interruptEvents.clear();

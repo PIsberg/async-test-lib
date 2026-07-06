@@ -149,7 +149,14 @@ public class ThreadPoolMonitor {
         
         return report;
     }
-    
+
+    /**
+     * Standardized alias for {@link #analyzePoolHealth()}.
+     */
+    public ThreadPoolReport analyze() {
+        return analyzePoolHealth();
+    }
+
     public void reset() {
         pools.clear();
     }

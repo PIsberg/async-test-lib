@@ -86,16 +86,48 @@ public class SimpleDateFormatDetectorTest {
     void testErrorTracking() {
         SimpleDateFormatDetector detector = new SimpleDateFormatDetector();
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
-        
+
         detector.registerFormatter(sdf, "error-formatter");
-        
+
         detector.recordFormat(sdf, "error-formatter");
         detector.recordError(sdf, "error-formatter", "ParseException");
-        
+
         SimpleDateFormatDetector.SimpleDateFormatReport report = detector.analyze();
-        
+
         assertNotNull(report);
         assertFalse(report.formattingErrors.isEmpty(), "Should track errors");
+    }
+
+    @Test
+    void testErrorTypeSurfacedInReport() {
+        SimpleDateFormatDetector detector = new SimpleDateFormatDetector();
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+
+        detector.registerFormatter(sdf, "typed-error-formatter");
+
+        detector.recordError(sdf, "typed-error-formatter", "ParseException");
+
+        SimpleDateFormatDetector.SimpleDateFormatReport report = detector.analyze();
+
+        assertFalse(report.formattingErrors.isEmpty(), "Should track errors");
+        assertTrue(report.formattingErrors.get(0).contains("ParseException"),
+                   "Error type should be surfaced in the report");
+    }
+
+    @Test
+    void testErrorOnUnregisteredFormatterAutoRegisters() {
+        SimpleDateFormatDetector detector = new SimpleDateFormatDetector();
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+
+        // Note: no registerFormatter() call - recordError must auto-register
+        detector.recordError(sdf, "unregistered-formatter", "IllegalArgumentException");
+
+        SimpleDateFormatDetector.SimpleDateFormatReport report = detector.analyze();
+
+        assertTrue(report.hasIssues(), "Error on unregistered formatter should not be silently dropped");
+        assertFalse(report.formattingErrors.isEmpty(), "Should report the auto-registered formatter's error");
+        assertTrue(report.formattingErrors.get(0).contains("IllegalArgumentException"),
+                   "Error type should still be captured for an auto-registered formatter");
     }
 
     @Test

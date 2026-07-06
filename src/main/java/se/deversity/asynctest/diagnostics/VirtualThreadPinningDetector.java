@@ -155,6 +155,15 @@ public class VirtualThreadPinningDetector {
     }
 
     /**
+     * Standardized alias for {@link #analyzePinning()}.
+     *
+     * @return report containing pinning statistics and events
+     */
+    public PinningReport analyze() {
+        return analyzePinning();
+    }
+
+    /**
      * Check if pinning was detected.
      *
      * @return true if any pinning events were recorded
