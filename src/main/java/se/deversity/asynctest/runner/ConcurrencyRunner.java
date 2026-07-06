@@ -65,6 +65,20 @@ public class ConcurrencyRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ConcurrencyRunner.class);
 
+    /** See {@link #resolveTimeoutMultiplier()}. */
+    private static final String TIMEOUT_MULTIPLIER_PROPERTY = "async-test.timeout.multiplier";
+
+    /** See {@link #resolveTimeoutMultiplier()}. */
+    private static final String TIMEOUT_MULTIPLIER_ENV_VAR = "ASYNC_TEST_TIMEOUT_MULTIPLIER";
+
+    /**
+     * Runs {@code testMethod} N×M times (see the class Javadoc), scaling
+     * {@link AsyncTestConfig#timeoutMs} by {@link #resolveTimeoutMultiplier()} before it
+     * becomes the effective budget for the overall deadline, each round's timeout, and —
+     * transitively, since both are derived from the round timeout — the {@code CyclicBarrier}
+     * await and the async-body {@code CompletionStage} wait. See
+     * {@link #resolveTimeoutMultiplier()} for the CI-scaling mechanism itself.
+     */
     public static void execute(ReflectiveInvocationContext<Method> invocationContext,
                                AsyncTestConfig config) throws Throwable {
 
@@ -126,7 +140,17 @@ public class ConcurrencyRunner {
         List<Method> beforeInvocationMethods = findLifecycleMethods(testInstance, BeforeEachInvocation.class);
         List<Method> afterInvocationMethods  = findLifecycleMethods(testInstance, AfterEachInvocation.class);
 
-        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(config.timeoutMs);
+        // Single choke point where config.timeoutMs becomes the effective budget: every
+        // downstream timing value (deadlineNanos below, each round's remainingMs, the
+        // CyclicBarrier await in createBarrier, and the CompletionStage wait in
+        // runSingleInvocationRound) is derived from effectiveTimeoutMs, never from
+        // config.timeoutMs directly, so scaling happens exactly once per execute() call.
+        double timeoutMultiplier = resolveTimeoutMultiplier();
+        long effectiveTimeoutMs = (timeoutMultiplier == 1.0)
+            ? config.timeoutMs
+            : Math.max(1L, Math.round(config.timeoutMs * timeoutMultiplier));
+
+        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(effectiveTimeoutMs);
 
         // Replay-seed source: explicit @AsyncTest(replaySeed=N) makes every
         // round use N; default 0 generates a fresh seed per round so failures
@@ -140,7 +164,7 @@ public class ConcurrencyRunner {
             for (int i = 0; i < config.invocations; i++) {
                 long remainingMs = remainingMillis(deadlineNanos);
                 if (remainingMs <= 0) {
-                    throw timeoutError(config.timeoutMs, null, phase1, phase2Analysis,
+                    throw timeoutError(effectiveTimeoutMs, null, phase1, phase2Analysis,
                             config.detectDeadlocks);
                 }
 
@@ -174,7 +198,7 @@ public class ConcurrencyRunner {
             }
         } catch (AssertionError e) {
             if (isTimeoutLike(e)) {
-                throw timeoutError(config.timeoutMs, e, phase1, phase2Analysis,
+                throw timeoutError(effectiveTimeoutMs, e, phase1, phase2Analysis,
                         config.detectDeadlocks);
             }
             // Surface the seed of the failing round so the user can reproduce by
@@ -220,6 +244,53 @@ public class ConcurrencyRunner {
         // gate is intentionally success-path-only; failure/timeout paths above are
         // report-only (see the comments in the catch blocks and in timeoutError).
         analyzeAndGate(config, testMethod, phase1, phase2Analysis);
+    }
+
+    /**
+     * Resolves the CI timeout-scaling multiplier applied to {@link AsyncTestConfig#timeoutMs}
+     * for the current {@link #execute} call.
+     *
+     * <p><strong>Motivation:</strong> {@code timeoutMs} is a fixed per-test budget, but the
+     * clock in {@link #execute} starts before {@code detectAll}'s ~120 detectors finish their
+     * setup — overhead that is negligible on a fast, dedicated runner but can consume a
+     * meaningful slice of a short (3-5s) budget on a slow or oversubscribed shared runner
+     * (e.g. a 3-core macOS CI runner), producing a timeout that reflects runner speed rather
+     * than a real concurrency bug. Rather than bumping every {@code @AsyncTest(timeoutMs=...)}
+     * annotation across the suite, CI can scale every budget globally with one knob.
+     *
+     * <p><strong>Resolution order</strong> (first present wins):
+     * <ol>
+     *   <li>System property {@code async-test.timeout.multiplier} — set per-invocation via
+     *       {@code -Dasync-test.timeout.multiplier=3}.</li>
+     *   <li>Environment variable {@code ASYNC_TEST_TIMEOUT_MULTIPLIER} — unlike a system
+     *       property passed on the {@code mvn} command line, an environment variable is
+     *       automatically inherited by Surefire's forked test JVMs, which is why CI sets
+     *       this one rather than {@code -D}.</li>
+     *   <li>{@code 1.0} — identical to pre-multiplier behavior.</li>
+     * </ol>
+     *
+     * <p>Parsing is defensive: a missing, blank, non-numeric, zero, or negative value falls
+     * back to {@code 1.0} rather than throwing, so a CI misconfiguration degrades to today's
+     * behavior instead of failing every test.
+     *
+     * <p>Resolved fresh on every {@link #execute} call — deliberately not cached in a
+     * {@code static final} — so the property/env var can still be changed between test runs
+     * within the same JVM (as the accompanying unit tests do).
+     */
+    private static double resolveTimeoutMultiplier() {
+        String raw = System.getProperty(TIMEOUT_MULTIPLIER_PROPERTY);
+        if (raw == null || raw.isBlank()) {
+            raw = System.getenv(TIMEOUT_MULTIPLIER_ENV_VAR);
+        }
+        if (raw == null || raw.isBlank()) {
+            return 1.0;
+        }
+        try {
+            double parsed = Double.parseDouble(raw.trim());
+            return parsed > 0.0 ? parsed : 1.0;
+        } catch (NumberFormatException e) {
+            return 1.0;
+        }
     }
 
     /**

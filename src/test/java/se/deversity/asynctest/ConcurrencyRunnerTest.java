@@ -1,11 +1,13 @@
 package se.deversity.asynctest;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -205,6 +207,161 @@ class ConcurrencyRunnerTest {
         assertSame(first, second,
                 "Phase2Analysis.get() must memoize analyzeAll()'s result — DetectorRegistry.analyzeAll() "
                         + "builds a fresh List each call, so two distinct calls would never be assertSame");
+    }
+
+    // ---- resolveTimeoutMultiplier: CI timeout-scaling knob ----
+    //
+    // Motivation: an experimental macOS CI leg (3-core runners) timed out a fixture test at
+    // its 5000ms @AsyncTest budget purely because ~121 detectors' setup ate into the budget
+    // on a slow runner — not a real concurrency bug. Rather than bumping every fixture
+    // annotation, ConcurrencyRunner.execute now scales config.timeoutMs by a multiplier
+    // resolved from -Dasync-test.timeout.multiplier (falling back to the
+    // ASYNC_TEST_TIMEOUT_MULTIPLIER env var, then 1.0). These tests cover the sysprop path
+    // directly: (1) resolveTimeoutMultiplier's own parsing/fallback logic in isolation, and
+    // (2) an end-to-end execute() run demonstrating the multiplier actually changes whether
+    // a slow test body passes.
+
+    @Test
+    void resolveTimeoutMultiplier_validSysprop_returnsParsedValue() throws Exception {
+        String previous = System.getProperty("async-test.timeout.multiplier");
+        try {
+            System.setProperty("async-test.timeout.multiplier", "2.5");
+            assertEquals(2.5, invokeResolveTimeoutMultiplier(), 0.0001);
+        } finally {
+            restoreProperty("async-test.timeout.multiplier", previous);
+        }
+    }
+
+    @Test
+    void resolveTimeoutMultiplier_missingSysprop_defaultsToOne() throws Exception {
+        String previous = System.getProperty("async-test.timeout.multiplier");
+        try {
+            System.clearProperty("async-test.timeout.multiplier");
+            assertEquals(1.0, invokeResolveTimeoutMultiplier(), 0.0001);
+        } finally {
+            restoreProperty("async-test.timeout.multiplier", previous);
+        }
+    }
+
+    @Test
+    void resolveTimeoutMultiplier_nonNumericSysprop_fallsBackToOne() throws Exception {
+        assertMultiplierFallsBackToOne("abc");
+    }
+
+    @Test
+    void resolveTimeoutMultiplier_zeroSysprop_fallsBackToOne() throws Exception {
+        assertMultiplierFallsBackToOne("0");
+    }
+
+    @Test
+    void resolveTimeoutMultiplier_negativeSysprop_fallsBackToOne() throws Exception {
+        assertMultiplierFallsBackToOne("-1");
+    }
+
+    private static void assertMultiplierFallsBackToOne(String invalidValue) throws Exception {
+        String previous = System.getProperty("async-test.timeout.multiplier");
+        try {
+            System.setProperty("async-test.timeout.multiplier", invalidValue);
+            assertEquals(1.0, invokeResolveTimeoutMultiplier(), 0.0001,
+                    "invalid multiplier '" + invalidValue + "' must fall back to 1.0 rather than throw");
+        } finally {
+            restoreProperty("async-test.timeout.multiplier", previous);
+        }
+    }
+
+    // ---- execute(): the resolved multiplier actually scales the effective timeout budget ----
+
+    @Test
+    void execute_timeoutMultiplierSysprop_scalesEffectiveTimeoutBudget() throws Throwable {
+        // ConcurrencyRunner.execute's first call is LicenseGuard.check(config); mock mode
+        // avoids a real license lookup, matching AsyncTestInvocationInterceptorTest's setup.
+        String previousLicenseMockMode = System.getProperty("license.mock.mode");
+        String previousMultiplier = System.getProperty("async-test.timeout.multiplier");
+        System.setProperty("license.mock.mode", "true");
+        try {
+            // detectAll/detectDeadlocks off so the only work per round is the reflective
+            // invoke — keeps this test fast and isolates the timing to the sleep itself.
+            AsyncTestConfig tightConfig = AsyncTestConfig.builder()
+                    .threads(1)
+                    .invocations(1)
+                    .useVirtualThreads(false)
+                    .timeoutMs(30)
+                    .detectAll(false)
+                    .detectDeadlocks(false)
+                    .build();
+
+            SleepFixture fixture = new SleepFixture();
+            Method method = SleepFixture.class.getDeclaredMethod("sleepBriefly");
+            FakeInvocationContext context = new FakeInvocationContext(fixture, method, List.of());
+
+            // At the default multiplier (1.0), a 30ms budget is far too short for a ~120ms
+            // test body -- must fail with a timeout, not a false pass.
+            System.clearProperty("async-test.timeout.multiplier");
+            AssertionError timeout = assertThrows(AssertionError.class,
+                    () -> se.deversity.asynctest.runner.ConcurrencyRunner.execute(context, tightConfig));
+            assertTrue(timeout.getMessage() != null && timeout.getMessage().contains("timed out"),
+                    "a 30ms budget must time out against a ~120ms test body at multiplier=1.0: "
+                            + timeout.getMessage());
+
+            // Scaling by 6x (effective 180ms) comfortably covers the same ~120ms test body --
+            // same config, same test body, only the multiplier changed.
+            System.setProperty("async-test.timeout.multiplier", "6");
+            assertDoesNotThrow(
+                    () -> se.deversity.asynctest.runner.ConcurrencyRunner.execute(context, tightConfig),
+                    "a 6x multiplier must scale the 30ms budget enough to cover the ~120ms test body");
+        } finally {
+            restoreProperty("async-test.timeout.multiplier", previousMultiplier);
+            restoreProperty("license.mock.mode", previousLicenseMockMode);
+        }
+    }
+
+    /** Minimal {@code @AsyncTest}-free fixture: a body that sleeps long enough to exercise timeouts. */
+    static final class SleepFixture {
+        private void sleepBriefly() throws InterruptedException {
+            Thread.sleep(120);
+        }
+    }
+
+    /**
+     * Hand-rolled fake (no mocking library declared in this project's pom.xml — see
+     * AsyncTestInvocationInterceptorTest's class Javadoc for the same rationale).
+     */
+    static final class FakeInvocationContext implements ReflectiveInvocationContext<Method> {
+        private final Object target;
+        private final Method method;
+        private final List<Object> arguments;
+
+        FakeInvocationContext(Object target, Method method, List<Object> arguments) {
+            this.target = target;
+            this.method = method;
+            this.arguments = arguments;
+        }
+
+        @Override
+        public Class<?> getTargetClass() {
+            return target.getClass();
+        }
+
+        @Override
+        public Method getExecutable() {
+            return method;
+        }
+
+        @Override
+        public List<Object> getArguments() {
+            return arguments;
+        }
+
+        @Override
+        public Optional<Object> getTarget() {
+            return Optional.of(target);
+        }
+    }
+
+    private static double invokeResolveTimeoutMultiplier() throws Exception {
+        Method m = RUNNER_CLASS.getDeclaredMethod("resolveTimeoutMultiplier");
+        m.setAccessible(true);
+        return (double) m.invoke(null);
     }
 
     // ---- Reflection helpers ----

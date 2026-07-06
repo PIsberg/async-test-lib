@@ -29,6 +29,18 @@ jobs:
         java-version: [ '21', '25' ]
         os: [ ubuntu-latest, windows-latest, macos-latest ]
 
+    # Slow/shared CI runners (e.g. 3-core macOS/windows-latest runners) can turn ~121
+    # detectors' setup overhead in ConcurrencyRunner.execute into a meaningful fraction of a
+    # short @AsyncTest timeoutMs budget, producing timeouts that reflect runner speed rather
+    # than a real concurrency bug (see ConcurrencyRunner.resolveTimeoutMultiplier). Scale via
+    # this env var, not a `-D` system property passed to `mvn`: Surefire forks a separate JVM
+    # per test run, and only environment variables — not system properties given to the
+    # outer `mvn` process — propagate into that forked JVM automatically. Applies to every
+    # step below, so it covers both the library test run and the consumer-fixture run in the
+    # same job.
+    env:
+      ASYNC_TEST_TIMEOUT_MULTIPLIER: ${{ matrix.os == 'ubuntu-latest' && '1' || '3' }}
+
     steps:
       - name: Harden the runner (Block unexpected outbound calls)
         if: runner.os == 'Linux'

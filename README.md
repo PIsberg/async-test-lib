@@ -379,6 +379,8 @@ Findings appear as named test-case failures in the Actions UI — not just as `s
 
 **Flaky-test policy:** the build does not configure Surefire's `rerunFailingTestsCount` — an intermittently failing `@AsyncTest` is a detector finding a real concurrency bug, not infrastructure noise, so we don't auto-rerun it away.
 
+**Scaling timeouts on slow/shared runners:** every `@AsyncTest(timeoutMs=...)` budget can be scaled globally with `-Dasync-test.timeout.multiplier=<factor>` or the `ASYNC_TEST_TIMEOUT_MULTIPLIER` environment variable (precedence: system property, then env var, then `1.0`). Use this instead of bumping individual annotations when detector setup overhead eats into a short timeout on a slow or oversubscribed runner (e.g. a 3-core macOS or Windows CI box) — an invalid or non-positive value falls back to `1.0`. Prefer the env var in CI: it propagates automatically into Surefire's forked test JVMs, whereas a `-D` passed to the outer `mvn` process does not.
+
 Full CI/CD setup guide: [docs/CI_INTEGRATION.md](docs/CI_INTEGRATION.md)
 
 ---

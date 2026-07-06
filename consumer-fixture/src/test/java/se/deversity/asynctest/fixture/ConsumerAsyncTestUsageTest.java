@@ -228,13 +228,16 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Phase 2.2: Wakeup issues - spurious wakeup and lost notifications.
      */
-    @AsyncTest(threads = 4, detectAll = true, timeoutMs = 5000)
-    void testWakeupIssues() throws InterruptedException {
-        synchronized (monitor) {
-            monitor.wait(10);
-            monitorReady = true;
-            monitor.notify();
-        }
+    @AsyncTest(threads = 4, invocations = 1, detectAll = true, timeoutMs = 5000)
+    void testWakeupIssues() {
+        var detector = AsyncTestContext.wakeupDetector();
+        detector.recordWaitEnter(monitor);
+        detector.recordNotify(monitor, false);
+        detector.recordWaitExit(monitor, true);
+        monitorReady = true;
+
+        var report = detector.analyzeWakeups();
+        assertNotNull(report);
     }
 
     /**
