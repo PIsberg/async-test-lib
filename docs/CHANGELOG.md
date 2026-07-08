@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0-RC2] - 2026-07-08
+
 ### Added — JDK 25/26 detectors (Phase 16), now wired into the pipeline
 - **Three new concurrency detectors** for features introduced/finalized in JDK 24–26,
   **wired into the `@AsyncTest` `detectAll` pipeline** (Phase 16) — each has a `DetectorType`
