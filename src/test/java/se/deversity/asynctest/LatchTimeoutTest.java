@@ -31,8 +31,10 @@ class LatchTimeoutTest {
         assertEquals(1, events.failed().count(),
             "Hung-thread test must fail with an AssertionError");
 
-        // Must complete well within 10 s (timeoutMs=300 + 5s slack + overhead)
-        assertTrue(elapsed < 10_000,
+        // Must complete in bounded time (timeoutMs=300 + 5s latch slack + engine
+        // overhead). The generous cap only guards against an infinite hang — it must
+        // not trip on a slow, heavily loaded CI runner.
+        assertTrue(elapsed < 20_000,
             "Test took " + elapsed + "ms — likely hung instead of timing out");
     }
 
@@ -45,11 +47,17 @@ class LatchTimeoutTest {
      * Very short timeoutMs so the test suite finishes quickly.
      */
     static class HungThreadDummy {
+        // Role assignment must be deterministic: thread-id parity is NOT — the two
+        // worker threads can both get even (or both odd) ids when other JVM threads
+        // claim ids in between, and with no hung thread the dummy would pass.
+        private final java.util.concurrent.atomic.AtomicInteger role =
+            new java.util.concurrent.atomic.AtomicInteger(0);
+
         @AsyncTest(threads = 2, invocations = 1, timeoutMs = 300, detectDeadlocks = false,
                    useVirtualThreads = false)
         void oneThreadHangsForever() throws InterruptedException {
-            if (Thread.currentThread().threadId() % 2 != 0) {
-                // spin — this thread never calls latch.countDown()
+            if (role.getAndIncrement() == 0) {
+                // this thread never reaches latch.countDown()
                 Thread.sleep(60_000);
             }
         }

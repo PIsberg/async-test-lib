@@ -62,14 +62,18 @@ class TelemetryEventBufferTest {
         assertTrue(latch.await(5, TimeUnit.SECONDS), "Producers did not finish publishing in time");
 
         executor.shutdown();
-        executor.awaitTermination(1, TimeUnit.SECONDS);
+        assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS), "Producer pool did not terminate");
 
-        // Final flush.
-        Thread.sleep(50);
+        // Stop the background drainer BEFORE the final flush: the buffer is
+        // single-consumer, and an in-flight scheduled drain overlapping the manual
+        // drain below would race on the consumer cursor and skip/double-read slots.
+        drainExecutor.shutdown();
+        assertTrue(drainExecutor.awaitTermination(5, TimeUnit.SECONDS), "Drain executor did not terminate");
+
+        // Final flush — now the sole consumer.
         buffer.drain((tid, field, write) -> {
             drainedEvents.add(tid + ":" + field);
         });
-        drainExecutor.shutdown();
 
         assertEquals(producerThreadsCount * eventsPerProducer, drainedEvents.size(), "Drained event count mismatch");
     }

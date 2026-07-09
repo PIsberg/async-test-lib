@@ -309,31 +309,42 @@ class ConcurrencyRunnerTest {
             Method method = SleepFixture.class.getDeclaredMethod("sleepBriefly");
             FakeInvocationContext context = new FakeInvocationContext(fixture, method, List.of());
 
-            // At the default multiplier (1.0), a 30ms budget is far too short for a ~120ms
-            // test body -- must fail with a timeout, not a false pass.
-            System.clearProperty("async-test.timeout.multiplier");
+            // Pin the multiplier to 1 explicitly rather than clearing the property:
+            // resolveTimeoutMultiplier() falls back to the ASYNC_TEST_TIMEOUT_MULTIPLIER
+            // env var, which CI sets to 3 on macOS/Windows runners — clearing the sysprop
+            // there silently scaled the budget to 90ms and shrank the timeout margin to
+            // 30ms, which a single latch park-overshoot on a loaded runner can absorb.
+            // A 30ms budget vs a ~300ms test body must fail with a timeout, not a false pass.
+            System.setProperty("async-test.timeout.multiplier", "1");
             AssertionError timeout = assertThrows(AssertionError.class,
                     () -> se.deversity.asynctest.runner.ConcurrencyRunner.execute(context, tightConfig));
             assertTrue(timeout.getMessage() != null && timeout.getMessage().contains("timed out"),
-                    "a 30ms budget must time out against a ~120ms test body at multiplier=1.0: "
+                    "a 30ms budget must time out against a ~300ms test body at multiplier=1.0: "
                             + timeout.getMessage());
 
-            // Scaling by 6x (effective 180ms) comfortably covers the same ~120ms test body --
-            // same config, same test body, only the multiplier changed.
-            System.setProperty("async-test.timeout.multiplier", "6");
+            // Scaling by 50x (effective 1500ms) comfortably covers the same ~300ms test
+            // body even on a stalled CI runner -- same config, same test body, only the
+            // multiplier changed.
+            System.setProperty("async-test.timeout.multiplier", "50");
             assertDoesNotThrow(
                     () -> se.deversity.asynctest.runner.ConcurrencyRunner.execute(context, tightConfig),
-                    "a 6x multiplier must scale the 30ms budget enough to cover the ~120ms test body");
+                    "a 50x multiplier must scale the 30ms budget enough to cover the ~300ms test body");
         } finally {
             restoreProperty("async-test.timeout.multiplier", previousMultiplier);
             restoreProperty("license.mock.mode", previousLicenseMockMode);
         }
     }
 
-    /** Minimal {@code @AsyncTest}-free fixture: a body that sleeps long enough to exercise timeouts. */
+    /**
+     * Minimal {@code @AsyncTest}-free fixture: a body that sleeps long enough to exercise
+     * timeouts. 300ms keeps a wide margin on both sides: far above the 30ms budget in the
+     * timeout phase (a latch park-overshoot cannot bridge it), far below the 1500ms scaled
+     * budget in the pass phase. The timeout phase does not wait the sleep out — the round
+     * interrupts workers as soon as the 30ms budget expires.
+     */
     static final class SleepFixture {
         private void sleepBriefly() throws InterruptedException {
-            Thread.sleep(120);
+            Thread.sleep(300);
         }
     }
 

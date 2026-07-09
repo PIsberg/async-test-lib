@@ -46,7 +46,8 @@ class VirtualThreadCpuBoundTaskDetectorTest {
                 detector.recordTaskEnd(id);
             }
         });
-        vt.join(500);
+        vt.join(5_000);
+        assertFalse(vt.isAlive(), "virtual thread did not finish in time");
 
         var report = detector.analyze();
         assertTrue(report.hasIssues(), "Expected CPU-bound violation on virtual thread");
@@ -56,21 +57,27 @@ class VirtualThreadCpuBoundTaskDetectorTest {
 
     @Test
     void virtualThread_yieldPointResetsTimer_noViolation() throws Exception {
+        // Local detector with a wide threshold: the pre-yield spin (300ms) is guaranteed
+        // to exceed it, so the yield reset is what prevents the violation. Ending the
+        // task right after the yield leaves the full 250ms threshold as scheduling-stall
+        // headroom on loaded CI runners (segment time is wall-clock, not CPU time).
+        var yieldDetector = new VirtualThreadCpuBoundTaskDetector(250L);
         Thread vt = Thread.ofVirtual().start(() -> {
-            String id = detector.recordTaskStart("io-mixed-task");
+            String id = yieldDetector.recordTaskStart("io-mixed-task");
             try {
-                // Record a yield point immediately — simulates blocking I/O
-                detector.recordYieldPoint(id);
-                // Then do a short CPU burst (< threshold)
-                long deadline = System.nanoTime() + 1_000_000L; // 1ms
+                // CPU burst longer than the threshold — would violate without the yield
+                long deadline = System.nanoTime() + 300_000_000L; // 300ms
                 while (System.nanoTime() < deadline) { /* spin */ }
+                // Yield point resets the segment timer; end immediately afterwards
+                yieldDetector.recordYieldPoint(id);
             } finally {
-                detector.recordTaskEnd(id);
+                yieldDetector.recordTaskEnd(id);
             }
         });
-        vt.join(500);
+        vt.join(5_000);
+        assertFalse(vt.isAlive(), "virtual thread did not finish in time");
 
-        var report = detector.analyze();
+        var report = yieldDetector.analyze();
         assertFalse(report.hasIssues(), "Yield point should have reset the CPU timer: " + report);
     }
 
@@ -86,7 +93,8 @@ class VirtualThreadCpuBoundTaskDetectorTest {
                 detector.recordTaskEnd(id);
             }
         });
-        pt.join(500);
+        pt.join(5_000);
+        assertFalse(pt.isAlive(), "platform thread did not finish in time");
 
         var report = detector.analyze();
         assertFalse(report.hasIssues(), "Platform thread tasks should not be flagged");
@@ -94,23 +102,30 @@ class VirtualThreadCpuBoundTaskDetectorTest {
 
     @Test
     void multipleVirtualThreads_onlyLongOnesViolate() throws Exception {
+        // Local detector with a wide threshold: "fast" must NOT violate, and its
+        // start/end are adjacent calls — with the 5ms threshold a single scheduling
+        // stall between them on a loaded CI runner would flag it and break the
+        // exactly-one-violation assertion below.
+        var multiDetector = new VirtualThreadCpuBoundTaskDetector(250L);
         Thread fast = Thread.ofVirtual().start(() -> {
-            String id = detector.recordTaskStart("fast");
-            detector.recordTaskEnd(id);
+            String id = multiDetector.recordTaskStart("fast");
+            multiDetector.recordTaskEnd(id);
         });
         Thread slow = Thread.ofVirtual().start(() -> {
-            String id = detector.recordTaskStart("slow");
+            String id = multiDetector.recordTaskStart("slow");
             try {
-                long deadline = System.nanoTime() + 20_000_000L;
+                long deadline = System.nanoTime() + 300_000_000L; // 300ms > threshold
                 while (System.nanoTime() < deadline) { /* spin */ }
             } finally {
-                detector.recordTaskEnd(id);
+                multiDetector.recordTaskEnd(id);
             }
         });
-        fast.join(200);
-        slow.join(500);
+        fast.join(5_000);
+        slow.join(5_000);
+        assertFalse(fast.isAlive(), "fast thread did not finish in time");
+        assertFalse(slow.isAlive(), "slow thread did not finish in time");
 
-        var report = detector.analyze();
+        var report = multiDetector.analyze();
         assertTrue(report.hasIssues());
         assertEquals(1, report.getViolations().size());
         assertTrue(report.getViolations().get(0).contains("slow"));
@@ -128,7 +143,8 @@ class VirtualThreadCpuBoundTaskDetectorTest {
                 detector.recordTaskEnd(id);
             }
         });
-        vt.join(500);
+        vt.join(5_000);
+        assertFalse(vt.isAlive(), "virtual thread did not finish in time");
 
         var report = detector.analyze();
         String text = report.toString();
