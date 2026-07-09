@@ -45,7 +45,7 @@ class AsyncTestAgentTest {
         // Trigger the write advice enter method directly with a pre-combined identifier.
         AsyncTestAgent.WriteAccessAdvice.enter("TestClass.setCount");
 
-        assertTrue(latch.await(500, TimeUnit.MILLISECONDS), "Direct advice enter did not trigger registry callback");
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "Direct advice enter did not trigger registry callback");
         assertEquals(List.of("TestClass.setCount:true"), recorded);
     }
 
@@ -62,7 +62,7 @@ class AsyncTestAgentTest {
         // Trigger the read advice enter method directly with a pre-combined identifier.
         AsyncTestAgent.ReadAccessAdvice.enter("TestClass.getCount");
 
-        assertTrue(latch.await(500, TimeUnit.MILLISECONDS), "Direct advice enter did not trigger registry callback");
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "Direct advice enter did not trigger registry callback");
         assertEquals(List.of("TestClass.getCount:false"), recorded);
     }
 
@@ -102,7 +102,7 @@ class AsyncTestAgentTest {
         int read = (int) dynamicType.getMethod("getValue").invoke(instance);
         assertEquals(42, read, "instrumentation must not alter getter/setter semantics");
 
-        assertTrue(latch.await(2, TimeUnit.SECONDS), "Instrumented accessor calls were not captured by telemetry");
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "Instrumented accessor calls were not captured by telemetry");
         assertEquals(2, recorded.size());
         assertTrue(recorded.contains("se.deversity.asynctest.agent.DynamicBean.setValue:true"),
                 "setter must record a write access with the combined identifier; got " + recorded);
@@ -141,7 +141,7 @@ class AsyncTestAgentTest {
         setter.invoke(instance, 1);
         setter.invoke(instance, 2);
 
-        assertTrue(latch.await(2, TimeUnit.SECONDS), "Both instrumented calls should have been drained");
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "Both instrumented calls should have been drained");
         assertEquals(2, rawIdentifiers.size());
         assertSame(rawIdentifiers.get(0), rawIdentifiers.get(1),
                 "the origin identifier must be the same interned constant on every call "

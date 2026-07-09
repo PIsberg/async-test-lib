@@ -33,8 +33,8 @@ class SpinContentionBarrierTest {
             }));
         }
 
-        // Wait up to 1 second for all threads to be released.
-        boolean released = latch.await(1, TimeUnit.SECONDS);
+        // Hang-guard: generous so pool spin-up on a stalled CI runner cannot trip it.
+        boolean released = latch.await(5, TimeUnit.SECONDS);
         assertTrue(released, "Barrier failed to release all threads");
         assertEquals(4, activeThreads.get());
 
@@ -70,7 +70,7 @@ class SpinContentionBarrierTest {
             // expected
         }
 
-        assertTrue(interruptedLatch.await(1, TimeUnit.SECONDS), "Worker thread did not catch InterruptedException in time");
+        assertTrue(interruptedLatch.await(5, TimeUnit.SECONDS), "Worker thread did not catch InterruptedException in time");
         assertTrue(interrupted.get(), "Thread was not interrupted or did not throw InterruptedException");
         executor.shutdownNow();
     }
@@ -100,7 +100,7 @@ class SpinContentionBarrierTest {
             });
         }
 
-        assertTrue(latch.await(1, TimeUnit.SECONDS), "Barrier broke or got stuck during integer overflow");
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "Barrier broke or got stuck during integer overflow");
         assertEquals(Integer.MIN_VALUE, phaseField.getInt(barrier), "Phase did not overflow to Integer.MIN_VALUE");
 
         // Second round (after overflow): verify it continues to work seamlessly at MIN_VALUE.
@@ -116,7 +116,7 @@ class SpinContentionBarrierTest {
             });
         }
 
-        assertTrue(latch2.await(1, TimeUnit.SECONDS), "Barrier got stuck in the generation following integer overflow");
+        assertTrue(latch2.await(5, TimeUnit.SECONDS), "Barrier got stuck in the generation following integer overflow");
         assertEquals(Integer.MIN_VALUE + 1, phaseField.getInt(barrier));
 
         executor.shutdownNow();

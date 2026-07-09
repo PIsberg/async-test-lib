@@ -117,8 +117,11 @@ class ThreadLeakDetectorTest {
         thread = null;
 
         // Nudge the collector; the detector must not be holding a strong Thread
-        // reference once the thread has been marked terminated.
-        for (int i = 0; i < 10 && weakRef.get() != null; i++) {
+        // reference once the thread has been marked terminated. System.gc() is only
+        // a hint, so apply allocation pressure and retry for up to ~2s before failing.
+        for (int i = 0; i < 40 && weakRef.get() != null; i++) {
+            byte[] pressure = new byte[1024 * 1024];
+            pressure[0] = 1;
             System.gc();
             Thread.sleep(50);
         }
