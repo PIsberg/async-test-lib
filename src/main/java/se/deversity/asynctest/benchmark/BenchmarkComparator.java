@@ -7,6 +7,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InvalidObjectException;
+import java.io.ObjectInputFilter;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.nio.file.Path;
@@ -21,6 +23,37 @@ import java.util.Optional;
 public class BenchmarkComparator {
 
     private static final Logger log = LoggerFactory.getLogger(BenchmarkComparator.class);
+
+    /**
+     * Allow-list of every class that legitimately appears in a serialized baseline store
+     * ({@code HashMap<String, BenchmarkResult>}), with {@code !*} rejecting all others.
+     * Without this filter, {@code readObject()} would instantiate any {@code Serializable}
+     * class named in the stream, so a store file written by another party could drive a
+     * gadget chain (CWE-502) before the result is ever cast to a Map.
+     *
+     * <p>Three entries are non-obvious. {@code java.time.Ser} is the serialization proxy
+     * {@link java.time.LocalDateTime} writes itself as. {@code java.util.Map$Entry} and
+     * {@code java.lang.Object} are the array component types that {@code HashMap.readObject}
+     * and {@code ArrayList.readObject} pass to {@code checkArray}; omit either and a valid
+     * store fails to load. Patterns match exact class names, so allowing {@code Object}
+     * does not admit its subclasses.
+     */
+    private static final ObjectInputFilter BASELINE_FILTER = ObjectInputFilter.Config.createFilter(
+        "java.util.HashMap;"
+            + "java.util.ArrayList;"
+            + "java.util.Map$Entry;"
+            + "java.lang.Object;"
+            + "java.lang.String;"
+            + "java.lang.Number;"
+            + "java.lang.Long;"
+            + "java.time.Ser;"
+            + "java.time.LocalDateTime;"
+            + "java.time.LocalDate;"
+            + "java.time.LocalTime;"
+            + "se.deversity.asynctest.benchmark.BenchmarkResult;"
+            + "!*"
+    );
+
     private final Path benchmarkStorePath;
     private final double regressionThresholdPercent;
     private final boolean failOnRegression;
@@ -132,23 +165,48 @@ public class BenchmarkComparator {
     /**
      * Load baseline for a specific benchmark key.
      */
-    @SuppressWarnings("unchecked")
     public Optional<BenchmarkResult> loadBaseline(String benchmarkKey) {
         File storeFile = benchmarkStorePath.toFile();
         if (!storeFile.exists()) {
             return Optional.empty();
         }
 
-        try (FileInputStream fis = new FileInputStream(storeFile);
-             ObjectInputStream ois = new ObjectInputStream(fis)) {
-
-            Map<String, BenchmarkResult> store = (Map<String, BenchmarkResult>) ois.readObject();
-            return Optional.ofNullable(store.get(benchmarkKey));
-
+        try {
+            return Optional.ofNullable(readStore(storeFile).get(benchmarkKey));
         } catch (IOException | ClassNotFoundException e) {
             // If we can't read the baseline, treat as if it doesn't exist
             log.warn("Could not load benchmark baseline: {}", e.getMessage());
             return Optional.empty();
+        }
+    }
+
+    /**
+     * Deserialize the baseline store under {@link #BASELINE_FILTER} and verify the
+     * resulting graph really is a {@code Map<String, BenchmarkResult>}. The filter blocks
+     * disallowed classes at stream-resolution time; the checks below reject a
+     * well-typed-but-wrong graph (e.g. a bare BenchmarkResult at the top level) that would
+     * otherwise surface as an unchecked ClassCastException.
+     *
+     * @throws InvalidObjectException if the store does not hold a baseline map
+     */
+    private Map<String, BenchmarkResult> readStore(File storeFile) throws IOException, ClassNotFoundException {
+        try (FileInputStream fis = new FileInputStream(storeFile);
+             ObjectInputStream ois = new ObjectInputStream(fis)) {
+
+            ois.setObjectInputFilter(BASELINE_FILTER);
+
+            if (!(ois.readObject() instanceof Map<?, ?> raw)) {
+                throw new InvalidObjectException("Benchmark baseline store does not contain a baseline map");
+            }
+
+            Map<String, BenchmarkResult> store = new HashMap<>();
+            for (Map.Entry<?, ?> entry : raw.entrySet()) {
+                if (!(entry.getKey() instanceof String key) || !(entry.getValue() instanceof BenchmarkResult value)) {
+                    throw new InvalidObjectException("Benchmark baseline store contains an unexpected entry type");
+                }
+                store.put(key, value);
+            }
+            return store;
         }
     }
 
@@ -164,16 +222,14 @@ public class BenchmarkComparator {
     /**
      * Load all baselines from storage.
      */
-    @SuppressWarnings("unchecked")
     private Map<String, BenchmarkResult> loadAllBaselines() {
         File storeFile = benchmarkStorePath.toFile();
         if (!storeFile.exists()) {
             return new HashMap<>();
         }
 
-        try (FileInputStream fis = new FileInputStream(storeFile);
-             ObjectInputStream ois = new ObjectInputStream(fis)) {
-            return (Map<String, BenchmarkResult>) ois.readObject();
+        try {
+            return readStore(storeFile);
         } catch (IOException | ClassNotFoundException e) {
             log.warn("Could not load benchmark baselines, starting fresh: {}", e.getMessage());
             return new HashMap<>();
