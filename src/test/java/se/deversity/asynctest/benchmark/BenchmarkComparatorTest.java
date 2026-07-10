@@ -3,8 +3,14 @@ package se.deversity.asynctest.benchmark;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -207,5 +213,79 @@ class BenchmarkComparatorTest {
 
         BenchmarkComparator comparator = new BenchmarkComparator(store, 20.0, false);
         assertTrue(comparator.loadBaseline("any#key").isEmpty());
+    }
+
+    // ---- deserialization allow-list (CWE-502) ----
+
+    /**
+     * Stands in for a deserialization gadget: if the stream is allowed to resolve this
+     * class, readObject() runs attacker-chosen code. The allow-list must reject it first.
+     */
+    static class GadgetProbe implements Serializable {
+        private static final long serialVersionUID = 1L;
+        static volatile boolean deserialized;
+
+        private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+            in.defaultReadObject();
+            deserialized = true;
+        }
+    }
+
+    private void writeRawStore(Path store, Object graph) throws Exception {
+        try (ObjectOutputStream oos = new ObjectOutputStream(Files.newOutputStream(store))) {
+            oos.writeObject(graph);
+        }
+    }
+
+    @Test
+    void loadBaseline_storeContainsDisallowedClass_rejectedWithoutDeserializingIt() throws Exception {
+        GadgetProbe.deserialized = false;
+        Path store = storePath();
+        HashMap<String, Object> poisoned = new HashMap<>();
+        poisoned.put("com.example.MyTest#myMethod", new GadgetProbe());
+        writeRawStore(store, poisoned);
+
+        BenchmarkComparator comparator = new BenchmarkComparator(store, 20.0, false);
+
+        assertTrue(comparator.loadBaseline("com.example.MyTest#myMethod").isEmpty());
+        assertFalse(GadgetProbe.deserialized, "filter must reject the class before readObject() runs");
+    }
+
+    @Test
+    void saveBaseline_overExistingPoisonedStore_doesNotDeserializeDisallowedClass() throws Exception {
+        GadgetProbe.deserialized = false;
+        Path store = storePath();
+        HashMap<String, Object> poisoned = new HashMap<>();
+        poisoned.put("com.example.MyTest#myMethod", new GadgetProbe());
+        writeRawStore(store, poisoned);
+
+        BenchmarkComparator comparator = new BenchmarkComparator(store, 20.0, false);
+        // saveBaseline() reads the existing store first via loadAllBaselines()
+        comparator.saveBaseline(result("myMethod", 100L));
+
+        assertFalse(GadgetProbe.deserialized, "filter must reject the class before readObject() runs");
+        assertEquals(100L, comparator.loadBaseline("com.example.MyTest#myMethod").orElseThrow()
+                .getAvgTimePerInvocationNanos());
+    }
+
+    @Test
+    void loadBaseline_topLevelIsNotAMap_returnsEmpty() throws Exception {
+        Path store = storePath();
+        // BenchmarkResult is allow-listed, but a bare result is not a valid store graph.
+        writeRawStore(store, result("myMethod", 100L));
+
+        BenchmarkComparator comparator = new BenchmarkComparator(store, 20.0, false);
+        assertTrue(comparator.loadBaseline("com.example.MyTest#myMethod").isEmpty());
+    }
+
+    @Test
+    void loadBaseline_mapWithNonStringKey_returnsEmpty() throws Exception {
+        Path store = storePath();
+        HashMap<Object, Object> badKeys = new HashMap<>();
+        badKeys.put(42L, result("myMethod", 100L));
+        writeRawStore(store, badKeys);
+
+        BenchmarkComparator comparator = new BenchmarkComparator(store, 20.0, false);
+        assertTrue(comparator.loadBaseline("com.example.MyTest#myMethod").isEmpty());
     }
 }
