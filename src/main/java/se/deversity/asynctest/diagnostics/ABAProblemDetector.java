@@ -1,7 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -27,7 +26,14 @@ public class ABAProblemDetector {
     
     private static class AtomicValueHistory {
         final String varName;
-        final List<ValueChange> changes = Collections.synchronizedList(new ArrayList<>());
+        /**
+         * Guards {@link #changes}. A dedicated private lock rather than the list itself: this
+         * class is extensible, so its fields are reachable by subclasses, and a lock a subclass
+         * can also acquire is not a lock.
+         */
+        private final Object changesLock = new Object();
+        /** Guarded by {@link #changesLock} — never touch it outside that monitor. */
+        final List<ValueChange> changes = new ArrayList<>();
         final Map<Long, CASAttempt> casAttempts = new ConcurrentHashMap<>();
         final AtomicLong cycleCount = new AtomicLong(0);
         
@@ -78,7 +84,9 @@ public class ABAProblemDetector {
         );
         
         ValueChange change = new ValueChange(oldValue, newValue);
-        history.changes.add(change);
+        synchronized (history.changesLock) {
+            history.changes.add(change);
+        }
         
         // Detect cycles (A -> B -> A pattern)
         detectCycles(history);
@@ -123,9 +131,9 @@ public class ABAProblemDetector {
     private void detectCycles(AtomicValueHistory history) {
         List<ValueChange> changes = history.changes;
 
-        // changes is a synchronized list, but reading two elements consistently — and doing so
-        // while other threads append — needs the lock held across both reads.
-        synchronized (changes) {
+        // Reading two elements consistently, while other threads append, needs the lock held
+        // across both reads.
+        synchronized (history.changesLock) {
             int size = changes.size();
             if (size < 2) return;
 
@@ -147,7 +155,7 @@ public class ABAProblemDetector {
         // append throws ConcurrentModificationException, which would lose the ABA finding.
         List<ValueChange> changes = history.changes;
         List<ValueChange> snapshot;
-        synchronized (changes) {
+        synchronized (history.changesLock) {
             snapshot = new ArrayList<>(changes);
         }
 
