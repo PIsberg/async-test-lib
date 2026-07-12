@@ -73,7 +73,12 @@ public class LockLeakDetector {
         if (!enabled || lock == null) {
             return;
         }
-        locks.put(System.identityHashCode(lock), new LockState(lock, name));
+        // Idempotent on purpose. The documented usage (see the class Javadoc) calls this from
+        // inside the @AsyncTest body, which the runner executes threads × invocations times
+        // against the same lock. A put() would install a fresh LockState each time, wiping the
+        // acquire/release counts — so an acquire leaked by an earlier invocation would be
+        // erased before analysis ever saw it.
+        locks.computeIfAbsent(System.identityHashCode(lock), ignored -> new LockState(lock, name));
     }
 
     /**
@@ -86,12 +91,11 @@ public class LockLeakDetector {
         if (!enabled || lock == null) {
             return;
         }
-        LockState state = locks.get(System.identityHashCode(lock));
-        if (state == null) {
-            // Auto-register
-            state = new LockState(lock, name);
-            locks.put(System.identityHashCode(lock), state);
-        }
+        // Auto-register atomically: a get-then-put lets two threads that both miss each build
+        // and install a LockState, and the loser's increments then land on an orphaned object
+        // that analysis never sees.
+        LockState state = locks.computeIfAbsent(System.identityHashCode(lock),
+                                                ignored -> new LockState(lock, name));
         state.acquireCount.incrementAndGet();
         state.acquiringThreads.add(Thread.currentThread().threadId());
         state.currentlyHeld = true;
