@@ -312,8 +312,8 @@ public class ConcurrencyRunner {
                                        Phase1DetectorSet phase1,
                                        Phase2Analysis phase2Analysis) {
         Map<String, String> reports = new LinkedHashMap<>(phase1.collectReports());
-        for (String report : phase2Analysis.get()) {
-            reports.putIfAbsent(extractDetectorName(report), "\n" + report);
+        for (Map.Entry<String, String> finding : phase2Analysis.get().entrySet()) {
+            reports.putIfAbsent(finding.getKey(), "\n" + finding.getValue());
         }
         if (reports.isEmpty()) {
             return;
@@ -575,11 +575,9 @@ public class ConcurrencyRunner {
     }
 
     private static void printPhase2Reports(Phase2Analysis phase2Analysis) {
-        for (String report : phase2Analysis.get()) {
-            System.err.println("\n" + report);
-            // Extract detector name from report (first line before newline)
-            String detectorName = extractDetectorName(report);
-            AsyncTestListenerRegistry.fireDetectorReport(detectorName, report);
+        for (Map.Entry<String, String> finding : phase2Analysis.get().entrySet()) {
+            System.err.println("\n" + finding.getValue());
+            AsyncTestListenerRegistry.fireDetectorReport(finding.getKey(), finding.getValue());
         }
     }
 
@@ -606,34 +604,21 @@ public class ConcurrencyRunner {
      */
     private static final class Phase2Analysis {
         private final AsyncTestContext ctx;
-        private List<String> reports;
+        private Map<String, String> reports;
         private boolean computed;
 
         Phase2Analysis(AsyncTestContext ctx) {
             this.ctx = ctx;
         }
 
-        List<String> get() {
+        /** {@return the findings of this run, keyed by the detector that produced each} */
+        Map<String, String> get() {
             if (!computed) {
-                reports = ctx.analyzeAll();
+                reports = ctx.analyzeAllNamed();
                 computed = true;
             }
             return reports;
         }
-    }
-
-    private static String extractDetectorName(String report) {
-        // Report format is typically "DetectorName: ..." or starts with detector name
-        int newlineIdx = report.indexOf('\n');
-        if (newlineIdx > 0) {
-            String firstLine = report.substring(0, newlineIdx);
-            int colonIdx = firstLine.indexOf(':');
-            if (colonIdx > 0) {
-                return firstLine.substring(0, colonIdx).trim();
-            }
-            return firstLine.trim();
-        }
-        return report.trim();
     }
 
     // ---- Per-invocation lifecycle helpers ----
