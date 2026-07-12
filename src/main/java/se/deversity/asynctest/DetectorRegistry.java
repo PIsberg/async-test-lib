@@ -556,31 +556,24 @@ final class DetectorRegistry {
                 PipelineMonitor.PipelineReport::hasIssues, out);
         // ReadWriteLock uses hasFairnessIssues() — report it as an issue when
         // writer starvation or imbalance is detected
-        if (readWriteLockMonitor != null) {
-            ReadWriteLockMonitor.ReadWriteLockReport r = readWriteLockMonitor.analyzeFairness();
-            if (r.hasFairnessIssues()) out.put("ReadWriteLockMonitor", r.toString());
-        }
+        ifIssue(readWriteLockMonitor,
+                ReadWriteLockMonitor::analyzeFairness,
+                ReadWriteLockMonitor.ReadWriteLockReport::hasFairnessIssues, out);
         ifIssue(semaphoreMisuseDetector,
                 SemaphoreMisuseDetector::analyze,
                 SemaphoreMisuseDetector.SemaphoreMisuseReport::hasIssues, out);
         ifIssue(completableFutureExceptionDetector,
                 CompletableFutureExceptionDetector::analyze,
                 CompletableFutureExceptionDetector.CompletableFutureExceptionReport::hasIssues, out);
-        if (completableFutureCompletionLeakDetector != null) {
-            CompletableFutureCompletionLeakDetector.CompletionLeakReport r = 
-                completableFutureCompletionLeakDetector.analyze();
-            if (r.hasLeaks()) out.put("CompletableFutureCompletionLeakDetector", r.toString());
-        }
-        if (virtualThreadPinningDetector != null) {
-            VirtualThreadPinningDetector.PinningReport r = 
-                virtualThreadPinningDetector.analyzePinning();
-            if (r.hasPinningIssues()) out.put("VirtualThreadPinningDetector", r.toString());
-        }
-        if (threadPoolDeadlockDetector != null) {
-            ThreadPoolDeadlockDetector.ThreadPoolDeadlockReport r = 
-                threadPoolDeadlockDetector.analyze();
-            if (r.hasDeadlockRisk()) out.put("ThreadPoolDeadlockDetector", r.toString());
-        }
+        ifIssue(completableFutureCompletionLeakDetector,
+                CompletableFutureCompletionLeakDetector::analyze,
+                CompletableFutureCompletionLeakDetector.CompletionLeakReport::hasLeaks, out);
+        ifIssue(virtualThreadPinningDetector,
+                VirtualThreadPinningDetector::analyzePinning,
+                VirtualThreadPinningDetector.PinningReport::hasPinningIssues, out);
+        ifIssue(threadPoolDeadlockDetector,
+                ThreadPoolDeadlockDetector::analyze,
+                ThreadPoolDeadlockDetector.ThreadPoolDeadlockReport::hasDeadlockRisk, out);
         ifIssue(concurrentModificationDetector,
                 ConcurrentModificationDetector::analyze,
                 ConcurrentModificationDetector.ConcurrentModificationReport::hasIssues, out);
@@ -933,15 +926,25 @@ final class DetectorRegistry {
      * so two detectors whose reports happen to open with the same prose (e.g. the same
      * severity marker) stay distinct findings.
      */
-    private static <D, R> void ifIssue(D detector,
-                                       Function<D, R> analyze,
-                                       Function<R, Boolean> hasIssues,
-                                       Map<String, String> out) {
+    static <D, R> void ifIssue(D detector,
+                               Function<D, R> analyze,
+                               Function<R, Boolean> hasIssues,
+                               Map<String, String> out) {
         if (detector == null) return;
-        R report = analyze.apply(detector);
-        if (Boolean.TRUE.equals(hasIssues.apply(report))) {
-            out.merge(detector.getClass().getSimpleName(), report.toString(),
-                      (first, second) -> first + "\n" + second);
+        String name = detector.getClass().getSimpleName();
+        try {
+            R report = analyze.apply(detector);
+            if (Boolean.TRUE.equals(hasIssues.apply(report))) {
+                out.merge(name, report.toString(), (first, second) -> first + "\n" + second);
+            }
+        } catch (RuntimeException | StackOverflowError e) {
+            // Contain the failure: analyzeAllNamed() chains ~100 of these, so letting one
+            // detector's exception escape would discard every finding collected so far and
+            // skip every detector after it. A broken detector reports nothing; the rest of
+            // the sweep still reports. Detectors accumulate state from N×M user threads, and
+            // third-party ones arrive via the public SPI, so this is a live hazard.
+            System.err.println("[AsyncTest] Detector " + name
+                + " failed during analysis and was skipped: " + e);
         }
     }
 }
