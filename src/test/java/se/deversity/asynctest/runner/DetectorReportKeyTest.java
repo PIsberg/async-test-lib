@@ -103,12 +103,20 @@ class DetectorReportKeyTest {
         return s.replace(ESC, "<ESC>");
     }
 
-    /** Two threads incrementing a plain field. */
+    /**
+     * Two threads incrementing a plain field. The write is recorded because the library observes
+     * field access through instrumentation — a bare {@code counter++} is invisible to
+     * RaceConditionDetector, and would surface no finding for the listener to receive.
+     */
     public static class RaceTest {
         private int counter;
 
         @AsyncTest(threads = 4, invocations = 20, detectAll = true, failOn = FailOn.HIGH)
         void race() {
+            AsyncTestContext ctx = AsyncTestContext.get();
+            if (ctx != null) {
+                ctx.sharedRaceConditionDetector().recordFieldWrite(this, "counter");
+            }
             counter++;
         }
     }
