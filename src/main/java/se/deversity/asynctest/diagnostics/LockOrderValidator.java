@@ -22,10 +22,19 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class LockOrderValidator {
     
+    /** One lock acquired while another was already held: {@code from} nests {@code to}. */
+    private record LockEdge(String from, String to) { }
+
     private static class LockSequence {
         final long threadId;
-        final List<String> lockOrder = Collections.synchronizedList(new ArrayList<>());
+        /** Locks this thread holds right now. The only sound basis for a nesting edge. */
         final Set<String> acquiredLocks = ConcurrentHashMap.newKeySet();
+        /**
+         * Edges observed on this thread: recorded at acquisition time, when we can still see
+         * what was held. Deriving them afterwards from a flat acquisition history cannot work —
+         * consecutive entries are not necessarily nested, and a released lock leaves no trace.
+         */
+        final Set<LockEdge> nestingEdges = ConcurrentHashMap.newKeySet();
         LockSequence(long tid) {
             this.threadId = tid;
         }
@@ -46,7 +55,15 @@ public class LockOrderValidator {
         LockSequence sequence = threadLockOrders.computeIfAbsent(threadId, LockSequence::new);
         
         synchronized (sequence) {
-            sequence.lockOrder.add(lockId);
+            // Every lock still held by this thread is being nested by the one we are taking
+            // now. This is the edge that matters: it says "while holding `held`, this thread
+            // wants `lockId`" — the exact relation that deadlocks when another thread does the
+            // reverse. Locks already released impose no ordering and contribute nothing.
+            for (String held : sequence.acquiredLocks) {
+                if (!held.equals(lockId)) {
+                    sequence.nestingEdges.add(new LockEdge(held, lockId));
+                }
+            }
             sequence.acquiredLocks.add(lockId);
         }
     }
@@ -74,34 +91,15 @@ public class LockOrderValidator {
      */
     public LockOrderReport validateLockOrder() {
         LockOrderReport report = new LockOrderReport();
-        
-        // Collect all observed lock orders
-        Map<String, List<Integer>> lockOrderPatterns = new HashMap<>();
-        
-        for (LockSequence sequence : threadLockOrders.values()) {
-            if (sequence.lockOrder.size() < 2) continue;
-            
-            // Extract lock pairs to build ordering rules
-            for (int i = 0; i < sequence.lockOrder.size() - 1; i++) {
-                String lock1 = sequence.lockOrder.get(i);
-                String lock2 = sequence.lockOrder.get(i + 1);
-                
-                String pair = lock1 + " -> " + lock2;
-                lockOrderPatterns.computeIfAbsent(pair, k -> new ArrayList<>())
-                    .add((int)sequence.threadId);
-            }
-        }
-        
-        // Detect conflicting orderings
+
+        // A pair is inconsistently ordered when it was nested both ways round — A inside B
+        // somewhere, B inside A somewhere else. Only real nesting edges count.
         Map<String, Set<String>> lockPairOrderings = new HashMap<>();
         for (LockSequence sequence : threadLockOrders.values()) {
-            for (int i = 0; i < sequence.lockOrder.size() - 1; i++) {
-                String lock1 = sequence.lockOrder.get(i);
-                String lock2 = sequence.lockOrder.get(i + 1);
-                
-                String pair = normalizeUnorderedPair(lock1, lock2);
-                String order = lock1 + " -> " + lock2;
-                
+            for (LockEdge edge : sequence.nestingEdges) {
+                String pair = normalizeUnorderedPair(edge.from(), edge.to());
+                String order = edge.from() + " -> " + edge.to();
+
                 lockPairOrderings.computeIfAbsent(pair, k -> new HashSet<>()).add(order);
             }
         }
@@ -135,10 +133,8 @@ public class LockOrderValidator {
         Map<String, Set<String>> lockGraph = new HashMap<>();
         
         for (LockSequence sequence : sequences) {
-            for (int i = 0; i < sequence.lockOrder.size() - 1; i++) {
-                String from = sequence.lockOrder.get(i);
-                String to = sequence.lockOrder.get(i + 1);
-                lockGraph.computeIfAbsent(from, k -> new HashSet<>()).add(to);
+            for (LockEdge edge : sequence.nestingEdges) {
+                lockGraph.computeIfAbsent(edge.from(), k -> new HashSet<>()).add(edge.to());
             }
         }
         
