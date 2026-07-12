@@ -14,6 +14,14 @@ public class NotifyAllValidator {
     private static class MonitorState {
         final String monitorName;
         final AtomicInteger waitingThreads = new AtomicInteger();
+        /**
+         * High-water mark of {@link #waitingThreads}. The live count drains back to zero as
+         * waiters wake, and analysis runs after the test — so the live count cannot be the
+         * basis for detection, only its peak can.
+         */
+        final AtomicInteger peakWaitingThreads = new AtomicInteger();
+        /** Times {@code notify()} was called while more than one thread was parked. */
+        final AtomicInteger notifyWithSeveralWaiters = new AtomicInteger();
         final AtomicInteger notifyCalls = new AtomicInteger();
         final AtomicInteger notifyAllCalls = new AtomicInteger();
 
@@ -36,7 +44,8 @@ public class NotifyAllValidator {
                 ? monitor.getClass().getSimpleName()
                 : monitorName)
         );
-        state.waitingThreads.incrementAndGet();
+        int parked = state.waitingThreads.incrementAndGet();
+        state.peakWaitingThreads.updateAndGet(peak -> Math.max(peak, parked));
     }
 
     public void recordWaiterReleased(Object monitor) {
@@ -64,6 +73,12 @@ public class NotifyAllValidator {
             state.notifyAllCalls.incrementAndGet();
         } else {
             state.notifyCalls.incrementAndGet();
+            // Capture the waiter count as it stands at the moment of the notify. This is the
+            // evidence of a lost wakeup: notify() wakes exactly one of them, and the rest can
+            // stay parked. Reading it later is useless — the count drains to zero as they wake.
+            if (state.waitingThreads.get() > 1) {
+                state.notifyWithSeveralWaiters.incrementAndGet();
+            }
         }
     }
 
@@ -71,11 +86,21 @@ public class NotifyAllValidator {
         NotifyAllReport report = new NotifyAllReport();
 
         for (MonitorState state : monitors.values()) {
-            if (state.waitingThreads.get() > 1 && state.notifyCalls.get() > 0 && state.notifyAllCalls.get() == 0) {
+            // Two ways to see the lost wakeup, both resting on evidence that survives the
+            // waiters draining away:
+            //   1. a notify() was observed while several threads were actually parked, or
+            //   2. several threads were parked at some point and notify() was the only signal
+            //      the monitor ever got.
+            boolean caughtInTheAct = state.notifyWithSeveralWaiters.get() > 0;
+            boolean onlyEverNotify = state.peakWaitingThreads.get() > 1
+                    && state.notifyCalls.get() > 0
+                    && state.notifyAllCalls.get() == 0;
+
+            if (caughtInTheAct || onlyEverNotify) {
                 report.notifyInsteadOfNotifyAll.add(String.format(
-                    "%s: %d waiting threads but only notify() was observed",
+                    "%s: up to %d threads waiting but only notify() was observed",
                     state.monitorName,
-                    state.waitingThreads.get()
+                    state.peakWaitingThreads.get()
                 ));
             }
         }
