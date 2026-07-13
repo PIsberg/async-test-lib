@@ -85,7 +85,7 @@
       <reason>JUnit 5 TestTemplateInvocationContextProvider SPI. The two overridden methods (supportsTestTemplate, provideTestTemplateInvocationContexts) must preserve their exact signatures as mandated by JUnit.</reason>
     </element>
     <element path="se.deversity.asynctest.report.Formatter">
-      <reason>Public formatter SPI. format(List<Violation>) signature must not change — built-in formatters and user-provided lambdas bind to this exact type.</reason>
+      <reason>Public formatter SPI. format(List&lt;Violation&gt;) signature must not change — built-in formatters and user-provided lambdas bind to this exact type.</reason>
     </element>
     <element path="se.deversity.asynctest.spi.Detector">
       <reason>Public SPI interface. type(), analyze(), onTestStart(), and onTestEnd() signatures are part of the stable extension contract — implementors bind to these exact names and parameter types.</reason>
@@ -821,6 +821,14 @@
   </public_api_elements>
 
 <rule>Elements in <public_api_elements> expose public API. Preserve public signature, Javadoc, and backwards compatibility without exceptions.</rule>
+  <strict_classpath_elements>
+    <element path="se.deversity.asynctest.benchmark.BenchmarkComparator.readStore(java.io.File)">
+      <classpath>strict</classpath>
+      <reason>Java native deserialization sink. The BASELINE_FILTER allow-list (ending in !*) must resolve every class in the stream and reject all others, preventing arbitrary class loading (CWE-502 RCE). Never widen the filter or remove setObjectInputFilter.</reason>
+    </element>
+  </strict_classpath_elements>
+
+<rule>Dynamic class loading, custom classloaders, reflection hacks, or unverified external code are prohibited in <strict_classpath_elements>.</rule>
   <idempotent_elements>
     <element path="se.deversity.asynctest.AsyncTestContext.uninstall()">
       <idempotent>true</idempotent>
@@ -908,6 +916,16 @@
   </extensible_patterns>
 
 <rule>Respect extensibility guidelines for elements in <extensible_patterns>. Implement strategy/visitor extensions rather than expanding branch conditional logic.</rule>
+  <sanitization_elements>
+    <file path="se.deversity.asynctest.report.JUnitXmlReportListener.onStructuredReport(java.lang.String,se.deversity.asynctest.diagnostics.IssueSeverity,java.lang.String)#report">
+      <sanitization_types>XSS</sanitization_types>
+    </file>
+    <file path="se.deversity.asynctest.report.JsonReportListener.onStructuredReport(java.lang.String,se.deversity.asynctest.diagnostics.IssueSeverity,java.lang.String)#report">
+      <sanitization_types>XSS</sanitization_types>
+    </file>
+  </sanitization_elements>
+
+<rule>Strict input sanitization is mandatory for elements in <sanitization_elements>. Raw input must pass through approved filters before hitting queries or renderers.</rule>
 </project_guardrails>
 
 <rule>Never propose edits to files listed in <locked_files>.</rule>

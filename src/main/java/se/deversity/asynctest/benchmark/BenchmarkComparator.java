@@ -3,6 +3,8 @@ package se.deversity.asynctest.benchmark;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import se.deversity.vibetags.annotations.AIStrictClasspath;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -189,6 +191,9 @@ public class BenchmarkComparator {
      *
      * @throws InvalidObjectException if the store does not hold a baseline map
      */
+    @AIStrictClasspath(reason = "Java native deserialization sink. The BASELINE_FILTER allow-list "
+            + "(ending in !*) must resolve every class in the stream and reject all others, preventing "
+            + "arbitrary class loading (CWE-502 RCE). Never widen the filter or remove setObjectInputFilter.")
     private Map<String, BenchmarkResult> readStore(File storeFile) throws IOException, ClassNotFoundException {
         try (FileInputStream fis = new FileInputStream(storeFile);
              ObjectInputStream ois = new ObjectInputStream(fis)) {
