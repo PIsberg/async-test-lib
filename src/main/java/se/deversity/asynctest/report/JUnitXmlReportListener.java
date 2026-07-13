@@ -138,7 +138,7 @@ public final class JUnitXmlReportListener implements AsyncTestListener {
               .append(" time=\"0.000\">\n");
             sb.append("    <failure message=\"").append(xmlEscape(message))
               .append("\" type=\"ConcurrencyIssueDetected\"><![CDATA[")
-              .append(f.report)
+              .append(cdataEscape(f.report))
               .append("]]></failure>\n");
             sb.append("  </testcase>\n");
         }
@@ -152,5 +152,16 @@ public final class JUnitXmlReportListener implements AsyncTestListener {
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;");
+    }
+
+    /**
+     * Neutralizes the CDATA terminator sequence {@code ]]>} inside untrusted report text so it
+     * cannot close the CDATA section early and inject arbitrary XML into the report. The report
+     * carries runtime-captured data (e.g. thread names) that the code under test controls, so it
+     * must not be trusted to be free of {@code ]]>}. The standard trick splits the terminator
+     * across two CDATA sections, leaving the rendered text unchanged.
+     */
+    private static String cdataEscape(String report) {
+        return report.replace("]]>", "]]]]><![CDATA[>");
     }
 }
