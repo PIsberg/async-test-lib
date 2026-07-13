@@ -88,7 +88,15 @@ public final class DetectorRegistry {
     public List<Violation> analyzeAll() {
         List<Violation> out = new ArrayList<>();
         for (Detector d : byType.values()) {
-            out.addAll(d.analyze());
+            try {
+                out.addAll(d.analyze());
+            } catch (RuntimeException | StackOverflowError e) {
+                // Contain the failure. Detectors arrive here through the public SPI, so one
+                // of them throwing must not discard the violations already collected nor skip
+                // every detector after it in iteration order.
+                System.err.println("[AsyncTest] Detector " + d.getClass().getSimpleName()
+                    + " failed during analysis and was skipped: " + e);
+            }
         }
         return out;
     }

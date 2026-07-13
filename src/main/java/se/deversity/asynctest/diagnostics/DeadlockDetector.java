@@ -228,7 +228,11 @@ public class DeadlockDetector {
             if (!deadlocked) {
                 return "No deadlocks detected.";
             }
-            return "DEADLOCK DETECTED:\n"
+            // The severity marker must live in the report itself: the runner infers a
+            // finding's severity with IssueSeverity.fromReport(), and an untagged report
+            // falls through to the HIGH default — which failOn = CRITICAL does not trip.
+            // A deadlock is the canonical CRITICAL finding, so it must say so here.
+            return IssueSeverity.CRITICAL.format() + ": DEADLOCK DETECTED\n"
                 + "  Circular lock dependency found between JVM threads.\n"
                 + "  Why: Thread A holds lock X and waits for lock Y; Thread B holds lock Y and waits for lock X.\n"
                 + "       Neither can proceed — both are blocked forever.\n"

@@ -1,7 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -27,7 +26,14 @@ public class ABAProblemDetector {
     
     private static class AtomicValueHistory {
         final String varName;
-        final List<ValueChange> changes = Collections.synchronizedList(new ArrayList<>());
+        /**
+         * Guards {@link #changes}. A dedicated private lock rather than the list itself: this
+         * class is extensible, so its fields are reachable by subclasses, and a lock a subclass
+         * can also acquire is not a lock.
+         */
+        private final Object changesLock = new Object();
+        /** Guarded by {@link #changesLock} — never touch it outside that monitor. */
+        final List<ValueChange> changes = new ArrayList<>();
         final Map<Long, CASAttempt> casAttempts = new ConcurrentHashMap<>();
         final AtomicLong cycleCount = new AtomicLong(0);
         
@@ -78,10 +84,12 @@ public class ABAProblemDetector {
         );
         
         ValueChange change = new ValueChange(oldValue, newValue);
-        history.changes.add(change);
+        synchronized (history.changesLock) {
+            history.changes.add(change);
+        }
         
         // Detect cycles (A -> B -> A pattern)
-        detectCycles(history, change);
+        detectCycles(history);
     }
     
     /**
@@ -105,33 +113,56 @@ public class ABAProblemDetector {
         history.casAttempts.put((long) System.identityHashCode(attempt), attempt);
     }
     
-    @SuppressWarnings({"PMD.UnusedFormalParameter", "UnusedVariable"}) // newChange reserved for future cycle-context logging
-    private void detectCycles(AtomicValueHistory history, ValueChange newChange) {
+    /**
+     * An ABA is a value coming back to what it just was: a change {@code A -> B} immediately
+     * followed by {@code B -> A}.
+     *
+     * <p>Two changes are all it takes to see that, and two is all the canonical case produces —
+     * a lock-free stack head sitting at A, swung to B, swung back to A. There is no {@code ? -> A}
+     * change, because A is the value the variable <em>started</em> with, never one it was written
+     * to. The previous implementation required three changes and matched a {@code ? -> A},
+     * {@code A -> B}, {@code B -> A} window, so the minimal cycle fell straight through its
+     * {@code size() < 3} guard and was never counted.
+     *
+     * <p>Only the newest pair is examined: each pair is therefore checked
+     * exactly once, as it is formed, instead of the whole history being rescanned on every
+     * change (which inflated the cycle count quadratically).
+     */
+    private void detectCycles(AtomicValueHistory history) {
         List<ValueChange> changes = history.changes;
-        if (changes.size() < 3) return;
-        
-        // Look for A -> B -> A pattern
-        for (int i = 0; i < changes.size() - 2; i++) {
-            ValueChange c1 = changes.get(i);
-            ValueChange c2 = changes.get(i + 1);
-            ValueChange c3 = changes.get(i + 2);
-            
-            // c1: something -> A, c2: A -> B, c3: B -> A
-            if (c1.isSameValue(c1.newValue, c3.newValue) && 
-                c1.isSameValue(c2.oldValue, c1.newValue) &&
-                !c1.isSameValue(c2.newValue, c3.newValue)) {
+
+        // Reading two elements consistently, while other threads append, needs the lock held
+        // across both reads.
+        synchronized (history.changesLock) {
+            int size = changes.size();
+            if (size < 2) return;
+
+            ValueChange previous = changes.get(size - 2);   // A -> B
+            ValueChange latest = changes.get(size - 1);     // B -> A ?
+
+            boolean contiguous = latest.isSameValue(previous.newValue, latest.oldValue);
+            boolean returnedToStart = latest.isSameValue(previous.oldValue, latest.newValue);
+            boolean actuallyMoved = !latest.isSameValue(previous.oldValue, previous.newValue);
+
+            if (contiguous && returnedToStart && actuallyMoved) {
                 history.cycleCount.incrementAndGet();
             }
         }
     }
     
     private boolean detectABA(AtomicValueHistory history, CASAttempt attempt) {
+        // Snapshot under the list's own lock: iterating a synchronizedList while other threads
+        // append throws ConcurrentModificationException, which would lose the ABA finding.
         List<ValueChange> changes = history.changes;
+        List<ValueChange> snapshot;
+        synchronized (history.changesLock) {
+            snapshot = new ArrayList<>(changes);
+        }
 
         boolean foundExpectedBefore = false;
         boolean foundDifferentAfter = false;
 
-        for (ValueChange change : changes) {
+        for (ValueChange change : snapshot) {
             if (!foundExpectedBefore) {
                 if (change.isSameValue(change.newValue, attempt.expectedValue)) {
                     foundExpectedBefore = true;

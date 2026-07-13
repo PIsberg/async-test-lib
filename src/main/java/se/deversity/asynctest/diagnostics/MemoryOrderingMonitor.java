@@ -87,33 +87,15 @@ public class MemoryOrderingMonitor {
             }
         }
         
-        // Detect reordering within same thread
-        Map<Long, List<MemoryAccess>> threadAccesses = new HashMap<>();
-        for (MemoryAccess access : accessLog) {
-            threadAccesses.computeIfAbsent(access.threadId, k -> new ArrayList<>()).add(access);
-        }
-        
-        for (List<MemoryAccess> accesses : threadAccesses.values()) {
-            // Look for suspicious reordering patterns
-            for (int i = 0; i < accesses.size() - 1; i++) {
-                MemoryAccess write = accesses.get(i);
-                if (!"WRITE".equals(write.operation)) continue;
-                
-                // If write is followed by unrelated operations
-                for (int j = i + 1; j < accesses.size() && j < i + 3; j++) {
-                    MemoryAccess next = accesses.get(j);
-                    if (!next.location.equals(write.location)) {
-                        // Potential reordering: write followed by unrelated op
-                        report.suspiciousReorderings.add(String.format(
-                            "T-%d: Write to %s followed by access to %s (possible reordering)",
-                            write.threadId, write.location, next.location
-                        ));
-                        break;
-                    }
-                }
-            }
-        }
-        
+        // There was a second rule here that flagged any thread which wrote one location and
+        // then touched a different one within the next two operations. That is ordinary code —
+        // `a = 1; b = 2;` — and it counted toward hasIssues(), so every instrumented method that
+        // touched two fields produced a violation.
+        //
+        // It was also unsound in principle, not merely too eager: accessLog records each thread's
+        // own program order, and a reordering is by definition only observable from ANOTHER
+        // thread seeing writes land out of order. A per-thread log cannot witness one. The stale
+        // co-read check above is the signal that can, and it stays.
         return report;
     }
 
@@ -137,7 +119,18 @@ public class MemoryOrderingMonitor {
     }
     
     public static class MemoryOrderingReport {
+        /** Reads that did not see a value another thread had written — a real visibility bug. */
         public final Set<String> staleCoreads = new HashSet<>();
+        /**
+         * Retained for source and binary compatibility, and still honoured by {@link #hasIssues()}
+         * and {@link #toString()} so a caller can populate it.
+         *
+         * <p>Nothing in this monitor writes to it any more: the heuristic that did — "a write
+         * followed by a touch of some other location" — fired on ordinary code such as
+         * {@code a = 1; b = 2;}, and could not have been sound anyway. A reordering is only
+         * observable from another thread seeing writes land out of order, which a per-thread
+         * access log cannot witness. {@link #staleCoreads} is the check that can.
+         */
         public final Set<String> suspiciousReorderings = new HashSet<>();
         
         public boolean hasIssues() {

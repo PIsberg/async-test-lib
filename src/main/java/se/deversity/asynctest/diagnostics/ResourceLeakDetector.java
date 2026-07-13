@@ -73,7 +73,12 @@ public class ResourceLeakDetector {
         if (!enabled || resource == null) {
             return;
         }
-        resources.put(System.identityHashCode(resource), new ResourceState(resource, name, resourceType));
+        // Idempotent on purpose: registration happens inside the @AsyncTest body, which the
+        // runner runs threads × invocations times against the same resource. A put() would
+        // install a fresh ResourceState each time, wiping the open/close counts — so a resource
+        // left open by an earlier invocation would be erased before analysis saw it.
+        resources.computeIfAbsent(System.identityHashCode(resource),
+                                  ignored -> new ResourceState(resource, name, resourceType));
     }
 
     /**

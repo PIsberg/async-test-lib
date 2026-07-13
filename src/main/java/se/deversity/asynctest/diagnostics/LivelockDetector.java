@@ -38,6 +38,12 @@ public class LivelockDetector {
     }
     
     private final Map<Long, List<ThreadSnapshot>> threadHistory = new ConcurrentHashMap<>();
+    /**
+     * Ids of the threads running the test. Populated by {@link #captureSnapshot()}, which the
+     * runner calls from each worker's own finally block. Snapshots are kept only for these —
+     * a JVM daemon parked in WAITING is not a starved test worker.
+     */
+    private final Set<Long> observedThreads = ConcurrentHashMap.newKeySet();
     private final ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
     private volatile boolean enabled = true;
     
@@ -46,11 +52,23 @@ public class LivelockDetector {
      */
     public void captureSnapshot() {
         if (!enabled) return;
-        
+
+        // The runner calls this from each worker's own finally block, so whoever is calling is
+        // a thread running the test. That is how we learn which threads are ours.
+        observedThreads.add(Thread.currentThread().threadId());
+
         ThreadInfo[] allThreads = threadMXBean.dumpAllThreads(false, false);
 
         for (ThreadInfo ti : allThreads) {
             long threadId = ti.getThreadId();
+
+            // Only the threads running the test can be starved by the code under test. The JVM's
+            // own daemons (Finalizer, Reference Handler, Common-Cleaner, JUnit infrastructure)
+            // are parked in WAITING with flat CPU time forever — exactly the signature isStarved()
+            // looks for — so recording them reported starvation against a perfectly healthy JVM
+            // on essentially every run.
+            if (!observedThreads.contains(threadId)) continue;
+
             long cpuTime = threadMXBean.getThreadCpuTime(threadId);
 
             ThreadSnapshot snapshot = new ThreadSnapshot(
@@ -143,13 +161,20 @@ public class LivelockDetector {
         
         ThreadSnapshot first = snapshots.get(0);
         ThreadSnapshot last = snapshots.get(snapshots.size() - 1);
-        
-        // Thread made progress if CPU time increased or state changed
+
+        // A RUNNABLE thread is on the CPU: it is making progress by definition, and cannot be
+        // starved or livelocked. Its measured CPU time can still look flat, because
+        // getThreadCpuTime has a coarse tick and several snapshots can land inside one — which
+        // is exactly how a busy worker was being reported as making no progress.
+        if (last.state == Thread.State.RUNNABLE) return true;
+
+        // Otherwise: progress means CPU time advanced, or the thread moved between states.
         return last.cpuTime > first.cpuTime || first.state != last.state;
     }
     
     public void reset() {
         threadHistory.clear();
+        observedThreads.clear();
     }
     
     public void disable() {

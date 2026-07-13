@@ -21,7 +21,8 @@ class DetectAllIntegrationTest {
 
         // This is a bit tricky to verify via TestKit without checking logs, 
         // but we can check if it runs successfully and we'll manually verify the logic in a bit.
-        assertTrue(events.failed().count() > 0);
+        assertTrue(events.failed().count() > 0,
+            "an unsynchronized write recorded from two threads must fail the test");
     }
 
     @Test
@@ -39,6 +40,15 @@ class DetectAllIntegrationTest {
 
         @AsyncTest(threads = 2, invocations = 10, detectAll = true, failOn = FailOn.HIGH)
         void race() {
+            // The library sees field access through instrumentation, not by magic: a bare
+            // `counter++` is invisible to RaceConditionDetector. Until this recorded the write,
+            // this test asserted "detectAll enables race condition detection" while detecting no
+            // race at all — it was green only because LivelockDetector was falsely reporting the
+            // JVM's own idle daemon threads as starved. Removing that false positive exposed it.
+            AsyncTestContext ctx = AsyncTestContext.get();
+            if (ctx != null) {
+                ctx.sharedRaceConditionDetector().recordFieldWrite(this, "counter");
+            }
             counter++;
         }
     }

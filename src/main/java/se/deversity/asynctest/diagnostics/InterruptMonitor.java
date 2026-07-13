@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,7 +28,6 @@ public class InterruptMonitor {
     }
 
     private final List<InterruptEvent> interruptEvents = new ArrayList<>();
-    private final Map<Long, Integer> threadInterruptCounts = new ConcurrentHashMap<>();
     private final Set<String> ignoredDescriptions = ConcurrentHashMap.newKeySet();
     private final Set<String> blockingWithoutHandling = ConcurrentHashMap.newKeySet();
     private volatile boolean enabled = true;
@@ -48,7 +48,6 @@ public class InterruptMonitor {
         synchronized (interruptEvents) {
             interruptEvents.add(event);
         }
-        threadInterruptCounts.merge(threadId, 1, Integer::sum);
     }
 
     public void recordInterruptRestored() {
@@ -113,10 +112,23 @@ public class InterruptMonitor {
             }
         }
 
-        for (Map.Entry<Long, Integer> entry : threadInterruptCounts.entrySet()) {
+        // Count only the interrupts this thread actually IGNORED. The counter this replaced
+        // incremented on every catch, restored or not, so keying off it reported the
+        // catch-and-restore idiom — the correct one, the one this detector's own fix advice
+        // recommends — as "repeated ignored interrupts".
+        Map<Long, Integer> ignoredPerThread = new HashMap<>();
+        synchronized (interruptEvents) {
+            for (InterruptEvent event : interruptEvents) {
+                if (!event.restored) {
+                    ignoredPerThread.merge(event.threadId, 1, Integer::sum);
+                }
+            }
+        }
+
+        for (Map.Entry<Long, Integer> entry : ignoredPerThread.entrySet()) {
             if (entry.getValue() > 1) {
                 report.repeatedIgnoredInterrupts.add(String.format(
-                    "Thread %d: caught InterruptedException %d times",
+                    "Thread %d: swallowed InterruptedException %d times without restoring the flag",
                     entry.getKey(),
                     entry.getValue()
                 ));
@@ -139,7 +151,6 @@ public class InterruptMonitor {
         synchronized (interruptEvents) {
             interruptEvents.clear();
         }
-        threadInterruptCounts.clear();
         ignoredDescriptions.clear();
         blockingWithoutHandling.clear();
     }

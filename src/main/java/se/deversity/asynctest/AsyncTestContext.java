@@ -131,6 +131,7 @@ import se.deversity.vibetags.annotations.AIPublicAPI;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -600,6 +601,22 @@ public final class AsyncTestContext {
      */
     public List<String> analyzeAll() {
         return registry.analyzeAll();
+    }
+
+    /**
+     * Delegates to {@code DetectorRegistry.analyzeAllNamed()}: the same findings
+     * {@link #analyzeAll()} returns, but keyed by the simple name of the detector that
+     * produced each one.
+     *
+     * <p>Preferred over {@link #analyzeAll()} by anything that needs to identify a finding —
+     * report attribution, listener callbacks, baseline suppression — because a detector's
+     * identity must not be inferred from its report prose.
+     *
+     * @return non-empty issue reports by detector name; never {@code null}
+     * @since 1.7.0
+     */
+    public Map<String, String> analyzeAllNamed() {
+        return registry.analyzeAllNamed();
     }
 
     // ---- Public static detector accessors ----

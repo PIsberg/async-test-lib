@@ -21,6 +21,12 @@ public class ConstructorSafetyValidator {
     
     private static class ObjectState {
         final String className;
+        /**
+         * The thread that called {@code recordConstructionStart}. An access from any other
+         * thread before construction completes is unsafe publication — which is only decidable
+         * if we remember who was constructing.
+         */
+        final long constructingThreadId;
         volatile boolean constructionComplete = false;
         final AtomicInteger threadsThatAccessedDuringConstruction = new AtomicInteger(0);
         final Set<Long> accessingThreadIds = ConcurrentHashMap.newKeySet();
@@ -28,8 +34,9 @@ public class ConstructorSafetyValidator {
         volatile long constructionEndTime = 0;
         final Map<String, FieldAccessInfo> fieldAccesses = new ConcurrentHashMap<>();
 
-        ObjectState(String className) {
+        ObjectState(String className, long constructingThreadId) {
             this.className = className;
+            this.constructingThreadId = constructingThreadId;
             this.constructionStartTime = System.nanoTime();
         }
     }
@@ -49,7 +56,8 @@ public class ConstructorSafetyValidator {
         if (!enabled || object == null) return;
 
         int id = System.identityHashCode(object);
-        objects.putIfAbsent(id, new ObjectState(object.getClass().getSimpleName()));
+        objects.putIfAbsent(id, new ObjectState(object.getClass().getSimpleName(),
+                                                Thread.currentThread().threadId()));
     }
     
     /**
@@ -86,11 +94,14 @@ public class ConstructorSafetyValidator {
         fieldInfo.accessingThreadIds.add(threadId);
         state.accessingThreadIds.add(threadId);
         
-        if (!state.constructionComplete && state.constructionStartTime > 0) {
-            // Different thread accessing object during construction
-            if (threadId != Thread.currentThread().threadId()) {
-                state.threadsThatAccessedDuringConstruction.incrementAndGet();
-            }
+        if (!state.constructionComplete && state.constructionStartTime > 0
+                && threadId != state.constructingThreadId) {
+            // A thread other than the one still running the constructor can see this object:
+            // unsafe publication. Comparing against the *constructing* thread is the whole
+            // point — the previous check compared threadId to Thread.currentThread().threadId(),
+            // the expression it had just been assigned from, so it was always false and this
+            // counter never moved.
+            state.threadsThatAccessedDuringConstruction.incrementAndGet();
         }
     }
     

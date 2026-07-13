@@ -4,8 +4,10 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * Tracks compound operations that should behave atomically.
@@ -35,7 +37,14 @@ public class AtomicityValidator {
 
     private final Map<String, CompoundOperation> activeOperations = new ConcurrentHashMap<>();
     private final Map<String, List<FieldAccessRecord>> fieldHistory = new ConcurrentHashMap<>();
-    private final List<String> atomicityViolations = new ArrayList<>();
+    /**
+     * Both writers — {@code recordFieldAccess} and {@code detectCheckThenActViolation} — are
+     * called straight from the user's concurrently running test body, so this collection is
+     * mutated by N threads at once. A plain ArrayList loses elements under concurrent add (two
+     * threads write the same index), silently dropping real violations before analysis reads
+     * them, and can throw ArrayIndexOutOfBoundsException into the user's test body.
+     */
+    private final Queue<String> atomicityViolations = new ConcurrentLinkedQueue<>();
     private volatile boolean enabled = true;
 
     public void recordCompoundOperationStart(String operationName) {

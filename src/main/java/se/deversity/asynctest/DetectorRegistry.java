@@ -125,7 +125,9 @@ import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -496,7 +498,23 @@ final class DetectorRegistry {
      * @return list of non-empty issue reports; never {@code null}
      */
     List<String> analyzeAll() {
-        List<String> out = new ArrayList<>();
+        return new ArrayList<>(analyzeAllNamed().values());
+    }
+
+    /**
+     * Runs every enabled Phase 2 detector's analysis and returns the reports of any that
+     * found issues, keyed by the simple name of the detector that produced each one.
+     *
+     * <p>A finding's identity must come from its detector, never from its report text. The
+     * runner previously derived the name by slicing the report at its first colon, but the
+     * detectors that open a report with a severity marker ({@code IssueSeverity.HIGH.format()})
+     * all yielded the same key — so distinct findings collapsed into one, and a baselined
+     * finding suppressed every later finding of the same severity.
+     *
+     * @return reports by detector name; never {@code null}
+     */
+    Map<String, String> analyzeAllNamed() {
+        Map<String, String> out = new LinkedHashMap<>();
 
         // ---- Phase 1 ----
         ifIssue(deadlockDetector,
@@ -538,31 +556,24 @@ final class DetectorRegistry {
                 PipelineMonitor.PipelineReport::hasIssues, out);
         // ReadWriteLock uses hasFairnessIssues() — report it as an issue when
         // writer starvation or imbalance is detected
-        if (readWriteLockMonitor != null) {
-            ReadWriteLockMonitor.ReadWriteLockReport r = readWriteLockMonitor.analyzeFairness();
-            if (r.hasFairnessIssues()) out.add(r.toString());
-        }
+        ifIssue(readWriteLockMonitor,
+                ReadWriteLockMonitor::analyzeFairness,
+                ReadWriteLockMonitor.ReadWriteLockReport::hasFairnessIssues, out);
         ifIssue(semaphoreMisuseDetector,
                 SemaphoreMisuseDetector::analyze,
                 SemaphoreMisuseDetector.SemaphoreMisuseReport::hasIssues, out);
         ifIssue(completableFutureExceptionDetector,
                 CompletableFutureExceptionDetector::analyze,
                 CompletableFutureExceptionDetector.CompletableFutureExceptionReport::hasIssues, out);
-        if (completableFutureCompletionLeakDetector != null) {
-            CompletableFutureCompletionLeakDetector.CompletionLeakReport r = 
-                completableFutureCompletionLeakDetector.analyze();
-            if (r.hasLeaks()) out.add(r.toString());
-        }
-        if (virtualThreadPinningDetector != null) {
-            VirtualThreadPinningDetector.PinningReport r = 
-                virtualThreadPinningDetector.analyzePinning();
-            if (r.hasPinningIssues()) out.add(r.toString());
-        }
-        if (threadPoolDeadlockDetector != null) {
-            ThreadPoolDeadlockDetector.ThreadPoolDeadlockReport r = 
-                threadPoolDeadlockDetector.analyze();
-            if (r.hasDeadlockRisk()) out.add(r.toString());
-        }
+        ifIssue(completableFutureCompletionLeakDetector,
+                CompletableFutureCompletionLeakDetector::analyze,
+                CompletableFutureCompletionLeakDetector.CompletionLeakReport::hasLeaks, out);
+        ifIssue(virtualThreadPinningDetector,
+                VirtualThreadPinningDetector::analyzePinning,
+                VirtualThreadPinningDetector.PinningReport::hasPinningIssues, out);
+        ifIssue(threadPoolDeadlockDetector,
+                ThreadPoolDeadlockDetector::analyze,
+                ThreadPoolDeadlockDetector.ThreadPoolDeadlockReport::hasDeadlockRisk, out);
         ifIssue(concurrentModificationDetector,
                 ConcurrentModificationDetector::analyze,
                 ConcurrentModificationDetector.ConcurrentModificationReport::hasIssues, out);
@@ -908,16 +919,32 @@ final class DetectorRegistry {
 
     /**
      * If {@code detector} is non-null and the report from {@code analyze} has issues,
-     * appends the report's {@code toString()} to {@code out}.
+     * records the report's {@code toString()} in {@code out} under the detector's simple
+     * class name.
+     *
+     * <p>The name is taken from the detector object rather than parsed out of the report,
+     * so two detectors whose reports happen to open with the same prose (e.g. the same
+     * severity marker) stay distinct findings.
      */
-    private static <D, R> void ifIssue(D detector,
-                                       Function<D, R> analyze,
-                                       Function<R, Boolean> hasIssues,
-                                       List<String> out) {
+    static <D, R> void ifIssue(D detector,
+                               Function<D, R> analyze,
+                               Function<R, Boolean> hasIssues,
+                               Map<String, String> out) {
         if (detector == null) return;
-        R report = analyze.apply(detector);
-        if (Boolean.TRUE.equals(hasIssues.apply(report))) {
-            out.add(report.toString());
+        String name = detector.getClass().getSimpleName();
+        try {
+            R report = analyze.apply(detector);
+            if (Boolean.TRUE.equals(hasIssues.apply(report))) {
+                out.merge(name, report.toString(), (first, second) -> first + "\n" + second);
+            }
+        } catch (RuntimeException | StackOverflowError e) {
+            // Contain the failure: analyzeAllNamed() chains ~100 of these, so letting one
+            // detector's exception escape would discard every finding collected so far and
+            // skip every detector after it. A broken detector reports nothing; the rest of
+            // the sweep still reports. Detectors accumulate state from N×M user threads, and
+            // third-party ones arrive via the public SPI, so this is a live hazard.
+            System.err.println("[AsyncTest] Detector " + name
+                + " failed during analysis and was skipped: " + e);
         }
     }
 }
