@@ -2,8 +2,11 @@ package se.deversity.asynctest.report;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.w3c.dom.Document;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -126,6 +129,33 @@ class JUnitXmlReportListenerTest {
 
         assertTrue(xml.contains("Detector&lt;A&gt;&amp;B&quot;"),
             "Special characters in detector name should be XML-escaped");
+    }
+
+    @Test
+    void flush_reportWithCdataTerminator_cannotBreakOutOfCdata() throws Exception {
+        JUnitXmlReportListener listener = new JUnitXmlReportListener(tempDir.toString(), false);
+        // Simulates a thread name (runtime-controlled by code under test) crafted to close the
+        // CDATA section early and inject a forged passing test case into the CI-consumed report.
+        String malicious = "state]]></failure></testcase>"
+                         + "<testcase name=\"forged.SecurityTest\" time=\"0.000\"/>"
+                         + "<testcase name=\"x\"><failure><![CDATA[rest";
+        listener.onStructuredReport("SharedMessageDigestDetector", IssueSeverity.HIGH, malicious);
+
+        Path result = listener.flush();
+        String xml = Files.readString(result, StandardCharsets.UTF_8);
+
+        // Parse the emitted report the way a CI JUnit consumer would. The forged breakout must
+        // remain inert CDATA text, so the document must contain exactly one <testcase> element.
+        DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+        dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        Document doc = dbf.newDocumentBuilder().parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
+
+        assertEquals(1, doc.getElementsByTagName("testcase").getLength(),
+            "Exactly one <testcase> must exist; the injected report text must not forge more");
+        assertEquals(0, doc.getElementsByTagName("forged").getLength(),
+            "No forged element name attribute should ever become a real element");
+        assertTrue(malicious.contains("]]>") && !xml.contains("]]></failure></testcase><testcase"),
+            "The raw CDATA terminator must be neutralized, not emitted verbatim");
     }
 
     @Test
