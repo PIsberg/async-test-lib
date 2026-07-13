@@ -5,6 +5,8 @@ import org.apiguardian.api.API.Status;
 
 import se.deversity.asynctest.AsyncTestListener;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
+import se.deversity.vibetags.annotations.AIInputSanitized;
+import se.deversity.vibetags.annotations.AIInputSanitized.SanitizerType;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -94,7 +96,8 @@ public final class JsonReportListener implements AsyncTestListener {
     }
 
     @Override
-    public void onStructuredReport(String detectorName, IssueSeverity severity, String report) {
+    public void onStructuredReport(String detectorName, IssueSeverity severity,
+            @AIInputSanitized(SanitizerType.XSS) String report) {
         findings.add(new DetectorFinding(detectorName, severity, report, System.currentTimeMillis()));
     }
 
