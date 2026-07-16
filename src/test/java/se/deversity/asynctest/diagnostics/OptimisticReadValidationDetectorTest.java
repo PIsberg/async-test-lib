@@ -77,6 +77,48 @@ public class OptimisticReadValidationDetectorTest {
     }
 
     @Test
+    void testUnvalidatedReadSurvivesANewOptimisticReadOnSameLockAndThread() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        Thread t = Thread.currentThread();
+
+        // First optimistic read: data accessed, validate() never called — a real bug.
+        d.recordOptimisticReadStarted(lock, 1L, t);
+        d.recordDataAccessed(lock, 1L, t, "sharedX");
+
+        // Second optimistic read on the same lock from the same thread, done correctly.
+        d.recordOptimisticReadStarted(lock, 2L, t);
+        d.recordDataAccessed(lock, 2L, t, "sharedY");
+        d.recordValidateCalled(lock, 2L, true, t);
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(),
+            "the first read's missing validate() must still be reported after a later, correct read");
+        assertTrue(report.violations.stream()
+                .anyMatch(v -> v.contains("sharedX") && v.contains("never called")),
+            "violation should identify the unvalidated first read: " + report.violations);
+    }
+
+    @Test
+    void testValidateWithWrongStampDoesNotDiscardThePendingRead() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        Thread t = Thread.currentThread();
+
+        d.recordOptimisticReadStarted(lock, 1L, t);
+        d.recordDataAccessed(lock, 1L, t, "sharedZ");
+        // validate() called with a stamp from some other read — the pending read
+        // above is still unvalidated and must not be silently forgotten.
+        d.recordValidateCalled(lock, 99L, true, t);
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(),
+            "a stamp-mismatched validate() must not erase the unvalidated read");
+        assertTrue(report.violations.get(0).contains("sharedZ"));
+        assertTrue(report.violations.get(0).contains("never called"));
+    }
+
+    @Test
     void testReportToStringContainsFixHint() {
         var d = new OptimisticReadValidationDetector();
         StampedLock lock = new StampedLock();

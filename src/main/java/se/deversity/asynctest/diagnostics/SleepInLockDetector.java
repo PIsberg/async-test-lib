@@ -2,7 +2,6 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import se.deversity.vibetags.annotations.AITestDriven;
 
@@ -93,7 +92,7 @@ public class SleepInLockDetector {
         StackTraceElement[] stackTrace = currentThread.getStackTrace();
 
         // Check if current thread holds any locks
-        ThreadInfo threadInfo = analyzeThreadLocks(currentThread, stackTrace);
+        ThreadInfo threadInfo = analyzeThreadLocks(currentThread);
 
         if (threadInfo.holdsLock) {
             SleepInLockEvent event = new SleepInLockEvent(
@@ -122,26 +121,41 @@ public class SleepInLockDetector {
         }
     }
 
-    private ThreadInfo analyzeThreadLocks(Thread thread, StackTraceElement[] stackTrace) {
-        // Check for synchronized blocks via Thread.getAllStackTraces()
-        Map<Thread, StackTraceElement[]> allStacks = Thread.getAllStackTraces();
-        StackTraceElement[] currentStack = allStacks.get(thread);
-        
-        if (currentStack != null) {
-            // Look for synchronized blocks (native monitor enter)
-            for (StackTraceElement element : currentStack) {
-                if (element.isNativeMethod() && element.getMethodName().contains("monitor")) {
-                    return new ThreadInfo(true, element.getClassName(), "synchronized");
-                }
+    private ThreadInfo analyzeThreadLocks(Thread thread) {
+        // Ask the JVM which locks the thread actually holds. The previous
+        // stack-trace heuristic could not work in either direction: entering a
+        // synchronized block leaves no stack frame to find (so real
+        // sleep-in-synchronized was never detected), while matching frame
+        // method names against "lock"/"Lock" flagged any caller that merely
+        // had "Lock" in its method name (a false positive with no lock held).
+        try {
+            java.lang.management.ThreadMXBean bean =
+                java.lang.management.ManagementFactory.getThreadMXBean();
+            if (!bean.isObjectMonitorUsageSupported() || !bean.isSynchronizerUsageSupported()) {
+                return new ThreadInfo(false, null, null);
             }
-        }
+            java.lang.management.ThreadInfo[] infos =
+                bean.getThreadInfo(new long[] {thread.threadId()}, true, true);
+            if (infos.length == 0 || infos[0] == null) {
+                return new ThreadInfo(false, null, null);
+            }
 
-        // Check for ReentrantLock via stack trace patterns
-        for (StackTraceElement element : stackTrace) {
-            if (element.getMethodName().contains("lock") ||
-                element.getMethodName().contains("Lock")) {
-                return new ThreadInfo(true, element.getClassName(), "ReentrantLock");
+            java.lang.management.MonitorInfo[] monitors = infos[0].getLockedMonitors();
+            if (monitors.length > 0) {
+                return new ThreadInfo(true, monitors[0].getClassName(), "synchronized");
             }
+
+            for (java.lang.management.LockInfo sync : infos[0].getLockedSynchronizers()) {
+                // A running ThreadPoolExecutor$Worker holds its own AQS for the
+                // duration of every task — that is executor plumbing, not a lock
+                // the user code took, so it must not be reported.
+                if (sync.getClassName().startsWith("java.util.concurrent.ThreadPoolExecutor")) {
+                    continue;
+                }
+                return new ThreadInfo(true, sync.getClassName(), "ReentrantLock");
+            }
+        } catch (UnsupportedOperationException | SecurityException ignored) {
+            // Lock introspection unavailable on this JVM — report no lock rather than guess.
         }
 
         return new ThreadInfo(false, null, null);

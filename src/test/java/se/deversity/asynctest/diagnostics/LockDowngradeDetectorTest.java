@@ -130,6 +130,58 @@ public class LockDowngradeDetectorTest {
     }
 
     @Test
+    void testDetectsUpgradeAttemptAfterValidDowngrade() {
+        LockDowngradeDetector detector = new LockDowngradeDetector();
+        ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+
+        // Correct downgrade: write → read (while holding write) → release write.
+        lock.writeLock().lock();
+        detector.recordWriteLockAcquired(lock, "dgLock");
+        lock.readLock().lock();
+        detector.recordReadLockAcquired(lock, "dgLock");
+        lock.writeLock().unlock();
+        detector.recordWriteLockReleased(lock, "dgLock");
+
+        // Still holding ONLY the read lock — attempting the write lock now is the
+        // classic upgrade deadlock. (Not actually calling writeLock().lock(),
+        // which would deadlock this test.)
+        detector.recordWriteLockAcquired(lock, "dgLock");
+
+        lock.readLock().unlock();
+        detector.recordReadLockReleased(lock, "dgLock");
+
+        LockDowngradeDetector.LockDowngradeReport report = detector.analyze();
+        assertTrue(report.hasIssues(),
+            "re-acquiring write while holding only the downgraded read lock deadlocks and must be flagged");
+        assertTrue(report.upgradeAttempts.get(0).contains("read→write upgrade"));
+    }
+
+    @Test
+    void testReentrantWriteAcquireWhileHoldingWriteAndReadIsNotFlagged() {
+        LockDowngradeDetector detector = new LockDowngradeDetector();
+        ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+
+        // Holding write + read (mid-downgrade), a reentrant write acquire is legal.
+        lock.writeLock().lock();
+        detector.recordWriteLockAcquired(lock, "reentrant");
+        lock.readLock().lock();
+        detector.recordReadLockAcquired(lock, "reentrant");
+
+        lock.writeLock().lock(); // reentrant — succeeds, no deadlock
+        detector.recordWriteLockAcquired(lock, "reentrant");
+
+        lock.writeLock().unlock();
+        detector.recordWriteLockReleased(lock, "reentrant");
+        lock.writeLock().unlock();
+        detector.recordWriteLockReleased(lock, "reentrant");
+        lock.readLock().unlock();
+        detector.recordReadLockReleased(lock, "reentrant");
+
+        assertFalse(detector.analyze().hasIssues(),
+            "a reentrant write acquire while the write lock is already held is not an upgrade");
+    }
+
+    @Test
     void testReportToStringContainsFixHint() {
         LockDowngradeDetector detector = new LockDowngradeDetector();
         ReentrantReadWriteLock lock = new ReentrantReadWriteLock();

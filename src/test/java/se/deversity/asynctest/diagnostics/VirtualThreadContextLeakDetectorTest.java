@@ -170,4 +170,22 @@ class VirtualThreadContextLeakDetectorTest {
         var report = detector.analyze();
         assertTrue(report.toString().contains("No ThreadLocal context leaks"));
     }
+
+    // ---- analyze() idempotency (DetectorRegistry.analyzeAll contract) ----
+
+    @Test
+    void analyze_isIdempotent_leaksAreNotDuplicatedOnRepeatedCalls() throws Exception {
+        Thread vt = Thread.ofVirtual().start(() ->
+            detector.recordThreadLocalSet("LEAK_KEY", Thread.currentThread())
+        );
+        vt.join();
+
+        var first = detector.analyze();
+        var second = detector.analyze();
+
+        assertEquals(1, first.getLeaks().size(), first.getLeaks().toString());
+        assertEquals(first.getLeaks().size(), second.getLeaks().size(),
+            "analyze() must not accumulate leak entries across calls — "
+            + "DetectorRegistry.analyzeAll() is documented as idempotent");
+    }
 }
