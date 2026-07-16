@@ -62,7 +62,15 @@ public class OptimisticReadValidationDetector {
     /** Call immediately after {@code StampedLock.tryOptimisticRead()}. */
     public void recordOptimisticReadStarted(Object lock, long stamp, Thread thread) {
         if (lock == null || thread == null) return;
-        pendingReads.put(key(lock, thread), new OptimisticRead(stamp, thread.getName()));
+        OptimisticRead replaced =
+            pendingReads.put(key(lock, thread), new OptimisticRead(stamp, thread.getName()));
+        // A new optimistic read replaces the pending one for this (lock, thread).
+        // If the replaced read had accessed data without ever being validated, that
+        // evidence must be flushed now — otherwise the replacement silently erases
+        // the violation and analyze() never sees it.
+        if (replaced != null && !replaced.accessedFields.isEmpty()) {
+            violations.add(neverValidatedViolation(replaced));
+        }
     }
 
     /**
@@ -86,8 +94,13 @@ public class OptimisticReadValidationDetector {
     public void recordValidateCalled(Object lock, long stamp, boolean result, Thread thread) {
         if (lock == null || thread == null) return;
         String k = key(lock, thread);
-        OptimisticRead read = pendingReads.remove(k);
-        if (read == null || read.stamp != stamp) return;
+        OptimisticRead read = pendingReads.get(k);
+        if (read == null) return;
+        // A validate() for some other stamp does not validate the pending read —
+        // leave it pending so its missing validation is still reported at analysis
+        // time (removing it here silently discarded the evidence).
+        if (read.stamp != stamp) return;
+        pendingReads.remove(k);
         if (!result && !read.accessedFields.isEmpty()) {
             violations.add(String.format(
                 "Thread '%s': data accessed (%s) during optimistic read but stamp validation FAILED — "
@@ -102,13 +115,17 @@ public class OptimisticReadValidationDetector {
         // reads still pending at analysis time were never validated
         for (OptimisticRead read : pendingReads.values()) {
             if (!read.accessedFields.isEmpty()) {
-                r.violations.add(String.format(
-                    "Thread '%s': data accessed (%s) during optimistic read but validate() was never called",
-                    read.threadName, String.join(", ", read.accessedFields)));
+                r.violations.add(neverValidatedViolation(read));
             }
         }
         r.violations.addAll(violations);
         return r;
+    }
+
+    private static String neverValidatedViolation(OptimisticRead read) {
+        return String.format(
+            "Thread '%s': data accessed (%s) during optimistic read but validate() was never called",
+            read.threadName, String.join(", ", read.accessedFields));
     }
 
     /** Report produced by {@link #analyze()}. */
