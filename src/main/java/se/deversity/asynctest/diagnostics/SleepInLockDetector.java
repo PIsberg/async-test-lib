@@ -145,9 +145,14 @@ public class SleepInLockDetector {
                 return new ThreadInfo(true, monitors[0].getClassName(), "synchronized");
             }
 
-            java.lang.management.LockInfo[] synchronizers = infos[0].getLockedSynchronizers();
-            if (synchronizers.length > 0) {
-                return new ThreadInfo(true, synchronizers[0].getClassName(), "ReentrantLock");
+            for (java.lang.management.LockInfo sync : infos[0].getLockedSynchronizers()) {
+                // A running ThreadPoolExecutor$Worker holds its own AQS for the
+                // duration of every task — that is executor plumbing, not a lock
+                // the user code took, so it must not be reported.
+                if (sync.getClassName().startsWith("java.util.concurrent.ThreadPoolExecutor")) {
+                    continue;
+                }
+                return new ThreadInfo(true, sync.getClassName(), "ReentrantLock");
             }
         } catch (UnsupportedOperationException | SecurityException e) {
             // Lock introspection unavailable on this JVM — report no lock rather than guess.
