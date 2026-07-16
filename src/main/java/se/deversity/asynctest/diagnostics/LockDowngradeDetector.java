@@ -54,9 +54,21 @@ import se.deversity.vibetags.annotations.AITestDriven;
 )
 public class LockDowngradeDetector {
 
+    /**
+     * Per-thread hold counters. A single "R or W" marker cannot represent the
+     * mid-downgrade state where a thread holds both locks: the read acquire
+     * overwrote the write marker (flagging a legal reentrant write acquire as an
+     * upgrade), and the write release then erased the read record entirely
+     * (missing a genuine read→write upgrade attempted after a downgrade).
+     */
+    private static class Holds {
+        int read;
+        int write;
+    }
+
     private static class LockState {
         final String name;
-        final Map<Long, Character> threadLockType = new ConcurrentHashMap<>();
+        final Map<Long, Holds> threadHolds = new ConcurrentHashMap<>();
         final AtomicInteger upgradeAttempts = new AtomicInteger(0);
         final List<String> upgradeDetails  = new CopyOnWriteArrayList<>();
 
@@ -82,8 +94,13 @@ public class LockDowngradeDetector {
         if (lock == null) return;
         LockState state = stateFor(lock, lockName);
         long tid = Thread.currentThread().threadId();
-        // If already holding write lock and now acquiring read, that is valid downgrade step
-        state.threadLockType.put(tid, 'R');
+        // Acquiring read while already holding write is the valid downgrade step —
+        // recorded additively so the write hold is not forgotten.
+        state.threadHolds.compute(tid, (k, h) -> {
+            if (h == null) h = new Holds();
+            h.read++;
+            return h;
+        });
     }
 
     /**
@@ -94,7 +111,11 @@ public class LockDowngradeDetector {
      */
     public void recordReadLockReleased(ReadWriteLock lock, String lockName) {
         if (lock == null) return;
-        stateFor(lock, lockName).threadLockType.remove(Thread.currentThread().threadId());
+        stateFor(lock, lockName).threadHolds.computeIfPresent(
+            Thread.currentThread().threadId(), (k, h) -> {
+                if (h.read > 0) h.read--;
+                return (h.read == 0 && h.write == 0) ? null : h;
+            });
     }
 
     /**
@@ -109,15 +130,20 @@ public class LockDowngradeDetector {
         if (lock == null) return;
         LockState state = stateFor(lock, lockName);
         long tid = Thread.currentThread().threadId();
-        Character existing = state.threadLockType.get(tid);
-        if (existing != null && existing == 'R') {
-            state.upgradeAttempts.incrementAndGet();
-            state.upgradeDetails.add(String.format(
-                "Thread '%s' attempted read→write upgrade on lock '%s' — "
-                + "ReentrantReadWriteLock does not support upgrade; this will deadlock",
-                Thread.currentThread().getName(), state.name));
-        }
-        state.threadLockType.put(tid, 'W');
+        state.threadHolds.compute(tid, (k, h) -> {
+            if (h == null) h = new Holds();
+            // Upgrade = acquiring write while holding read but NOT write. Holding
+            // write too (mid-downgrade) makes this a legal reentrant acquire.
+            if (h.read > 0 && h.write == 0) {
+                state.upgradeAttempts.incrementAndGet();
+                state.upgradeDetails.add(String.format(
+                    "Thread '%s' attempted read→write upgrade on lock '%s' — "
+                    + "ReentrantReadWriteLock does not support upgrade; this will deadlock",
+                    Thread.currentThread().getName(), state.name));
+            }
+            h.write++;
+            return h;
+        });
     }
 
     /**
@@ -128,7 +154,11 @@ public class LockDowngradeDetector {
      */
     public void recordWriteLockReleased(ReadWriteLock lock, String lockName) {
         if (lock == null) return;
-        stateFor(lock, lockName).threadLockType.remove(Thread.currentThread().threadId());
+        stateFor(lock, lockName).threadHolds.computeIfPresent(
+            Thread.currentThread().threadId(), (k, h) -> {
+                if (h.write > 0) h.write--;
+                return (h.read == 0 && h.write == 0) ? null : h;
+            });
     }
 
     /**
