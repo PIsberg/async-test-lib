@@ -92,7 +92,7 @@ public class SleepInLockDetector {
         StackTraceElement[] stackTrace = currentThread.getStackTrace();
 
         // Check if current thread holds any locks
-        ThreadInfo threadInfo = analyzeThreadLocks(currentThread, stackTrace);
+        ThreadInfo threadInfo = analyzeThreadLocks(currentThread);
 
         if (threadInfo.holdsLock) {
             SleepInLockEvent event = new SleepInLockEvent(
@@ -121,7 +121,7 @@ public class SleepInLockDetector {
         }
     }
 
-    private ThreadInfo analyzeThreadLocks(Thread thread, StackTraceElement[] stackTrace) {
+    private ThreadInfo analyzeThreadLocks(Thread thread) {
         // Ask the JVM which locks the thread actually holds. The previous
         // stack-trace heuristic could not work in either direction: entering a
         // synchronized block leaves no stack frame to find (so real
@@ -154,7 +154,7 @@ public class SleepInLockDetector {
                 }
                 return new ThreadInfo(true, sync.getClassName(), "ReentrantLock");
             }
-        } catch (UnsupportedOperationException | SecurityException e) {
+        } catch (UnsupportedOperationException | SecurityException ignored) {
             // Lock introspection unavailable on this JVM — report no lock rather than guess.
         }
 

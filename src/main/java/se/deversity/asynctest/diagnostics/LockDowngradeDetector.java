@@ -61,7 +61,7 @@ public class LockDowngradeDetector {
      * upgrade), and the write release then erased the read record entirely
      * (missing a genuine read→write upgrade attempted after a downgrade).
      */
-    private static class Holds {
+    private static final class Holds {
         int read;
         int write;
     }
