@@ -112,28 +112,46 @@ public class BusyWaitDetector {
             ThreadActivity activity = entry.getValue();
             synchronized (activity) {
                 for (SpinEvent event : activity.spinEvents) {
-                    report.busyWaitLoops.add(String.format(
-                        "Thread %d: spun %,d iterations over %dms at %s",
-                        threadId,
-                        event.iterations,
-                        event.durationMs,
-                        event.location
-                    ));
-                    report.cpuWasted += event.durationMs;
+                    addToReport(report, threadId, event);
+                }
 
-                    if (event.iterationsPerMs() > 50_000d) {
-                        report.tightLoops.add(String.format(
-                            "Thread %d: tight loop %.0f iterations/ms at %s",
-                            threadId,
-                            event.iterationsPerMs(),
-                            event.location
-                        ));
-                    }
+                // A spin loop that never yields or blocks (the worst busy-wait of
+                // all, e.g. while(!flag){}) never reaches recordYield(), so its
+                // evidence only exists in the live counters. Flush it into the
+                // report here — without mutating the activity, so repeated
+                // analyze() calls stay idempotent.
+                if (activity.loopIterations >= SPIN_THRESHOLD_ITERATIONS) {
+                    long durationMs = activity.inSpinLoop
+                        ? Math.max(1L, (System.nanoTime() - activity.spinStartTime) / 1_000_000)
+                        : 1L;
+                    addToReport(report, threadId, new SpinEvent(
+                        durationMs, activity.loopIterations,
+                        "still spinning at analysis time (never yielded or blocked)"));
                 }
             }
         }
 
         return report;
+    }
+
+    private static void addToReport(BusyWaitReport report, long threadId, SpinEvent event) {
+        report.busyWaitLoops.add(String.format(
+            "Thread %d: spun %,d iterations over %dms at %s",
+            threadId,
+            event.iterations,
+            event.durationMs,
+            event.location
+        ));
+        report.cpuWasted += event.durationMs;
+
+        if (event.iterationsPerMs() > 50_000d) {
+            report.tightLoops.add(String.format(
+                "Thread %d: tight loop %.0f iterations/ms at %s",
+                threadId,
+                event.iterationsPerMs(),
+                event.location
+            ));
+        }
     }
 
     /**

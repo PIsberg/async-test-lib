@@ -129,6 +129,39 @@ public class BusyWaitDetectorTest {
     }
 
     @Test
+    void spinLoopThatNeverYieldsIsStillReported() {
+        BusyWaitDetector detector = new BusyWaitDetector();
+
+        // The worst busy-wait of all — while(!flag){} — never yields and never
+        // blocks, so recordYield() is never called. The spin must still be
+        // reported at analysis time.
+        for (long i = 0; i < THRESHOLD + 5_000; i++) {
+            detector.recordLoopIteration();
+        }
+
+        BusyWaitDetector.BusyWaitReport report = detector.analyzeBusyWaiting();
+
+        assertTrue(report.hasIssues(),
+                "an above-threshold spin that never yields must be reported, not silently dropped");
+        assertFalse(report.busyWaitLoops.isEmpty(),
+                "the in-progress spin should appear in busyWaitLoops: " + report.busyWaitLoops);
+    }
+
+    @Test
+    void inProgressSpinReportingIsIdempotentAcrossAnalyzeCalls() {
+        BusyWaitDetector detector = new BusyWaitDetector();
+        for (long i = 0; i < THRESHOLD; i++) {
+            detector.recordLoopIteration();
+        }
+
+        BusyWaitDetector.BusyWaitReport first = detector.analyzeBusyWaiting();
+        BusyWaitDetector.BusyWaitReport second = detector.analyzeBusyWaiting();
+
+        assertEquals(first.busyWaitLoops.size(), second.busyWaitLoops.size(),
+                "analyze() must not accumulate state between calls");
+    }
+
+    @Test
     void analyze_delegatesToAnalyzeBusyWaiting() {
         BusyWaitDetector detector = new BusyWaitDetector();
         for (long i = 0; i < THRESHOLD; i++) {
