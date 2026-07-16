@@ -75,7 +75,6 @@ public class VirtualThreadContextLeakDetector {
 
     // key = "threadId:varKey"
     private final Map<String, ThreadLocalEntry> activeEntries = new ConcurrentHashMap<>();
-    private final List<String> leakReports = Collections.synchronizedList(new ArrayList<>());
     private final List<String> inheritableInVirtualReports = Collections.synchronizedList(new ArrayList<>());
     private final AtomicInteger totalSets = new AtomicInteger(0);
     private final AtomicInteger totalRemoves = new AtomicInteger(0);
@@ -148,7 +147,11 @@ public class VirtualThreadContextLeakDetector {
      * @return a report describing any detected context leaks
      */
     public VirtualThreadContextLeakReport analyze() {
-        // Everything still in activeEntries at analysis time was never removed
+        // Everything still in activeEntries at analysis time was never removed.
+        // Computed into a local list (not an instance field): appending to a field
+        // here made analyze() non-idempotent — every extra call re-added the same
+        // leaks, double-counting them, in violation of the analyzeAll() contract.
+        List<String> leakReports = new ArrayList<>();
         for (ThreadLocalEntry entry : activeEntries.values()) {
             if (entry.isVirtual) {
                 leakReports.add(
@@ -173,7 +176,7 @@ public class VirtualThreadContextLeakDetector {
         }
 
         return new VirtualThreadContextLeakReport(
-            new ArrayList<>(leakReports),
+            leakReports,
             new ArrayList<>(inheritableInVirtualReports),
             highCountWarnings,
             totalSets.get(),
