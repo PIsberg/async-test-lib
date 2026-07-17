@@ -60,7 +60,7 @@
         <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
         <vibetags.version>1.0.0-RC2</vibetags.version>
         <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
-        <checkstyle.version>13.7.0</checkstyle.version>
+        <checkstyle.version>13.8.0</checkstyle.version>
         <spotbugs-maven-plugin.version>4.10.3.0</spotbugs-maven-plugin.version>
         <spotbugs.version>4.10.2</spotbugs.version>
         <maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
