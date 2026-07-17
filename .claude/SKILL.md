@@ -1,6 +1,6 @@
 # async-test-lib — Usage Guide
 
-**async-test-lib** is a JUnit 5 extension for stress-testing concurrent Java code. It forces real thread collisions using a `CyclicBarrier`, then runs 114 specialized detectors across 16 phases to identify exactly what went wrong — including three JDK 25/26 detectors (Phase 16) (`StableValue`, `StructuredTaskScope`, parallel `Gatherer`) you can also drive directly via AsyncTestContext accessors.
+**async-test-lib** is a JUnit 5 extension for stress-testing concurrent Java code. It forces real thread collisions using a `CyclicBarrier`, then runs 124 specialized detectors across 18 phases to identify exactly what went wrong — including six JDK 25/26 detectors (Phases 16 and 18: `StableValue`, `StructuredTaskScope`, parallel `Gatherer`, `LazyConstant`, final-field mutation, shared `KDF`) you can also drive directly via AsyncTestContext accessors.
 
 - Replaces `@Test` with `@AsyncTest` — zero other changes needed
 - Requires Java 21 and JUnit 5 (Jupiter 6.0.3+)
@@ -455,43 +455,54 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 | `detectThisEscape` | `THIS_ESCAPE` | A constructor that publishes `this` before returning (starts a thread, registers a listener, stores into shared state), exposing a partially-constructed object — no final-field visibility guarantee, fields may still be default. Instrument via `recordConstructorEscape(this, how, thread)`, plus optional `recordExternalAccess(instance, thread)` / `recordConstructionComplete(instance)`. MEDIUM, escalated to HIGH when another thread observes it before completion. |
 | `detectThreadLocalRandomMisuse` | `THREAD_LOCAL_RANDOM_MISUSE` | A `ThreadLocalRandom.current()` reference cached (e.g. in a field) and used from a thread other than the one that obtained it, defeating its per-thread isolation. Instrument via `recordObtain(rng, name, thread)` then `recordUse(rng, thread)`. Distinct from `SHARED_RANDOM` (`java.util.Random`) and `SHARED_SECURE_RANDOM`. |
 
-### JDK 25/26 preview-era detectors — standalone (1.7.0+)
+### Phase 17 — Shared stateful JDK objects, I/O position races & contention advisories (1.7.0+)
+| Annotation field | DetectorType | What it catches |
+|-----------------|-------------|-----------------|
+| `detectSharedByteBuffer` | `SHARED_BYTE_BUFFER` | A `ByteBuffer` (position/limit/mark are mutable state) accessed from multiple threads |
+| `detectSharedCharsetCoder` | `SHARED_CHARSET_CODER` | `CharsetEncoder`/`CharsetDecoder` shared across threads — internal coding state garbles output |
+| `detectSharedChecksum` | `SHARED_CHECKSUM` | `CRC32`/`CRC32C`/`Adler32` shared across threads — silently wrong checksums |
+| `detectFileChannelPositionRace` | `FILE_CHANNEL_POSITION_RACE` | `FileChannel` implicit-position reads/writes from multiple threads — interleaved seeks corrupt I/O |
+| `detectSharedIterator` | `SHARED_ITERATOR` | An `Iterator`/`ListIterator`/`Spliterator` consumed by more than one thread |
+| `detectHighContentionAtomic` | `HIGH_CONTENTION_ATOMIC` | CAS retry storms on hot `Atomic*` fields — advisory to switch to `LongAdder` |
+| `detectSharedJsonMapperReconfig` | `SHARED_JSON_MAPPER_RECONFIG` | Mapper (`ObjectMapper`, `Gson`) reconfigured after concurrent use began |
 
-These three detectors target concurrency features introduced/finalized in JDK 24–26.
-They are **not** wired into the `@AsyncTest` `detectAll` pipeline (a pipeline detector
-needs a `DetectorType` enum constant, and that enum is a locked file). Use them
-**directly**: instantiate, record events from your test body, then call `analyze()`
-and assert on the report. They live in `se.deversity.asynctest.diagnostics` and are
+### JDK 25/26 detectors — Phases 16 & 18 (1.7.0+ / 1.8.0+)
+
+These six detectors target concurrency features introduced/finalized in JDK 24–26. They
+are **wired into the `@AsyncTest` pipeline** — each has a `DetectorType` constant, a
+deprecated boolean flag, and an `AsyncTestContext` accessor — and can also be
+instantiated standalone. They live in `se.deversity.asynctest.diagnostics` and are
 thread-safe (`ConcurrentHashMap`-backed), so a single instance can be shared across
 the worker threads of an `@AsyncTest`.
 
 | Detector | JDK feature | Record API | What it catches |
 |----------|-------------|------------|-----------------|
-| `StableValueMisuseDetector` | `StableValue` — JEP 502 (preview JDK 25 → 26) | `recordSet(name, thread)`, `recordRead(name, thread)`, `recordSupplierStart/End(name, thread)` | read-before-set (`NoSuchElementException`), double-set (lost update / `IllegalStateException`), reentrant `orElseSet` supplier, set-contention |
-| `StructuredTaskScopeMisuseDetector` | `StructuredTaskScope` — JEP 505 (preview JDK 25 → final JDK 26) | `recordScopeOpened(id, owner)`, `recordFork(id, subtaskId, thread)`, `recordJoin(id, thread)`, `recordResultRead(id, subtaskId, thread)`, `recordScopeClosed(id, thread)` | fork-after-join, `Subtask.get()` before join, owner-confinement (`WrongThreadException`), close-without-join (subtasks cancelled) |
+| `StableValueMisuseDetector` | `StableValue` — JEP 502 (preview JDK 25; renamed to Lazy Constants in JDK 26) | `recordSet(name, thread)`, `recordRead(name, thread)`, `recordSupplierStart/End(name, thread)` | read-before-set (`NoSuchElementException`), double-set (lost update / `IllegalStateException`), reentrant `orElseSet` supplier, set-contention |
+| `StructuredTaskScopeMisuseDetector` | `StructuredTaskScope` — JEP 505/525 (fifth preview JDK 25, sixth preview JDK 26) | `recordScopeOpened(id, owner)`, `recordFork(id, subtaskId, thread)`, `recordJoin(id, thread)`, `recordJoinTimeout(id, thread)` (1.8.0+), `recordTimeoutSwallowed(id, thread)` (1.8.0+), `recordResultRead(id, subtaskId, thread)`, `recordScopeClosed(id, thread)` | fork-after-join, `Subtask.get()` before join, owner-confinement (`WrongThreadException`), close-without-join, `Subtask.get()` after a join timeout (JDK 26 `Joiner.onTimeout()`), timeout-swallowing fallback with cancelled subtasks |
 | `GathererConcurrencyMisuseDetector` | Stream Gatherers — JEP 485 (final JDK 24) | `registerGatherer(name, hasCombiner, parallel)`, `recordIntegrate(name, thread)` | stateful gatherer on a parallel stream with no combiner (lost results), concurrent-integrator shared-state race |
+| `LazyConstantMisuseDetector` (1.8.0+) | `LazyConstant` — Lazy Constants, second preview JDK 26 (successor of `StableValue`) | `recordGet(name, thread)`, `recordComputeStart(name, thread)`, `recordComputeEnd(name, thread, result)` | reentrant supplier (`IllegalStateException`), null-producing supplier (NPE on JDK 26), computation running more than once (hand-rolled holder), non-deterministic supplier, compute convoy |
+| `FinalFieldMutationDetector` (1.8.0+) | JEP 500 — final-field mutation warnings, JDK 26 | `recordMutation(field, thread)`, `recordRead(field, thread)` | any reflective `final`-field write (HIGH — denied in a future JDK, JMM violation today); escalates to CRITICAL when foreign threads read the field or multiple threads write it |
+| `SharedKdfDetector` (1.8.0+) | `javax.crypto.KDF` — JEP 510, final JDK 25 | `recordAccess(kdf, algorithm, operation, thread)` | one KDF instance accessed from multiple threads — documented not thread-safe, silently derives wrong keys |
 
 ```java
-import se.deversity.asynctest.diagnostics.StableValueMisuseDetector;
-
-@AsyncTest(threads = 16, invocations = 50, detectAll = false)  // drive the contention
-void stableValueLazyInit() {
-    detector.recordSupplierStart("CONFIG", Thread.currentThread());
-    Config c = configHolderUnderTest();           // models StableValue.orElseSet(...)
-    detector.recordSupplierEnd("CONFIG", Thread.currentThread());
-    detector.recordRead("CONFIG", Thread.currentThread());
-}
-
-@AfterEach
-void assertNoMisuse() {
-    var report = detector.analyze();
-    assertFalse(report.hasIssues(), report::toString);   // shared field: private final ...Detector detector = new ...();
+@AsyncTest(threads = 16, invocations = 50)
+void lazyConfig() {
+    var detector = AsyncTestContext.lazyConstantMisuseDetector();
+    detector.recordGet("CONFIG", Thread.currentThread());
+    detector.recordComputeStart("CONFIG", Thread.currentThread());
+    Config c = loadConfig();                        // the supplier body
+    detector.recordComputeEnd("CONFIG", Thread.currentThread(), c);
 }
 ```
 
 Each `analyze()` returns a typed `*Report` with `hasIssues()`, per-category issue
 lists, and a `toString()` that includes a `📚 LEARNING` block — same shape as every
 other detector report.
+
+> **Virtual thread pinning is JDK-version-aware since 1.8.0**: `synchronized`/`Object.wait`
+> pinning events are annotated as no-longer-pinning on JDK 24+ (JEP 491) and class-init
+> waits on JDK 26+; blocking native (JNI/FFM) calls always pin. Use
+> `PinningReport.hasEffectivePinningIssues()` to ignore obsolete causes.
 
 ---
 

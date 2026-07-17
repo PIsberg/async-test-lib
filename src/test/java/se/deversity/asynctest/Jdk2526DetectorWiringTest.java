@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Verifies the three JDK 25/26 preview-era detectors are wired into the legacy
+ * Verifies the JDK 25/26 detectors (Phases 16 and 18) are wired into the legacy
  * {@link DetectorRegistry} — the path {@code ConcurrencyRunner} uses to produce the
  * {@code @AsyncTest} report. The SPI registry is covered separately by
  * {@code AllDetectorsSpiCoverageTest}; this test guards the fan-out wiring
@@ -16,17 +16,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class Jdk2526DetectorWiringTest {
 
     @Test
-    void detectAll_instantiatesAllThreeJdk2526Detectors() {
+    void detectAll_instantiatesAllJdk2526Detectors() {
         AsyncTestConfig cfg = AsyncTestConfig.builder().detectAll(true).build();
 
         assertTrue(cfg.detectStableValueMisuse);
         assertTrue(cfg.detectStructuredTaskScopeMisuse);
         assertTrue(cfg.detectGathererConcurrencyMisuse);
+        assertTrue(cfg.detectLazyConstantMisuse);
+        assertTrue(cfg.detectFinalFieldMutation);
+        assertTrue(cfg.detectSharedKdf);
 
         DetectorRegistry reg = new DetectorRegistry(cfg);
         assertNotNull(reg.stableValueMisuseDetector);
         assertNotNull(reg.structuredTaskScopeMisuseDetector);
         assertNotNull(reg.gathererConcurrencyMisuseDetector);
+        assertNotNull(reg.lazyConstantMisuseDetector);
+        assertNotNull(reg.finalFieldMutationDetector);
+        assertNotNull(reg.sharedKdfDetector);
     }
 
     @Test
@@ -36,22 +42,39 @@ class Jdk2526DetectorWiringTest {
                 .excludes(new DetectorType[]{
                         DetectorType.STABLE_VALUE_MISUSE,
                         DetectorType.STRUCTURED_TASK_SCOPE_MISUSE,
-                        DetectorType.GATHERER_CONCURRENCY_MISUSE})
+                        DetectorType.GATHERER_CONCURRENCY_MISUSE,
+                        DetectorType.LAZY_CONSTANT_MISUSE,
+                        DetectorType.FINAL_FIELD_MUTATION,
+                        DetectorType.SHARED_KDF})
                 .build();
 
         assertNull(new DetectorRegistry(cfg).stableValueMisuseDetector);
         assertNull(new DetectorRegistry(cfg).structuredTaskScopeMisuseDetector);
         assertNull(new DetectorRegistry(cfg).gathererConcurrencyMisuseDetector);
+        assertNull(new DetectorRegistry(cfg).lazyConstantMisuseDetector);
+        assertNull(new DetectorRegistry(cfg).finalFieldMutationDetector);
+        assertNull(new DetectorRegistry(cfg).sharedKdfDetector);
     }
 
     @Test
     void analyzeAll_isCleanWhenNoEventsRecorded() {
-        AsyncTestConfig cfg = AsyncTestConfig.builder().detectAll(true).build();
+        // UNCOMMITTED_CHANGES is excluded because its report embeds the names of
+        // dirty working-tree files — on a developer machine mid-change those names
+        // can legitimately contain "StableValue"/"StructuredTaskScope"/etc. and
+        // would fail the noneMatch below for reasons unrelated to this wiring.
+        AsyncTestConfig cfg = AsyncTestConfig.builder()
+                .detectAll(true)
+                .excludes(new DetectorType[]{DetectorType.UNCOMMITTED_CHANGES})
+                .build();
         DetectorRegistry reg = new DetectorRegistry(cfg);
-        // No record* calls made → the three detectors must contribute no findings.
+        // No record* calls made → the JDK 25/26 detectors must contribute no findings.
         assertTrue(reg.analyzeAll().stream()
                 .noneMatch(s -> s.contains("StableValue")
                         || s.contains("StructuredTaskScope")
-                        || s.contains("Gatherer")));
+                        || s.contains("Gatherer")
+                        || s.contains("LazyConstant")
+                        || s.contains("final field")
+                        || s.contains("SharedKdf")
+                        || s.contains("KDF")));
     }
 }

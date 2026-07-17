@@ -217,6 +217,11 @@
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/FileChannelPositionRaceDetectorTest.java</test_location>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.FinalFieldMutationDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/FinalFieldMutationDetectorTest.java</test_location>
+    </element>
     <element path="se.deversity.asynctest.diagnostics.ForkJoinPoolDetector">
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
@@ -261,6 +266,11 @@
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/JdbcConnectionSharedDetectorTest.java</test_location>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/LazyConstantMisuseDetectorTest.java</test_location>
     </element>
     <element path="se.deversity.asynctest.diagnostics.LazyInitRaceDetector">
       <coverage_goal>80</coverage_goal>
@@ -406,6 +416,11 @@
       <coverage_goal>80</coverage_goal>
       <frameworks>JUNIT_5</frameworks>
       <test_location>src/test/java/se/deversity/asynctest/diagnostics/SharedJsonMapperReconfigDetectorTest.java</test_location>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.SharedKdfDetector">
+      <coverage_goal>80</coverage_goal>
+      <frameworks>JUNIT_5</frameworks>
+      <test_location>src/test/java/se/deversity/asynctest/diagnostics/SharedKdfDetectorTest.java</test_location>
     </element>
     <element path="se.deversity.asynctest.diagnostics.SharedMatcherDetector">
       <coverage_goal>80</coverage_goal>
@@ -640,6 +655,10 @@
       <strategy>OTHER</strategy>
       <note>Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name sets are ConcurrentHashMap.newKeySet() and track only implicit-position accessors.</note>
     </element>
+    <element path="se.deversity.asynctest.diagnostics.FinalFieldMutationDetector">
+      <strategy>OTHER</strategy>
+      <note>Per-field state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().</note>
+    </element>
     <element path="se.deversity.asynctest.diagnostics.HighContentionAtomicDetector">
       <strategy>OTHER</strategy>
       <note>Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; counters are LongAdder; thread-id/name sets are ConcurrentHashMap.newKeySet().</note>
@@ -647,6 +666,10 @@
     <element path="se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector">
       <strategy>OTHER</strategy>
       <note>ConcurrentHashMap-backed JDBC-resource tracking; per-resource State holds ConcurrentHashMap.newKeySet() for accessing threads.</note>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector">
+      <strategy>OTHER</strategy>
+      <note>Per-constant state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id sets are ConcurrentHashMap.newKeySet(); reports are synchronized lists.</note>
     </element>
     <element path="se.deversity.asynctest.diagnostics.LockUpgradeDeadlockDetector">
       <strategy>OTHER</strategy>
@@ -683,6 +706,10 @@
     <element path="se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector">
       <strategy>OTHER</strategy>
       <note>Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; using-thread sets are ConcurrentHashMap.newKeySet(); violating mutations recorded in a CopyOnWriteArrayList.</note>
+    </element>
+    <element path="se.deversity.asynctest.diagnostics.SharedKdfDetector">
+      <strategy>OTHER</strategy>
+      <note>Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().</note>
     </element>
     <element path="se.deversity.asynctest.diagnostics.SharedMessageDigestDetector">
       <strategy>OTHER</strategy>

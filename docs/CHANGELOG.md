@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Phase 18: JDK 25/26 GA-era detectors
+Three new pipeline detectors (each with a `DetectorType` constant, deprecated `@AsyncTest`
+boolean flag, `AsyncTestContext` accessor, SPI factory, and example project):
+- `LazyConstantMisuseDetector` (`DetectorType.LAZY_CONSTANT_MISUSE`) — JDK 26 Lazy
+  Constants (second preview, successor of `StableValue`): reentrant suppliers
+  (`IllegalStateException`), null-producing suppliers (NPE on JDK 26), computations
+  running more than once in hand-rolled holders, non-deterministic suppliers, and
+  compute convoys. Example: `examples/117-lazy-constant-misuse`.
+- `FinalFieldMutationDetector` (`DetectorType.FINAL_FIELD_MUTATION`) — JEP 500 (JDK 26):
+  reflective `Field.set` on `final` fields, warned on JDK 26 and denied in a future
+  release; also a JMM final-field publication-guarantee violation today. Escalates to
+  CRITICAL when foreign threads read the mutated field or multiple threads write it.
+  Example: `examples/118-final-field-mutation`.
+- `SharedKdfDetector` (`DetectorType.SHARED_KDF`) — JEP 510 (JDK 25): one
+  `javax.crypto.KDF` instance shared across threads; the KDF javadoc documents the type
+  as not thread-safe, so concurrent `deriveKey`/`deriveData` calls can silently derive
+  wrong keys. Sibling of the `SHARED_MESSAGE_DIGEST` / `SHARED_STATEFUL_CRYPTO` family.
+  Example: `examples/119-shared-kdf`.
+
+### Changed — JDK 26 awareness in existing detectors
+- `StructuredTaskScopeMisuseDetector` — models the JDK 26 sixth preview (JEP 525):
+  new `recordJoinTimeout(scopeId, thread)` and `recordTimeoutSwallowed(scopeId, thread)`
+  events; new findings for `Subtask.get()` after a join timeout (CRITICAL) and for
+  `Joiner.onTimeout()` fallbacks returned while forked subtasks were cancelled mid-flight
+  (LOW warning).
+- `VirtualThreadPinningDetector` — JDK-version-aware pinning-cause classification:
+  `synchronized`/`Object.wait` events no longer pin on JDK 24+ (JEP 491) and class-init
+  waits no longer pin on JDK 26+; such events are kept but annotated as obsolete. New API:
+  `PinningCause`, `classifyOperation(op)`, `stillPinsOn(cause, jdkFeature)`,
+  `PinningReport.hasEffectivePinningIssues()` / `getObsoleteEventCount()`,
+  `PinningEventSnapshot.getCause()` / `isObsoleteOnCurrentJdk()`.
+
 ## [1.7.0-RC3] - 2026-07-17
 
 A detector-correctness release. Almost every change here fixes a detector that either missed

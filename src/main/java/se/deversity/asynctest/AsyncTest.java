@@ -1652,6 +1652,49 @@ public @interface AsyncTest {
 
     boolean detectSharedJsonMapperReconfig() default true;
 
+    /**
+     * Enable {@code LazyConstant} misuse detection (JDK 26 second preview — the renamed,
+     * simplified successor of the JDK 25 {@code StableValue} preview). Flags reentrant
+     * suppliers, null-producing suppliers (NPE on JDK 26), computations that run more than
+     * once, non-deterministic suppliers, and compute convoys. See
+     * {@link se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector}.
+     * @since 1.8.0
+     *
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#LAZY_CONSTANT_MISUSE} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectLazyConstantMisuse() default true;
+
+    /**
+     * Enable reflective final-field mutation detection (JEP 500, JDK 26). Flags
+     * {@code Field.set(...)} on {@code final} fields — warned on JDK 26, denied in a future
+     * release, and a JMM final-field publication-guarantee violation today. See
+     * {@link se.deversity.asynctest.diagnostics.FinalFieldMutationDetector}.
+     * @since 1.8.0
+     *
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#FINAL_FIELD_MUTATION} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectFinalFieldMutation() default true;
+
+    /**
+     * Enable shared {@code javax.crypto.KDF} detection (JEP 510, final JDK 25). KDF is
+     * documented as not thread-safe unless the provider says otherwise; concurrent
+     * {@code deriveKey}/{@code deriveData} calls can silently derive wrong keys. See
+     * {@link se.deversity.asynctest.diagnostics.SharedKdfDetector}.
+     * @since 1.8.0
+     *
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#SHARED_KDF} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectSharedKdf() default true;
+
     // ============= License Gating (Integration) =============
 
     /** Keygen Account ID. Defaults to System property 'keygen.account.id' if empty. */

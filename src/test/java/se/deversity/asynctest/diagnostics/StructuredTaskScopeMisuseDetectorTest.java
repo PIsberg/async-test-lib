@@ -178,4 +178,95 @@ class StructuredTaskScopeMisuseDetectorTest {
         assertTrue(str.contains("StructuredTaskScope"), str);
         assertTrue(str.contains("CRITICAL"), str);
     }
+
+    // ---- JDK 26 sixth preview: join timeout (Joiner.onTimeout) ----
+
+    @Test
+    void detectsResultReadAfterJoinTimeout() {
+        Thread owner = Thread.currentThread();
+        detector.recordScopeOpened("s", owner);
+        detector.recordFork("s", "a", owner);
+        detector.recordJoinTimeout("s", owner);          // join() hit its deadline
+        detector.recordResultRead("s", "a", owner);      // BUG: subtask was cancelled
+
+        var report = detector.analyze();
+        assertTrue(report.hasIssues());
+        assertEquals(1, report.getResultAfterTimeoutIssues().size());
+        String issue = report.getResultAfterTimeoutIssues().get(0);
+        assertTrue(issue.contains("timed out"), issue);
+        assertTrue(issue.contains("SUCCESS"), issue);
+        assertTrue(report.getResultBeforeJoinIssues().isEmpty(),
+                "timeout reads must not double-report as before-join reads");
+    }
+
+    @Test
+    void joinTimeout_countsAsJoin_forMissingJoinAndForkAfterJoin() {
+        Thread owner = Thread.currentThread();
+        detector.recordScopeOpened("s", owner);
+        detector.recordFork("s", "a", owner);
+        detector.recordJoinTimeout("s", owner);
+        detector.recordFork("s", "late", owner);         // fork after timed-out join
+        detector.recordScopeClosed("s", owner);
+
+        var report = detector.analyze();
+        assertEquals(1, report.getForkAfterJoinIssues().size());
+        assertTrue(report.getMissingJoinIssues().isEmpty(),
+                "a timed-out join is still a join — no missing-join report");
+    }
+
+    @Test
+    void joinTimeoutFromNonOwner_isConfinementViolation() throws Exception {
+        Thread owner = Thread.currentThread();
+        detector.recordScopeOpened("s", owner);
+        detector.recordFork("s", "a", owner);
+
+        Thread intruder = new Thread(() ->
+                detector.recordJoinTimeout("s", Thread.currentThread()), "intruder");
+        intruder.start();
+        intruder.join();
+
+        var report = detector.analyze();
+        assertFalse(report.getConfinementIssues().isEmpty());
+        assertTrue(report.getConfinementIssues().get(0).contains("intruder"));
+    }
+
+    @Test
+    void timeoutSwallowed_withCancelledSubtasks_isWarned() {
+        Thread owner = Thread.currentThread();
+        detector.recordScopeOpened("s", owner);
+        detector.recordFork("s", "a", owner);
+        detector.recordFork("s", "b", owner);
+        detector.recordTimeoutSwallowed("s", owner);     // onTimeout() returned a fallback
+
+        var report = detector.analyze();
+        assertEquals(1, report.getTimeoutSwallowedWarnings().size());
+        String warning = report.getTimeoutSwallowedWarnings().get(0);
+        assertTrue(warning.contains("2 forked subtask(s)"), warning);
+        assertFalse(report.hasIssues(),
+                "a swallowed timeout alone is a warning, not a correctness issue");
+        assertTrue(report.toString().contains("LOW"));
+    }
+
+    @Test
+    void timeoutSwallowed_withoutForks_isSilent() {
+        Thread owner = Thread.currentThread();
+        detector.recordScopeOpened("s", owner);
+        detector.recordTimeoutSwallowed("s", owner);
+
+        var report = detector.analyze();
+        assertTrue(report.getTimeoutSwallowedWarnings().isEmpty());
+        assertFalse(report.hasIssues());
+    }
+
+    @Test
+    void timeoutRecords_tolerateNullsAndUnknownScopes() {
+        assertDoesNotThrow(() -> {
+            detector.recordJoinTimeout(null, Thread.currentThread());
+            detector.recordJoinTimeout("unknown", null);
+            detector.recordJoinTimeout("never-opened", Thread.currentThread());
+            detector.recordTimeoutSwallowed(null, Thread.currentThread());
+            detector.recordTimeoutSwallowed("never-opened", Thread.currentThread());
+        });
+        assertFalse(detector.analyze().hasIssues());
+    }
 }

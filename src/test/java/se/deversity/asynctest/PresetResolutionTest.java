@@ -255,6 +255,9 @@ class PresetResolutionTest {
         @Override public boolean detectSharedIterator() { return def("detectSharedIterator"); }
         @Override public boolean detectHighContentionAtomic() { return def("detectHighContentionAtomic"); }
         @Override public boolean detectSharedJsonMapperReconfig() { return def("detectSharedJsonMapperReconfig"); }
+        @Override public boolean detectLazyConstantMisuse() { return def("detectLazyConstantMisuse"); }
+        @Override public boolean detectFinalFieldMutation() { return def("detectFinalFieldMutation"); }
+        @Override public boolean detectSharedKdf() { return def("detectSharedKdf"); }
         @Override public boolean enableBenchmarking() { return def("enableBenchmarking"); }
         @Override public double benchmarkRegressionThreshold() { return def("benchmarkRegressionThreshold"); }
         @Override public boolean failOnBenchmarkRegression() { return def("failOnBenchmarkRegression"); }

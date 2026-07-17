@@ -123,6 +123,9 @@ import se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector;
 import se.deversity.asynctest.diagnostics.SharedIteratorDetector;
 import se.deversity.asynctest.diagnostics.HighContentionAtomicDetector;
 import se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector;
+import se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector;
+import se.deversity.asynctest.diagnostics.FinalFieldMutationDetector;
+import se.deversity.asynctest.diagnostics.SharedKdfDetector;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICallersOnly;
 import se.deversity.vibetags.annotations.AICore;
@@ -306,6 +309,11 @@ public final class AsyncTestContext {
     final HighContentionAtomicDetector          highContentionAtomicDetector;
     final SharedJsonMapperReconfigDetector      sharedJsonMapperReconfigDetector;
 
+    // ---- Phase 18: JDK 25/26 GA-era concurrency detectors ----
+    final LazyConstantMisuseDetector            lazyConstantMisuseDetector;
+    final FinalFieldMutationDetector            finalFieldMutationDetector;
+    final SharedKdfDetector                     sharedKdfDetector;
+
     // ---- Agent-telemetry bridge target (1.7.0+) ----
     // Exposed via atomicityValidator() so se.deversity.asynctest.telemetry.TelemetryBridge
     // can route drained agent field-access events into the live per-test detector.
@@ -434,6 +442,10 @@ public final class AsyncTestContext {
         sharedIteratorDetector                 = registry.sharedIteratorDetector;
         highContentionAtomicDetector           = registry.highContentionAtomicDetector;
         sharedJsonMapperReconfigDetector       = registry.sharedJsonMapperReconfigDetector;
+        // Phase 18 (JDK 25/26 GA)
+        lazyConstantMisuseDetector             = registry.lazyConstantMisuseDetector;
+        finalFieldMutationDetector             = registry.finalFieldMutationDetector;
+        sharedKdfDetector                      = registry.sharedKdfDetector;
         // Agent-telemetry bridge target
         atomicityValidator                     = registry.atomicityValidator;
     }
@@ -2029,6 +2041,33 @@ public final class AsyncTestContext {
      */
     public static SharedJsonMapperReconfigDetector sharedJsonMapperReconfigDetector() {
         return require("detectSharedJsonMapperReconfig", c -> c.sharedJsonMapperReconfigDetector);
+    }
+
+    /**
+     * Returns the {@link LazyConstantMisuseDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLazyConstantMisuse = false}
+     * @since 1.8.0
+     */
+    public static LazyConstantMisuseDetector lazyConstantMisuseDetector() {
+        return require("detectLazyConstantMisuse", c -> c.lazyConstantMisuseDetector);
+    }
+
+    /**
+     * Returns the {@link FinalFieldMutationDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectFinalFieldMutation = false}
+     * @since 1.8.0
+     */
+    public static FinalFieldMutationDetector finalFieldMutationDetector() {
+        return require("detectFinalFieldMutation", c -> c.finalFieldMutationDetector);
+    }
+
+    /**
+     * Returns the {@link SharedKdfDetector} for the current test.
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedKdf = false}
+     * @since 1.8.0
+     */
+    public static SharedKdfDetector sharedKdfDetector() {
+        return require("detectSharedKdf", c -> c.sharedKdfDetector);
     }
 
     // ---- Helper ----

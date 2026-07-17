@@ -152,4 +152,97 @@ class VirtualThreadPinningDetectorTest {
         assertEquals(viaAnalyzePinning.hasPinningIssues(), viaAnalyze.hasPinningIssues());
         assertEquals(viaAnalyzePinning.toString(), viaAnalyze.toString());
     }
+
+    // ---- JDK-version-aware cause classification (JEP 491 / JDK 26) ----
+
+    @Test
+    void classifyOperation_recognizesMonitorCauses() {
+        assertEquals(VirtualThreadPinningDetector.PinningCause.MONITOR,
+                VirtualThreadPinningDetector.classifyOperation("synchronized block"));
+        assertEquals(VirtualThreadPinningDetector.PinningCause.MONITOR,
+                VirtualThreadPinningDetector.classifyOperation("Object.wait inside monitor"));
+        assertEquals(VirtualThreadPinningDetector.PinningCause.MONITOR,
+                VirtualThreadPinningDetector.classifyOperation("blocked in wait()"));
+    }
+
+    @Test
+    void classifyOperation_recognizesClassInitAndNativeCauses() {
+        assertEquals(VirtualThreadPinningDetector.PinningCause.CLASS_INIT,
+                VirtualThreadPinningDetector.classifyOperation("waiting for class init of Config"));
+        assertEquals(VirtualThreadPinningDetector.PinningCause.CLASS_INIT,
+                VirtualThreadPinningDetector.classifyOperation("<clinit> wait"));
+        assertEquals(VirtualThreadPinningDetector.PinningCause.NATIVE,
+                VirtualThreadPinningDetector.classifyOperation("blocking JNI call"));
+        assertEquals(VirtualThreadPinningDetector.PinningCause.NATIVE,
+                VirtualThreadPinningDetector.classifyOperation("FFM downcall"));
+    }
+
+    @Test
+    void classifyOperation_fallsBackToOther() {
+        assertEquals(VirtualThreadPinningDetector.PinningCause.OTHER,
+                VirtualThreadPinningDetector.classifyOperation("mystery blocking op"));
+        assertEquals(VirtualThreadPinningDetector.PinningCause.OTHER,
+                VirtualThreadPinningDetector.classifyOperation(null));
+    }
+
+    @Test
+    void stillPinsOn_isVersionAware() {
+        // synchronized pinned through JDK 23, fixed by JEP 491 in JDK 24
+        assertTrue(VirtualThreadPinningDetector.stillPinsOn(
+                VirtualThreadPinningDetector.PinningCause.MONITOR, 21));
+        assertTrue(VirtualThreadPinningDetector.stillPinsOn(
+                VirtualThreadPinningDetector.PinningCause.MONITOR, 23));
+        assertFalse(VirtualThreadPinningDetector.stillPinsOn(
+                VirtualThreadPinningDetector.PinningCause.MONITOR, 24));
+        assertFalse(VirtualThreadPinningDetector.stillPinsOn(
+                VirtualThreadPinningDetector.PinningCause.MONITOR, 26));
+
+        // class-init waits pinned through JDK 25, fixed in JDK 26
+        assertTrue(VirtualThreadPinningDetector.stillPinsOn(
+                VirtualThreadPinningDetector.PinningCause.CLASS_INIT, 25));
+        assertFalse(VirtualThreadPinningDetector.stillPinsOn(
+                VirtualThreadPinningDetector.PinningCause.CLASS_INIT, 26));
+
+        // native calls pin everywhere
+        assertTrue(VirtualThreadPinningDetector.stillPinsOn(
+                VirtualThreadPinningDetector.PinningCause.NATIVE, 26));
+        assertTrue(VirtualThreadPinningDetector.stillPinsOn(
+                VirtualThreadPinningDetector.PinningCause.OTHER, 26));
+    }
+
+    @Test
+    void snapshot_carriesCauseAndObsoleteFlag() throws Exception {
+        VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
+        detector.startMonitoring();
+
+        Thread.ofVirtual().name("vt-pin-test").start(() ->
+                detector.recordPinningEvent(Thread.currentThread(), "synchronized block")
+        ).join();
+
+        var report = detector.analyzePinning();
+        assertEquals(1, report.getEvents().size());
+        var event = report.getEvents().get(0);
+        assertEquals(VirtualThreadPinningDetector.PinningCause.MONITOR, event.getCause());
+        // The build baseline is Java 21 (< 24), but assert consistency with the
+        // running JDK rather than a hardcoded expectation:
+        boolean expectObsolete = Runtime.version().feature() >= 24;
+        assertEquals(expectObsolete, event.isObsoleteOnCurrentJdk());
+        assertEquals(expectObsolete ? 1 : 0, report.getObsoleteEventCount());
+        assertEquals(!expectObsolete, report.hasEffectivePinningIssues());
+        assertTrue(report.hasPinningIssues(), "legacy accessor keeps counting all events");
+    }
+
+    @Test
+    void nativeEvents_alwaysCountAsEffectivePinning() throws Exception {
+        VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
+        detector.startMonitoring();
+
+        Thread.ofVirtual().name("vt-native-test").start(() ->
+                detector.recordPinningEvent(Thread.currentThread(), "blocking JNI call")
+        ).join();
+
+        var report = detector.analyzePinning();
+        assertTrue(report.hasEffectivePinningIssues());
+        assertEquals(0, report.getObsoleteEventCount());
+    }
 }
