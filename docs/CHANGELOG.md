@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0-RC3] - 2026-07-17
+
+A detector-correctness release. Almost every change here fixes a detector that either missed
+a real bug or reported one that wasn't there — no public API changes, so RC2 consumers can
+upgrade in place. Expect **fewer false positives** and, in several cases, findings on code
+that previously passed.
+
+### Security
+- **JUnit XML report writer** — neutralize a CDATA breakout: a violation message containing
+  `]]>` could terminate the CDATA section early and inject arbitrary markup into the report
+  consumed by CI dashboards.
+- **Benchmark baseline store** — restrict Java deserialization to an allow-list filter,
+  closing an arbitrary-class-loading sink (CWE-502) in `BenchmarkComparator.readStore`.
+
+### Fixed — detectors that reported issues that weren't there
+- `SleepInLockDetector` — no longer mistakes the executor's internal `Worker` AQS for a user
+  lock, and now detects locks that are *actually held* rather than guessing from stack-frame
+  names.
+- `MemoryOrderingMonitor` — dropped a reordering rule that fired on ordinary, correct code.
+- `InterruptMonitor` — stops reporting a correctly-restored interrupt as swallowed.
+- `LivelockDetector` — only watches the test's own threads, and no longer starves a thread
+  that is legitimately `RUNNABLE`.
+- `LockOrderValidator` — derives lock edges from the locks actually held, instead of inferring
+  them from adjacency in a list.
+- `ConstructorSafetyValidator` — compares the accessing thread to the constructing thread,
+  rather than flagging any cross-thread access.
+
+### Fixed — detectors that missed real issues
+- `BusyWaitDetector` — now reports spin loops that never yield.
+- `OptimisticReadValidationDetector` — stops discarding evidence of reads that were never
+  validated.
+- `LockDowngradeDetector` — tracks read and write holds independently per thread.
+- `AtomicityValidator` — no longer loses violations to a concurrently mutated `ArrayList`.
+- `NotifyAllValidator` — detects a lost wakeup using evidence that outlives the waiting
+  threads.
+- `ABAProblemDetector` — recognizes the minimal `A → B → A` cycle instead of requiring three
+  changes.
+- `LockLeakDetector` / `ResourceLeakDetector` — lock and resource registration is now
+  idempotent, so evidence survives repeated registration.
+- `VirtualThreadContextLeakDetector` — `analyze()` is idempotent instead of accumulating
+  leaks across invocations.
+
+### Fixed — reporting and the failure gate
+- **Deadlock findings are now `CRITICAL`**, so `failOn = CRITICAL` trips on a deadlock.
+  Previously a detected deadlock could leave the test green. *If you rely on `failOn`, this
+  may newly fail tests that were passing — that is the bug being fixed.*
+- `ConcurrencyRunner` identifies a finding by its detector rather than by matching report
+  text, so findings are no longer mis-attributed when messages collide.
+- `DetectorRegistry` contains a throwing detector instead of losing the whole analysis sweep,
+  so one broken detector can't silently suppress every other finding.
+
+### Changed
+- Example version pins are realigned to the current release across all 200 example builds.
+  Examples resolve `mavenLocal()` before `mavenCentral()`, so a stale pin meant the example
+  silently tested an *old release from Central* rather than the code in this repo.
+- `docs/RELEASE.md` rewritten to describe the actual Maven Central pipeline; added a
+  `/release` skill that automates the release flow.
+- Dependency bumps: `junit-platform-testkit`, `spotbugs-maven-plugin`, `codeql-action`,
+  and VibeTags to `1.0.0-RC2`.
+
 ## [1.7.0-RC2] - 2026-07-08
 
 ### Added — JDK 25/26 detectors (Phase 16), now wired into the pipeline

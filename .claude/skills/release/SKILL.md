@@ -9,8 +9,8 @@ Releasing is tag-driven: pushing a `v*` tag triggers `.github/workflows/publish.
 builds, signs (GPG + keyless cosign), publishes to **Maven Central**, and creates the GitHub
 Release. Your job is everything *before* the tag — the tag is the point of no return.
 
-> `docs/RELEASE.md` is stale (it describes GitHub Packages as primary and Maven Central as
-> "future"). `publish.yml` is the source of truth. Prefer this skill over that doc.
+> `docs/RELEASE.md` is the human-readable equivalent of this skill and is kept in sync with
+> it. `publish.yml` remains the ultimate source of truth for what the tag triggers.
 
 ## 1. Preflight
 
@@ -33,17 +33,19 @@ grep -m1 '<version>' pom.xml
 git tag --sort=-v:refname | head -5
 ```
 
-Then **ask the user with AskUserQuestion** — never assume the bump. Offer four options
-computed from the current version, with the resulting tag in each description:
+If the user already named the version, skip the question and use it. Otherwise **ask with
+AskUserQuestion** — never assume the bump. Offer the options that make sense for the current
+version, with the resulting tag in each description (examples below assume a current version
+of `X.Y.0-RCn`):
 
-| Option | From `1.7.0-RC2` | When |
+| Option | Result | When |
 | --- | --- | --- |
-| Promote RC to final | `1.7.0` | current version is an RC and it's ready |
-| Next RC | `1.7.0-RC3` | more changes needed before final |
-| Minor | `1.8.0` | new detectors / backward-compatible features |
-| Major | `2.0.0` | breaking change to public API |
+| Promote RC to final | `X.Y.0` | current version is an RC and it's ready |
+| Next RC | `X.Y.0-RC(n+1)` | more changes needed before final |
+| Minor | `X.(Y+1).0` | new detectors / backward-compatible features |
+| Major | `(X+1).0.0` | breaking change to public API |
 
-Patch (`1.7.1`) applies when the current version is already final. Skip options that don't
+Patch (`X.Y.(Z+1)`) applies when the current version is already final. Skip options that don't
 make sense for the current version rather than offering nonsense.
 
 Sanity-check the answer: the tag `v<version>` must not already exist, and the version must
