@@ -142,7 +142,7 @@ simultaneously — so one makes progress while the rest wait.
 - **`PoliteRetryLockService.java`** — Buggy lock service with zero-delay retry + fixed version
 - **`PoliteRetryLockServiceTest.java`** — Sequential `@Test` methods that pass + `@AsyncTest`
   that triggers LivelockDetector
-- **`pom.xml`** — Maven dependencies (JUnit 5 + async-test-lib 1.3.0)
+- **`pom.xml`** — Maven dependencies (JUnit 5 + async-test-lib 1.7.0-RC2)
 
 ## Key Takeaways
 

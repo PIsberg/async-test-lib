@@ -121,7 +121,7 @@ the winner will release after completing. The circular-wait condition is impossi
 - **`BankTransferService.java`** — Buggy service with argument-order locking + fixed version
 - **`BankTransferServiceTest.java`** — Sequential `@Test` methods that pass + `@AsyncTest`
   that triggers DeadlockDetector
-- **`pom.xml`** — Maven dependencies (JUnit 5 + async-test-lib 1.3.0)
+- **`pom.xml`** — Maven dependencies (JUnit 5 + async-test-lib 1.7.0-RC2)
 
 ## Key Takeaways
 
