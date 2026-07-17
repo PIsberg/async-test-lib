@@ -210,6 +210,11 @@ public final class AsyncTestConfig {
     public final boolean detectHighContentionAtomic;
     public final boolean detectSharedJsonMapperReconfig;
 
+    // ---- Phase 18: JDK 25/26 GA-era concurrency detectors ----
+    public final boolean detectLazyConstantMisuse;
+    public final boolean detectFinalFieldMutation;
+    public final boolean detectSharedKdf;
+
     // ---- Benchmarking ----
     @AIFeatureFlag(flag = "async-test.benchmarking.enabled", defaultValue = false)
     public final boolean enableBenchmarking;
@@ -360,6 +365,10 @@ public final class AsyncTestConfig {
         detectSharedIterator            = b.detectSharedIterator;
         detectHighContentionAtomic      = b.detectHighContentionAtomic;
         detectSharedJsonMapperReconfig  = b.detectSharedJsonMapperReconfig;
+        // Phase 18 (JDK 25/26 GA)
+        detectLazyConstantMisuse        = b.detectLazyConstantMisuse;
+        detectFinalFieldMutation        = b.detectFinalFieldMutation;
+        detectSharedKdf                 = b.detectSharedKdf;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -547,6 +556,9 @@ public final class AsyncTestConfig {
             .detectSharedIterator(ann.detectSharedIterator())
             .detectHighContentionAtomic(ann.detectHighContentionAtomic())
             .detectSharedJsonMapperReconfig(ann.detectSharedJsonMapperReconfig())
+            .detectLazyConstantMisuse(ann.detectLazyConstantMisuse())
+            .detectFinalFieldMutation(ann.detectFinalFieldMutation())
+            .detectSharedKdf(ann.detectSharedKdf())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -699,6 +711,10 @@ public final class AsyncTestConfig {
         private boolean detectSharedIterator            = false;
         private boolean detectHighContentionAtomic      = false;
         private boolean detectSharedJsonMapperReconfig  = false;
+        // Phase 18 (JDK 25/26 GA)
+        private boolean detectLazyConstantMisuse        = false;
+        private boolean detectFinalFieldMutation        = false;
+        private boolean detectSharedKdf                 = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -840,6 +856,9 @@ public final class AsyncTestConfig {
         public Builder detectSharedIterator(boolean v)                 { detectSharedIterator = v; return this; }
         public Builder detectHighContentionAtomic(boolean v)           { detectHighContentionAtomic = v; return this; }
         public Builder detectSharedJsonMapperReconfig(boolean v)       { detectSharedJsonMapperReconfig = v; return this; }
+        public Builder detectLazyConstantMisuse(boolean v)             { detectLazyConstantMisuse = v; return this; }
+        public Builder detectFinalFieldMutation(boolean v)             { detectFinalFieldMutation = v; return this; }
+        public Builder detectSharedKdf(boolean v)                      { detectSharedKdf = v; return this; }
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
@@ -1132,6 +1151,13 @@ public final class AsyncTestConfig {
                     else detectHighContentionAtomic = false;
                 if (!excludes.contains(DetectorType.SHARED_JSON_MAPPER_RECONFIG)) detectSharedJsonMapperReconfig = true;
                     else detectSharedJsonMapperReconfig = false;
+                // Phase 18 (JDK 25/26 GA)
+                if (!excludes.contains(DetectorType.LAZY_CONSTANT_MISUSE)) detectLazyConstantMisuse = true;
+                    else detectLazyConstantMisuse = false;
+                if (!excludes.contains(DetectorType.FINAL_FIELD_MUTATION)) detectFinalFieldMutation = true;
+                    else detectFinalFieldMutation = false;
+                if (!excludes.contains(DetectorType.SHARED_KDF)) detectSharedKdf = true;
+                    else detectSharedKdf = false;
             } else {
                 // If detectAll is false, we still respect explicit enables,
                 // but we also apply excludes for consistency.
@@ -1251,6 +1277,10 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.SHARED_ITERATOR)) detectSharedIterator = false;
                 if (excludes.contains(DetectorType.HIGH_CONTENTION_ATOMIC)) detectHighContentionAtomic = false;
                 if (excludes.contains(DetectorType.SHARED_JSON_MAPPER_RECONFIG)) detectSharedJsonMapperReconfig = false;
+                // Phase 18 (JDK 25/26 GA)
+                if (excludes.contains(DetectorType.LAZY_CONSTANT_MISUSE)) detectLazyConstantMisuse = false;
+                if (excludes.contains(DetectorType.FINAL_FIELD_MUTATION)) detectFinalFieldMutation = false;
+                if (excludes.contains(DetectorType.SHARED_KDF)) detectSharedKdf = false;
             }
             return new AsyncTestConfig(this);
         }

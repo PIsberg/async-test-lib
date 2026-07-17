@@ -1,6 +1,6 @@
 # Detector Catalog
 
-`async-test-lib` includes **121 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
+`async-test-lib` includes **124 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
 
 ---
 
@@ -2640,14 +2640,13 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ---
 
-## JDK 25/26 Preview-Era Detectors (Phase 16 — wired into detectAll)
+## JDK 25/26 Detectors (Phases 16 & 18 — wired into detectAll)
 
-Three detectors target concurrency features introduced or finalized in **JDK 24–26**.
-Unlike the catalog above, these are **not** part of the `@AsyncTest` `detectAll`
-pipeline — a pipeline detector needs a `DetectorType` enum constant, and that enum is a
-locked file. They ship in `se.deversity.asynctest.diagnostics` and are used **directly**:
-instantiate, record events from your test body, call `analyze()`, and assert on the
-report. Each is implemented against `String` keys + `Thread` (no preview-API imports), so
+Six detectors target concurrency features introduced or finalized in **JDK 24–26**. All
+are part of the `@AsyncTest` `detectAll` pipeline (each has a `DetectorType` constant and
+an `AsyncTestContext` accessor) and can also be instantiated standalone: record events
+from your test body, call `analyze()`, and assert on the report. Each is implemented
+against `String` keys + `Thread` / plain `Object` instances (no preview-API imports), so
 it compiles and runs on the Java 21 baseline while modeling APIs that only exist on
 JDK 24/25/26.
 
@@ -2747,3 +2746,107 @@ JDK 24/25/26.
   // integrator calls d.recordIntegrate("running", Thread.currentThread()) per element
   assertTrue(d.analyze().hasIssues());   // fires once seen on >1 thread without a combiner
   ```
+
+### D. LazyConstant Misuse Detector (Phase 18, 1.8.0+)
+* **Class**: `LazyConstantMisuseDetector` · **JDK feature**: `LazyConstant` (Lazy Constants, second preview JDK 26 — renamed, simplified successor of `StableValue`)
+* **Severity**: `CRITICAL` (reentrant supplier) · `HIGH` (null value / repeat computation / non-determinism) · `LOW` (compute convoy)
+* **Description**: `LazyConstant.of(supplier)` computes at most once on first `get()`,
+  caches the result, and lets the JVM constant-fold it. The `StableValue` low-level
+  methods (`trySet`/`setOrThrow`/`orElseSet`) were removed; lazy collections moved to
+  `List.ofLazy`/`Map.ofLazy`; null values throw `NullPointerException`. The classic
+  mistakes migrate into the supplier — this detector flags them.
+* **Buggy Code**:
+  ```java
+  static final LazyConstant<Config> CONFIG =
+          LazyConstant.of(() -> maybeNullConfig());     // BUG: null → NPE on first get()
+
+  static final LazyConstant<Config> SELF =
+          LazyConstant.of(() -> SELF.get().refresh());  // BUG: reentrant → IllegalStateException
+  ```
+* **Fixed Code**:
+  ```java
+  static final LazyConstant<Config> CONFIG =
+          LazyConstant.of(() -> loadConfig());   // pure, non-null, deterministic, fast
+
+  Config c = CONFIG.get();                       // computes once, cached forever
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.lazyConstantMisuseDetector();   // or new LazyConstantMisuseDetector()
+  d.recordComputeStart("CONFIG", Thread.currentThread());
+  d.recordComputeEnd("CONFIG", Thread.currentThread(), null);   // null result → flagged
+  assertTrue(d.analyze().hasIssues());
+  ```
+
+### E. Final Field Mutation Detector (Phase 18, 1.8.0+)
+* **Class**: `FinalFieldMutationDetector` · **JDK feature**: JEP 500 — Warnings About Uses of Deep Reflection to Mutate Final Fields (JDK 26)
+* **Severity**: `HIGH` (any reflective final-field write) · `CRITICAL` (racing readers / concurrent mutators)
+* **Description**: JDK 26 warns on `Field.set(...)` of `final` fields
+  (`--illegal-final-field-mutation=warn`); a future release denies it. Independently of the
+  deprecation, a post-construction write to a `final` field voids the JMM final-field
+  publication guarantee: readers have no happens-before edge and may see the stale value
+  forever (`final` reads can be constant-folded by the JIT).
+* **Buggy Code**:
+  ```java
+  Field f = Config.class.getDeclaredField("maxRetries");
+  f.setAccessible(true);
+  f.setInt(config, 5);          // BUG: warn on JDK 26 → deny later; JMM violation today
+  ```
+* **Fixed Code**:
+  ```java
+  // Non-final (volatile if it must change), or constructor injection:
+  var config = new Config(5);
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.finalFieldMutationDetector();   // or new FinalFieldMutationDetector()
+  d.recordMutation("Config.maxRetries", Thread.currentThread());   // flagged (HIGH)
+  d.recordRead("Config.maxRetries", otherThread);                  // escalates (CRITICAL)
+  assertTrue(d.analyze().hasIssues());
+  ```
+
+### F. Shared KDF Detector (Phase 18, 1.8.0+)
+* **Class**: `SharedKdfDetector` · **JDK feature**: `javax.crypto.KDF` (JEP 510 — Key Derivation Function API, final JDK 25)
+* **Severity**: `HIGH`
+* **Description**: The `KDF` javadoc documents the type as **not thread-safe** unless the
+  provider says otherwise. Concurrent `deriveKey()`/`deriveData()` calls on one shared
+  instance can interleave provider state and silently derive wrong keys — no exception,
+  just a key that fails to match the peer's. Sibling of `SHARED_MESSAGE_DIGEST`,
+  `SHARED_SECURE_RANDOM`, and `SHARED_STATEFUL_CRYPTO`.
+* **Buggy Code**:
+  ```java
+  private final KDF hkdf = KDF.getInstance("HKDF-SHA256");   // BUG: one instance...
+
+  byte[] sessionKey(HKDFParameterSpec params) throws Exception {
+      return hkdf.deriveData(params);                         // ...hit by every request thread
+  }
+  ```
+* **Fixed Code**:
+  ```java
+  byte[] sessionKey(HKDFParameterSpec params) throws Exception {
+      KDF hkdf = KDF.getInstance("HKDF-SHA256");   // per call (cheap) — or ThreadLocal<KDF>
+      return hkdf.deriveData(params);
+  }
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.sharedKdfDetector();   // or new SharedKdfDetector()
+  d.recordAccess(kdf, "HKDF-SHA256", "deriveKey", threadA);
+  d.recordAccess(kdf, "HKDF-SHA256", "deriveKey", threadB);   // 2 threads → flagged
+  assertTrue(d.analyze().hasIssues());
+  ```
+
+### JDK 26 additions to existing detectors (1.8.0+)
+
+* **`StructuredTaskScopeMisuseDetector`** — the JDK 26 sixth preview (JEP 525) adds
+  `Joiner.onTimeout()`. New events: `recordJoinTimeout(scopeId, thread)` (join hit its
+  deadline; subtasks cancelled) and `recordTimeoutSwallowed(scopeId, thread)` (a custom
+  `onTimeout()` returned a fallback). New findings: **`Subtask.get()` after a join
+  timeout** (`CRITICAL` — the subtask is not in `SUCCESS` state, `get()` throws) and
+  **timeout-swallowing fallback with cancelled subtasks** (`LOW` warning — side effects
+  may be half-applied).
+* **`VirtualThreadPinningDetector`** — now JDK-version-aware. Events are classified as
+  `MONITOR` (no longer pins on JDK 24+, JEP 491), `CLASS_INIT` (no longer pins on
+  JDK 26+), `NATIVE` (always pins), or `OTHER`. Obsolete events stay in the report but
+  are annotated; use `PinningReport.hasEffectivePinningIssues()` /
+  `getObsoleteEventCount()` to filter.

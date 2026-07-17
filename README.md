@@ -123,7 +123,7 @@ After the run, the **detector registry** analyses what was observed and reports 
 
 ## Detectors
 
-121 detectors enabled by default with a single flag, or cherry-pick:
+124 detectors enabled by default with a single flag, or cherry-pick:
 
 ```java
 // Everything on (default for bare @AsyncTest)
@@ -146,7 +146,7 @@ After the run, the **detector registry** analyses what was observed and reports 
 | **Core** | Deadlocks, livelocks, memory-model visibility (`volatile` gaps) |
 | **Race conditions** | Unsynchronized field access, non-atomic compound ops (`get`+`set` on `Atomic*`) |
 | **Common JDK types** | `ArrayList`, `HashMap`, `StringBuilder`, `Calendar`, `SimpleDateFormat`, `DecimalFormat`, `Matcher`, `MessageDigest`, `TimeZone`, `Timer` shared across threads |
-| **Virtual threads** | Thread pinning (`synchronized` inside virtual thread), CPU-bound tasks, carrier exhaustion, `ScopedValue` misuse, context leak |
+| **Virtual threads** | Thread pinning (JDK-version-aware: `synchronized` pins only before JDK 24/JEP 491, class-init waits before JDK 26, native calls always), CPU-bound tasks, carrier exhaustion, `ScopedValue` misuse, context leak |
 | **Locks & monitors** | Boxed-primitive lock (`synchronized(Integer)`), public lock exposure, lock leak, nested monitor lockout, `StampedLock` optimistic-read without `validate()`, lock downgrade |
 | **Lifecycle** | Executor never shut down, thread leak, `Future` result ignored, `CountDownLatch` misuse, `CyclicBarrier` trip count wrong |
 | **Concurrency primitives** | `CompletableFuture` chain issues, blocking on common pool, `ForkJoinTask` blocking, `Exchanger`, `Phaser`, `Semaphore` misuse |
@@ -154,19 +154,23 @@ After the run, the **detector registry** analyses what was observed and reports 
 | **Environment** | Uncommitted Git changes (reproducibility gate) |
 | **Phase 13** | Daemon-thread hygiene, illegal `notify*()`, shared `SecureRandom`, shared `WeakHashMap`/`IdentityHashMap`, shared JDBC `Connection`/`Statement`/`ResultSet` |
 | **Phase 14** (new) | Shared stateful crypto (`Cipher`/`Mac`/`Signature`), non-atomic `ConcurrentMap` check-then-act, shared `Deflater`/`Inflater`, constructor `this`-escape, cached `ThreadLocalRandom` used off-thread |
-| **Phase 16 — JDK 25/26 preview** (new) | `StableValue` misuse (read-before-set / double-set / reentrant `orElseSet`), `StructuredTaskScope` lifecycle (fork-after-join, result-before-join, owner-confinement, missing join), parallel-`Gatherer` without a combiner |
+| **Phase 16 — JDK 25/26 preview** | `StableValue` misuse (read-before-set / double-set / reentrant `orElseSet`), `StructuredTaskScope` lifecycle (fork-after-join, result-before-join, owner-confinement, missing join, and JDK 26 join-timeout hazards), parallel-`Gatherer` without a combiner |
+| **Phase 17 — shared stateful JDK objects** | Shared `ByteBuffer`, `CharsetEncoder`/`Decoder`, `Checksum`, `Deflater`, iterators, `FileChannel` implicit-position races, high-contention `Atomic*` advisories, JSON-mapper reconfiguration after concurrent use |
+| **Phase 18 — JDK 25/26 GA** (new) | `LazyConstant` misuse (JDK 26 Lazy Constants: reentrant / null-producing / repeat-running suppliers), reflective final-field mutation (JEP 500 — warned on JDK 26, denied later, JMM violation today), shared `javax.crypto.KDF` (JEP 510 — documented not thread-safe) |
 
 Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
 
-> **JDK 25/26 detectors are wired into the pipeline** (Phase 16). `StableValueMisuseDetector`,
-> `StructuredTaskScopeMisuseDetector`, and `GathererConcurrencyMisuseDetector` are part of
+> **JDK 25/26 detectors are wired into the pipeline** (Phases 16 and 18). They are part of
 > `detectAll` and the `Preset.ALL` / `STRICT` bundles, each with a `DetectorType` constant
-> (`STABLE_VALUE_MISUSE`, `STRUCTURED_TASK_SCOPE_MISUSE`, `GATHERER_CONCURRENCY_MISUSE`) and
-> an `@AsyncTest` flag (`detectStableValueMisuse`, `detectStructuredTaskScopeMisuse`,
-> `detectGathererConcurrencyMisuse`). Record events against them via the
-> `AsyncTestContext.stableValueMisuseDetector()` / `structuredTaskScopeMisuseDetector()` /
-> `gathererConcurrencyMisuseDetector()` accessors; findings surface through the standard
-> report and `failOn` gate. See [docs/DETECTOR_CATALOG.md](docs/DETECTOR_CATALOG.md).
+> (`STABLE_VALUE_MISUSE`, `STRUCTURED_TASK_SCOPE_MISUSE`, `GATHERER_CONCURRENCY_MISUSE`,
+> `LAZY_CONSTANT_MISUSE`, `FINAL_FIELD_MUTATION`, `SHARED_KDF`) and a deprecated `@AsyncTest`
+> boolean flag. Record events against them via the matching `AsyncTestContext` accessors
+> (`stableValueMisuseDetector()` … `lazyConstantMisuseDetector()`,
+> `finalFieldMutationDetector()`, `sharedKdfDetector()`); findings surface through the
+> standard report and `failOn` gate. `VirtualThreadPinningDetector` is JDK-version-aware
+> since 1.8.0: `synchronized`/`Object.wait` events are annotated as no-longer-pinning on
+> JDK 24+ (JEP 491), class-init waits on JDK 26+. See
+> [docs/DETECTOR_CATALOG.md](docs/DETECTOR_CATALOG.md).
 
 ---
 

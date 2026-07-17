@@ -9,11 +9,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
- * Detects misuse of the Java 25 {@code StructuredTaskScope} API (JEP 505 —
- * Structured Concurrency, fifth preview in JDK 25, on track to finalize in
- * JDK 26).
+ * Detects misuse of the {@code StructuredTaskScope} API (JEP 505/525 —
+ * Structured Concurrency; fifth preview in JDK 25, sixth preview in JDK 26).
  *
- * <p>The JDK 25 API reshapes structured concurrency around a single factory and
+ * <p>The JDK 26 sixth preview adds {@code Joiner.onTimeout()} (fires when
+ * {@code join()} hits its configured deadline; throws {@code TimeoutException}
+ * by default but can be overridden to return a fallback), renames
+ * {@code anySuccessfulResultOrThrow()} to {@code anySuccessfulOrThrow()}, and
+ * switches {@code allSuccessfulOrThrow()}/{@code allUntil(...)} from streams to
+ * lists.
+ *
+ * <p>The JDK 25+ API reshapes structured concurrency around a single factory and
  * a pluggable {@code Joiner}:
  * <pre>{@code
  * try (var scope = StructuredTaskScope.open(Joiner.<String>allSuccessfulOrThrow())) {
@@ -45,6 +51,13 @@ import se.deversity.vibetags.annotations.AITestDriven;
  *   <li><b>Missing join</b> — the scope is closed without {@code join()} having been
  *       called after at least one {@code fork()}. Closing cancels the still-running
  *       subtasks; their work (and any side effects) is abandoned.</li>
+ *   <li><b>Result read after timeout</b> (JDK 26) — {@code Subtask.get()} after
+ *       {@code join()} timed out. The subtask was cancelled and is not in
+ *       {@code SUCCESS} state; {@code get()} throws. An {@code onTimeout()}
+ *       fallback must not read per-subtask results.</li>
+ *   <li><b>Timeout swallowed</b> (JDK 26, warning) — a custom
+ *       {@code Joiner.onTimeout()} returned a fallback while forked subtasks were
+ *       cancelled mid-flight; their side effects may be half-applied.</li>
  * </ul>
  *
  * <p><strong>Usage:</strong>
@@ -76,6 +89,7 @@ public class StructuredTaskScopeMisuseDetector {
         final long ownerThreadId;
         final String ownerThreadName;
         volatile boolean joined = false;
+        volatile boolean timedOut = false;
         final AtomicInteger forkCount = new AtomicInteger(0);
 
         ScopeState(long ownerThreadId, String ownerThreadName) {
@@ -91,6 +105,8 @@ public class StructuredTaskScopeMisuseDetector {
     private final List<String> resultBeforeJoinReports = Collections.synchronizedList(new ArrayList<>());
     private final List<String> confinementReports      = Collections.synchronizedList(new ArrayList<>());
     private final List<String> missingJoinReports      = Collections.synchronizedList(new ArrayList<>());
+    private final List<String> resultAfterTimeoutReports = Collections.synchronizedList(new ArrayList<>());
+    private final List<String> timeoutSwallowedWarnings  = Collections.synchronizedList(new ArrayList<>());
 
     private final AtomicInteger totalForks = new AtomicInteger(0);
     private final AtomicInteger totalScopes = new AtomicInteger(0);
@@ -156,19 +172,80 @@ public class StructuredTaskScopeMisuseDetector {
 
     /**
      * Record a {@code Subtask.get()} call. Flags reads that happen before the
-     * scope has been joined.
+     * scope has been joined, and reads that happen after {@code join()} timed out
+     * (the subtask state is not {@code SUCCESS}, so {@code get()} throws).
      */
     public void recordResultRead(String scopeId, String subtaskId, Thread thread) {
         if (scopeId == null || subtaskId == null || thread == null) return;
         ScopeState s = scopes.get(scopeId);
         if (s == null) return;
 
-        if (!s.joined) {
+        if (s.timedOut) {
+            resultAfterTimeoutReports.add(
+                "Thread " + thread.getName() + " (id=" + thread.threadId() + "): "
+                + "Subtask.get() for '" + subtaskId + "' on scope '" + scopeId + "' after join() "
+                + "timed out. The subtask was cancelled by the timeout and is not in SUCCESS "
+                + "state — get() throws IllegalStateException; an onTimeout() fallback must not "
+                + "read per-subtask results."
+            );
+        } else if (!s.joined) {
             resultBeforeJoinReports.add(
                 "Thread " + thread.getName() + " (id=" + thread.threadId() + "): "
                 + "Subtask.get() for '" + subtaskId + "' on scope '" + scopeId + "' before join() "
                 + "completed. The subtask may not have finished; this throws IllegalStateException "
                 + "rather than returning a partial result."
+            );
+        }
+    }
+
+    /**
+     * Record that {@code scope.join()} hit its configured deadline (JDK 26 sixth
+     * preview: the {@code Joiner.onTimeout()} hook fires; the default
+     * implementation throws {@code TimeoutException}). Still-running subtasks are
+     * cancelled. Marks the scope as no longer accepting result reads.
+     *
+     * @since 1.8.0
+     */
+    public void recordJoinTimeout(String scopeId, Thread thread) {
+        if (scopeId == null || thread == null) return;
+        ScopeState s = scopes.get(scopeId);
+        if (s == null) return;
+
+        if (thread.threadId() != s.ownerThreadId) {
+            confinementReports.add(
+                "Thread " + thread.getName() + " (id=" + thread.threadId() + "): "
+                + "join() timeout observed on scope '" + scopeId + "' from a non-owner thread "
+                + "(owner='" + s.ownerThreadName + "', id=" + s.ownerThreadId + "). join() must "
+                + "be called by the owning thread; this throws WrongThreadException."
+            );
+        }
+        s.timedOut = true;
+        s.joined = true;   // join() returned (exceptionally) — the scope accepts no more work
+    }
+
+    /**
+     * Record that a custom {@code Joiner.onTimeout()} override returned a fallback
+     * result instead of throwing (JDK 26 sixth preview). Legitimate, but recorded
+     * as a warning when subtasks were cancelled mid-flight: their side effects may
+     * be half-applied, and the fallback must not depend on their state.
+     *
+     * @since 1.8.0
+     */
+    public void recordTimeoutSwallowed(String scopeId, Thread thread) {
+        if (scopeId == null || thread == null) return;
+        ScopeState s = scopes.get(scopeId);
+        if (s == null) return;
+
+        s.timedOut = true;
+        s.joined = true;
+        int pending = s.forkCount.get();
+        if (pending > 0) {
+            timeoutSwallowedWarnings.add(
+                "Scope '" + scopeId + "' (owner='" + s.ownerThreadName + "'): a custom "
+                + "Joiner.onTimeout() returned a fallback result while " + pending
+                + " forked subtask(s) were cancelled mid-flight. Their side effects may be "
+                + "half-applied — make sure the fallback does not depend on subtask state, "
+                + "and that cancelled subtasks are idempotent."
             );
         }
     }
@@ -203,6 +280,8 @@ public class StructuredTaskScopeMisuseDetector {
             new ArrayList<>(resultBeforeJoinReports),
             new ArrayList<>(confinementReports),
             new ArrayList<>(missingJoinReports),
+            new ArrayList<>(resultAfterTimeoutReports),
+            new ArrayList<>(timeoutSwallowedWarnings),
             totalScopes.get(),
             totalForks.get()
         );
@@ -216,6 +295,8 @@ public class StructuredTaskScopeMisuseDetector {
         private final List<String> resultBeforeJoinIssues;
         private final List<String> confinementIssues;
         private final List<String> missingJoinIssues;
+        private final List<String> resultAfterTimeoutIssues;
+        private final List<String> timeoutSwallowedWarnings;
         private final int totalScopes;
         private final int totalForks;
 
@@ -224,12 +305,16 @@ public class StructuredTaskScopeMisuseDetector {
                 List<String> resultBeforeJoinIssues,
                 List<String> confinementIssues,
                 List<String> missingJoinIssues,
+                List<String> resultAfterTimeoutIssues,
+                List<String> timeoutSwallowedWarnings,
                 int totalScopes,
                 int totalForks) {
             this.forkAfterJoinIssues = forkAfterJoinIssues;
             this.resultBeforeJoinIssues = resultBeforeJoinIssues;
             this.confinementIssues = confinementIssues;
             this.missingJoinIssues = missingJoinIssues;
+            this.resultAfterTimeoutIssues = resultAfterTimeoutIssues;
+            this.timeoutSwallowedWarnings = timeoutSwallowedWarnings;
             this.totalScopes = totalScopes;
             this.totalForks = totalForks;
         }
@@ -239,19 +324,24 @@ public class StructuredTaskScopeMisuseDetector {
             return !forkAfterJoinIssues.isEmpty()
                 || !resultBeforeJoinIssues.isEmpty()
                 || !confinementIssues.isEmpty()
-                || !missingJoinIssues.isEmpty();
+                || !missingJoinIssues.isEmpty()
+                || !resultAfterTimeoutIssues.isEmpty();
         }
 
-        public List<String> getForkAfterJoinIssues()    { return Collections.unmodifiableList(forkAfterJoinIssues); }
-        public List<String> getResultBeforeJoinIssues() { return Collections.unmodifiableList(resultBeforeJoinIssues); }
-        public List<String> getConfinementIssues()      { return Collections.unmodifiableList(confinementIssues); }
-        public List<String> getMissingJoinIssues()      { return Collections.unmodifiableList(missingJoinIssues); }
-        public int          getTotalScopes()            { return totalScopes; }
-        public int          getTotalForks()             { return totalForks; }
+        public List<String> getForkAfterJoinIssues()      { return Collections.unmodifiableList(forkAfterJoinIssues); }
+        public List<String> getResultBeforeJoinIssues()   { return Collections.unmodifiableList(resultBeforeJoinIssues); }
+        public List<String> getConfinementIssues()        { return Collections.unmodifiableList(confinementIssues); }
+        public List<String> getMissingJoinIssues()        { return Collections.unmodifiableList(missingJoinIssues); }
+        /** @since 1.8.0 */
+        public List<String> getResultAfterTimeoutIssues() { return Collections.unmodifiableList(resultAfterTimeoutIssues); }
+        /** @since 1.8.0 */
+        public List<String> getTimeoutSwallowedWarnings() { return Collections.unmodifiableList(timeoutSwallowedWarnings); }
+        public int          getTotalScopes()              { return totalScopes; }
+        public int          getTotalForks()               { return totalForks; }
 
         @Override
         public String toString() {
-            if (!hasIssues()) {
+            if (!hasIssues() && timeoutSwallowedWarnings.isEmpty()) {
                 return "StructuredTaskScopeMisuseReport: No StructuredTaskScope misuse detected";
             }
 
@@ -259,12 +349,16 @@ public class StructuredTaskScopeMisuseDetector {
 
             if (!confinementIssues.isEmpty()
                 || !forkAfterJoinIssues.isEmpty()
-                || !resultBeforeJoinIssues.isEmpty()) {
+                || !resultBeforeJoinIssues.isEmpty()
+                || !resultAfterTimeoutIssues.isEmpty()) {
                 sb.append(IssueSeverity.CRITICAL.format())
                   .append(": StructuredTaskScope lifecycle violated (will throw at runtime)\n");
-            } else {
+            } else if (!missingJoinIssues.isEmpty()) {
                 sb.append(IssueSeverity.HIGH.format())
                   .append(": StructuredTaskScope subtasks abandoned (missing join)\n");
+            } else {
+                sb.append(IssueSeverity.LOW.format())
+                  .append(": StructuredTaskScope timeout-handling warnings\n");
             }
 
             sb.append("  Scopes=").append(totalScopes)
@@ -274,6 +368,8 @@ public class StructuredTaskScopeMisuseDetector {
             appendSection(sb, "Subtask.get() before join (IllegalStateException)", resultBeforeJoinIssues);
             appendSection(sb, "Owner-confinement violation (WrongThreadException)", confinementIssues);
             appendSection(sb, "Scope closed without join (subtasks cancelled)", missingJoinIssues);
+            appendSection(sb, "Subtask.get() after join timeout (subtask cancelled, not SUCCESS)", resultAfterTimeoutIssues);
+            appendSection(sb, "onTimeout() fallback with cancelled subtasks (side effects half-applied)", timeoutSwallowedWarnings);
 
             sb.append("\n\n").append("=".repeat(60));
             sb.append("\n").append(getLearningContent());
@@ -292,7 +388,7 @@ public class StructuredTaskScopeMisuseDetector {
 
         private static String getLearningContent() {
             return """
-                📚 LEARNING: StructuredTaskScope (Java 25, JEP 505)
+                📚 LEARNING: StructuredTaskScope (Java 25/26, JEP 505/525)
 
                 Structured concurrency ties the lifetime of concurrent subtasks to a
                 lexical scope, so a fan-out cannot outlive the method that started it.
@@ -310,6 +406,12 @@ public class StructuredTaskScopeMisuseDetector {
                   ✗ Subtask.get() before join() → IllegalStateException (partial result)
                   ✗ fork()/join() off-owner    → WrongThreadException (scope is confined)
                   ✗ close() without join()     → running subtasks are cancelled, work lost
+                  ✗ Subtask.get() after a join timeout → subtask cancelled, get() throws
+
+                Timeouts (JDK 26 sixth preview):
+                  join() with a deadline fires Joiner.onTimeout() — TimeoutException by
+                  default. An override may return a fallback, but cancelled subtasks'
+                  side effects may be half-applied and their results are unreadable.
 
                 Order is always: open → fork* → join → get* → close (try-with-resources).
                 """;

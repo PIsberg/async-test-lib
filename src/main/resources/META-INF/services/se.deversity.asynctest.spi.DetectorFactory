@@ -167,3 +167,8 @@ se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$FileChannelPositionR
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedIterator
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$HighContentionAtomic
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedJsonMapperReconfig
+
+# Phase 18 - JDK 25/26 GA-era concurrency detectors
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$LazyConstantMisuse
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$FinalFieldMutation
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedKdf

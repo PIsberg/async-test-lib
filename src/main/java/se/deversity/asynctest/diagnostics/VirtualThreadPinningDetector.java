@@ -10,12 +10,23 @@ import se.deversity.vibetags.annotations.AITestDriven;
 /**
  * Detects virtual thread pinning issues.
  *
- * <p>Virtual threads can be "pinned" to their carrier platform threads when they encounter
- * certain blocking operations, primarily:
+ * <p>Virtual threads are "pinned" to their carrier platform threads when they block
+ * inside certain constructs. <strong>What pins depends on the JDK version:</strong>
  * <ul>
- *   <li>{@code synchronized} blocks or methods</li>
- *   <li>Native method calls that block</li>
+ *   <li><b>{@code synchronized} blocks/methods and {@code Object.wait()}</b> — pinned
+ *       up to JDK 23; <em>no longer pin since JDK 24</em> (JEP 491: Synchronize Virtual
+ *       Threads without Pinning).</li>
+ *   <li><b>Waiting for class initialization</b> ({@code <clinit>} on another thread) —
+ *       pinned up to JDK 25; <em>no longer pins since JDK 26</em> (virtual threads now
+ *       unmount while waiting for class init).</li>
+ *   <li><b>Blocking native calls</b> (JNI / FFM downcalls) — still pin on all JDK
+ *       versions.</li>
  * </ul>
+ *
+ * <p>This detector classifies each recorded event by cause and JDK version: events whose
+ * cause no longer pins on the running JDK are kept in the report but annotated as
+ * obsolete, so tests written against JDK 21–23 behavior don't report phantom pinning on
+ * JDK 24+.
  *
  * <p>Pinned virtual threads lose their scalability advantage because they hold onto
  * carrier threads that could otherwise be used by other virtual threads.
@@ -52,12 +63,68 @@ import se.deversity.vibetags.annotations.AITestDriven;
 )
 public class VirtualThreadPinningDetector {
 
+    /**
+     * Classification of what caused a virtual thread to pin. Determines whether the
+     * event still pins on the running JDK version.
+     *
+     * @since 1.8.0
+     */
+    public enum PinningCause {
+        /** {@code synchronized} / monitor / {@code Object.wait()} — no longer pins since JDK 24 (JEP 491). */
+        MONITOR,
+        /** Waiting for another thread's class initialization — no longer pins since JDK 26. */
+        CLASS_INIT,
+        /** Blocking native call (JNI / FFM downcall) — pins on all JDK versions. */
+        NATIVE,
+        /** Unrecognized description — conservatively treated as still pinning. */
+        OTHER
+    }
+
+    /**
+     * Classifies a caller-supplied blocking-operation description.
+     *
+     * @since 1.8.0
+     */
+    public static PinningCause classifyOperation(String blockingOperation) {
+        if (blockingOperation == null) return PinningCause.OTHER;
+        String op = blockingOperation.toLowerCase(java.util.Locale.ROOT);
+        if (op.contains("synchronized") || op.contains("monitor") || op.contains("object.wait")
+                || op.contains("wait()")) {
+            return PinningCause.MONITOR;
+        }
+        if (op.contains("clinit") || op.contains("class init") || op.contains("class-init")
+                || op.contains("static initializer")) {
+            return PinningCause.CLASS_INIT;
+        }
+        if (op.contains("native") || op.contains("jni") || op.contains("ffm")
+                || op.contains("foreign")) {
+            return PinningCause.NATIVE;
+        }
+        return PinningCause.OTHER;
+    }
+
+    /**
+     * Whether the given cause still pins a virtual thread on the given JDK feature
+     * version (e.g. {@code 21}, {@code 24}, {@code 26}).
+     *
+     * @since 1.8.0
+     */
+    public static boolean stillPinsOn(PinningCause cause, int jdkFeatureVersion) {
+        return switch (cause) {
+            case MONITOR    -> jdkFeatureVersion < 24;  // JEP 491 (JDK 24)
+            case CLASS_INIT -> jdkFeatureVersion < 26;  // JDK 26 unmounts on class-init waits
+            case NATIVE, OTHER -> true;
+        };
+    }
+
     private static class PinningEvent {
         final long virtualThreadId;
         final String virtualThreadName;
         final long startTimeNanos;
         final String blockingOperation;
         final StackTraceElement[] stackTrace;
+        final PinningCause cause;
+        final boolean obsoleteOnCurrentJdk;
 
         PinningEvent(long virtualThreadId, String virtualThreadName,
                      String blockingOperation, StackTraceElement[] stackTrace) {
@@ -66,6 +133,8 @@ public class VirtualThreadPinningDetector {
             this.startTimeNanos = System.nanoTime();
             this.blockingOperation = blockingOperation;
             this.stackTrace = stackTrace;
+            this.cause = classifyOperation(blockingOperation);
+            this.obsoleteOnCurrentJdk = !stillPinsOn(this.cause, Runtime.version().feature());
         }
 
         long getDurationMillis() {
@@ -142,7 +211,9 @@ public class VirtualThreadPinningDetector {
                     event.virtualThreadName,
                     event.blockingOperation,
                     event.getDurationMillis(),
-                    event.stackTrace
+                    event.stackTrace,
+                    event.cause,
+                    event.obsoleteOnCurrentJdk
                 ));
             }
         }
@@ -271,6 +342,28 @@ public class VirtualThreadPinningDetector {
             return virtualThreadSupported && !events.isEmpty();
         }
 
+        /**
+         * Indicates whether pinning that still applies on the running JDK was observed.
+         * Events whose cause no longer pins ({@code synchronized} on JDK 24+ per JEP 491,
+         * class-init waits on JDK 26+) are excluded.
+         *
+         * @return true if any recorded event still pins on the current JDK
+         * @since 1.8.0
+         */
+        public boolean hasEffectivePinningIssues() {
+            return virtualThreadSupported
+                && events.stream().anyMatch(e -> !e.isObsoleteOnCurrentJdk());
+        }
+
+        /**
+         * Returns how many recorded events no longer pin on the running JDK.
+         *
+         * @since 1.8.0
+         */
+        public long getObsoleteEventCount() {
+            return events.stream().filter(PinningEventSnapshot::isObsoleteOnCurrentJdk).count();
+        }
+
         @Override
         public String toString() {
             if (!virtualThreadSupported) {
@@ -289,12 +382,23 @@ public class VirtualThreadPinningDetector {
               .append(maxPinnedCount)
               .append(")\n");
 
+            long obsolete = getObsoleteEventCount();
+            if (obsolete > 0) {
+                sb.append("  Note: ").append(obsolete)
+                  .append(" event(s) no longer pin on JDK ")
+                  .append(Runtime.version().feature())
+                  .append(" (synchronized/Object.wait stopped pinning in JDK 24 per JEP 491; ")
+                  .append("class-init waits stopped pinning in JDK 26) — annotated below.\n");
+            }
+
             for (int i = 0; i < Math.min(5, events.size()); i++) {
                 PinningEventSnapshot event = events.get(i);
                 sb.append("\n  [").append(i + 1).append("] ")
                   .append(event.threadName)
                   .append(" (id=").append(event.threadId).append(")")
                   .append("\n      Blocking operation: ").append(event.blockingOperation)
+                  .append(event.isObsoleteOnCurrentJdk()
+                          ? " [no longer pins on this JDK]" : "")
                   .append("\n      Duration: ").append(event.durationMillis).append("ms");
 
                 if (event.stackTrace != null && event.stackTrace.length > 0) {
@@ -328,14 +432,39 @@ public class VirtualThreadPinningDetector {
         private final String blockingOperation;
         private final long durationMillis;
         private final StackTraceElement[] stackTrace;
+        private final PinningCause cause;
+        private final boolean obsoleteOnCurrentJdk;
 
         PinningEventSnapshot(long threadId, String threadName, String blockingOperation,
-                            long durationMillis, StackTraceElement[] stackTrace) {
+                            long durationMillis, StackTraceElement[] stackTrace,
+                            PinningCause cause, boolean obsoleteOnCurrentJdk) {
             this.threadId = threadId;
             this.threadName = threadName;
             this.blockingOperation = blockingOperation;
             this.durationMillis = durationMillis;
             this.stackTrace = stackTrace;
+            this.cause = cause;
+            this.obsoleteOnCurrentJdk = obsoleteOnCurrentJdk;
+        }
+
+        /**
+         * Returns the classified cause of this pinning event.
+         *
+         * @since 1.8.0
+         */
+        public PinningCause getCause() {
+            return cause;
+        }
+
+        /**
+         * Whether this event's cause no longer pins on the JDK the test ran on
+         * ({@code synchronized}/{@code Object.wait} on JDK 24+ per JEP 491, class-init
+         * waits on JDK 26+).
+         *
+         * @since 1.8.0
+         */
+        public boolean isObsoleteOnCurrentJdk() {
+            return obsoleteOnCurrentJdk;
         }
 
         /**

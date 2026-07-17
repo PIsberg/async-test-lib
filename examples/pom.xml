@@ -125,5 +125,8 @@
         <module>114-stable-value-misuse</module>
         <module>115-structured-task-scope-misuse</module>
         <module>116-gatherer-parallel-misuse</module>
+        <module>117-lazy-constant-misuse</module>
+        <module>118-final-field-mutation</module>
+        <module>119-shared-kdf</module>
     </modules>
 </project>

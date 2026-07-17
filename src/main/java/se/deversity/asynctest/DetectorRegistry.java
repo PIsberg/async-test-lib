@@ -121,6 +121,9 @@ import se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector;
 import se.deversity.asynctest.diagnostics.SharedIteratorDetector;
 import se.deversity.asynctest.diagnostics.HighContentionAtomicDetector;
 import se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector;
+import se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector;
+import se.deversity.asynctest.diagnostics.FinalFieldMutationDetector;
+import se.deversity.asynctest.diagnostics.SharedKdfDetector;
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
@@ -311,6 +314,11 @@ final class DetectorRegistry {
     final HighContentionAtomicDetector          highContentionAtomicDetector;
     final SharedJsonMapperReconfigDetector      sharedJsonMapperReconfigDetector;
 
+    // ---- Phase 18: JDK 25/26 GA-era concurrency detectors ----
+    final LazyConstantMisuseDetector            lazyConstantMisuseDetector;
+    final FinalFieldMutationDetector            finalFieldMutationDetector;
+    final SharedKdfDetector                     sharedKdfDetector;
+
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
      * Detectors whose flag is {@code false} are set to {@code null} and incur
@@ -486,6 +494,10 @@ final class DetectorRegistry {
         sharedIteratorDetector           = cfg.detectSharedIterator           ? new SharedIteratorDetector()           : null;
         highContentionAtomicDetector     = cfg.detectHighContentionAtomic     ? new HighContentionAtomicDetector()     : null;
         sharedJsonMapperReconfigDetector = cfg.detectSharedJsonMapperReconfig ? new SharedJsonMapperReconfigDetector() : null;
+        // ---- Phase 18: JDK 25/26 GA-era concurrency detectors ----
+        lazyConstantMisuseDetector       = cfg.detectLazyConstantMisuse       ? new LazyConstantMisuseDetector()       : null;
+        finalFieldMutationDetector       = cfg.detectFinalFieldMutation       ? new FinalFieldMutationDetector()       : null;
+        sharedKdfDetector                = cfg.detectSharedKdf                ? new SharedKdfDetector()                : null;
     }
 
     /**
@@ -911,6 +923,17 @@ final class DetectorRegistry {
         ifIssue(sharedJsonMapperReconfigDetector,
                 SharedJsonMapperReconfigDetector::analyze,
                 SharedJsonMapperReconfigDetector.Report::hasIssues, out);
+
+        // ---- Phase 18: JDK 25/26 GA-era concurrency detectors ----
+        ifIssue(lazyConstantMisuseDetector,
+                LazyConstantMisuseDetector::analyze,
+                LazyConstantMisuseDetector.LazyConstantMisuseReport::hasIssues, out);
+        ifIssue(finalFieldMutationDetector,
+                FinalFieldMutationDetector::analyze,
+                FinalFieldMutationDetector.FinalFieldMutationReport::hasIssues, out);
+        ifIssue(sharedKdfDetector,
+                SharedKdfDetector::analyze,
+                SharedKdfDetector.Report::hasIssues, out);
 
         return out;
     }

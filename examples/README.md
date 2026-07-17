@@ -115,11 +115,15 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 | 114 | [StableValue Misuse](114-stable-value-misuse/) | `StableValueMisuseDetector` *(standalone, JDK 25/26)* | `StableValue` (JEP 502) read before set (`NoSuchElementException`) or set twice (lost update) | 🔴 Critical |
 | 115 | [StructuredTaskScope Misuse](115-structured-task-scope-misuse/) | `StructuredTaskScopeMisuseDetector` *(standalone, JDK 25/26)* | `StructuredTaskScope.open(Joiner)` (JEP 505) lifecycle broken — fork-after-join, result-before-join, owner-confinement, missing join | 🔴 Critical |
 | 116 | [Gatherer Parallel Misuse](116-gatherer-parallel-misuse/) | `GathererConcurrencyMisuseDetector` *(standalone, JDK 24+)* | Stateful `Gatherer` (JEP 485) on a parallel stream with no combiner — per-thread states can't merge, results lost | 🟠 High |
+| 117 | [LazyConstant Misuse](117-lazy-constant-misuse/) | `LazyConstantMisuseDetector` *(JDK 26)* | `LazyConstant` (Lazy Constants, 2nd preview) supplier returns null (NPE), re-enters itself, or runs more than once in a hand-rolled holder | 🔴 Critical |
+| 118 | [Final Field Mutation](118-final-field-mutation/) | `FinalFieldMutationDetector` *(JEP 500, JDK 26)* | Reflective `Field.set` on a `final` field — warned on JDK 26, denied in a future release, voids the JMM final-field publication guarantee today | 🔴 Critical |
+| 119 | [Shared KDF](119-shared-kdf/) | `SharedKdfDetector` *(JEP 510, JDK 25)* | One `javax.crypto.KDF` instance shared across threads — documented not thread-safe, silently derives wrong keys | 🟡 High |
 
-> Examples 114–116 use **standalone** JDK 25/26 detectors — they are not part of the
-> `@AsyncTest` `detectAll` pipeline (that requires a `DetectorType` enum constant, and the
-> enum is a locked file). Each test instantiates the detector directly, records events, and
-> asserts on `analyze()`. They depend on the in-progress build, so install the parent to
+> Examples 114–119 target JDK 24–26 concurrency features. The detectors work off recorded
+> `String`-key + `Thread` events, so they compile and run on the Java 21 baseline while
+> modeling APIs that only exist on newer JDKs. As of 1.7.0 they are wired into the
+> `@AsyncTest` pipeline (`DetectorType.STABLE_VALUE_MISUSE` … `SHARED_KDF`) and can also be
+> instantiated standalone. They depend on the in-progress build, so install the parent to
 > `mavenLocal` first (`mvn -f ../../pom.xml install -DskipTests -Dlicense.mock.mode=true`).
 
 ## Phase 7: High-Level Concurrency Patterns (New!)
@@ -673,13 +677,13 @@ void testWorker() {
 
 ---
 
-## JDK 25/26 Preview-Era Examples (Standalone Detectors)
+## JDK 25/26 Examples
 
-Examples **114–116** target concurrency features introduced or finalized in JDK 24–26.
-The detectors are standalone — instantiate, record events, call `analyze()` — because
-wiring one into the `@AsyncTest` pipeline requires a `DetectorType` enum constant and that
-enum is a locked file. Each detector is implemented against `String` keys + `Thread`, so it
+Examples **114–119** target concurrency features introduced or finalized in JDK 24–26.
+Each detector is implemented against `String` keys + `Thread` (or `Object` instances), so it
 compiles and runs on the Java 21 baseline while modeling APIs that exist only on JDK 24/25/26.
+All of them are wired into the `@AsyncTest` pipeline via `DetectorType` constants and can
+also be instantiated standalone — instantiate, record events, call `analyze()`.
 
 ### 114 — StableValue Misuse (JEP 502)
 **What**: `StableValue<T>` is a deferred-immutable holder, settable at most once and then
@@ -721,6 +725,47 @@ results) and concurrent-integrator shared-state races.
 var d = new GathererConcurrencyMisuseDetector();
 d.registerGatherer("running", /*hasCombiner*/ false, /*parallel*/ true);
 // integrator: d.recordIntegrate("running", Thread.currentThread());
+assertTrue(d.analyze().hasIssues());
+```
+
+### 117 — LazyConstant Misuse (JDK 26, Lazy Constants 2nd preview)
+**What**: `LazyConstant.of(supplier)` — the renamed, simplified `StableValue` — computes at
+most once on first `get()` and rejects null. Detects reentrant suppliers
+(`IllegalStateException`), null-producing suppliers (NPE on JDK 26), hand-rolled holders
+whose computation runs more than once, non-deterministic suppliers, and compute convoys.
+
+**Detect**:
+```java
+var d = new LazyConstantMisuseDetector();
+d.recordComputeStart("CONFIG", Thread.currentThread());
+d.recordComputeEnd("CONFIG", Thread.currentThread(), null);   // null result → flagged
+assertTrue(d.analyze().hasIssues());
+```
+
+### 118 — Final Field Mutation (JEP 500, JDK 26)
+**What**: JDK 26 warns on reflective `Field.set` of `final` fields and a future release
+denies it. The JMM's final-field publication guarantee only covers constructor writes —
+reflective writers race every reader, who may see the stale value forever. Detects any
+mutation (HIGH), escalating when foreign threads read the field or multiple threads write
+it (CRITICAL).
+
+**Detect**:
+```java
+var d = new FinalFieldMutationDetector();
+d.recordMutation("Config.MAX_RETRIES", Thread.currentThread());   // flagged
+assertTrue(d.analyze().hasIssues());
+```
+
+### 119 — Shared KDF (JEP 510, JDK 25)
+**What**: `javax.crypto.KDF` is documented not thread-safe; concurrent
+`deriveKey()`/`deriveData()` on one instance can interleave provider state and silently
+derive wrong keys. Detects any KDF instance accessed from more than one thread.
+
+**Detect**:
+```java
+var d = new SharedKdfDetector();
+d.recordAccess(kdf, "HKDF-SHA256", "deriveKey", threadA);
+d.recordAccess(kdf, "HKDF-SHA256", "deriveKey", threadB);   // 2 threads → flagged
 assertTrue(d.analyze().hasIssues());
 ```
 

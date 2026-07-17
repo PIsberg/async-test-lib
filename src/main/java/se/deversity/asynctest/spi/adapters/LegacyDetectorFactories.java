@@ -122,6 +122,9 @@ import se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector;
 import se.deversity.asynctest.diagnostics.SharedIteratorDetector;
 import se.deversity.asynctest.diagnostics.HighContentionAtomicDetector;
 import se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector;
+import se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector;
+import se.deversity.asynctest.diagnostics.FinalFieldMutationDetector;
+import se.deversity.asynctest.diagnostics.SharedKdfDetector;
 import se.deversity.asynctest.spi.Detector;
 import se.deversity.asynctest.spi.DetectorFactory;
 
@@ -1145,6 +1148,30 @@ public final class LegacyDetectorFactories {
         @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectSharedJsonMapperReconfig; }
         @Override public Detector create(AsyncTestConfig c) {
             return new LegacyDetectorAdapter<>(new SharedJsonMapperReconfigDetector(), DetectorType.SHARED_JSON_MAPPER_RECONFIG, "SharedJsonMapperReconfig");
+        }
+    }
+
+    public static final class LazyConstantMisuse implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.LAZY_CONSTANT_MISUSE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectLazyConstantMisuse; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new LazyConstantMisuseDetector(), DetectorType.LAZY_CONSTANT_MISUSE, "LazyConstantMisuse");
+        }
+    }
+
+    public static final class FinalFieldMutation implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.FINAL_FIELD_MUTATION; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectFinalFieldMutation; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new FinalFieldMutationDetector(), DetectorType.FINAL_FIELD_MUTATION, "FinalFieldMutation");
+        }
+    }
+
+    public static final class SharedKdf implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.SHARED_KDF; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectSharedKdf; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new SharedKdfDetector(), DetectorType.SHARED_KDF, "SharedKdf");
         }
     }
 }
