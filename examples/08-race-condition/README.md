@@ -128,7 +128,7 @@ with the new value. The race window is eliminated.
 - **`InventoryService.java`** — Buggy service with TOCTOU race + fixed CAS version
 - **`InventoryServiceTest.java`** — Sequential `@Test` methods that pass + `@AsyncTest`
   that triggers RaceConditionDetector
-- **`pom.xml`** — Maven dependencies (JUnit 5 + async-test-lib 1.3.0)
+- **`pom.xml`** — Maven dependencies (JUnit 5 + async-test-lib 1.7.0-RC2)
 
 ## Key Takeaways
 

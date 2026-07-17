@@ -1,251 +1,179 @@
 # Release Process
 
-## Automated Release via GitHub Actions
+Releases are **tag-driven**. Pushing a `v*` tag triggers
+[`.github/workflows/publish.yml`](../.github/workflows/publish.yml), which builds, signs, and
+publishes to **Maven Central**, then creates the GitHub Release. Everything before the tag is
+preparation; the tag itself is the point of no return.
 
-The project uses GitHub Actions to automatically publish releases when you push a version tag.
+> Working in Claude Code? Run the `/release` skill (`.claude/skills/release/SKILL.md`) — it
+> automates every step below, including the version bump and the preflight checks. This
+> document is the manual equivalent, and the explanation of *why* each step exists.
 
-### How to Release
+## What the tag actually triggers
 
-#### 1. Update Version in pom.xml
+On a `v*` tag push, `publish.yml`:
 
-Before releasing, update the version in `pom.xml`:
+1. Builds and tests on JDK 21 (Temurin).
+2. Imports the GPG key and runs `mvn --batch-mode clean deploy -P release`. The `release`
+   profile activates `maven-gpg-plugin`, which signs the artifacts at the `verify` phase.
+3. Uploads via `central-publishing-maven-plugin`, configured with `autoPublish=true` and
+   `waitUntil=published` — **no manual portal action is required**, and nothing stops the
+   release once validation passes.
+4. Signs each JAR with keyless cosign (Sigstore, via OIDC), producing `.bundle` files.
+5. Creates the GitHub Release with the three JARs and their cosign bundles.
 
-```xml
-<version>1.6.0</version>  <!-- Change from 1.1.0 -->
-```
+Required repository secrets: `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`,
+`MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE`.
 
-Follow semantic versioning:
-- MAJOR.MINOR.PATCH (e.g., 1.1.0, 1.1.0, 2.0.0)
+There is no `<distributionManagement>` in `pom.xml` — the Central plugin handles publication.
+The library is **not** published to GitHub Packages.
 
-#### 2. Commit and Tag
+## Versioning
+
+Semantic versioning, with `-RCn` for release candidates:
+
+- **MAJOR** (`2.0.0`) — breaking change to public API. That surface is broad: `@AsyncTest`
+  attributes, `AsyncTestContext`, the `Detector` / `DetectorFactory` SPI, `Formatter`,
+  `Violation`, and `AsyncTestListener` are all consumer-facing (see `CLAUDE.md`).
+- **MINOR** (`1.8.0`) — new detectors or backward-compatible features.
+- **PATCH** (`1.7.1`) — bug fixes, including detector false-positive fixes.
+- **RC** (`1.8.0-RC1`) — pre-release for validation. RCs go to Central like any other version
+  and cannot be re-cut once uploaded.
+
+## Where the version lives
+
+`pom.xml` is **canonical**. These must all move together:
+
+| File | What |
+| --- | --- |
+| `pom.xml` | `<version>` — canonical |
+| `gradle.properties` | `version=` — the Gradle build reads it from here |
+| `consumer-fixture/pom.xml` | own `<version>` + `<async-test.version>` |
+| `consumer-fixture/build.gradle.kts` | `asyncTestVersion` |
+| `README.md` | Maven + Gradle install snippets |
+| `.claude/SKILL.md` | Maven + Gradle install snippets |
+| `examples/*/pom.xml` | `<async-test-lib.version>` (115 files) |
+| `examples/*/build.gradle.kts` | `val asyncTestVersion` (85 files) |
+
+`bash .claude/skills/release/bump-version.sh <version>` rewrites all of them.
+
+**The example pins are load-bearing, not cosmetic.** Examples resolve `mavenLocal()` before
+`mavenCentral()`, and CI runs `./gradlew publishToMavenLocal` before building them. An example
+pinned at anything other than the current version silently resolves that **old release from
+Maven Central** and tests code that is not in this repo — the example passes while proving
+nothing about the current build. Keep them aligned.
+
+Deliberately **not** rewritten by the bump script:
+
+- `docs/CHANGELOG.md` version headings — that is history.
+- Prose stating a *minimum* version ("requires async-test-lib 1.7.0+") — semantically a floor,
+  not a pin.
+
+## Releasing
+
+### 1. Preflight
+
+On `main`, clean tree, not behind `origin/main`:
 
 ```bash
-# Commit version change
-git add pom.xml
-git commit -m "Release version 1.1.0"
+git switch main && git fetch origin && git status -sb
+git status --porcelain     # must be empty
+```
 
-# Create annotated tag (required for release)
-git tag -a v1.6.0 -m "Release version 1.1.0"
+A modified `CLAUDE.md` with an empty content diff is VibeTags CRLF noise — restore it, don't
+commit it.
 
-# Push both commits and tags
+### 2. Bump the version
+
+```bash
+bash .claude/skills/release/bump-version.sh 1.7.0
+```
+
+### 3. Update the changelog
+
+In `docs/CHANGELOG.md`, turn `## [Unreleased]` into `## [<version>] - <YYYY-MM-DD>` and add a
+fresh empty `## [Unreleased]` above it. Keep the
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) section names.
+
+### 4. Verify locally
+
+The tag publishes, so a red build after tagging means a burned version. Run what CI runs:
+
+```bash
+mvn --batch-mode clean verify "-Dlicense.mock.mode=true"
+mvn --batch-mode checkstyle:check pmd:check spotbugs:check
+```
+
+Local quirks:
+
+- Quote `-D` args in PowerShell, or Maven parses them as lifecycle phases.
+- Local runs need `-Dlicense.mock.mode=true`; CI mocks automatically via the `CI` env var.
+- The full suite always runs — Surefire ignores `-Dtest=` filters here.
+
+To exercise the examples against the staged library the way CI does:
+
+```bash
+./gradlew publishToMavenLocal -x test
+CI=true ./gradlew -p examples test --parallel --continue
+```
+
+### 5. Tag and push
+
+```bash
+git add -A
+git commit -m "chore(release): 1.7.0"
+git tag -a v1.7.0 -m "Release 1.7.0"
 git push origin main
-git push origin v1.6.0
+git push origin v1.7.0      # triggers the publish
 ```
 
-#### 3. Automatic Publishing
+Push the commit **before** the tag, so the workflow builds a commit that exists on `main`.
 
-The GitHub Actions workflow (`.github/workflows/publish.yml`) will:
-1. Detect the new tag
-2. Build and test the project
-3. Publish the JAR to GitHub Packages
-4. Create a GitHub Release with:
-   - async-test-lib-1.6.0.jar (main library)
-   - async-test-lib-1.6.0-sources.jar (source code)
-   - async-test-lib-1.6.0-javadoc.jar (API documentation)
-
-#### 4. Verify the Release
-
-Check GitHub Releases: https://github.com/PIsberg/async-test-lib/releases
-
-You should see:
-- Release notes with version and installation instructions
-- Three downloadable artifacts
-- Link to Maven package repository
-
-## Manual Release (If Needed)
-
-If automated release fails, you can publish manually:
-
-### Prerequisites
+### 6. Verify the release
 
 ```bash
-# Set GitHub credentials for Maven
-export GITHUB_ACTOR=PIsberg
-export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+gh run watch "$(gh run list --workflow=publish.yml --limit 1 --json databaseId -q '.[0].databaseId')"
+gh release view v1.7.0
 ```
 
-### Build and Deploy
+Maven Central takes ~15–30 minutes to surface the artifact at
+<https://repo1.maven.org/maven2/se/deversity/async-test-lib/async-test-lib/>.
+
+Verify a cosign signature:
 
 ```bash
-# Build the project
-mvn clean verify
-
-# Deploy to GitHub Packages
-mvn deploy
-
-# Create release notes
-# Then manually create release on GitHub
+cosign verify-blob --bundle async-test-lib-1.7.0.jar.bundle \
+  --certificate-identity-regexp 'https://github.com/PIsberg/async-test-lib' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  async-test-lib-1.7.0.jar
 ```
 
-## Distribution Channels
+## When a release fails
 
-### GitHub Packages (Primary)
+Fix forward. Which recovery applies depends on whether the Central upload succeeded.
 
-Configured in `pom.xml` under `<distributionManagement>`.
-
-Users add to their `pom.xml`:
-```xml
-<repository>
-    <id>github</id>
-    <url>https://repo1.maven.org/maven2</url>
-</repository>
-
-<dependency>
-    <groupId>se.deversity.async-test-lib</groupId>
-    <artifactId>async-test-lib</artifactId>
-    <version>1.6.0</version>
-</dependency>
-```
-
-### Maven Central (Future)
-
-To publish to Maven Central:
-
-1. Register at https://central.sonatype.com/
-2. Create JIRA ticket with groupId approval
-3. Configure `pom.xml` with Maven Central distributor
-4. Sign artifacts with GPG
-5. Update GitHub Actions to publish to Central
-
-### JCenter / Bintray (Legacy)
-
-These services are being sunset. Focus on Maven Central and GitHub Packages.
-
-## Artifact Contents
-
-### async-test-lib-1.6.0.jar
-
-- Compiled library classes
-- All 114 detectors
-- JUnit 5 extension
-- Manifest with version info
-
-### async-test-lib-1.6.0-sources.jar
-
-- Complete Java source code
-- Includes JavaDoc comments
-- Easy IDE integration (download sources)
-
-### async-test-lib-1.6.0-javadoc.jar
-
-- Full API documentation
-- Parameter descriptions
-- Usage examples
-- Integration with IDE tooltips
-
-## Version Numbering
-
-Semantic Versioning (https://semver.org/):
-
-- **MAJOR** (1.x.x): Breaking API changes
-  - Example: Changing @AsyncTest parameter names
-  
-- **MINOR** (x.1.x): New features, backward compatible
-  - Example: Adding new detector parameter
-  
-- **PATCH** (x.x.1): Bug fixes only
-  - Example: Fixing false positive in race detection
-
-## Release Checklist
-
-Before pushing a release tag:
-
-- [ ] Update `pom.xml` version
-- [ ] Run full test suite: `mvn clean test`
-- [ ] Run code coverage: `mvn jacoco:report`
-- [ ] Verify coverage >= 60%
-- [ ] Update CHANGELOG.md with new features
-- [ ] Update README.md if needed
-- [ ] Check for deprecation warnings
-- [ ] Test manual installation:
-  ```bash
-  mvn clean install
-  # Then use in another project
-  ```
-- [ ] Create release notes (included in tag message)
-- [ ] Git commit and tag
-- [ ] Push commits and tag
-- [ ] Verify GitHub Actions publish succeeds
-- [ ] Download and test artifacts locally
-
-## Maintaining the Project
-
-### Regular Updates
-
-1. **Monthly**: Update dependencies
-   ```bash
-   mvn versions:display-dependency-updates
-   mvn versions:display-plugin-updates
-   ```
-
-2. **Quarterly**: Review and update JUnit versions as they release
-
-3. **Annually**: Review and update build plugins
-
-### Monitoring
-
-- Watch GitHub issues for bug reports
-- Monitor test results in Actions
-- Track code coverage trends
-- Keep dependencies up-to-date
-
-## Example Release Session
+**Failed before the Central upload** (compile, test, GPG import, egress block) — the version is
+untouched and the tag can be moved:
 
 ```bash
-# 1. Verify all tests pass
-mvn clean test
-
-# 2. Update version
-sed -i 's/<version>1.1.0<\/version>/<version>1.1.0<\/version>/' pom.xml
-
-# 3. Commit version
-git add pom.xml
-git commit -m "Prepare release 1.1.0"
-
-# 4. Tag release
-git tag -a v1.6.0 -m "Release 1.1.0 - Bug fixes for deadlock detection"
-
-# 5. Push to trigger CI/CD
-git push origin main
-git push origin v1.6.0
-
-# 6. Monitor build at: https://github.com/PIsberg/async-test-lib/actions
-
-# 7. Check release at: https://github.com/PIsberg/async-test-lib/releases
+git tag -d v1.7.0
+git push origin :refs/tags/v1.7.0
+# commit the fix, then re-tag and re-push
 ```
 
-## Rollback
+**Failed after the Central upload succeeded** — the version is **burned**. Central does not
+permit re-releasing a version, and consumers may already have resolved it. Do not retry the
+same number; bump to the next patch or RC and release that.
 
-If a release has critical issues:
+An `ECONNREFUSED` in the workflow is `harden-runner` blocking an egress host, not a network
+flake. Add the host to `allowed-endpoints` in `publish.yml`.
+
+## Maintenance
 
 ```bash
-# Remove the tag
-git tag -d v1.6.0
-git push origin :refs/tags/v1.6.0
-
-# Delete the release on GitHub (manually)
-# Re-run the automated process with fixes
-
-# Or create a patch release
-# v1.6.0 -> v1.0.2
+mvn versions:display-dependency-updates
+mvn versions:display-plugin-updates
 ```
 
-## FAQ
-
-**Q: How do I publish to Maven Central?**
-A: See "Maven Central (Future)" section above. Requires SONATYPE account and additional configuration.
-
-**Q: Can I publish snapshots for testing?**
-A: Yes, update version to `1.1.0-SNAPSHOT` and run `mvn deploy`. Snapshots go to separate repository.
-
-**Q: What if the GitHub Actions workflow fails?**
-A: Check the workflow run logs. Common issues:
-- Compilation errors (fix and re-tag)
-- Test failures (fix and re-tag)
-- Network issues (retry)
-
-**Q: How do I deprecate an old version?**
-A: Create a new release with deprecation notice. Users should update. No automated mechanism needed.
-
-**Q: Can I have multiple active versions?**
-A: Yes! Maintain multiple branches (main for latest, release-1.0.x for 1.0 line). Release from each branch.
+Actions are pinned by commit SHA in the workflows — update those deliberately, not
+automatically.
