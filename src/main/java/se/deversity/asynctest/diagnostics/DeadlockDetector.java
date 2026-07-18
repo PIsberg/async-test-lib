@@ -6,13 +6,40 @@ import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Enhanced deadlock detector that analyzes thread dumps and identifies
  * circular lock dependencies, thread states, and provides actionable diagnostics.
+ *
+ * <p>Instances baseline the JVM at construction: threads already deadlocked when the
+ * detector is created (e.g. leaked by an earlier test in a shared JVM) are excluded
+ * from {@link #analyze()}, so only deadlocks that form during the monitored test are
+ * reported. The static {@link #hasDeadlock()} remains a JVM-wide snapshot by design.
  */
 public class DeadlockDetector {
+
+    /**
+     * Thread ids that were already deadlocked when this detector was created.
+     * Deadlocked threads never terminate, so their ids cannot be recycled and
+     * remain valid exclusion keys for the detector's lifetime.
+     */
+    private final Set<Long> preexistingDeadlockedThreads;
+
+    public DeadlockDetector() {
+        long[] existing = ManagementFactory.getThreadMXBean().findDeadlockedThreads();
+        if (existing == null || existing.length == 0) {
+            preexistingDeadlockedThreads = Set.of();
+        } else {
+            Set<Long> ids = new HashSet<>();
+            for (long id : existing) {
+                ids.add(id);
+            }
+            preexistingDeadlockedThreads = Set.copyOf(ids);
+        }
+    }
 
     public static void printThreadDump() {
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
@@ -55,7 +82,7 @@ public class DeadlockDetector {
             System.err.println("│               CIRCULAR DEADLOCK GRAPH                  │");
             System.err.println("└────────────────────────────────────────────────────────┘");
 
-            java.util.Set<Long> visited = new java.util.HashSet<>();
+            Set<Long> visited = new HashSet<>();
             int cycleNum = 1;
             for (long threadId : deadlockedThreads) {
                 if (visited.contains(threadId)) {
@@ -64,7 +91,7 @@ public class DeadlockDetector {
 
                 java.util.List<ThreadInfo> cycle = new java.util.ArrayList<>();
                 long currentId = threadId;
-                java.util.Set<Long> path = new java.util.LinkedHashSet<>();
+                Set<Long> path = new java.util.LinkedHashSet<>();
                 while (currentId >= 0 && !path.contains(currentId)) {
                     ThreadInfo ti = threadMap.get(currentId);
                     if (ti == null) break;
@@ -164,6 +191,9 @@ public class DeadlockDetector {
     /**
      * Checks if any threads are in a deadlocked state (blocking on each other's locks).
      * Returns true if a deadlock is detected.
+     *
+     * <p>This is a JVM-wide snapshot: unlike {@link #analyze()}, it also reports deadlocks
+     * that predate any particular detector instance.
      */
     public static boolean hasDeadlock() {
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
@@ -207,9 +237,21 @@ public class DeadlockDetector {
     /**
      * Analyze current JVM thread state for deadlocks.
      * Queries the JVM via JMX and returns a report suitable for use in {@link se.deversity.asynctest.DetectorRegistry}.
+     *
+     * <p>Deadlocks that already existed when this detector was constructed are excluded,
+     * so a report with issues always means the monitored test introduced a new deadlock.
      */
     public DeadlockReport analyze() {
-        return new DeadlockReport(hasDeadlock());
+        long[] current = ManagementFactory.getThreadMXBean().findDeadlockedThreads();
+        if (current == null) {
+            return new DeadlockReport(false);
+        }
+        for (long id : current) {
+            if (!preexistingDeadlockedThreads.contains(id)) {
+                return new DeadlockReport(true);
+            }
+        }
+        return new DeadlockReport(false);
     }
 
     public static class DeadlockReport {

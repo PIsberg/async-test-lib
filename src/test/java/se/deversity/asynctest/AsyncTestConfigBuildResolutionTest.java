@@ -3,9 +3,15 @@ package se.deversity.asynctest;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.util.EnumMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -144,5 +150,79 @@ class AsyncTestConfigBuildResolutionTest {
     void failOn_null_defaultsToNone() {
         AsyncTestConfig cfg = AsyncTestConfig.builder().failOn(null).build();
         assertSame(FailOn.NONE, cfg.failOn);
+    }
+
+    // ---- Per-type exclude resolution (detectAll=false path) ----
+    //
+    // The mapping DetectorType -> config field is derived empirically through the
+    // detectAll path: excluding exactly one type must disable exactly one flag.
+    // That derivation doubles as a wiring check (no type may flip zero or two flags),
+    // and the mapping then drives per-type assertions against the detectAll=false
+    // exclude block — each `if (excludes.contains(X)) detectX = false` line is pinned
+    // by an explicit enable + exclude of exactly that type.
+
+    private static Map<DetectorType, String> detectorFieldByType() {
+        Map<DetectorType, String> map = new EnumMap<>(DetectorType.class);
+        try {
+            for (DetectorType type : DetectorType.values()) {
+                AsyncTestConfig cfg = AsyncTestConfig.builder()
+                        .detectAll(true)
+                        .excludes(new DetectorType[]{type})
+                        .build();
+                String disabled = null;
+                for (Field f : AsyncTestConfig.class.getFields()) {
+                    if (isDetectorFlag(f) && !f.getBoolean(cfg)) {
+                        assertNull(disabled, "excluding " + type + " disabled both "
+                                + disabled + " and " + f.getName());
+                        disabled = f.getName();
+                    }
+                }
+                assertNotNull(disabled, "excluding " + type + " under detectAll disabled no flag");
+                map.put(type, disabled);
+            }
+        } catch (IllegalAccessException e) {
+            throw new AssertionError(e);
+        }
+        return map;
+    }
+
+    private static AsyncTestConfig.Builder enable(String flagName) {
+        try {
+            AsyncTestConfig.Builder b = AsyncTestConfig.builder();
+            AsyncTestConfig.Builder.class.getMethod(flagName, boolean.class).invoke(b, true);
+            return b;
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("Builder has no boolean setter named " + flagName, e);
+        }
+    }
+
+    @Test
+    void detectorTypes_mapBijectivelyOntoDetectorFlags() {
+        Map<DetectorType, String> map = detectorFieldByType();
+        Set<String> mappedFields = new HashSet<>(map.values());
+        assertEquals(map.size(), mappedFields.size(), "two DetectorTypes control the same flag");
+        assertEquals(totalDetectorFlags(), mappedFields.size(),
+                "every detector flag must be controlled by exactly one DetectorType");
+    }
+
+    @Test
+    void explicitEnable_withExcludeOfSameType_isDisabled() {
+        for (Map.Entry<DetectorType, String> e : detectorFieldByType().entrySet()) {
+            AsyncTestConfig cfg = enable(e.getValue())
+                    .excludes(new DetectorType[]{e.getKey()})
+                    .build();
+            assertFalse(flag(cfg, e.getValue()),
+                    e.getValue() + " enabled explicitly but excluded via " + e.getKey()
+                            + " must resolve to disabled");
+        }
+    }
+
+    @Test
+    void explicitEnable_withoutExclude_staysEnabled() {
+        for (Map.Entry<DetectorType, String> e : detectorFieldByType().entrySet()) {
+            AsyncTestConfig cfg = enable(e.getValue()).build();
+            assertTrue(flag(cfg, e.getValue()),
+                    e.getValue() + " enabled explicitly with no excludes must stay enabled");
+        }
     }
 }

@@ -1232,6 +1232,16 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.LOCK_DOWNGRADE)) detectLockDowngrade = false;
                 if (excludes.contains(DetectorType.INHERITABLE_THREAD_LOCAL)) detectInheritableThreadLocalMisuse = false;
                 if (excludes.contains(DetectorType.UNCOMMITTED_CHANGES)) detectUncommittedChanges = false;
+                if (excludes.contains(DetectorType.THREAD_LOCAL_CONTAMINATION)) detectThreadLocalContamination = false;
+                if (excludes.contains(DetectorType.ATOMIC_NON_ATOMIC_UPDATE)) detectAtomicNonAtomicUpdates = false;
+                if (excludes.contains(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION)) detectSynchronizedCollectionIteration = false;
+                if (excludes.contains(DetectorType.SHARED_FORMATTER)) detectSharedFormatter = false;
+                if (excludes.contains(DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION)) detectConcurrentMapComputeRecursion = false;
+                if (excludes.contains(DetectorType.SYNCHRONIZED_ON_LITERAL)) detectSynchronizedOnLiteral = false;
+                if (excludes.contains(DetectorType.PUBLIC_LOCK_EXPOSURE)) detectPublicLockExposure = false;
+                if (excludes.contains(DetectorType.FORK_JOIN_TASK_BLOCKING)) detectForkJoinTaskBlocking = false;
+                if (excludes.contains(DetectorType.OPTIMISTIC_READ_VALIDATION)) detectOptimisticReadValidation = false;
+                if (excludes.contains(DetectorType.CF_COMMON_POOL_BLOCKING)) detectCFCommonPoolBlocking = false;
                 if (excludes.contains(DetectorType.SHARED_MATCHER)) detectSharedMatcher = false;
                 if (excludes.contains(DetectorType.SHARED_DECIMAL_FORMAT)) detectSharedDecimalFormat = false;
                 if (excludes.contains(DetectorType.WEAK_REFERENCE_RACE)) detectWeakReferenceRace = false;
