@@ -15,6 +15,7 @@
 [![PMD](https://img.shields.io/badge/PMD-passing-brightgreen)](pmd-ruleset.xml)
 [![SpotBugs](https://img.shields.io/badge/SpotBugs-passing-brightgreen)](spotbugs-exclude.xml)
 [![Error Prone](https://img.shields.io/badge/Error_Prone-passing-brightgreen)](https://errorprone.info)
+[![PIT Mutation Testing](https://img.shields.io/badge/PIT_mutation_testing-passing_·_75%25_killed-brightgreen)](https://pitest.org)
 
 ![async-test demo](docs/diagrams/demo.gif)
 

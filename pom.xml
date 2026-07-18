@@ -64,6 +64,8 @@
         <spotbugs-maven-plugin.version>4.10.3.0</spotbugs-maven-plugin.version>
         <spotbugs.version>4.10.2</spotbugs.version>
         <maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
+        <pitest-maven.version>1.25.7</pitest-maven.version>
+        <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
         <archunit.version>1.4.2</archunit.version>
         <error-prone.version>2.50.0</error-prone.version>
         <asm.version>9.10.1</asm.version>
@@ -472,6 +474,56 @@
                         </goals>
                     </execution>
                 </executions>
+            </plugin>
+            <!-- PITest mutation testing — run on demand:
+                 mvn test-compile org.pitest:pitest-maven:mutationCoverage -->
+            <plugin>
+                <groupId>org.pitest</groupId>
+                <artifactId>pitest-maven</artifactId>
+                <version>${pitest-maven.version}</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.pitest</groupId>
+                        <artifactId>pitest-junit5-plugin</artifactId>
+                        <version>${pitest-junit5-plugin.version}</version>
+                    </dependency>
+                </dependencies>
+                <configuration>
+                    <targetClasses>
+                        <param>se.deversity.asynctest.*</param>
+                    </targetClasses>
+                    <targetTests>
+                        <param>se.deversity.asynctest.*</param>
+                    </targetTests>
+                    <excludedTestClasses>
+                        <!-- Jazzer fuzz harnesses and ArchUnit rules don't kill mutants
+                             and are expensive under repeated forked execution -->
+                        <param>se.deversity.asynctest.fuzz.*</param>
+                        <param>se.deversity.asynctest.architecture.*</param>
+                    </excludedTestClasses>
+                    <threads>4</threads>
+                    <!-- Surefire's argLine contains JaCoCo's late-bound @{argLine} which
+                         pitest cannot resolve; required flags are passed via jvmArgs instead -->
+                    <parseSurefireArgLine>false</parseSurefireArgLine>
+                    <!-- Stress tests coordinate via CyclicBarrier; give mutants generous
+                         headroom before being flagged TIMED_OUT -->
+                    <timeoutConstant>10000</timeoutConstant>
+                    <jvmArgs>
+                        <value>-Djdk.attach.allowAttachSelf=true</value>
+                        <value>-Dlicense.mock.mode=true</value>
+                    </jvmArgs>
+                    <!-- Gate: the build fails below this mutation score. Measured full-run
+                         score is 75.4% (2026-07-17); the gate sits ~1.4pp below because
+                         TIMED_OUT mutant counts jitter between runs. Survivors are dominated
+                         by diagnostic output and timing-heuristic detector mutants that cannot
+                         be killed without flaky, timing-forced tests. -->
+                    <mutationThreshold>74</mutationThreshold>
+                    <outputFormats>
+                        <param>HTML</param>
+                        <param>XML</param>
+                    </outputFormats>
+                    <timestampedReports>false</timestampedReports>
+                </configuration>
             </plugin>
         </plugins>
     </build>
