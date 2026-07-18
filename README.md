@@ -418,6 +418,7 @@ See [intellij-plugin/README.md](intellij-plugin/README.md) for full instructions
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | Version history |
 | [examples/](examples/) | 30+ runnable example projects |
 | [intellij-plugin/README.md](intellij-plugin/README.md) | IntelliJ plugin setup |
+| [lat.md/](lat.md/) | [lat.md](https://www.lat.md) knowledge graph for AI agents — architecture, invariants, and change playbooks in cross-linked markdown (see [AGENTS.md](AGENTS.md)) |
 
 ---
 
