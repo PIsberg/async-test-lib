@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
@@ -212,11 +213,11 @@ public class BlockingQueueDetector {
             if (totalProduces > 0 && totalConsumes > 0) {
                 double ratio = (double) totalProduces / totalConsumes;
                 if (ratio > 2.0) {
-                    report.producerConsumerImbalance.add(String.format(
+                    report.producerConsumerImbalance.add(String.format(Locale.ROOT,
                         "%s: producer/consumer ratio %.1f (producers outpacing consumers)",
                         state.name, ratio));
                 } else if (ratio < 0.5) {
-                    report.producerConsumerImbalance.add(String.format(
+                    report.producerConsumerImbalance.add(String.format(Locale.ROOT,
                         "%s: producer/consumer ratio %.1f (consumers outpacing producers)",
                         state.name, ratio));
                 }

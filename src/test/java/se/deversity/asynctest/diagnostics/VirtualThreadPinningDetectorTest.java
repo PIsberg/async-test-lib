@@ -245,4 +245,128 @@ class VirtualThreadPinningDetectorTest {
         assertTrue(report.hasEffectivePinningIssues());
         assertEquals(0, report.getObsoleteEventCount());
     }
+
+    // ---- Additional PIT-mutant-killing tests ----
+
+    @Test
+    void clear_resetsCountersAfterEvents() throws Exception {
+        VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
+        detector.startMonitoring();
+
+        Thread.ofVirtual().name("vt-clear-1").start(() ->
+                detector.recordPinningEvent(Thread.currentThread(), "synchronized block")
+        ).join();
+        Thread.ofVirtual().name("vt-clear-2").start(() ->
+                detector.recordPinningEvent(Thread.currentThread(), "synchronized block")
+        ).join();
+        assertEquals(2, detector.getPinningEventCount());
+
+        detector.clear();
+        assertEquals(0, detector.getPinningEventCount());
+
+        Thread.ofVirtual().name("vt-clear-3").start(() ->
+                detector.recordPinningEvent(Thread.currentThread(), "synchronized block")
+        ).join();
+
+        var report = detector.analyzePinning();
+        assertEquals(1, report.getEvents().size(), "clear() must remove earlier events");
+        assertEquals(1, report.getMaxPinnedCount(),
+                "clear() must reset both currentPinnedCount and maxPinnedCount, not just the event list");
+    }
+
+    @Test
+    void multiplePinningEvents_tracksMaxPinnedCount() throws Exception {
+        VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
+        detector.startMonitoring();
+
+        Thread.ofVirtual().name("vt-max-1").start(() ->
+                detector.recordPinningEvent(Thread.currentThread(), "synchronized block")
+        ).join();
+        Thread.ofVirtual().name("vt-max-2").start(() ->
+                detector.recordPinningEvent(Thread.currentThread(), "synchronized block")
+        ).join();
+
+        assertEquals(2, detector.getPinningEventCount());
+        var report = detector.analyzePinning();
+        assertEquals(2, report.getMaxPinnedCount());
+    }
+
+    @Test
+    void isVirtualThread_falseForPlatformThread() {
+        assertFalse(VirtualThreadPinningDetector.isVirtualThread(Thread.currentThread()),
+                "the current JUnit test thread is a platform thread, not a virtual thread");
+    }
+
+    @Test
+    void pinningReport_isVirtualThreadSupported_reflectsConstructorValue() {
+        var supportedReport = new VirtualThreadPinningDetector.PinningReport(
+                java.util.List.of(), 0, true);
+        var unsupportedReport = new VirtualThreadPinningDetector.PinningReport(
+                java.util.List.of(), 0, false);
+
+        assertTrue(supportedReport.isVirtualThreadSupported());
+        assertFalse(unsupportedReport.isVirtualThreadSupported());
+    }
+
+    @Test
+    void pinningReport_getObsoleteEventCount_countsOnlyObsoleteEvents() {
+        var obsolete = new VirtualThreadPinningDetector.PinningEventSnapshot(
+                1L, "vt-1", "synchronized block", 5L, null,
+                VirtualThreadPinningDetector.PinningCause.MONITOR, true);
+        var active = new VirtualThreadPinningDetector.PinningEventSnapshot(
+                2L, "vt-2", "synchronized block", 5L, null,
+                VirtualThreadPinningDetector.PinningCause.MONITOR, false);
+
+        var report = new VirtualThreadPinningDetector.PinningReport(
+                java.util.List.of(obsolete, active), 1, true);
+
+        assertEquals(1L, report.getObsoleteEventCount());
+    }
+
+    @Test
+    void pinningReport_hasEffectivePinningIssues_falseWhenAllEventsObsolete() {
+        var obsolete = new VirtualThreadPinningDetector.PinningEventSnapshot(
+                1L, "vt-1", "synchronized block", 5L, null,
+                VirtualThreadPinningDetector.PinningCause.MONITOR, true);
+
+        var report = new VirtualThreadPinningDetector.PinningReport(
+                java.util.List.of(obsolete), 1, true);
+
+        assertFalse(report.hasEffectivePinningIssues(),
+                "no event should count as an effective (non-obsolete) pinning issue");
+    }
+
+    @Test
+    void pinningEventSnapshot_isObsoleteOnCurrentJdk_reflectsConstructorValue() {
+        var obsolete = new VirtualThreadPinningDetector.PinningEventSnapshot(
+                1L, "vt-1", "synchronized block", 5L, null,
+                VirtualThreadPinningDetector.PinningCause.MONITOR, true);
+        var active = new VirtualThreadPinningDetector.PinningEventSnapshot(
+                2L, "vt-2", "synchronized block", 5L, null,
+                VirtualThreadPinningDetector.PinningCause.MONITOR, false);
+
+        assertTrue(obsolete.isObsoleteOnCurrentJdk());
+        assertFalse(active.isObsoleteOnCurrentJdk());
+    }
+
+    @Test
+    void pinningEvent_durationMillis_reflectsElapsedTime() throws Exception {
+        VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
+        detector.startMonitoring();
+
+        Thread.ofVirtual().name("vt-duration-test").start(() ->
+                detector.recordPinningEvent(Thread.currentThread(), "synchronized block")
+        ).join();
+
+        Thread.sleep(20);
+
+        var report = detector.analyzePinning();
+        long durationMillis = report.getEvents().get(0).getDurationMillis();
+
+        assertTrue(durationMillis > 0,
+                "duration must reflect elapsed time (nanoTime() - startTimeNanos), not a constant 0");
+        assertTrue(durationMillis < 60_000,
+                "duration must be a small subtraction-based elapsed time, not the huge value "
+                        + "produced by adding two absolute nanoTime readings together");
+    }
 }
