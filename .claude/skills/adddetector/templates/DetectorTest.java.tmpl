@@ -1,0 +1,71 @@
+package se.deversity.asynctest.diagnostics;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Unit tests for {@link {{CLASS}}}.
+ *
+ * <p>TODO: once the real detection rule replaces the stub in {@link {{CLASS}}#analyze()},
+ * update these tests to exercise the actual anti-pattern and its safe counterpart.
+ * The 80% coverage goal (see {@code @AITestDriven}) is enforced by the build.
+ */
+class {{CLASS}}Test {
+
+    /** Stand-in for the resource this detector tracks. */
+    private static final class FakeTarget { }
+
+    private {{CLASS}} detector;
+
+    @BeforeEach
+    void setUp() {
+        detector = new {{CLASS}}();
+    }
+
+    @Test
+    void noIssues_whenSingleThreadAccesses() {
+        FakeTarget t = new FakeTarget();
+        detector.recordAccess(t, "label", "op", Thread.currentThread());
+        detector.recordAccess(t, "label", "op2", Thread.currentThread());
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "Single-thread use must be clean: " + report);
+    }
+
+    @Test
+    void flagsIssue_whenTwoThreadsShareOneInstance() throws InterruptedException {
+        FakeTarget t = new FakeTarget();
+        detector.recordAccess(t, "label", "op", Thread.currentThread());
+
+        Thread other = new Thread(
+                () -> detector.recordAccess(t, "label", "op", Thread.currentThread()), "other");
+        other.start();
+        other.join();
+
+        var report = detector.analyze();
+        assertTrue(report.hasIssues(), "Two threads on one instance must be flagged: " + report);
+        assertFalse(report.structuredViolations.isEmpty(), "A structured Violation must be emitted");
+    }
+
+    @Test
+    void nullTarget_isIgnored() {
+        detector.recordAccess(null, "label", "op", Thread.currentThread());
+        assertFalse(detector.analyze().hasIssues());
+    }
+
+    @Test
+    void analyze_isIdempotent() throws InterruptedException {
+        FakeTarget t = new FakeTarget();
+        detector.recordAccess(t, "label", "op", Thread.currentThread());
+        Thread other = new Thread(
+                () -> detector.recordAccess(t, "label", "op", Thread.currentThread()), "t2");
+        other.start();
+        other.join();
+
+        String first = detector.analyze().toString();
+        String second = detector.analyze().toString();
+        assertEquals(first, second, "analyze() must be idempotent on quiescent state");
+    }
+}
