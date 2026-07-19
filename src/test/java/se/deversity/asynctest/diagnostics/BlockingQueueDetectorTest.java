@@ -173,4 +173,251 @@ public class BlockingQueueDetectorTest {
         assertTrue(reportStr.contains("BLOCKING QUEUE ISSUES DETECTED"), "Report should have header");
         assertTrue(reportStr.contains("Silent Failures"), "Report should mention silent failures");
     }
+
+    @Test
+    void testZeroCapacityNeverSaturates() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        BlockingQueue<String> queue = new ArrayBlockingQueue<>(10);
+
+        // capacity <= 0 must disable saturation checking regardless of observed size
+        detector.registerQueue(queue, "zero-capacity-queue", 0);
+
+        for (int i = 0; i < 9; i++) {
+            queue.offer("item" + i);
+            detector.recordOffer(queue, "zero-capacity-queue", true);
+        }
+
+        BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+
+        assertTrue(report.saturation.isEmpty(),
+            "capacity <= 0 must never report saturation, even at high observed size");
+    }
+
+    @Test
+    void testNoImbalanceWhenNoProduces() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        BlockingQueue<String> queue = new ArrayBlockingQueue<>(10);
+
+        detector.registerQueue(queue, "no-produce-queue", 10);
+        queue.offer("seed");
+
+        queue.poll();
+        detector.recordPoll(queue, "no-produce-queue", true);
+        detector.recordTake(queue, "no-produce-queue");
+
+        BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+
+        assertTrue(report.producerConsumerImbalance.isEmpty(),
+            "totalProduces == 0 must suppress imbalance reporting even though consumes > 0");
+    }
+
+    @Test
+    void testNoImbalanceWhenNoConsumes() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        BlockingQueue<String> queue = new ArrayBlockingQueue<>(10);
+
+        detector.registerQueue(queue, "no-consume-queue", 10);
+
+        queue.offer("item");
+        detector.recordOffer(queue, "no-consume-queue", true);
+        detector.recordPut(queue, "no-consume-queue");
+
+        BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+
+        assertTrue(report.producerConsumerImbalance.isEmpty(),
+            "totalConsumes == 0 must suppress imbalance reporting (avoids ratio computed against zero)");
+    }
+
+    @Test
+    void testRatioExactlyTwoIsNotImbalanced() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        BlockingQueue<String> queue = new ArrayBlockingQueue<>(20);
+
+        detector.registerQueue(queue, "ratio-boundary-high-queue", 20);
+
+        for (int i = 0; i < 4; i++) {
+            queue.offer("item" + i);
+            detector.recordOffer(queue, "ratio-boundary-high-queue", true);
+        }
+        for (int i = 0; i < 2; i++) {
+            queue.poll();
+            detector.recordPoll(queue, "ratio-boundary-high-queue", true);
+        }
+
+        BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+
+        assertTrue(report.producerConsumerImbalance.isEmpty(),
+            "ratio == 2.0 exactly must NOT be flagged; threshold is strictly greater than 2.0");
+    }
+
+    @Test
+    void testRatioExactlyHalfIsNotImbalanced() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        BlockingQueue<String> queue = new ArrayBlockingQueue<>(20);
+
+        detector.registerQueue(queue, "ratio-boundary-low-queue", 20);
+
+        for (int i = 0; i < 2; i++) {
+            queue.offer("item" + i);
+            detector.recordOffer(queue, "ratio-boundary-low-queue", true);
+        }
+        for (int i = 0; i < 4; i++) {
+            queue.poll();
+            detector.recordPoll(queue, "ratio-boundary-low-queue", true);
+        }
+
+        BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+
+        assertTrue(report.producerConsumerImbalance.isEmpty(),
+            "ratio == 0.5 exactly must NOT be flagged; threshold is strictly less than 0.5");
+    }
+
+    @Test
+    void testConsumersOutpacingProducersIsImbalanced() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        BlockingQueue<String> queue = new ArrayBlockingQueue<>(20);
+
+        detector.registerQueue(queue, "ratio-low-queue", 20);
+
+        queue.offer("item");
+        detector.recordOffer(queue, "ratio-low-queue", true);
+
+        for (int i = 0; i < 4; i++) {
+            queue.poll();
+            detector.recordPoll(queue, "ratio-low-queue", true);
+        }
+
+        BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+
+        assertFalse(report.producerConsumerImbalance.isEmpty(), "ratio 0.25 must be flagged as imbalance");
+        assertTrue(report.producerConsumerImbalance.get(0).contains("consumers outpacing producers"),
+            "ratio below 0.5 must be reported as consumers outpacing producers");
+    }
+
+    @Test
+    void testProducerConsumerRatioMathIsExact() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        BlockingQueue<String> queue = new ArrayBlockingQueue<>(100);
+
+        detector.registerQueue(queue, "ratio-math-queue", 100);
+
+        // totalProduces = offerCount(3) + putCount(2) = 5
+        for (int i = 0; i < 3; i++) {
+            queue.offer("item" + i);
+            detector.recordOffer(queue, "ratio-math-queue", true);
+        }
+        detector.recordPut(queue, "ratio-math-queue");
+        detector.recordPut(queue, "ratio-math-queue");
+
+        // totalConsumes = pollCount(1) + takeCount(1) = 2
+        queue.poll();
+        detector.recordPoll(queue, "ratio-math-queue", true);
+        detector.recordTake(queue, "ratio-math-queue");
+
+        BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+
+        assertFalse(report.producerConsumerImbalance.isEmpty());
+        assertTrue(
+            report.producerConsumerImbalance.get(0).contains("ratio 2.5 (producers outpacing consumers)"),
+            "ratio must be exactly (offers+puts)/(polls+takes) = 5/2 = 2.5, using addition and division "
+                + "(not subtraction or multiplication); got: " + report.producerConsumerImbalance.get(0));
+    }
+
+    @Test
+    void testRecordPollUpdatesMaxObservedSize() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        BlockingQueue<String> queue = new ArrayBlockingQueue<>(10);
+
+        detector.registerQueue(queue, "poll-size-queue", 10);
+
+        queue.offer("a");
+        queue.offer("b");
+        queue.offer("c");
+
+        queue.poll();
+        detector.recordPoll(queue, "poll-size-queue", true);
+
+        BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+
+        assertTrue(report.queueActivity.get("poll-size-queue").contains("max size: 2"),
+            "recordPoll must call updateSizeState so max observed size reflects size at call time");
+    }
+
+    @Test
+    void testRecordPutUpdatesMaxObservedSize() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        BlockingQueue<String> queue = new ArrayBlockingQueue<>(10);
+
+        detector.registerQueue(queue, "put-size-queue", 10);
+
+        queue.offer("a");
+        queue.offer("b");
+
+        detector.recordPut(queue, "put-size-queue");
+
+        BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+
+        assertTrue(report.queueActivity.get("put-size-queue").contains("max size: 2"),
+            "recordPut must call updateSizeState so max observed size reflects size at call time");
+    }
+
+    @Test
+    void testRecordTakeUpdatesMaxObservedSize() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        BlockingQueue<String> queue = new ArrayBlockingQueue<>(10);
+
+        detector.registerQueue(queue, "take-size-queue", 10);
+
+        queue.offer("a");
+        queue.offer("b");
+        queue.offer("c");
+
+        queue.poll();
+        detector.recordTake(queue, "take-size-queue");
+
+        BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+
+        assertTrue(report.queueActivity.get("take-size-queue").contains("max size: 2"),
+            "recordTake must call updateSizeState so max observed size reflects size at call time");
+    }
+
+    @Test
+    void testReportToStringIncludesAllPopulatedSections() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        BlockingQueue<String> queue = new ArrayBlockingQueue<>(2);
+
+        detector.registerQueue(queue, "full-report-queue", 2);
+
+        // Trigger silentFailures + saturation (queue fills to capacity 2)
+        queue.offer("item1");
+        detector.recordOffer(queue, "full-report-queue", true);
+        queue.offer("item2");
+        detector.recordOffer(queue, "full-report-queue", true);
+        boolean failedOffer = queue.offer("item3");
+        detector.recordOffer(queue, "full-report-queue", failedOffer);
+
+        // Drain the queue, then trigger emptyPolls
+        queue.poll();
+        queue.poll();
+        String extra = queue.poll();
+        detector.recordPoll(queue, "full-report-queue", extra != null);
+
+        // Trigger producerConsumerImbalance: produces = 3 + 5 = 8, consumes = 1 + 1 = 2, ratio = 4.0
+        for (int i = 0; i < 5; i++) {
+            detector.recordPut(queue, "full-report-queue");
+        }
+        detector.recordTake(queue, "full-report-queue");
+
+        BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+        String reportStr = report.toString();
+
+        assertTrue(report.hasIssues());
+        assertTrue(reportStr.contains("Empty Polls"), "must print Empty Polls section when list non-empty");
+        assertTrue(reportStr.contains("Queue Saturation"), "must print Queue Saturation section when list non-empty");
+        assertTrue(reportStr.contains("Producer/Consumer Imbalance"),
+            "must print Producer/Consumer Imbalance section when list non-empty");
+        assertTrue(reportStr.contains("Queue Activity"), "must print Queue Activity section when non-empty");
+        assertFalse(reportStr.contains("No issues detected"),
+            "must not print 'No issues detected' when issues are actually present");
+    }
 }
