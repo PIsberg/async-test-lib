@@ -64,7 +64,7 @@
         <spotbugs-maven-plugin.version>4.10.3.0</spotbugs-maven-plugin.version>
         <spotbugs.version>4.10.3</spotbugs.version>
         <maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
-        <pitest-maven.version>1.25.7</pitest-maven.version>
+        <pitest-maven.version>1.25.8</pitest-maven.version>
         <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
         <archunit.version>1.4.2</archunit.version>
         <error-prone.version>2.50.0</error-prone.version>
