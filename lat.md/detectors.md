@@ -10,6 +10,8 @@ Coverage spans deadlocks, race conditions, visibility, shared mutable JDK types 
 
 `DetectorFactory` enables ServiceLoader-based discovery of third-party detectors. `analyze()` must be idempotent: same observed state → same violations, no side effects; `DetectorRegistry.analyzeAll()` relies on this. Built-in detectors are bridged through `spi/adapters/LegacyDetectorAdapter` (reflection-based, once per round per detector, deliberately legacy-shaped — do not refactor its structure) and `spi/adapters/LegacyDetectorFactories`.
 
+Third-party detectors actually run: `AsyncTestContext` builds `spi.DetectorRegistry.buildExternal(config)` per test — every discovered factory except the built-in bridges in `spi/adapters`, which wrap fresh legacy instances that observe nothing. Their `onTestStart()` fires at context construction, their violations merge into `analyzeAllNamed()` keyed by `Violation.detector()` (severity label prefixed so the `failOn` gate reads the detector's own severity), and `onTestEnd()` fires once after the run's analysis. Keep the built-in-package exclusion when touching this path — without it each test allocates ~120 blind duplicate detectors.
+
 ## DetectorRegistry
 
 Two classes share the name: `spi/DetectorRegistry.java` (effectively-immutable EnumMap, populated only in its private constructor, safe to publish) and the package-root `se.deversity.asynctest.DetectorRegistry` wiring class.

@@ -44,18 +44,65 @@ public final class DetectorRegistry {
     }
 
     /**
+     * Package of the built-in factories that merely bridge the legacy detectors
+     * ({@code LegacyDetectorFactories}, {@code SharedMessageDigestDetectorFactory}).
+     *
+     * <p>Those factories construct <em>fresh</em> legacy detector instances, disconnected
+     * from the ones the running test actually records into (which live on the
+     * {@code AsyncTestContext}'s legacy registry). They exist so that every
+     * {@link DetectorType} is addressable through this registry; they are not a second
+     * live detection path. {@link #buildExternal(AsyncTestConfig)} therefore skips them.
+     */
+    private static final String BUILT_IN_FACTORY_PACKAGE = "se.deversity.asynctest.spi.adapters.";
+
+    /**
      * Build a registry for the given config: discover all {@link DetectorFactory}
      * services on the classpath, filter by {@link DetectorFactory#isEnabledFor(AsyncTestConfig)},
      * and instantiate.
      */
     public static DetectorRegistry build(AsyncTestConfig config) {
+        return build(config, false);
+    }
+
+    /**
+     * Build a registry containing only <em>third-party</em> detectors — every discovered
+     * {@link DetectorFactory} except the built-in legacy bridges in
+     * {@code se.deversity.asynctest.spi.adapters}.
+     *
+     * <p>This is the registry the runner installs alongside the legacy one: the legacy
+     * registry already owns the built-in detectors (and holds the very instances user code
+     * records into), so including their bridge factories here would allocate ~120 duplicate
+     * detectors per test that observe nothing. Everything else on the classpath is a
+     * user-supplied detector whose findings must reach the reports and the {@code failOn}
+     * gate — which is what makes the published SPI more than documentation.
+     *
+     * <p>Built-in factories are filtered by {@link ServiceLoader.Provider#type()}, before
+     * {@link ServiceLoader.Provider#get()}, so they are never even instantiated.
+     *
+     * @since 1.7.0
+     */
+    public static DetectorRegistry buildExternal(AsyncTestConfig config) {
+        return build(config, true);
+    }
+
+    private static DetectorRegistry build(AsyncTestConfig config, boolean externalOnly) {
         Map<DetectorType, Detector> detectors = new EnumMap<>(DetectorType.class);
-        for (DetectorFactory f : ServiceLoader.load(DetectorFactory.class)) {
+        for (ServiceLoader.Provider<DetectorFactory> provider
+                : ServiceLoader.load(DetectorFactory.class).stream().toList()) {
+            if (externalOnly && provider.type().getName().startsWith(BUILT_IN_FACTORY_PACKAGE)) {
+                continue;
+            }
+            DetectorFactory f = provider.get();
             if (f.isEnabledFor(config)) {
                 detectors.put(f.type(), f.create(config));
             }
         }
         return new DetectorRegistry(detectors);
+    }
+
+    /** {@return {@code true} when no detector is active in this registry} */
+    public boolean isEmpty() {
+        return byType.isEmpty();
     }
 
     /**

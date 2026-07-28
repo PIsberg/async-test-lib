@@ -26,6 +26,32 @@ findings could never reach a report — while the green test suite made them loo
   exists to prevent *isolated* enum edits that break the enum↔flag↔registry↔factory mapping;
   this change makes all of those edits together, plus the wiring test that pins them.
 
+### Fixed — third-party `Detector` SPI now runs inside `@AsyncTest`
+- `AsyncTestContext` builds an SPI registry per test via the new
+  `spi.DetectorRegistry.buildExternal(config)`. Previously nothing on the execution path
+  ever built one: a detector supplied through `META-INF/services` was discovered by
+  nobody, never received `onTestStart()` / `onTestEnd()`, and its violations reached
+  neither the printed reports nor the `failOn` gate. The published extension point was
+  effectively documentation-only.
+- `buildExternal` excludes the built-in bridge factories in `spi/adapters` — they wrap
+  freshly constructed legacy detectors that observe nothing, so including them would
+  allocate ~120 blind duplicates per test. Built-in detection is unchanged and still runs
+  through the legacy registry.
+- Third-party violations are merged into `AsyncTestContext.analyzeAllNamed()` keyed by
+  `Violation.detector()` and prefixed with the severity label, so `failOn` classifies a
+  finding at the severity its detector assigned instead of defaulting to `HIGH`.
+- `AsyncTestContext.analyzeAll()` is now derived from `analyzeAllNamed()`, so the
+  free-text and keyed views can no longer disagree about which detectors were consulted.
+- New: `spi.DetectorRegistry.buildExternal(AsyncTestConfig)` and
+  `spi.DetectorRegistry.isEmpty()`. No existing signature changed.
+
+### Fixed — a timeout is reported once
+- `ConcurrencyRunner`'s pre-round deadline check threw an error that `timeoutError` had
+  already reported; its message then satisfied `isTimeoutLike` in the enclosing
+  `catch (AssertionError)`, sending it through `timeoutError` a second time. One timeout
+  fired two `AsyncTestListener.onTimeout` callbacks and printed the thread dump and every
+  Phase 1 / Phase 2 report twice. Errors already reported are now rethrown as-is.
+
 ### Added — Phase 18: JDK 25/26 GA-era detectors
 Three new pipeline detectors (each with a `DetectorType` constant, deprecated `@AsyncTest`
 boolean flag, `AsyncTestContext` accessor, SPI factory, and example project):
