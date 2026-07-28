@@ -125,6 +125,9 @@ import se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector;
 import se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector;
 import se.deversity.asynctest.diagnostics.FinalFieldMutationDetector;
 import se.deversity.asynctest.diagnostics.SharedKdfDetector;
+import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
+import se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector;
+import se.deversity.asynctest.diagnostics.FutureBlockingDetector;
 import se.deversity.asynctest.spi.Detector;
 import se.deversity.asynctest.spi.DetectorFactory;
 
@@ -1172,6 +1175,32 @@ public final class LegacyDetectorFactories {
         @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectSharedKdf; }
         @Override public Detector create(AsyncTestConfig c) {
             return new LegacyDetectorAdapter<>(new SharedKdfDetector(), DetectorType.SHARED_KDF, "SharedKdf");
+        }
+    }
+
+    // ---------- Executor / future / latch ----------
+
+    public static final class LatchMisuse implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.LATCH_MISUSE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectLatchMisuse; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new LatchMisuseDetector(), DetectorType.LATCH_MISUSE, "LatchMisuse");
+        }
+    }
+
+    public static final class ExecutorDeadlock implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.EXECUTOR_DEADLOCK; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectExecutorDeadlock; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new ExecutorDeadlockDetector(), DetectorType.EXECUTOR_DEADLOCK, "ExecutorDeadlock");
+        }
+    }
+
+    public static final class FutureBlocking implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.FUTURE_BLOCKING; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectFutureBlocking; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new FutureBlockingDetector(), DetectorType.FUTURE_BLOCKING, "FutureBlocking");
         }
     }
 }

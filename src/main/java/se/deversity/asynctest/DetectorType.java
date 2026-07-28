@@ -176,5 +176,10 @@ public enum DetectorType {
     // Phase 18: JDK 25/26 GA-era concurrency detectors (1.8.0+)
     LAZY_CONSTANT_MISUSE,
     FINAL_FIELD_MUTATION,
-    SHARED_KDF
+    SHARED_KDF,
+
+    // Executor / future / latch detectors that shipped implemented and tested but unwired
+    LATCH_MISUSE,
+    EXECUTOR_DEADLOCK,
+    FUTURE_BLOCKING
 }

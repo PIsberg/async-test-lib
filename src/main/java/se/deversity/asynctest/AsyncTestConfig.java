@@ -214,6 +214,9 @@ public final class AsyncTestConfig {
     public final boolean detectLazyConstantMisuse;
     public final boolean detectFinalFieldMutation;
     public final boolean detectSharedKdf;
+    public final boolean detectLatchMisuse;
+    public final boolean detectExecutorDeadlock;
+    public final boolean detectFutureBlocking;
 
     // ---- Benchmarking ----
     @AIFeatureFlag(flag = "async-test.benchmarking.enabled", defaultValue = false)
@@ -369,6 +372,9 @@ public final class AsyncTestConfig {
         detectLazyConstantMisuse        = b.detectLazyConstantMisuse;
         detectFinalFieldMutation        = b.detectFinalFieldMutation;
         detectSharedKdf                 = b.detectSharedKdf;
+        detectLatchMisuse               = b.detectLatchMisuse;
+        detectExecutorDeadlock          = b.detectExecutorDeadlock;
+        detectFutureBlocking            = b.detectFutureBlocking;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -559,6 +565,9 @@ public final class AsyncTestConfig {
             .detectLazyConstantMisuse(ann.detectLazyConstantMisuse())
             .detectFinalFieldMutation(ann.detectFinalFieldMutation())
             .detectSharedKdf(ann.detectSharedKdf())
+            .detectLatchMisuse(ann.detectLatchMisuse())
+            .detectExecutorDeadlock(ann.detectExecutorDeadlock())
+            .detectFutureBlocking(ann.detectFutureBlocking())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -715,6 +724,9 @@ public final class AsyncTestConfig {
         private boolean detectLazyConstantMisuse        = false;
         private boolean detectFinalFieldMutation        = false;
         private boolean detectSharedKdf                 = false;
+        private boolean detectLatchMisuse               = false;
+        private boolean detectExecutorDeadlock          = false;
+        private boolean detectFutureBlocking            = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -859,6 +871,9 @@ public final class AsyncTestConfig {
         public Builder detectLazyConstantMisuse(boolean v)             { detectLazyConstantMisuse = v; return this; }
         public Builder detectFinalFieldMutation(boolean v)             { detectFinalFieldMutation = v; return this; }
         public Builder detectSharedKdf(boolean v)                      { detectSharedKdf = v; return this; }
+        public Builder detectLatchMisuse(boolean v)                    { detectLatchMisuse = v; return this; }
+        public Builder detectExecutorDeadlock(boolean v)               { detectExecutorDeadlock = v; return this; }
+        public Builder detectFutureBlocking(boolean v)                 { detectFutureBlocking = v; return this; }
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
@@ -1158,6 +1173,12 @@ public final class AsyncTestConfig {
                     else detectFinalFieldMutation = false;
                 if (!excludes.contains(DetectorType.SHARED_KDF)) detectSharedKdf = true;
                     else detectSharedKdf = false;
+                if (!excludes.contains(DetectorType.LATCH_MISUSE)) detectLatchMisuse = true;
+                    else detectLatchMisuse = false;
+                if (!excludes.contains(DetectorType.EXECUTOR_DEADLOCK)) detectExecutorDeadlock = true;
+                    else detectExecutorDeadlock = false;
+                if (!excludes.contains(DetectorType.FUTURE_BLOCKING)) detectFutureBlocking = true;
+                    else detectFutureBlocking = false;
             } else {
                 // If detectAll is false, we still respect explicit enables,
                 // but we also apply excludes for consistency.
@@ -1291,6 +1312,9 @@ public final class AsyncTestConfig {
                 if (excludes.contains(DetectorType.LAZY_CONSTANT_MISUSE)) detectLazyConstantMisuse = false;
                 if (excludes.contains(DetectorType.FINAL_FIELD_MUTATION)) detectFinalFieldMutation = false;
                 if (excludes.contains(DetectorType.SHARED_KDF)) detectSharedKdf = false;
+                if (excludes.contains(DetectorType.LATCH_MISUSE)) detectLatchMisuse = false;
+                if (excludes.contains(DetectorType.EXECUTOR_DEADLOCK)) detectExecutorDeadlock = false;
+                if (excludes.contains(DetectorType.FUTURE_BLOCKING)) detectFutureBlocking = false;
             }
             return new AsyncTestConfig(this);
         }

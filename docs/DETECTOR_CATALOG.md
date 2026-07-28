@@ -1,6 +1,6 @@
 # Detector Catalog
 
-`async-test-lib` includes **124 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
+`async-test-lib` includes **127 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
 
 ---
 
@@ -2617,6 +2617,54 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   String serialize(Object o) throws IOException {
       return MAPPER.writeValueAsString(o);
   }
+  ```
+
+---
+
+## Phase 19: Executor / Future / Latch Coordination (1.7.0+)
+
+Three detectors that shipped implemented and unit-tested but unwired until 1.7.0 — no
+`DetectorType`, no config flag, no registry field, so a real `@AsyncTest` never constructed
+them. Now part of `detectAll` like every other detector.
+
+### 119. Latch Misuse Detector
+* **Severity**: `HIGH`
+* **Description**: A `CountDownLatch` that is awaited but never counted down to zero (the
+  awaiting thread blocks forever), or counted down more times than its initial count (a
+  no-op past zero, but a sign the coordination logic is wrong).
+* **Usage**:
+  ```java
+  var d = AsyncTestContext.latchMisuseDetector();
+  d.registerLatch(latch, "workers-done", 2);
+  d.recordAwait(latch);
+  d.recordCountDown(latch);      // only 1 of 2 → flagged
+  ```
+
+### 120. Executor Deadlock Detector
+* **Severity**: `CRITICAL`
+* **Description**: Self-deadlock in a bounded or single-thread executor: tasks already
+  running on the pool wait on sibling tasks submitted to that same pool, so no thread is
+  ever free to run the siblings.
+* **Usage**:
+  ```java
+  var d = AsyncTestContext.executorDeadlockDetector();
+  d.registerExecutor(pool, "single-thread", 1);
+  d.recordTaskSubmitted(pool);
+  d.recordTaskStarted(pool);
+  d.recordWaitingOnSibling(pool);   // pool saturated + waiting → flagged
+  ```
+
+### 121. Future Blocking Detector
+* **Severity**: `HIGH`
+* **Description**: A task blocks on `Future.get()` (or similar) from inside the same
+  bounded pool that owns the future, consuming a worker thread while it waits — thread
+  starvation that degrades into deadlock as the pool saturates.
+* **Usage**:
+  ```java
+  var d = AsyncTestContext.futureBlockingDetector();
+  d.registerExecutor(pool, "worker-pool", 2);
+  d.recordTaskStarted(pool);
+  d.recordBlockingWait(pool);
   ```
 
 ---

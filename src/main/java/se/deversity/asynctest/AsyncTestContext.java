@@ -126,6 +126,9 @@ import se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector;
 import se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector;
 import se.deversity.asynctest.diagnostics.FinalFieldMutationDetector;
 import se.deversity.asynctest.diagnostics.SharedKdfDetector;
+import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
+import se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector;
+import se.deversity.asynctest.diagnostics.FutureBlockingDetector;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICallersOnly;
 import se.deversity.vibetags.annotations.AICore;
@@ -314,6 +317,11 @@ public final class AsyncTestContext {
     final FinalFieldMutationDetector            finalFieldMutationDetector;
     final SharedKdfDetector                     sharedKdfDetector;
 
+    // ---- Executor / future / latch ----
+    final LatchMisuseDetector                   latchMisuseDetector;
+    final ExecutorDeadlockDetector              executorDeadlockDetector;
+    final FutureBlockingDetector                futureBlockingDetector;
+
     // ---- Agent-telemetry bridge target (1.7.0+) ----
     // Exposed via atomicityValidator() so se.deversity.asynctest.telemetry.TelemetryBridge
     // can route drained agent field-access events into the live per-test detector.
@@ -446,6 +454,10 @@ public final class AsyncTestContext {
         lazyConstantMisuseDetector             = registry.lazyConstantMisuseDetector;
         finalFieldMutationDetector             = registry.finalFieldMutationDetector;
         sharedKdfDetector                      = registry.sharedKdfDetector;
+        // Executor / future / latch
+        latchMisuseDetector                    = registry.latchMisuseDetector;
+        executorDeadlockDetector               = registry.executorDeadlockDetector;
+        futureBlockingDetector                 = registry.futureBlockingDetector;
         // Agent-telemetry bridge target
         atomicityValidator                     = registry.atomicityValidator;
     }
@@ -2068,6 +2080,48 @@ public final class AsyncTestContext {
      */
     public static SharedKdfDetector sharedKdfDetector() {
         return require("detectSharedKdf", c -> c.sharedKdfDetector);
+    }
+
+    /**
+     * Returns the {@link LatchMisuseDetector} for the current test.
+     *
+     * <p>Register each latch with {@code registerLatch(latch, name, initialCount)} and record
+     * {@code recordAwait} / {@code recordCountDown} around its use; the detector is analysed
+     * with the rest at end of test.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLatchMisuse = false}
+     * @since 1.7.0
+     */
+    public static LatchMisuseDetector latchMisuseDetector() {
+        return require("detectLatchMisuse", c -> c.latchMisuseDetector);
+    }
+
+    /**
+     * Returns the {@link ExecutorDeadlockDetector} for the current test.
+     *
+     * <p>Register each executor with {@code registerExecutor(executor, name, maxThreads)} and
+     * record {@code recordTaskSubmitted} / {@code recordTaskStarted} /
+     * {@code recordWaitingOnSibling} / {@code recordTaskCompleted} around its tasks.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectExecutorDeadlock = false}
+     * @since 1.7.0
+     */
+    public static ExecutorDeadlockDetector executorDeadlockDetector() {
+        return require("detectExecutorDeadlock", c -> c.executorDeadlockDetector);
+    }
+
+    /**
+     * Returns the {@link FutureBlockingDetector} for the current test.
+     *
+     * <p>Register each executor with {@code registerExecutor(executor, name, maxThreads)} and
+     * record {@code recordBlockingWait} where a task blocks on a {@code Future} from the same
+     * pool.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectFutureBlocking = false}
+     * @since 1.7.0
+     */
+    public static FutureBlockingDetector futureBlockingDetector() {
+        return require("detectFutureBlocking", c -> c.futureBlockingDetector);
     }
 
     // ---- Helper ----

@@ -1695,6 +1695,48 @@ public @interface AsyncTest {
 
     boolean detectSharedKdf() default true;
 
+    /**
+     * Enable {@code CountDownLatch} misuse detection: a latch awaited but never counted
+     * down to zero, counted down more times than its initial count, or awaited by the same
+     * thread that owes the remaining count-downs. See
+     * {@link se.deversity.asynctest.diagnostics.LatchMisuseDetector}.
+     * @since 1.7.0
+     *
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#LATCH_MISUSE} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectLatchMisuse() default true;
+
+    /**
+     * Enable executor self-deadlock detection: tasks running on a bounded executor that
+     * wait on sibling tasks submitted to the same executor, so the pool can never free a
+     * thread to run them. See
+     * {@link se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector}.
+     * @since 1.7.0
+     *
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#EXECUTOR_DEADLOCK} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectExecutorDeadlock() default true;
+
+    /**
+     * Enable blocking-wait detection on executor tasks: {@code Future.get()} and similar
+     * blocking waits performed from inside a task running on the same bounded pool, which
+     * consumes a worker thread while it waits. See
+     * {@link se.deversity.asynctest.diagnostics.FutureBlockingDetector}.
+     * @since 1.7.0
+     *
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#FUTURE_BLOCKING} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectFutureBlocking() default true;
+
     // ============= License Gating (Integration) =============
 
     /** Keygen Account ID. Defaults to System property 'keygen.account.id' if empty. */

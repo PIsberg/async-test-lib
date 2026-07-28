@@ -258,6 +258,9 @@ class PresetResolutionTest {
         @Override public boolean detectLazyConstantMisuse() { return def("detectLazyConstantMisuse"); }
         @Override public boolean detectFinalFieldMutation() { return def("detectFinalFieldMutation"); }
         @Override public boolean detectSharedKdf() { return def("detectSharedKdf"); }
+        @Override public boolean detectLatchMisuse() { return def("detectLatchMisuse"); }
+        @Override public boolean detectExecutorDeadlock() { return def("detectExecutorDeadlock"); }
+        @Override public boolean detectFutureBlocking() { return def("detectFutureBlocking"); }
         @Override public boolean enableBenchmarking() { return def("enableBenchmarking"); }
         @Override public double benchmarkRegressionThreshold() { return def("benchmarkRegressionThreshold"); }
         @Override public boolean failOnBenchmarkRegression() { return def("failOnBenchmarkRegression"); }

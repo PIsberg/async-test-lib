@@ -172,3 +172,8 @@ se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedJsonMapperReco
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$LazyConstantMisuse
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$FinalFieldMutation
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedKdf
+
+# Executor / future / latch detectors
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$LatchMisuse
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ExecutorDeadlock
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$FutureBlocking
