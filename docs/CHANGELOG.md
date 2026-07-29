@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0-RC4] - 2026-07-29
+
 ### Fixed — three implemented detectors were unreachable; now wired into `detectAll`
 `LatchMisuseDetector`, `ExecutorDeadlockDetector` and `FutureBlockingDetector` shipped with
 full implementations and passing unit tests but no wiring: no `DetectorType` constant, no

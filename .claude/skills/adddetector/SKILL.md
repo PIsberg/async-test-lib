@@ -43,7 +43,7 @@ ls src/main/java/se/deversity/asynctest/diagnostics/ | grep -i "<base>"
 ```
 
 Also read the current version once — `@since` uses the pom version with any `-RCx`/`-SNAPSHOT`
-suffix removed (today `1.7.0-RC3` → `1.7.0`):
+suffix removed (today `1.7.0-RC4` → `1.7.0`):
 
 ```bash
 grep -m1 '<version>' pom.xml
