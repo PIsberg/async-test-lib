@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — three implemented detectors were unreachable; now wired into `detectAll`
+`LatchMisuseDetector`, `ExecutorDeadlockDetector` and `FutureBlockingDetector` shipped with
+full implementations and passing unit tests but no wiring: no `DetectorType` constant, no
+`@AsyncTest` flag, no `AsyncTestConfig` field, no `DetectorRegistry` field and no
+`AsyncTestContext` accessor. Nothing constructed them during a real `@AsyncTest`, so their
+findings could never reach a report — while the green test suite made them look shipped.
+- New `DetectorType` constants: `LATCH_MISUSE`, `EXECUTOR_DEADLOCK`, `FUTURE_BLOCKING`;
+  addressable from `excludes` / `includes` / `Preset` like every other detector.
+- New `@AsyncTest` flags (deprecated on arrival, matching the house convention):
+  `detectLatchMisuse`, `detectExecutorDeadlock`, `detectFutureBlocking` — all default `true`.
+- New accessors: `AsyncTestContext.latchMisuseDetector()`, `executorDeadlockDetector()`,
+  `futureBlockingDetector()` — without them the detectors would run but never receive events.
+- Registered as SPI factories in `LegacyDetectorFactories` + `META-INF/services`.
+- Detector count is now **127** (`DetectorType.values().length`). README and the catalog
+  previously disagreed (121 vs 124); both now state the verified count.
+- Guardrail note: this edits `DetectorType`, which CLAUDE.md marks `<locked_files>`. The lock
+  exists to prevent *isolated* enum edits that break the enum↔flag↔registry↔factory mapping;
+  this change makes all of those edits together, plus the wiring test that pins them.
+
+### Fixed — third-party `Detector` SPI now runs inside `@AsyncTest`
+- `AsyncTestContext` builds an SPI registry per test via the new
+  `spi.DetectorRegistry.buildExternal(config)`. Previously nothing on the execution path
+  ever built one: a detector supplied through `META-INF/services` was discovered by
+  nobody, never received `onTestStart()` / `onTestEnd()`, and its violations reached
+  neither the printed reports nor the `failOn` gate. The published extension point was
+  effectively documentation-only.
+- `buildExternal` excludes the built-in bridge factories in `spi/adapters` — they wrap
+  freshly constructed legacy detectors that observe nothing, so including them would
+  allocate ~120 blind duplicates per test. Built-in detection is unchanged and still runs
+  through the legacy registry.
+- Third-party violations are merged into `AsyncTestContext.analyzeAllNamed()` keyed by
+  `Violation.detector()` and prefixed with the severity label, so `failOn` classifies a
+  finding at the severity its detector assigned instead of defaulting to `HIGH`.
+- `AsyncTestContext.analyzeAll()` is now derived from `analyzeAllNamed()`, so the
+  free-text and keyed views can no longer disagree about which detectors were consulted.
+- New: `spi.DetectorRegistry.buildExternal(AsyncTestConfig)` and
+  `spi.DetectorRegistry.isEmpty()`. No existing signature changed.
+
+### Fixed — a timeout is reported once
+- `ConcurrencyRunner`'s pre-round deadline check threw an error that `timeoutError` had
+  already reported; its message then satisfied `isTimeoutLike` in the enclosing
+  `catch (AssertionError)`, sending it through `timeoutError` a second time. One timeout
+  fired two `AsyncTestListener.onTimeout` callbacks and printed the thread dump and every
+  Phase 1 / Phase 2 report twice. Errors already reported are now rethrown as-is.
+
 ### Added — Phase 18: JDK 25/26 GA-era detectors
 Three new pipeline detectors (each with a `DetectorType` constant, deprecated `@AsyncTest`
 boolean flag, `AsyncTestContext` accessor, SPI factory, and example project):

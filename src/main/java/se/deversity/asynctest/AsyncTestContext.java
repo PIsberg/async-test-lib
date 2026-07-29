@@ -126,13 +126,18 @@ import se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector;
 import se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector;
 import se.deversity.asynctest.diagnostics.FinalFieldMutationDetector;
 import se.deversity.asynctest.diagnostics.SharedKdfDetector;
+import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
+import se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector;
+import se.deversity.asynctest.diagnostics.FutureBlockingDetector;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICallersOnly;
 import se.deversity.vibetags.annotations.AICore;
 import se.deversity.vibetags.annotations.AIIdempotent;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 import se.deversity.vibetags.annotations.AIThreadSafe;
+import se.deversity.asynctest.report.Violation;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -174,6 +179,29 @@ public final class AsyncTestContext {
 
     /** Holds detector instances; extracted to keep this class small. */
     private final DetectorRegistry registry;
+
+    /**
+     * Third-party detectors contributed through the public {@link se.deversity.asynctest.spi.Detector}
+     * SPI, discovered once per context via {@code ServiceLoader}.
+     *
+     * <p>Built-in bridge factories are excluded (see
+     * {@link se.deversity.asynctest.spi.DetectorRegistry#buildExternal}); the built-in detectors
+     * run through {@link #registry} above, which owns the instances user code records into.
+     * Without this field the SPI was inert at runtime: nothing on the execution path ever built
+     * an SPI registry, so a user-supplied detector was discovered by nobody, never received its
+     * lifecycle callbacks, and its violations reached neither the reports nor the failOn gate.
+     *
+     * <p>Effectively immutable after construction; the registry itself is only read afterwards.
+     */
+    private final se.deversity.asynctest.spi.DetectorRegistry externalDetectors;
+
+    /**
+     * Guards the single {@code onTestEnd()} sweep over {@link #externalDetectors}. Analysis runs on
+     * the runner thread only (see {@link #analyzeAllNamed()}), but the flag is atomic so that a
+     * stray call from a still-draining worker thread cannot fire the hook twice.
+     */
+    private final java.util.concurrent.atomic.AtomicBoolean externalTestEndFired =
+            new java.util.concurrent.atomic.AtomicBoolean();
 
     // ---- Package-private field accessors for DetectorRegistry (used by tests) ----
     // These are forwarded to the registry so existing test code that accesses
@@ -314,6 +342,11 @@ public final class AsyncTestContext {
     final FinalFieldMutationDetector            finalFieldMutationDetector;
     final SharedKdfDetector                     sharedKdfDetector;
 
+    // ---- Executor / future / latch ----
+    final LatchMisuseDetector                   latchMisuseDetector;
+    final ExecutorDeadlockDetector              executorDeadlockDetector;
+    final FutureBlockingDetector                futureBlockingDetector;
+
     // ---- Agent-telemetry bridge target (1.7.0+) ----
     // Exposed via atomicityValidator() so se.deversity.asynctest.telemetry.TelemetryBridge
     // can route drained agent field-access events into the live per-test detector.
@@ -446,8 +479,21 @@ public final class AsyncTestContext {
         lazyConstantMisuseDetector             = registry.lazyConstantMisuseDetector;
         finalFieldMutationDetector             = registry.finalFieldMutationDetector;
         sharedKdfDetector                      = registry.sharedKdfDetector;
+        // Executor / future / latch
+        latchMisuseDetector                    = registry.latchMisuseDetector;
+        executorDeadlockDetector               = registry.executorDeadlockDetector;
+        futureBlockingDetector                 = registry.futureBlockingDetector;
         // Agent-telemetry bridge target
         atomicityValidator                     = registry.atomicityValidator;
+
+        // Third-party SPI detectors: discovered, instantiated and started here — once per
+        // @AsyncTest method, on the runner thread, before any worker thread exists — so
+        // onTestStart() runs exactly where the Detector contract says it does ("before the
+        // first invocation round"). Findings are merged in analyzeAllNamed().
+        externalDetectors = se.deversity.asynctest.spi.DetectorRegistry.buildExternal(cfg);
+        if (!externalDetectors.isEmpty()) {
+            externalDetectors.fireOnTestStart();
+        }
     }
 
     // ---- Phase 1/3 instance convergence (used by Phase1DetectorSet.from) ----
@@ -606,29 +652,64 @@ public final class AsyncTestContext {
     // ---- Internal reporting ----
 
     /**
-     * Delegates to {@link DetectorRegistry#analyzeAll()}.
+     * Every finding of this run, built-in and third-party alike, as free-text reports.
      * Called by {@link se.deversity.asynctest.runner.ConcurrencyRunner} after the test.
+     *
+     * <p>Derived from {@link #analyzeAllNamed()} rather than from
+     * {@link DetectorRegistry#analyzeAll()} directly, so the two views can never disagree
+     * about which detectors were consulted.
      *
      * @return list of non-empty issue reports; never {@code null}
      */
     public List<String> analyzeAll() {
-        return registry.analyzeAll();
+        return new ArrayList<>(analyzeAllNamed().values());
     }
 
     /**
      * Delegates to {@code DetectorRegistry.analyzeAllNamed()}: the same findings
      * {@link #analyzeAll()} returns, but keyed by the simple name of the detector that
-     * produced each one.
+     * produced each one — then appends the findings of any third-party
+     * {@link se.deversity.asynctest.spi.Detector} on the classpath.
      *
      * <p>Preferred over {@link #analyzeAll()} by anything that needs to identify a finding —
      * report attribution, listener callbacks, baseline suppression — because a detector's
      * identity must not be inferred from its report prose.
      *
+     * <p>Runs on the runner thread after all workers of the round have finished; SPI
+     * {@code onTestEnd()} hooks fire once, after the last analysis of the run.
+     *
      * @return non-empty issue reports by detector name; never {@code null}
      * @since 1.7.0
      */
     public Map<String, String> analyzeAllNamed() {
-        return registry.analyzeAllNamed();
+        Map<String, String> reports = registry.analyzeAllNamed();
+        appendExternalFindings(reports);
+        return reports;
+    }
+
+    /**
+     * Merges third-party SPI violations into {@code reports}, keyed by
+     * {@link Violation#detector()}, then fires {@code onTestEnd()} once.
+     *
+     * <p>Each report line opens with the violation's severity label so that
+     * {@code IssueSeverity.fromReport} — the failOn gate's classifier, which only sees the
+     * text — recovers the severity the detector actually assigned instead of defaulting to
+     * {@code HIGH}. Several violations from one detector are joined under its single key,
+     * matching how the legacy registry emits one report per detector.
+     */
+    private void appendExternalFindings(Map<String, String> reports) {
+        if (externalDetectors.isEmpty()) {
+            return;
+        }
+        // analyzeAll() already contains each detector's failure, so one broken third-party
+        // detector cannot cost us the built-in findings collected above.
+        for (Violation v : externalDetectors.analyzeAll()) {
+            String line = v.severity().getLabel() + " " + v.detector() + ": " + v.message();
+            reports.merge(v.detector(), line, (existing, added) -> existing + "\n" + added);
+        }
+        if (externalTestEndFired.compareAndSet(false, true)) {
+            externalDetectors.fireOnTestEnd();
+        }
     }
 
     // ---- Public static detector accessors ----
@@ -2068,6 +2149,48 @@ public final class AsyncTestContext {
      */
     public static SharedKdfDetector sharedKdfDetector() {
         return require("detectSharedKdf", c -> c.sharedKdfDetector);
+    }
+
+    /**
+     * Returns the {@link LatchMisuseDetector} for the current test.
+     *
+     * <p>Register each latch with {@code registerLatch(latch, name, initialCount)} and record
+     * {@code recordAwait} / {@code recordCountDown} around its use; the detector is analysed
+     * with the rest at end of test.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLatchMisuse = false}
+     * @since 1.7.0
+     */
+    public static LatchMisuseDetector latchMisuseDetector() {
+        return require("detectLatchMisuse", c -> c.latchMisuseDetector);
+    }
+
+    /**
+     * Returns the {@link ExecutorDeadlockDetector} for the current test.
+     *
+     * <p>Register each executor with {@code registerExecutor(executor, name, maxThreads)} and
+     * record {@code recordTaskSubmitted} / {@code recordTaskStarted} /
+     * {@code recordWaitingOnSibling} / {@code recordTaskCompleted} around its tasks.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectExecutorDeadlock = false}
+     * @since 1.7.0
+     */
+    public static ExecutorDeadlockDetector executorDeadlockDetector() {
+        return require("detectExecutorDeadlock", c -> c.executorDeadlockDetector);
+    }
+
+    /**
+     * Returns the {@link FutureBlockingDetector} for the current test.
+     *
+     * <p>Register each executor with {@code registerExecutor(executor, name, maxThreads)} and
+     * record {@code recordBlockingWait} where a task blocks on a {@code Future} from the same
+     * pool.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectFutureBlocking = false}
+     * @since 1.7.0
+     */
+    public static FutureBlockingDetector futureBlockingDetector() {
+        return require("detectFutureBlocking", c -> c.futureBlockingDetector);
     }
 
     // ---- Helper ----

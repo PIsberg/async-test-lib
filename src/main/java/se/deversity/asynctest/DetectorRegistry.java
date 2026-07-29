@@ -124,6 +124,9 @@ import se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector;
 import se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector;
 import se.deversity.asynctest.diagnostics.FinalFieldMutationDetector;
 import se.deversity.asynctest.diagnostics.SharedKdfDetector;
+import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
+import se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector;
+import se.deversity.asynctest.diagnostics.FutureBlockingDetector;
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
@@ -319,6 +322,11 @@ final class DetectorRegistry {
     final FinalFieldMutationDetector            finalFieldMutationDetector;
     final SharedKdfDetector                     sharedKdfDetector;
 
+    // ---- Executor / future / latch ----
+    final LatchMisuseDetector                   latchMisuseDetector;
+    final ExecutorDeadlockDetector              executorDeadlockDetector;
+    final FutureBlockingDetector                futureBlockingDetector;
+
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
      * Detectors whose flag is {@code false} are set to {@code null} and incur
@@ -498,6 +506,9 @@ final class DetectorRegistry {
         lazyConstantMisuseDetector       = cfg.detectLazyConstantMisuse       ? new LazyConstantMisuseDetector()       : null;
         finalFieldMutationDetector       = cfg.detectFinalFieldMutation       ? new FinalFieldMutationDetector()       : null;
         sharedKdfDetector                = cfg.detectSharedKdf                ? new SharedKdfDetector()                : null;
+        latchMisuseDetector              = cfg.detectLatchMisuse              ? new LatchMisuseDetector()              : null;
+        executorDeadlockDetector         = cfg.detectExecutorDeadlock         ? new ExecutorDeadlockDetector()         : null;
+        futureBlockingDetector           = cfg.detectFutureBlocking           ? new FutureBlockingDetector()           : null;
     }
 
     /**
@@ -934,6 +945,16 @@ final class DetectorRegistry {
         ifIssue(sharedKdfDetector,
                 SharedKdfDetector::analyze,
                 SharedKdfDetector.Report::hasIssues, out);
+
+        ifIssue(latchMisuseDetector,
+                LatchMisuseDetector::analyze,
+                LatchMisuseDetector.LatchMisuseReport::hasIssues, out);
+        ifIssue(executorDeadlockDetector,
+                ExecutorDeadlockDetector::analyze,
+                ExecutorDeadlockDetector.ExecutorDeadlockReport::hasIssues, out);
+        ifIssue(futureBlockingDetector,
+                FutureBlockingDetector::analyze,
+                FutureBlockingDetector.FutureBlockingReport::hasIssues, out);
 
         return out;
     }

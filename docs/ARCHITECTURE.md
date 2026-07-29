@@ -540,9 +540,27 @@ Coverage is automated:
 **Coexistence with the legacy registry.** Both registries instantiate
 independently and run side-by-side. The legacy
 `se.deversity.async-test-lib.DetectorRegistry` continues to drive per-test
-execution and owns the `AsyncTestContext` wiring; the SPI registry is the
-surface for programmatic discovery, custom user detectors, and incremental
-migration of each detector to expose structured violations natively.
+execution for the built-in detectors and owns the `AsyncTestContext` wiring.
+
+**Third-party detectors are live (1.7.0).** `AsyncTestContext` builds a second,
+SPI-driven registry per test via `DetectorRegistry.buildExternal(config)`, which
+discovers every `DetectorFactory` on the classpath *except* the built-in bridges
+in `spi/adapters` (those wrap fresh legacy instances that observe nothing, so
+including them would allocate ~120 duplicate detectors per test). A user-supplied
+detector therefore:
+
+- is instantiated once per `@AsyncTest` method, if `isEnabledFor(config)`,
+- receives `onTestStart()` before the first invocation round and `onTestEnd()`
+  after the run's analysis,
+- has its `Violation`s merged into `analyzeAllNamed()` — keyed by
+  `Violation.detector()`, prefixed with the severity label so the `failOn` gate
+  classifies them at the severity the detector assigned.
+
+Before 1.7.0 nothing on the execution path ever built an SPI registry: the
+published extension point compiled, was discovered by `ServiceLoader` in tests,
+and then never ran inside a real test. The registry remains the surface for
+programmatic discovery and for incremental migration of each built-in detector
+to expose structured violations natively.
 
 ---
 

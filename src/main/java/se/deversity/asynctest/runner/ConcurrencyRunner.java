@@ -160,10 +160,20 @@ public class ConcurrencyRunner {
                 : new java.util.Random();
         long currentSeed = 0L;
 
+        // Set by the pre-round deadline check below, read by the catch block: the error it
+        // throws has already been through timeoutError() — listeners notified, thread dump
+        // printed, Phase 1 and Phase 2 reports flushed. Its message then satisfies
+        // isTimeoutLike, so without this flag the catch sent it through timeoutError a
+        // second time and one timeout produced two onTimeout callbacks and two copies of
+        // every report. (Phase2Analysis already memoized the analysis itself; nothing
+        // around it was memoized.)
+        boolean timeoutAlreadyReported = false;
+
         try {
             for (int i = 0; i < config.invocations; i++) {
                 long remainingMs = remainingMillis(deadlineNanos);
                 if (remainingMs <= 0) {
+                    timeoutAlreadyReported = true;
                     throw timeoutError(effectiveTimeoutMs, null, phase1, phase2Analysis,
                             config.detectDeadlocks);
                 }
@@ -197,6 +207,12 @@ public class ConcurrencyRunner {
                 }
             }
         } catch (AssertionError e) {
+            if (timeoutAlreadyReported) {
+                // Thrown by the pre-round deadline check above, which already went through
+                // timeoutError(): re-reporting it here would duplicate the onTimeout event,
+                // the thread dump and every detector report for a single timeout.
+                throw e;
+            }
             if (isTimeoutLike(e)) {
                 throw timeoutError(effectiveTimeoutMs, e, phase1, phase2Analysis,
                         config.detectDeadlocks);
@@ -552,6 +568,15 @@ public class ConcurrencyRunner {
         return message != null && message.contains("timed out");
     }
 
+    /**
+     * Reports a timeout exactly once — listeners notified, thread dump printed, Phase 1 and
+     * Phase 2 reports flushed — and returns the {@link AssertionError} to throw.
+     *
+     * <p>Callers that throw the returned error from inside {@link #execute}'s try block must
+     * set {@code timeoutAlreadyReported} first: the message ("Test timed out after …")
+     * satisfies {@link #isTimeoutLike}, so the enclosing {@code catch (AssertionError)} would
+     * otherwise route it through here a second time.
+     */
     private static AssertionError timeoutError(long timeoutMs,
                                                Throwable cause,
                                                Phase1DetectorSet phase1,

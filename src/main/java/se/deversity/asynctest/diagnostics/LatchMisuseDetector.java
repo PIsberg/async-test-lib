@@ -5,10 +5,19 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects CountDownLatch-style misuse such as missing or extra countdowns.
+ *
+ * <p>Reachable from a test via {@code AsyncTestContext.latchMisuseDetector()} when
+ * {@link se.deversity.asynctest.DetectorType#LATCH_MISUSE} is enabled.
  */
+@AITestDriven(
+    framework = {AITestDriven.Framework.JUNIT_5},
+    coverageGoal = 80,
+    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/LatchMisuseDetectorTest.java"
+)
 public class LatchMisuseDetector {
 
     private static class LatchState {

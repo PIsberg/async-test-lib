@@ -57,12 +57,18 @@ class AllDetectorsSpiCoverageTest {
         // Even though we don't depend on a specific order at runtime, exercising
         // the full iteration confirms every entry instantiates cleanly (no
         // ClassNotFoundException from a typo in the services file).
+        //
+        // Counted over the built-in bridge package only: third-party factories are exactly
+        // what the SPI is for, and one of them (ExternalTestDetectorFactory) is registered on
+        // the test classpath. Counting those here would turn "a user added a detector" into a
+        // failure of the built-in-completeness check.
         long count = StreamSupport
                 .stream(ServiceLoader.load(DetectorFactory.class).spliterator(), false)
+                .filter(f -> f.getClass().getName().startsWith("se.deversity.asynctest.spi.adapters."))
                 .map(DetectorFactory::type)
                 .count();
         assertEquals(DetectorType.values().length, count,
-                "Service-loaded factory count must equal DetectorType.values().length; "
+                "Built-in factory count must equal DetectorType.values().length; "
                         + "this catches duplicates and missing entries simultaneously.");
     }
 }
