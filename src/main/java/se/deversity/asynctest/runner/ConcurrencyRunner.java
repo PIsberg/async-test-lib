@@ -248,7 +248,7 @@ public class ConcurrencyRunner {
                 try {
                     benchmarkRecorder.complete();
                 } catch (Exception e) {
-                    log.warn("Benchmark completion failed: {}", e.getMessage());
+                    log.warn("Benchmark completion failed: {}", e.getMessage(), e);
                 }
             }
         }
@@ -494,7 +494,7 @@ public class ConcurrencyRunner {
                             phase1.livelock.captureSnapshot();
                         } catch (Throwable snapErr) {
                             // Diagnostic-only path; never fail the test on this.
-                            log.warn("Livelock snapshot failed: {}", snapErr.getMessage());
+                            log.warn("Livelock snapshot failed: {}", snapErr.getMessage(), snapErr);
                         }
                     }
                     latch.countDown();

@@ -177,7 +177,7 @@ public class BenchmarkComparator {
             return Optional.ofNullable(readStore(storeFile).get(benchmarkKey));
         } catch (IOException | ClassNotFoundException e) {
             // If we can't read the baseline, treat as if it doesn't exist
-            log.warn("Could not load benchmark baseline: {}", e.getMessage());
+            log.warn("Could not load benchmark baseline: {}", e.getMessage(), e);
             return Optional.empty();
         }
     }
@@ -236,7 +236,7 @@ public class BenchmarkComparator {
         try {
             return readStore(storeFile);
         } catch (IOException | ClassNotFoundException e) {
-            log.warn("Could not load benchmark baselines, starting fresh: {}", e.getMessage());
+            log.warn("Could not load benchmark baselines, starting fresh: {}", e.getMessage(), e);
             return new HashMap<>();
         }
     }
@@ -259,7 +259,7 @@ public class BenchmarkComparator {
              ObjectOutputStream oos = new ObjectOutputStream(fos)) {
             oos.writeObject(store);
         } catch (IOException e) {
-            log.warn("Could not save benchmark baselines: {}", e.getMessage());
+            log.warn("Could not save benchmark baselines: {}", e.getMessage(), e);
         }
     }
 

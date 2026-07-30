@@ -36,10 +36,22 @@ public class LazyInitValidator {
 
         LazyFieldState state = fields.computeIfAbsent(fieldName, LazyFieldState::new);
         state.accessingThreads.add(Thread.currentThread().threadId());
-        state.observedNull |= observedNull;
-        state.initialized |= initializedValue;
-        state.synchronizedAccess |= synchronizedAccess;
-        state.volatileField |= volatileField;
+        // These four are monotone latches, and `|=` on a volatile is read-modify-write:
+        // a thread OR-ing false can read before another's true and write false back over it,
+        // losing the observation. Only ever writing true removes the lost update entirely,
+        // and a plain volatile write is enough because the value never goes back down.
+        if (observedNull) {
+            state.observedNull = true;
+        }
+        if (initializedValue) {
+            state.initialized = true;
+        }
+        if (synchronizedAccess) {
+            state.synchronizedAccess = true;
+        }
+        if (volatileField) {
+            state.volatileField = true;
+        }
         if (observedNull && initializedValue) {
             state.initializationAttempts.incrementAndGet();
         }
