@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects iteration over {@link Collections#synchronizedList},
@@ -34,11 +33,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * mon.recordIterationStarted(list, Thread.currentThread(), false);
  * }</pre>
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SynchronizedCollectionIterationDetectorTest.java"
-)
 public class SynchronizedCollectionIterationDetector {
 
     private static class WrapperInfo {

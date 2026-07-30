@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects {@link java.text.DecimalFormat} and {@link java.text.NumberFormat} instances
@@ -24,11 +23,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  *
  * @since 0.9.0
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedDecimalFormatDetectorTest.java"
-)
 public class SharedDecimalFormatDetector {
 
     private static class FormatState {

@@ -6,7 +6,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects misuse of {@link InheritableThreadLocal} in thread-pool environments.
@@ -48,11 +47,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * }
  * }</pre>
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/InheritableThreadLocalMisuseDetectorTest.java"
-)
 public class InheritableThreadLocalMisuseDetector {
 
     /** Thread IDs that belong to a thread pool (registered by test code). */

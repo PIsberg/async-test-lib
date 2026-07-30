@@ -8,7 +8,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects misuse of Java 25+ {@code StableValue} (JEP 502 — Stable Values,
@@ -63,11 +62,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  *
  * @since 1.7.0
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/StableValueMisuseDetectorTest.java"
-)
 public class StableValueMisuseDetector {
 
     /** Above this many distinct threads racing one holder, we warn about wasted supplier work. */

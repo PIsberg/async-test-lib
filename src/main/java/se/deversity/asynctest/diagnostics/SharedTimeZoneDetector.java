@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects {@link java.util.TimeZone} instances whose mutable state is modified while
@@ -28,11 +27,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  *
  * @since 0.10.0
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedTimeZoneDetectorTest.java"
-)
 public class SharedTimeZoneDetector {
 
     private static final class TzState {

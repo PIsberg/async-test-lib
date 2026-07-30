@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CyclicBarrier;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects CyclicBarrier misuse patterns:
@@ -16,11 +15,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * - Barrier reuse issues (inconsistent participation across cycles)
  * - Missing participants (not all expected threads arrive)
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/CyclicBarrierDetectorTest.java"
-)
 public class CyclicBarrierDetector {
 
     private final Map<CyclicBarrier, BarrierInfo> barrierRegistry = new ConcurrentHashMap<>();

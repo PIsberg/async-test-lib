@@ -8,7 +8,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ForkJoinPool;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects blocking operations ({@link Thread#sleep}, {@link Object#wait}, blocking I/O,
@@ -29,11 +28,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * mon.recordBlockingCall(cf, Thread.currentThread(), "InputStream.read");
  * }</pre>
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureCommonPoolBlockingDetectorTest.java"
-)
 public class CompletableFutureCommonPoolBlockingDetector {
 
     private final Set<Integer>         commonPoolFutures = ConcurrentHashMap.newKeySet();

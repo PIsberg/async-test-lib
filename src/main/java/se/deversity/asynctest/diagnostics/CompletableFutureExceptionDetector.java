@@ -4,7 +4,6 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects exception handling issues in CompletableFuture chains.
@@ -44,11 +43,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * }
  * }</pre>
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureExceptionDetectorTest.java"
-)
 public class CompletableFutureExceptionDetector {
 
     private static class FutureState {

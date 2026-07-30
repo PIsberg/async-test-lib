@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects I/O stream (InputStream, OutputStream, Reader, Writer) not being properly closed
@@ -34,11 +33,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * }
  * }</pre>
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/StreamClosingDetectorTest.java"
-)
 public class StreamClosingDetector {
 
     private static class StreamState {

@@ -6,7 +6,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects recursive calls to {@link ConcurrentHashMap#computeIfAbsent} (or
@@ -31,11 +30,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * }
  * }</pre>
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ConcurrentMapComputeRecursionDetectorTest.java"
-)
 public class ConcurrentMapComputeRecursionDetector {
 
     // slot = mapIdentityHash:keyIdentityHash:threadId

@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects concurrent mutations to JVM system properties via {@link System#setProperty}
@@ -28,11 +27,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  *
  * @since 0.10.0
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SystemPropertyMutationDetectorTest.java"
-)
 public class SystemPropertyMutationDetector {
 
     private static class MutationEvent {

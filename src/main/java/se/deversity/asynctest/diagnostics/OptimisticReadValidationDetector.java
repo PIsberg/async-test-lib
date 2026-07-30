@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects incorrect usage of {@link java.util.concurrent.locks.StampedLock} optimistic reads:
@@ -33,11 +32,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * }
  * }</pre>
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/OptimisticReadValidationDetectorTest.java"
-)
 public class OptimisticReadValidationDetector {
 
     private static class OptimisticRead {

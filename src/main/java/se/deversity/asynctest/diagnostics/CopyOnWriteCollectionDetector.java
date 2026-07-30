@@ -3,7 +3,6 @@ package se.deversity.asynctest.diagnostics;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects {@code CopyOnWriteArrayList} and {@code CopyOnWriteArraySet} used in
@@ -43,11 +42,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * }
  * }</pre>
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/CopyOnWriteCollectionDetectorTest.java"
-)
 public class CopyOnWriteCollectionDetector {
 
     /**

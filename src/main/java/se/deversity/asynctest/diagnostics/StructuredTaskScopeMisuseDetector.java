@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects misuse of the {@code StructuredTaskScope} API (JEP 505/525 —
@@ -78,11 +77,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  *
  * @since 1.7.0
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/StructuredTaskScopeMisuseDetectorTest.java"
-)
 public class StructuredTaskScopeMisuseDetector {
 
     private static final class ScopeState {

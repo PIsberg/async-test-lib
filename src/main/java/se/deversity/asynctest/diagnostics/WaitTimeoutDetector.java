@@ -6,7 +6,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects wait/notify patterns without timeout (potential deadlock).
@@ -28,11 +27,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  *       }
  *   }
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/WaitTimeoutDetectorTest.java"
-)
 public class WaitTimeoutDetector {
 
     private final Map<WaitInfo, Set<String>> waitEvents = new ConcurrentHashMap<>();

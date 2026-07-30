@@ -7,7 +7,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects use of deprecated and unsafe {@link Thread} API methods:
@@ -32,11 +31,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  *
  * @since 0.10.0
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/DeprecatedThreadApiDetectorTest.java"
-)
 public class DeprecatedThreadApiDetector {
 
     /** Names of deprecated {@link Thread} API methods tracked by this detector. */

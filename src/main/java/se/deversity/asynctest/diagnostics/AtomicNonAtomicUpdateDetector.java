@@ -8,7 +8,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects non-atomic compound updates on {@link AtomicInteger}, {@link AtomicLong},
@@ -28,11 +27,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * mon.recordSet(counter, "counter", Thread.currentThread());
  * }</pre>
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/AtomicNonAtomicUpdateDetectorTest.java"
-)
 public class AtomicNonAtomicUpdateDetector {
 
     private static class AtomicState {

@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects thread leaks in concurrent code.
@@ -43,11 +42,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * <p>Automatic detection mode also monitors {@code Thread.activeCount()}
  * growth across invocations to detect leaked threads.
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ThreadLeakDetectorTest.java"
-)
 public class ThreadLeakDetector {
 
     private static final class ThreadState {

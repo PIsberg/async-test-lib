@@ -5,7 +5,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects Condition variable misuse patterns in concurrent code.
@@ -43,11 +42,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * }
  * }</pre>
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ConditionVariableDetectorTest.java"
-)
 public class ConditionVariableDetector {
 
     private static class ConditionState {

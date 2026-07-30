@@ -5,7 +5,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects self-deadlock patterns in single-thread or bounded executors.
@@ -13,11 +12,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * <p>Reachable from a test via {@code AsyncTestContext.executorDeadlockDetector()} when
  * {@link se.deversity.asynctest.DetectorType#EXECUTOR_DEADLOCK} is enabled.
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ExecutorDeadlockDetectorTest.java"
-)
 public class ExecutorDeadlockDetector {
 
     private static class ExecutorState {

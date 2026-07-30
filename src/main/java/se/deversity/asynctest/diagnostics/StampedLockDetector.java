@@ -6,7 +6,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.StampedLock;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects StampedLock misuse patterns:
@@ -15,11 +14,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * - Stamp not released in finally block
  * - Wrong stamp used for unlock
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/StampedLockDetectorTest.java"
-)
 public class StampedLockDetector {
 
     private final Map<StampedLock, LockInfo> lockRegistry = new ConcurrentHashMap<>();

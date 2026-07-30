@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects {@link java.util.regex.Matcher} instances shared across multiple threads.
@@ -23,11 +22,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  *
  * @since 0.9.0
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedMatcherDetectorTest.java"
-)
 public class SharedMatcherDetector {
 
     private static class MatcherState {

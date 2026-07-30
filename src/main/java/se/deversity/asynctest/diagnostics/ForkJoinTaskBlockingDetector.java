@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects blocking calls ({@link Thread#sleep}, {@link Object#wait}, {@code Future.get()},
@@ -28,11 +27,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * }
  * }</pre>
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ForkJoinTaskBlockingDetectorTest.java"
-)
 public class ForkJoinTaskBlockingDetector {
 
     private final Set<Long>    activeForkJoinThreads = ConcurrentHashMap.newKeySet();

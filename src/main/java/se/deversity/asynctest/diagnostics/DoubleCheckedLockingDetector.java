@@ -6,7 +6,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects broken double-checked locking patterns.
@@ -25,11 +24,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * 
  * Fix: Make instance volatile
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/DoubleCheckedLockingDetectorTest.java"
-)
 public class DoubleCheckedLockingDetector {
 
     private final Map<String, DCLInfo> dclRegistry = new ConcurrentHashMap<>();

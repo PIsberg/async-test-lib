@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects unsafe use of {@code Stream.gather(Gatherer)} (JEP 485 — Stream
@@ -61,11 +60,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  *
  * @since 1.7.0
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/GathererConcurrencyMisuseDetectorTest.java"
-)
 public class GathererConcurrencyMisuseDetector {
 
     private static final class GathererInfo {

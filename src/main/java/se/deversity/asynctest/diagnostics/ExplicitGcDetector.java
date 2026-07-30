@@ -3,7 +3,6 @@ package se.deversity.asynctest.diagnostics;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects explicit garbage-collection invocations ({@link System#gc()} or
@@ -25,11 +24,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  *
  * @since 0.10.0
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ExplicitGcDetectorTest.java"
-)
 public class ExplicitGcDetector {
 
     private static class GcEvent {

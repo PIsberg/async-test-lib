@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects {@link ThreadLocal} values that bleed from one task into the next task executing
@@ -28,11 +27,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * mon.recordGet(Thread.currentThread(), MY_TL, "MY_TL", MY_TL.get() != null);
  * }</pre>
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ThreadLocalContaminationDetectorTest.java"
-)
 public class ThreadLocalContaminationDetector {
 
     private static final class ThreadState {

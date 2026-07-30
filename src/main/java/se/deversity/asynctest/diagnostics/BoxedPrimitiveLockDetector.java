@@ -22,7 +22,6 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects {@code synchronized} blocks that lock on cached boxed primitives or on
@@ -69,11 +68,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  *
  * @since 0.10.0
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/BoxedPrimitiveLockDetectorTest.java"
-)
 public class BoxedPrimitiveLockDetector {
 
     private static class LockEvent {

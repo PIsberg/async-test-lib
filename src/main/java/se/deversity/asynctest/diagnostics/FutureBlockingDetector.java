@@ -5,7 +5,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects blocking waits on sibling futures inside bounded executors.
@@ -13,11 +12,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * <p>Reachable from a test via {@code AsyncTestContext.futureBlockingDetector()} when
  * {@link se.deversity.asynctest.DetectorType#FUTURE_BLOCKING} is enabled.
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/FutureBlockingDetectorTest.java"
-)
 public class FutureBlockingDetector {
 
     private static class ExecutorState {

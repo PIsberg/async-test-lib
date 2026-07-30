@@ -3,7 +3,6 @@ package se.deversity.asynctest.diagnostics;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects Thread.sleep() calls while holding a lock.
@@ -33,11 +32,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * <p>The detector uses stack trace sampling to identify when Thread.sleep()
  * is called from within synchronized blocks or while holding ReentrantLock.
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SleepInLockDetectorTest.java"
-)
 public class SleepInLockDetector {
 
     private static class SleepInLockEvent {

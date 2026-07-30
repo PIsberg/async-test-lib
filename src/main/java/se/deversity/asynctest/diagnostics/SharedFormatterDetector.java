@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects {@link java.util.Formatter}, {@link java.io.PrintWriter}, and
@@ -22,11 +21,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * mon.recordAccess(sharedFormatter, "sharedFormatter", Thread.currentThread());
  * }</pre>
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedFormatterDetectorTest.java"
-)
 public class SharedFormatterDetector {
 
     private static class FormatterState {

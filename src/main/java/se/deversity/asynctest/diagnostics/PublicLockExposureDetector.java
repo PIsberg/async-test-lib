@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects classes that use {@code synchronized(this)} (or {@code synchronized} instance
@@ -28,11 +27,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * mon.recordObjectPublished(this, "returned from getService()");
  * }</pre>
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/PublicLockExposureDetectorTest.java"
-)
 public class PublicLockExposureDetector {
 
     private final Set<Integer>          synchronizedObjects = ConcurrentHashMap.newKeySet();

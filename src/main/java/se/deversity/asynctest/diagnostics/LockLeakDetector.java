@@ -5,7 +5,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
-import se.deversity.vibetags.annotations.AITestDriven;
 
 /**
  * Detects lock leak patterns where locks are acquired but never released.
@@ -37,11 +36,6 @@ import se.deversity.vibetags.annotations.AITestDriven;
  * }
  * }</pre>
  */
-@AITestDriven(
-    framework = {AITestDriven.Framework.JUNIT_5},
-    coverageGoal = 80,
-    testLocation = "src/test/java/se/deversity/asynctest/diagnostics/LockLeakDetectorTest.java"
-)
 public class LockLeakDetector {
 
     private static class LockState {
