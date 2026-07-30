@@ -57,6 +57,7 @@ Start here to find the right doc. All paths are relative to the repository root.
 |----------|---------|
 | [PRODUCTION_READINESS_EVAL.md](PRODUCTION_READINESS_EVAL.md) | Remaining work to reach GA / external usability |
 | [ROADMAP_V2.md](ROADMAP_V2.md) | Planned v2 work |
+| [MODULARIZATION.md](MODULARIZATION.md) | Investigation: should the library be split into Maven submodules, and what blocks it |
 
 > **Note:** `docs/README.md` was a 2461-line duplicate of the project README carrying stale
 > per-release "Phase N" detector rundowns; it is now a stub. `DISTRIBUTION_SETUP.md`,
