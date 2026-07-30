@@ -381,6 +381,6 @@ void testMyCode() {
 
 ## See Also
 
-- [AsyncTest Annotation Documentation](../src/main/java/se/deversity/asynctest/AsyncTest.java)
-- [BenchmarkResult API](../src/main/java/se/deversity/asynctest/benchmark/BenchmarkResult.java)
-- [BenchmarkComparator API](../src/main/java/se/deversity/asynctest/benchmark/BenchmarkComparator.java)
+- [AsyncTest Annotation Documentation](../async-test-lib/src/main/java/se/deversity/asynctest/AsyncTest.java)
+- [BenchmarkResult API](../async-test-lib/src/main/java/se/deversity/asynctest/benchmark/BenchmarkResult.java)
+- [BenchmarkComparator API](../async-test-lib/src/main/java/se/deversity/asynctest/benchmark/BenchmarkComparator.java)

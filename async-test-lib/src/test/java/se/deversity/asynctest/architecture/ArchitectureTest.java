@@ -263,4 +263,62 @@ class ArchitectureTest {
                     })
                     .should().beFreeOfCycles()
                     .because("architectural layers (runner, extension, benchmark, spi, detection-model) must not form dependency cycles");
+
+    // =========================================================================
+    // Module boundaries (see docs/MODULARIZATION.md)
+    // =========================================================================
+    //
+    // These rules pin the boundaries an extraction into Maven submodules depends on, so the
+    // boundary is enforced before the directory move rather than discovered during it. Both
+    // `agent` and `analysis` are leaves today: nothing in src/main imports them, and each is
+    // the sole home of a heavyweight dependency the rest of the library should not pay for.
+
+    /**
+     * Nothing may depend on the agent. It is the Byte Buddy instrumentation entry point,
+     * reached through {@code -javaagent:} or {@code selfAttach()}, never by a compile-time
+     * reference. Keeping it a leaf is what allows it to become its own artifact, taking
+     * byte-buddy and byte-buddy-agent off every consumer's default test classpath.
+     */
+    @ArchTest
+    static final ArchRule nothing_depends_on_agent =
+            noClasses()
+                    .that().resideOutsideOfPackage("se.deversity.asynctest.agent..")
+                    .should().dependOnClassesThat().resideInAPackage("se.deversity.asynctest.agent..")
+                    .because("agent is an instrumentation leaf; a compile-time reference to it would "
+                            + "drag byte-buddy into the core artifact");
+
+    /**
+     * Nothing may depend on the static pinning scanner, and it may not depend on anything
+     * else in the library. It is a standalone ASM-based pre-scanner with no runtime coupling
+     * to the execution engine.
+     */
+    @ArchTest
+    static final ArchRule nothing_depends_on_analysis =
+            noClasses()
+                    .that().resideOutsideOfPackage("se.deversity.asynctest.analysis..")
+                    .should().dependOnClassesThat().resideInAPackage("se.deversity.asynctest.analysis..")
+                    .because("analysis is a standalone pre-scanner; nothing in the run path may reference it");
+
+    // The other direction — analysis depending on nothing in the library — is no longer asserted
+    // here, and does not need to be. async-test-analysis declares no dependency on async-test-lib,
+    // so its classes cannot see them at compile time; the reactor enforces what an ArchUnit rule
+    // could only describe. (Asserting it from this module would also be vacuous: the analysis
+    // classes are not on this module's classpath, and ArchUnit fails a rule whose selection is
+    // empty.)
+
+    /** Byte Buddy is the agent's dependency alone. */
+    @ArchTest
+    static final ArchRule bytebuddy_is_confined_to_the_agent =
+            noClasses()
+                    .that().resideOutsideOfPackage("se.deversity.asynctest.agent..")
+                    .should().dependOnClassesThat().resideInAnyPackage("net.bytebuddy..")
+                    .because("byte-buddy belongs to the agent artifact, not the core one");
+
+    /** ASM is the pinning scanner's dependency alone. */
+    @ArchTest
+    static final ArchRule asm_is_confined_to_analysis =
+            noClasses()
+                    .that().resideOutsideOfPackage("se.deversity.asynctest.analysis..")
+                    .should().dependOnClassesThat().resideInAnyPackage("org.objectweb.asm..")
+                    .because("asm belongs to the analysis artifact, not the core one");
 }

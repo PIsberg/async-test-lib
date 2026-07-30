@@ -5,10 +5,29 @@ records field-access telemetry from your code **without any source changes**. Th
 covers what it is, why it exists, how to attach it three different ways, how to consume the
 events it produces, how instrumentation scope is controlled, and its honest limitations.
 
+> **Artifact:** `se.deversity.async-test-lib:async-test-agent` — a **separate module** since 1.8.0
 > **Package:** `se.deversity.asynctest.agent`
 > **Entry points:** `AsyncTestAgent.premain` / `agentmain` / `selfAttach`
 > **Since:** agent 1.6.0; dynamic self-attach, package filters, diagnostics, and the
 > telemetry bridge 1.7.0.
+
+> ### Moved out of the library JAR
+>
+> The agent used to ship inside `async-test-lib.jar`, which carried the `Premain-Class` manifest
+> and forced Byte Buddy onto every consumer's test classpath whether they used the agent or not.
+> It is now its own artifact. Two things changed for you:
+>
+> ```xml
+> <dependency>
+>     <groupId>se.deversity.async-test-lib</groupId>
+>     <artifactId>async-test-agent</artifactId>
+>     <version><!-- same version as async-test-lib --></version>
+>     <scope>test</scope>
+> </dependency>
+> ```
+>
+> and the attach flag now names the agent JAR: `-javaagent:async-test-agent-<version>.jar`.
+> Nothing about the API, the entry points or the event format changed.
 
 ---
 
@@ -95,7 +114,7 @@ The library JAR is agent-capable: its `MANIFEST.MF` declares `Premain-Class`, `A
 ### 3.1 Launch flag (static attach), plain
 
 ```
--javaagent:async-test-lib-<version>.jar
+-javaagent:async-test-agent-<version>.jar
 ```
 
 Routes through `AsyncTestAgent.premain(String, Instrumentation)` before `main()` runs. Every
@@ -105,7 +124,7 @@ need to, because nothing has loaded yet.
 ### 3.2 Launch flag with arguments
 
 ```
--javaagent:async-test-lib-<version>.jar=includes=com.myapp;excludes=com.myapp.dto,debug=true
+-javaagent:async-test-agent-<version>.jar=includes=com.myapp;excludes=com.myapp.dto,debug=true
 ```
 
 Everything after the `=` is the `agentArgs` string, parsed by `AgentOptions`. The grammar:
@@ -197,7 +216,7 @@ tasks.test {
 ```
 
 For **static** attach via `-javaagent` instead, point surefire's `argLine` / Gradle's
-`jvmArgs` at the built agent JAR: `-javaagent:/path/to/async-test-lib-<version>.jar`.
+`jvmArgs` at the built agent JAR: `-javaagent:/path/to/async-test-agent-<version>.jar`.
 
 ---
 

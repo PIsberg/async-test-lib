@@ -20,7 +20,8 @@ import java.util.stream.Stream;
  * pinning sites</em> without running any tests.
  *
  * <h2>Problem</h2>
- * {@link se.deversity.asynctest.diagnostics.VirtualThreadPinningDetector} finds pinning at
+ * {@code VirtualThreadPinningDetector} (in the async-test-lib artifact — deliberately not a
+ * {@code @link}, since this module depends on nothing else in the project) finds pinning at
  * runtime by monitoring thread states during stress tests.  If the pinning code path is
  * rarely exercised, it goes undetected.  The runtime detector also requires virtual threads
  * to be actively scheduled and pinned during the observation window.

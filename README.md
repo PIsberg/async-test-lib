@@ -28,7 +28,7 @@
 
 - **One annotation** — `@AsyncTest` hammers your code with N threads × M invocations using a `CyclicBarrier` to force maximum contention. No executor boilerplate, no manual `CountDownLatch`, no `Thread.join` loops.
 - **127 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types, JDBC sharing, MessageDigest/SecureRandom/Cipher integrity, and more — all on by default (`detectAll = true`), or pick a `Preset` for a curated subset.
-- **JUnit 5 native** — zero required configuration. Works anywhere JUnit 5 runs with no special JVM flags. An optional Java agent (`-javaagent:async-test-lib.jar`) enables deeper field-access instrumentation via Byte Buddy; default usage needs no agent.
+- **JUnit 5 native** — zero required configuration. Works anywhere JUnit 5 runs with no special JVM flags. An optional Java agent, shipped as a separate `async-test-agent` artifact (`-javaagent:async-test-agent.jar`), enables deeper field-access instrumentation via Byte Buddy; default usage needs no agent, and the core artifact does not carry Byte Buddy.
 - **CI-ready out of the box** — ship JUnit XML reports, machine-readable JSON, or `AssertionError` fail-gates directly to GitHub Actions, Jenkins, and GitLab CI.
 
 ---

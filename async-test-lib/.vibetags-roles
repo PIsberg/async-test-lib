@@ -1,0 +1,36 @@
+# VibeTags role routing (vibetags 1.0.0-RC7, se.deversity.vibetags.processor.internal.RoleConfig).
+#
+# Presence of this file switches granular rule generation from "one file per annotated
+# class" to "one file per role". Without it, .claude/rules/ would hold ~130 files — one
+# per annotated detector — and the <scoped_rules> index in CLAUDE.md would list every
+# one of them. Roles collapse that to the handful of areas that actually differ in how
+# they must be edited.
+#
+# Format: name = comma-separated globs and/or fully-qualified names. First match wins in
+# the order below, so anything ambiguous is pinned by fully-qualified name rather than by
+# a glob that a same-named class in another package would also match (e.g. both
+# se.deversity.asynctest.DetectorRegistry and se.deversity.asynctest.spi.DetectorRegistry
+# match **/DetectorRegistry.java, but they belong to different roles). Elements matching
+# no role keep their own per-class file.
+
+# The published extension surface: SPI interfaces, listeners, assertions, formatters and
+# the Violation record. Signature-stability rules dominate here. Listed first so the SPI
+# package wins over the same-named classes in the configuration role below.
+async-test-public-api = **/spi/**, **/report/**, **/AsyncAssert.java, **/AsyncTestListener.java, **/AsyncTestListenerRegistry.java, **/AsyncTestListenerRegistry/**, **/NoopAsyncTestListener.java
+
+# The N×M execution engine and its ThreadLocal context — install/uninstall symmetry,
+# CyclicBarrier timing, invocation.skip(). The guardrails here are about not breaking
+# the run itself.
+async-test-runtime-core = **/runner/**, **/extension/**, se.deversity.asynctest.AsyncTestContext
+
+# Annotation, config and detector-type wiring. Changing one of these means changing all
+# of them in lockstep; the rule file spells the lockstep out.
+async-test-configuration = se.deversity.asynctest.AsyncTest, se.deversity.asynctest.AsyncTestConfig, se.deversity.asynctest.DetectorType, se.deversity.asynctest.DetectorRegistry, se.deversity.asynctest.Preset
+
+# The ~120 concurrency detectors. Near-identical constraints for all of them: thread-safe
+# state, allocation-free record paths, 80% coverage with a matching *DetectorTest.
+async-test-detectors = **/diagnostics/**
+
+# Benchmarking + licensing: feature-flagged, hot-path or security-sensitive, and none of
+# it belongs in the always-loaded rules.
+async-test-instrumentation = **/benchmark/**, **/telemetry/**, **/agent/**, **/analysis/**

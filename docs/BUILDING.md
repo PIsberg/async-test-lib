@@ -2,6 +2,11 @@
 
 > Extracted from the former `docs/README.md`. See [INDEX.md](INDEX.md) for the full documentation map.
 
+> **Reactor layout.** The build has three modules — `async-test-lib` (the library),
+> `async-test-agent` and `async-test-analysis`. Every command below runs from the repository root
+> and builds all three. To work on one, add `-pl async-test-agent` (Maven) or use
+> `:async-test-agent:test` (Gradle). Artifacts land in `<module>/target/` rather than `target/`.
+
 ### Prerequisites
 
 - **Java 21+**

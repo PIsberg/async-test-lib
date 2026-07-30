@@ -143,9 +143,8 @@ to detector output formats.
 
 ## Recommendation
 
-1. **Now, independent of 2.0:** extract `async-test-agent` and `async-test-analysis`. Real
-   classpath benefit, leaf packages, no cycle to break. Ship with the `-javaagent:` path change
-   documented.
+1. ~~**Now, independent of 2.0:** extract `async-test-agent` and `async-test-analysis`.~~
+   **Done.** See [Status](#status) below.
 2. **Alongside Train 2:** create `async-test-api` and move `Violation`, `Formatter`,
    `IssueSeverity`, `SiteCapture`, `AsyncTestListener` and the config value types into it. This
    kills all three cycles and is invisible to consumers if the aggregator POM is in place.
@@ -156,11 +155,56 @@ to detector output formats.
    cycles that matter; adding a rule per intended module boundary means the boundary is enforced
    *before* the directory move, so the move itself becomes mechanical.
 
+## Status
+
+**Step 1 and step 4 are done.** The build is a three-module Maven reactor:
+
+```
+async-test-parent          pom, aggregation and shared build config only
+├── async-test-lib         jar — unchanged coordinate, unchanged consumers
+├── async-test-agent       jar — Byte Buddy; carries the Premain-Class manifest
+└── async-test-analysis    jar — ASM; depends on nothing else here
+```
+
+- `async-test-lib` keeps `se.deversity.async-test-lib:async-test-lib`. Existing consumers, the
+  `consumer-fixture` and the 100+ `examples/*` builds need no edit. **byte-buddy, byte-buddy-agent
+  and asm are off that artifact's classpath.**
+- The agent is now `se.deversity.async-test-lib:async-test-agent`, and attaching uses
+  `-javaagent:async-test-agent-<version>.jar`. This is the one behavioral change; see
+  [AGENT.md](AGENT.md).
+- Module-specific gates went with their modules: japicmp and the 70%/65% jacoco gate and the 74%
+  pitest gate are declared in `async-test-lib`, since all three were measured against that
+  artifact. Compiler, surefire, checkstyle, PMD, SpotBugs, source, javadoc and the SBOM stay in the
+  parent and apply to every module. The three QA config files stay at the reactor root, resolved
+  through `${maven.multiModuleProjectDirectory}`.
+- Gradle was split to match (`settings.gradle.kts` + a `subprojects {}` block), and its version
+  constants — which had drifted from the POM on junit, byte-buddy and vibetags — were re-synced.
+- **Step 4 first, as recommended:** the boundary rules went into `ArchitectureTest` *before* the
+  directory move, so the move was mechanical. One of them,
+  `analysis_depends_on_nothing_in_the_library`, was then deleted rather than kept: after the split
+  the analysis classes are not on the library module's classpath, so the rule's selection is empty
+  — and the reactor now enforces structurally what the rule only described.
+
+Steps 2 and 3 are unchanged and still gated as described above.
+
 ## Side benefit worth naming
 
 vibetags 1.0.0-RC7 added `ModuleRootResolver` and `ModuleOutputWriter`: in a reactor build each
 module gets its own `CLAUDE.md` and `.claude/rules/` containing only that module's guardrails.
-Today the single-module build forces one always-loaded index covering every annotated element in
-the library — the problem worked around in commit `e060573` by deleting boilerplate annotations. A
-module split fixes that structurally: an agent editing a detector loads the detector module's
-guardrails, not the runner's.
+This now works here, and it is why the reactor was worth doing beyond the classpath:
+
+| File | Lines | Contents |
+|------|-------|----------|
+| `CLAUDE.md` (reactor root) | 157 | merged view across all modules |
+| `async-test-lib/CLAUDE.md` | 136 | that module's guardrails + its own `.claude/rules/` (5 role files) |
+| `async-test-agent/CLAUDE.md` | 14 | the agent's constraints, nothing else |
+| `async-test-analysis/CLAUDE.md` | 11 | the scanner's constraints, nothing else |
+
+An agent working in `async-test-agent/` loads 14 lines of guardrails instead of the library's 136.
+As modules 2 and 3 of the plan land, the split keeps paying: each module's index lists only its own
+elements, so the always-loaded cost stops growing with the library.
+
+One operational note: the pre-split build left a stale `.vibetags-mod-_root_` sidecar behind, and
+the reactor aggregation merged it *alongside* the new per-module sidecar — every element appeared
+twice and the root file went from 157 to 286 lines. Deleting the stale sidecar and `.vibetags-cache`
+fixed it. Both are gitignored build artifacts; if the root file ever looks doubled, that is why.
