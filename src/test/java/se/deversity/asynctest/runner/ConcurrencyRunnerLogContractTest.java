@@ -1,0 +1,109 @@
+package se.deversity.asynctest.runner;
+
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
+import se.deversity.asynctest.AsyncTest;
+
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
+
+import org.junit.platform.testkit.engine.EngineTestKit;
+
+/**
+ * The runner's DEBUG events are a contract.
+ *
+ * <p>Every timing decision in a run is derived from values resolved once inside
+ * {@code execute()}: the timeout multiplier, the effective timeout, and the thread count, which
+ * stress mode can override so it is not the number on the annotation. None of that is
+ * observable from a test's pass or fail, which is exactly why {@code runner.config} exists and
+ * why it is asserted here: it is the line that explains a run that behaved differently on CI.
+ *
+ * <p>Renaming an event or a field asserted here is a breaking change. See CLAUDE.md, "Logging".
+ */
+@DisplayName("ConcurrencyRunner DEBUG events")
+class ConcurrencyRunnerLogContractTest {
+
+    private ch.qos.logback.classic.Logger runnerLog;
+    private ListAppender<ILoggingEvent> appender;
+    private Level previousLevel;
+
+    @BeforeEach
+    void captureRunnerLog() {
+        LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        runnerLog = context.getLogger(ConcurrencyRunner.class);
+        previousLevel = runnerLog.getLevel();
+        runnerLog.setLevel(Level.DEBUG);
+        appender = new ListAppender<>();
+        appender.setContext(context);
+        appender.start();
+        runnerLog.addAppender(appender);
+    }
+
+    @AfterEach
+    void restore() {
+        runnerLog.detachAppender(appender);
+        appender.stop();
+        runnerLog.setLevel(previousLevel);
+    }
+
+    private List<String> events() {
+        return appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
+    }
+
+    private String eventStartingWith(String prefix) {
+        return events().stream()
+            .filter(m -> m.startsWith(prefix))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError(
+                "no '" + prefix + "' event was logged; got " + events()));
+    }
+
+    @Test
+    @DisplayName("one run emits the resolved configuration and one event per round")
+    void theRunNarratesItsOwnConfiguration() {
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(NarratedDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        String config = eventStartingWith("runner.config");
+        assertTrue(config.contains("test=narrated"), "the event names the test: " + config);
+        assertTrue(config.contains("threads=3"), "the thread count actually used: " + config);
+        assertTrue(config.contains("invocations=2"), "the invocation count: " + config);
+        assertTrue(config.contains("effectiveTimeoutMs="),
+            "the effective budget every downstream timeout derives from: " + config);
+        assertTrue(config.contains("multiplier="),
+            "the multiplier that explains a CI-only difference: " + config);
+
+        assertEquals(2, events().stream().filter(m -> m.startsWith("runner.round.start")).count(),
+            "one start event per invocation: " + events());
+        assertEquals(2, events().stream().filter(m -> m.startsWith("runner.round.done")).count(),
+            "one done event per invocation: " + events());
+        assertTrue(eventStartingWith("runner.round.start").contains("seed="),
+            "every round carries the replay seed, which is the reproduction handle");
+        assertTrue(eventStartingWith("runner.round.done").contains("durationMs="),
+            "the round reports what it cost");
+    }
+
+    /** Runs under the extension so the narrative is produced by the real code path. */
+    static class NarratedDummy {
+        private final AtomicInteger counter = new AtomicInteger();
+
+        @AsyncTest(threads = 3, invocations = 2)
+        void narrated() {
+            counter.incrementAndGet();
+        }
+    }
+}

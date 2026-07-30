@@ -178,7 +178,7 @@ public final class TelemetryRegistry {
             } else {
                 BUFFER.drain((tid, field, write) -> { /* discard */ });
             }
-        } catch (RuntimeException e) { // NOPMD EmptyCatchBlock — best-effort drain must survive a misbehaving callback
+        } catch (RuntimeException ignored) { // NOPMD EmptyCatchBlock — best-effort drain must survive a misbehaving callback
             // scheduleAtFixedRate cancels all future executions if the task throws;
             // telemetry is best-effort, so swallow and keep the periodic drainer alive.
         }

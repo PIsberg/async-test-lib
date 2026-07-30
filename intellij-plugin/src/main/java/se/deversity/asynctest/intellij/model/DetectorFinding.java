@@ -1,5 +1,7 @@
 package se.deversity.asynctest.intellij.model;
 
+import java.util.Locale;
+
 /**
  * Represents a single concurrency finding parsed from async-test-report.json.
  */
@@ -23,7 +25,9 @@ public final class DetectorFinding {
         public static Severity parse(String s) {
             if (s == null) return UNKNOWN;
             try {
-                return valueOf(s.toUpperCase());
+                // Locale.ROOT: in a Turkish locale "high".toUpperCase() is "HIGH" with a
+                // dotless I, which matches no enum constant and silently degrades to UNKNOWN.
+                return valueOf(s.toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {
                 return UNKNOWN;
             }

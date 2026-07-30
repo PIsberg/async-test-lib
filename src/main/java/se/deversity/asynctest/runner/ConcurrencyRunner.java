@@ -125,6 +125,8 @@ public class ConcurrencyRunner {
         MemoryModelValidator.ValidationResult jmmResult = jmmValidator.validate();
         if (!jmmResult.isValid()) {
             log.warn("JMM validation of test framework failed: {}", jmmResult);
+        } else {
+            log.debug("runner.jmm ok=true");
         }
 
         ExecutorService executor = config.useVirtualThreads
@@ -151,6 +153,19 @@ public class ConcurrencyRunner {
             : Math.max(1L, Math.round(config.timeoutMs * timeoutMultiplier));
 
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(effectiveTimeoutMs);
+
+        // One event carrying every value that decides how this test runs. When a test behaves
+        // differently on CI than locally, this line is the difference: the multiplier, the
+        // thread count actually used (stress mode overrides the annotation) and whether the
+        // executor is virtual are all resolved here and nowhere else.
+        if (log.isDebugEnabled()) {
+            log.debug("runner.config test={} threads={} invocations={} timeoutMs={} "
+                    + "multiplier={} effectiveTimeoutMs={} virtualThreads={} stressMode={} "
+                    + "replaySeed={} benchmarking={}",
+                testMethod.getName(), actualThreads, config.invocations, config.timeoutMs,
+                timeoutMultiplier, effectiveTimeoutMs, config.useVirtualThreads,
+                config.virtualThreadStressMode, config.replaySeed, config.enableBenchmarking);
+        }
 
         // Replay-seed source: explicit @AsyncTest(replaySeed=N) makes every
         // round use N; default 0 generates a fresh seed per round so failures
@@ -192,6 +207,8 @@ public class ConcurrencyRunner {
                 }
                 AsyncTestListenerRegistry.fireInvocationStarted(i, actualThreads);
                 long roundStartNanos = System.nanoTime();
+                log.debug("runner.round.start test={} round={} seed={} remainingMs={}",
+                    testMethod.getName(), i, currentSeed, remainingMs);
                 invokeLifecycleMethods(testInstance, beforeInvocationMethods);
                 try {
                     runSingleInvocationRound(invocationContext, actualThreads,
@@ -200,6 +217,8 @@ public class ConcurrencyRunner {
                     invokeLifecycleMethods(testInstance, afterInvocationMethods);
                 }
                 long roundDurationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - roundStartNanos);
+                log.debug("runner.round.done test={} round={} seed={} durationMs={}",
+                    testMethod.getName(), i, currentSeed, roundDurationMs);
                 AsyncTestListenerRegistry.fireInvocationCompleted(i, roundDurationMs);
 
                 if (benchmarkRecorder != null) {
@@ -248,7 +267,7 @@ public class ConcurrencyRunner {
                 try {
                     benchmarkRecorder.complete();
                 } catch (Exception e) {
-                    log.warn("Benchmark completion failed: {}", e.getMessage());
+                    log.warn("Benchmark completion failed: {}", e.toString(), e);
                 }
             }
         }
@@ -494,7 +513,7 @@ public class ConcurrencyRunner {
                             phase1.livelock.captureSnapshot();
                         } catch (Throwable snapErr) {
                             // Diagnostic-only path; never fail the test on this.
-                            log.warn("Livelock snapshot failed: {}", snapErr.getMessage());
+                            log.warn("Livelock snapshot failed: {}", snapErr.toString(), snapErr);
                         }
                     }
                     latch.countDown();

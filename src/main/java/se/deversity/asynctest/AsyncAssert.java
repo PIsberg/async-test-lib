@@ -52,7 +52,7 @@ public class AsyncAssert {
                 if (Boolean.TRUE.equals(condition.call())) {
                     return;
                 }
-            } catch (Exception e) { // NOPMD EmptyCatchBlock — polling deliberately ignores transient failures
+            } catch (Exception ignored) { // NOPMD EmptyCatchBlock — polling deliberately ignores transient failures
                 // Ignore exceptions during polling, just keep trying
             }
             try {

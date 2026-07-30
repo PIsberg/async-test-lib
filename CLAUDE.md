@@ -208,3 +208,33 @@
 
 <rule>Never propose edits to files listed in <locked_files>.</rule>
 <!-- VIBETAGS-END -->
+
+## Logging
+
+This library runs inside somebody else's test suite, so its output is somebody else's build log.
+Two channels, two budgets.
+
+- **The report and the assertion messages are the user-facing channel.** A developer reads those
+  when a test fails; they are the product.
+- **SLF4J is the diagnostic channel.** `INFO` stays scarce and bounded per test run. `DEBUG` is
+  the narrative and it is free to be generous, because it is off unless someone turns it on.
+
+Write events, not positions:
+
+- `domain.event key=value key=value`, one event per line, lower-case dotted names
+  (`runner.config`, `runner.round.start`, `runner.round.done`). Every event inside a run carries
+  `test=` so one grep gives you one test's story out of a parallel suite.
+- Log the decision and the values behind it. `runner.config test=… threads=8 multiplier=2.0
+  effectiveTimeoutMs=10000` answers "why did this behave differently on CI?" in one line;
+  "entering execute()" answers nothing.
+- The replay seed belongs in the narrative on every round, because it is the reproduction handle
+  for a failure that only happens sometimes.
+- Guard with `log.isDebugEnabled()` when the arguments cost anything to assemble. Never build a
+  string for a level that is off.
+- `WARN` means degraded but handled. `ERROR` means a human must act. A detector finding is
+  neither: it belongs in the report.
+- **A log event asserted in a test is a contract.** `ConcurrencyRunnerLogContractTest` pins
+  `runner.config` and its fields; renaming one is a breaking change, not a cleanup.
+- When you fix a bug, add the DEBUG line that would have made it obvious in one read, and keep it.
+
+Rationale and the longer argument: *Vibe Architecture*, Chapter 6b, "The Log Is a Feedback Loop".

@@ -14,6 +14,7 @@
 [![Checkstyle](https://img.shields.io/badge/Checkstyle-passing-brightgreen)](checkstyle.xml)
 [![PMD](https://img.shields.io/badge/PMD-passing-brightgreen)](pmd-ruleset.xml)
 [![SpotBugs](https://img.shields.io/badge/SpotBugs-passing-brightgreen)](spotbugs-exclude.xml)
+[![Analyzed with codekoll](https://img.shields.io/badge/analyzed%20with-codekoll-brightgreen?logo=java&logoColor=white)](https://github.com/PIsberg/codekoll)
 [![Error Prone](https://img.shields.io/badge/Error_Prone-passing-brightgreen)](https://errorprone.info)
 [![PIT Mutation Testing](https://img.shields.io/badge/PIT_mutation_testing-passing_·_75%25_killed-brightgreen)](https://pitest.org)
 

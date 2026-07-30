@@ -228,7 +228,7 @@ public class ThreadPoolDeadlockDetector {
             if (pool instanceof java.util.concurrent.ThreadPoolExecutor tpe) {
                 return tpe.getCorePoolSize();
             }
-        } catch (Exception e) { // NOPMD EmptyCatchBlock — reflection probe fails silently; default pool size used
+        } catch (Exception ignored) { // NOPMD EmptyCatchBlock — reflection probe fails silently; default pool size used
             // Ignore and return default
         }
         // Default assumption: small fixed pool
