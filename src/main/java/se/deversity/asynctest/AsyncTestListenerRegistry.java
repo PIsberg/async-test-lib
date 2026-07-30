@@ -103,7 +103,7 @@ public final class AsyncTestListenerRegistry {
                 listener.onInvocationStarted(round, threads);
             } catch (RuntimeException e) {
                 // Log but don't propagate listener exceptions
-                log.warn("AsyncTestListener.onInvocationStarted threw: {}", e.getMessage(), e);
+                log.warn("AsyncTestListener.onInvocationStarted threw: {}", e.toString(), e);
             }
         }
     }
@@ -119,7 +119,7 @@ public final class AsyncTestListenerRegistry {
             try {
                 listener.onInvocationCompleted(round, durationMs);
             } catch (RuntimeException e) {
-                log.warn("AsyncTestListener.onInvocationCompleted threw: {}", e.getMessage(), e);
+                log.warn("AsyncTestListener.onInvocationCompleted threw: {}", e.toString(), e);
             }
         }
     }
@@ -134,7 +134,7 @@ public final class AsyncTestListenerRegistry {
             try {
                 listener.onTestFailed(cause);
             } catch (RuntimeException e) {
-                log.warn("AsyncTestListener.onTestFailed threw: {}", e.getMessage(), e);
+                log.warn("AsyncTestListener.onTestFailed threw: {}", e.toString(), e);
             }
         }
     }
@@ -155,12 +155,12 @@ public final class AsyncTestListenerRegistry {
             try {
                 listener.onDetectorReport(detectorName, report);
             } catch (RuntimeException e) {
-                log.warn("AsyncTestListener.onDetectorReport threw: {}", e.getMessage(), e);
+                log.warn("AsyncTestListener.onDetectorReport threw: {}", e.toString(), e);
             }
             try {
                 listener.onStructuredReport(detectorName, severity, report);
             } catch (RuntimeException e) {
-                log.warn("AsyncTestListener.onStructuredReport threw: {}", e.getMessage(), e);
+                log.warn("AsyncTestListener.onStructuredReport threw: {}", e.toString(), e);
             }
         }
     }
@@ -179,7 +179,7 @@ public final class AsyncTestListenerRegistry {
             try {
                 listener.onTimeout(timeoutMs);
             } catch (RuntimeException e) {
-                log.warn("AsyncTestListener.onTimeout threw: {}", e.getMessage(), e);
+                log.warn("AsyncTestListener.onTimeout threw: {}", e.toString(), e);
             }
         }
     }

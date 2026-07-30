@@ -177,7 +177,10 @@ public class BenchmarkComparator {
             return Optional.ofNullable(readStore(storeFile).get(benchmarkKey));
         } catch (IOException | ClassNotFoundException e) {
             // If we can't read the baseline, treat as if it doesn't exist
-            log.warn("Could not load benchmark baseline: {}", e.getMessage(), e);
+            // toString(), not getMessage(): EOFException and friends carry a null message, which
+            // renders this line as "Could not load benchmark baseline: null" and tells nobody
+            // anything. The throwable is still passed last, so the stack trace is unaffected.
+            log.warn("Could not load benchmark baseline: {}", e.toString(), e);
             return Optional.empty();
         }
     }
@@ -236,7 +239,7 @@ public class BenchmarkComparator {
         try {
             return readStore(storeFile);
         } catch (IOException | ClassNotFoundException e) {
-            log.warn("Could not load benchmark baselines, starting fresh: {}", e.getMessage(), e);
+            log.warn("Could not load benchmark baselines, starting fresh: {}", e.toString(), e);
             return new HashMap<>();
         }
     }
@@ -259,7 +262,7 @@ public class BenchmarkComparator {
              ObjectOutputStream oos = new ObjectOutputStream(fos)) {
             oos.writeObject(store);
         } catch (IOException e) {
-            log.warn("Could not save benchmark baselines: {}", e.getMessage(), e);
+            log.warn("Could not save benchmark baselines: {}", e.toString(), e);
         }
     }
 
