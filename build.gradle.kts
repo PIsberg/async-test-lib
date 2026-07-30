@@ -32,6 +32,7 @@ val jazzerVersion   = "0.30.0"  // pom: jazzer.version
 val byteBuddyVersion = "1.18.10" // pom: bytebuddy.version
 val asmVersion      = "9.10.1"  // pom: asm.version
 val slf4jVersion    = "2.0.18"  // pom: slf4j.version
+val logbackVersion  = "1.5.18"  // test-only SLF4J backend, pairs with slf4j 2.0.x
 
 dependencies {
     api("org.apiguardian:apiguardian-api:1.1.2")
@@ -40,6 +41,10 @@ dependencies {
     testImplementation("org.junit.platform:junit-platform-testkit:$junitVersion")
     testImplementation("com.code-intelligence:jazzer-api:$jazzerVersion")
     testImplementation("com.tngtech.archunit:archunit-junit5:1.4.2")
+    // Test-only SLF4J backend: the library ships slf4j-api and no binding on purpose, but the
+    // suite needs a real one to assert the DEBUG narrative (ConcurrencyRunnerLogContractTest).
+    // src/test/resources/logback-test.xml keeps the root at WARN so this stays quiet.
+    testImplementation("ch.qos.logback:logback-classic:$logbackVersion")
     implementation("se.deversity.common:common-license-lib:0.2.1")
     // Byte Buddy: Java agent instrumentation (AsyncTestAgent)
     implementation("net.bytebuddy:byte-buddy:$byteBuddyVersion")

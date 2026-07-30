@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Test-only logging backend.
+
+  The library ships slf4j-api and no binding, which is correct: the consumer picks one. The
+  test suite needs a real backend so the DEBUG narrative can be asserted (see
+  ConcurrencyRunnerLogContractTest and CLAUDE.md, "Logging").
+
+  Root stays at WARN so adding this backend does not turn the suite's output into a wall of
+  text. A test that wants the narrative raises its own logger to DEBUG and attaches its own
+  appender, which also keeps assertions isolated when tests run in parallel.
+-->
+<configuration>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="WARN">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>
