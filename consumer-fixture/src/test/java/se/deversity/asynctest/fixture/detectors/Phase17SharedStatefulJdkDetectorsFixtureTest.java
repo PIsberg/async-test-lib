@@ -25,12 +25,15 @@ import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.sp
  * Phase 17, shared-stateful-JDK-objects group — {@code SHARED_BYTE_BUFFER} through
  * {@code SHARED_JSON_MAPPER_RECONFIG}.
  *
- * <p>These seven detectors have no {@code examples/} module of their own yet — this package
- * is currently their only end-to-end coverage.
- *
  * <p>The JSON fixture asserts reachability only: the consumer fixture declares no JSON
  * library, and pulling one in would widen the fixture's dependency set, which
  * {@code AsyncTestPublishedDependencyTest} deliberately pins.
+ *
+ * <p>Corresponding examples: {@code examples/120-shared-byte-buffer},
+ * {@code examples/121-shared-charset-coder}, {@code examples/122-shared-checksum},
+ * {@code examples/123-file-channel-position-race}, {@code examples/124-shared-iterator},
+ * {@code examples/125-high-contention-atomic},
+ * {@code examples/126-shared-json-mapper-reconfig}.
  */
 class Phase17SharedStatefulJdkDetectorsFixtureTest {
 

@@ -29,6 +29,25 @@ twice. Adding a `DetectorType` without a fixture now fails the build. It also gi
 implemented and tested but were long unreachable through `@AsyncTest` — their first
 consumer-side coverage.
 
+### Added — every detector has an example, and every example is in both reactors
+The `examples/` tree had grown gaps that nothing checked, because nothing could: examples are
+matched to detectors by directory name, and no example references a `DetectorType` in code.
+
+- **Eight new modules**, one per detector that had none: `120-shared-byte-buffer`,
+  `121-shared-charset-coder`, `122-shared-checksum`, `123-file-channel-position-race`,
+  `124-shared-iterator`, `125-high-contention-atomic`, `126-shared-json-mapper-reconfig`,
+  `127-shared-secure-random`. Each is a service demonstrating the hazard, a walkthrough test
+  driving the detector's standalone API through clean / flagged / here-is-the-damage cases,
+  and a README covering the fix and its trade-offs. Detector count and example count now
+  agree at 127.
+- **`04-virtual-thread-context-leak` had no `pom.xml`.** It was in the Gradle reactor and
+  absent from the Maven one, so the Maven examples job had never built it. It has one now.
+- **42 modules had no Gradle build.** They were absent from `examples/settings.gradle.kts`,
+  so `gradle-tests.yml` never built them either — the Gradle examples job was covering 85 of
+  127 modules while reporting green. Both reactors now list all 127.
+- **`examples/README.md` was missing 15 rows** (05, 33, 109-113 predate this change, plus the
+  eight new ones), and four modules had no README of their own: 02, 03, 04, 05.
+
 ### Changed — examples and the consumer fixture are one E2E suite, split out of `tests.yml`
 New `.github/workflows/e2e-tests.yml` runs both suites that consume the *built artifact*:
 the consumer fixture (Java 21 and 25) and the `examples/*` reactor (4 shards; changed-only

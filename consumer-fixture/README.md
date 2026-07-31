@@ -84,18 +84,18 @@ class and fails unless the `includes` sets union to exactly `DetectorType.values
 detector covered twice and no fixture enabling more than one. **Adding a `DetectorType`
 without adding a fixture fails the build here.**
 
-### Detectors with no `examples/` module
+### Relationship to `examples/`
 
-Examples are matched to detectors by directory name only — no example references a
-`DetectorType` in code — so this mapping is a convention, not something the build checks.
-By that convention, eight detectors have no example of their own and `detectors/` is their
-only end-to-end coverage: the whole of Phase 17 (`SHARED_BYTE_BUFFER`,
-`SHARED_CHARSET_CODER`, `SHARED_CHECKSUM`, `FILE_CHANNEL_POSITION_RACE`, `SHARED_ITERATOR`,
-`HIGH_CONTENTION_ATOMIC`, `SHARED_JSON_MAPPER_RECONFIG`) plus `SHARED_SECURE_RANDOM`
-(`examples/72-shared-random` demonstrates `java.util.Random`).
+Every detector has both: a fixture here and a runnable module under `examples/`. The two
+answer different questions. A fixture proves the detector is **reachable** from consumer
+code with only that detector enabled; an example demonstrates the **hazard** and the fix, at
+length, for a human reading it.
 
-`SHARED_MATCHER`, `SHARED_DECIMAL_FORMAT` and `SHARED_MESSAGE_DIGEST` have no directory
-named after them but are demonstrated by `examples/10-shared-non-thread-safe-types`.
+The mapping between them is a naming convention, not something the build checks — no example
+references a `DetectorType` in code. Three detectors have no directory named after them and
+are demonstrated by `examples/10-shared-non-thread-safe-types`: `SHARED_MATCHER`,
+`SHARED_DECIMAL_FORMAT` and `SHARED_MESSAGE_DIGEST`. Each fixture class names the examples
+it corresponds to in its javadoc.
 
 ## In CI
 

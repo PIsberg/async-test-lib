@@ -20,9 +20,8 @@ import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.sp
  * than the library's detector surface.
  *
  * <p>Corresponding examples: {@code examples/46-daemon-thread},
- * {@code examples/61-notify-without-monitor}, {@code examples/72-shared-random} (secure
- * variant), {@code examples/96-weak-hashmap-shared},
- * {@code examples/54-jdbc-connection-shared}.
+ * {@code examples/61-notify-without-monitor}, {@code examples/127-shared-secure-random},
+ * {@code examples/96-weak-hashmap-shared}, {@code examples/54-jdbc-connection-shared}.
  */
 class Phase13AdditionalCategoryDetectorsFixtureTest {
 

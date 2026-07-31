@@ -58,11 +58,22 @@ class FutureIgnoredTest {
     @Test
     void part1_eventPublished_singleThread() throws Exception {
         AtomicBoolean handled = new AtomicBoolean(false);
+        CountDownLatch handlerRan = new CountDownLatch(1);
         EventBus bus = new EventBus(executor);
-        bus.publish(() -> handled.set(true));
-        Thread.sleep(100); // wait for background task
+
+        bus.publish(() -> {
+            handled.set(true);
+            handlerRan.countDown();
+        });
+
+        // Wait on the side effect, not on the clock: a fixed sleep assumes the pool
+        // schedules the task within N milliseconds, which is exactly the assumption a busy
+        // CI runner breaks.
+        assertTrue(handlerRan.await(5, TimeUnit.SECONDS), "handler did not run");
         assertTrue(handled.get());
-        // @Test does not detect that the Future from publish() was ignored
+        // ...and @Test still does not detect that the Future from publish() was ignored,
+        // which is the whole point of Part 1. The task's exceptions, if it threw any, went
+        // into a Future nobody kept.
     }
 
     // =========================================================================
