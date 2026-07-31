@@ -20,6 +20,31 @@ throughout `src/test/java`.
 purpose: in this library a test that fails intermittently is reporting a real detector finding, not
 infrastructure noise. Auto-rerunning would mask the exact signal the project exists to catch.
 
+## Build with JDK 21 or 25, not 26
+
+> **A red PMD gate on JDK 26 is the toolchain, not your change.**
+>
+> PMD 7.17 cannot resolve types from JDK 26 class files. It falls back to a name-based heuristic
+> and reports around 244 bogus `LooseCoupling` violations — including, memorably, flagging
+> `Map<String, String>` as *"an implementation type; use the interface instead"*, which is the
+> interface it is asking for.
+>
+> Same commit, same plugin, different toolchain:
+>
+> ```
+> JAVA_HOME="/c/Program Files/Java/jdk-21"  →  BUILD SUCCESS, 0 violations
+> JDK 26 (a common local default)           →  244 violations, BUILD FAILURE
+> ```
+>
+> CI runs JDK 21 and 25 and is green. Before concluding anything from a PMD failure here, re-run
+> with `JAVA_HOME` pointed at JDK 21. If it passes there, there is nothing to fix.
+>
+> Worth writing down because the failure is convincing: it looks exactly like a repository-wide
+> code-quality problem, and the obvious remedy — a mechanical sweep replacing `ConcurrentHashMap`
+> declarations with `ConcurrentMap` across ~120 files — is both large and completely wrong, since
+> the flagged declarations are already the interface. The tell is that the reported line does not
+> contain the implementation type the message names.
+
 ## Static analysis and API gates
 
 `mvn verify` runs Checkstyle, PMD, SpotBugs, Error Prone, JaCoCo thresholds and japicmp — all of
