@@ -1,11 +1,8 @@
 package se.deversity.asynctest.fixture.detectors;
 
-import se.deversity.asynctest.AsyncTestContext;
-
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
@@ -30,17 +27,14 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  *       against the JAR, not against the library sources.</li>
  * </ol>
  *
- * <p>Seven detectors have no public per-detector accessor: {@code DEADLOCKS},
- * {@code VISIBILITY}, {@code LIVELOCKS}, {@code RACE_CONDITIONS}, {@code THREAD_LOCAL_LEAKS},
- * {@code BUSY_WAITING} and {@code INTERRUPT_MISHANDLING}. Their {@code shared*} accessors on
- * {@code AsyncTestContext} are documented as internal, so a consumer must not call them and
- * this fixture does not. Those cases use {@link #insideRound(long)} instead, which is a
- * weaker claim — the round is live and configured — and is honest about it.
+ * <p>All 127 detectors make this claim. Seven of them could not until 1.7.0 added their
+ * accessors: {@code DEADLOCKS}, {@code VISIBILITY}, {@code LIVELOCKS},
+ * {@code RACE_CONDITIONS}, {@code THREAD_LOCAL_LEAKS}, {@code BUSY_WAITING} and
+ * {@code INTERRUPT_MISHANDLING} were reachable only through {@code AsyncTestContext}'s
+ * internal {@code shared*} methods, which a consumer must not call. Those fixtures used to
+ * assert the weaker "this body is running inside a configured round"; they no longer need to.
  */
 final class DetectorFixtureSupport {
-
-    /** Seed pinned by every fixture that has to fall back to {@link #insideRound(long)}. */
-    static final long PINNED_SEED = 990_099L;
 
     private DetectorFixtureSupport() {
     }
@@ -57,16 +51,6 @@ final class DetectorFixtureSupport {
                 + "that enables exactly this detector via includes = {...}");
         assertNotNull(detector,
             "AsyncTestContext." + accessorName + " returned null for an enabled detector");
-    }
-
-    /**
-     * Fallback for the detectors with no public per-detector accessor: proves the body is
-     * executing inside a live, configured {@code @AsyncTest} round by reading back the seed
-     * the annotation pinned.
-     */
-    static void insideRound(long expectedSeed) {
-        assertEquals(expectedSeed, AsyncTestContext.replaySeed(),
-            "Fixture body must run inside an @AsyncTest round carrying the pinned replaySeed");
     }
 
     /** Burns a trivial amount of CPU without a timing dependency. */

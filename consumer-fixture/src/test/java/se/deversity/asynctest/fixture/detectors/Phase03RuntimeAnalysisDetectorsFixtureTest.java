@@ -6,8 +6,6 @@ import se.deversity.asynctest.DetectorType;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.PINNED_SEED;
-import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.insideRound;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.reachable;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.spin;
 
@@ -15,9 +13,11 @@ import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.sp
  * Phase 3, runtime-analysis group — {@code RACE_CONDITIONS} through
  * {@code INTERRUPT_MISHANDLING}.
  *
- * <p>Four of the five have no public per-detector accessor and use
- * {@link DetectorFixtureSupport#insideRound(long)}; {@code ATOMICITY_VIOLATIONS} does have
- * one ({@code atomicityValidator()}) and asserts the stronger claim.
+ * <p>Four of these five had no public per-detector accessor until 1.7.0 — only
+ * {@code ATOMICITY_VIOLATIONS} did, which is what made the gap look like an oversight rather
+ * than a design: all five sit in the same registry group and all five expose {@code record*}
+ * methods written for a test body to call. Each fixture now drives those methods the way a
+ * consumer would.
  *
  * <p>Corresponding examples: {@code examples/08-race-condition},
  * {@code examples/23-thread-local-leak}, {@code examples/21-busy-wait},
@@ -26,41 +26,56 @@ import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.sp
 class Phase03RuntimeAnalysisDetectorsFixtureTest {
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
-               replaySeed = PINNED_SEED, includes = {DetectorType.RACE_CONDITIONS})
+               includes = {DetectorType.RACE_CONDITIONS})
     void raceConditions() {
-        insideRound(PINNED_SEED);
+        reachable("raceConditionDetector()", AsyncTestContext::raceConditionDetector);
 
-        // Unsynchronised read-modify-write on shared state: the classic race.
-        UNGUARDED.value++;
+        // Unsynchronised read-modify-write on shared state: the classic race, recorded as
+        // the read/write pair the detector pairs up across threads.
+        AsyncTestContext.raceConditionDetector().recordFieldRead(UNGUARDED, "value");
+        int next = UNGUARDED.value + 1;
+        AsyncTestContext.raceConditionDetector().recordFieldWrite(UNGUARDED, "value");
+        UNGUARDED.value = next;
     }
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
-               replaySeed = PINNED_SEED, includes = {DetectorType.THREAD_LOCAL_LEAKS})
+               includes = {DetectorType.THREAD_LOCAL_LEAKS})
     void threadLocalLeaks() {
-        insideRound(PINNED_SEED);
+        reachable("threadLocalMonitor()", AsyncTestContext::threadLocalMonitor);
 
-        // Set on a pooled/virtual carrier and removed again — the leak is forgetting remove().
+        // Set on a pooled/virtual carrier and removed again — the leak is forgetting
+        // remove(), which is exactly what the init/access/cleanup triple makes visible.
+        var monitor = AsyncTestContext.threadLocalMonitor();
+        monitor.recordThreadLocalInit(LEAKY, "fixture-request-context");
         LEAKY.set("per-worker state");
         try {
+            monitor.recordThreadLocalAccess(LEAKY);
             spin(32);
         } finally {
             LEAKY.remove();
+            monitor.recordThreadLocalCleanup(LEAKY);
         }
     }
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
-               replaySeed = PINNED_SEED, includes = {DetectorType.BUSY_WAITING})
+               includes = {DetectorType.BUSY_WAITING})
     void busyWaiting() {
-        insideRound(PINNED_SEED);
+        reachable("busyWaitDetector()", AsyncTestContext::busyWaitDetector);
 
         // A bounded spin loop — the shape of a busy-wait, without the unbounded part.
+        var detector = AsyncTestContext.busyWaitDetector();
         AtomicInteger gate = new AtomicInteger();
+        int iterations = 0;
         for (int i = 0; i < 128 && gate.get() == 0; i++) {
+            detector.recordLoopIteration();
+            iterations++;
             Thread.onSpinWait();
             if (i == 127) {
                 gate.set(1);
             }
         }
+        detector.recordYield();
+        detector.reportSpinLoop("fixture bounded spin", iterations);
     }
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
@@ -69,23 +84,32 @@ class Phase03RuntimeAnalysisDetectorsFixtureTest {
         reachable("atomicityValidator()", AsyncTestContext::atomicityValidator);
 
         // Two atomic operations that are not atomic together: check-then-act on an atomic.
+        var validator = AsyncTestContext.atomicityValidator();
         AtomicInteger counter = new AtomicInteger();
-        if (counter.get() < 10) {
-            counter.incrementAndGet();
+        validator.recordCompoundOperationStart("checkThenIncrement");
+        int seen = counter.get();
+        validator.recordFieldAccess("counter", seen, false);
+        if (seen < 10) {
+            validator.recordFieldAccess("counter", counter.incrementAndGet(), true);
         }
+        validator.recordCompoundOperationEnd("checkThenIncrement");
     }
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
-               replaySeed = PINNED_SEED, includes = {DetectorType.INTERRUPT_MISHANDLING})
+               includes = {DetectorType.INTERRUPT_MISHANDLING})
     void interruptMishandling() {
-        insideRound(PINNED_SEED);
+        reachable("interruptMonitor()", AsyncTestContext::interruptMonitor);
 
         // Catch and restore, which is the correct handling the detector contrasts against
-        // the swallowing form covered by INTERRUPT_SWALLOWING.
+        // the swallowing form covered by INTERRUPT_SWALLOWING. Recording both halves is
+        // what tells the two apart.
+        var monitor = AsyncTestContext.interruptMonitor();
         try {
             Thread.sleep(1);
         } catch (InterruptedException e) {
+            monitor.recordInterruptException(e);
             Thread.currentThread().interrupt();
+            monitor.recordInterruptRestored();
         }
     }
 

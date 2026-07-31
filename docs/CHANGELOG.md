@@ -29,6 +29,36 @@ twice. Adding a `DetectorType` without a fixture now fails the build. It also gi
 implemented and tested but were long unreachable through `@AsyncTest` — their first
 consumer-side coverage.
 
+### Added — public accessors for the last seven detectors that had none
+`AsyncTestContext` exposes one accessor per detector, and seven had been missing since the
+detectors themselves shipped: `deadlockDetector()`, `visibilityMonitor()`,
+`livelockDetector()`, `raceConditionDetector()`, `threadLocalMonitor()`,
+`busyWaitDetector()` and `interruptMonitor()`. Until now those instances were reachable only
+through the `shared*` methods, which are documented as internal — "public only so
+`Phase1DetectorSet` can call it" — and which return `null` rather than throwing when the
+detector is disabled.
+
+That mattered because six of the seven expose `record*` methods written for a test body to
+call: `recordFieldRead`/`recordFieldWrite`, `recordThreadLocalInit`/`Access`/`Cleanup`,
+`recordLoopIteration`/`reportSpinLoop`, `recordInterruptException`/`recordInterruptRestored`.
+The API was there with no public door to it. `ATOMICITY_VIOLATIONS` sits in the same registry
+group and had its accessor from the start, which is what makes this an oversight rather than
+a design.
+
+The new accessors follow the house pattern exactly — `require(flag, ...)`, throwing
+`IllegalStateException` outside a round or when the detector is off — and the `shared*`
+methods are unchanged, since `Phase1DetectorSet` wants the null. Purely additive; japicmp
+passes.
+
+`AsyncTestContextAccessorCoverageTest` gained the gate that would have caught this. It used
+to discover accessors reflectively and exercise all three `require` outcomes — thoroughly,
+for the accessors that existed, which is why it never noticed six were absent. The new test
+starts from the registry side instead: every internal `shared*` method must have a public
+static counterpart handing out the same instance.
+
+Found while writing the per-detector consumer fixtures, which had to assert a weaker claim
+for exactly these seven. They no longer do.
+
 ### Added — every detector has an example, and every example is in both reactors
 The `examples/` tree had grown gaps that nothing checked, because nothing could: examples are
 matched to detectors by directory name, and no example references a `DetectorType` in code.

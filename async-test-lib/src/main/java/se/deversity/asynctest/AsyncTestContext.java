@@ -22,6 +22,7 @@ import se.deversity.asynctest.diagnostics.ConstructorSafetyValidator;
 import se.deversity.asynctest.diagnostics.CopyOnWriteCollectionDetector;
 import se.deversity.asynctest.diagnostics.CountDownLatchDetector;
 import se.deversity.asynctest.diagnostics.CyclicBarrierDetector;
+import se.deversity.asynctest.diagnostics.DeadlockDetector;
 import se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector;
 import se.deversity.asynctest.diagnostics.DeprecatedThreadApiDetector;
 import se.deversity.asynctest.diagnostics.DoubleCheckedLockingDetector;
@@ -517,6 +518,9 @@ public final class AsyncTestContext {
      * Internal: registry-backed {@link VisibilityMonitor} for this context, or
      * {@code null} when {@code detectVisibility = false}.
      *
+     * <p>Same instance as the public {@link #visibilityMonitor()} accessor; unlike that
+     * accessor this one returns {@code null} instead of throwing when disabled.
+     *
      * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
      * which lives in a different package, can call it; not part of the stable public API.
      */
@@ -527,6 +531,9 @@ public final class AsyncTestContext {
     /**
      * Internal: registry-backed {@link LivelockDetector} for this context, or
      * {@code null} when {@code detectLivelocks = false}.
+     *
+     * <p>Same instance as the public {@link #livelockDetector()} accessor; unlike that
+     * accessor this one returns {@code null} instead of throwing when disabled.
      *
      * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
      * which lives in a different package, can call it; not part of the stable public API.
@@ -539,6 +546,9 @@ public final class AsyncTestContext {
      * Internal: registry-backed {@link RaceConditionDetector} for this context, or
      * {@code null} when {@code detectRaceConditions = false}.
      *
+     * <p>Same instance as the public {@link #raceConditionDetector()} accessor; unlike that
+     * accessor this one returns {@code null} instead of throwing when disabled.
+     *
      * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
      * which lives in a different package, can call it; not part of the stable public API.
      */
@@ -550,6 +560,9 @@ public final class AsyncTestContext {
      * Internal: registry-backed {@link ThreadLocalMonitor} for this context, or
      * {@code null} when {@code detectThreadLocalLeaks = false}.
      *
+     * <p>Same instance as the public {@link #threadLocalMonitor()} accessor; unlike that
+     * accessor this one returns {@code null} instead of throwing when disabled.
+     *
      * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
      * which lives in a different package, can call it; not part of the stable public API.
      */
@@ -560,6 +573,9 @@ public final class AsyncTestContext {
     /**
      * Internal: registry-backed {@link BusyWaitDetector} for this context, or
      * {@code null} when {@code detectBusyWaiting = false}.
+     *
+     * <p>Same instance as the public {@link #busyWaitDetector()} accessor; unlike that
+     * accessor this one returns {@code null} instead of throwing when disabled.
      *
      * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
      * which lives in a different package, can call it; not part of the stable public API.
@@ -586,6 +602,9 @@ public final class AsyncTestContext {
     /**
      * Internal: registry-backed {@link InterruptMonitor} for this context, or
      * {@code null} when {@code detectInterruptMishandling = false}.
+     *
+     * <p>Same instance as the public {@link #interruptMonitor()} accessor; unlike that
+     * accessor this one returns {@code null} instead of throwing when disabled.
      *
      * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
      * which lives in a different package, can call it; not part of the stable public API.
@@ -2191,6 +2210,110 @@ public final class AsyncTestContext {
      */
     public static FutureBlockingDetector futureBlockingDetector() {
         return require("detectFutureBlocking", c -> c.futureBlockingDetector);
+    }
+
+    // ---- Phase 1 / Phase 3 detector accessors ----
+    //
+    // These seven detectors are fed by the runner as well as by the test body, and for a
+    // long time only the runner could reach them: their instances were available solely
+    // through the internal sharedXxx() methods below. Six of them expose recordXxx methods
+    // written for a test body to call, so the API existed without a public door to it.
+    // These are that door, and they behave like every other accessor on this class.
+
+    /**
+     * Returns the {@link DeadlockDetector} for the current test.
+     *
+     * <p>Mostly of interest for its instance {@code analyze()}, which reports the cycle the
+     * runner found. The class also exposes {@code hasDeadlock()} and {@code printThreadDump()}
+     * statically, which need no context.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectDeadlocks = false}
+     * @since 1.7.0
+     */
+    public static DeadlockDetector deadlockDetector() {
+        return require("detectDeadlocks", c -> c.registry.deadlockDetector);
+    }
+
+    /**
+     * Returns the {@link VisibilityMonitor} for the current test.
+     *
+     * <p>Record each read or write of a field you suspect needs {@code volatile} with
+     * {@code recordFieldAccess(fieldIdentifier, value)}; the monitor reports fields whose
+     * observed value diverges between threads.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVisibility = false}
+     * @since 1.7.0
+     */
+    public static VisibilityMonitor visibilityMonitor() {
+        return require("detectVisibility", AsyncTestContext::sharedVisibilityMonitor);
+    }
+
+    /**
+     * Returns the {@link LivelockDetector} for the current test.
+     *
+     * <p>Call {@code captureSnapshot()} from inside a retry loop; the detector compares
+     * successive snapshots and reports threads that stay runnable without progressing.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLivelocks = false}
+     * @since 1.7.0
+     */
+    public static LivelockDetector livelockDetector() {
+        return require("detectLivelocks", AsyncTestContext::sharedLivelockDetector);
+    }
+
+    /**
+     * Returns the {@link RaceConditionDetector} for the current test.
+     *
+     * <p>Record accesses to shared state with {@code recordFieldRead(owner, field)} and
+     * {@code recordFieldWrite(owner, field)}; the detector reports unsynchronised
+     * read/write pairs observed from different threads.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectRaceConditions = false}
+     * @since 1.7.0
+     */
+    public static RaceConditionDetector raceConditionDetector() {
+        return require("detectRaceConditions", AsyncTestContext::sharedRaceConditionDetector);
+    }
+
+    /**
+     * Returns the {@link ThreadLocalMonitor} for the current test.
+     *
+     * <p>Bracket each {@code ThreadLocal} with {@code recordThreadLocalInit(tl, name)},
+     * {@code recordThreadLocalAccess(tl)} and {@code recordThreadLocalCleanup(tl)}; the
+     * monitor reports the ones never cleaned up on a thread that outlives the task.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectThreadLocalLeaks = false}
+     * @since 1.7.0
+     */
+    public static ThreadLocalMonitor threadLocalMonitor() {
+        return require("detectThreadLocalLeaks", AsyncTestContext::sharedThreadLocalMonitor);
+    }
+
+    /**
+     * Returns the {@link BusyWaitDetector} for the current test.
+     *
+     * <p>Call {@code recordLoopIteration()} from a spin loop and {@code recordYield()} where
+     * it parks, or report a loop wholesale with {@code reportSpinLoop(description, iterations)}.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectBusyWaiting = false}
+     * @since 1.7.0
+     */
+    public static BusyWaitDetector busyWaitDetector() {
+        return require("detectBusyWaiting", AsyncTestContext::sharedBusyWaitDetector);
+    }
+
+    /**
+     * Returns the {@link InterruptMonitor} for the current test.
+     *
+     * <p>Record {@code recordInterruptException(e)} in the catch block and
+     * {@code recordInterruptRestored()} where the flag is put back; the monitor reports
+     * interrupts that were caught and swallowed.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectInterruptMishandling = false}
+     * @since 1.7.0
+     */
+    public static InterruptMonitor interruptMonitor() {
+        return require("detectInterruptMishandling", AsyncTestContext::sharedInterruptMonitor);
     }
 
     // ---- Helper ----

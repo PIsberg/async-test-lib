@@ -73,11 +73,21 @@ one detector. Each fixture does two things:
    `examples/` module. Workloads are deliberately short and never actually deadlock, hang or
    leak threads — the fixture demonstrates the shape, the example demonstrates the failure.
 
-Seven detectors (`DEADLOCKS`, `VISIBILITY`, `LIVELOCKS`, `RACE_CONDITIONS`,
-`THREAD_LOCAL_LEAKS`, `BUSY_WAITING`, `INTERRUPT_MISHANDLING`) have no *public* per-detector
-accessor — their `shared*` accessors on `AsyncTestContext` are documented as internal. Those
-fixtures assert the weaker "this body is running inside a configured round" claim instead,
-and say so.
+All 127 make that claim. Seven of them could not at first: `DEADLOCKS`, `VISIBILITY`,
+`LIVELOCKS`, `RACE_CONDITIONS`, `THREAD_LOCAL_LEAKS`, `BUSY_WAITING` and
+`INTERRUPT_MISHANDLING` had no *public* per-detector accessor — only the `shared*` methods on
+`AsyncTestContext`, which are documented as internal and which a consumer fixture must
+therefore not call. Those fixtures asserted the weaker "this body is running inside a
+configured round".
+
+Writing them is what surfaced the gap. Six of the seven expose `record*` methods written for
+a test body to call — `recordFieldRead`/`recordFieldWrite`, `recordThreadLocalInit`,
+`reportSpinLoop`, `recordInterruptException` — so the API was there with no public door to
+it, while `ATOMICITY_VIOLATIONS`, in the same registry group, had its accessor all along.
+1.7.0 adds the seven missing accessors and
+`AsyncTestContextAccessorCoverageTest#everySharedAccessor_hasAPublicCounterpart_returningTheSameInstance`
+keeps them paired. Every fixture in this package now makes the strong claim, and drives the
+detector's record API the way a consumer would.
 
 `DetectorCoverageTest` is the gate that keeps this honest: it reflects over every fixture
 class and fails unless the `includes` sets union to exactly `DetectorType.values()`, with no
