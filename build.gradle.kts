@@ -17,6 +17,7 @@ plugins {
 // Maven (pom.xml) is the canonical source of truth for versions.
 // Keep these in sync with the <properties> block in pom.xml.
 extra["junitVersion"] = "6.1.2"       // pom: junit.jupiter.version
+extra["junitPlatformVersion"] = "6.1.2" // pom: junit.platform.version
 extra["jazzerVersion"] = "0.30.0"     // pom: jazzer.version
 extra["byteBuddyVersion"] = "1.18.11" // pom: bytebuddy.version
 extra["asmVersion"] = "9.10.1"        // pom: asm.version
@@ -46,12 +47,30 @@ subprojects {
     }
 
     dependencies {
+        // Gradle supplies its own junit-platform-launcher unless one is on the test runtime
+        // classpath, and a launcher older than the engine fails discovery with
+        // "OutputDirectoryCreator not available". The library module used to get an aligned one
+        // transitively from junit-platform-testkit; the agent and analysis modules do not depend
+        // on testkit, so pin it for every module. Maven's surefire resolves this on its own.
+        add("testRuntimeOnly", "org.junit.platform:junit-platform-launcher:"
+                + rootProject.extra["junitPlatformVersion"] as String)
+
         val vibetags = rootProject.extra["vibetagsVersion"] as String
         add("compileOnly", "se.deversity.vibetags:vibetags-processor:$vibetags")
         add("annotationProcessor", "se.deversity.vibetags:vibetags-processor:$vibetags")
         add("compileOnly", "com.github.spotbugs:spotbugs-annotations:4.9.8")
         add("compileOnly", "com.google.errorprone:error_prone_annotations:2.36.0")
         add("errorprone", "com.google.errorprone:error_prone_core:2.36.0")
+    }
+
+    // VibeTags resolves the module root by walking up from a source file to the nearest build
+    // file. Under Gradle the compiler runs in a worker whose working directory is
+    // ~/.gradle/workers, so that walk lands nowhere and no guardrails are written. Pin the output
+    // root explicitly to this module's directory — the same place Maven's ModuleRootResolver
+    // finds — so `./gradlew build` regenerates CLAUDE.md and .claude/rules/ exactly as `mvn
+    // compile` does.
+    tasks.withType<JavaCompile>().configureEach {
+        options.compilerArgs.add("-Avibetags.root=${project.projectDir}")
     }
 
     // Error Prone runs on main sources only; test sources are excluded per project policy
@@ -112,7 +131,14 @@ subprojects {
         isConsoleOutput = true
         isIgnoreFailures = false
     }
-    tasks.named("pmdMain") { enabled = true }
+    tasks.named<Pmd>("pmdMain") {
+        enabled = true
+        // Mirrors the <excludes> in pom.xml's maven-pmd-plugin config. Without it `./gradlew build`
+        // fails on UnnecessaryConstructor / UncommentedEmptyConstructor in an intentionally empty
+        // class. The two builds had drifted here because CI only ever ran `./gradlew test`, so the
+        // Gradle PMD gate was never exercised.
+        exclude("**/NoopAsyncTestListener.java")
+    }
     tasks.named("pmdTest") { enabled = false }
 
     // ── SpotBugs static analysis (matches Maven spotbugs-maven-plugin:4.9.8.3) ──

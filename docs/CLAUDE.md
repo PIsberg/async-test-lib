@@ -23,9 +23,16 @@ own annotations. When editing inside a module, that file is the authoritative on
 `CLAUDE.md` is the merged view. The `.vibetags-mod-*` sidecars and `.vibetags-cache` are gitignored
 build artifacts — if the root `CLAUDE.md` ever shows every element twice, delete them and rebuild.
 
-Guardrail generation is **Maven-only in practice**: under Gradle the processor resolves the module
-root to Gradle's worker directory, and since vibetags only ever updates files that already exist, it
-writes nothing there. Regenerate with `mvn compile`, not `./gradlew build`.
+Both builds regenerate them. Gradle needs help to do so: it runs the compiler in a worker whose
+working directory is `~/.gradle/workers`, so vibetags' walk-up-to-the-nearest-build-file resolution
+lands nowhere and it writes nothing. `build.gradle.kts` pins `-Avibetags.root=${project.projectDir}`
+per module, which puts Gradle's output exactly where Maven's goes.
+
+> **Known cosmetic churn.** The two builds emit the same elements in a *different order* — javac's
+> annotation-processing round order differs between them — so running `mvn compile` after
+> `./gradlew build` (or vice versa) produces a diff of two or three reordered `<element>` lines with
+> identical content. Harmless, but don't mistake it for a real change. The fix belongs upstream in
+> vibetags: sort the index by qualified name before emitting.
 
 ## Build & Test Commands
 

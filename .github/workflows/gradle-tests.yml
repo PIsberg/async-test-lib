@@ -71,14 +71,14 @@ jobs:
 
       - name: Check coverage file exists
         run: |
-          if [ -f ./build/reports/jacoco/test/jacocoTestReport.xml ]; then
+          if [ -f ./async-test-lib/build/reports/jacoco/test/jacocoTestReport.xml ]; then
             echo "✓ Coverage file found"
-            wc -c ./build/reports/jacoco/test/jacocoTestReport.xml
+            wc -c ./async-test-lib/build/reports/jacoco/test/jacocoTestReport.xml
           else
-            echo "✗ Coverage file NOT found at ./build/reports/jacoco/test/jacocoTestReport.xml"
+            echo "✗ Coverage file NOT found at ./async-test-lib/build/reports/jacoco/test/jacocoTestReport.xml"
             echo "Checking build directory structure:"
-            ls -la ./build/ || echo "build/ directory not found"
-            ls -la ./build/reports/ || echo "build/reports/ directory not found"
+            ls -la ./async-test-lib/build/ || echo "build/ directory not found"
+            ls -la ./async-test-lib/build/reports/ || echo "build/reports/ directory not found"
             exit 1
           fi
 
@@ -87,7 +87,7 @@ jobs:
         if: always()
         with:
           name: gradle-test-reports-java-${{ matrix.java-version }}
-          path: build/reports/tests/
+          path: "*/build/reports/tests/"
           retention-days: 7
 
   gradle-examples-pr-detect:
@@ -322,11 +322,11 @@ jobs:
         run: ./gradlew assemble -x test
 
       - name: Display build output
-        run: ls -lah build/libs/
+        run: ls -lah */build/libs/
 
       - name: Upload JAR artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: async-test-library-gradle-java-${{ matrix.java-version }}
-          path: build/libs/async-test-*.jar
+          path: "*/build/libs/async-test-*.jar"
           retention-days: 30
