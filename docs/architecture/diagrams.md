@@ -234,3 +234,41 @@ To regenerate diagrams, see [`docs/diagrams/README.md`](../diagrams/README.md).
 
 ---
 
+## Parsed diagrams (code-karta)
+
+Everything above is hand-drawn PlantUML: it says what the design *intends*. The diagrams
+under [`docs/diagrams/codekarta/`](../diagrams/codekarta/) are parsed from the source by
+[code-karta](https://github.com/PIsberg/codekarta) and say what the code currently *is*.
+Keeping both is the point — when they disagree, the gap is the interesting part, and it is
+the kind of drift no test catches.
+
+| Diagram | Scope | What it answers |
+|---------|-------|-----------------|
+| `codekarta/class-diagram.svg` | `se.deversity.asynctest` | The public surface and how the annotation, extension, config and registries connect |
+| `codekarta/runner/class-diagram.svg` | `runner` | What `ConcurrencyRunner` collaborates with |
+| `codekarta/runner/concurrencyrunner-sequence-diagram.svg` | `ConcurrencyRunner.java` | The call sequence and exception flow of one invocation |
+| `codekarta/spi/class-diagram.svg` | `spi` | `Detector` / `DetectorFactory` / SPI `DetectorRegistry` and the legacy adapters |
+| `codekarta/report/class-diagram.svg` | `report` | `Violation` → `Formatter` → the report listeners |
+
+Regenerate with:
+
+```bash
+sh tools/generate-architecture-diagrams.sh
+```
+
+The CLI is resolved from Maven Central, so the first run needs a network and later runs do
+not. Nothing is vendored into the repository.
+
+**Why each diagram is scoped to one package.** A whole-tree run is not attempted, and that
+is deliberate. Breadth rather than depth is what makes these unreadable: a stitched call
+graph over a single large package reached 986 nodes and roughly 36000×43700 pixels, which
+is a data dump wearing a diagram's clothes, and `--max-depth` does not rescue it because
+the fan-out is horizontal. Scoping the input beats tuning the flags. If you add a diagram
+here, scope it to a package that answers one question.
+
+The scripts pin `--layout elk`. The default `simple` engine lays every node of one BFS
+depth into a single unbounded row, and `diagnostics/` alone has ~138 largely unconnected
+types, which renders tens of thousands of pixels wide.
+
+---
+

@@ -47,6 +47,10 @@ mvn clean install
 
 Run locally without a license key with `-Dlicense.mock.mode=true`. CI activates mock mode by itself.
 
+**Build with JDK 21 or 25.** On JDK 26, PMD 7.17 cannot resolve JDK types and reports ~244 bogus
+`LooseCoupling` violations, so `mvn verify` fails for reasons that have nothing to do with your
+change. CI runs 21 and 25. See [docs/QUALITY_GATES.md](docs/QUALITY_GATES.md#build-with-jdk-21-or-25-not-26).
+
 `forkEvery = 1` means each test class gets its own JVM. Nested classes matching `*$*` are excluded
 from direct discovery — they run only via JUnit's `EngineTestKit` in meta-tests such as
 `AsyncTestLibraryMetaTest`.
