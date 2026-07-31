@@ -51,7 +51,55 @@ mvn install -DskipTests && mvn -f consumer-fixture\pom.xml test
 - `ConsumerJdk25And26DetectorsTest` — added in the 1.7.0 cycle; smoke-tests the
   standalone JDK 25/26 detectors (`StableValueMisuseDetector`,
   `StructuredTaskScopeMisuseDetector`, `GathererConcurrencyMisuseDetector`) through
-  their public `recordXxx` / `analyze()` API. These detectors are not wired into
-  `@AsyncTest` (no `DetectorType` constant — that enum is locked), so a consumer
-  reaches them directly; a passing run proves the classes and their report
-  accessors are part of the stable public surface.
+  their public `recordXxx` / `analyze()` API — a consumer can drive them standalone,
+  without `@AsyncTest`. A passing run proves the classes and their report accessors are
+  part of the stable public surface. Selecting the same three *through* `@AsyncTest` is a
+  different path, covered by `detectors/Phase16PreviewEraDetectorsFixtureTest`.
+- `detectors/` — one `@AsyncTest` fixture per `DetectorType`, grouped by the phase
+  headings in the enum. See below.
+
+## The `detectors/` package
+
+`src/test/java/se/deversity/asynctest/fixture/detectors/` holds **one fixture method per
+detector**, scoped with `@AsyncTest(includes = {DetectorType.X})` so a failure names exactly
+one detector. Each fixture does two things:
+
+1. **Proves the detector is reachable.** Every `AsyncTestContext.xxxDetector()` accessor
+   throws `IllegalStateException` when its detector is disabled for the round, so a
+   non-throwing call inside an `includes`-scoped round proves the enum constant resolves to
+   a real registered detector, that `includes` enabled it, and that the accessor is on the
+   published artifact's surface.
+2. **Runs a small workload of the kind that detector watches**, mirroring the corresponding
+   `examples/` module. Workloads are deliberately short and never actually deadlock, hang or
+   leak threads — the fixture demonstrates the shape, the example demonstrates the failure.
+
+Seven detectors (`DEADLOCKS`, `VISIBILITY`, `LIVELOCKS`, `RACE_CONDITIONS`,
+`THREAD_LOCAL_LEAKS`, `BUSY_WAITING`, `INTERRUPT_MISHANDLING`) have no *public* per-detector
+accessor — their `shared*` accessors on `AsyncTestContext` are documented as internal. Those
+fixtures assert the weaker "this body is running inside a configured round" claim instead,
+and say so.
+
+`DetectorCoverageTest` is the gate that keeps this honest: it reflects over every fixture
+class and fails unless the `includes` sets union to exactly `DetectorType.values()`, with no
+detector covered twice and no fixture enabling more than one. **Adding a `DetectorType`
+without adding a fixture fails the build here.**
+
+### Detectors with no `examples/` module
+
+Examples are matched to detectors by directory name only — no example references a
+`DetectorType` in code — so this mapping is a convention, not something the build checks.
+By that convention, eight detectors have no example of their own and `detectors/` is their
+only end-to-end coverage: the whole of Phase 17 (`SHARED_BYTE_BUFFER`,
+`SHARED_CHARSET_CODER`, `SHARED_CHECKSUM`, `FILE_CHANNEL_POSITION_RACE`, `SHARED_ITERATOR`,
+`HIGH_CONTENTION_ATOMIC`, `SHARED_JSON_MAPPER_RECONFIG`) plus `SHARED_SECURE_RANDOM`
+(`examples/72-shared-random` demonstrates `java.util.Random`).
+
+`SHARED_MATCHER`, `SHARED_DECIMAL_FORMAT` and `SHARED_MESSAGE_DIGEST` have no directory
+named after them but are demonstrated by `examples/10-shared-non-thread-safe-types`.
+
+## In CI
+
+This module and the `examples/` reactor run together as the end-to-end suite in
+`.github/workflows/e2e-tests.yml` — both consume the *built artifact*, so both need
+`mvn install` first. `tests.yml` covers the library's own unit tests, packaging and
+Javadoc. The Gradle mirror of both lives in `gradle-tests.yml`.

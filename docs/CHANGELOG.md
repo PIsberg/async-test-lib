@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — a consumer fixture for every detector, and an E2E workflow that runs it
+`consumer-fixture` had four hand-written test classes covering the public API in general.
+It now also has `se.deversity.asynctest.fixture.detectors`: **one `@AsyncTest` fixture per
+`DetectorType`**, 127 of them, each scoped with `includes = {DetectorType.X}` so a failure
+names exactly one detector, and each running a small workload of the kind that detector
+watches.
+
+The load-bearing assertion is reachability. Every `AsyncTestContext.xxxDetector()` accessor
+throws when its detector is disabled for the round, so a non-throwing call inside an
+`includes`-scoped round proves the enum constant resolves to a registered detector, that
+`includes` enabled it, and that the accessor is on the *published* surface — the fixture
+compiles against the JAR, not the sources. Seven detectors have no public per-detector
+accessor and assert the weaker "inside a configured round" claim instead; the fixture says
+so rather than implying more than it checks.
+
+`DetectorCoverageTest` is the gate: it reflects over the fixture classes and fails unless
+their `includes` sets union to exactly `DetectorType.values()`, with no detector covered
+twice. Adding a `DetectorType` without a fixture now fails the build. It also gives
+`LATCH_MISUSE`, `EXECUTOR_DEADLOCK` and `FUTURE_BLOCKING` — detectors that shipped
+implemented and tested but were long unreachable through `@AsyncTest` — their first
+consumer-side coverage.
+
+### Changed — examples and the consumer fixture are one E2E suite, split out of `tests.yml`
+New `.github/workflows/e2e-tests.yml` runs both suites that consume the *built artifact*:
+the consumer fixture (Java 21 and 25) and the `examples/*` reactor (4 shards; changed-only
+on pull requests, full on push and schedule). `tests.yml` keeps the library's own unit
+tests, packaging, coverage and Javadoc, and no longer runs either. A broken example can no
+longer mask a library regression, and `e2e-summary` gives the suite one stable required
+check. The Gradle mirror in `gradle-tests.yml` is unchanged.
+
 ### Changed — the build is a three-module reactor; the agent ships as its own artifact
 Every dependency in the old single-module POM was compile scope and none was optional, so a
 consumer who only wrote `@AsyncTest` on a test method still pulled **byte-buddy, byte-buddy-agent

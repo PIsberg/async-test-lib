@@ -1,0 +1,286 @@
+name: E2E Tests
+
+# End-to-end coverage: everything that consumes the *built artifact* rather than the
+# sources. Two suites, one workflow:
+#
+#   consumer-fixture/  — a downstream-style module that resolves async-test-lib from the
+#                        local Maven repository and drives it through its public API only.
+#                        Its detectors/ package holds one @AsyncTest fixture per DetectorType,
+#                        so a green run proves every detector is selectable and reachable
+#                        from consumer code.
+#   examples/          — ~118 standalone Maven projects, each a runnable demonstration of one
+#                        concurrency hazard, built the way a user would build them.
+#
+# Both need the library installed to a local repository first — that install step is what
+# makes these end-to-end rather than unit tests. Library unit tests, packaging and Javadoc
+# live in tests.yml; this workflow deliberately does not duplicate them.
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '30 6 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  consumer-fixture:
+    name: Consumer Fixture (Java ${{ matrix.java-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        java-version: [ '21', '25' ]
+
+    # The fixture now runs one @AsyncTest round per detector, so its wall-clock is dominated
+    # by ~127 short concurrent rounds rather than by any single test. Shared CI runners can
+    # still stretch a round past a short timeoutMs budget; scale via this env var, not a `-D`
+    # system property, because Surefire forks a separate JVM and only environment variables
+    # propagate into it automatically. See ConcurrencyRunner.resolveTimeoutMultiplier.
+    env:
+      ASYNC_TEST_TIMEOUT_MULTIPLIER: '1'
+
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Java
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Prepare local Maven repository
+        shell: bash
+        run: mkdir -p .m2/repository
+
+      - name: Install library to local Maven repository
+        run: mvn "-Dmaven.repo.local=.m2/repository" -DskipTests clean install
+
+      - name: Run consumer fixture suite
+        run: mvn "-Dmaven.repo.local=.m2/repository" -f consumer-fixture/pom.xml test
+
+      - name: Upload consumer fixture reports
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: e2e-consumer-fixture-reports-java-${{ matrix.java-version }}
+          path: consumer-fixture/target/surefire-reports/
+          retention-days: 7
+
+  examples-detect:
+    name: Detect changed examples (PR)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    outputs:
+      modules: ${{ steps.compute.outputs.modules }}
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        with:
+          list-files: shell
+          filters: |
+            examples:
+              - 'examples/**'
+
+      - name: Compute changed example modules
+        id: compute
+        run: |
+          if [ "${{ steps.filter.outputs.examples }}" != "true" ]; then
+            echo "modules=" >> "$GITHUB_OUTPUT"
+            echo "No examples touched."
+            exit 0
+          fi
+          modules=$(printf '%s\n' ${{ steps.filter.outputs.examples_files }} \
+            | awk -F/ 'NF>=3 && $1=="examples" {print $2}' \
+            | while read m; do [ -f "examples/$m/pom.xml" ] && echo "$m"; done \
+            | sort -u \
+            | paste -sd ',' -)
+          echo "modules=$modules" >> "$GITHUB_OUTPUT"
+          echo "Changed example modules: $modules"
+
+  examples-changed:
+    name: Examples Shard ${{ matrix.shard }} (PR)
+    runs-on: ubuntu-latest
+    needs: examples-detect
+    if: github.event_name == 'pull_request' && needs.examples-detect.outputs.modules != ''
+
+    strategy:
+      fail-fast: false
+      matrix:
+        java-version: [ '21' ]
+        shard: [ 0, 1, 2, 3 ]
+
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Java
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Install library to local Maven repository
+        run: mvn "-Dmaven.repo.local=.m2/repository" -DskipTests clean install
+
+      - name: Run shard's slice of changed examples
+        run: |
+          set -euo pipefail
+          TOTAL=4
+          SHARD=${{ matrix.shard }}
+          slice=$(echo "${{ needs.examples-detect.outputs.modules }}" \
+            | tr ',' '\n' \
+            | awk -v s="$SHARD" -v n="$TOTAL" 'NR%n==s' \
+            | paste -sd ',' -)
+          if [ -z "$slice" ]; then
+            echo "Shard $SHARD has no modules in the changed set"
+            exit 0
+          fi
+          echo "Shard $SHARD modules: $slice"
+          mvn "-Dmaven.repo.local=.m2/repository" -f examples/pom.xml -pl "$slice" test -T 1C -fae
+
+      - name: Upload shard test reports
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: e2e-example-pr-reports-shard-${{ matrix.shard }}
+          path: examples/*/target/surefire-reports/
+          retention-days: 7
+
+  examples-all:
+    name: Examples Reactor (shard ${{ matrix.shard }}/${{ strategy.job-total }})
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        java-version: [ '21' ]
+        shard: [ 0, 1, 2, 3 ]
+
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Java
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Install library to local Maven repository
+        run: mvn "-Dmaven.repo.local=.m2/repository" -DskipTests clean install
+
+      - name: Run example reactor shard
+        run: |
+          set -euo pipefail
+          TOTAL=4
+          SHARD=${{ matrix.shard }}
+          modules=$(ls -1 examples/*/pom.xml \
+            | awk -F/ '{print $2}' \
+            | sort \
+            | awk -v s="$SHARD" -v n="$TOTAL" 'NR%n==s' \
+            | paste -sd ',' -)
+          if [ -z "$modules" ]; then
+            echo "Shard $SHARD has no modules"; exit 0
+          fi
+          echo "Shard $SHARD modules: $modules"
+          mvn "-Dmaven.repo.local=.m2/repository" -f examples/pom.xml -pl "$modules" test -T 1C -fae
+
+      - name: Upload shard test reports
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: e2e-example-reactor-reports-shard-${{ matrix.shard }}
+          path: examples/*/target/surefire-reports/
+          retention-days: 7
+
+  e2e-summary:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: [ consumer-fixture, examples-detect, examples-changed, examples-all ]
+    # Runs even when a leg was skipped (examples-changed on push, examples-all on PR) so
+    # there is one stable required check for the whole suite.
+    if: always()
+    steps:
+      - name: Fail if any e2e leg failed
+        run: |
+          set -euo pipefail
+          for result in \
+            "consumer-fixture=${{ needs.consumer-fixture.result }}" \
+            "examples-detect=${{ needs.examples-detect.result }}" \
+            "examples-changed=${{ needs.examples-changed.result }}" \
+            "examples-all=${{ needs.examples-all.result }}"; do
+            name=${result%%=*}
+            outcome=${result#*=}
+            echo "$name: $outcome"
+            case "$outcome" in
+              success|skipped) ;;
+              *) echo "::error::e2e leg $name reported $outcome"; exit 1 ;;
+            esac
+          done
