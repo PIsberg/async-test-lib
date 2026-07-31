@@ -244,11 +244,12 @@ the kind of drift no test catches.
 
 | Diagram | Scope | What it answers |
 |---------|-------|-----------------|
+| `codekarta/modules-diagram.svg` | the Maven reactor | Which of the three modules depends on which |
 | `codekarta/class-diagram.svg` | `se.deversity.asynctest` | The public surface and how the annotation, extension, config and registries connect |
-| `codekarta/runner/class-diagram.svg` | `runner` | What `ConcurrencyRunner` collaborates with |
-| `codekarta/runner/concurrencyrunner-sequence-diagram.svg` | `ConcurrencyRunner.java` | The call sequence and exception flow of one invocation |
-| `codekarta/spi/class-diagram.svg` | `spi` | `Detector` / `DetectorFactory` / SPI `DetectorRegistry` and the legacy adapters |
-| `codekarta/report/class-diagram.svg` | `report` | `Violation` → `Formatter` → the report listeners |
+| `codekarta/runner-class-diagram.svg` | `runner` | What `ConcurrencyRunner` collaborates with |
+| `codekarta/concurrencyrunner-sequence-diagram.svg` | `ConcurrencyRunner.java` | The call sequence and exception flow of one invocation |
+| `codekarta/spi-class-diagram.svg` | `spi` | `Detector` / `DetectorFactory` / SPI `DetectorRegistry` and the legacy adapters |
+| `codekarta/report-class-diagram.svg` | `report` | `Violation` → `Formatter` → the report listeners |
 
 Regenerate with:
 
@@ -258,6 +259,16 @@ sh tools/generate-architecture-diagrams.sh
 
 The CLI is resolved from Maven Central, so the first run needs a network and later runs do
 not. Nothing is vendored into the repository.
+
+**Why the module diagram needs code-karta 0.2.0.** Before it, `--modules-only` understood
+`module-info.java` and nothing else, so it answered "Graph is empty" here — this project
+declares no JPMS modules, only a Maven reactor. 0.2.0 reads the reactor, which is where the
+cross-module question was being asked in the first place.
+
+**Why they share one directory.** They did not before 0.2.0. Every class diagram was called
+`class-diagram.svg` whatever it was a diagram of, so each scope needed a subdirectory of its
+own — a layout that described a limitation of the generator rather than anything about this
+codebase. `--output-name` removed the reason for it.
 
 **Why each diagram is scoped to one package.** A whole-tree run is not attempted, and that
 is deliberate. Breadth rather than depth is what makes these unreadable: a stitched call

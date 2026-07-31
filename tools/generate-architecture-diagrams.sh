@@ -15,7 +15,7 @@
 # every commit: a diff here means the architecture moved.
 set -eu
 
-CK_VERSION="0.1.0"
+CK_VERSION="0.2.0"
 CK_COORDS="se.deversity.codekarta:code-karta-cli:${CK_VERSION}:jar:all"
 OUT_DIR="docs/diagrams/codekarta"
 SRC="async-test-lib/src/main/java/se/deversity/asynctest"
@@ -42,25 +42,42 @@ CK_JAR="$M2/se/deversity/codekarta/code-karta-cli/${CK_VERSION}/code-karta-cli-$
 
 mkdir -p "$OUT_DIR"
 
-# Each diagram is scoped to a package that answers one question. A whole-tree run is
+# Each class diagram is scoped to a package that answers one question. A whole-tree run is
 # deliberately not attempted: breadth, not depth, is what makes these unreadable, so
 # scoping the input beats tuning --max-depth.
+#
+# --output-name (code-karta 0.2.0) is what lets these share one directory. Before it every
+# class diagram was called class-diagram.svg, so each scope needed a subdirectory of its
+# own -- a layout that said nothing about the diagrams and everything about a limitation
+# of the generator.
+
+echo "Module diagram: the Maven reactor ..."
+# Needs code-karta 0.2.0: before it, --modules-only understood module-info.java only and
+# returned "Graph is empty" here, because this project declares no JPMS modules.
+java -jar "$CK_JAR" --input . --output "$OUT_DIR" --modules-only \
+                    --output-name modules-diagram.svg --layout "$LAYOUT"
 
 echo "Class diagram: the public surface and wiring ..."
-java -jar "$CK_JAR" --input "$SRC" --output "$OUT_DIR" --layout "$LAYOUT"
+java -jar "$CK_JAR" --input "$SRC" --output "$OUT_DIR" \
+                    --output-name class-diagram.svg --layout "$LAYOUT"
 
 echo "Class diagram: the runner ..."
-java -jar "$CK_JAR" --input "$SRC/runner" --output "$OUT_DIR/runner" --layout "$LAYOUT"
+java -jar "$CK_JAR" --input "$SRC/runner" --output "$OUT_DIR" \
+                    --output-name runner-class-diagram.svg --layout "$LAYOUT"
 
 echo "Class diagram: the detector SPI ..."
-java -jar "$CK_JAR" --input "$SRC/spi" --output "$OUT_DIR/spi" --layout "$LAYOUT"
+# --max-members all: the SPI is a handful of types, and what each one declares is the whole
+# point of the diagram. The six-member default is sized for a large package, not for this.
+java -jar "$CK_JAR" --input "$SRC/spi" --output "$OUT_DIR" --max-members all \
+                    --output-name spi-class-diagram.svg --layout "$LAYOUT"
 
 echo "Class diagram: the reporting pipeline ..."
-java -jar "$CK_JAR" --input "$SRC/report" --output "$OUT_DIR/report" --layout "$LAYOUT"
+java -jar "$CK_JAR" --input "$SRC/report" --output "$OUT_DIR" \
+                    --output-name report-class-diagram.svg --layout "$LAYOUT"
 
 echo "Sequence diagram: one @AsyncTest invocation through ConcurrencyRunner ..."
-java -jar "$CK_JAR" --input "$SRC/runner/ConcurrencyRunner.java" \
-                    --output "$OUT_DIR/runner" --layout "$LAYOUT"
+java -jar "$CK_JAR" --input "$SRC/runner/ConcurrencyRunner.java" --output "$OUT_DIR" \
+                    --output-name concurrencyrunner-sequence-diagram.svg --layout "$LAYOUT"
 
 echo
 echo "Done. Generated under $OUT_DIR:"
