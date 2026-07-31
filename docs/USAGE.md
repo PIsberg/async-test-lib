@@ -56,8 +56,8 @@ dependencies {
 ### 1. Import the annotation
 
 ```java
-import se.deversity.async-test-lib.AsyncTest;
-import se.deversity.async-test-lib.DetectorType;
+import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.DetectorType;
 ```
 
 ### 2. Annotate your test method
@@ -71,7 +71,7 @@ public class MyAsyncTests {
         detectAll = true
     )
     void testConcurrentAccess() {
-        // All 114 detectors are enabled!
+        // All 127 detectors are enabled!
     }
 }
 ```

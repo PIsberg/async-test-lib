@@ -58,7 +58,7 @@ src/main/java/se/deversity/asynctest/
     └── BenchmarkRegressionException.java
 
 src/main/resources/META-INF/services/
-└── se.deversity.async-test-lib.spi.DetectorFactory  # NEW in 1.6.0 — ServiceLoader registration
+└── se.deversity.asynctest.spi.DetectorFactory  # NEW in 1.6.0 — ServiceLoader registration
 ```
 
 ---

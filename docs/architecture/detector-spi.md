@@ -7,11 +7,11 @@
 The legacy detector architecture required synchronized edits across five places
 (annotation field, config field+builder+defaults, both `build()` branches,
 registry instantiation arm) — a documented fan-out risk in `CLAUDE.md`. The SPI
-in `se.deversity.async-test-lib.spi` collapses that to **one class + one
+in `se.deversity.asynctest.spi` collapses that to **one class + one
 META-INF/services line**.
 
 ```
-META-INF/services/se.deversity.async-test-lib.spi.DetectorFactory
+META-INF/services/se.deversity.asynctest.spi.DetectorFactory
         │
         ▼  ServiceLoader.load(...)
 DetectorFactory(s)                              ← user-implemented or built-in
@@ -59,7 +59,7 @@ Coverage is automated:
 
 **Coexistence with the legacy registry.** Both registries instantiate
 independently and run side-by-side. The legacy
-`se.deversity.async-test-lib.DetectorRegistry` continues to drive per-test
+`se.deversity.asynctest.DetectorRegistry` continues to drive per-test
 execution for the built-in detectors and owns the `AsyncTestContext` wiring.
 
 **Third-party detectors are live (1.7.0).** `AsyncTestContext` builds a second,
@@ -81,6 +81,31 @@ published extension point compiled, was discovered by `ServiceLoader` in tests,
 and then never ran inside a real test. The registry remains the surface for
 programmatic discovery and for incremental migration of each built-in detector
 to expose structured violations natively.
+
+## The built-in-package exclusion
+
+`AsyncTestContext` builds `spi.DetectorRegistry.buildExternal(config)` per test, taking every
+discovered factory **except** the built-in bridges in `spi/adapters`. Those bridges wrap fresh legacy
+instances that observe nothing, so including them would allocate roughly 120 blind duplicate
+detectors on every test. Keep the exclusion when touching this path.
+
+## Contract notes
+
+`spi/Detector.java` (`type()`, `analyze()`, `onTestStart()`, `onTestEnd()`) and
+`spi/DetectorFactory.java` (`type()`, `isEnabledFor()`, `create()`) are stable public contracts —
+extend by adding strategies, never by widening branch conditionals.
+
+`analyze()` must be idempotent: same observed state → same violations, no side effects.
+`DetectorRegistry.analyzeAll()` relies on it.
+
+Two classes share the name `DetectorRegistry`: `spi/DetectorRegistry.java` (an effectively-immutable
+`EnumMap` populated only in its private constructor, safe to publish) and the package-root
+`se.deversity.asynctest.DetectorRegistry` wiring class. The package-root one holds a final field per
+detector, constructs each conditionally on its config flag, and calls each `analyzeAll()` in phase
+order — the three-step contract in [adding-a-detector.md](adding-a-detector.md).
+
+Built-in detectors are bridged through `spi/adapters/LegacyDetectorAdapter` (reflection-based, once
+per round per detector). Its structure is deliberately legacy-shaped — do not refactor it.
 
 ---
 

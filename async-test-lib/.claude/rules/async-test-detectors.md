@@ -2,6 +2,23 @@
 paths: ["**/diagnostics/**"]
 ---
 
+## Conventions for every detector in this package
+
+These hold for all 127 detectors and are therefore stated once here rather than restated as a
+per-class `@AITestDriven` annotation — one annotation per detector cost one `<element>` line each
+in the always-loaded `<scoped_rules>` index of `CLAUDE.md`.
+
+- **Tests are mandatory.** A change to `XDetector.java` requires a matching change to
+  `src/test/java/se/deversity/asynctest/diagnostics/XDetectorTest.java`. JUnit 5, 80% coverage goal.
+- **Thread-safe by construction.** Detector state is shared across the N×M worker threads. Use
+  `ConcurrentHashMap` / `ConcurrentHashMap.newKeySet()` / `LongAdder`; never a bare `HashMap` or a
+  non-final lock target.
+- **Allocation-free on the record path.** `recordX(...)` runs inside the contended region. Use
+  get-then-`computeIfAbsent`, and do not allocate when state already exists for a key.
+
+Detectors that carry additional guarantees (an explicit thread-safety strategy, a security aspect,
+a performance budget) are annotated individually and appear below.
+
 <!-- VIBETAGS-START -->
 # Rules for async-test-detectors
 

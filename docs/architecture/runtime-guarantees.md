@@ -10,7 +10,7 @@ runs. For a suite with 1000 `@AsyncTest` methods that meant 1000 redundant gate
 constructions — pure noise on the hot path and a layering smell (a concurrency
 engine should not know about license vendors).
 
-`LicenseGuard` (in `se.deversity.async-test-lib.runner`) now owns the concern:
+`LicenseGuard` (in `se.deversity.asynctest.runner`) now owns the concern:
 
 - `check(config)` is a `ConcurrentHashMap.get()` on a `Fingerprint` derived from
   the resolved license-config fields (account, key, product, store, license,

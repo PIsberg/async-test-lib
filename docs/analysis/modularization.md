@@ -6,7 +6,7 @@ good enough shape to allow it?
 **Verdict:** yes, and the structure is healthier than its size suggests — the package graph is
 almost a DAG already, with exactly three two-node cycles, and two packages are true leaves that
 could be extracted this week. But the *valuable* split (getting the 138-file detector set out of
-the core artifact) is gated on the same thing [ROADMAP_V2.md](ROADMAP_V2.md) Train 3 is gated on:
+the core artifact) is gated on the same thing [roadmap-v2.md](roadmap-v2.md) Train 3 is gated on:
 deciding which registry wins. Modularization is best understood as the payoff of that decision,
 not as a separate project.
 
@@ -71,7 +71,7 @@ breaks no source or binary compatibility for anyone using the core artifact.
 > **One caveat that is not cosmetic:** the main JAR currently *is* the java agent — `pom.xml` puts
 > `Premain-Class` / `Agent-Class` / `Can-Retransform-Classes` in its manifest. Splitting moves that
 > manifest to the agent JAR, so every `-javaagent:async-test-lib.jar` invocation in user builds and
-> in [AGENT.md](AGENT.md) changes path. That is a documented behavioral change even though it
+> in [AGENT.md](../AGENT.md) changes path. That is a documented behavioral change even though it
 > compiles clean, and it argues for shipping it with a minor version and a migration note rather
 > than silently.
 
@@ -110,7 +110,7 @@ their `<artifactId>`.
 The 65% of the codebase that is detectors (138 files, 26,561 LOC of 40k) cannot leave the core
 module while `DetectorRegistry` and `AsyncTestContext` import all 128 detector classes by name.
 The `spi.adapters` package imports the same 128 — that is the ServiceLoader path which
-[ROADMAP_V2.md](ROADMAP_V2.md) records as **built but never invoked at runtime**.
+[roadmap-v2.md](roadmap-v2.md) records as **built but never invoked at runtime**.
 
 So the blocker is not architectural debt in the usual sense. It is that the library has *two*
 registries and has not yet chosen. Train 3 already contains the decision:
@@ -136,7 +136,7 @@ to detector output formats.
   runner.
 - **japicmp.** The gate is pinned to 1.6.0 on one artifact. Splitting means either a gate per
   module or accepting a gap in the release where compatibility is unchecked.
-- **Release process.** [RELEASE.md](RELEASE.md) and [DISTRIBUTION.md](DISTRIBUTION.md) both assume
+- **Release process.** [RELEASE.md](../RELEASE.md) and [DISTRIBUTION.md](../DISTRIBUTION.md) both assume
   a single artifact, as do the publish workflow and the `v*` tag automation.
 - **The examples and fixtures.** `consumer-fixture`, `load-tests` and the 100+ `examples/*` builds
   each declare the single coordinate today.
@@ -171,7 +171,7 @@ async-test-parent          pom, aggregation and shared build config only
   and asm are off that artifact's classpath.**
 - The agent is now `se.deversity.async-test-lib:async-test-agent`, and attaching uses
   `-javaagent:async-test-agent-<version>.jar`. This is the one behavioral change; see
-  [AGENT.md](AGENT.md).
+  [AGENT.md](../AGENT.md).
 - Module-specific gates went with their modules: japicmp and the 70%/65% jacoco gate and the 74%
   pitest gate are declared in `async-test-lib`, since all three were measured against that
   artifact. Compiler, surefire, checkstyle, PMD, SpotBugs, source, javadoc and the SBOM stay in the
@@ -204,7 +204,15 @@ An agent working in `async-test-agent/` loads 14 lines of guardrails instead of 
 As modules 2 and 3 of the plan land, the split keeps paying: each module's index lists only its own
 elements, so the always-loaded cost stops growing with the library.
 
-One operational note: the pre-split build left a stale `.vibetags-mod-_root_` sidecar behind, and
+Two operational notes. The pre-split build left a stale `.vibetags-mod-_root_` sidecar behind, and
 the reactor aggregation merged it *alongside* the new per-module sidecar — every element appeared
 twice and the root file went from 157 to 286 lines. Deleting the stale sidecar and `.vibetags-cache`
 fixed it. Both are gitignored build artifacts; if the root file ever looks doubled, that is why.
+
+And the generated files are not deterministically ordered: Maven and Gradle emit the same elements
+in a different sequence, because javac's annotation-processing round order differs between them, so
+whichever build ran last leaves a small reordering diff. Filed upstream as
+[PIsberg/vibetags#325](https://github.com/PIsberg/vibetags/issues/325). That issue also carries the
+follow-up worth having here — when `.vibetags-roles` collapses ~130 elements into 5 role files, the
+`<scoped_rules>` index still emits one line per element rather than one per role, which is the cost
+that forced the annotation trim in `e060573`.

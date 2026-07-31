@@ -420,7 +420,8 @@ See [intellij-plugin/README.md](intellij-plugin/README.md) for full instructions
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | Version history |
 | [examples/](examples/) | 30+ runnable example projects |
 | [intellij-plugin/README.md](intellij-plugin/README.md) | IntelliJ plugin setup |
-| [lat.md/](lat.md/) | [lat.md](https://www.lat.md) knowledge graph for AI agents — architecture, invariants, and change playbooks in cross-linked markdown (see [AGENTS.md](AGENTS.md)) |
+| [docs/INDEX.md](docs/INDEX.md) | Documentation index — every document mapped to what it is for |
+| [docs/QUALITY_GATES.md](docs/QUALITY_GATES.md) | What must stay green: static analysis, coverage, mutation testing, japicmp |
 
 ---
 

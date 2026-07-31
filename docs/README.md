@@ -15,5 +15,5 @@ New here? Read the [project README](../README.md) first, then [USAGE.md](USAGE.m
 >
 > The sections that had no home elsewhere were moved out rather than deleted:
 > [ASYNC_ASSERT.md](ASYNC_ASSERT.md), [BEST_PRACTICES.md](BEST_PRACTICES.md),
-> [COMPARISON.md](COMPARISON.md), [MIGRATION.md](MIGRATION.md),
+> [comparison.md](analysis/comparison.md), [MIGRATION.md](MIGRATION.md),
 > [OBSERVABILITY.md](OBSERVABILITY.md) and [BUILDING.md](BUILDING.md). The rest is in git history.

@@ -1,0 +1,10 @@
+# Presence of this file switches the reactor-root aggregate from embedding every module's
+# full guardrail body to linking each module to its own guardrail files.
+#
+# Without it, CLAUDE.md at the reactor root and async-test-lib/CLAUDE.md carry a
+# byte-identical 127-line <project_guardrails> block, and editing anything inside the
+# module loads the same index twice. With it, the root block collapses to one pointer
+# per module and the module files stay authoritative.
+#
+# Read by vibetags: ModuleSidecar.applyRootIndexMode(). Content is not parsed — only the
+# file's presence matters.

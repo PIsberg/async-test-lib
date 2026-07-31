@@ -265,7 +265,7 @@ class ArchitectureTest {
                     .because("architectural layers (runner, extension, benchmark, spi, detection-model) must not form dependency cycles");
 
     // =========================================================================
-    // Module boundaries (see docs/MODULARIZATION.md)
+    // Module boundaries (see docs/analysis/modularization.md)
     // =========================================================================
     //
     // These rules pin the boundaries an extraction into Maven submodules depends on, so the
