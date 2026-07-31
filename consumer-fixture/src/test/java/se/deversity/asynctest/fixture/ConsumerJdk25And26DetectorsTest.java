@@ -17,9 +17,12 @@ import static org.junit.jupiter.api.Assertions.*;
  * record/analyze API and report accessors — are part of the stable public surface a
  * consumer can reach without depending on internal classes.
  *
- * <p>Unlike the pipeline detectors, these are <strong>not</strong> wired into
- * {@code @AsyncTest} (no {@code DetectorType} constant — that enum is locked). They are used
- * directly: instantiate, record events, call {@code analyze()}.
+ * <p>This class drives them as <strong>standalone</strong> detectors: instantiate,
+ * record events, call {@code analyze()}. That is a different surface from selecting
+ * them through {@code @AsyncTest} — all three now have {@code DetectorType} constants
+ * ({@code STABLE_VALUE_MISUSE}, {@code STRUCTURED_TASK_SCOPE_MISUSE},
+ * {@code GATHERER_CONCURRENCY_MISUSE}), and that path is covered by
+ * {@code detectors.Phase16PreviewEraDetectorsFixtureTest}.
  */
 class ConsumerJdk25And26DetectorsTest {
 

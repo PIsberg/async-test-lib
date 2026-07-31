@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — a consumer fixture for every detector, and an E2E workflow that runs it
+`consumer-fixture` had four hand-written test classes covering the public API in general.
+It now also has `se.deversity.asynctest.fixture.detectors`: **one `@AsyncTest` fixture per
+`DetectorType`**, 127 of them, each scoped with `includes = {DetectorType.X}` so a failure
+names exactly one detector, and each running a small workload of the kind that detector
+watches.
+
+The load-bearing assertion is reachability. Every `AsyncTestContext.xxxDetector()` accessor
+throws when its detector is disabled for the round, so a non-throwing call inside an
+`includes`-scoped round proves the enum constant resolves to a registered detector, that
+`includes` enabled it, and that the accessor is on the *published* surface — the fixture
+compiles against the JAR, not the sources. Seven detectors have no public per-detector
+accessor and assert the weaker "inside a configured round" claim instead; the fixture says
+so rather than implying more than it checks.
+
+`DetectorCoverageTest` is the gate: it reflects over the fixture classes and fails unless
+their `includes` sets union to exactly `DetectorType.values()`, with no detector covered
+twice. Adding a `DetectorType` without a fixture now fails the build. It also gives
+`LATCH_MISUSE`, `EXECUTOR_DEADLOCK` and `FUTURE_BLOCKING` — detectors that shipped
+implemented and tested but were long unreachable through `@AsyncTest` — their first
+consumer-side coverage.
+
+### Added — public accessors for the last seven detectors that had none
+`AsyncTestContext` exposes one accessor per detector, and seven had been missing since the
+detectors themselves shipped: `deadlockDetector()`, `visibilityMonitor()`,
+`livelockDetector()`, `raceConditionDetector()`, `threadLocalMonitor()`,
+`busyWaitDetector()` and `interruptMonitor()`. Until now those instances were reachable only
+through the `shared*` methods, which are documented as internal — "public only so
+`Phase1DetectorSet` can call it" — and which return `null` rather than throwing when the
+detector is disabled.
+
+That mattered because six of the seven expose `record*` methods written for a test body to
+call: `recordFieldRead`/`recordFieldWrite`, `recordThreadLocalInit`/`Access`/`Cleanup`,
+`recordLoopIteration`/`reportSpinLoop`, `recordInterruptException`/`recordInterruptRestored`.
+The API was there with no public door to it. `ATOMICITY_VIOLATIONS` sits in the same registry
+group and had its accessor from the start, which is what makes this an oversight rather than
+a design.
+
+The new accessors follow the house pattern exactly — `require(flag, ...)`, throwing
+`IllegalStateException` outside a round or when the detector is off — and the `shared*`
+methods are unchanged, since `Phase1DetectorSet` wants the null. Purely additive; japicmp
+passes.
+
+`AsyncTestContextAccessorCoverageTest` gained the gate that would have caught this. It used
+to discover accessors reflectively and exercise all three `require` outcomes — thoroughly,
+for the accessors that existed, which is why it never noticed six were absent. The new test
+starts from the registry side instead: every internal `shared*` method must have a public
+static counterpart handing out the same instance.
+
+Found while writing the per-detector consumer fixtures, which had to assert a weaker claim
+for exactly these seven. They no longer do.
+
+### Added — every detector has an example, and every example is in both reactors
+The `examples/` tree had grown gaps that nothing checked, because nothing could: examples are
+matched to detectors by directory name, and no example references a `DetectorType` in code.
+
+- **Eight new modules**, one per detector that had none: `120-shared-byte-buffer`,
+  `121-shared-charset-coder`, `122-shared-checksum`, `123-file-channel-position-race`,
+  `124-shared-iterator`, `125-high-contention-atomic`, `126-shared-json-mapper-reconfig`,
+  `127-shared-secure-random`. Each is a service demonstrating the hazard, a walkthrough test
+  driving the detector's standalone API through clean / flagged / here-is-the-damage cases,
+  and a README covering the fix and its trade-offs. Detector count and example count now
+  agree at 127.
+- **`04-virtual-thread-context-leak` had no `pom.xml`.** It was in the Gradle reactor and
+  absent from the Maven one, so the Maven examples job had never built it. It has one now.
+- **42 modules had no Gradle build.** They were absent from `examples/settings.gradle.kts`,
+  so `gradle-tests.yml` never built them either — the Gradle examples job was covering 85 of
+  127 modules while reporting green. Both reactors now list all 127.
+- **`examples/README.md` was missing 15 rows** (05, 33, 109-113 predate this change, plus the
+  eight new ones), and four modules had no README of their own: 02, 03, 04, 05.
+
+### Changed — examples and the consumer fixture are one E2E suite, split out of `tests.yml`
+New `.github/workflows/e2e-tests.yml` runs both suites that consume the *built artifact*:
+the consumer fixture (Java 21 and 25) and the `examples/*` reactor (4 shards; changed-only
+on pull requests, full on push and schedule). `tests.yml` keeps the library's own unit
+tests, packaging, coverage and Javadoc, and no longer runs either. A broken example can no
+longer mask a library regression, and `e2e-summary` gives the suite one stable required
+check. The Gradle mirror in `gradle-tests.yml` is unchanged.
+
 ### Changed — the build is a three-module reactor; the agent ships as its own artifact
 Every dependency in the old single-module POM was compile scope and none was optional, so a
 consumer who only wrote `@AsyncTest` on a test method still pulled **byte-buddy, byte-buddy-agent

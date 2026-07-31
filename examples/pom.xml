@@ -128,5 +128,14 @@
         <module>117-lazy-constant-misuse</module>
         <module>118-final-field-mutation</module>
         <module>119-shared-kdf</module>
+        <module>120-shared-byte-buffer</module>
+        <module>121-shared-charset-coder</module>
+        <module>122-shared-checksum</module>
+        <module>123-file-channel-position-race</module>
+        <module>124-shared-iterator</module>
+        <module>125-high-contention-atomic</module>
+        <module>126-shared-json-mapper-reconfig</module>
+        <module>127-shared-secure-random</module>
+        <module>04-virtual-thread-context-leak</module>
     </modules>
 </project>

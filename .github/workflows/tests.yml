@@ -1,5 +1,12 @@
 name: Tests & Build
 
+# The library's own build: unit tests, coverage, packaging and Javadoc.
+#
+# Everything that consumes the *built artifact* — the consumer fixture and the examples
+# reactor — lives in e2e-tests.yml. Keeping them apart means a broken example cannot mask
+# a library regression, and the e2e suite installs the artifact itself instead of riding
+# on this workflow's local repository.
+
 on:
   push:
     branches: [ main, develop ]
@@ -35,9 +42,10 @@ jobs:
     # than a real concurrency bug (see ConcurrencyRunner.resolveTimeoutMultiplier). Scale via
     # this env var, not a `-D` system property passed to `mvn`: Surefire forks a separate JVM
     # per test run, and only environment variables — not system properties given to the
-    # outer `mvn` process — propagate into that forked JVM automatically. Applies to every
-    # step below, so it covers both the library test run and the consumer-fixture run in the
-    # same job.
+    # outer `mvn` process — propagate into that forked JVM automatically.
+    #
+    # The consumer-fixture and examples suites moved to e2e-tests.yml; this job is the
+    # library's own test run, packaging and coverage upload.
     env:
       ASYNC_TEST_TIMEOUT_MULTIPLIER: ${{ matrix.os == 'ubuntu-latest' && '1' || '3' }}
 
@@ -80,9 +88,6 @@ jobs:
       - name: Run library tests and install artifact
         run: mvn "-Dmaven.repo.local=.m2/repository" clean install
 
-      - name: Run consumer fixture tests
-        run: mvn "-Dmaven.repo.local=.m2/repository" -f consumer-fixture/pom.xml test
-
       - name: Check coverage file exists
         shell: bash
         run: |
@@ -116,177 +121,6 @@ jobs:
           fail_ci_if_error: false
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
-
-  examples-pr-detect:
-    name: Detect changed examples (PR)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    outputs:
-      modules: ${{ steps.compute.outputs.modules }}
-    steps:
-      - name: Harden the runner (Block unexpected outbound calls)
-        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
-        with:
-          egress-policy: block
-          allowed-endpoints: >
-            agent.api.stepsecurity.io:443
-            api.github.com:443
-            github.com:443
-            objects.githubusercontent.com:443
-
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Detect changed paths
-        id: filter
-        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
-        with:
-          list-files: shell
-          filters: |
-            examples:
-              - 'examples/**'
-
-      - name: Compute changed example modules
-        id: compute
-        run: |
-          if [ "${{ steps.filter.outputs.examples }}" != "true" ]; then
-            echo "modules=" >> "$GITHUB_OUTPUT"
-            echo "No examples touched."
-            exit 0
-          fi
-          modules=$(printf '%s\n' ${{ steps.filter.outputs.examples_files }} \
-            | awk -F/ 'NF>=3 && $1=="examples" {print $2}' \
-            | while read m; do [ -f "examples/$m/pom.xml" ] && echo "$m"; done \
-            | sort -u \
-            | paste -sd ',' -)
-          echo "modules=$modules" >> "$GITHUB_OUTPUT"
-          echo "Changed example modules: $modules"
-
-  examples-pr:
-    name: Examples Shard ${{ matrix.shard }} (PR)
-    runs-on: ubuntu-latest
-    needs: examples-pr-detect
-    if: github.event_name == 'pull_request' && needs.examples-pr-detect.outputs.modules != ''
-
-    strategy:
-      fail-fast: false
-      matrix:
-        java-version: [ '21' ]
-        shard: [ 0, 1, 2, 3 ]
-
-    steps:
-      - name: Harden the runner (Block unexpected outbound calls)
-        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
-        with:
-          egress-policy: block
-          allowed-endpoints: >
-            agent.api.stepsecurity.io:443
-            api.adoptium.net:443
-            api.github.com:443
-            github.com:443
-            objects.githubusercontent.com:443
-            repo.maven.apache.org:443
-            repo1.maven.org:443
-
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Java
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
-        with:
-          java-version: ${{ matrix.java-version }}
-          distribution: 'temurin'
-          cache: maven
-
-      - name: Install library to local Maven repository
-        run: mvn "-Dmaven.repo.local=.m2/repository" -DskipTests clean install
-
-      - name: Run shard's slice of changed examples
-        run: |
-          set -euo pipefail
-          TOTAL=4
-          SHARD=${{ matrix.shard }}
-          slice=$(echo "${{ needs.examples-pr-detect.outputs.modules }}" \
-            | tr ',' '\n' \
-            | awk -v s="$SHARD" -v n="$TOTAL" 'NR%n==s' \
-            | paste -sd ',' -)
-          if [ -z "$slice" ]; then
-            echo "Shard $SHARD has no modules in the changed set"
-            exit 0
-          fi
-          echo "Shard $SHARD modules: $slice"
-          mvn "-Dmaven.repo.local=.m2/repository" -f examples/pom.xml -pl "$slice" test -T 1C -fae
-
-      - name: Upload shard test reports
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
-        with:
-          name: example-pr-reports-shard-${{ matrix.shard }}
-          path: examples/*/target/surefire-reports/
-          retention-days: 7
-
-  examples-full:
-    name: Examples Reactor (shard ${{ matrix.shard }}/${{ strategy.job-total }})
-    runs-on: ubuntu-latest
-    needs: test
-    if: github.event_name == 'push' || github.event_name == 'schedule'
-
-    strategy:
-      fail-fast: false
-      matrix:
-        java-version: [ '21' ]
-        shard: [ 0, 1, 2, 3 ]
-
-    steps:
-      - name: Harden the runner (Block unexpected outbound calls)
-        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
-        with:
-          egress-policy: block
-          allowed-endpoints: >
-            agent.api.stepsecurity.io:443
-            api.adoptium.net:443
-            api.github.com:443
-            github.com:443
-            objects.githubusercontent.com:443
-            repo.maven.apache.org:443
-            repo1.maven.org:443
-
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Java
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
-        with:
-          java-version: ${{ matrix.java-version }}
-          distribution: 'temurin'
-          cache: maven
-
-      - name: Install library to local Maven repository
-        run: mvn "-Dmaven.repo.local=.m2/repository" -DskipTests clean install
-
-      - name: Run example reactor shard
-        run: |
-          set -euo pipefail
-          TOTAL=4
-          SHARD=${{ matrix.shard }}
-          modules=$(ls -1 examples/*/pom.xml \
-            | awk -F/ '{print $2}' \
-            | sort \
-            | awk -v s="$SHARD" -v n="$TOTAL" 'NR%n==s' \
-            | paste -sd ',' -)
-          if [ -z "$modules" ]; then
-            echo "Shard $SHARD has no modules"; exit 0
-          fi
-          echo "Shard $SHARD modules: $modules"
-          mvn "-Dmaven.repo.local=.m2/repository" -f examples/pom.xml -pl "$modules" test -T 1C -fae
-
-      - name: Upload shard test reports
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
-        with:
-          name: example-reactor-reports-shard-${{ matrix.shard }}
-          path: examples/*/target/surefire-reports/
-          retention-days: 7
 
   build:
     name: Build Maven Project

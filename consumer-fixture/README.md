@@ -51,7 +51,65 @@ mvn install -DskipTests && mvn -f consumer-fixture\pom.xml test
 - `ConsumerJdk25And26DetectorsTest` — added in the 1.7.0 cycle; smoke-tests the
   standalone JDK 25/26 detectors (`StableValueMisuseDetector`,
   `StructuredTaskScopeMisuseDetector`, `GathererConcurrencyMisuseDetector`) through
-  their public `recordXxx` / `analyze()` API. These detectors are not wired into
-  `@AsyncTest` (no `DetectorType` constant — that enum is locked), so a consumer
-  reaches them directly; a passing run proves the classes and their report
-  accessors are part of the stable public surface.
+  their public `recordXxx` / `analyze()` API — a consumer can drive them standalone,
+  without `@AsyncTest`. A passing run proves the classes and their report accessors are
+  part of the stable public surface. Selecting the same three *through* `@AsyncTest` is a
+  different path, covered by `detectors/Phase16PreviewEraDetectorsFixtureTest`.
+- `detectors/` — one `@AsyncTest` fixture per `DetectorType`, grouped by the phase
+  headings in the enum. See below.
+
+## The `detectors/` package
+
+`src/test/java/se/deversity/asynctest/fixture/detectors/` holds **one fixture method per
+detector**, scoped with `@AsyncTest(includes = {DetectorType.X})` so a failure names exactly
+one detector. Each fixture does two things:
+
+1. **Proves the detector is reachable.** Every `AsyncTestContext.xxxDetector()` accessor
+   throws `IllegalStateException` when its detector is disabled for the round, so a
+   non-throwing call inside an `includes`-scoped round proves the enum constant resolves to
+   a real registered detector, that `includes` enabled it, and that the accessor is on the
+   published artifact's surface.
+2. **Runs a small workload of the kind that detector watches**, mirroring the corresponding
+   `examples/` module. Workloads are deliberately short and never actually deadlock, hang or
+   leak threads — the fixture demonstrates the shape, the example demonstrates the failure.
+
+All 127 make that claim. Seven of them could not at first: `DEADLOCKS`, `VISIBILITY`,
+`LIVELOCKS`, `RACE_CONDITIONS`, `THREAD_LOCAL_LEAKS`, `BUSY_WAITING` and
+`INTERRUPT_MISHANDLING` had no *public* per-detector accessor — only the `shared*` methods on
+`AsyncTestContext`, which are documented as internal and which a consumer fixture must
+therefore not call. Those fixtures asserted the weaker "this body is running inside a
+configured round".
+
+Writing them is what surfaced the gap. Six of the seven expose `record*` methods written for
+a test body to call — `recordFieldRead`/`recordFieldWrite`, `recordThreadLocalInit`,
+`reportSpinLoop`, `recordInterruptException` — so the API was there with no public door to
+it, while `ATOMICITY_VIOLATIONS`, in the same registry group, had its accessor all along.
+1.7.0 adds the seven missing accessors and
+`AsyncTestContextAccessorCoverageTest#everySharedAccessor_hasAPublicCounterpart_returningTheSameInstance`
+keeps them paired. Every fixture in this package now makes the strong claim, and drives the
+detector's record API the way a consumer would.
+
+`DetectorCoverageTest` is the gate that keeps this honest: it reflects over every fixture
+class and fails unless the `includes` sets union to exactly `DetectorType.values()`, with no
+detector covered twice and no fixture enabling more than one. **Adding a `DetectorType`
+without adding a fixture fails the build here.**
+
+### Relationship to `examples/`
+
+Every detector has both: a fixture here and a runnable module under `examples/`. The two
+answer different questions. A fixture proves the detector is **reachable** from consumer
+code with only that detector enabled; an example demonstrates the **hazard** and the fix, at
+length, for a human reading it.
+
+The mapping between them is a naming convention, not something the build checks — no example
+references a `DetectorType` in code. Three detectors have no directory named after them and
+are demonstrated by `examples/10-shared-non-thread-safe-types`: `SHARED_MATCHER`,
+`SHARED_DECIMAL_FORMAT` and `SHARED_MESSAGE_DIGEST`. Each fixture class names the examples
+it corresponds to in its javadoc.
+
+## In CI
+
+This module and the `examples/` reactor run together as the end-to-end suite in
+`.github/workflows/e2e-tests.yml` — both consume the *built artifact*, so both need
+`mvn install` first. `tests.yml` covers the library's own unit tests, packaging and
+Javadoc. The Gradle mirror of both lives in `gradle-tests.yml`.
