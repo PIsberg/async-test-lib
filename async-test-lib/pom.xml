@@ -88,7 +88,7 @@
                              when the reactor was split. They are not deleted — they ship in
                              async-test-agent and async-test-analysis, unchanged, at the same
                              version. Anyone who referenced them from async-test-lib adds the
-                             matching dependency; see docs/MODULARIZATION.md and docs/AGENT.md.
+                             matching dependency; see docs/analysis/modularization.md and docs/AGENT.md.
 
                              Listed rather than waived wholesale so the gate keeps failing on any
                              break that is NOT one of these. Remove both lines once <oldVersion>

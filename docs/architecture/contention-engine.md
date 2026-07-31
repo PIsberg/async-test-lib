@@ -11,7 +11,7 @@ effect, manual instrumentation overhead, and late detection of Loom pinning site
 
 ### 1. SpinContentionBarrier — Lock-Free Busy-Spin Barrier
 
-**Package:** `se.deversity.async-test-lib.runner`
+**Package:** `se.deversity.asynctest.runner`
 
 #### Baseline limitation
 `CyclicBarrier` parks threads via `LockSupport.park()`.  When the last thread arrives it
@@ -46,7 +46,7 @@ that are not benefit from busy-spinning platform threads.
 
 ### 2. TelemetryEventBuffer + TelemetryRegistry — Lock-Free Ring Buffer
 
-**Package:** `se.deversity.async-test-lib.telemetry`
+**Package:** `se.deversity.asynctest.telemetry`
 
 #### Baseline limitation
 Synchronous writes to thread-local lists during detector `recordAccess()` calls change the
@@ -170,7 +170,7 @@ thread ids. `forCurrentContext(Set<Long>)` resolves the validator via
 
 ### 4. StaticPinningScanner — Compile-Time Pinning Pre-Scanner
 
-**Package:** `se.deversity.async-test-lib.analysis`  
+**Package:** `se.deversity.asynctest.analysis`  
 **Dependency:** `org.ow2.asm:asm`
 
 #### Baseline limitation

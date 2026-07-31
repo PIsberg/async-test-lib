@@ -15,7 +15,7 @@ Listeners receive callbacks for:
 ### Creating a Custom Listener
 
 ```java
-import se.deversity.async-test-lib.AsyncTestListener;
+import se.deversity.asynctest.AsyncTestListener;
 
 public class MyCustomListener implements AsyncTestListener {
     
@@ -51,7 +51,7 @@ public class MyCustomListener implements AsyncTestListener {
 ### Registering Listeners
 
 ```java
-import se.deversity.async-test-lib.AsyncTestListenerRegistry;
+import se.deversity.asynctest.AsyncTestListenerRegistry;
 
 @BeforeAll
 static void setUp() {

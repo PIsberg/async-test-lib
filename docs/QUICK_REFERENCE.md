@@ -177,7 +177,7 @@ USAGE.md ............ for end users
 RELEASE.md .......... release process (canonical)
 DISTRIBUTION.md ..... distribution/technical reference
 ARCHITECTURE.md ..... system design
-DETECTOR_CATALOG.md . all 114 detectors with examples
+DETECTOR_CATALOG.md . all 127 detectors with examples
 INDEX.md ............ full documentation map
 ```
 
@@ -320,7 +320,7 @@ Question: What's the architecture?
   → Read: ARCHITECTURE.md or DISTRIBUTION.md
 
 Question: What's left before GA?
-  → Read: PRODUCTION_READINESS_EVAL.md
+  → Read: analysis/production-readiness.md
 ```
 
 ### Success Metrics

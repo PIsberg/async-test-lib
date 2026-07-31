@@ -17,7 +17,7 @@ This document explains how the Async Test Library is packaged and distributed fo
 > scanner**, and therefore no longer drags byte-buddy and asm onto your test classpath. If you used
 > `-javaagent:async-test-lib.jar` or referenced `se.deversity.asynctest.agent` /
 > `se.deversity.asynctest.analysis` directly, add the matching artifact above — the classes and
-> their APIs are unchanged. See [MODULARIZATION.md](MODULARIZATION.md) and [AGENT.md](AGENT.md).
+> their APIs are unchanged. See [modularization.md](analysis/modularization.md) and [AGENT.md](AGENT.md).
 
 For the main library, each release produces three files:
 
@@ -169,7 +169,7 @@ async-test-lib-1.6.0.jar
 │   ├── MANIFEST.MF (with version info)
 │   └── services/
 │       └── org.junit.jupiter.api.extension.Extension
-│           (Contains: se.deversity.async-test-lib.AsyncTestExtension)
+│           (Contains: se.deversity.asynctest.AsyncTestExtension)
 └── ... (resources)
 
 async-test-lib-1.6.0-sources.jar

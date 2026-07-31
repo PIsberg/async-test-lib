@@ -1,6 +1,6 @@
 # CI/CD Integration Guide
 
-async-test ships two ready-made `AsyncTestListener` implementations in the `se.deversity.async-test-lib.report` package for CI pipeline integration.
+async-test ships two ready-made `AsyncTestListener` implementations in the `se.deversity.asynctest.report` package for CI pipeline integration.
 
 ## JUnitXmlReportListener
 
@@ -11,8 +11,8 @@ Writes detector findings to a JUnit-compatible XML file that CI dashboards can p
 Register the listener once per test suite (e.g., in a shared base class or JUnit extension):
 
 ```java
-import se.deversity.async-test-lib.AsyncTestListenerRegistry;
-import se.deversity.async-test-lib.report.JUnitXmlReportListener;
+import se.deversity.asynctest.AsyncTestListenerRegistry;
+import se.deversity.asynctest.report.JUnitXmlReportListener;
 import org.junit.jupiter.api.BeforeAll;
 
 class MyServiceTest {
@@ -105,8 +105,8 @@ test:
 Converts any detector report into an immediate test failure. Use this in pipelines where concurrency findings must always break the build.
 
 ```java
-import se.deversity.async-test-lib.AsyncTestListenerRegistry;
-import se.deversity.async-test-lib.report.StrictModeListener;
+import se.deversity.asynctest.AsyncTestListenerRegistry;
+import se.deversity.asynctest.report.StrictModeListener;
 
 @BeforeAll
 static void setup() {

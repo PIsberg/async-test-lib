@@ -36,7 +36,7 @@ The japicmp gate flags exactly these two package removals; they are enumerated i
 analysis module, and byte-buddy / asm may not leak out of them — added *before* the sources moved.
 Gradle was split to match, and its version constants (which had drifted from the POM on junit,
 byte-buddy and vibetags) were re-synced. Each module now generates its own `CLAUDE.md` and
-`.claude/rules/`. See [MODULARIZATION.md](MODULARIZATION.md).
+`.claude/rules/`. See [modularization.md](analysis/modularization.md).
 
 ## [1.7.0-RC4] - 2026-07-29
 
@@ -415,7 +415,7 @@ detectors), and the 0.9.7 vibetags annotation upgrade.
 - **`AsyncTestListenerRegistry.snapshot()` / `restoreSnapshot(s)`** —
   capture/restore the full registry around a block.
 
-### Added — Structured reporting (`se.deversity.async-test-lib.report`)
+### Added — Structured reporting (`se.deversity.asynctest.report`)
 
 - **`Violation` record** — `(detector, severity, message, sites, attributes,
   when)` with defensive defaults and validation. Replaces flat strings for
@@ -427,13 +427,13 @@ detectors), and the 0.9.7 vibetags annotation upgrade.
 - **`JsonFormatter`** — compact JSON array, no external dependency, with
   proper string escaping. Stable schema.
 
-### Added — Detector SPI (`se.deversity.async-test-lib.spi`)
+### Added — Detector SPI (`se.deversity.asynctest.spi`)
 
 - **`Detector`** — `type() → DetectorType`, `analyze() → List<Violation>`,
   optional `onTestStart()` / `onTestEnd()` lifecycle hooks.
 - **`DetectorFactory`** — `type()`, `isEnabledFor(config)`, `create(config)`.
   Discovered via `ServiceLoader` from
-  `META-INF/services/se.deversity.async-test-lib.spi.DetectorFactory`.
+  `META-INF/services/se.deversity.asynctest.spi.DetectorFactory`.
 - **`DetectorRegistry`** (new package) — `build(config)` instantiates enabled
   factories, `get(Class<T>)` typed lookup, `get(DetectorType)` enum lookup,
   `analyzeAll()` aggregates structured violations.
@@ -443,7 +443,7 @@ detectors), and the 0.9.7 vibetags annotation upgrade.
 - **`LegacyDetectorFactories`** — 99 inner-class factories registering every
   pre-existing `DetectorType` through the SPI (plus the dedicated typed
   `SharedMessageDigestDetectorFactory` for the canary). Coexists with the
-  legacy `se.deversity.async-test-lib.DetectorRegistry`.
+  legacy `se.deversity.asynctest.DetectorRegistry`.
 - **`AllDetectorsSpiCoverageTest`** — guards against drift: a new
   `DetectorType` value without a matching factory fails the build.
 
@@ -481,12 +481,12 @@ because each thread reads its own seed slot.
 
 ### Added — Diagnostics
 
-- **`SiteCapture`** helper (`se.deversity.async-test-lib.diagnostics`) — captures
+- **`SiteCapture`** helper (`se.deversity.asynctest.diagnostics`) — captures
   the first non-framework stack frame for any detector access event via
   `StackWalker`. Reports now carry `Access sites:` blocks pointing at the
   user-code line that produced the issue. Canary: `SharedMessageDigestDetector`.
 
-### Added — CI/CD-native fail gates (`se.deversity.async-test-lib.report`)
+### Added — CI/CD-native fail gates (`se.deversity.asynctest.report`)
 
 Three listener implementations make it straightforward to wire async-test into
 CI pipelines and IDE tooling without writing custom code.
@@ -610,7 +610,7 @@ install from disk. See [intellij-plugin/README.md](../intellij-plugin/README.md)
 
 ### Added
 
-#### CI/CD-native fail gates (`se.deversity.async-test-lib.report`)
+#### CI/CD-native fail gates (`se.deversity.asynctest.report`)
 
 Three new listener implementations make it straightforward to wire async-test into CI pipelines
 and IDE tooling without writing custom code.

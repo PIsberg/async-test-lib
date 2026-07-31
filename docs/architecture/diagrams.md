@@ -8,7 +8,7 @@ Shows the high-level system architecture and external dependencies.
 
 **Key Components:**
 - **JUnit 5 Platform**: Discovers and executes @AsyncTest methods
-- **Async Test Library**: Core testing framework with 124 detectors
+- **Async Test Library**: Core testing framework with 127 detectors
 - **User Test Code**: Tests annotated with @AsyncTest
 - **Benchmark Storage**: Persistent baseline data for performance comparison
 
@@ -29,12 +29,12 @@ Shows the main containers/components within the async-test library JAR.
 - **Configuration**: `AsyncTest` annotation, `AsyncTestConfig` (immutable), `Preset` enum
 - **Runner Core**: `ConcurrencyRunner`, `AsyncTestContext`, `VirtualThreadStressConfig`,
   `LicenseGuard` (extracted in 1.6.0 — see [License Guard](#license-guard-100))
-- **Detector Modules** (124 detectors across 18 phases):
+- **Detector Modules** (127 detectors across 18 phases):
   - Phase 1: Core (3 detectors) — grouped via `Phase1DetectorSet`
   - Phases 2–14: managed by `DetectorRegistry`
-- **Reporting** (NEW in 1.6.0 — `se.deversity.async-test-lib.report`):
+- **Reporting** (NEW in 1.6.0 — `se.deversity.asynctest.report`):
   `Violation` record, `Formatter` interface, `MarkdownFormatter`, `JsonFormatter`
-- **Detector SPI** (NEW in 1.6.0 — `se.deversity.async-test-lib.spi`):
+- **Detector SPI** (NEW in 1.6.0 — `se.deversity.asynctest.spi`):
   `Detector`, `DetectorFactory`, SPI-driven `DetectorRegistry`, `adapters/` for canary migrations
 - **Diagnostics helpers**: `SiteCapture` (new in 1.6.0) for source-line attribution
 - **Benchmark Module**: 5 classes for performance tracking

@@ -1,6 +1,6 @@
 # Comparison with Other Tools
 
-> Extracted from the former `docs/README.md`. See [INDEX.md](INDEX.md) for the full documentation map.
+> Extracted from the former `docs/README.md`. See [INDEX.md](../INDEX.md) for the full documentation map.
 
 | Feature | async-test | JUnit | Java Stress Tests | ThreadSanitizer |
 |---------|-----------|-------|-------------------|-----------------|

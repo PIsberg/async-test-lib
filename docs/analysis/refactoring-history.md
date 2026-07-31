@@ -40,7 +40,7 @@ The following structural improvements were made to address code quality concerns
 | Class | Package | Purpose |
 |-------|---------|---------|
 | `DetectorRegistry` | `se.deversity.async-test-lib` | Phase 1–3 detector lifecycle |
-| `Phase1DetectorSet` | `se.deversity.async-test-lib.diagnostics` | Phase 1 detector grouping |
+| `Phase1DetectorSet` | `se.deversity.asynctest.diagnostics` | Phase 1 detector grouping |
 | `AsyncTestListener` | `se.deversity.async-test-lib` | Observability interface |
 | `AsyncTestListenerRegistry` | `se.deversity.async-test-lib` | Listener registration |
 | `NoopAsyncTestListener` | `se.deversity.async-test-lib` | No-op listener for opt-out |

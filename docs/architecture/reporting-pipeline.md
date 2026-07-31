@@ -20,7 +20,7 @@ analyze() → legacy String reports     +     analyze().structuredViolations: Li
                                      └── JsonFormatter      → dashboards / SARIF / IDE plugins
 ```
 
-`Violation` (`se.deversity.async-test-lib.report`) is an immutable record:
+`Violation` (`se.deversity.asynctest.report`) is an immutable record:
 `(detector, severity: IssueSeverity, message, sites: List<SiteCapture.Site>, attributes: Map<String,Object>, when: Instant)`.
 The canonical constructor enforces non-blank `detector`, defaults `sites` and
 `attributes` to empty immutables, and stamps `when` with `Instant.now()` if null.
