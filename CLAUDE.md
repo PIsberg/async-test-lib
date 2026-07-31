@@ -71,8 +71,10 @@ Gradle's output where Maven's goes.
 > **Known cosmetic churn.** The two builds emit the same elements in a *different order* — javac's
 > annotation-processing round order differs between them — so running `mvn compile` after
 > `./gradlew build` (or vice versa) produces a diff of two or three reordered lines with identical
-> content. Harmless. The fix belongs upstream in vibetags: sort the index by qualified name before
-> emitting.
+> content. Harmless, but don't mistake it for a real change. Tracked upstream as
+> [PIsberg/vibetags#325](https://github.com/PIsberg/vibetags/issues/325); the fix is to sort by
+> qualified name before emitting, in both the `<scoped_rules>` index and the multi-target
+> `Applies to` lists.
 
 <!-- VIBETAGS-START -->
 <!-- VIBETAGS-MODULE: async-test-agent -->

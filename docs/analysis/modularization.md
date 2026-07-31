@@ -204,7 +204,15 @@ An agent working in `async-test-agent/` loads 14 lines of guardrails instead of 
 As modules 2 and 3 of the plan land, the split keeps paying: each module's index lists only its own
 elements, so the always-loaded cost stops growing with the library.
 
-One operational note: the pre-split build left a stale `.vibetags-mod-_root_` sidecar behind, and
+Two operational notes. The pre-split build left a stale `.vibetags-mod-_root_` sidecar behind, and
 the reactor aggregation merged it *alongside* the new per-module sidecar — every element appeared
 twice and the root file went from 157 to 286 lines. Deleting the stale sidecar and `.vibetags-cache`
 fixed it. Both are gitignored build artifacts; if the root file ever looks doubled, that is why.
+
+And the generated files are not deterministically ordered: Maven and Gradle emit the same elements
+in a different sequence, because javac's annotation-processing round order differs between them, so
+whichever build ran last leaves a small reordering diff. Filed upstream as
+[PIsberg/vibetags#325](https://github.com/PIsberg/vibetags/issues/325). That issue also carries the
+follow-up worth having here — when `.vibetags-roles` collapses ~130 elements into 5 role files, the
+`<scoped_rules>` index still emits one line per element rather than one per role, which is the cost
+that forced the annotation trim in `e060573`.
