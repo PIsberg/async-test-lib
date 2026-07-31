@@ -151,6 +151,6 @@ For PlantUML syntax, see:
 
 ## Related Documentation
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) - Full architecture documentation
-- [BENCHMARKING.md](BENCHMARKING.md) - Benchmarking guide
+- [ARCHITECTURE.md](../ARCHITECTURE.md) - Full architecture documentation
+- [BENCHMARKING.md](../BENCHMARKING.md) - Benchmarking guide
 - [README.md](../../README.md) - Project overview

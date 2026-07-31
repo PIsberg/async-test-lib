@@ -5,12 +5,21 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>se.deversity.async-test-lib</groupId>
-    <artifactId>async-test-lib</artifactId>
+    <artifactId>async-test-parent</artifactId>
     <version>1.7.0-RC4</version>
-    <packaging>jar</packaging>
+    <packaging>pom</packaging>
 
-    <name>Async Test Library</name>
-    <description>Enterprise-grade JUnit 5 concurrency testing library with 121 problem detectors for detecting deadlocks, visibility issues, false sharing, livelocks, and other subtle concurrency bugs.</description>
+    <name>Async Test Library (parent)</name>
+    <description>Reactor parent for the async-test-lib modules. Aggregation and shared build configuration only — the library itself is the async-test-lib module.</description>
+
+    <modules>
+        <!-- The library. Keeps the artifactId consumers already depend on. -->
+        <module>async-test-lib</module>
+        <!-- Opt-in Byte Buddy field-access agent. Carries the Premain-Class manifest. -->
+        <module>async-test-agent</module>
+        <!-- Opt-in ASM pre-scanner for Loom pinning sites. Depends on nothing else here. -->
+        <module>async-test-analysis</module>
+    </modules>
     <url>https://github.com/PIsberg/async-test-lib</url>
 
     <licenses>
@@ -73,40 +82,75 @@
         <slf4j.version>2.0.18</slf4j.version>
     </properties>
 
+    <!-- Versions only. Modules declare what they actually use, so the core artifact does not
+         inherit the agent's byte-buddy or the scanner's asm. -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>se.deversity.async-test-lib</groupId>
+                <artifactId>async-test-lib</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apiguardian</groupId>
+                <artifactId>apiguardian-api</artifactId>
+                <version>1.1.2</version>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter-api</artifactId>
+                <version>${junit.jupiter.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter-engine</artifactId>
+                <version>${junit.jupiter.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.platform</groupId>
+                <artifactId>junit-platform-testkit</artifactId>
+                <version>${junit.platform.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.code-intelligence</groupId>
+                <artifactId>jazzer-api</artifactId>
+                <version>${jazzer.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>se.deversity.common</groupId>
+                <artifactId>common-license-lib</artifactId>
+                <version>0.2.1</version>
+            </dependency>
+            <dependency>
+                <groupId>com.tngtech.archunit</groupId>
+                <artifactId>archunit-junit5</artifactId>
+                <version>${archunit.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.bytebuddy</groupId>
+                <artifactId>byte-buddy</artifactId>
+                <version>${bytebuddy.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.bytebuddy</groupId>
+                <artifactId>byte-buddy-agent</artifactId>
+                <version>${bytebuddy.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.ow2.asm</groupId>
+                <artifactId>asm</artifactId>
+                <version>${asm.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <!-- Compile-time tooling only. Safe to inherit everywhere: none of it ships. -->
     <dependencies>
-        <dependency>
-            <groupId>org.apiguardian</groupId>
-            <artifactId>apiguardian-api</artifactId>
-            <version>1.1.2</version>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-api</artifactId>
-            <version>${junit.jupiter.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-engine</artifactId>
-            <version>${junit.jupiter.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.platform</groupId>
-            <artifactId>junit-platform-testkit</artifactId>
-            <version>${junit.platform.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <!-- Jazzer API for fuzz targets (standalone, no JUnit runner dependency) -->
-        <dependency>
-            <groupId>com.code-intelligence</groupId>
-            <artifactId>jazzer-api</artifactId>
-            <version>${jazzer.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>se.deversity.common</groupId>
-            <artifactId>common-license-lib</artifactId>
-            <version>0.2.1</version>
-        </dependency>
         <dependency>
             <groupId>com.github.spotbugs</groupId>
             <artifactId>spotbugs-annotations</artifactId>
@@ -120,93 +164,17 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.tngtech.archunit</groupId>
-            <artifactId>archunit-junit5</artifactId>
-            <version>${archunit.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>com.google.errorprone</groupId>
             <artifactId>error_prone_annotations</artifactId>
             <version>${error-prone.version}</version>
             <scope>provided</scope>
         </dependency>
-        <!-- Byte Buddy: Java agent field-access instrumentation (AsyncTestAgent) -->
-        <dependency>
-            <groupId>net.bytebuddy</groupId>
-            <artifactId>byte-buddy</artifactId>
-            <version>${bytebuddy.version}</version>
-        </dependency>
-        <!-- Byte Buddy Agent: runtime self-attach (AsyncTestAgent.selfAttach) -->
-        <dependency>
-            <groupId>net.bytebuddy</groupId>
-            <artifactId>byte-buddy-agent</artifactId>
-            <version>${bytebuddy.version}</version>
-        </dependency>
-        <!-- ASM: static bytecode pre-scanner for Loom pinning sites (StaticPinningScanner) -->
-        <dependency>
-            <groupId>org.ow2.asm</groupId>
-            <artifactId>asm</artifactId>
-            <version>${asm.version}</version>
-        </dependency>
-        <!-- SLF4J API: logging facade; consumers supply their own backend (logback, log4j, etc.) -->
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>${slf4j.version}</version>
-        </dependency>
     </dependencies>
 
     <build>
         <plugins>
-            <!-- Configure this JAR as a Java agent (attach with -javaagent:async-test-lib.jar) -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <configuration>
-                    <archive>
-                        <manifestEntries>
-                            <Premain-Class>se.deversity.asynctest.agent.AsyncTestAgent</Premain-Class>
-                            <Agent-Class>se.deversity.asynctest.agent.AsyncTestAgent</Agent-Class>
-                            <Can-Retransform-Classes>true</Can-Retransform-Classes>
-                            <Can-Redefine-Classes>true</Can-Redefine-Classes>
-                        </manifestEntries>
-                    </archive>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>com.github.siom79.japicmp</groupId>
-                <artifactId>japicmp-maven-plugin</artifactId>
-                <version>0.26.1</version>
-                <configuration>
-                    <oldVersion>
-                        <dependency>
-                            <groupId>se.deversity.async-test-lib</groupId>
-                            <artifactId>async-test-lib</artifactId>
-                            <version>1.6.0</version>
-                            <type>jar</type>
-                        </dependency>
-                    </oldVersion>
-                    <newVersion>
-                        <file>
-                            <path>${project.build.directory}/${project.build.finalName}.${project.packaging}</path>
-                        </file>
-                    </newVersion>
-                    <parameter>
-                        <onlyBinaryIncompatible>true</onlyBinaryIncompatible>
-                        <breakBuildOnBinaryIncompatibleModifications>true</breakBuildOnBinaryIncompatibleModifications>
-                        <ignoreMissingClasses>true</ignoreMissingClasses>
-                    </parameter>
-                </configuration>
-                <executions>
-                    <execution>
-                        <phase>verify</phase>
-                        <goals>
-                            <goal>cmp</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
+            <!-- The Premain-Class manifest lives in async-test-agent; japicmp and pitest live in
+                 async-test-lib. Everything below is shared by all three modules. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -324,32 +292,9 @@
                             <goal>report</goal>
                         </goals>
                     </execution>
-                    <execution>
-                        <id>jacoco-check</id>
-                        <phase>verify</phase>
-                        <goals>
-                            <goal>check</goal>
-                        </goals>
-                        <configuration>
-                            <rules>
-                                <rule>
-                                    <element>BUNDLE</element>
-                                    <limits>
-                                        <limit>
-                                            <counter>LINE</counter>
-                                            <value>COVEREDRATIO</value>
-                                            <minimum>0.70</minimum>
-                                        </limit>
-                                        <limit>
-                                            <counter>BRANCH</counter>
-                                            <value>COVEREDRATIO</value>
-                                            <minimum>0.65</minimum>
-                                        </limit>
-                                    </limits>
-                                </rule>
-                            </rules>
-                        </configuration>
-                    </execution>
+                    <!-- The 70%/65% coverage gate is declared in async-test-lib. The agent and
+                         the pinning scanner are thin instrumentation wrappers whose coverage
+                         shape differs; gating them on the library's ratios would be arbitrary. -->
                 </executions>
             </plugin>
             <!-- SBOM Generation -->
@@ -402,7 +347,7 @@
                     <failOnViolation>true</failOnViolation>
                     <printFailingErrors>true</printFailingErrors>
                     <rulesets>
-                        <ruleset>${project.basedir}/pmd-ruleset.xml</ruleset>
+                        <ruleset>${maven.multiModuleProjectDirectory}/pmd-ruleset.xml</ruleset>
                     </rulesets>
                     <excludeRoots>
                         <excludeRoot>src/test/java</excludeRoot>
@@ -433,7 +378,7 @@
                     <includeTests>false</includeTests>
                     <xmlOutput>true</xmlOutput>
                     <failOnError>true</failOnError>
-                    <excludeFilterFile>${project.basedir}/spotbugs-exclude.xml</excludeFilterFile>
+                    <excludeFilterFile>${maven.multiModuleProjectDirectory}/spotbugs-exclude.xml</excludeFilterFile>
                 </configuration>
                 <executions>
                     <execution>
@@ -458,7 +403,7 @@
                     </dependency>
                 </dependencies>
                 <configuration>
-                    <configLocation>${project.basedir}/checkstyle.xml</configLocation>
+                    <configLocation>${maven.multiModuleProjectDirectory}/checkstyle.xml</configLocation>
                     <includeTestSourceDirectory>false</includeTestSourceDirectory>
                     <consoleOutput>true</consoleOutput>
                     <failOnViolation>true</failOnViolation>
@@ -475,56 +420,8 @@
                     </execution>
                 </executions>
             </plugin>
-            <!-- PITest mutation testing — run on demand:
-                 mvn test-compile org.pitest:pitest-maven:mutationCoverage -->
-            <plugin>
-                <groupId>org.pitest</groupId>
-                <artifactId>pitest-maven</artifactId>
-                <version>${pitest-maven.version}</version>
-                <dependencies>
-                    <dependency>
-                        <groupId>org.pitest</groupId>
-                        <artifactId>pitest-junit5-plugin</artifactId>
-                        <version>${pitest-junit5-plugin.version}</version>
-                    </dependency>
-                </dependencies>
-                <configuration>
-                    <targetClasses>
-                        <param>se.deversity.asynctest.*</param>
-                    </targetClasses>
-                    <targetTests>
-                        <param>se.deversity.asynctest.*</param>
-                    </targetTests>
-                    <excludedTestClasses>
-                        <!-- Jazzer fuzz harnesses and ArchUnit rules don't kill mutants
-                             and are expensive under repeated forked execution -->
-                        <param>se.deversity.asynctest.fuzz.*</param>
-                        <param>se.deversity.asynctest.architecture.*</param>
-                    </excludedTestClasses>
-                    <threads>4</threads>
-                    <!-- Surefire's argLine contains JaCoCo's late-bound @{argLine} which
-                         pitest cannot resolve; required flags are passed via jvmArgs instead -->
-                    <parseSurefireArgLine>false</parseSurefireArgLine>
-                    <!-- Stress tests coordinate via CyclicBarrier; give mutants generous
-                         headroom before being flagged TIMED_OUT -->
-                    <timeoutConstant>10000</timeoutConstant>
-                    <jvmArgs>
-                        <value>-Djdk.attach.allowAttachSelf=true</value>
-                        <value>-Dlicense.mock.mode=true</value>
-                    </jvmArgs>
-                    <!-- Gate: the build fails below this mutation score. Measured full-run
-                         score is 75.4% (2026-07-17); the gate sits ~1.4pp below because
-                         TIMED_OUT mutant counts jitter between runs. Survivors are dominated
-                         by diagnostic output and timing-heuristic detector mutants that cannot
-                         be killed without flaky, timing-forced tests. -->
-                    <mutationThreshold>74</mutationThreshold>
-                    <outputFormats>
-                        <param>HTML</param>
-                        <param>XML</param>
-                    </outputFormats>
-                    <timestampedReports>false</timestampedReports>
-                </configuration>
-            </plugin>
+            <!-- PITest is declared in async-test-lib: the 74% mutation gate was measured against
+                 the library's own test suite and means nothing for the two wrapper modules. -->
         </plugins>
     </build>
 

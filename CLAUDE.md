@@ -81,115 +81,32 @@
     <element path="se.deversity.asynctest.report.Formatter" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.spi.Detector" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.spi.DetectorFactory" rules=".claude/rules/async-test-public-api.md"/>
-    <element path="se.deversity.asynctest.diagnostics.AtomicNonAtomicUpdateDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.BlockingQueueDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.BoxedPrimitiveLockDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.CacheConcurrencyDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.CalendarDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.CompletableFutureChainDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.CompletableFutureCommonPoolBlockingDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.CompletableFutureCompletionLeakDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.CompletableFutureExceptionDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.CompletableFutureObtrudeDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ConcurrentMapComputeRecursionDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ConcurrentModificationDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ConditionVariableDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.CopyOnWriteCollectionDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.CountDownLatchDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.CyclicBarrierDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.DeprecatedThreadApiDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.DoubleCheckedLockingDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ExchangerDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ExecutorShutdownDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ExplicitGcDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.FinalFieldMutationDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ForkJoinPoolDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ForkJoinTaskBlockingDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.FutureBlockingDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.FutureIgnoredDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.HighContentionAtomicDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.HttpClientConcurrencyDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.InheritableThreadLocalMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.InterruptSwallowingDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.LatchMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.LazyInitRaceDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.LockContentionDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.LockDowngradeDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.LockLeakDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.LockUpgradeDeadlockDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.MdcContextLeakDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.MissedSignalDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.MutableMapKeyDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.NestedMonitorLockoutDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.NonAtomicConcurrentMapUpdateDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.OptimisticReadValidationDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ParallelStreamDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.PhaserDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.PublicLockExposureDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ReentrantLockDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ResourceLeakDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ScheduledExecutorDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ScopedValueMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.SemaphoreMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.SharedByteBufferDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.SharedCharsetCoderDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.SharedChecksumDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.SharedCollectionDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.SharedDecimalFormatDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.SharedDeflaterDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.SharedFormatterDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.SharedIteratorDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.SharedKdfDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.SharedMatcherDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.SharedMessageDigestDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.SharedRandomDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.SharedSecureRandomDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.SharedStatefulCryptoDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.SharedTimeZoneDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.SharedXmlParserDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.SimpleDateFormatDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.SleepInLockDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.SpuriousWakeupDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.StableValueMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.StampedLockDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.StatefulLambdaDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.StreamClosingDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.StringBuilderDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.StructuredConcurrencyMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.StructuredTaskScopeMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.SynchronizedCollectionIterationDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.SynchronizedNonFinalDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.SynchronizedOnLiteralDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.SystemPropertyMutationDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.ThisEscapeDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ThreadFactoryDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ThreadLeakDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ThreadLocalContaminationDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.ThreadLocalRandomMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ThreadPoolDeadlockDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.ThreadStarvationDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.TimerDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.TryLockMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.UnboundedQueueDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.UncaughtExceptionHandlerDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.UncommittedChangesDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.VirtualThreadCarrierExhaustionDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.VirtualThreadContextLeakDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.VirtualThreadCpuBoundTaskDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.VirtualThreadPinningDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.VolatileArrayDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.WaitTimeoutDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.diagnostics.WeakReferenceRaceDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.runner.LicenseGuard" rules=".claude/rules/async-test-runtime-core.md"/>
     <element path="se.deversity.asynctest.Preset" rules=".claude/rules/async-test-configuration.md"/>
     <element path="se.deversity.asynctest.diagnostics.SiteCapture.Site" rules=".claude/rules/async-test-detectors.md"/>

@@ -4,7 +4,22 @@ This document explains how the Async Test Library is packaged and distributed fo
 
 ## Artifact Overview
 
-When you release a version, three artifacts are created:
+> **The build is a three-module reactor.** A release publishes three coordinates, all at the same
+> version under `se.deversity.async-test-lib`:
+>
+> | Artifact | Opt-in? | Brings with it |
+> |----------|---------|----------------|
+> | `async-test-lib` | no — this is the library | junit-jupiter, slf4j-api, apiguardian, common-license-lib |
+> | `async-test-agent` | yes | `async-test-lib`, byte-buddy, byte-buddy-agent |
+> | `async-test-analysis` | yes | asm (nothing else — it is standalone) |
+>
+> `async-test-lib` is unchanged as a coordinate, but **no longer contains the agent or the pinning
+> scanner**, and therefore no longer drags byte-buddy and asm onto your test classpath. If you used
+> `-javaagent:async-test-lib.jar` or referenced `se.deversity.asynctest.agent` /
+> `se.deversity.asynctest.analysis` directly, add the matching artifact above — the classes and
+> their APIs are unchanged. See [MODULARIZATION.md](MODULARIZATION.md) and [AGENT.md](AGENT.md).
+
+For the main library, each release produces three files:
 
 ### 1. **async-test-lib-1.6.0.jar** (Main Library)
 - **Contents**: Compiled Java classes + metadata

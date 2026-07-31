@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — the build is a three-module reactor; the agent ships as its own artifact
+Every dependency in the old single-module POM was compile scope and none was optional, so a
+consumer who only wrote `@AsyncTest` on a test method still pulled **byte-buddy, byte-buddy-agent
+and asm** onto their test classpath. `AsyncTestAgent` and `StaticPinningScanner` were the only
+users of those three, and nothing in the library referenced either class — they were already
+leaves. They are now separate artifacts.
+
+- **`async-test-lib` keeps its coordinate** and stays a jar. Existing consumers, the
+  `consumer-fixture` and the `examples/*` builds need no change. A new `async-test-parent` POM
+  aggregates the reactor; it is build configuration only.
+- **New: `se.deversity.async-test-lib:async-test-agent`** — the Byte Buddy field-access agent, now
+  carrying the `Premain-Class` / `Agent-Class` manifest entries.
+- **New: `se.deversity.async-test-lib:async-test-analysis`** — the ASM Loom-pinning pre-scanner.
+  Depends on nothing else in the project.
+
+**Breaking, for agent and scanner users only.** The classes and their APIs are unchanged, but they
+no longer live in `async-test-lib.jar`:
+
+- attach with `-javaagent:async-test-agent-<version>.jar` (was `async-test-lib-<version>.jar`);
+- add the `async-test-agent` or `async-test-analysis` dependency if you referenced
+  `se.deversity.asynctest.agent` or `se.deversity.asynctest.analysis` directly.
+
+The japicmp gate flags exactly these two package removals; they are enumerated in the plugin's
+`<excludes>` rather than waived, so any *other* binary break still fails the build.
+
+`ArchitectureTest` gained rules pinning the boundaries — nothing may depend on the agent or the
+analysis module, and byte-buddy / asm may not leak out of them — added *before* the sources moved.
+Gradle was split to match, and its version constants (which had drifted from the POM on junit,
+byte-buddy and vibetags) were re-synced. Each module now generates its own `CLAUDE.md` and
+`.claude/rules/`. See [MODULARIZATION.md](MODULARIZATION.md).
+
 ## [1.7.0-RC4] - 2026-07-29
 
 ### Fixed — three implemented detectors were unreachable; now wired into `detectAll`

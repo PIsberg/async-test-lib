@@ -86,15 +86,15 @@ jobs:
       - name: Check coverage file exists
         shell: bash
         run: |
-          if [ -f ./target/site/jacoco/jacoco.xml ]; then
+          if [ -f ./async-test-lib/target/site/jacoco/jacoco.xml ]; then
             echo "✓ Coverage file found"
-            wc -c ./target/site/jacoco/jacoco.xml
+            wc -c ./async-test-lib/target/site/jacoco/jacoco.xml
           else
-            echo "✗ Coverage file NOT found at ./target/site/jacoco/jacoco.xml"
+            echo "✗ Coverage file NOT found at ./async-test-lib/target/site/jacoco/jacoco.xml"
             echo "Checking target directory structure:"
-            ls -la ./target/ || echo "target/ directory not found"
-            ls -la ./target/site/ || echo "target/site/ directory not found"
-            ls -la ./target/site/jacoco/ || echo "target/site/jacoco/ directory not found"
+            ls -la ./async-test-lib/target/ || echo "target/ directory not found"
+            ls -la ./async-test-lib/target/site/ || echo "target/site/ directory not found"
+            ls -la ./async-test-lib/target/site/jacoco/ || echo "target/site/jacoco/ directory not found"
             exit 1
           fi
 
@@ -110,7 +110,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && matrix.java-version == '21'
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
-          files: ./target/site/jacoco/jacoco.xml
+          files: ./async-test-lib/target/site/jacoco/jacoco.xml
           flags: unittests
           name: codecov-umbrella
           fail_ci_if_error: false
@@ -326,13 +326,13 @@ jobs:
         run: mvn clean package -DskipTests
       
       - name: Display build output
-        run: ls -lah target/
+        run: ls -lah */target/
       
       - name: Upload JAR artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: async-test-library-java-${{ matrix.java-version }}
-          path: target/async-test-*.jar
+          path: "*/target/async-test-*.jar"
           retention-days: 30
       
       - name: Upload test results
@@ -340,7 +340,7 @@ jobs:
         if: always()
         with:
           name: test-reports-java-${{ matrix.java-version }}
-          path: target/surefire-reports/
+          path: "*/target/surefire-reports/"
           retention-days: 7
 
   publish-docs:
@@ -381,12 +381,12 @@ jobs:
         run: mvn -DskipTests javadoc:javadoc
       
       - name: Display documentation output
-        run: ls -lah target/reports/apidocs/
+        run: ls -lah async-test-lib/target/reports/apidocs/
       
       - name: Upload Javadoc artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: javadoc-java-${{ matrix.java-version }}
-          path: target/reports/apidocs/
+          path: async-test-lib/target/reports/apidocs/
           retention-days: 30
 

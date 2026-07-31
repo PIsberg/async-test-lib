@@ -55,7 +55,7 @@ jobs:
         run: |
           ./jazzer \
             --target_class=se.deversity.asynctest.fuzz.AsyncTestConfigFuzzTarget \
-            --cp=target/test-classes:target/classes \
+            --cp=async-test-lib/target/test-classes:async-test-lib/target/classes \
             -max_total_time=120 \
             -print_final_stats=1 \
             -artifact_prefix=fuzzing-findings/

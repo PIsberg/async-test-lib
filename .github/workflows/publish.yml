@@ -80,9 +80,9 @@ jobs:
         run: |
           VERSION=${{ steps.version.outputs.VERSION }}
           for artifact in \
-            target/async-test-lib-${VERSION}.jar \
-            target/async-test-lib-${VERSION}-sources.jar \
-            target/async-test-lib-${VERSION}-javadoc.jar; do
+            async-test-lib/target/async-test-lib-${VERSION}.jar \
+            async-test-lib/target/async-test-lib-${VERSION}-sources.jar \
+            async-test-lib/target/async-test-lib-${VERSION}-javadoc.jar; do
             if [ -f "$artifact" ]; then
               cosign sign-blob --yes \
                 --bundle "${artifact}.bundle" \
@@ -96,12 +96,12 @@ jobs:
         run: |
           VERSION=${{ steps.version.outputs.VERSION }}
           gh release create "${{ github.ref_name }}" \
-            target/async-test-lib-${VERSION}.jar \
-            target/async-test-lib-${VERSION}.jar.bundle \
-            target/async-test-lib-${VERSION}-sources.jar \
-            target/async-test-lib-${VERSION}-sources.jar.bundle \
-            target/async-test-lib-${VERSION}-javadoc.jar \
-            target/async-test-lib-${VERSION}-javadoc.jar.bundle \
+            async-test-lib/target/async-test-lib-${VERSION}.jar \
+            async-test-lib/target/async-test-lib-${VERSION}.jar.bundle \
+            async-test-lib/target/async-test-lib-${VERSION}-sources.jar \
+            async-test-lib/target/async-test-lib-${VERSION}-sources.jar.bundle \
+            async-test-lib/target/async-test-lib-${VERSION}-javadoc.jar \
+            async-test-lib/target/async-test-lib-${VERSION}-javadoc.jar.bundle \
             --title "Release ${{ github.ref_name }}" \
             --notes "## Async Test Library ${{ github.ref_name }}
 

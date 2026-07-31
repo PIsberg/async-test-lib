@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>se.deversity.async-test-lib</groupId>
+        <artifactId>async-test-parent</artifactId>
+        <version>1.7.0-RC4</version>
+    </parent>
+
+    <artifactId>async-test-analysis</artifactId>
+    <packaging>jar</packaging>
+
+    <name>Async Test Library — static analysis</name>
+    <description>Optional ASM-based pre-scanner for async-test-lib: finds Loom pinning sites in compiled classes before a test run. Standalone — it depends on no other module in the project.</description>
+
+    <dependencies>
+        <!-- ASM: static bytecode pre-scanner for Loom pinning sites (StaticPinningScanner) -->
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

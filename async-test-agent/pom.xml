@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>se.deversity.async-test-lib</groupId>
+        <artifactId>async-test-parent</artifactId>
+        <version>1.7.0-RC4</version>
+    </parent>
+
+    <artifactId>async-test-agent</artifactId>
+    <packaging>jar</packaging>
+
+    <name>Async Test Library — Java agent</name>
+    <description>Optional Byte Buddy agent for async-test-lib: instruments field access so detectors record reads and writes without manual hooks. Attach with -javaagent:async-test-agent.jar, or call AsyncTestAgent.selfAttach().</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>se.deversity.async-test-lib</groupId>
+            <artifactId>async-test-lib</artifactId>
+        </dependency>
+        <!-- Byte Buddy: Java agent field-access instrumentation (AsyncTestAgent) -->
+        <dependency>
+            <groupId>net.bytebuddy</groupId>
+            <artifactId>byte-buddy</artifactId>
+        </dependency>
+        <!-- Byte Buddy Agent: runtime self-attach (AsyncTestAgent.selfAttach) -->
+        <dependency>
+            <groupId>net.bytebuddy</groupId>
+            <artifactId>byte-buddy-agent</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- The agent manifest. It moved here from the library JAR when the modules were
+                 split: attaching now uses -javaagent:async-test-agent.jar. See docs/AGENT.md. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Premain-Class>se.deversity.asynctest.agent.AsyncTestAgent</Premain-Class>
+                            <Agent-Class>se.deversity.asynctest.agent.AsyncTestAgent</Agent-Class>
+                            <Can-Retransform-Classes>true</Can-Retransform-Classes>
+                            <Can-Redefine-Classes>true</Can-Redefine-Classes>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
