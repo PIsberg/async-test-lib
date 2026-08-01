@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — dependency refresh, and the two builds put back in sync
+
+**vibetags 1.0.0-RC7 → 1.0.0-RC8.** RC8 fixes the lean reactor-root layout this repo uses: the root
+`CLAUDE.md` kept *nothing* inline, so a locked file's guardrail only loaded once an agent opened the
+very file it protects. Each module now contributes its always-on safety tier (`@AILocked`,
+`@AICore`, `@AIPrivacy`, `@AIIgnore`, `@AIAudit`, `@AISecure`) inline, followed by the pointer. RC8
+also emits guardrails in a deterministic order: `mvn test-compile` and `./gradlew build` now produce
+a byte-identical `async-test-lib/CLAUDE.md`, so the recurring no-op reorder diff is gone and the
+"known cosmetic churn" note has been removed from `CLAUDE.md`. `.claudeignore` lost 12 lines of
+empty per-module sections.
+
+**PMD is now pinned to 7.26.0**, independently of maven-pmd-plugin 3.28.0, which still defaults to
+7.17.0. That is the version that could not resolve JDK types on a newer JDK than the build targets:
+on JDK 26, `pmd:check` reports 243 bogus `LooseCoupling` violations on 7.17.0 and 0 on 7.26.0, and
+`mvn verify -DskipTests` now passes there. CI stays on JDK 21 and 25 — the test suite has not been
+exercised on 26 — but a red PMD gate is no longer explained by the toolchain. One consequence: PMD
+7.26.0 widened `AvoidCatchingGenericException` to also report `catch (Throwable)`, duplicating
+`AvoidCatchingThrowable`, which `pmd-ruleset.xml` already excluded for the `ConcurrencyRunner`
+sites; both are now excluded, with the reasoning recorded next to the exclusion.
+
+**The Gradle build had drifted behind the POM** on the three versions written as literals at the use
+site rather than in the shared version block: SpotBugs 4.9.8 against the POM's 4.10.3, Error Prone
+2.36.0 against 2.50.0, and PMD 7.9.0. Since both builds regenerate the same guardrail files, a
+version split makes the output depend on which build ran last. All three now read from
+`extra[...]` next to the POM property they track. Gradle wrapper 8.13 → 9.6.1, and three plugin
+majors whose APIs changed with it: `net.ltgt.errorprone` 4.1.0 → 5.1.0 (`isEnabled` → `enabled`),
+`com.vanniktech.maven.publish` 0.30.0 → 0.37.0 (the `SonatypeHost` argument is gone now that the
+Central Portal is the only host), `com.github.spotbugs` 6.1.1 → 6.5.9, and `org.cyclonedx.bom`
+2.1.0 → 3.3.0 (`CycloneDxTask` → `CyclonedxAggregateTask`, and the whole output property set was
+replaced).
+
+Also: maven-source-plugin 3.3.1 → 3.4.0, cyclonedx-maven-plugin 2.9.2 → 2.9.3, logback 1.5.18 →
+1.6.1 (test-only; still built against slf4j 2.0.18), JMH plugin 0.7.2 → 0.7.3, and JUnit 6.0.3 →
+6.1.2 in `consumer-fixture` and `load-tests`. The 127 example projects pinned
+`junitPlatformVersion = "6.0.3"` — a launcher older than the engine the library exports, which is
+the mismatch their own comment warns about — and now pin 6.1.2. Deliberately **not** taken:
+slf4j 2.1.0-alpha1, maven-compiler-plugin 4.0.0-beta-4, maven-source-plugin 4.0.0-beta-1 and
+surefire 3.6.0-M1 are prereleases, and `byte-buddy:1.18.11-jdk5` is a legacy-JDK variant of the
+version already in use, not a newer one.
+
+### Added — three of the newest vibetags annotations
+
+`@AIKeepInSync` on `DetectorType` turns the synchronized multi-file change into a machine-visible
+link naming `AsyncTest`, `AsyncTestConfig`, `DetectorRegistry`, `LegacyDetectorFactories` and the
+`META-INF/services` entry, with `AllDetectorsSpiCoverageTest` recorded as what enforces it.
+`@AILoadBearing` marks the two places most likely to be "cleaned up" into silent breakage:
+`AsyncTestInvocationInterceptor.interceptTestTemplateMethod`, where replacing `invocation.skip()`
+with `proceed()` runs the body once outside the barrier and every detector stops observing while the
+suite stays green; and `ConcurrencyRunner.execute`, whose `timeoutAlreadyReported` flag and
+per-step guarded cleanup each prevent a specific double-report or context leak. All three render
+only into the lazily-loaded scoped rule files, so they cost nothing in always-loaded context.
+
+`@AIThreadAffinity` was considered and rejected: the natural candidate, `AsyncTestContext`, already
+carries `@AIThreadSafe(THREAD_LOCAL)`, and vibetags documents that pairing as a contradiction.
+
+### Changed — less always-loaded context
+
+The reasoning behind the vibetags config files, and the full logging conventions, moved out of the
+always-loaded root `CLAUDE.md` into [docs/architecture/guardrails.md](architecture/guardrails.md)
+and [docs/architecture/logging.md](architecture/logging.md), leaving the operative rules and a link.
+Hand-written prose in the root file went from 112 to 86 lines. The file still grew overall, 123 to
+189 lines, because RC8's safety-tier fix inlines a 103-line generated region that previously
+collapsed to three pointer sentences — content that was loading too late to be useful.
+
 ## [1.7.0-RC5] - 2026-08-01
 
 ### Added — a consumer fixture for every detector, and an E2E workflow that runs it

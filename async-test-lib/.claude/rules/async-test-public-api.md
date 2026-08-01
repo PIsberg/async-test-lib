@@ -44,22 +44,22 @@ This element is strictly excluded from AI context. Do not reference it.
 
 ## Public API Surface Protection
 - **Rule**: Exposes public API. Preserve signature, Javadoc, and behavior without breaking backwards or source compatibility.
-- **Applies to**: `se.deversity.asynctest.AsyncAssert`, `se.deversity.asynctest.AsyncTestListener`, `se.deversity.asynctest.AsyncTestListenerRegistry`, `se.deversity.asynctest.report.Formatter`, `se.deversity.asynctest.spi.Detector`, `se.deversity.asynctest.spi.DetectorFactory`, `se.deversity.asynctest.report.Violation`, `se.deversity.asynctest.spi.DetectorRegistry`, `se.deversity.asynctest.report.JsonFormatter`, `se.deversity.asynctest.report.MarkdownFormatter`
+- **Applies to**: `se.deversity.asynctest.AsyncAssert`, `se.deversity.asynctest.AsyncTestListener`, `se.deversity.asynctest.AsyncTestListenerRegistry`, `se.deversity.asynctest.report.Formatter`, `se.deversity.asynctest.report.JsonFormatter`, `se.deversity.asynctest.report.MarkdownFormatter`, `se.deversity.asynctest.report.Violation`, `se.deversity.asynctest.spi.Detector`, `se.deversity.asynctest.spi.DetectorFactory`, `se.deversity.asynctest.spi.DetectorRegistry`
 
 ## Idempotency Guarantee
 - **Rule**: These operations are idempotent. Calling them multiple times must produce the same result as calling them once.
 
-### se.deversity.asynctest.AsyncTestListenerRegistry.unregister(se.deversity.asynctest.AsyncTestListener)
-- **Reason**: Backed by List.remove which is a no-op when the listener is absent; second call returns false but produces no observable side effect.
+### se.deversity.asynctest.AsyncTestListenerRegistry.Registration.close()
+- **Reason**: Guarded by the `closed` volatile flag; second close() returns early before touching the registry. Covered by `registrationClose_isIdempotent` test.
 
 ### se.deversity.asynctest.AsyncTestListenerRegistry.clearAll()
 - **Reason**: List.clear() on an already-empty list is a no-op; repeated calls have identical observable effect (empty registry).
 
+### se.deversity.asynctest.AsyncTestListenerRegistry.unregister(se.deversity.asynctest.AsyncTestListener)
+- **Reason**: Backed by List.remove which is a no-op when the listener is absent; second call returns false but produces no observable side effect.
+
 ### se.deversity.asynctest.spi.DetectorRegistry.analyzeAll()
 - **Reason**: Each Detector.analyze() must return the same violations for the same observed state (the SPI contract). Calling analyzeAll() N times on a quiescent registry yields N identical lists; do not introduce stateful side-effects in analyze().
-
-### se.deversity.asynctest.AsyncTestListenerRegistry.Registration.close()
-- **Reason**: Guarded by the `closed` volatile flag; second close() returns early before touching the registry. Covered by `registrationClose_isIdempotent` test.
 
 ## Polymorphic Extension Pattern
 - **Pattern**: STRATEGY_PATTERN

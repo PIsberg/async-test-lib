@@ -3,6 +3,7 @@ package se.deversity.asynctest;
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 
+import se.deversity.vibetags.annotations.AIKeepInSync;
 import se.deversity.vibetags.annotations.AILocked;
 
 /**
@@ -10,6 +11,21 @@ import se.deversity.vibetags.annotations.AILocked;
  * Used with {@link AsyncTest#excludes()}.
  */
 @AILocked(reason = "Each enum constant requires synchronized changes in five places: (1) @AsyncTest attribute, (2) AsyncTestConfig field, (3) AsyncTestConfig.Builder default, (4) both branches of AsyncTestConfig.build() (detectAll block + excludes block), and (5) DetectorRegistry constructor. Adding a value here in isolation breaks the system.")
+@AIKeepInSync(
+    mirrors = {
+        "se.deversity.asynctest.AsyncTest",
+        "se.deversity.asynctest.AsyncTestConfig",
+        "se.deversity.asynctest.DetectorRegistry",
+        "se.deversity.asynctest.spi.LegacyDetectorFactories",
+        "META-INF/services/se.deversity.asynctest.spi.DetectorFactory"
+    },
+    reason = "A detector is only reachable from the public API when all of these agree. The enum "
+           + "constant is the name users type in @AsyncTest(excludes=...); the annotation attribute, "
+           + "the config field and its Builder default carry it through resolution; the registry "
+           + "constructor instantiates it; and the SPI factory plus its services entry are what "
+           + "detectAll loads. Adding the constant alone compiles and silently detects nothing.",
+    enforcedBy = "se.deversity.asynctest.spi.AllDetectorsSpiCoverageTest"
+)
 @API(status = Status.STABLE)
 public enum DetectorType {
     // Phase 1

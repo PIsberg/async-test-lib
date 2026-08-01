@@ -20,7 +20,7 @@ repositories {
 
 // MUST match the version in the parent's gradle.properties / pom.xml.
 val asyncTestVersion = "1.7.0-RC5"
-val junitVersion = "6.0.3"
+val junitVersion = "6.1.2"
 
 dependencies {
     testImplementation("se.deversity.async-test-lib:async-test-lib:$asyncTestVersion")

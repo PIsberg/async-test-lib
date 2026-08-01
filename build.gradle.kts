@@ -7,15 +7,18 @@ import org.gradle.external.javadoc.CoreJavadocOptions
 plugins {
     // java-library / jacoco / pmd are core Gradle plugins — they are already on the classpath and
     // cannot be declared here with `apply false`. Subprojects apply them directly below.
-    id("com.vanniktech.maven.publish") version "0.30.0" apply false
-    id("net.ltgt.errorprone") version "4.1.0" apply false
-    id("com.github.spotbugs") version "6.1.1" apply false
-    id("org.cyclonedx.bom") version "2.1.0"
+    id("com.vanniktech.maven.publish") version "0.37.0" apply false
+    id("net.ltgt.errorprone") version "5.1.0" apply false
+    id("com.github.spotbugs") version "6.5.9" apply false
+    id("org.cyclonedx.bom") version "3.3.0"
 }
 
 // ── Dependency versions ─────────────────────────────────────────────────────
 // Maven (pom.xml) is the canonical source of truth for versions.
-// Keep these in sync with the <properties> block in pom.xml.
+// Keep these in sync with the <properties> block in pom.xml. Everything the two builds share
+// belongs in this block rather than inline at the use site: the versions that drifted between
+// the builds (spotbugs, error-prone, pmd) were the three that were written as literals further
+// down, where nothing put them next to the pom property they are supposed to track.
 extra["junitVersion"] = "6.1.2"       // pom: junit.jupiter.version
 extra["junitPlatformVersion"] = "6.1.2" // pom: junit.platform.version
 extra["jazzerVersion"] = "0.30.0"     // pom: jazzer.version
@@ -23,8 +26,11 @@ extra["byteBuddyVersion"] = "1.18.11" // pom: bytebuddy.version
 extra["asmVersion"] = "9.10.1"        // pom: asm.version
 extra["slf4jVersion"] = "2.0.18"      // pom: slf4j.version
 extra["archunitVersion"] = "1.4.2"    // pom: archunit.version
-extra["vibetagsVersion"] = "1.0.0-RC7" // pom: vibetags.version
-extra["logbackVersion"] = "1.5.18"    // test-only SLF4J backend, pairs with slf4j 2.0.x
+extra["vibetagsVersion"] = "1.0.0-RC8" // pom: vibetags.version
+extra["spotbugsVersion"] = "4.10.3"   // pom: spotbugs.version
+extra["errorProneVersion"] = "2.50.0" // pom: error-prone.version
+extra["pmdVersion"] = "7.26.0"        // pom: pmd.version
+extra["logbackVersion"] = "1.6.1"     // test-only SLF4J backend, built against slf4j 2.0.18
 
 subprojects {
     apply(plugin = "java-library")
@@ -58,9 +64,9 @@ subprojects {
         val vibetags = rootProject.extra["vibetagsVersion"] as String
         add("compileOnly", "se.deversity.vibetags:vibetags-processor:$vibetags")
         add("annotationProcessor", "se.deversity.vibetags:vibetags-processor:$vibetags")
-        add("compileOnly", "com.github.spotbugs:spotbugs-annotations:4.9.8")
-        add("compileOnly", "com.google.errorprone:error_prone_annotations:2.36.0")
-        add("errorprone", "com.google.errorprone:error_prone_core:2.36.0")
+        add("compileOnly", "com.github.spotbugs:spotbugs-annotations:${rootProject.extra["spotbugsVersion"]}")
+        add("compileOnly", "com.google.errorprone:error_prone_annotations:${rootProject.extra["errorProneVersion"]}")
+        add("errorprone", "com.google.errorprone:error_prone_core:${rootProject.extra["errorProneVersion"]}")
     }
 
     // VibeTags resolves the module root by walking up from a source file to the nearest build
@@ -75,7 +81,7 @@ subprojects {
 
     // Error Prone runs on main sources only; test sources are excluded per project policy
     tasks.named<JavaCompile>("compileTestJava") {
-        options.errorprone.isEnabled.set(false)
+        options.errorprone.enabled.set(false)
     }
 
     tasks.named<Test>("test") {
@@ -121,11 +127,11 @@ subprojects {
         (options as CoreJavadocOptions).addStringOption("Xdoclint:none", "-quiet")
     }
 
-    // ── PMD static analysis (matches Maven maven-pmd-plugin:3.28.0 / PMD 7.9.0) ─
+    // ── PMD static analysis (engine pinned to the same ${pmdVersion} as pom.xml) ─
     // Rule and exclude files live at the reactor root, so resolve them there rather than
     // relative to each module.
     extensions.configure<PmdExtension> {
-        toolVersion = "7.9.0"
+        toolVersion = rootProject.extra["pmdVersion"] as String
         ruleSets = listOf()
         ruleSetFiles = rootProject.files("pmd-ruleset.xml")
         isConsoleOutput = true
@@ -141,9 +147,9 @@ subprojects {
     }
     tasks.named("pmdTest") { enabled = false }
 
-    // ── SpotBugs static analysis (matches Maven spotbugs-maven-plugin:4.9.8.3) ──
+    // ── SpotBugs static analysis (matches Maven spotbugs-maven-plugin:4.10.3.0) ─
     extensions.configure<com.github.spotbugs.snom.SpotBugsExtension> {
-        toolVersion.set("4.9.8")
+        toolVersion.set(rootProject.extra["spotbugsVersion"] as String)
         excludeFilter.set(rootProject.file("spotbugs-exclude.xml"))
         effort.set(com.github.spotbugs.snom.Effort.MAX)
         reportLevel.set(com.github.spotbugs.snom.Confidence.LOW)
@@ -154,10 +160,11 @@ subprojects {
 
     // Shared POM metadata; each module supplies its own coordinates, name and description.
     extensions.configure<com.vanniktech.maven.publish.MavenPublishBaseExtension> {
-        publishToMavenCentral(
-            com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL,
-            automaticRelease = true
-        )
+        // gradle-maven-publish-plugin dropped the SonatypeHost argument once OSSRH shut down and
+        // the Central Portal became the only host, so the overload now takes the release flag
+        // alone. Same destination as before, and the same as the Maven build's
+        // central-publishing-maven-plugin with autoPublish.
+        publishToMavenCentral(automaticRelease = true)
 
         // Only sign when the in-memory key is present (set via ORG_GRADLE_PROJECT_signingInMemoryKey
         // in the release workflow). Skipped for local builds and the test workflow's
@@ -200,10 +207,15 @@ subprojects {
 }
 
 // ── CycloneDX SBOM (matches Maven cyclonedx-maven-plugin, aggregate at the root) ─
-tasks.named<org.cyclonedx.gradle.CycloneDxTask>("cyclonedxBom") {
-    includeConfigs.set(listOf("runtimeClasspath"))
-    schemaVersion.set("1.6")
-    destination.set(project.file("build/reports"))
-    outputName.set("bom")
-    outputFormat.set("xml")
+// cyclonedx-gradle-plugin 3.x replaced the task type and its whole property set: CycloneDxTask
+// became CyclonedxAggregateTask, schemaVersion takes the Version enum instead of a string, and
+// destination/outputName/outputFormat collapsed into xmlOutput/jsonOutput. includeConfigs is
+// gone — the aggregate task walks each subproject's own SBOM rather than a named configuration.
+// The released SBOM is still the Maven one (sbom.yml runs cyclonedx-maven-plugin); this task
+// exists so the secondary build produces the same artifact shape.
+tasks.named<org.cyclonedx.gradle.CyclonedxAggregateTask>("cyclonedxBom") {
+    schemaVersion.set(org.cyclonedx.Version.VERSION_16)
+    includeBomSerialNumber.set(true)
+    projectType.set(org.cyclonedx.model.Component.Type.LIBRARY)
+    xmlOutput.set(layout.buildDirectory.file("reports/bom.xml"))
 }

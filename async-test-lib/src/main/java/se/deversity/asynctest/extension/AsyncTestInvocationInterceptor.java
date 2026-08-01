@@ -7,6 +7,7 @@ import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.asynctest.runner.ConcurrencyRunner;
 import se.deversity.vibetags.annotations.AICore;
+import se.deversity.vibetags.annotations.AILoadBearing;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.InvocationInterceptor;
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
@@ -40,6 +41,14 @@ public class AsyncTestInvocationInterceptor implements InvocationInterceptor {
     }
 
     @Override
+    @AILoadBearing(
+        invariant = "This method calls invocation.skip() and never invocation.proceed().",
+        breaksIf = "Someone 'fixes' the apparently-dropped invocation by calling proceed(). The "
+                 + "test body then runs once on the JUnit thread, outside the CyclicBarrier and "
+                 + "outside AsyncTestContext, so no detector observes it — and because that "
+                 + "single run usually passes, the suite goes green while every concurrency "
+                 + "check has silently stopped running."
+    )
     public void interceptTestTemplateMethod(Invocation<Void> invocation,
                                             ReflectiveInvocationContext<Method> invocationContext,
                                             ExtensionContext extensionContext) throws Throwable {
