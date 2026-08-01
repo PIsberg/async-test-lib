@@ -4,6 +4,7 @@ import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import org.jspecify.annotations.Nullable;
 import se.deversity.vibetags.annotations.AIImmutable;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
@@ -92,9 +93,9 @@ public enum Preset {
 
     // effectively immutable: captured once at class init, stored unmodifiable
     @SuppressWarnings("ImmutableEnumChecker")
-    private final Set<DetectorType> enabled;
+    private final @Nullable Set<DetectorType> enabled;
 
-    Preset(Set<DetectorType> enabled) {
+    Preset(@Nullable Set<DetectorType> enabled) {
         this.enabled = enabled == null ? null : Set.copyOf(enabled);
     }
 
@@ -106,7 +107,7 @@ public enum Preset {
      * releases.
      */
     @SuppressFBWarnings(value = "EI_EXPOSE_REP", justification = "enabled is already an unmodifiable Set.copyOf snapshot stored in a final field")
-    public Set<DetectorType> enabled() {
+    public @Nullable Set<DetectorType> enabled() {
         return enabled;
     }
 

@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects exception handling issues in CompletableFuture chains.
@@ -52,7 +53,7 @@ public class CompletableFutureExceptionDetector {
         volatile boolean exceptionHandlerRegistered = false;
         volatile boolean completed = false;
         volatile boolean completedExceptionally = false;
-        volatile Exception lastException = null;
+        volatile @Nullable Exception lastException = null;
         final AtomicInteger getJoinCalls = new AtomicInteger(0);
 
         FutureState(CompletableFuture<?> future, String name) {

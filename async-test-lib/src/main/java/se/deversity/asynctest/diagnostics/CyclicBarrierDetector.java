@@ -139,6 +139,23 @@ public class CyclicBarrierDetector {
             return !timedOutBarriers.isEmpty() || !brokenBarriers.isEmpty() || !reuseAfterBrokenBarriers.isEmpty();
         }
 
+        /**
+         * Registry lookup that always yields a non-null {@code BarrierInfo}.
+         *
+         * <p>Nothing requires a {@code record*} call's subject to have been passed to the matching
+         * {@code register*} first — no precondition, no runtime check — and the two are written at
+         * different places in a test. When the registration is missed the lookup returns
+         * {@code null} and dereferencing it threw out of {@code toString()}. That NPE never reached
+         * the user: {@code DetectorRegistry.ifIssue} catches it so one detector cannot discard the
+         * whole sweep, so the finding was simply dropped and the report the user needed never
+         * appeared. A placeholder keeps the finding and says plainly which subject was not
+         * registered.
+         */
+        private BarrierInfo infoFor(CyclicBarrier barrier) {
+            BarrierInfo info = barrierRegistry.get(barrier);
+            return info != null ? info : new BarrierInfo("<unregistered barrier>", 0);
+        }
+
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
@@ -147,7 +164,7 @@ public class CyclicBarrierDetector {
             if (!timedOutBarriers.isEmpty()) {
                 sb.append("  Timed Out Barriers:\n");
                 for (CyclicBarrier barrier : timedOutBarriers) {
-                    BarrierInfo info = barrierRegistry.get(barrier);
+                    BarrierInfo info = infoFor(barrier);
                     sb.append("    - ").append(info.name)
                       .append(" (").append(info.parties).append(" parties expected, ")
                       .append(info.getArrivals()).append(" arrived before timeout)\n");
@@ -160,7 +177,7 @@ public class CyclicBarrierDetector {
             if (!brokenBarriers.isEmpty()) {
                 sb.append("  Broken Barriers:\n");
                 for (CyclicBarrier barrier : brokenBarriers) {
-                    BarrierInfo info = barrierRegistry.get(barrier);
+                    BarrierInfo info = infoFor(barrier);
                     sb.append("    - ").append(info.name)
                       .append(" (barrier broken - thread interrupted or timed out)\n");
                 }
@@ -172,9 +189,8 @@ public class CyclicBarrierDetector {
             if (!reuseAfterBrokenBarriers.isEmpty()) {
                 sb.append("  Reuse After Broken Barriers:\n");
                 for (CyclicBarrier barrier : reuseAfterBrokenBarriers) {
-                    BarrierInfo info = barrierRegistry.get(barrier);
-                    String label = info != null ? info.name : "unknown";
-                    sb.append("    - ").append(label)
+                    BarrierInfo info = infoFor(barrier);
+                    sb.append("    - ").append(info.name)
                       .append(" (await() called on a barrier that was already broken)\n");
                 }
                 sb.append("  Why: await() on a broken barrier throws BrokenBarrierException immediately for every caller;\n");

@@ -91,6 +91,23 @@ public class CountDownLatchDetector {
             return !timedOutLatches.isEmpty() || !extraCountDownLatches.isEmpty();
         }
 
+        /**
+         * Registry lookup that always yields a non-null {@code LatchInfo}.
+         *
+         * <p>Nothing requires a {@code record*} call's subject to have been passed to the matching
+         * {@code register*} first — no precondition, no runtime check — and the two are written at
+         * different places in a test. When the registration is missed the lookup returns
+         * {@code null} and dereferencing it threw out of {@code toString()}. That NPE never reached
+         * the user: {@code DetectorRegistry.ifIssue} catches it so one detector cannot discard the
+         * whole sweep, so the finding was simply dropped and the report the user needed never
+         * appeared. A placeholder keeps the finding and says plainly which subject was not
+         * registered.
+         */
+        private LatchInfo infoFor(CountDownLatch latch) {
+            LatchInfo info = latchRegistry.get(latch);
+            return info != null ? info : new LatchInfo("<unregistered latch>", 0);
+        }
+
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
@@ -99,7 +116,7 @@ public class CountDownLatchDetector {
             if (!timedOutLatches.isEmpty()) {
                 sb.append("  Timed Out Latches:\n");
                 for (CountDownLatch latch : timedOutLatches) {
-                    LatchInfo info = latchRegistry.get(latch);
+                    LatchInfo info = infoFor(latch);
                     sb.append("    - ").append(info.name)
                       .append(" (expected ").append(info.initialCount)
                       .append(" countDown() calls, but await() timed out)\n");
@@ -112,7 +129,7 @@ public class CountDownLatchDetector {
             if (!extraCountDownLatches.isEmpty()) {
                 sb.append("  Extra countDown() Calls:\n");
                 for (CountDownLatch latch : extraCountDownLatches) {
-                    LatchInfo info = latchRegistry.get(latch);
+                    LatchInfo info = infoFor(latch);
                     sb.append("    - ").append(info.name)
                       .append(" (initial count: ").append(info.initialCount)
                       .append(", but countDown() called more times)\n");

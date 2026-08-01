@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -62,10 +63,10 @@ public final class DaemonThreadHygieneDetector {
         final String label;
         final String threadName;
         final boolean wasDaemonAtRegistration;
-        final StackTraceElement creationSite;
+        final @Nullable StackTraceElement creationSite;
 
         ThreadState(long threadId, String label, String threadName,
-                    boolean wasDaemon, StackTraceElement creationSite) {
+                    boolean wasDaemon, @Nullable StackTraceElement creationSite) {
             this.threadId = threadId;
             this.label = label;
             this.threadName = threadName;
@@ -138,7 +139,7 @@ public final class DaemonThreadHygieneDetector {
         return r;
     }
 
-    private static Thread findLiveThread(long id) {
+    private static @Nullable Thread findLiveThread(long id) {
         // Thread.getId is unique while the thread is alive but may be reused
         // after termination — so we only return a match for ALIVE threads.
         ThreadGroup root = Thread.currentThread().getThreadGroup();
@@ -152,7 +153,7 @@ public final class DaemonThreadHygieneDetector {
         return null;
     }
 
-    private static StackTraceElement firstUserFrame(StackTraceElement[] frames) {
+    private static @Nullable StackTraceElement firstUserFrame(StackTraceElement[] frames) {
         for (StackTraceElement f : frames) {
             String cls = f.getClassName();
             if (cls.startsWith("java.") || cls.startsWith("jdk.")) continue;

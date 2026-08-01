@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -126,7 +128,7 @@ public class BoxedPrimitiveLockDetector {
     // Intentional reference comparison: obj == obj.intern() is true only when obj is an interned
     // (literal) String — which is exactly what we want to detect as a dangerous lock target.
     @SuppressWarnings("PMD.CompareObjectsWithEquals") // reference equality with intern() is intentional to detect interned strings
-    private static String detectCachedPrimitive(Object obj) {
+    private static @Nullable String detectCachedPrimitive(Object obj) {
         if (obj instanceof Boolean) {
             return "Boolean cached instance (" + obj + ")";
         }
@@ -155,7 +157,7 @@ public class BoxedPrimitiveLockDetector {
      * @param obj the candidate lock object
      * @return a human-readable reason, or {@code null} if not a value-based class
      */
-    private static String detectValueBasedClass(Object obj) {
+    private static @Nullable String detectValueBasedClass(Object obj) {
         Class<?> cls = obj.getClass();
         if (VALUE_BASED_TYPES.contains(cls)) {
             return "value-based " + cls.getSimpleName() + " instance";

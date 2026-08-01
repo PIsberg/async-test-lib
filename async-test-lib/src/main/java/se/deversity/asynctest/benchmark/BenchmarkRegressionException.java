@@ -1,5 +1,7 @@
 package se.deversity.asynctest.benchmark;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Exception thrown when a benchmark regression is detected.
  * Contains the comparison result for detailed analysis.
@@ -17,12 +19,12 @@ public class BenchmarkRegressionException extends RuntimeException {
         this.comparisonResult = comparisonResult;
     }
 
-    public BenchmarkComparisonResult getComparisonResult() {
+    public @Nullable BenchmarkComparisonResult getComparisonResult() {
         return comparisonResult;
     }
 
     @Override
-    public String getMessage() { // NOPMD UselessOverridingMethod — see comment below
+    public @Nullable String getMessage() { // NOPMD UselessOverridingMethod — see comment below
         // Returns the stored message unchanged. This override exists only so the custom
         // toString() below (which keeps the simple-class-name prefix) does not trip Error
         // Prone's OverrideThrowableToString, which flags a toString() override on a Throwable

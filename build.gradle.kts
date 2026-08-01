@@ -28,7 +28,10 @@ extra["slf4jVersion"] = "2.0.18"      // pom: slf4j.version
 extra["archunitVersion"] = "1.4.2"    // pom: archunit.version
 extra["vibetagsVersion"] = "1.0.0-RC8" // pom: vibetags.version
 extra["spotbugsVersion"] = "4.10.3"   // pom: spotbugs.version
+extra["findsecbugsVersion"] = "1.14.0" // pom: findsecbugs.version
 extra["errorProneVersion"] = "2.50.0" // pom: error-prone.version
+extra["nullawayVersion"] = "0.13.8"   // pom: nullaway.version
+extra["jspecifyVersion"] = "1.0.0"    // pom: jspecify.version
 extra["pmdVersion"] = "7.26.0"        // pom: pmd.version
 extra["logbackVersion"] = "1.6.1"     // test-only SLF4J backend, built against slf4j 2.0.18
 
@@ -67,6 +70,8 @@ subprojects {
         add("compileOnly", "com.github.spotbugs:spotbugs-annotations:${rootProject.extra["spotbugsVersion"]}")
         add("compileOnly", "com.google.errorprone:error_prone_annotations:${rootProject.extra["errorProneVersion"]}")
         add("errorprone", "com.google.errorprone:error_prone_core:${rootProject.extra["errorProneVersion"]}")
+        add("errorprone", "com.uber.nullaway:nullaway:${rootProject.extra["nullawayVersion"]}")
+        add("compileOnly", "org.jspecify:jspecify:${rootProject.extra["jspecifyVersion"]}")
     }
 
     // VibeTags resolves the module root by walking up from a source file to the nearest build
@@ -84,6 +89,13 @@ subprojects {
         options.errorprone.enabled.set(false)
     }
 
+    // NullAway gates nullness on main sources, alongside Error Prone. Mirrors the parent POM's
+    // -Xep:NullAway:ERROR / AnnotatedPackages arguments; see docs/QUALITY_GATES.md.
+    tasks.named<JavaCompile>("compileJava") {
+        options.errorprone.error("NullAway")
+        options.errorprone.option("NullAway:AnnotatedPackages", "se.deversity.asynctest")
+    }
+
     tasks.named<Test>("test") {
         useJUnitPlatform()
         // Match Maven surefire forkCount=1, reuseForks=false: new JVM for each test class
@@ -99,6 +111,10 @@ subprojects {
             ?: (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
         systemProperty("license.mock.mode", System.getProperty("license.mock.mode", "true"))
         systemProperty("license.key", System.getProperty("license.key", ""))
+        // Mirrors the Maven surefire property: a detector that throws during analysis stays
+        // contained for consumers but fails this project's own build, because a detector that
+        // reports nothing is indistinguishable from a clean run. See DetectorFailurePolicy.
+        systemProperty("async-test.strict-detectors", "true")
         // Permit AsyncTestAgent.selfAttach() to attach to the forked test JVM
         // (self-attach is disabled by default since JDK 9). Mirrors the Maven surefire argLine.
         jvmArgs("-Djdk.attach.allowAttachSelf=true")
@@ -154,6 +170,13 @@ subprojects {
         effort.set(com.github.spotbugs.snom.Effort.MAX)
         reportLevel.set(com.github.spotbugs.snom.Confidence.LOW)
         ignoreFailures.set(false)
+    }
+    // find-sec-bugs rides inside the SpotBugs gate rather than adding a new one. Mirrors the
+    // parent POM's <plugins> block under spotbugs-maven-plugin; the triage lives in the shared
+    // spotbugs-exclude.xml, so both builds see the same findings and the same exclusions.
+    dependencies {
+        add("spotbugsPlugins",
+            "com.h3xstream.findsecbugs:findsecbugs-plugin:${rootProject.extra["findsecbugsVersion"]}")
     }
     tasks.named("spotbugsMain") { enabled = true }
     tasks.named("spotbugsTest") { enabled = false }

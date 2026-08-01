@@ -3,6 +3,7 @@ package se.deversity.asynctest.spi;
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 
+import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.report.Violation;
@@ -113,7 +114,7 @@ public final class DetectorRegistry {
      * accessors but without the exception.
      */
     @SuppressWarnings("unchecked")
-    public <T extends Detector> T get(Class<T> detectorClass) {
+    public <T extends Detector> @Nullable T get(Class<T> detectorClass) {
         for (Detector d : byType.values()) {
             if (detectorClass.isInstance(d)) return (T) d;
         }
@@ -121,7 +122,7 @@ public final class DetectorRegistry {
     }
 
     /** Type-keyed lookup. */
-    public Detector get(DetectorType type) {
+    public @Nullable Detector get(DetectorType type) {
         return byType.get(type);
     }
 
@@ -140,9 +141,11 @@ public final class DetectorRegistry {
             } catch (RuntimeException | StackOverflowError e) {
                 // Contain the failure. Detectors arrive here through the public SPI, so one
                 // of them throwing must not discard the violations already collected nor skip
-                // every detector after it in iteration order.
-                System.err.println("[AsyncTest] Detector " + d.getClass().getSimpleName()
-                    + " failed during analysis and was skipped: " + e);
+                // every detector after it in iteration order. Strict mode (this project's own
+                // test config) turns the contained failure into a build failure instead —
+                // see DetectorFailurePolicy.
+                se.deversity.asynctest.DetectorFailurePolicy
+                    .detectorFailed(d.getClass().getSimpleName(), e);
             }
         }
         return out;

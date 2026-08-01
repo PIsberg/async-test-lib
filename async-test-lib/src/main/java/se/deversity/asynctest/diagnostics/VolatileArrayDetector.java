@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
@@ -71,7 +73,7 @@ public class VolatileArrayDetector {
     }
 
     @SuppressWarnings("PMD.CompareObjectsWithEquals") // array identity comparison is intentional
-    private ArrayInfo findArrayInfo(Object array, String arrayName) {
+    private @Nullable ArrayInfo findArrayInfo(Object array, String arrayName) {
         for (ArrayInfo info : elementAccesses.keySet()) {
             if (info.array == array || info.name.equals(arrayName)) {
                 return info;

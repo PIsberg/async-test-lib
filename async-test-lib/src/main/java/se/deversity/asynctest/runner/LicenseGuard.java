@@ -1,5 +1,6 @@
 package se.deversity.asynctest.runner;
 
+import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.common.license.LicenseConfig;
 import se.deversity.common.license.LicenseGate;
@@ -112,27 +113,40 @@ public final class LicenseGuard {
 
     private record Fingerprint(
         String keygenAccountId,
-        String keygenApiKey,
+        @Nullable String keygenApiKey,
         String keygenProductId,
-        String lemonSqueezyStore,
-        String licenseKey,
+        @Nullable String lemonSqueezyStore,
+        @Nullable String licenseKey,
         String licenseUserEmail,
         boolean licenseMockMode
     ) {
         static Fingerprint from(AsyncTestConfig c) {
             return new Fingerprint(
                 resolve(c.keygenAccountId,   "keygen.account.id", "dummy-account"),
-                resolve(c.keygenApiKey,      "keygen.api.key",    null),
+                resolveOptional(c.keygenApiKey,      "keygen.api.key"),
                 resolve(c.keygenProductId,   "keygen.product.id", "dummy-prod"),
-                resolve(c.lemonSqueezyStore, "ls.store.subdomain", null),
-                resolve(c.licenseKey,        "license.key",        null),
+                resolveOptional(c.lemonSqueezyStore, "ls.store.subdomain"),
+                resolveOptional(c.licenseKey,        "license.key"),
                 System.getProperty("license.user.email", ""),
                 c.licenseMockMode
             );
         }
-        private static String resolve(String configValue, String sysProp, String def) {
+        /**
+         * Resolves a fingerprint component that always ends up with a value: the config, else
+         * the system property, else {@code def}. Split from {@link #resolveOptional} because the
+         * two call shapes have different nullness — the components with a dummy default can never
+         * be null, and one signature covering both made every fingerprint field look nullable.
+         */
+        private static String resolve(@Nullable String configValue, String sysProp, String def) {
+            String resolved = resolveOptional(configValue, sysProp);
+            return resolved != null ? resolved : def;
+        }
+
+        /** Resolves a fingerprint component that is absent when neither source supplies it. */
+        private static @Nullable String resolveOptional(@Nullable String configValue,
+                                                        String sysProp) {
             if (configValue != null && !configValue.isEmpty()) return configValue;
-            return System.getProperty(sysProp, def);
+            return System.getProperty(sysProp);
         }
     }
 }

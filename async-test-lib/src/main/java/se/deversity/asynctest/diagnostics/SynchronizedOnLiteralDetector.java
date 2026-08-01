@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.util.ArrayList;
 import java.util.List;
@@ -62,7 +64,7 @@ public class SynchronizedOnLiteralDetector {
 
     @SuppressFBWarnings("ES_COMPARING_STRINGS_WITH_EQ")
     @SuppressWarnings({"PMD.CompareObjectsWithEquals", "PMD.UseEqualsToCompareStrings", "ReferenceEquality"}) // intentional: s == s.intern() detects literal/interned strings via identity
-    private static String describeIfLiteral(Object obj) {
+    private static @Nullable String describeIfLiteral(Object obj) {
         if (obj instanceof String s) {
             // Intentional reference comparison: s == s.intern() is true only for interned (literal) strings
             if (s == s.intern()) return "String literal \"" + s + "\"";

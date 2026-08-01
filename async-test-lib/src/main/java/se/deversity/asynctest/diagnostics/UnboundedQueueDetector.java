@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects unbounded queue usage in concurrent code.
@@ -213,11 +214,11 @@ public class UnboundedQueueDetector {
         public final String queueName;
         public final String description;
         public final int capacity;
-        public final StackTraceElement[] creationStack;
+        public final StackTraceElement @Nullable [] creationStack;
         public final String fixSuggestion;
 
         UnboundedQueueEvent(String queueName, String description, int capacity,
-                           StackTraceElement[] creationStack, String fixSuggestion) {
+                           StackTraceElement @Nullable [] creationStack, String fixSuggestion) {
             this.queueName = queueName;
             this.description = description;
             this.capacity = capacity;

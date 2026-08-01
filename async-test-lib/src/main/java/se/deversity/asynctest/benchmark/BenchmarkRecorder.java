@@ -1,5 +1,6 @@
 package se.deversity.asynctest.benchmark;
 
+import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.vibetags.annotations.AIFeatureFlag;
 import se.deversity.vibetags.annotations.AIMemoryBudget;
@@ -38,7 +39,7 @@ public class BenchmarkRecorder {
     private final int actualThreads;
     private final List<Long> invocationTimesNanos;
     private final long startTimeNanos;
-    private BenchmarkComparator comparator;
+    private @Nullable BenchmarkComparator comparator;
     private boolean benchmarkingEnabled;
 
     /**
@@ -123,7 +124,7 @@ public class BenchmarkRecorder {
      *
      * @return the comparison result, or null if benchmarking is not enabled
      */
-    public BenchmarkComparisonResult complete() {
+    public @Nullable BenchmarkComparisonResult complete() {
         if (!benchmarkingEnabled || comparator == null) {
             return null;
         }

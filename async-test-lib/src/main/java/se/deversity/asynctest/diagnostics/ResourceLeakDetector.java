@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects resource leak patterns in concurrent code.
@@ -45,7 +46,7 @@ public class ResourceLeakDetector {
         final Set<Long> openingThreads = ConcurrentHashMap.newKeySet();
         final Set<Long> closingThreads = ConcurrentHashMap.newKeySet();
         volatile boolean currentlyOpen = false;
-        volatile Long lastOpenTime = null;
+        volatile @Nullable Long lastOpenTime = null;
 
         ResourceState(Object resource, String name, String resourceType) {
             this.name = name != null ? name : resourceType + "@" + System.identityHashCode(resource);

@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -69,7 +71,7 @@ public class FutureBlockingDetector {
         }
     }
 
-    private ExecutorState stateFor(Object executor) {
+    private @Nullable ExecutorState stateFor(Object executor) {
         if (!enabled || executor == null) {
             return null;
         }

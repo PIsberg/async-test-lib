@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.AsyncTestListenerRegistry;
@@ -20,13 +21,13 @@ import java.util.function.Supplier;
  */
 public final class Phase1DetectorSet {
 
-    public final VisibilityMonitor      visibility;
-    public final LivelockDetector       livelock;
-    public final RaceConditionDetector  race;
-    public final ThreadLocalMonitor     threadLocal;
-    public final BusyWaitDetector       busyWait;
-    public final AtomicityValidator     atomicity;
-    public final InterruptMonitor       interrupt;
+    public final @Nullable VisibilityMonitor      visibility;
+    public final @Nullable LivelockDetector       livelock;
+    public final @Nullable RaceConditionDetector  race;
+    public final @Nullable ThreadLocalMonitor     threadLocal;
+    public final @Nullable BusyWaitDetector       busyWait;
+    public final @Nullable AtomicityValidator     atomicity;
+    public final @Nullable InterruptMonitor       interrupt;
 
     /**
      * True when this set's instances were sourced from an {@link AsyncTestContext}'s
@@ -44,13 +45,13 @@ public final class Phase1DetectorSet {
      */
     private final boolean reportedByRegistry;
 
-    private Phase1DetectorSet(VisibilityMonitor visibility,
-                              LivelockDetector livelock,
-                              RaceConditionDetector race,
-                              ThreadLocalMonitor threadLocal,
-                              BusyWaitDetector busyWait,
-                              AtomicityValidator atomicity,
-                              InterruptMonitor interrupt,
+    private Phase1DetectorSet(@Nullable VisibilityMonitor visibility,
+                              @Nullable LivelockDetector livelock,
+                              @Nullable RaceConditionDetector race,
+                              @Nullable ThreadLocalMonitor threadLocal,
+                              @Nullable BusyWaitDetector busyWait,
+                              @Nullable AtomicityValidator atomicity,
+                              @Nullable InterruptMonitor interrupt,
                               boolean reportedByRegistry) {
         this.visibility  = visibility;
         this.livelock    = livelock;
@@ -95,7 +96,7 @@ public final class Phase1DetectorSet {
      *
      * @since 1.9.0
      */
-    public static Phase1DetectorSet from(AsyncTestConfig config, AsyncTestContext ctx) {
+    public static Phase1DetectorSet from(AsyncTestConfig config, @Nullable AsyncTestContext ctx) {
         return new Phase1DetectorSet(
             config.detectVisibility
                 ? sharedOrNew(ctx == null ? null : ctx.sharedVisibilityMonitor(), VisibilityMonitor::new)
@@ -122,7 +123,7 @@ public final class Phase1DetectorSet {
         );
     }
 
-    private static <T> T sharedOrNew(T shared, Supplier<T> factory) {
+    private static <T> T sharedOrNew(@Nullable T shared, Supplier<T> factory) {
         return shared != null ? shared : factory.get();
     }
 

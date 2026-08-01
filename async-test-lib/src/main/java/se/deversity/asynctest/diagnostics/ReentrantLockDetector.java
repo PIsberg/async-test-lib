@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -95,6 +97,23 @@ public class ReentrantLockDetector {
             return !timeoutLocks.isEmpty() || !starvationThreads.isEmpty();
         }
 
+        /**
+         * Registry lookup that always yields a non-null {@code LockInfo}.
+         *
+         * <p>Nothing requires a {@code record*} call's subject to have been passed to the matching
+         * {@code register*} first — no precondition, no runtime check — and the two are written at
+         * different places in a test. When the registration is missed the lookup returns
+         * {@code null} and dereferencing it threw out of {@code toString()}. That NPE never reached
+         * the user: {@code DetectorRegistry.ifIssue} catches it so one detector cannot discard the
+         * whole sweep, so the finding was simply dropped and the report the user needed never
+         * appeared. A placeholder keeps the finding and says plainly which subject was not
+         * registered.
+         */
+        private LockInfo infoFor(ReentrantLock lock) {
+            LockInfo info = lockRegistry.get(lock);
+            return info != null ? info : new LockInfo("<unregistered lock>");
+        }
+
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
@@ -103,7 +122,7 @@ public class ReentrantLockDetector {
             if (!timeoutLocks.isEmpty()) {
                 sb.append("  Lock Timeouts:\n");
                 for (ReentrantLock lock : timeoutLocks) {
-                    LockInfo info = lockRegistry.get(lock);
+                    LockInfo info = infoFor(lock);
                     sb.append("    - ").append(info.name)
                       .append(" (tryLock() timed out)\n");
                 }
@@ -140,7 +159,7 @@ public class ReentrantLockDetector {
         final String name;
         int acquireCount = 0;
         int releaseCount = 0;
-        String lastHolder = null;
+        @Nullable String lastHolder = null;
 
         LockInfo(String name) {
             this.name = name;

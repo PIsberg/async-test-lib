@@ -3,6 +3,7 @@ package se.deversity.asynctest.report;
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 
+import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.AsyncTestListener;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.vibetags.annotations.AIInputSanitized;
@@ -107,7 +108,7 @@ public final class JsonReportListener implements AsyncTestListener {
      *
      * @return the path of the written report file, or {@code null} if there were no findings
      */
-    public Path flush() {
+    public @Nullable Path flush() {
         if (findings.isEmpty() || !flushed.compareAndSet(false, true)) {
             return null;
         }

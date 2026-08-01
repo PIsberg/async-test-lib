@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects concurrent use of non-thread-safe SimpleDateFormat instances.
@@ -44,7 +45,7 @@ public class SimpleDateFormatDetector {
         final Set<Long> accessingThreads = ConcurrentHashMap.newKeySet();
         final Set<String> errorTypes = ConcurrentHashMap.newKeySet();
         final Map<String, AtomicInteger> methodCounts = new ConcurrentHashMap<>();
-        volatile Long firstAccessTime = null;
+        volatile @Nullable Long firstAccessTime = null;
 
         FormatterState(SimpleDateFormat formatter, String name) {
             this.name = name != null ? name : "formatter@" + System.identityHashCode(formatter);

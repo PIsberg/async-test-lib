@@ -1,5 +1,7 @@
 package se.deversity.asynctest.benchmark;
 
+import org.jspecify.annotations.Nullable;
+
 import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -16,8 +18,8 @@ import java.util.Objects;
 public final class BenchmarkResult implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    private final String testClass;
-    private final String testMethod;
+    private final @Nullable String testClass;
+    private final @Nullable String testMethod;
     private final LocalDateTime timestamp;
     private final int threads;
     private final int invocations;
@@ -40,11 +42,11 @@ public final class BenchmarkResult implements Serializable {
         this.invocationTimesNanos = new ArrayList<>(builder.invocationTimesNanos);
     }
 
-    public String getTestClass() {
+    public @Nullable String getTestClass() {
         return testClass;
     }
 
-    public String getTestMethod() {
+    public @Nullable String getTestMethod() {
         return testMethod;
     }
 
@@ -139,8 +141,8 @@ public final class BenchmarkResult implements Serializable {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         BenchmarkResult that = (BenchmarkResult) o;
-        return testClass.equals(that.testClass) &&
-               testMethod.equals(that.testMethod) &&
+        return Objects.equals(testClass, that.testClass) &&
+               Objects.equals(testMethod, that.testMethod) &&
                timestamp.equals(that.timestamp);
     }
 
@@ -154,8 +156,8 @@ public final class BenchmarkResult implements Serializable {
     }
 
     public static class Builder {
-        private String testClass;
-        private String testMethod;
+        private @Nullable String testClass;
+        private @Nullable String testMethod;
         private LocalDateTime timestamp = LocalDateTime.now(ZoneId.systemDefault());
         private int threads;
         private int invocations;

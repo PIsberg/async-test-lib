@@ -72,11 +72,14 @@
         <checkstyle.version>13.9.0</checkstyle.version>
         <spotbugs-maven-plugin.version>4.10.3.0</spotbugs-maven-plugin.version>
         <spotbugs.version>4.10.3</spotbugs.version>
+        <findsecbugs.version>1.14.0</findsecbugs.version>
         <maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
         <pitest-maven.version>1.25.8</pitest-maven.version>
         <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
         <archunit.version>1.4.2</archunit.version>
         <error-prone.version>2.50.0</error-prone.version>
+        <nullaway.version>0.13.8</nullaway.version>
+        <jspecify.version>1.0.0</jspecify.version>
         <asm.version>9.10.1</asm.version>
         <bytebuddy.version>1.18.11</bytebuddy.version>
         <slf4j.version>2.0.18</slf4j.version>
@@ -174,6 +177,14 @@
             <version>${error-prone.version}</version>
             <scope>provided</scope>
         </dependency>
+        <!-- JSpecify @Nullable — the annotation NullAway reads. Compile-time only:
+             CLASS retention, so it never appears on the runtime classpath of a consumer. -->
+        <dependency>
+            <groupId>org.jspecify</groupId>
+            <artifactId>jspecify</artifactId>
+            <version>${jspecify.version}</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -188,8 +199,14 @@
                     <encoding>UTF-8</encoding>
                     <compilerArgs>
                         <arg>-XDcompilePolicy=simple</arg>
+                        <!-- javac stops reporting at 100 errors by default, which silently
+                             truncates the finding list during an analyser rollout: two rounds of
+                             the NullAway migration both reported "200" because that was the cap,
+                             not the count. Raise it so a count is a count. -->
+                        <arg>-Xmaxerrs</arg>
+                        <arg>20000</arg>
                         <arg>--should-stop=ifError=FLOW</arg>
-                        <arg>-Xplugin:ErrorProne</arg>
+                        <arg>-Xplugin:ErrorProne -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=se.deversity.asynctest</arg>
                         <arg>-XDaddTypeAnnotationsToSymbol=true</arg>
                     </compilerArgs>
                     <annotationProcessorPaths>
@@ -197,6 +214,11 @@
                             <groupId>com.google.errorprone</groupId>
                             <artifactId>error_prone_core</artifactId>
                             <version>${error-prone.version}</version>
+                        </path>
+                        <path>
+                            <groupId>com.uber.nullaway</groupId>
+                            <artifactId>nullaway</artifactId>
+                            <version>${nullaway.version}</version>
                         </path>
                         <path>
                             <groupId>se.deversity.vibetags</groupId>
@@ -238,6 +260,12 @@
                     <argLine>@{argLine} -Djdk.attach.allowAttachSelf=true</argLine>
                     <systemPropertyVariables>
                         <license.mock.mode>${license.mock.mode}</license.mock.mode>
+                        <!-- A detector that throws during analysis is contained for consumers
+                             (one broken detector must not discard the whole sweep) but that
+                             containment made a broken detector indistinguishable from a clean
+                             run, which is how five of them shipped. Fail our own build on it.
+                             See se.deversity.asynctest.DetectorFailurePolicy. -->
+                        <async-test.strict-detectors>true</async-test.strict-detectors>
                     </systemPropertyVariables>
                     <!-- Deliberately no <rerunFailingTestsCount>: this library exists to surface
                          concurrency bugs (races, deadlocks, missed signals) under maximum thread
@@ -397,6 +425,20 @@
                     <xmlOutput>true</xmlOutput>
                     <failOnError>true</failOnError>
                     <excludeFilterFile>${maven.multiModuleProjectDirectory}/spotbugs-exclude.xml</excludeFilterFile>
+                    <!-- find-sec-bugs adds 121 detectors covering 144 bug patterns (counted from
+                         the plugin jar's own findbugs.xml) on top of SpotBugs' own,
+                         inside the existing gate rather than as a new one. This library holds
+                         three crypto detectors, a deserialization path guarded by an
+                         ObjectInputFilter allow-list, and a security-critical LicenseGuard;
+                         CodeQL covers the same ground from a different angle, and two
+                         independent security analysers disagreeing is information. -->
+                    <plugins>
+                        <plugin>
+                            <groupId>com.h3xstream.findsecbugs</groupId>
+                            <artifactId>findsecbugs-plugin</artifactId>
+                            <version>${findsecbugs.version}</version>
+                        </plugin>
+                    </plugins>
                 </configuration>
                 <executions>
                     <execution>

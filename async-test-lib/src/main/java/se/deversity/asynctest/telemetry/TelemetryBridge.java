@@ -2,6 +2,7 @@ package se.deversity.asynctest.telemetry;
 
 import java.util.Set;
 
+import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.diagnostics.VisibilityMonitor;
@@ -154,13 +155,14 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      * @param isWrite       {@code true} for a setter (write), {@code false} for a getter (read)
      */
     @Override
-    public void onEvent(long threadId, String qualifiedName, boolean isWrite) {
+    public void onEvent(long threadId, @Nullable String qualifiedName, boolean isWrite) {
         if (!active) {
             return;
         }
         if (!workerThreadIds.contains(threadId)) {
             return;
         }
+        if (qualifiedName == null) return;
         atomicityValidator.recordFieldAccess(qualifiedName, null, isWrite, threadId);
     }
 

@@ -3,6 +3,7 @@ package se.deversity.asynctest.agent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 import se.deversity.vibetags.annotations.AIContract;
 
@@ -76,7 +77,7 @@ final class AgentOptions {
      * @return the parsed options; empty lists when {@code agentArgs} is {@code null} or
      *         carries no recognised values
      */
-    static AgentOptions parse(String agentArgs) {
+    static AgentOptions parse(@Nullable String agentArgs) {
         List<String> includes = new ArrayList<>();
         List<String> excludes = new ArrayList<>();
         boolean debug = false;

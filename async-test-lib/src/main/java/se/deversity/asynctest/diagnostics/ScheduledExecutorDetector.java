@@ -130,6 +130,23 @@ public class ScheduledExecutorDetector {
                 || exceptionInTasks > 0;
         }
 
+        /**
+         * Registry lookup that always yields a non-null {@code ExecutorInfo}.
+         *
+         * <p>Nothing requires a {@code record*} call's subject to have been passed to the matching
+         * {@code register*} first — no precondition, no runtime check — and the two are written at
+         * different places in a test. When the registration is missed the lookup returns
+         * {@code null} and dereferencing it threw out of {@code toString()}. That NPE never reached
+         * the user: {@code DetectorRegistry.ifIssue} catches it so one detector cannot discard the
+         * whole sweep, so the finding was simply dropped and the report the user needed never
+         * appeared. A placeholder keeps the finding and says plainly which subject was not
+         * registered.
+         */
+        private ExecutorInfo infoFor(ScheduledExecutorService executor) {
+            ExecutorInfo info = executorRegistry.get(executor);
+            return info != null ? info : new ExecutorInfo("<unregistered executor>", 0);
+        }
+
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
@@ -138,7 +155,7 @@ public class ScheduledExecutorDetector {
             if (!notShutdownExecutors.isEmpty()) {
                 sb.append("  Executors Not Shut Down:\n");
                 for (ScheduledExecutorService executor : notShutdownExecutors) {
-                    ExecutorInfo info = executorRegistry.get(executor);
+                    ExecutorInfo info = infoFor(executor);
                     sb.append("    - ").append(info.name).append("\n");
                 }
                 sb.append("  Why: A ScheduledExecutorService that is never shut down continues scheduling tasks forever and\n" +

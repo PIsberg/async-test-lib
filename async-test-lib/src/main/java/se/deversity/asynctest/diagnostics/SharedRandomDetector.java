@@ -5,6 +5,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects concurrent use of non-thread-safe Random instances.
@@ -39,8 +40,8 @@ public class SharedRandomDetector {
         final AtomicInteger accessCount = new AtomicInteger(0);
         final Set<Long> accessingThreads = ConcurrentHashMap.newKeySet();
         final Map<String, AtomicInteger> methodCounts = new ConcurrentHashMap<>();
-        volatile Long firstAccessTime = null;
-        volatile Long lastAccessTime = null;
+        volatile @Nullable Long firstAccessTime = null;
+        volatile @Nullable Long lastAccessTime = null;
 
         RandomState(Random random, String name) {
             this.name = name != null ? name : "random@" + System.identityHashCode(random);

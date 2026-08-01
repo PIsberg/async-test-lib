@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -42,7 +44,7 @@ public class MdcContextLeakDetector {
     private static class TaskSnapshot {
         final String              threadName;
         final Map<String, String> startMdc;
-        volatile Map<String, String> endMdc;
+        volatile @Nullable Map<String, String> endMdc;
 
         TaskSnapshot(String threadName, Map<String, String> startMdc) {
             this.threadName = threadName;

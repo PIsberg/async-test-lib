@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -403,7 +405,7 @@ public class ThreadPoolDeadlockDetector {
          *
          * @return pool name
          */
-        public String getPoolName() {
+        public @Nullable String getPoolName() {
             return poolName;
         }
 
@@ -421,7 +423,7 @@ public class ThreadPoolDeadlockDetector {
          *
          * @return stack trace at submission point
          */
-        public StackTraceElement[] getStackTrace() {
+        public StackTraceElement @Nullable [] getStackTrace() {
             return stackTrace == null ? null : stackTrace.clone();
         }
     }

@@ -5,6 +5,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects Condition variable misuse patterns in concurrent code.
@@ -53,7 +54,7 @@ public class ConditionVariableDetector {
         final AtomicInteger signalsWithoutWaiters = new AtomicInteger(0);
         final Set<Long> waitingThreads = ConcurrentHashMap.newKeySet();
         final Set<Long> signalingThreads = ConcurrentHashMap.newKeySet();
-        volatile Long lastSignalTime = null;
+        volatile @Nullable Long lastSignalTime = null;
 
         ConditionState(Condition condition, String name) {
             this.name = name != null ? name : "condition@" + System.identityHashCode(condition);

@@ -1587,7 +1587,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 72. Uncommitted Changes Detector
 * **Severity**: `LOW`
-* **Description**: Runs `git status --porcelain` to surface untracked or uncommitted files in the repository at test time, helping catch forgotten local edits that would make test behavior diverge from what CI sees on a clean checkout.
+* **Description**: Runs `git status --porcelain` to surface untracked or uncommitted files in the repository at test time, helping catch forgotten local edits that would make test behavior diverge from what CI sees on a clean checkout. The subprocess runs **once per JVM** and every later call replays the result — forking it per test method cost 99% of the whole analysis sweep. In a runner that reuses one JVM for a whole session, committing mid-session will not change what this detector reports until the JVM restarts.
 * **Buggy Code**:
   ```java
   @AsyncTest(threads = 4)

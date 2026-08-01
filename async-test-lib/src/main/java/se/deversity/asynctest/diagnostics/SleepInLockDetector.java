@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects Thread.sleep() calls while holding a lock.
@@ -35,14 +36,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class SleepInLockDetector {
 
     private static class SleepInLockEvent {
-        final String lockName;
+        final @Nullable String lockName;
         final String threadName;
         final long sleepDuration;
         final StackTraceElement[] stackTrace;
-        final String lockType; // "synchronized" or "ReentrantLock"
+        final @Nullable String lockType; // "synchronized" or "ReentrantLock"
 
-        SleepInLockEvent(String lockName, String threadName, long sleepDuration,
-                        StackTraceElement[] stackTrace, String lockType) {
+        SleepInLockEvent(@Nullable String lockName, String threadName, long sleepDuration,
+                        StackTraceElement[] stackTrace, @Nullable String lockType) {
             this.lockName = lockName;
             this.threadName = threadName;
             this.sleepDuration = sleepDuration;
@@ -105,10 +106,10 @@ public class SleepInLockDetector {
 
     private static class ThreadInfo {
         final boolean holdsLock;
-        final String lockName;
-        final String lockType;
+        final @Nullable String lockName;
+        final @Nullable String lockType;
 
-        ThreadInfo(boolean holdsLock, String lockName, String lockType) {
+        ThreadInfo(boolean holdsLock, @Nullable String lockName, @Nullable String lockType) {
             this.holdsLock = holdsLock;
             this.lockName = lockName;
             this.lockType = lockType;
@@ -196,14 +197,15 @@ public class SleepInLockDetector {
      * Immutable snapshot of a sleep-in-lock event.
      */
     public static class SleepInLockEventSnapshot {
-        public final String lockName;
+        public final @Nullable String lockName;
         public final String threadName;
         public final long sleepDuration;
         public final StackTraceElement[] stackTrace;
-        public final String lockType;
+        public final @Nullable String lockType;
 
-        SleepInLockEventSnapshot(String lockName, String threadName, long sleepDuration,
-                                StackTraceElement[] stackTrace, String lockType) {
+        SleepInLockEventSnapshot(@Nullable String lockName, String threadName,
+                                long sleepDuration, StackTraceElement[] stackTrace,
+                                @Nullable String lockType) {
             this.lockName = lockName;
             this.threadName = threadName;
             this.sleepDuration = sleepDuration;

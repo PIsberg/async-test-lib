@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects thread leaks in concurrent code.
@@ -51,7 +52,7 @@ public class ThreadLeakDetector {
         // Descriptive name (above) is captured at registration and is all the report
         // needs once terminated, so the Thread itself can be dropped below without
         // losing any information reports rely on.
-        volatile Thread thread;
+        volatile @Nullable Thread thread;
         volatile boolean terminated = false;
 
         ThreadState(Thread thread, String name) {
@@ -201,13 +202,13 @@ public class ThreadLeakDetector {
      */
     public static class ThreadLeakEvent {
         public final String threadName;
-        public final Thread thread;
+        public final @Nullable Thread thread;
         public final long startTime;
-        public final StackTraceElement[] creationStack;
+        public final StackTraceElement @Nullable [] creationStack;
         public final String reason;
 
-        ThreadLeakEvent(String threadName, Thread thread, long startTime,
-                       StackTraceElement[] creationStack, String reason) {
+        ThreadLeakEvent(String threadName, @Nullable Thread thread, long startTime,
+                       StackTraceElement @Nullable [] creationStack, String reason) {
             this.threadName = threadName;
             this.thread = thread;
             this.startTime = startTime;

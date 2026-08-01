@@ -11,6 +11,12 @@
 
     DP_DO_INSIDE_DO_PRIVILEGED: SecurityManager is deprecated and removed in
     Java 17+; doPrivileged blocks are no-ops on Java 21.
+
+    The find-sec-bugs section at the bottom was triaged once, finding by finding,
+    when the plugin was added. Each exclusion says why. The narrow ones (the
+    deserialization sink, the report writers) are deliberately scoped to a class
+    or a method so that a NEW instance of the same pattern elsewhere still fails
+    the build — that is the whole point of running the analyser.
 -->
 <FindBugsFilter>
 
@@ -97,6 +103,103 @@
     <Match>
         <Bug pattern="LI_LAZY_INIT_STATIC"/>
         <Class name="se.deversity.asynctest.telemetry.TelemetryRegistry"/>
+    </Match>
+
+    <!-- ================================================================
+         find-sec-bugs triage
+         ================================================================ -->
+
+    <!-- CRLF_INJECTION_LOGS (24 findings) — the threat model does not apply.
+         The values reaching these log calls are test method names, thread names,
+         detector names and timing numbers: all supplied by the developer running
+         their own suite, written to their own build log, read by them. There is no
+         second party to deceive by injecting a newline. The library also logs through
+         SLF4J's parameterised form throughout, which is the mitigation this rule
+         normally asks for. -->
+    <Match>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+
+    <!-- PREDICTABLE_RANDOM — java.util.Random here is the requirement, not a defect.
+         ConcurrencyRunner draws a per-round replay seed and logs it so a failing run
+         can be reproduced with @AsyncTest(replaySeed = N). A cryptographically strong
+         generator would still be predictable once the seed is printed, and swapping it
+         in would only make the draw slower. Scoped to the one class so a genuine
+         security use of Random elsewhere is still reported. -->
+    <Match>
+        <Bug pattern="PREDICTABLE_RANDOM"/>
+        <Class name="se.deversity.asynctest.runner.ConcurrencyRunner"/>
+    </Match>
+
+    <!-- OBJECT_DESERIALIZATION — a real Java native deserialization sink, already
+         hardened. readStore installs BASELINE_FILTER, a strict ObjectInputFilter
+         allow-list ending in !* so every class in the stream must be named or the
+         read is rejected (CWE-502). find-sec-bugs flags the readObject call without
+         seeing setObjectInputFilter. Scoped to the single method: any other
+         deserialization sink introduced anywhere in the library must fail the build
+         and be argued for on its own terms. See docs/QUALITY_GATES.md and the
+         @AIStrictClasspath note on the method. -->
+    <Match>
+        <Bug pattern="OBJECT_DESERIALIZATION"/>
+        <Class name="se.deversity.asynctest.benchmark.BenchmarkComparator"/>
+        <Method name="readStore"/>
+    </Match>
+
+    <!-- POTENTIAL_XML_INJECTION — two different false positives.
+
+         Nine of the eleven are detector toString() methods that build a plain-text
+         report with a StringBuilder. There is no XML anywhere in them; the heuristic
+         fires on angle brackets in prose.
+
+         The other two are JUnitXmlReportListener.writeXml, which does write XML and
+         does escape: attributes through xmlEscape (& < > ") and the report body
+         through cdataEscape, which splits the ]]> terminator across two CDATA
+         sections. find-sec-bugs cannot follow the escaping helper. Scoped to the
+         writer method rather than the class, so a new unescaped append in a different
+         method is still reported. -->
+    <Match>
+        <Bug pattern="POTENTIAL_XML_INJECTION"/>
+        <Package name="se.deversity.asynctest.diagnostics"/>
+    </Match>
+    <Match>
+        <Bug pattern="POTENTIAL_XML_INJECTION"/>
+        <Class name="se.deversity.asynctest.report.JUnitXmlReportListener"/>
+        <Method name="writeXml"/>
+    </Match>
+
+    <!-- PATH_TRAVERSAL_IN — the "user input" is the developer's own system property
+         (async-test.report.dir and friends) choosing where their build writes its
+         report. The path is supplied by the person running the build, resolved in
+         their own process, and used to write a file they asked for; there is no
+         privilege boundary to traverse. Scoped to the two report writers. -->
+    <Match>
+        <Bug pattern="PATH_TRAVERSAL_IN"/>
+        <Class name="se.deversity.asynctest.report.JUnitXmlReportListener"/>
+    </Match>
+    <Match>
+        <Bug pattern="PATH_TRAVERSAL_IN"/>
+        <Class name="se.deversity.asynctest.report.JsonReportListener"/>
+    </Match>
+
+    <!-- IMPROPER_UNICODE — the mitigation this rule asks for is already present.
+         AgentOptions lowercases an agent-argument key with toLowerCase(Locale.ROOT),
+         which is the locale-independent form; the rule fires on toLowerCase regardless
+         of the argument. Nor is the result a security decision: it selects between the
+         "includes" and "excludes" option names when parsing -javaagent arguments the
+         developer wrote themselves. Scoped to the one class. -->
+    <Match>
+        <Bug pattern="IMPROPER_UNICODE"/>
+        <Class name="se.deversity.asynctest.agent.AgentOptions"/>
+    </Match>
+
+    <!-- INFORMATION_EXPOSURE_THROUGH_AN_ERROR_MESSAGE — printing the failure is the
+         method's entire job. Byte Buddy calls onError when it cannot instrument a
+         class, and the agent's contract is to say which class and why on the
+         developer's own stderr rather than fail their JVM silently. There is no
+         remote party and no response to leak into. Scoped to the listener. -->
+    <Match>
+        <Bug pattern="INFORMATION_EXPOSURE_THROUGH_AN_ERROR_MESSAGE"/>
+        <Class name="se.deversity.asynctest.agent.AsyncTestAgent$DiagnosticListener"/>
     </Match>
 
 </FindBugsFilter>

@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -65,7 +67,7 @@ public class ExecutorDeadlockDetector {
         }
     }
 
-    private ExecutorState stateFor(Object executor) {
+    private @Nullable ExecutorState stateFor(Object executor) {
         return executor == null ? null : executors.get(System.identityHashCode(executor));
     }
 

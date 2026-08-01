@@ -10,6 +10,7 @@ import se.deversity.vibetags.annotations.AIImmutable;
 
 import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -425,7 +426,9 @@ public final class AsyncTestConfig {
             effectiveDetectAll = ann.detectAll();
         } else {
             effectiveDetectAll = true;
-            Set<DetectorType> enabled = preset.enabled();
+            // Non-null here: the isAll() branch above owns every preset whose set is null.
+            Set<DetectorType> enabled = Objects.requireNonNull(
+                preset.enabled(), "non-all preset must enumerate its detectors");
             for (DetectorType t : DetectorType.values()) {
                 if (!enabled.contains(t)) effectiveExcludes.add(t);
             }

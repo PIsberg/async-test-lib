@@ -8,6 +8,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tracks compound operations that should behave atomically.
@@ -64,7 +65,7 @@ public class AtomicityValidator {
         activeOperations.remove(operationKey(operationName));
     }
 
-    public void recordFieldAccess(String fieldName, Object value, boolean isWrite) {
+    public void recordFieldAccess(String fieldName, @Nullable Object value, boolean isWrite) {
         recordFieldAccess(fieldName, value, isWrite, Thread.currentThread().threadId());
     }
 
@@ -92,7 +93,8 @@ public class AtomicityValidator {
      * @param threadId  the id of the thread the access is attributed to
      * @since 1.7.0
      */
-    public void recordFieldAccess(String fieldName, Object value, boolean isWrite, long threadId) {
+    public void recordFieldAccess(String fieldName, @Nullable Object value, boolean isWrite,
+                                  long threadId) {
         if (!enabled || fieldName == null || fieldName.isBlank()) {
             return;
         }
