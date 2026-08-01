@@ -41,9 +41,19 @@ The construction pair is the useful reading, not either number alone. Against 1.
 all-detectors measured 594 µs ± 82 and the no-detector floor 567 µs ± 114. Those overlap, so the
 honest conclusion is that building 127 detectors is *not measurable* at this resolution, not that
 it costs 27 µs — quoting the difference of two overlapping intervals is the same mistake this file
-warns about two paragraphs up. Nearly all of the 567 µs is fixed setup no configuration avoids;
-if you need to attribute it, `ServiceLoader` discovery of the `DetectorFactory` services runs on
-every `AsyncTestContext` construction and is the first place to look.
+warns about two paragraphs up.
+
+Most of that floor is fixed setup, and it has been attributed. A tighter loop outside JMH
+(200 iterations, warmed) splits construction as: 961 µs with every detector off, 1766 µs with all
+127 on, and **331 µs for `ServiceLoader` discovery of the `DetectorFactory` services alone** — all
+127 provider classes re-resolved on every `AsyncTestContext` construction, i.e. once per
+`@AsyncTest` method, to produce a list that cannot change while the JVM runs.
+
+That is a third of the no-detector floor and it is deliberately **not** fixed here. Caching it
+means sharing `DetectorFactory` instances across tests instead of building fresh ones per test,
+which changes observable semantics of a published extension point — and
+[roadmap-v2.md](../docs/analysis/roadmap-v2.md) Train 3 already has the dual-registry question
+open over that same code. 331 µs against the 170 ms below is not worth pre-empting that decision.
 
 `analyzeSweep_allDetectors` is why this class exists. It first measured **170 ms** per sweep, and
 attributing that detector by detector put 99.2% of a 290 ms profile in `UncommittedChangesDetector`

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — strict detector mode, so a broken detector cannot pass as a clean run
+
+Both analysis sweeps catch around each detector so one failure cannot discard the findings already
+collected. That containment is right for a consumer's build and wrong for this one: a detector that
+throws reports nothing, and nothing reported looks exactly like nothing found. It is how the five
+NPEs below survived several releases — the only trace was one stderr line.
+
+`se.deversity.asynctest.DetectorFailurePolicy` keeps the containment and adds a switch. With
+`-Dasync-test.strict-detectors=true` the swallowed failure becomes an `AssertionError` naming the
+detector, with the original throwable as its cause. The library's own surefire and Gradle test
+configurations set it; consumers are unaffected and need do nothing.
+
+Verified by breaking a detector on purpose rather than by inspection — the same
+`IllegalStateException` thrown from `SharedRandomDetector.analyze()` gives `BUILD SUCCESS` with the
+flag off and `BUILD FAILURE` with it on. `DetectorSweepResilienceTest` now pins both halves: the
+containment (with the flag cleared for the duration) and the promotion.
+
+The class is `@API(status = INTERNAL)` — it is a build-configuration hook, not something a consumer
+should call.
+
 ### Fixed — five detectors silently reported nothing after a `record*` without a `register*`
 
 `CountDownLatchDetector`, `CyclicBarrierDetector`, `ExchangerDetector`, `PhaserDetector` and

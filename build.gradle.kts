@@ -110,6 +110,10 @@ subprojects {
             ?: (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
         systemProperty("license.mock.mode", System.getProperty("license.mock.mode", "true"))
         systemProperty("license.key", System.getProperty("license.key", ""))
+        // Mirrors the Maven surefire property: a detector that throws during analysis stays
+        // contained for consumers but fails this project's own build, because a detector that
+        // reports nothing is indistinguishable from a clean run. See DetectorFailurePolicy.
+        systemProperty("async-test.strict-detectors", "true")
         // Permit AsyncTestAgent.selfAttach() to attach to the forked test JVM
         // (self-attach is disabled by default since JDK 9). Mirrors the Maven surefire argLine.
         jvmArgs("-Djdk.attach.allowAttachSelf=true")

@@ -988,8 +988,11 @@ final class DetectorRegistry {
             // skip every detector after it. A broken detector reports nothing; the rest of
             // the sweep still reports. Detectors accumulate state from N×M user threads, and
             // third-party ones arrive via the public SPI, so this is a live hazard.
-            System.err.println("[AsyncTest] Detector " + name
-                + " failed during analysis and was skipped: " + e);
+            //
+            // Containment also means a broken detector is invisible in a passing build, which
+            // is how five of them shipped. DetectorFailurePolicy keeps the containment for
+            // consumers and turns it into a failure under this project's own test config.
+            DetectorFailurePolicy.detectorFailed(name, e);
         }
     }
 }

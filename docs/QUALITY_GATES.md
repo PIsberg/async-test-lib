@@ -20,6 +20,19 @@ throughout `src/test/java`.
 purpose: in this library a test that fails intermittently is reporting a real detector finding, not
 infrastructure noise. Auto-rerunning would mask the exact signal the project exists to catch.
 
+**Strict detector mode is on for our own build.** Both analysis sweeps catch around each detector
+so that one failure cannot discard the findings already collected — right for a consumer, wrong
+here, because a detector that throws reports nothing and *nothing reported is indistinguishable
+from a clean run*. Five detectors shipped for several releases dereferencing a registry miss inside
+`toString()`, and the only trace was a stderr line nobody read.
+
+`async-test.strict-detectors=true` (set in the surefire `systemPropertyVariables` and in
+`build.gradle.kts`) promotes that swallowed failure to an `AssertionError`. Consumers keep the
+containment. Verified by breaking a detector on purpose: the same `IllegalStateException` in
+`SharedRandomDetector.analyze()` gives `BUILD SUCCESS` with the flag off and `BUILD FAILURE` with
+it on. `DetectorSweepResilienceTest` pins both halves — the containment (with the flag cleared for
+the duration) and the promotion. Mechanics in `se.deversity.asynctest.DetectorFailurePolicy`.
+
 ## Build with JDK 21 or 25, not 26
 
 > **Resolved: the PMD engine is now pinned, and JDK 26 no longer trips the gate.**

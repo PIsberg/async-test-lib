@@ -259,6 +259,12 @@
                     <argLine>@{argLine} -Djdk.attach.allowAttachSelf=true</argLine>
                     <systemPropertyVariables>
                         <license.mock.mode>${license.mock.mode}</license.mock.mode>
+                        <!-- A detector that throws during analysis is contained for consumers
+                             (one broken detector must not discard the whole sweep) but that
+                             containment made a broken detector indistinguishable from a clean
+                             run, which is how five of them shipped. Fail our own build on it.
+                             See se.deversity.asynctest.DetectorFailurePolicy. -->
+                        <async-test.strict-detectors>true</async-test.strict-detectors>
                     </systemPropertyVariables>
                     <!-- Deliberately no <rerunFailingTestsCount>: this library exists to surface
                          concurrency bugs (races, deadlocks, missed signals) under maximum thread
