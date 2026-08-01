@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0-RC5] - 2026-08-01
+
 ### Added — a consumer fixture for every detector, and an E2E workflow that runs it
 `consumer-fixture` had four hand-written test classes covering the public API in general.
 It now also has `se.deversity.asynctest.fixture.detectors`: **one `@AsyncTest` fixture per

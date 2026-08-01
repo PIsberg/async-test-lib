@@ -47,6 +47,7 @@ Semantic versioning, with `-RCn` for release candidates:
 | File | What |
 | --- | --- |
 | `pom.xml` | `<version>` — canonical |
+| `async-test-lib/pom.xml`, `async-test-agent/pom.xml`, `async-test-analysis/pom.xml` | `<parent><version>` — the reactor modules |
 | `gradle.properties` | `version=` — the Gradle build reads it from here |
 | `consumer-fixture/pom.xml` | own `<version>` + `<async-test.version>` |
 | `consumer-fixture/build.gradle.kts` | `asyncTestVersion` |
@@ -101,8 +102,22 @@ The tag publishes, so a red build after tagging means a burned version. Run what
 
 ```bash
 mvn --batch-mode clean verify "-Dlicense.mock.mode=true"
-mvn --batch-mode checkstyle:check pmd:check spotbugs:check
 ```
+
+That one command is the whole gate. Checkstyle, PMD and SpotBugs are bound to the `verify`
+phase (`<goal>check</goal>` in `pom.xml`), so `verify` runs all three across every module —
+there is no separate command to run, and a clean `verify` means the static analysis passed.
+
+**Do not** invoke them as bare goals (`mvn checkstyle:check pmd:check spotbugs:check`). Since
+the build became a reactor, that fails before it checks anything:
+
+```
+Could not find artifact se.deversity.async-test-lib:async-test-lib:jar:<version> in central
+```
+
+A bare goal invocation does not build the sibling modules, so `async-test-agent` tries to
+resolve the library from Central — where the version being released does not exist yet. The
+failure looks like a broken release and is not one.
 
 Local quirks:
 

@@ -49,6 +49,11 @@ fi
 
 ALLOWLIST=(
   pom.xml
+  # The reactor modules pin the parent by version; miss one and Maven resolves the
+  # PREVIOUS parent from Central instead of the one being released.
+  async-test-lib/pom.xml
+  async-test-agent/pom.xml
+  async-test-analysis/pom.xml
   gradle.properties
   consumer-fixture/pom.xml
   consumer-fixture/build.gradle.kts
