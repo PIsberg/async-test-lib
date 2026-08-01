@@ -72,6 +72,7 @@
         <checkstyle.version>13.9.0</checkstyle.version>
         <spotbugs-maven-plugin.version>4.10.3.0</spotbugs-maven-plugin.version>
         <spotbugs.version>4.10.3</spotbugs.version>
+        <findsecbugs.version>1.14.0</findsecbugs.version>
         <maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
         <pitest-maven.version>1.25.8</pitest-maven.version>
         <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
@@ -424,6 +425,20 @@
                     <xmlOutput>true</xmlOutput>
                     <failOnError>true</failOnError>
                     <excludeFilterFile>${maven.multiModuleProjectDirectory}/spotbugs-exclude.xml</excludeFilterFile>
+                    <!-- find-sec-bugs adds 121 detectors covering 144 bug patterns (counted from
+                         the plugin jar's own findbugs.xml) on top of SpotBugs' own,
+                         inside the existing gate rather than as a new one. This library holds
+                         three crypto detectors, a deserialization path guarded by an
+                         ObjectInputFilter allow-list, and a security-critical LicenseGuard;
+                         CodeQL covers the same ground from a different angle, and two
+                         independent security analysers disagreeing is information. -->
+                    <plugins>
+                        <plugin>
+                            <groupId>com.h3xstream.findsecbugs</groupId>
+                            <artifactId>findsecbugs-plugin</artifactId>
+                            <version>${findsecbugs.version}</version>
+                        </plugin>
+                    </plugins>
                 </configuration>
                 <executions>
                     <execution>

@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — find-sec-bugs inside the SpotBugs gate
+
+121 security detectors covering 144 bug patterns (counted from the plugin jar's own
+`findbugs.xml`), added as a SpotBugs plugin rather than as a new gate: one
+`<plugins>` entry under `spotbugs-maven-plugin`, mirrored in `build.gradle.kts` through the
+`spotbugsPlugins` configuration, sharing the existing `spotbugs-exclude.xml`. The library holds
+three cryptography detectors, a Java deserialization path and a security-critical `LicenseGuard`,
+and CodeQL already covers similar ground from a different angle — two independent security
+analysers disagreeing is information.
+
+**It found 41 things and none of them were bugs**, which is worth stating plainly rather than
+dressing up. The most interesting near-miss was `POTENTIAL_XML_INJECTION` on
+`JUnitXmlReportListener.writeXml`, which does write XML from runtime-captured data: it turned out
+to escape correctly already, attributes through `xmlEscape` and the report body through
+`cdataEscape`, which splits the `]]>` terminator across two CDATA sections. The `OBJECT_DESERIALIZATION`
+finding is a genuine CWE-502 sink and was already hardened with a strict `ObjectInputFilter`
+allow-list. The full triage, pattern by pattern with the reasoning for each, is in
+[QUALITY_GATES.md](QUALITY_GATES.md#find-sec-bugs).
+
+Exclusions are scoped on purpose: the deserialization one names a single class *and* method, the XML
+ones name the writer method, the predictable-random one names one class — so a new instance of the
+same pattern elsewhere still fails the build. Only `CRLF_INJECTION_LOGS` is excluded by pattern
+alone, because the reasoning (the log input is the developer's own test names, in their own build
+log) holds at every call site in a test library.
+
+Verified live rather than assumed: `new java.util.Random().nextInt()` added to a class outside the
+exclusion scope fails both builds — Maven reports `PREDICTABLE_RANDOM`, Gradle reports `SECPR` —
+which confirms the plugin loads in both and that the scoping does what it claims.
+
 ### Added — strict detector mode, so a broken detector cannot pass as a clean run
 
 Both analysis sweeps catch around each detector so one failure cannot discard the findings already

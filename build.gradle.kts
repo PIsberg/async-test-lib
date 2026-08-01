@@ -28,6 +28,7 @@ extra["slf4jVersion"] = "2.0.18"      // pom: slf4j.version
 extra["archunitVersion"] = "1.4.2"    // pom: archunit.version
 extra["vibetagsVersion"] = "1.0.0-RC8" // pom: vibetags.version
 extra["spotbugsVersion"] = "4.10.3"   // pom: spotbugs.version
+extra["findsecbugsVersion"] = "1.14.0" // pom: findsecbugs.version
 extra["errorProneVersion"] = "2.50.0" // pom: error-prone.version
 extra["nullawayVersion"] = "0.13.8"   // pom: nullaway.version
 extra["jspecifyVersion"] = "1.0.0"    // pom: jspecify.version
@@ -169,6 +170,13 @@ subprojects {
         effort.set(com.github.spotbugs.snom.Effort.MAX)
         reportLevel.set(com.github.spotbugs.snom.Confidence.LOW)
         ignoreFailures.set(false)
+    }
+    // find-sec-bugs rides inside the SpotBugs gate rather than adding a new one. Mirrors the
+    // parent POM's <plugins> block under spotbugs-maven-plugin; the triage lives in the shared
+    // spotbugs-exclude.xml, so both builds see the same findings and the same exclusions.
+    dependencies {
+        add("spotbugsPlugins",
+            "com.h3xstream.findsecbugs:findsecbugs-plugin:${rootProject.extra["findsecbugsVersion"]}")
     }
     tasks.named("spotbugsMain") { enabled = true }
     tasks.named("spotbugsTest") { enabled = false }

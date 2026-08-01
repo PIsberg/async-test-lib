@@ -71,18 +71,51 @@ the duration) and the promotion. Mechanics in `se.deversity.asynctest.DetectorFa
 
 ## Static analysis and API gates
 
-`mvn verify` runs Checkstyle, PMD, SpotBugs, Error Prone, NullAway, JaCoCo thresholds and japicmp —
-all of which fail the build.
+`mvn verify` runs Checkstyle, PMD, SpotBugs (with find-sec-bugs), Error Prone, NullAway, JaCoCo
+thresholds and japicmp — all of which fail the build.
 
 - **Checkstyle** fails on warnings.
 - **PMD** flags `LooseCoupling` (declare `ConcurrentMap`, not `ConcurrentHashMap`) and
   `UnusedPrivateField`.
 - **SpotBugs** runs at Max effort / Low threshold and flags repeated `path.getParent()` null paths.
+- **find-sec-bugs** adds 121 security detectors inside the SpotBugs run (see below).
 - **Error Prone** covers main sources only.
 - **NullAway** gates nullness on main sources, as an Error Prone check (see below).
 - **JaCoCo** requires line ≥ 70% and branch ≥ 65%.
 - **japicmp** breaks the build on binary-incompatible API changes against the last release.
 - **ArchUnit** tests enforce package structure and the module boundaries from within the suite.
+
+### find-sec-bugs
+
+Runs as a SpotBugs plugin rather than a separate gate — one `<plugins>` entry under
+`spotbugs-maven-plugin`, mirrored in `build.gradle.kts` via the `spotbugsPlugins` configuration,
+sharing the same `spotbugs-exclude.xml`. It adds 121 detectors covering 144 bug patterns (counted
+from the plugin jar's own `findbugs.xml`, not from its README). CodeQL already
+covers similar ground from a different angle, and two independent security analysers disagreeing is
+information rather than duplication.
+
+**It found 41 things and none of them were bugs.** That is the honest result, and the triage is
+worth reading before adding an exclusion of your own, because the reasoning is the deliverable:
+
+| Pattern | Count | Verdict |
+|---|---|---|
+| `CRLF_INJECTION_LOGS` | 24 | Threat model does not apply — the log input is the developer's own test and thread names, written to their own build log. |
+| `POTENTIAL_XML_INJECTION` | 11 | 9 are detector `toString()` building plain text with no XML anywhere; 2 are `JUnitXmlReportListener.writeXml`, which does escape (`xmlEscape` for attributes, `cdataEscape` splitting the `]]>` terminator). |
+| `PATH_TRAVERSAL_IN` | 2 | The "user input" is the developer's own system property naming where their build writes its report. No privilege boundary. |
+| `PREDICTABLE_RANDOM` | 1 | Required, not a defect: the runner's replay seed is printed so a failing run can be reproduced with `@AsyncTest(replaySeed = N)`. |
+| `OBJECT_DESERIALIZATION` | 1 | A genuine CWE-502 sink, already hardened — `readStore` installs a strict `ObjectInputFilter` allow-list ending in `!*`. |
+| `IMPROPER_UNICODE` | 1 | `toLowerCase(Locale.ROOT)` is already the mitigation the rule asks for. |
+| `INFORMATION_EXPOSURE_THROUGH_AN_ERROR_MESSAGE` | 1 | Byte Buddy's `onError` saying which class it could not instrument is the method's purpose. |
+
+**Exclusions are scoped deliberately.** The deserialization one names a single class *and method*,
+the XML ones name the writer method, the random one names one class — so a *new* instance of the
+same pattern anywhere else still fails the build. Only `CRLF_INJECTION_LOGS`, where the reasoning
+holds for every call site in a test library, is excluded by pattern alone.
+
+The gate was verified live rather than assumed: adding
+`new java.util.Random().nextInt()` to a class outside the exclusion scope makes both builds fail
+(Maven `PREDICTABLE_RANDOM`, Gradle `SECPR`), which confirms both that the plugin loads and that the
+scoping works.
 
 ### NullAway
 
