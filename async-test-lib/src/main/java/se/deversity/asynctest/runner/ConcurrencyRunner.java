@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICore;
+import se.deversity.vibetags.annotations.AILoadBearing;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 import se.deversity.asynctest.AfterEachInvocation;
 import se.deversity.asynctest.AsyncTestConfig;
@@ -79,6 +80,17 @@ public class ConcurrencyRunner {
      * await and the async-body {@code CompletionStage} wait. See
      * {@link #resolveTimeoutMultiplier()} for the CI-scaling mechanism itself.
      */
+    @AILoadBearing(
+        invariant = "The timeoutAlreadyReported flag, and the per-step guarded cleanup in the "
+                  + "finally block, are both deliberate. A pre-round deadline check throws an "
+                  + "error that has already been through timeoutError(), and each cleanup step is "
+                  + "wrapped in its own try so one failure cannot suppress the next.",
+        breaksIf = "The flag is removed as redundant — the catch block then sends the same error "
+                 + "through timeoutError() a second time, producing two onTimeout callbacks and "
+                 + "two copies of every report for one timeout. Or the cleanup steps are merged "
+                 + "into one try, at which point a failing AsyncTestContext.uninstall() skips the "
+                 + "livelock snapshot and leaks context into the next test."
+    )
     public static void execute(ReflectiveInvocationContext<Method> invocationContext,
                                AsyncTestConfig config) throws Throwable {
 

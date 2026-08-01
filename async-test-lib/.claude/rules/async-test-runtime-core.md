@@ -19,11 +19,11 @@ When modifying these elements, audit for:
 ### se.deversity.asynctest.AsyncTestContext
 - **Note**: ThreadLocal install/uninstall must always be symmetric. A leak propagates stale detector state across test invocations and causes false positives or missed detections.
 
-### se.deversity.asynctest.runner.ConcurrencyRunner
-- **Note**: Core stress-test execution engine. The CyclicBarrier pattern forces maximum thread contention. Timeout logic and AsyncTestContext install/uninstall are carefully calibrated — subtle changes introduce flaky tests or missed detector activations.
-
 ### se.deversity.asynctest.extension.AsyncTestInvocationInterceptor
 - **Note**: invocation.skip() is intentional — ConcurrencyRunner owns the full N×M execution and must never call invocation.proceed(). Restoring proceed() would run the test body once outside the CyclicBarrier, bypassing all detectors.
+
+### se.deversity.asynctest.runner.ConcurrencyRunner
+- **Note**: Core stress-test execution engine. The CyclicBarrier pattern forces maximum thread contention. Timeout logic and AsyncTestContext install/uninstall are carefully calibrated — subtle changes introduce flaky tests or missed detector activations.
 
 ## Thread-Safety Guarantee
 
@@ -41,7 +41,7 @@ When modifying these elements, audit for:
 
 ## Public API Surface Protection
 - **Rule**: Exposes public API. Preserve signature, Javadoc, and behavior without breaking backwards or source compatibility.
-- **Applies to**: `se.deversity.asynctest.AsyncTestContext`, `se.deversity.asynctest.AsyncTestContext.sharedMessageDigestDetector()`, `se.deversity.asynctest.AsyncTestContext.sharedCryptographyDetector()`, `se.deversity.asynctest.extension.AsyncTestExtension`
+- **Applies to**: `se.deversity.asynctest.AsyncTestContext`, `se.deversity.asynctest.AsyncTestContext.sharedCryptographyDetector()`, `se.deversity.asynctest.AsyncTestContext.sharedMessageDigestDetector()`, `se.deversity.asynctest.extension.AsyncTestExtension`
 
 ## Idempotency Guarantee
 - **Rule**: These operations are idempotent. Calling them multiple times must produce the same result as calling them once.
@@ -56,6 +56,17 @@ When modifying these elements, audit for:
 
 ### se.deversity.asynctest.AsyncTestContext.install(se.deversity.asynctest.AsyncTestContext)
 - **Allowed Callers**: [se.deversity.asynctest.runner.ConcurrencyRunner]
+
+## Load-Bearing Oddity
+- **Rule**: This looks removable but is deliberate. Refactor only while the invariant holds.
+
+### se.deversity.asynctest.extension.AsyncTestInvocationInterceptor.interceptTestTemplateMethod(org.junit.jupiter.api.extension.InvocationInterceptor.Invocation<java.lang.Void>,org.junit.jupiter.api.extension.ReflectiveInvocationContext<java.lang.reflect.Method>,org.junit.jupiter.api.extension.ExtensionContext)
+- **Invariant**: This method calls invocation.skip() and never invocation.proceed().
+- **Breaks if changed**: Someone 'fixes' the apparently-dropped invocation by calling proceed(). The test body then runs once on the JUnit thread, outside the CyclicBarrier and outside AsyncTestContext, so no detector observes it — and because that single run usually passes, the suite goes green while every concurrency check has silently stopped running.
+
+### se.deversity.asynctest.runner.ConcurrencyRunner.execute(org.junit.jupiter.api.extension.ReflectiveInvocationContext<java.lang.reflect.Method>,se.deversity.asynctest.AsyncTestConfig)
+- **Invariant**: The timeoutAlreadyReported flag, and the per-step guarded cleanup in the finally block, are both deliberate. A pre-round deadline check throws an error that has already been through timeoutError(), and each cleanup step is wrapped in its own try so one failure cannot suppress the next.
+- **Breaks if changed**: The flag is removed as redundant — the catch block then sends the same error through timeoutError() a second time, producing two onTimeout callbacks and two copies of every report for one timeout. Or the cleanup steps are merged into one try, at which point a failing AsyncTestContext.uninstall() skips the livelock snapshot and leaks context into the next test.
 
 ## Contract-Frozen Signature
 

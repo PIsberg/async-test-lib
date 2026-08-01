@@ -26,7 +26,7 @@ paths: ["**/benchmark/**", "**/telemetry/**", "**/agent/**", "**/analysis/**"]
 ## Memory Budget Constraints
 - **Policy**: NO_AUTOBOXING
 - **Rule**: Strictly limit or prevent object allocations.
-- **Applies to**: `se.deversity.asynctest.benchmark.BenchmarkRecorder.recordInvocationStart()`, `se.deversity.asynctest.benchmark.BenchmarkRecorder.recordInvocationEnd(long)`
+- **Applies to**: `se.deversity.asynctest.benchmark.BenchmarkRecorder.recordInvocationEnd(long)`, `se.deversity.asynctest.benchmark.BenchmarkRecorder.recordInvocationStart()`
 
 ## Strict Classpath Integrity
 

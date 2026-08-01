@@ -11,7 +11,7 @@ repositories {
 }
 val asyncTestVersion = "1.7.0-RC5"
 val junitVersion = "5.10.2"
-val junitPlatformVersion = "6.0.3"
+val junitPlatformVersion = "6.1.2"
 dependencies {
     testImplementation("se.deversity.async-test-lib:async-test-lib:$asyncTestVersion")
     testImplementation("org.junit.jupiter:junit-jupiter:$junitVersion")

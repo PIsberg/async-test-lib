@@ -22,28 +22,39 @@ infrastructure noise. Auto-rerunning would mask the exact signal the project exi
 
 ## Build with JDK 21 or 25, not 26
 
-> **A red PMD gate on JDK 26 is the toolchain, not your change.**
+> **Resolved: the PMD engine is now pinned, and JDK 26 no longer trips the gate.**
 >
-> PMD 7.17 cannot resolve types from JDK 26 class files. It falls back to a name-based heuristic
-> and reports around 244 bogus `LooseCoupling` violations — including, memorably, flagging
+> PMD 7.17 could not resolve types from JDK 26 class files. It fell back to a name-based heuristic
+> and reported bogus `LooseCoupling` violations — including, memorably, flagging
 > `Map<String, String>` as *"an implementation type; use the interface instead"*, which is the
 > interface it is asking for.
 >
-> Same commit, same plugin, different toolchain:
+> maven-pmd-plugin 3.28.0 still ships 7.17.0 as its default, so the parent POM now pins
+> `<pmd.version>7.26.0</pmd.version>` and overrides `pmd-core` / `pmd-java` in the plugin's
+> `<dependencies>`. `build.gradle.kts` sets the same number via `extra["pmdVersion"]`.
+>
+> Same commit, same plugin, same JDK 26 — only the engine differs:
 >
 > ```
-> JAVA_HOME="/c/Program Files/Java/jdk-21"  →  BUILD SUCCESS, 0 violations
-> JDK 26 (a common local default)           →  244 violations, BUILD FAILURE
+> mvn -pl async-test-lib pmd:check -Dpmd.version=7.17.0  →  243 violations, BUILD FAILURE
+> mvn -pl async-test-lib pmd:check -Dpmd.version=7.26.0  →    0 violations, BUILD SUCCESS
 > ```
 >
-> CI runs JDK 21 and 25 and is green. Before concluding anything from a PMD failure here, re-run
-> with `JAVA_HOME` pointed at JDK 21. If it passes there, there is nothing to fix.
+> `mvn verify -DskipTests` (PMD, SpotBugs, Checkstyle and Error Prone) also passes on JDK 26 with
+> the pin in place. **The test suite has not been exercised on JDK 26**, so CI stays on 21 and 25
+> and that remains the supported pair — but a red PMD gate is no longer explained by the toolchain,
+> and a failure here should be read as a real finding.
 >
-> Worth writing down because the failure is convincing: it looks exactly like a repository-wide
-> code-quality problem, and the obvious remedy — a mechanical sweep replacing `ConcurrentHashMap`
-> declarations with `ConcurrentMap` across ~120 files — is both large and completely wrong, since
-> the flagged declarations are already the interface. The tell is that the reported line does not
-> contain the implementation type the message names.
+> Worth keeping the history because the old failure was convincing: it looked exactly like a
+> repository-wide code-quality problem, and the obvious remedy — a mechanical sweep replacing
+> `ConcurrentHashMap` declarations with `ConcurrentMap` across ~120 files — was both large and
+> completely wrong, since the flagged declarations were already the interface. The tell was that the
+> reported line did not contain the implementation type the message named.
+>
+> One consequence of the newer engine: PMD 7.26.0 widened `AvoidCatchingGenericException` to also
+> report `catch (Throwable)`, duplicating `AvoidCatchingThrowable`, which `pmd-ruleset.xml` already
+> excludes for the `ConcurrencyRunner` sites. Both rules are now excluded there, with the reasoning
+> recorded in the ruleset.
 
 ## Static analysis and API gates
 

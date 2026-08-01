@@ -72,24 +72,19 @@ you are editing here.
 <rule>Elements listed in <security_elements> are security-critical. Never weaken their security properties. Every proposed change must be explicitly reviewed for security impact.</rule>
   <scoped_rules>
     <note>Detailed per-element guardrails for the elements below live in scoped rule files that load automatically when the matching source file is opened. Consult the referenced file before modifying an element.</note>
-    <element path="se.deversity.asynctest.DetectorType" rules=".claude/rules/async-test-configuration.md"/>
-    <element path="se.deversity.asynctest.AsyncTestConfig" rules=".claude/rules/async-test-configuration.md"/>
-    <element path="se.deversity.asynctest.DetectorRegistry" rules=".claude/rules/async-test-configuration.md"/>
-    <element path="se.deversity.asynctest.NoopAsyncTestListener" rules=".claude/rules/async-test-public-api.md"/>
-    <element path="se.deversity.asynctest.AsyncTestContext" rules=".claude/rules/async-test-runtime-core.md"/>
-    <element path="se.deversity.asynctest.runner.ConcurrencyRunner" rules=".claude/rules/async-test-runtime-core.md"/>
-    <element path="se.deversity.asynctest.extension.AsyncTestInvocationInterceptor" rules=".claude/rules/async-test-runtime-core.md"/>
-    <element path="se.deversity.asynctest.benchmark.BenchmarkRecorder" rules=".claude/rules/async-test-instrumentation.md"/>
-    <element path="se.deversity.asynctest.diagnostics.SiteCapture" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.spi.adapters.LegacyDetectorAdapter" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.AsyncAssert" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.AsyncTest" rules=".claude/rules/async-test-configuration.md"/>
+    <element path="se.deversity.asynctest.AsyncTestConfig" rules=".claude/rules/async-test-configuration.md"/>
+    <element path="se.deversity.asynctest.AsyncTestContext" rules=".claude/rules/async-test-runtime-core.md"/>
     <element path="se.deversity.asynctest.AsyncTestListener" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.AsyncTestListenerRegistry" rules=".claude/rules/async-test-public-api.md"/>
-    <element path="se.deversity.asynctest.extension.AsyncTestExtension" rules=".claude/rules/async-test-runtime-core.md"/>
-    <element path="se.deversity.asynctest.report.Formatter" rules=".claude/rules/async-test-public-api.md"/>
-    <element path="se.deversity.asynctest.spi.Detector" rules=".claude/rules/async-test-public-api.md"/>
-    <element path="se.deversity.asynctest.spi.DetectorFactory" rules=".claude/rules/async-test-public-api.md"/>
+    <element path="se.deversity.asynctest.AsyncTestListenerRegistry.Registration" rules=".claude/rules/async-test-public-api.md"/>
+    <element path="se.deversity.asynctest.DetectorRegistry" rules=".claude/rules/async-test-configuration.md"/>
+    <element path="se.deversity.asynctest.DetectorType" rules=".claude/rules/async-test-configuration.md"/>
+    <element path="se.deversity.asynctest.NoopAsyncTestListener" rules=".claude/rules/async-test-public-api.md"/>
+    <element path="se.deversity.asynctest.Preset" rules=".claude/rules/async-test-configuration.md"/>
+    <element path="se.deversity.asynctest.benchmark.BenchmarkComparator" rules=".claude/rules/async-test-instrumentation.md"/>
+    <element path="se.deversity.asynctest.benchmark.BenchmarkRecorder" rules=".claude/rules/async-test-instrumentation.md"/>
     <element path="se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.CompletableFutureObtrudeDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector" rules=".claude/rules/async-test-detectors.md"/>
@@ -111,22 +106,27 @@ you are editing here.
     <element path="se.deversity.asynctest.diagnostics.SharedMessageDigestDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.SharedSecureRandomDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.SharedStatefulCryptoDetector" rules=".claude/rules/async-test-detectors.md"/>
+    <element path="se.deversity.asynctest.diagnostics.SiteCapture" rules=".claude/rules/async-test-detectors.md"/>
+    <element path="se.deversity.asynctest.diagnostics.SiteCapture.Site" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.SpuriousWakeupDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.ThisEscapeDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.ThreadLocalRandomMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.TryLockMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.runner.LicenseGuard" rules=".claude/rules/async-test-runtime-core.md"/>
-    <element path="se.deversity.asynctest.Preset" rules=".claude/rules/async-test-configuration.md"/>
-    <element path="se.deversity.asynctest.diagnostics.SiteCapture.Site" rules=".claude/rules/async-test-detectors.md"/>
-    <element path="se.deversity.asynctest.report.Violation" rules=".claude/rules/async-test-public-api.md"/>
-    <element path="se.deversity.asynctest.spi.DetectorRegistry" rules=".claude/rules/async-test-public-api.md"/>
-    <element path="se.deversity.asynctest.report.JsonFormatter" rules=".claude/rules/async-test-public-api.md"/>
-    <element path="se.deversity.asynctest.report.MarkdownFormatter" rules=".claude/rules/async-test-public-api.md"/>
-    <element path="se.deversity.asynctest.benchmark.BenchmarkComparator" rules=".claude/rules/async-test-instrumentation.md"/>
-    <element path="se.deversity.asynctest.AsyncTestListenerRegistry.Registration" rules=".claude/rules/async-test-public-api.md"/>
+    <element path="se.deversity.asynctest.extension.AsyncTestExtension" rules=".claude/rules/async-test-runtime-core.md"/>
+    <element path="se.deversity.asynctest.extension.AsyncTestInvocationInterceptor" rules=".claude/rules/async-test-runtime-core.md"/>
+    <element path="se.deversity.asynctest.report.Formatter" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.report.JUnitXmlReportListener" rules=".claude/rules/async-test-public-api.md"/>
+    <element path="se.deversity.asynctest.report.JsonFormatter" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.report.JsonReportListener" rules=".claude/rules/async-test-public-api.md"/>
+    <element path="se.deversity.asynctest.report.MarkdownFormatter" rules=".claude/rules/async-test-public-api.md"/>
+    <element path="se.deversity.asynctest.report.Violation" rules=".claude/rules/async-test-public-api.md"/>
+    <element path="se.deversity.asynctest.runner.ConcurrencyRunner" rules=".claude/rules/async-test-runtime-core.md"/>
+    <element path="se.deversity.asynctest.runner.LicenseGuard" rules=".claude/rules/async-test-runtime-core.md"/>
+    <element path="se.deversity.asynctest.spi.Detector" rules=".claude/rules/async-test-public-api.md"/>
+    <element path="se.deversity.asynctest.spi.DetectorFactory" rules=".claude/rules/async-test-public-api.md"/>
+    <element path="se.deversity.asynctest.spi.DetectorRegistry" rules=".claude/rules/async-test-public-api.md"/>
+    <element path="se.deversity.asynctest.spi.adapters.LegacyDetectorAdapter" rules=".claude/rules/async-test-public-api.md"/>
   </scoped_rules>
 
 <rule>When you work on any element listed in <scoped_rules>, open its referenced rule file and apply the guardrails there. The rule files are the authoritative source for those elements.</rule>

@@ -53,6 +53,8 @@ rather than the whole set.
 |----------|----------------|
 | [diagrams.md](architecture/diagrams.md) | C4 context/container/component, sequence, class, activity and deployment diagrams, plus their PlantUML sources |
 | [file-structure.md](architecture/file-structure.md) | Where each package and class lives |
+| [guardrails.md](architecture/guardrails.md) | How the `@AI*` guardrails are generated, the three vibetags config files, and why Gradle needs `-Avibetags.root` |
+| [logging.md](architecture/logging.md) | The two output channels, the `domain.event key=value` format, and which log events are pinned by tests |
 | [refactoring-history.md](analysis/refactoring-history.md) | The v1.2.0 refactor — what was broken up and why |
 
 ## Related Documentation

@@ -37,6 +37,19 @@
         <exclude name="AvoidCatchingThrowable"/>
 
         <!--
+            AvoidCatchingGenericException: same sites, same reason. PMD 7.26.0 widened this rule to
+            report `catch (Throwable)` as well — its message on ConcurrencyRunner:250 is literally
+            "Avoid catching Throwable in try-catch block" — so it now duplicates the rule excluded
+            just above. On PMD 7.17.0 the same sources are clean, so this exclusion tracks the
+            engine's rule change, not a new broad catch. If the two rules are ever separated again,
+            The sixth site it reports is genuinely generic — AsyncTestAgent.selfAttach catches
+            `RuntimeException | Error` around ByteBuddyAgent.install() — and is deliberate: install()
+            fails in several unchecked ways and the catch exists to rethrow all of them as the
+            IllegalStateException naming -Djdk.attach.allowAttachSelf=true.
+        -->
+        <exclude name="AvoidCatchingGenericException"/>
+
+        <!--
             AvoidAccessibilityAlteration: ConcurrencyRunner uses reflection (setAccessible) to
             invoke test methods on the test instance directly. This is the standard JUnit 5
             extension mechanism for custom test runners and cannot be avoided.

@@ -1,6 +1,6 @@
 plugins {
     java
-    id("me.champeau.jmh") version "0.7.2"
+    id("me.champeau.jmh") version "0.7.3"
 }
 
 group = "se.deversity.async-test-lib"
@@ -17,7 +17,7 @@ repositories {
 }
 
 val asyncTestVersion: String = project.findProperty("asyncTestVersion") as String? ?: "1.3.0"
-val junitVersion = "6.0.3"
+val junitVersion = "6.1.2"
 
 // Publish library to local Maven before running load tests:
 //   ./gradlew publishToMavenLocal          (from project root)
