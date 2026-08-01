@@ -168,34 +168,6 @@ one. Two shapes recur here, and both are cheap to state explicitly rather than s
 Neither `@SuppressWarnings("NullAway")` nor a widened `AnnotatedPackages` exclusion appears in the
 tree, and adding one should be argued for rather than assumed.
 
-## What the E2E check actually covers
-
-`E2E Tests` is a summary job, not a test run — it reads the four `needs.*.result` values from
-`e2e-tests.yml` and fails if any is `failure` or `cancelled`. It exists so there is one stable
-required check whose name does not change with which legs ran. Seeing it pass in three seconds is
-it working, not it skipping.
-
-Underneath, which legs run depends on the event:
-
-| Leg | Runs on | Notes |
-|---|---|---|
-| Consumer Fixture (JDK 21, 25) | every PR and push | Resolves the built artifact from a local repo and drives it through the public API only, one `@AsyncTest` fixture per `DetectorType` |
-| Examples Shard (PR) | PRs that change `examples/**` **or** library sources | See below |
-| Examples Reactor | push to `main`/`develop`, and nightly | All 127 example projects, four shards |
-
-**The PR filter used to ask the wrong question.** It watched `examples/**` only, so it answered
-"did you edit an example?" when what matters is "could you have broken the examples?" — and the 127
-examples all consume the built artifact. A library-only PR therefore ran zero of them and went
-green, with any breakage surfacing after merge or overnight.
-
-`examples-detect` now also watches `async-test-*/src/main/**` and the root build files. A library
-change runs a deterministic every-4th sample (32 of 127) rather than the full reactor: enough to
-catch a systemic break at PR time, cheap enough to afford on every library PR. A PR that changes
-both gets the union, deduplicated. `gradle-tests.yml` mirrors this exactly.
-
-The sample is a sample, not coverage — the full reactor on push and nightly is still what proves
-all 127 build. This only moves discovery of the common failure earlier.
-
 ## Mutation testing
 
 PITest gates the mutation score at **≥ 74%** (measured 75.4%; the margin absorbs run-to-run
