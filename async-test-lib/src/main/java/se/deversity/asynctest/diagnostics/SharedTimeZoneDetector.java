@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -32,7 +34,7 @@ public class SharedTimeZoneDetector {
     private static final class TzState {
         final Set<Long>   mutatingThreadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> mutatingThreadNames = ConcurrentHashMap.newKeySet();
-        volatile String   firstOperation;
+        volatile @Nullable String   firstOperation;
     }
 
     private final Map<Integer, TzState> timezones = new ConcurrentHashMap<>();

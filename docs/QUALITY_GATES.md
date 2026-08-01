@@ -58,17 +58,69 @@ infrastructure noise. Auto-rerunning would mask the exact signal the project exi
 
 ## Static analysis and API gates
 
-`mvn verify` runs Checkstyle, PMD, SpotBugs, Error Prone, JaCoCo thresholds and japicmp — all of
-which fail the build.
+`mvn verify` runs Checkstyle, PMD, SpotBugs, Error Prone, NullAway, JaCoCo thresholds and japicmp —
+all of which fail the build.
 
 - **Checkstyle** fails on warnings.
 - **PMD** flags `LooseCoupling` (declare `ConcurrentMap`, not `ConcurrentHashMap`) and
   `UnusedPrivateField`.
 - **SpotBugs** runs at Max effort / Low threshold and flags repeated `path.getParent()` null paths.
 - **Error Prone** covers main sources only.
+- **NullAway** gates nullness on main sources, as an Error Prone check (see below).
 - **JaCoCo** requires line ≥ 70% and branch ≥ 65%.
 - **japicmp** breaks the build on binary-incompatible API changes against the last release.
 - **ArchUnit** tests enforce package structure and the module boundaries from within the suite.
+
+### NullAway
+
+Nullness is the one defect class the other analysers do not check, and this codebase is built out
+of nullable references: every one of the 127 detectors is `cfg.detectX ? new XDetector() : null`, so
+a `Phase1DetectorSet` field, a `DetectorRegistry` field and every accessor that reaches one is null
+whenever its flag is off. Whether each read site guards for that was, until now, enforced by
+convention.
+
+NullAway runs as an Error Prone check on main sources, configured in the parent POM:
+
+```xml
+<arg>-Xplugin:ErrorProne -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=se.deversity.asynctest</arg>
+```
+
+`build.gradle.kts` sets the same two options through `options.errorprone`. `@Nullable` comes from
+JSpecify (`org.jspecify:jspecify`), `provided` scope: the annotation has CLASS retention, so it
+never reaches a consumer's runtime classpath, and adding one is binary-compatible — japicmp agrees.
+
+**Placement matters.** JSpecify's `@Nullable` is `TYPE_USE`, so it binds to the type immediately to
+its right. For an array that is the difference between two different claims:
+
+```java
+StackTraceElement @Nullable [] stack;   // the array may be absent      ← what these APIs mean
+@Nullable StackTraceElement[] stack;    // the elements may be null
+```
+
+**What the first clean run found.** 119 findings across 51 files. Most were contracts that were
+already true and simply unwritten — a `@Nullable` field, a nullable return, a parameter that
+callers already passed `null` to. Eleven were `dereferenced expression is @Nullable`, and five of
+those were live NPEs: `CountDownLatchDetector`, `CyclicBarrierDetector`, `ExchangerDetector`,
+`PhaserDetector` and `ReentrantLockDetector` all looked a subject up in a registry that a
+`record*`-without-`register*` call never populated, then dereferenced the result inside
+`toString()`. The NPE never reached anyone, which is what made it survive: `DetectorRegistry.ifIssue`
+catches `RuntimeException` around `report.toString()` so one bad detector cannot discard the sweep,
+so the detector silently reported nothing and the concurrency bug the user instrumented for went
+unreported. `UnregisteredSubjectReportTest` pins the fix.
+
+**When NullAway is wrong.** It reasons per method and cannot see an invariant that holds across
+one. Two shapes recur here, and both are cheap to state explicitly rather than suppress:
+
+- A value is non-null because an earlier branch guaranteed it (`AsyncTestConfig` reaching
+  `preset.enabled()` only on the non-`isAll()` path). Use `Objects.requireNonNull` with a message
+  that says *why* — it documents the invariant and fails loudly if it ever stops holding.
+- A framework callback initialises a field before any other callback runs (ASM calls
+  `ClassVisitor.visit` before `visitMethod`). Annotate the field `@Nullable` and handle the absent
+  case; the handler is unreachable, and saying so in a comment is more honest than asserting the
+  contract in a suppression.
+
+Neither `@SuppressWarnings("NullAway")` nor a widened `AnnotatedPackages` exclusion appears in the
+tree, and adding one should be argued for rather than assumed.
 
 ## Mutation testing
 
@@ -97,6 +149,12 @@ state at construction so they only report what the monitored test caused. `Deadl
 excludes thread ids already deadlocked when the detector was created — otherwise leaked deadlocked
 threads from earlier tests in a shared JVM cause false positives. Found by mutation testing. Its
 static `hasDeadlock()` stays JVM-wide by design.
+
+The same section of the map holds one deliberate piece of JVM-global state going the other way:
+`UncommittedChangesDetector` caches its `git status` result statically, because forking a process
+per test method cost 99% of the analysis sweep. Any test that changes the working tree and then
+expects the detector to notice must call the package-private `invalidateCache()` first, the way
+`UncommittedChangesDetectorTest` does in its `@BeforeEach`.
 
 ## License guard
 

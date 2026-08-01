@@ -1,5 +1,7 @@
 package se.deversity.asynctest.benchmark;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.Objects;
 
 /**
@@ -7,8 +9,8 @@ import java.util.Objects;
  */
 public final class BenchmarkComparisonResult {
 
-    private final BenchmarkResult currentResult;
-    private final BenchmarkResult baselineResult;
+    private final @Nullable BenchmarkResult currentResult;
+    private final @Nullable BenchmarkResult baselineResult;
     private final double percentChange;
     private final boolean isRegression;
     private final boolean isImprovement;
@@ -39,11 +41,11 @@ public final class BenchmarkComparisonResult {
             .build();
     }
 
-    public BenchmarkResult getCurrentResult() {
+    public @Nullable BenchmarkResult getCurrentResult() {
         return currentResult;
     }
 
-    public BenchmarkResult getBaselineResult() {
+    public @Nullable BenchmarkResult getBaselineResult() {
         return baselineResult;
     }
 
@@ -76,12 +78,15 @@ public final class BenchmarkComparisonResult {
 
     @Override
     public String toString() {
+        BenchmarkResult current = currentResult;
+        BenchmarkResult baseline = baselineResult;
         if (isFirstRun) {
+            if (current == null) return "BenchmarkComparisonResult{FIRST_RUN, no result}";
             return String.format(
                 "BenchmarkComparisonResult{FIRST_RUN, %s#%s, avg=%s}",
-                currentResult.getTestClass(),
-                currentResult.getTestMethod(),
-                BenchmarkResult.formatTime(currentResult.getAvgTimePerInvocationNanos())
+                current.getTestClass(),
+                current.getTestMethod(),
+                BenchmarkResult.formatTime(current.getAvgTimePerInvocationNanos())
             );
         }
 
@@ -91,8 +96,10 @@ public final class BenchmarkComparisonResult {
         return String.format(
             "BenchmarkComparisonResult{%s, baseline=%s, current=%s, change=%s}",
             status,
-            BenchmarkResult.formatTime(baselineResult.getAvgTimePerInvocationNanos()),
-            BenchmarkResult.formatTime(currentResult.getAvgTimePerInvocationNanos()),
+            baseline == null ? "n/a"
+                : BenchmarkResult.formatTime(baseline.getAvgTimePerInvocationNanos()),
+            current == null ? "n/a"
+                : BenchmarkResult.formatTime(current.getAvgTimePerInvocationNanos()),
             changeStr
         );
     }
@@ -120,8 +127,8 @@ public final class BenchmarkComparisonResult {
     }
 
     public static class Builder {
-        private BenchmarkResult currentResult;
-        private BenchmarkResult baselineResult;
+        private @Nullable BenchmarkResult currentResult;
+        private @Nullable BenchmarkResult baselineResult;
         private double percentChange;
         private boolean isRegression;
         private boolean isImprovement;

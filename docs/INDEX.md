@@ -21,6 +21,7 @@ guardrails live.
 | [AGENT.md](AGENT.md) | Optional Byte Buddy agent — auto-record field access without manual hooks |
 | [CI_INTEGRATION.md](CI_INTEGRATION.md) | GitHub Actions / Jenkins / GitLab CI setup |
 | [BENCHMARKING.md](BENCHMARKING.md) | Optional throughput-regression tracking |
+| [../load-tests/README.md](../load-tests/README.md) | The JMH/stress suite — what each benchmark can and cannot measure |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common issues and fixes |
 | [MIGRATION.md](MIGRATION.md) | Moving an existing test suite onto `@AsyncTest` |
 | [../intellij-plugin/README.md](../intellij-plugin/README.md) | IntelliJ IDEA companion plugin |

@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -50,7 +52,7 @@ public class LatchMisuseDetector {
         }
     }
 
-    private LatchState stateFor(Object latch) {
+    private @Nullable LatchState stateFor(Object latch) {
         return latch == null ? null : latches.get(System.identityHashCode(latch));
     }
 

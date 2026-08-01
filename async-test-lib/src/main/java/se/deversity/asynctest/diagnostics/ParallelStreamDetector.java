@@ -5,6 +5,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects unsafe operations in parallel streams.
@@ -48,7 +49,7 @@ public class ParallelStreamDetector {
         final AtomicBoolean hasStatefulLambda = new AtomicBoolean(false);
         final AtomicBoolean hasNonThreadSafeCollector = new AtomicBoolean(false);
         final AtomicBoolean hasSideEffects = new AtomicBoolean(false);
-        volatile Long firstAccessTime = null;
+        volatile @Nullable Long firstAccessTime = null;
 
         StreamState(String name) {
             this.name = name != null ? name : "stream@" + System.identityHashCode(this);

@@ -1,5 +1,6 @@
 package se.deversity.asynctest.runner;
 
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import se.deversity.vibetags.annotations.AIAudit;
@@ -609,7 +610,7 @@ public class ConcurrencyRunner {
      * otherwise route it through here a second time.
      */
     private static AssertionError timeoutError(long timeoutMs,
-                                               Throwable cause,
+                                               @Nullable Throwable cause,
                                                Phase1DetectorSet phase1,
                                                Phase2Analysis phase2Analysis,
                                                boolean detectDeadlocks) {
@@ -660,8 +661,7 @@ public class ConcurrencyRunner {
      */
     private static final class Phase2Analysis {
         private final AsyncTestContext ctx;
-        private Map<String, String> reports;
-        private boolean computed;
+        private @Nullable Map<String, String> reports;
 
         Phase2Analysis(AsyncTestContext ctx) {
             this.ctx = ctx;
@@ -669,18 +669,19 @@ public class ConcurrencyRunner {
 
         /** {@return the findings of this run, keyed by the detector that produced each} */
         Map<String, String> get() {
-            if (!computed) {
-                reports = ctx.analyzeAllNamed();
-                computed = true;
+            Map<String, String> memo = reports;
+            if (memo == null) {
+                memo = ctx.analyzeAllNamed();
+                reports = memo;
             }
-            return reports;
+            return memo;
         }
     }
 
     // ---- Per-invocation lifecycle helpers ----
 
     private static <A extends java.lang.annotation.Annotation> List<Method> findLifecycleMethods(
-            Object target, Class<A> annotationType) {
+            @Nullable Object target, Class<A> annotationType) {
         if (target == null) return List.of();
         List<Method> found = new ArrayList<>();
         Class<?> klass = target.getClass();
@@ -698,7 +699,7 @@ public class ConcurrencyRunner {
         return found;
     }
 
-    private static void invokeLifecycleMethods(Object target, List<Method> methods) {
+    private static void invokeLifecycleMethods(@Nullable Object target, List<Method> methods) {
         if (target == null || methods.isEmpty()) return;
         for (Method m : methods) {
             try {

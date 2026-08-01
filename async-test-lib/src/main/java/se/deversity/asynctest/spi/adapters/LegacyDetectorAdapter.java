@@ -1,5 +1,6 @@
 package se.deversity.asynctest.spi.adapters;
 
+import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.report.Violation;
@@ -43,9 +44,9 @@ public final class LegacyDetectorAdapter<D> implements Detector {
     private final D delegate;
     private final DetectorType type;
     private final String detectorName;
-    private final Method analyzeMethod;
-    private final NoSuchMethodException analyzeMethodLookupFailure;
-    private final Method hasIssuesMethod;
+    private final @Nullable Method analyzeMethod;
+    private final @Nullable NoSuchMethodException analyzeMethodLookupFailure;
+    private final @Nullable Method hasIssuesMethod;
 
     public LegacyDetectorAdapter(D delegate, DetectorType type, String detectorName) {
         this.delegate = delegate;
@@ -75,6 +76,9 @@ public final class LegacyDetectorAdapter<D> implements Detector {
     public List<Violation> analyze() {
         try {
             if (analyzeMethodLookupFailure != null) throw analyzeMethodLookupFailure;
+            // Non-null whenever the lookup failure above is null — the constructor sets
+            // exactly one of the two.
+            if (analyzeMethod == null) return List.of();
             Object report = analyzeMethod.invoke(delegate);
             if (report == null) return List.of();
 
@@ -105,7 +109,7 @@ public final class LegacyDetectorAdapter<D> implements Detector {
      * Walks the report class hierarchy looking for a {@code boolean hasIssues()}
      * method. Some reports declare it on a base type / interface.
      */
-    private static Method findHasIssues(Class<?> reportClass) {
+    private static @Nullable Method findHasIssues(Class<?> reportClass) {
         for (Class<?> c = reportClass; c != null && c != Object.class; c = c.getSuperclass()) {
             try {
                 Method m = c.getMethod("hasIssues");

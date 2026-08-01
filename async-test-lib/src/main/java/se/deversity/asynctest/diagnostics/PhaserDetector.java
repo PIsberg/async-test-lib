@@ -106,6 +106,23 @@ public class PhaserDetector {
             return !timedOutPhasers.isEmpty() || !terminatedPhasers.isEmpty();
         }
 
+        /**
+         * Registry lookup that always yields a non-null {@code PhaserInfo}.
+         *
+         * <p>Nothing requires a {@code record*} call's subject to have been passed to the matching
+         * {@code register*} first — no precondition, no runtime check — and the two are written at
+         * different places in a test. When the registration is missed the lookup returns
+         * {@code null} and dereferencing it threw out of {@code toString()}. That NPE never reached
+         * the user: {@code DetectorRegistry.ifIssue} catches it so one detector cannot discard the
+         * whole sweep, so the finding was simply dropped and the report the user needed never
+         * appeared. A placeholder keeps the finding and says plainly which subject was not
+         * registered.
+         */
+        private PhaserInfo infoFor(Phaser phaser) {
+            PhaserInfo info = phaserRegistry.get(phaser);
+            return info != null ? info : new PhaserInfo("<unregistered phaser>", 0);
+        }
+
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
@@ -114,7 +131,7 @@ public class PhaserDetector {
             if (!timedOutPhasers.isEmpty()) {
                 sb.append("  Timed Out Phasers:\n");
                 for (Phaser phaser : timedOutPhasers) {
-                    PhaserInfo info = phaserRegistry.get(phaser);
+                    PhaserInfo info = infoFor(phaser);
                     sb.append("    - ").append(info.name)
                       .append(" (").append(info.parties).append(" parties expected, ")
                       .append(info.getArrivals()).append(" arrived)\n");
@@ -127,7 +144,7 @@ public class PhaserDetector {
             if (!terminatedPhasers.isEmpty()) {
                 sb.append("  Terminated Phasers:\n");
                 for (Phaser phaser : terminatedPhasers) {
-                    PhaserInfo info = phaserRegistry.get(phaser);
+                    PhaserInfo info = infoFor(phaser);
                     sb.append("    - ").append(info.name)
                       .append(" (phaser terminated - possibly due to timeout or unbalance)\n");
                 }

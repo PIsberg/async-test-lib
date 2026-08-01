@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -45,7 +46,7 @@ public class MemoryModelValidator {
     }
     
     private void testVolatileVisibility(ValidationResult result) {
-        AtomicReference<Boolean> flag = new AtomicReference<>(false);
+        AtomicBoolean flag = new AtomicBoolean(false);
         AtomicInteger readCount = new AtomicInteger(0);
         
         Thread writer = new Thread(() -> {

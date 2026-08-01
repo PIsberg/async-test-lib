@@ -4,6 +4,7 @@ import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import org.jspecify.annotations.Nullable;
 import se.deversity.vibetags.annotations.AIContract;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
@@ -135,13 +136,13 @@ public class AsyncAssert {
          * @return the future's resolved value, or {@code null} if it has not completed
          *         successfully yet (or completed exceptionally)
          */
-        public T getResult() { return result.get(); }
+        public @Nullable T getResult() { return result.get(); }
 
         /**
          * @return the exception the future completed with, or {@code null} if it has not
          *         completed exceptionally
          */
-        public Throwable getError() { return error.get(); }
+        public @Nullable Throwable getError() { return error.get(); }
 
         /**
          * @return {@code true} once the observed future has completed, successfully or not

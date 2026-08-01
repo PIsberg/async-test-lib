@@ -16,6 +16,7 @@ import java.io.ObjectOutputStream;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -142,8 +143,11 @@ public class BenchmarkComparator {
      * Build a detailed regression message.
      */
     private String buildRegressionMessage(BenchmarkComparisonResult result) {
-        BenchmarkResult current = result.getCurrentResult();
-        BenchmarkResult baseline = result.getBaselineResult();
+        // Both sides are present by construction: a REGRESSION verdict requires a baseline
+        // to have been compared against, and BenchmarkComparisonResult.build() rejects a
+        // comparison missing either side.
+        BenchmarkResult current = Objects.requireNonNull(result.getCurrentResult());
+        BenchmarkResult baseline = Objects.requireNonNull(result.getBaselineResult());
 
         StringBuilder sb = new StringBuilder();
         sb.append("Performance regression detected in ").append(current.getBenchmarkKey()).append("\n");

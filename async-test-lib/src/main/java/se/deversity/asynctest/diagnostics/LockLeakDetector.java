@@ -5,6 +5,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects lock leak patterns where locks are acquired but never released.
@@ -47,7 +48,7 @@ public class LockLeakDetector {
         final Map<Long, Long> threadAcquireTime = new ConcurrentHashMap<>();
         final AtomicInteger maxHoldTimeMs = new AtomicInteger(0);
         volatile boolean currentlyHeld = false;
-        volatile Long lastAcquireTime = null;
+        volatile @Nullable Long lastAcquireTime = null;
 
         LockState(Lock lock, String name) {
             this.name = name != null ? name : "lock@" + System.identityHashCode(lock);

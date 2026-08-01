@@ -43,6 +43,7 @@ void myEnterpriseTest() {
  - **Annotation**: `@AsyncTest(detectUncommittedChanges = true)` (Enabled by default if `detectAll = true`)
  - **Behavior**: If changes are detected, a `LOW` severity issue will be reported in the diagnostic output.
  - **Requirement**: `git` must be available in the system PATH.
+ - **Cost**: `git status` is forked once per JVM and the result replayed, not run per test method. The working tree does not change under a running suite, and forking per test cost 99% of the analysis sweep. The trade: in a runner that keeps one JVM for a whole session, a mid-session commit is not visible until the JVM restarts.
  
  ## 4. Enforcement
 The library uses a **Fail-Closed** policy by default. If the license check fails (Invalid key, expired, or network error), the runner will throw a `SecurityException` and the test will fail.

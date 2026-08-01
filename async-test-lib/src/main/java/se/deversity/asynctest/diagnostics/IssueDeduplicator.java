@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -177,7 +179,7 @@ public class IssueDeduplicator<T extends DeduplicatableEvent> {
         }
 
         /** {@return the first event in this group (representative)} */
-        public T getFirstEvent() {
+        public @Nullable T getFirstEvent() {
             return events.isEmpty() ? null : events.get(0);
         }
 

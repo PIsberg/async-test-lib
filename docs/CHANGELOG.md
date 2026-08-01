@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — five detectors silently reported nothing after a `record*` without a `register*`
+
+`CountDownLatchDetector`, `CyclicBarrierDetector`, `ExchangerDetector`, `PhaserDetector` and
+`ReentrantLockDetector` each expose a `register*` that names a subject and `record*` methods that
+flag what happened to it. Nothing required the first — no Javadoc precondition, no runtime check —
+and the two are written at different places in a test, the registration in setup and the recording
+wherever the timeout is actually caught. Skip the registration and the report had a finding to tell,
+looked the subject up in a registry that never received it, and dereferenced the `null` inside
+`toString()`.
+
+The NPE never reached anyone, which is exactly why it survived: `DetectorRegistry.ifIssue` catches
+`RuntimeException` around `report.toString()` so one bad detector cannot discard the rest of the
+sweep. The detector printed a one-line "failed during analysis and was skipped" to stderr and
+reported nothing, so the concurrency bug the user had instrumented for went unreported.
+
+A `record*` on an unregistered subject now renders a report that names it `<unregistered latch>`,
+`<unregistered barrier>` and so on; registered subjects keep their registered names, which
+`UnregisteredSubjectReportTest` also pins. `CyclicBarrierDetector` had already grown an ad-hoc
+`"unknown"` fallback at one of its three sites, which is what the other four were missing.
+
+Found by the new NullAway gate (below), which reported all of them as
+`dereferenced expression 'info' is @Nullable`.
+
+### Changed — `UncommittedChangesDetector` forks `git status` once per JVM, not once per test
+
+The detector shelled out to `git status --porcelain=v1` on every `analyze()`, meaning once per
+`@AsyncTest` method with `detectAll = true`. Profiling every detector's `analyze()` inside one
+context put **99.2% of a 290 ms sweep in this one detector** (287.4 ms); the other 124 together came
+to 2.5 ms. A test class with 20 `@AsyncTest` methods was spending roughly six seconds forking
+processes to recompute the same answer.
+
+Those numbers are one machine (Windows 11, JDK 21, 16 CPUs) with a dirty working tree, and process
+creation is the expensive part rather than the scan: on the same box a bare `git --version` fork
+costs ~150 ms, `git status --porcelain=v1` ~420 ms, and `-uno` (no untracked scan) ~400 ms. Expect a
+smaller absolute cost on Linux. What is not machine-specific is the shape: one process fork per
+`@AsyncTest` method, to answer a question whose answer cannot change between them.
+
+The working tree does not change while a suite runs, and this detector asks about the tree rather
+than about the test that just ran, so the result is now computed once per JVM and replayed. Each
+call still gets its own report object, so a caller mutating one cannot corrupt what the next test
+reads. Surefire's `reuseForks = false` gives one JVM per test class, so in this project's own build
+the cache is effectively per test class.
+
+Measured end to end by the new `DetectorLifecycleBenchmark.analyzeSweep_allDetectors`, same machine,
+same JDK: **170 ms → 32.5 µs ± 6.6** per sweep.
+
+**Caveat for long-lived JVMs.** In a runner that reuses one JVM across a whole session (an IDE, or
+Gradle with the default `forkEvery = 0`), committing mid-session will not change what the detector
+reports until the JVM restarts. That is the trade for not forking a process per test.
+
+`UncommittedChangesDetectorTest` pins the at-most-once contract by counting forks rather than by
+timing, because the thing to assert is the fork that no longer happens.
+
+### Added — NullAway gates nullness, and a benchmark that can see detector cost
+
+**NullAway** now runs as an Error Prone check on main sources in both builds, with
+`@Nullable` from JSpecify (`provided` scope, CLASS retention — nothing new on a consumer's runtime
+classpath, and japicmp confirms the annotations are binary-compatible). Nullness was the one defect
+class none of Checkstyle, PMD, SpotBugs, Error Prone or CodeQL checked, in a codebase where all 127
+detectors are `cfg.detectX ? new XDetector() : null` and every read site's guard was enforced by
+convention alone.
+
+The first clean run reported 119 findings across 51 files. Most were contracts that were already
+true and merely unwritten. Eleven were `dereferenced expression is @Nullable`, five of which were
+the live NPEs fixed above. Details, including where NullAway is wrong here and what to do instead of
+suppressing it, are in [QUALITY_GATES.md](QUALITY_GATES.md#nullaway).
+
+**`DetectorLifecycleBenchmark`** (in `load-tests`) measures the two per-test-method costs that scale
+with the detector set — building the registry and sweeping it — plus the bare `EngineTestKit`
+harness cost, so the floor under `AsyncTestBenchmark`'s numbers is measured rather than assumed.
+The stored 1.7.0 `AsyncTestBenchmark` result moves by ~1.5% between no detectors and all 127
+(188.9 ms vs 186.1 ms at 2 threads), which is inside its own spread — a gap far smaller than the
+sweep measured here would predict, on the same OS and JDK. Whatever accounts for that difference,
+the end-to-end benchmark plainly did not surface the cost, and a benchmark that isolates it does.
+`./gradlew -p load-tests jmh -PjmhIncludes=<pattern>` scopes a run to one class while iterating.
+
 ### Changed — dependency refresh, and the two builds put back in sync
 
 **vibetags 1.0.0-RC7 → 1.0.0-RC8.** RC8 fixes the lean reactor-root layout this repo uses: the root

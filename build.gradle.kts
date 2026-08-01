@@ -29,6 +29,8 @@ extra["archunitVersion"] = "1.4.2"    // pom: archunit.version
 extra["vibetagsVersion"] = "1.0.0-RC8" // pom: vibetags.version
 extra["spotbugsVersion"] = "4.10.3"   // pom: spotbugs.version
 extra["errorProneVersion"] = "2.50.0" // pom: error-prone.version
+extra["nullawayVersion"] = "0.13.8"   // pom: nullaway.version
+extra["jspecifyVersion"] = "1.0.0"    // pom: jspecify.version
 extra["pmdVersion"] = "7.26.0"        // pom: pmd.version
 extra["logbackVersion"] = "1.6.1"     // test-only SLF4J backend, built against slf4j 2.0.18
 
@@ -67,6 +69,8 @@ subprojects {
         add("compileOnly", "com.github.spotbugs:spotbugs-annotations:${rootProject.extra["spotbugsVersion"]}")
         add("compileOnly", "com.google.errorprone:error_prone_annotations:${rootProject.extra["errorProneVersion"]}")
         add("errorprone", "com.google.errorprone:error_prone_core:${rootProject.extra["errorProneVersion"]}")
+        add("errorprone", "com.uber.nullaway:nullaway:${rootProject.extra["nullawayVersion"]}")
+        add("compileOnly", "org.jspecify:jspecify:${rootProject.extra["jspecifyVersion"]}")
     }
 
     // VibeTags resolves the module root by walking up from a source file to the nearest build
@@ -82,6 +86,13 @@ subprojects {
     // Error Prone runs on main sources only; test sources are excluded per project policy
     tasks.named<JavaCompile>("compileTestJava") {
         options.errorprone.enabled.set(false)
+    }
+
+    // NullAway gates nullness on main sources, alongside Error Prone. Mirrors the parent POM's
+    // -Xep:NullAway:ERROR / AnnotatedPackages arguments; see docs/QUALITY_GATES.md.
+    tasks.named<JavaCompile>("compileJava") {
+        options.errorprone.error("NullAway")
+        options.errorprone.option("NullAway:AnnotatedPackages", "se.deversity.asynctest")
     }
 
     tasks.named<Test>("test") {

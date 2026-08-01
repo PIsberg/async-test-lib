@@ -14,6 +14,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 import se.deversity.vibetags.annotations.AICore;
 
@@ -176,7 +177,8 @@ public final class StaticPinningScanner {
     private static final class PinningClassVisitor extends ClassVisitor {
 
         private final List<PinningSite> results;
-        private String className;
+        /** Set by {@link #visit}, which ASM always calls before {@link #visitMethod}. */
+        private @Nullable String className;
 
         PinningClassVisitor(List<PinningSite> results) {
             super(Opcodes.ASM9);
@@ -194,7 +196,9 @@ public final class StaticPinningScanner {
         public MethodVisitor visitMethod(int access, String name, String descriptor,
                                          String signature, String[] exceptions) {
             MethodVisitor delegate = super.visitMethod(access, name, descriptor, signature, exceptions);
-            return new PinningMethodVisitor(delegate, className, name, descriptor, access, results);
+            String owner = className;
+            if (owner == null) return delegate; // no ClassVisitor.visit yet: nothing to attribute a site to
+            return new PinningMethodVisitor(delegate, owner, name, descriptor, access, results);
         }
     }
 

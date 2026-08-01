@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects concurrent mutations to JVM system properties via {@link System#setProperty}
@@ -31,12 +32,13 @@ public class SystemPropertyMutationDetector {
 
     private static class MutationEvent {
         final String key;
-        final String value;    // null means clearProperty
+        final @Nullable String value;    // null means clearProperty
         final long   threadId;
         final String threadName;
         final String operation; // "set" or "clear"
 
-        MutationEvent(String key, String value, long threadId, String threadName, String operation) {
+        MutationEvent(String key, @Nullable String value, long threadId, String threadName,
+                      String operation) {
             this.key        = key;
             this.value      = value;
             this.threadId   = threadId;

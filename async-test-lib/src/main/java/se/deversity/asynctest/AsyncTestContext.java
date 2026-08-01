@@ -3,6 +3,7 @@ package se.deversity.asynctest;
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 
+import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.diagnostics.ABAProblemDetector;
 import se.deversity.asynctest.diagnostics.AtomicNonAtomicUpdateDetector;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
@@ -208,150 +209,150 @@ public final class AsyncTestContext {
     // These are forwarded to the registry so existing test code that accesses
     // ctx.lockLeakDetector etc. continues to work without modification.
 
-    final FalseSharingDetector       falseSharingDetector;
-    final WakeupDetector             wakeupDetector;
-    final ConstructorSafetyValidator constructorSafetyValidator;
-    final ABAProblemDetector         abaProblemDetector;
-    final LockOrderValidator         lockOrderValidator;
-    final SynchronizerMonitor        synchronizerMonitor;
-    final ThreadPoolMonitor          threadPoolMonitor;
-    final MemoryOrderingMonitor      memoryOrderingMonitor;
-    final PipelineMonitor            pipelineMonitor;
-    final ReadWriteLockMonitor       readWriteLockMonitor;
-    final SemaphoreMisuseDetector    semaphoreMisuseDetector;
-    final CompletableFutureExceptionDetector completableFutureExceptionDetector;
-    final CompletableFutureCompletionLeakDetector completableFutureCompletionLeakDetector;
-    final VirtualThreadPinningDetector virtualThreadPinningDetector;
-    final ThreadPoolDeadlockDetector threadPoolDeadlockDetector;
-    final ConcurrentModificationDetector concurrentModificationDetector;
-    final LockLeakDetector lockLeakDetector;
-    final SharedRandomDetector sharedRandomDetector;
-    final BlockingQueueDetector blockingQueueDetector;
-    final ConditionVariableDetector conditionVariableDetector;
-    final SimpleDateFormatDetector simpleDateFormatDetector;
-    final ParallelStreamDetector parallelStreamDetector;
-    final ResourceLeakDetector resourceLeakDetector;
-    final CountDownLatchDetector countDownLatchDetector;
-    final CyclicBarrierDetector cyclicBarrierDetector;
-    final ReentrantLockDetector reentrantLockDetector;
-    final VolatileArrayDetector volatileArrayDetector;
-    final DoubleCheckedLockingDetector doubleCheckedLockingDetector;
-    final WaitTimeoutDetector waitTimeoutDetector;
-    final LockContentionDetector lockContentionDetector;
-    final SynchronizedNonFinalDetector synchronizedNonFinalDetector;
-    final MissedSignalDetector missedSignalDetector;
-    final LazyInitRaceDetector lazyInitRaceDetector;
-    final PhaserDetector phaserDetector;
-    final StampedLockDetector stampedLockDetector;
-    final ExchangerDetector exchangerDetector;
-    final ScheduledExecutorDetector scheduledExecutorDetector;
-    final ForkJoinPoolDetector forkJoinPoolDetector;
-    final ThreadFactoryDetector threadFactoryDetector;
-    final ThreadLeakDetector threadLeakDetector;
-    final SleepInLockDetector sleepInLockDetector;
-    final UnboundedQueueDetector unboundedQueueDetector;
-    final ThreadStarvationDetector threadStarvationDetector;
-    final CalendarDetector calendarDetector;
-    final SharedCollectionDetector sharedCollectionDetector;
-    final TimerDetector timerDetector;
-    final CopyOnWriteCollectionDetector copyOnWriteCollectionDetector;
-    final StringBuilderDetector stringBuilderDetector;
-    final StructuredConcurrencyMisuseDetector    structuredConcurrencyMisuseDetector;
-    final VirtualThreadContextLeakDetector       virtualThreadContextLeakDetector;
-    final ScopedValueMisuseDetector              scopedValueMisuseDetector;
-    final VirtualThreadCpuBoundTaskDetector      virtualThreadCpuBoundTaskDetector;
-    final VirtualThreadCarrierExhaustionDetector virtualThreadCarrierExhaustionDetector;
-    final HttpClientConcurrencyDetector          httpClientConcurrencyDetector;
-    final StreamClosingDetector               streamClosingDetector;
-    final CacheConcurrencyDetector            cacheConcurrencyDetector;
-    final CompletableFutureChainDetector      completableFutureChainDetector;
-    final ExecutorShutdownDetector            executorShutdownDetector;
-    final MutableMapKeyDetector               mutableMapKeyDetector;
-    final NestedMonitorLockoutDetector        nestedMonitorLockoutDetector;
-    final LockDowngradeDetector               lockDowngradeDetector;
-    final InheritableThreadLocalMisuseDetector inheritableThreadLocalMisuseDetector;
-    final UncommittedChangesDetector           uncommittedChangesDetector;
+    final @Nullable FalseSharingDetector       falseSharingDetector;
+    final @Nullable WakeupDetector             wakeupDetector;
+    final @Nullable ConstructorSafetyValidator constructorSafetyValidator;
+    final @Nullable ABAProblemDetector         abaProblemDetector;
+    final @Nullable LockOrderValidator         lockOrderValidator;
+    final @Nullable SynchronizerMonitor        synchronizerMonitor;
+    final @Nullable ThreadPoolMonitor          threadPoolMonitor;
+    final @Nullable MemoryOrderingMonitor      memoryOrderingMonitor;
+    final @Nullable PipelineMonitor            pipelineMonitor;
+    final @Nullable ReadWriteLockMonitor       readWriteLockMonitor;
+    final @Nullable SemaphoreMisuseDetector    semaphoreMisuseDetector;
+    final @Nullable CompletableFutureExceptionDetector completableFutureExceptionDetector;
+    final @Nullable CompletableFutureCompletionLeakDetector completableFutureCompletionLeakDetector;
+    final @Nullable VirtualThreadPinningDetector virtualThreadPinningDetector;
+    final @Nullable ThreadPoolDeadlockDetector threadPoolDeadlockDetector;
+    final @Nullable ConcurrentModificationDetector concurrentModificationDetector;
+    final @Nullable LockLeakDetector lockLeakDetector;
+    final @Nullable SharedRandomDetector sharedRandomDetector;
+    final @Nullable BlockingQueueDetector blockingQueueDetector;
+    final @Nullable ConditionVariableDetector conditionVariableDetector;
+    final @Nullable SimpleDateFormatDetector simpleDateFormatDetector;
+    final @Nullable ParallelStreamDetector parallelStreamDetector;
+    final @Nullable ResourceLeakDetector resourceLeakDetector;
+    final @Nullable CountDownLatchDetector countDownLatchDetector;
+    final @Nullable CyclicBarrierDetector cyclicBarrierDetector;
+    final @Nullable ReentrantLockDetector reentrantLockDetector;
+    final @Nullable VolatileArrayDetector volatileArrayDetector;
+    final @Nullable DoubleCheckedLockingDetector doubleCheckedLockingDetector;
+    final @Nullable WaitTimeoutDetector waitTimeoutDetector;
+    final @Nullable LockContentionDetector lockContentionDetector;
+    final @Nullable SynchronizedNonFinalDetector synchronizedNonFinalDetector;
+    final @Nullable MissedSignalDetector missedSignalDetector;
+    final @Nullable LazyInitRaceDetector lazyInitRaceDetector;
+    final @Nullable PhaserDetector phaserDetector;
+    final @Nullable StampedLockDetector stampedLockDetector;
+    final @Nullable ExchangerDetector exchangerDetector;
+    final @Nullable ScheduledExecutorDetector scheduledExecutorDetector;
+    final @Nullable ForkJoinPoolDetector forkJoinPoolDetector;
+    final @Nullable ThreadFactoryDetector threadFactoryDetector;
+    final @Nullable ThreadLeakDetector threadLeakDetector;
+    final @Nullable SleepInLockDetector sleepInLockDetector;
+    final @Nullable UnboundedQueueDetector unboundedQueueDetector;
+    final @Nullable ThreadStarvationDetector threadStarvationDetector;
+    final @Nullable CalendarDetector calendarDetector;
+    final @Nullable SharedCollectionDetector sharedCollectionDetector;
+    final @Nullable TimerDetector timerDetector;
+    final @Nullable CopyOnWriteCollectionDetector copyOnWriteCollectionDetector;
+    final @Nullable StringBuilderDetector stringBuilderDetector;
+    final @Nullable StructuredConcurrencyMisuseDetector    structuredConcurrencyMisuseDetector;
+    final @Nullable VirtualThreadContextLeakDetector       virtualThreadContextLeakDetector;
+    final @Nullable ScopedValueMisuseDetector              scopedValueMisuseDetector;
+    final @Nullable VirtualThreadCpuBoundTaskDetector      virtualThreadCpuBoundTaskDetector;
+    final @Nullable VirtualThreadCarrierExhaustionDetector virtualThreadCarrierExhaustionDetector;
+    final @Nullable HttpClientConcurrencyDetector          httpClientConcurrencyDetector;
+    final @Nullable StreamClosingDetector               streamClosingDetector;
+    final @Nullable CacheConcurrencyDetector            cacheConcurrencyDetector;
+    final @Nullable CompletableFutureChainDetector      completableFutureChainDetector;
+    final @Nullable ExecutorShutdownDetector            executorShutdownDetector;
+    final @Nullable MutableMapKeyDetector               mutableMapKeyDetector;
+    final @Nullable NestedMonitorLockoutDetector        nestedMonitorLockoutDetector;
+    final @Nullable LockDowngradeDetector               lockDowngradeDetector;
+    final @Nullable InheritableThreadLocalMisuseDetector inheritableThreadLocalMisuseDetector;
+    final @Nullable UncommittedChangesDetector           uncommittedChangesDetector;
 
     // ---- Phase 10: API Traps & Subtle Concurrency Bugs ----
-    final ThreadLocalContaminationDetector         threadLocalContaminationDetector;
-    final AtomicNonAtomicUpdateDetector            atomicNonAtomicUpdateDetector;
-    final SynchronizedCollectionIterationDetector  synchronizedCollectionIterationDetector;
-    final SharedFormatterDetector                  sharedFormatterDetector;
-    final ConcurrentMapComputeRecursionDetector    concurrentMapComputeRecursionDetector;
-    final SynchronizedOnLiteralDetector            synchronizedOnLiteralDetector;
-    final PublicLockExposureDetector               publicLockExposureDetector;
-    final ForkJoinTaskBlockingDetector             forkJoinTaskBlockingDetector;
-    final OptimisticReadValidationDetector         optimisticReadValidationDetector;
-    final CompletableFutureCommonPoolBlockingDetector cfCommonPoolBlockingDetector;
+    final @Nullable ThreadLocalContaminationDetector         threadLocalContaminationDetector;
+    final @Nullable AtomicNonAtomicUpdateDetector            atomicNonAtomicUpdateDetector;
+    final @Nullable SynchronizedCollectionIterationDetector  synchronizedCollectionIterationDetector;
+    final @Nullable SharedFormatterDetector                  sharedFormatterDetector;
+    final @Nullable ConcurrentMapComputeRecursionDetector    concurrentMapComputeRecursionDetector;
+    final @Nullable SynchronizedOnLiteralDetector            synchronizedOnLiteralDetector;
+    final @Nullable PublicLockExposureDetector               publicLockExposureDetector;
+    final @Nullable ForkJoinTaskBlockingDetector             forkJoinTaskBlockingDetector;
+    final @Nullable OptimisticReadValidationDetector         optimisticReadValidationDetector;
+    final @Nullable CompletableFutureCommonPoolBlockingDetector cfCommonPoolBlockingDetector;
 
     // ---- Phase 11: Thread-Safety of Additional Types & Patterns ----
-    final SharedMatcherDetector        sharedMatcherDetector;
-    final SharedDecimalFormatDetector  sharedDecimalFormatDetector;
-    final WeakReferenceRaceDetector    weakReferenceRaceDetector;
-    final StatefulLambdaDetector       statefulLambdaDetector;
-    final SharedMessageDigestDetector  sharedMessageDigestDetector;
+    final @Nullable SharedMatcherDetector        sharedMatcherDetector;
+    final @Nullable SharedDecimalFormatDetector  sharedDecimalFormatDetector;
+    final @Nullable WeakReferenceRaceDetector    weakReferenceRaceDetector;
+    final @Nullable StatefulLambdaDetector       statefulLambdaDetector;
+    final @Nullable SharedMessageDigestDetector  sharedMessageDigestDetector;
 
     // ---- Phase 12: Operational & Hygiene Concurrency Issues ----
-    final InterruptSwallowingDetector       interruptSwallowingDetector;
-    final MdcContextLeakDetector            mdcContextLeakDetector;
-    final SystemPropertyMutationDetector    systemPropertyMutationDetector;
-    final FutureIgnoredDetector             futureIgnoredDetector;
-    final ExplicitGcDetector                explicitGcDetector;
-    final DeprecatedThreadApiDetector       deprecatedThreadApiDetector;
-    final SharedXmlParserDetector           sharedXmlParserDetector;
-    final BoxedPrimitiveLockDetector        boxedPrimitiveLockDetector;
-    final SharedTimeZoneDetector            sharedTimeZoneDetector;
-    final UncaughtExceptionHandlerDetector  uncaughtExceptionHandlerDetector;
+    final @Nullable InterruptSwallowingDetector       interruptSwallowingDetector;
+    final @Nullable MdcContextLeakDetector            mdcContextLeakDetector;
+    final @Nullable SystemPropertyMutationDetector    systemPropertyMutationDetector;
+    final @Nullable FutureIgnoredDetector             futureIgnoredDetector;
+    final @Nullable ExplicitGcDetector                explicitGcDetector;
+    final @Nullable DeprecatedThreadApiDetector       deprecatedThreadApiDetector;
+    final @Nullable SharedXmlParserDetector           sharedXmlParserDetector;
+    final @Nullable BoxedPrimitiveLockDetector        boxedPrimitiveLockDetector;
+    final @Nullable SharedTimeZoneDetector            sharedTimeZoneDetector;
+    final @Nullable UncaughtExceptionHandlerDetector  uncaughtExceptionHandlerDetector;
 
     // ---- Phase 13: Additional concurrency-bug categories (1.0.0+) ----
-    final DaemonThreadHygieneDetector       daemonThreadHygieneDetector;
-    final NotifyWithoutMonitorDetector      notifyWithoutMonitorDetector;
-    final SharedSecureRandomDetector        sharedSecureRandomDetector;
-    final WeakHashMapSharedDetector         weakHashMapSharedDetector;
-    final JdbcConnectionSharedDetector      jdbcConnectionSharedDetector;
+    final @Nullable DaemonThreadHygieneDetector       daemonThreadHygieneDetector;
+    final @Nullable NotifyWithoutMonitorDetector      notifyWithoutMonitorDetector;
+    final @Nullable SharedSecureRandomDetector        sharedSecureRandomDetector;
+    final @Nullable WeakHashMapSharedDetector         weakHashMapSharedDetector;
+    final @Nullable JdbcConnectionSharedDetector      jdbcConnectionSharedDetector;
 
     // ---- Phase 14: Additional thread-unsafe primitives & publication hazards (1.7.0+) ----
-    final SharedStatefulCryptoDetector          sharedStatefulCryptoDetector;
-    final NonAtomicConcurrentMapUpdateDetector  nonAtomicConcurrentMapUpdateDetector;
-    final SharedDeflaterDetector                sharedDeflaterDetector;
-    final ThisEscapeDetector                    thisEscapeDetector;
-    final ThreadLocalRandomMisuseDetector       threadLocalRandomMisuseDetector;
+    final @Nullable SharedStatefulCryptoDetector          sharedStatefulCryptoDetector;
+    final @Nullable NonAtomicConcurrentMapUpdateDetector  nonAtomicConcurrentMapUpdateDetector;
+    final @Nullable SharedDeflaterDetector                sharedDeflaterDetector;
+    final @Nullable ThisEscapeDetector                    thisEscapeDetector;
+    final @Nullable ThreadLocalRandomMisuseDetector       threadLocalRandomMisuseDetector;
 
     // ---- Phase 15: Asynchronous flow & lock-usage hazards (1.8.0+) ----
-    final CompletableFutureObtrudeDetector          completableFutureObtrudeDetector;
-    final SpuriousWakeupDetector                    spuriousWakeupHazardDetector;
-    final LockUpgradeDeadlockDetector               lockUpgradeDeadlockDetector;
-    final TryLockMisuseDetector                     tryLockMisuseDetector;
-    final CompletableFutureBlockingCallbackDetector cfBlockingCallbackDetector;
+    final @Nullable CompletableFutureObtrudeDetector          completableFutureObtrudeDetector;
+    final @Nullable SpuriousWakeupDetector                    spuriousWakeupHazardDetector;
+    final @Nullable LockUpgradeDeadlockDetector               lockUpgradeDeadlockDetector;
+    final @Nullable TryLockMisuseDetector                     tryLockMisuseDetector;
+    final @Nullable CompletableFutureBlockingCallbackDetector cfBlockingCallbackDetector;
 
     // ---- Phase 16: JDK 25/26 preview-era concurrency detectors ----
-    final StableValueMisuseDetector             stableValueMisuseDetector;
-    final StructuredTaskScopeMisuseDetector     structuredTaskScopeMisuseDetector;
-    final GathererConcurrencyMisuseDetector     gathererConcurrencyMisuseDetector;
+    final @Nullable StableValueMisuseDetector             stableValueMisuseDetector;
+    final @Nullable StructuredTaskScopeMisuseDetector     structuredTaskScopeMisuseDetector;
+    final @Nullable GathererConcurrencyMisuseDetector     gathererConcurrencyMisuseDetector;
 
     // ---- Phase 17: Shared stateful JDK objects, I/O position races & contention advisories ----
-    final SharedByteBufferDetector              sharedByteBufferDetector;
-    final SharedCharsetCoderDetector            sharedCharsetCoderDetector;
-    final SharedChecksumDetector                sharedChecksumDetector;
-    final FileChannelPositionRaceDetector       fileChannelPositionRaceDetector;
-    final SharedIteratorDetector                sharedIteratorDetector;
-    final HighContentionAtomicDetector          highContentionAtomicDetector;
-    final SharedJsonMapperReconfigDetector      sharedJsonMapperReconfigDetector;
+    final @Nullable SharedByteBufferDetector              sharedByteBufferDetector;
+    final @Nullable SharedCharsetCoderDetector            sharedCharsetCoderDetector;
+    final @Nullable SharedChecksumDetector                sharedChecksumDetector;
+    final @Nullable FileChannelPositionRaceDetector       fileChannelPositionRaceDetector;
+    final @Nullable SharedIteratorDetector                sharedIteratorDetector;
+    final @Nullable HighContentionAtomicDetector          highContentionAtomicDetector;
+    final @Nullable SharedJsonMapperReconfigDetector      sharedJsonMapperReconfigDetector;
 
     // ---- Phase 18: JDK 25/26 GA-era concurrency detectors ----
-    final LazyConstantMisuseDetector            lazyConstantMisuseDetector;
-    final FinalFieldMutationDetector            finalFieldMutationDetector;
-    final SharedKdfDetector                     sharedKdfDetector;
+    final @Nullable LazyConstantMisuseDetector            lazyConstantMisuseDetector;
+    final @Nullable FinalFieldMutationDetector            finalFieldMutationDetector;
+    final @Nullable SharedKdfDetector                     sharedKdfDetector;
 
     // ---- Executor / future / latch ----
-    final LatchMisuseDetector                   latchMisuseDetector;
-    final ExecutorDeadlockDetector              executorDeadlockDetector;
-    final FutureBlockingDetector                futureBlockingDetector;
+    final @Nullable LatchMisuseDetector                   latchMisuseDetector;
+    final @Nullable ExecutorDeadlockDetector              executorDeadlockDetector;
+    final @Nullable FutureBlockingDetector                futureBlockingDetector;
 
     // ---- Agent-telemetry bridge target (1.7.0+) ----
     // Exposed via atomicityValidator() so se.deversity.asynctest.telemetry.TelemetryBridge
     // can route drained agent field-access events into the live per-test detector.
-    final AtomicityValidator                    atomicityValidator;
+    final @Nullable AtomicityValidator                    atomicityValidator;
 
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
@@ -524,7 +525,7 @@ public final class AsyncTestContext {
      * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
      * which lives in a different package, can call it; not part of the stable public API.
      */
-    public VisibilityMonitor sharedVisibilityMonitor() {
+    public @Nullable VisibilityMonitor sharedVisibilityMonitor() {
         return registry.visibilityMonitor;
     }
 
@@ -538,7 +539,7 @@ public final class AsyncTestContext {
      * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
      * which lives in a different package, can call it; not part of the stable public API.
      */
-    public LivelockDetector sharedLivelockDetector() {
+    public @Nullable LivelockDetector sharedLivelockDetector() {
         return registry.livelockDetector;
     }
 
@@ -552,7 +553,7 @@ public final class AsyncTestContext {
      * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
      * which lives in a different package, can call it; not part of the stable public API.
      */
-    public RaceConditionDetector sharedRaceConditionDetector() {
+    public @Nullable RaceConditionDetector sharedRaceConditionDetector() {
         return registry.raceConditionDetector;
     }
 
@@ -566,7 +567,7 @@ public final class AsyncTestContext {
      * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
      * which lives in a different package, can call it; not part of the stable public API.
      */
-    public ThreadLocalMonitor sharedThreadLocalMonitor() {
+    public @Nullable ThreadLocalMonitor sharedThreadLocalMonitor() {
         return registry.threadLocalMonitor;
     }
 
@@ -580,7 +581,7 @@ public final class AsyncTestContext {
      * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
      * which lives in a different package, can call it; not part of the stable public API.
      */
-    public BusyWaitDetector sharedBusyWaitDetector() {
+    public @Nullable BusyWaitDetector sharedBusyWaitDetector() {
         return registry.busyWaitDetector;
     }
 
@@ -595,7 +596,7 @@ public final class AsyncTestContext {
      * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
      * which lives in a different package, can call it; not part of the stable public API.
      */
-    public AtomicityValidator sharedAtomicityValidator() {
+    public @Nullable AtomicityValidator sharedAtomicityValidator() {
         return registry.atomicityValidator;
     }
 
@@ -609,7 +610,7 @@ public final class AsyncTestContext {
      * <p>Public only so {@link se.deversity.asynctest.diagnostics.Phase1DetectorSet},
      * which lives in a different package, can call it; not part of the stable public API.
      */
-    public InterruptMonitor sharedInterruptMonitor() {
+    public @Nullable InterruptMonitor sharedInterruptMonitor() {
         return registry.interruptMonitor;
     }
 

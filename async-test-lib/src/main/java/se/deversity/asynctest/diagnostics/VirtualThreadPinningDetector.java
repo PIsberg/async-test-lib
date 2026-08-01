@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -475,7 +477,7 @@ public class VirtualThreadPinningDetector {
          *
          * @return virtual thread name
          */
-        public String getThreadName() {
+        public @Nullable String getThreadName() {
             return threadName;
         }
 
@@ -484,7 +486,7 @@ public class VirtualThreadPinningDetector {
          *
          * @return description of blocking operation
          */
-        public String getBlockingOperation() {
+        public @Nullable String getBlockingOperation() {
             return blockingOperation;
         }
 
@@ -502,7 +504,7 @@ public class VirtualThreadPinningDetector {
          *
          * @return stack trace at pinning point
          */
-        public StackTraceElement[] getStackTrace() {
+        public StackTraceElement @Nullable [] getStackTrace() {
             return stackTrace == null ? null : stackTrace.clone();
         }
     }

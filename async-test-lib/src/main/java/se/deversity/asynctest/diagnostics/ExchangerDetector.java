@@ -105,6 +105,23 @@ public class ExchangerDetector {
                 || nullValueExchanges > 0;
         }
 
+        /**
+         * Registry lookup that always yields a non-null {@code ExchangerInfo}.
+         *
+         * <p>Nothing requires a {@code record*} call's subject to have been passed to the matching
+         * {@code register*} first — no precondition, no runtime check — and the two are written at
+         * different places in a test. When the registration is missed the lookup returns
+         * {@code null} and dereferencing it threw out of {@code toString()}. That NPE never reached
+         * the user: {@code DetectorRegistry.ifIssue} catches it so one detector cannot discard the
+         * whole sweep, so the finding was simply dropped and the report the user needed never
+         * appeared. A placeholder keeps the finding and says plainly which subject was not
+         * registered.
+         */
+        private ExchangerInfo infoFor(Exchanger<?> exchanger) {
+            ExchangerInfo info = exchangerRegistry.get(exchanger);
+            return info != null ? info : new ExchangerInfo("<unregistered exchanger>");
+        }
+
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
@@ -113,7 +130,7 @@ public class ExchangerDetector {
             if (!timedOutExchangers.isEmpty()) {
                 sb.append("  Timed Out Exchanges:\n");
                 for (Exchanger<?> exchanger : timedOutExchangers) {
-                    ExchangerInfo info = exchangerRegistry.get(exchanger);
+                    ExchangerInfo info = infoFor(exchanger);
                     sb.append("    - ").append(info.name)
                       .append(" (exchange timed out - no partner thread found)\n");
                 }
@@ -126,7 +143,7 @@ public class ExchangerDetector {
             if (!interruptedExchangers.isEmpty()) {
                 sb.append("  Interrupted Exchanges:\n");
                 for (Exchanger<?> exchanger : interruptedExchangers) {
-                    ExchangerInfo info = exchangerRegistry.get(exchanger);
+                    ExchangerInfo info = infoFor(exchanger);
                     sb.append("    - ").append(info.name)
                       .append(" (exchange interrupted)\n");
                 }

@@ -14,6 +14,7 @@ import se.deversity.vibetags.annotations.AICore;
 import java.lang.instrument.Instrumentation;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Java instrumentation agent that transparently injects field-access telemetry into
@@ -124,7 +125,7 @@ public final class AsyncTestAgent {
      *                   {@code null}
      * @param inst       the instrumentation handle provided by the JVM
      */
-    public static void premain(String agentArgs, Instrumentation inst) {
+    public static void premain(@Nullable String agentArgs, Instrumentation inst) {
         // Static attach: classes are woven as they load, so retransformation of
         // already-loaded classes is unnecessary.
         install(agentArgs, inst, false);
@@ -156,7 +157,7 @@ public final class AsyncTestAgent {
      *                  support retransformation
      * @since 1.7.0
      */
-    public static void agentmain(String agentArgs, Instrumentation inst) {
+    public static void agentmain(@Nullable String agentArgs, Instrumentation inst) {
         // Dynamic attach: re-weave classes that were already loaded before attach.
         install(agentArgs, inst, true);
     }
@@ -213,7 +214,7 @@ public final class AsyncTestAgent {
      *                               attach otherwise fails
      * @since 1.7.0
      */
-    public static void selfAttach(String agentArgs) {
+    public static void selfAttach(@Nullable String agentArgs) {
         // Fast path: if a launch-flag premain (or a prior selfAttach) already installed the
         // transformer, skip the attach entirely. The authoritative at-most-once guarantee
         // is still the INSTALLED CAS inside install(), which also makes concurrent
@@ -253,7 +254,7 @@ public final class AsyncTestAgent {
      *                    {@code false}, only classes loaded after install are woven
      *                    (static attach)
      */
-    private static void install(String agentArgs, Instrumentation inst, boolean retransform) {
+    private static void install(@Nullable String agentArgs, Instrumentation inst, boolean retransform) {
         if (!INSTALLED.compareAndSet(false, true)) {
             // Another entry point already installed the transformer for this JVM.
             return;

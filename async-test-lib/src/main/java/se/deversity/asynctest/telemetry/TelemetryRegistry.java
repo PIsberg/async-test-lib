@@ -1,5 +1,7 @@
 package se.deversity.asynctest.telemetry;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -32,9 +34,9 @@ public final class TelemetryRegistry {
     private static final TelemetryEventBuffer BUFFER = new TelemetryEventBuffer(BUFFER_CAPACITY);
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
 
-    private static volatile TelemetryEventBuffer.DrainCallback drainCallback = null;
-    private static ScheduledExecutorService drainExecutor = null;
-    private static Thread shutdownHook = null;
+    private static volatile TelemetryEventBuffer.@Nullable DrainCallback drainCallback = null;
+    private static @Nullable ScheduledExecutorService drainExecutor = null;
+    private static @Nullable Thread shutdownHook = null;
 
     private TelemetryRegistry() {}
 
@@ -86,7 +88,7 @@ public final class TelemetryRegistry {
     // The scheduleAtFixedRate ScheduledFuture is intentionally not retained: the periodic
     // drain is stopped by shutting down drainExecutor in stop(), not by cancelling the Future.
     @SuppressWarnings("FutureReturnValueIgnored")
-    public static void start(TelemetryEventBuffer.DrainCallback callback) {
+    public static void start(TelemetryEventBuffer.@Nullable DrainCallback callback) {
         if (!RUNNING.compareAndSet(false, true)) {
             // Already running, but allow updating the callback.
             setCallback(callback);
@@ -127,7 +129,7 @@ public final class TelemetryRegistry {
      * @param callback the new drain callback, or {@code null} for the no-op default
      * @since 1.7.0
      */
-    public static void setCallback(TelemetryEventBuffer.DrainCallback callback) {
+    public static void setCallback(TelemetryEventBuffer.@Nullable DrainCallback callback) {
         drainCallback = callback;
     }
 

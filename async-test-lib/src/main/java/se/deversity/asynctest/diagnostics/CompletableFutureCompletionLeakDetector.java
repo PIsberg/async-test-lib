@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -62,8 +64,8 @@ public class CompletableFutureCompletionLeakDetector {
         final long creatorThreadId = Thread.currentThread().threadId();
         final StackTraceElement[] creationStackTrace = Thread.currentThread().getStackTrace();
         volatile boolean completed = false;
-        volatile Long completedTimeNanos = null;
-        volatile String completionType = null; // "complete", "completeExceptionally", "cancel"
+        volatile @Nullable Long completedTimeNanos = null;
+        volatile @Nullable String completionType = null; // "complete", "completeExceptionally", "cancel"
         final AtomicInteger completionAttempts = new AtomicInteger(0);
 
         FutureState(CompletableFuture<?> future, String name) {
@@ -304,7 +306,7 @@ public class CompletableFutureCompletionLeakDetector {
          *
          * @return the descriptive name of the future
          */
-        public String getName() {
+        public @Nullable String getName() {
             return name;
         }
 
@@ -331,7 +333,7 @@ public class CompletableFutureCompletionLeakDetector {
          *
          * @return stack trace at creation point
          */
-        public StackTraceElement[] getCreationStackTrace() {
+        public StackTraceElement @Nullable [] getCreationStackTrace() {
             return creationStackTrace == null ? null : creationStackTrace.clone();
         }
 

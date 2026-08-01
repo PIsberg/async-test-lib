@@ -1,5 +1,7 @@
 package se.deversity.asynctest.telemetry;
 
+import org.jspecify.annotations.Nullable;
+
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 
@@ -36,7 +38,7 @@ public final class TelemetryEventBuffer {
     /** Callback invoked by the consumer for each drained event. */
     @FunctionalInterface
     public interface DrainCallback {
-        void onEvent(long threadId, String targetField, boolean isWrite);
+        void onEvent(long threadId, @Nullable String targetField, boolean isWrite);
     }
 
     /**
@@ -46,7 +48,7 @@ public final class TelemetryEventBuffer {
     static final class AccessEvent {
         volatile long sequence = -1;
         long threadId;
-        String targetField;
+        @Nullable String targetField;
         boolean isWrite;
     }
 

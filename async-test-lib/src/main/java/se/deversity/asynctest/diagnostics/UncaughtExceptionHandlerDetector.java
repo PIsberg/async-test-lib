@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +33,7 @@ public class UncaughtExceptionHandlerDetector {
     private static class ThreadRecord {
         final String  threadName;
         final boolean hasCustomHandler;
-        volatile Throwable uncaughtException;
+        volatile @Nullable Throwable uncaughtException;
 
         ThreadRecord(String tname, boolean hasCustomHandler) {
             this.threadName       = tname;

@@ -103,7 +103,8 @@ public class WaitTimeoutDetector {
             if (!infiniteWaits.isEmpty()) {
                 sb.append("  Infinite wait() Calls (no timeout):\n");
                 for (WaitInfo info : infiniteWaits) {
-                    Set<String> events = waitEvents.get(info);
+                    Set<String> recorded = waitEvents.get(info);
+                    Set<String> events = recorded != null ? recorded : Set.of();
                     sb.append("    - Monitor '").append(info.monitorName).append("'\n");
                     
                     long infiniteCount = events.stream()

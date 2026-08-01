@@ -73,4 +73,11 @@ jmh {
             "-Dasync.test.version=$asyncTestVersion"
         )
     )
+
+    // Scope a run to one class or method while iterating on a benchmark; a full jmh run is
+    // ~20 minutes, which is too slow a loop to check whether a change moved the number.
+    //   ./gradlew -p load-tests jmh -PjmhIncludes=DetectorLifecycleBenchmark
+    (project.findProperty("jmhIncludes") as String?)?.let {
+        includes.addAll(it.split(","))
+    }
 }
