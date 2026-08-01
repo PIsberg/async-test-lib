@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — a library-only PR ran none of the 127 examples
+
+The PR-time example filter watched `examples/**` and nothing else, so it answered "did you edit an
+example?" when the question that decides whether the check is worth anything is "could you have
+broken the examples?". All 127 examples consume the built artifact. A PR that changed only
+`async-test-lib/src/main/**` therefore ran zero of them, went green, and any breakage surfaced
+after merge or in the nightly reactor.
+
+`examples-detect` in `e2e-tests.yml` now also watches `async-test-*/src/main/**` and the root build
+files. A library change runs a deterministic every-4th sample (32 of 127) rather than the whole
+reactor — enough to catch a systemic break at PR time, cheap enough to afford on every library PR.
+A PR touching both examples and library gets the union, deduplicated. `gradle-tests.yml` mirrors it.
+
+Job names are untouched, since they are required checks. The `E2E Tests` summary job keeps treating
+`skipped` as acceptable — it has to, because the full reactor is always skipped on a PR — and still
+fails on `failure` or `cancelled` in any leg, including `examples-detect` itself.
+
+The sample is a sample, not coverage. The full reactor on push and nightly remains what proves all
+127 build; this only moves discovery of the common failure earlier. Verified by replaying the
+compute step locally against all four filter outcomes: docs-only → 0 modules, one example edited →
+1, library-only → 32, both → 33 with no duplicates and every sampled module resolving to a real
+project.
+
 ### Added — find-sec-bugs inside the SpotBugs gate
 
 121 security detectors covering 144 bug patterns (counted from the plugin jar's own
