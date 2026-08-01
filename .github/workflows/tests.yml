@@ -212,7 +212,12 @@ jobs:
           cache: maven
 
       - name: Generate Javadoc
-        run: mvn -DskipTests javadoc:javadoc
+        # `javadoc:javadoc` alone is a bare goal: it does not build the sibling modules, so
+        # async-test-agent tries to resolve async-test-lib from Central. That silently
+        # documented the PREVIOUSLY PUBLISHED library on every run, and fails outright on a
+        # release commit whose version is not on Central yet. `package` first builds the
+        # reactor so the goal reads this repo.
+        run: mvn -DskipTests package javadoc:javadoc
       
       - name: Display documentation output
         run: ls -lah async-test-lib/target/reports/apidocs/
