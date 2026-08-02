@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0-RC6] - 2026-08-02
+
 ### Fixed — a library-only PR ran none of the 127 examples
 
 The PR-time example filter watched `examples/**` and nothing else, so it answered "did you edit an
