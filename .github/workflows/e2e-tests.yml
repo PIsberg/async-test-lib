@@ -118,22 +118,56 @@ jobs:
           filters: |
             examples:
               - 'examples/**'
+            # A library change touches no examples/** path, yet every example consumes the
+            # built artifact and can break because of it. Treated below as a reason to run a
+            # sample rather than nothing.
+            library:
+              - 'async-test-lib/src/main/**'
+              - 'async-test-agent/src/main/**'
+              - 'async-test-analysis/src/main/**'
+              - 'pom.xml'
+              - 'build.gradle.kts'
+            # The pipeline that runs the examples is itself a reason to run some. Without this,
+            # a change to the sharding or to the filter above ships without building a single
+            # example, and a change to this file cannot demonstrate its own effect.
+            pipeline:
+              - '.github/workflows/e2e-tests.yml'
 
       - name: Compute changed example modules
         id: compute
         run: |
-          if [ "${{ steps.filter.outputs.examples }}" != "true" ]; then
-            echo "modules=" >> "$GITHUB_OUTPUT"
-            echo "No examples touched."
-            exit 0
+          set -uo pipefail
+
+          # 1. Examples this PR edited directly.
+          changed=""
+          if [ "${{ steps.filter.outputs.examples }}" = "true" ]; then
+            changed=$(printf '%s\n' ${{ steps.filter.outputs.examples_files }} \
+              | awk -F/ 'NF>=3 && $1=="examples" {print $2}' \
+              | while read m; do [ -f "examples/$m/pom.xml" ] && echo "$m"; done)
           fi
-          modules=$(printf '%s\n' ${{ steps.filter.outputs.examples_files }} \
-            | awk -F/ 'NF>=3 && $1=="examples" {print $2}' \
-            | while read m; do [ -f "examples/$m/pom.xml" ] && echo "$m"; done \
+
+          # 2. A library change edits no examples/** path, but every example consumes the built
+          #    artifact, so one can break all of them while this filter sees nothing. Run a
+          #    deterministic every-4th sample (~32 of 127): enough to catch a systemic break at
+          #    PR time, cheap enough to afford on every library PR. The full reactor still runs
+          #    on push and nightly, so this moves discovery earlier rather than adding coverage.
+          sample=""
+          if [ "${{ steps.filter.outputs.library }}" = "true" ] \
+             || [ "${{ steps.filter.outputs.pipeline }}" = "true" ]; then
+            sample=$(ls -1 examples/*/pom.xml | awk -F/ '{print $2}' | sort | awk 'NR%4==1')
+            echo "Library sources or this pipeline changed - sampling every 4th example project."
+          fi
+
+          modules=$(printf '%s\n%s\n' "$changed" "$sample" \
+            | grep -v '^$' \
             | sort -u \
-            | paste -sd ',' -)
+            | paste -sd ',' - || true)
           echo "modules=$modules" >> "$GITHUB_OUTPUT"
-          echo "Changed example modules: $modules"
+          if [ -z "$modules" ]; then
+            echo "No example projects to run."
+          else
+            echo "example modules to run: $modules"
+          fi
 
   examples-changed:
     name: Examples Shard ${{ matrix.shard }} (PR)
