@@ -10,7 +10,7 @@ dependencies {
     api("org.junit.jupiter:junit-jupiter-api:$junitVersion")
     api("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
     api("org.slf4j:slf4j-api:$slf4jVersion")
-    implementation("se.deversity.common:common-license-lib:0.2.1")
+    implementation("se.deversity.common:common-license-lib:0.3.0")
 
     testImplementation("org.junit.platform:junit-platform-testkit:$junitVersion")
     testImplementation("com.code-intelligence:jazzer-api:$jazzerVersion")
