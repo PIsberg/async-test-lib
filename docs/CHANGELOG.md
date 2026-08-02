@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — `common-license-lib` 0.2.1 to 0.3.0, which fixes a license contradiction
+
+This project is PolyForm Noncommercial and its README promises "free for non-commercial use".
+It declares `common-license-lib` with no scope in Maven and as `implementation` in Gradle, so the
+jar reaches every consumer's runtime classpath either way.
+
+Up to 0.2.1 that library was published under PolyForm **Free Trial**, which grants 32 consecutive
+days and only for demonstration, testing and evaluation. A noncommercial user of this project
+therefore lost their license to the transitive dependency on day 33, and never held one for
+production use at all. Free Trial's *No Other Rights* clause forbids sublicensing, so this project
+could not grant those rights on their behalf either.
+
+`common-license-lib` 0.3.0 is published under PolyForm Noncommercial, with no time limit, matching
+this project. The promise on the README is now true rather than contradicted by a dependency.
+
+Verified against the artifact on Maven Central rather than the source: the published
+`common-license-lib-0.3.0.pom` carries `PolyForm Noncommercial License 1.0.0` in its `<licenses>`
+block.
+
 ### Removed — a stale copyright notice from another project in `LICENSE`
 
 The `Copyright Notice:` example under *Notices* read `isberg.peter+cl_light@gmail.com`, copied
