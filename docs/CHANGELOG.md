@@ -7,6 +7,196 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — every instruction for attaching the agent named a JAR that cannot attach
+
+`Premain-Class` and `Agent-Class` are in `async-test-agent`'s manifest and nowhere else. Six current
+instructions told the reader to attach `async-test-lib.jar`: the agent's own class javadoc, the
+`AgentOptions` examples, the exception message the agent throws when self-attach fails,
+`docs/USAGE.md` and `docs/architecture/contention-engine.md`. That JAR has no `Premain-Class`, so
+following any of them produces "Failed to find Premain-Class manifest attribute" and no agent. Since
+the agent is the only path that feeds detectors without hand-written hooks, the symptom a user sees
+is not "the flag was wrong" but "the library found nothing".
+
+The name moved to the agent module when the reactor was split and these references were left behind.
+They now read `async-test-agent-<version>.jar`. Two mentions of the old flag survive on purpose, in
+`docs/analysis/modularization.md` and `docs/DISTRIBUTION.md`, because those describe the split itself
+and have to quote the old form.
+
+`AgentAttachInstructionTest` fails on any new `-javaagent:async-test-lib` in source or docs, with the
+two migration notes listed explicitly rather than pattern-excluded, and separately asserts that
+`Premain-Class` is still declared by the agent module in both builds, so a manifest move cannot leave
+the instructions silently pointing at the wrong artifact.
+
+### Fixed — the agent said it instruments field access, which is more than it does
+
+The weaver matches `ElementMatchers.isGetter()` and `isSetter()`, so the unit of observation is an
+accessor *call*. A field reached only from inside a method body, the `count++` in an `increment()`,
+produces no event at all. The class javadoc opened with "transparently injects field-access
+telemetry into application classes" and the published description said "instruments field access",
+both of which promise the thing that does not happen. The "Approach" section further down was always
+accurate; the summary a reader stops at was not.
+
+Both now say JavaBean accessors, and the javadoc states the boundary directly: code that goes
+through getters and setters is covered, code that touches its fields directly is not and needs the
+manual recording hooks. `BuildMetadataSyncTest` keeps the Maven and Gradle copies of the description
+identical.
+
+### Added — `DetectionCoverageTest`, the first test that asserts a detector reports anything
+
+The suite had two kinds of detection test and neither asserted detection. The per-detector unit
+tests hand a detector records and check the report it computes, which proves the analyser and says
+nothing about whether anything feeds it. The meta-tests run genuinely buggy code under `@AsyncTest`
+and assert the run failed, but they use the default `failOn = NONE`, and `FailOn.triggeredBy`
+returns false unconditionally for `NONE`, so a detector finding cannot fail those runs. The failure
+they observe is the dummy's own `@AfterEach` assertion. All of them would still pass with every
+detector switched off. Nothing joined the two halves, which is the same seam where the agent's
+telemetry turned out to be going nowhere.
+
+`DetectionCoverageTest` watches `AsyncTestListener.onDetectorReport`, the channel the printed report
+and the `failOn` gate are both built on, and pins three facts: a real deadlock is reported by
+`DeadlockDetector` with no instrumentation at all; a race recorded through
+`AsyncTestContext.raceConditionDetector()` is reported end to end; and the same race with nothing
+recording it is **not** reported. The third asserts a limitation on purpose, so what a bare
+`@AsyncTest` does not catch is written down and checked rather than assumed. If it ever fails
+because the finding appeared, that is good news and it should become a positive assertion.
+
+`AsyncTestLibraryMetaTest` now says what it proves. Its race and deadlock assertions state that they
+pin the bug manifesting rather than a detector reporting, and point here.
+`testVisibilityIssueIsCaught` asserted nothing at all, its only assertion being commented out, making
+it a test that would have passed with the library deleted. It is now
+`visibilityDummyExecutes_thoughItsOutcomeIsNotDeterministic` and pins what is actually decidable:
+that the template produced one execution and did not abort. Whether the stale read happens is left
+unasserted, visibly, because it depends on the JVM and the CPU.
+
+### Changed — `examples/README.md` says what the examples pipeline proves
+
+98 of the 127 examples have their `@AsyncTest` demonstration disabled. That is deliberate: they
+demonstrate code that fails, and enabling them would make the pipeline permanently red. The
+consequence was left to inference, so the README now states it: the pipeline proves the examples
+compile and keep working against the current library, not that any detector fires, and
+`DetectionCoverageTest` is the check that does the latter. The same section explains why the demos
+contain explicit `recordWrite(...)`-style calls, since most detectors need the test body to tell them
+what happened.
+
+`ExampleDisabledDemoTest` requires every `@Disabled` under `examples/` to carry a reason. All 98
+already did; the point is that a demonstration disabled because it broke is otherwise
+indistinguishable from one disabled because it is meant to fail, and the pipeline stays green either
+way. The count is not pinned, so adding an example does not fail the test, but disabling one
+silently does.
+
+### Fixed — the agent's field-access telemetry never reached a detector
+
+The agent is the library's only automatic detection path. It weaves accessors, and every
+intercepted access is published to the telemetry ring buffer; `TelemetryRegistry` drains that
+buffer every millisecond and hands each event to the registered `DrainCallback`;
+`TelemetryBridge` is the callback that forwards events into the run's `AtomicityValidator`.
+
+Nothing registered it. `AsyncTestAgent.premain` calls the no-argument `TelemetryRegistry.start()`,
+which leaves the callback null, and the drain then passes every event to a discard lambda. With
+`-javaagent:async-test-agent.jar` attached, every captured access was drained and thrown away and
+no detector ever saw one. The pipeline existed, was documented and was unit-tested; only the last
+hop, from the runner to the bridge, was missing. Each half passing in isolation is why no test
+caught it.
+
+`ConcurrencyRunner` now attaches a bridge for the duration of a run and detaches it afterwards.
+Three details matter:
+
+- **The filter is live, not a snapshot.** The bridge forwards only events from this run's worker
+  threads, but those threads do not exist when the bridge has to be attached, and under virtual
+  threads each round brings new ones. `TelemetryBridge.activateWithFilter` takes a `LongPredicate`
+  consulted per event, backed by a concurrent set each worker adds itself to as it starts.
+- **Drain before detach.** `close()` clears the callback, so anything still in the ring buffer at
+  that point is discarded. `analyzeAndGate` runs after the runner's `finally` block, so detaching
+  first threw away the last round of every passing test. The order is now: shut the executor down,
+  `TelemetryRegistry.flush()`, then detach, each step guarded on its own.
+- **Nothing is paid when the agent is absent.** The bridge is attached only when
+  `TelemetryRegistry.isRunning()`, which holds only between the agent's `start()` and `stop()`.
+  Without it there is no worker-id set, no per-worker registration and no flush.
+
+`TelemetryRegistry.flush()` is new and drains on the registry's own single-threaded executor rather
+than on the caller, because the buffer is MPSC and `drain` may only run on one thread. It waits for
+that drain, which is what makes the result deterministic: without it, whether the final round's
+accesses were analysed depended on where the 1 ms tick happened to fall.
+
+Verified with `AgentTelemetryReachesDetectorsTest`, which publishes the events the advice would from
+the worker threads of a live `@AsyncTest` run and requires the run to fail on `failOn = LOW`. It
+failed before the change and passes after, and it was re-checked by disabling the bridge attachment
+and confirming it goes red again. It stands in for the agent rather than attaching one, so it needs
+no `-javaagent` and no byte-buddy on a classpath the architecture rules keep it off.
+
+### Fixed — a getter and its setter could never be recognised as the same field
+
+Connecting the pipeline above surfaced a second reason agent data could not produce the finding it
+was routed to. The advice identifies an access as `declaringType.methodName`, so
+`Account.getBalance` and `Account.setBalance` arrive as two unrelated identifiers.
+`AtomicityValidator` keys its history by identifier and reports a field that more than one thread
+both read and wrote — and a getter identifier only ever carries reads while a setter identifier only
+ever carries writes. The mixed read/write finding, the one that analysis exists for, was therefore
+unreachable from agent data no matter how racy the code was; only the weaker write-only branch could
+ever fire.
+
+`TelemetryBridge` now maps accessor identifiers to the field they access before recording, so both
+land under `Account.balance`. The mapping happens on the drain thread rather than in the advice,
+which is deliberately allocation-free with a constant-pool identifier: stripping a prefix there
+would put string work on every intercepted access.
+
+It is conservative. Only `get`/`is`/`set` followed by an upper-case letter counts, so `getter()` and
+`isolate()` — which the weaver's JavaBean matchers can also select — keep their own identifier
+instead of being folded into a field called `ter` or `olate`. Anything unrecognised is returned
+unchanged, which also leaves identifiers from manual `TelemetryRegistry.recordAccess` callers alone.
+
+`TelemetryBridgeFieldIdentifierTest` pins both directions: that a getter and setter now correlate
+into the finding, and that the same two accesses keyed by raw accessor name still produce nothing,
+so the test states the behaviour the mapping exists to change rather than only its result.
+
+### Fixed — the published descriptions told Maven Central three wrong things
+
+`async-test-lib` described itself as having "121 problem detectors". `DetectorType` has 127. The
+description is what a consumer reads on the artifact page
+before deciding whether to depend on the library, so the number being six low is a wrong claim, not
+a cosmetic one. It is now derived-and-checked rather than restated: `BuildMetadataSyncTest` reads
+`DetectorType.values().length` and fails if the description does not name it.
+
+`async-test-agent` and `async-test-analysis` each published a shorter description from Gradle than
+from Maven. The agent's Gradle text stopped after "record reads and writes without manual hooks",
+dropping the sentence that says how to attach it (`-javaagent:async-test-agent.jar`, or
+`AsyncTestAgent.selfAttach()`), the one thing a reader of that description needs. The analysis
+module's dropped "Standalone, it depends on no other module in the project", which is the reason to
+pick it up separately. Whichever build runs the release decides what Central shows, so the two have
+to say the same thing. Maven was canonical; Gradle now matches it.
+
+### Added — `BuildMetadataSyncTest`, so Maven and Gradle cannot drift again in silence
+
+Every version the two builds share is written twice, and the only thing keeping the copies equal was
+a comment asking people to remember. The comment above the version block in `build.gradle.kts`
+records that this already failed three times: spotbugs, error-prone and pmd each drifted. That kind
+of drift is quiet. Both builds stay green; they just stop running the same analyser, and the one CI
+uses is no longer the one a developer runs locally.
+
+The gate reads the mapping the build files already declare. Each Gradle version names the pom
+property it tracks in a trailing comment:
+
+```kotlin
+extra["asmVersion"] = "9.10.1"        // pom: asm.version
+```
+
+A version with no `// pom:` comment is deliberately unpinned (logback is test-only and has no Maven
+twin) and is skipped. A comment naming a property the pom does not define fails, so renaming a pom
+property cannot orphan its Gradle copy. The test also pins the project version across `pom.xml` and
+`gradle.properties`, and the description of each published module across its pom and its Gradle
+script. It asserts a floor on how many mappings it parsed, so a change to the comment format makes
+it fail rather than pass while checking nothing.
+
+`common-license-lib` was the one shared version written outside that mapping: a literal `0.3.0` in
+`async-test-lib/build.gradle.kts` and an inline `<version>` in the reactor pom, exactly the shape the
+three earlier drifts had. It is now `common-license-lib.version` in the pom properties and
+`commonLicenseLibVersion` in the Gradle block, covered by the same check.
+
+Verified by writing the gate first and watching it fail on the real drift (the 121 count), fixing
+that, then changing `asmVersion` to `9.10.0` in `build.gradle.kts` alone and confirming it failed
+with "Maven and Gradle disagree on asm.version", then restoring. It passes under both `mvn` and
+`./gradlew`.
+
 ### Changed — `common-license-lib` 0.2.1 to 0.3.0, which fixes a license contradiction
 
 This project is PolyForm Noncommercial and its README promises "free for non-commercial use".

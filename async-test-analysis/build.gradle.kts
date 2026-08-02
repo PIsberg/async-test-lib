@@ -19,6 +19,6 @@ mavenPublishing {
     pom {
         name = "Async Test Library — static analysis"
         description = "Optional ASM-based pre-scanner for async-test-lib: finds Loom pinning sites in " +
-                "compiled classes before a test run."
+                "compiled classes before a test run. Standalone — it depends on no other module in the project."
     }
 }

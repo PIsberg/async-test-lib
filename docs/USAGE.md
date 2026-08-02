@@ -320,7 +320,7 @@ Attach it one of three ways:
 
 ```
 # 1. Launch flag (static), optionally scoped:
--javaagent:async-test-lib-<version>.jar=includes=com.myapp;excludes=com.myapp.dto,debug=true
+-javaagent:async-test-agent-<version>.jar=includes=com.myapp;excludes=com.myapp.dto,debug=true
 ```
 
 ```java

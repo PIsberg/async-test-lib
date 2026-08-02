@@ -83,6 +83,8 @@
         <asm.version>9.10.1</asm.version>
         <bytebuddy.version>1.18.11</bytebuddy.version>
         <slf4j.version>2.0.18</slf4j.version>
+        <!-- Shared with build.gradle.kts via the sync block there; BuildMetadataSyncTest pins the pair. -->
+        <common-license-lib.version>0.3.0</common-license-lib.version>
         <!-- The PMD engine itself, pinned independently of the plugin: maven-pmd-plugin 3.28.0
              still defaults to PMD 7.17.0, which is the version that cannot resolve JDK types on
              a newer JDK than the build targets (see docs/QUALITY_GATES.md). Pinning it here also
@@ -127,7 +129,7 @@
             <dependency>
                 <groupId>se.deversity.common</groupId>
                 <artifactId>common-license-lib</artifactId>
-                <version>0.3.0</version>
+                <version>${common-license-lib.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.tngtech.archunit</groupId>

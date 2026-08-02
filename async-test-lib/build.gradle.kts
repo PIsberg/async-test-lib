@@ -2,6 +2,7 @@
 val junitVersion = rootProject.extra["junitVersion"] as String
 val jazzerVersion = rootProject.extra["jazzerVersion"] as String
 val slf4jVersion = rootProject.extra["slf4jVersion"] as String
+val commonLicenseLibVersion = rootProject.extra["commonLicenseLibVersion"] as String
 val archunitVersion = rootProject.extra["archunitVersion"] as String
 val logbackVersion = rootProject.extra["logbackVersion"] as String
 
@@ -10,7 +11,7 @@ dependencies {
     api("org.junit.jupiter:junit-jupiter-api:$junitVersion")
     api("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
     api("org.slf4j:slf4j-api:$slf4jVersion")
-    implementation("se.deversity.common:common-license-lib:0.3.0")
+    implementation("se.deversity.common:common-license-lib:$commonLicenseLibVersion")
 
     testImplementation("org.junit.platform:junit-platform-testkit:$junitVersion")
     testImplementation("com.code-intelligence:jazzer-api:$jazzerVersion")
@@ -29,7 +30,7 @@ mavenPublishing {
     )
     pom {
         name = "Async Test Library"
-        description = "Enterprise-grade JUnit 5 concurrency testing library with 121 problem detectors " +
+        description = "Enterprise-grade JUnit 5 concurrency testing library with 127 problem detectors " +
                 "for detecting deadlocks, visibility issues, false sharing, livelocks, and other subtle concurrency bugs."
     }
 }

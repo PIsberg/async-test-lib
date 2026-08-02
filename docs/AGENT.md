@@ -404,7 +404,7 @@ at the cause.
 
 | Symptom | Likely cause & fix |
 |---------|--------------------|
-| **No events at all** | (1) Agent not attached — confirm the `-javaagent:` flag or that `selfAttach()` ran (and did not throw). (2) No consumer registered — the install path uses a no-op callback; register a `TelemetryBridge` or `TelemetryRegistry.start(callback)`. (3) The registry was stopped — call `TelemetryRegistry.start(...)` again. |
+| **No events at all** | (1) Agent not attached — confirm the `-javaagent:` flag or that `selfAttach()` ran (and did not throw). (2) Not running inside an `@AsyncTest` — `ConcurrencyRunner` attaches the `TelemetryBridge` for the duration of a run; outside one, register a consumer yourself with `TelemetryBridge.activate(...)` or `TelemetryRegistry.start(callback)`. (3) `detectAtomicityViolations` is disabled for that test, so there is no detector to feed. (4) The registry was stopped — call `TelemetryRegistry.start(...)` again. |
 | **No events from *some* classes** | Those classes are outside `includes=`, or caught by a built-in ignore / `excludes=`, or the access is a direct field access rather than a getter/setter call. Turn on `debug=true` and look for `Instrumented <type>` lines. |
 | **`Failed to instrument <type>` in the log** | That class could not be woven; it is simply not instrumented (the rest still are). Run with `debug=true` for the full stack trace to see why. |
 | **`IllegalStateException` from `selfAttach()`** | The JVM forbids self-attach. Start the test JVM with `-Djdk.attach.allowAttachSelf=true` (see the build snippets above) or use the `-javaagent:` launch flag instead. |

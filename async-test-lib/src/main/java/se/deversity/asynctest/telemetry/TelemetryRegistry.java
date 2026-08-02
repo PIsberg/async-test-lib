@@ -2,9 +2,12 @@ package se.deversity.asynctest.telemetry;
 
 import org.jspecify.annotations.Nullable;
 
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -31,6 +34,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class TelemetryRegistry {
 
     private static final int BUFFER_CAPACITY = 1 << 14; // 16 384 slots
+
+    /** How long {@link #flush()} waits for the drain thread before giving up on it. */
+    private static final long FLUSH_TIMEOUT_SECONDS = 1L;
     private static final TelemetryEventBuffer BUFFER = new TelemetryEventBuffer(BUFFER_CAPACITY);
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
 
@@ -131,6 +137,57 @@ public final class TelemetryRegistry {
      */
     public static void setCallback(TelemetryEventBuffer.@Nullable DrainCallback callback) {
         drainCallback = callback;
+    }
+
+    /**
+     * {@return whether the drain thread is running} True between {@link #start()} and
+     * {@link #stop()}, which in practice means "the agent is attached", since
+     * {@code AsyncTestAgent.premain} is what starts the registry. Callers that only want to
+     * do telemetry work when there is telemetry to do — {@code ConcurrencyRunner} deciding
+     * whether to attach a {@link TelemetryBridge} for a run — can gate on this rather than
+     * paying for a bridge nothing will ever feed.
+     *
+     * @since 1.8.0
+     */
+    public static boolean isRunning() {
+        return RUNNING.get();
+    }
+
+    /**
+     * Drains everything published so far to the active callback, and returns once that
+     * drain has completed.
+     *
+     * <p>The buffer is MPSC: {@link TelemetryEventBuffer#drain} may only ever run on one
+     * thread. This method therefore does not drain on the calling thread — it submits the
+     * drain to the same single-threaded executor that runs the periodic one and waits for
+     * it, so the single-consumer contract still holds with the caller blocked rather than
+     * competing.
+     *
+     * <p>The reason it exists: the periodic drain runs every millisecond, so at the moment a
+     * run finishes its last round there is up to a millisecond of captured accesses still
+     * sitting in the buffer. Analysis that reads the detectors before those arrive sees a
+     * truncated picture, and which accesses made it would depend on timing. Flushing
+     * immediately before analysis makes the result deterministic.
+     *
+     * <p>Best-effort and never throws: if the registry is not running there is nothing to
+     * drain, and a drain that is rejected, interrupted or slow leaves the pending events for
+     * the next periodic cycle rather than failing the test that asked for the flush.
+     *
+     * @since 1.8.0
+     */
+    public static void flush() {
+        ScheduledExecutorService executor = drainExecutor;
+        if (!RUNNING.get() || executor == null) {
+            return;
+        }
+        try {
+            executor.submit(TelemetryRegistry::drainOnce).get(FLUSH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException | TimeoutException | RejectedExecutionException ignored) { // NOPMD EmptyCatchBlock — best-effort flush, same rule as drainOnce below
+            // The periodic drain will pick these up on its next cycle. Failing here would turn a
+            // telemetry hiccup into a test failure, which is the wrong trade for a detector feed.
+        }
     }
 
     /**

@@ -33,13 +33,13 @@ import se.deversity.vibetags.annotations.AIContract;
  * <h2>Examples</h2>
  * <pre>{@code
  * // Instrument only com.myapp.*, but never com.myapp.dto.*:
- * -javaagent:async-test-lib.jar=includes=com.myapp;excludes=com.myapp.dto
+ * -javaagent:async-test-agent.jar=includes=com.myapp;excludes=com.myapp.dto
  *
  * // Instrument two roots (semicolon-separated value list):
- * -javaagent:async-test-lib.jar=includes=com.myapp;com.other
+ * -javaagent:async-test-agent.jar=includes=com.myapp;com.other
  *
  * // Instrument com.myapp.* with verbose transform diagnostics:
- * -javaagent:async-test-lib.jar=includes=com.myapp,debug=true
+ * -javaagent:async-test-agent.jar=includes=com.myapp,debug=true
  * }</pre>
  *
  * <h2>Robustness</h2>
