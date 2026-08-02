@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed — a stale copyright notice from another project in `LICENSE`
+
+The `Copyright Notice:` example under *Notices* read `isberg.peter+cl_light@gmail.com`, copied
+from `claude_light`, while the governing notice at the top of the file reads `+atl`. The Notices
+section instructs redistributors to propagate every `Copyright Notice:` line, so the wrong address
+was the one they were being told to carry forward.
+
+The example block is gone rather than corrected. The line at the top of the file is the notice
+that governs; restating it in an example bought nothing and gave a stale address somewhere to
+hide.
+
 ## [1.7.0-RC6] - 2026-08-02
 
 ### Fixed — a library-only PR ran none of the 127 examples
