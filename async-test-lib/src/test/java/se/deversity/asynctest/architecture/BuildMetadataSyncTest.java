@@ -23,29 +23,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Pins the facts that {@code pom.xml} and {@code build.gradle.kts} have to agree on.
  *
- * <p><strong>The failure this prevents.</strong> Maven is the canonical build; Gradle is the
- * secondary developer build. Every shared version is therefore written twice, and until now the
- * only thing keeping the two copies equal was a comment asking people to remember. That has
- * already failed three times: the comment above the version block in {@code build.gradle.kts}
- * records that spotbugs, error-prone and pmd each drifted between the builds. Drift there is
- * quiet — both builds still pass, they just no longer run the same analyser — which is exactly
- * the kind of divergence a gate is for.
+ * <p><strong>Versions are no longer mirrored, they are read.</strong> Every shared version used to
+ * be written twice, once in each build, kept equal by a comment asking people to remember. That
+ * failed repeatedly: the comment in {@code build.gradle.kts} recorded that spotbugs, error-prone
+ * and pmd had each drifted. It also lagged by construction, because Dependabot raises its update
+ * PRs against {@code pom.xml} only, so every bump landed in Maven and left the Gradle copy behind
+ * until somebody noticed.
  *
- * <p>The published artifact description drifted the same way and stayed wrong: it claimed
- * "121 problem detectors" long after {@link DetectorType} had grown past that. See
- * {@link #artifactDescriptionStatesTheRealDetectorCount()}, which derives the number from the
- * enum rather than restating it. That string is what Maven Central shows, so a stale number
- * there is a wrong claim made to every consumer.
+ * <p>{@code build.gradle.kts} now parses {@code pom.xml}'s {@code <properties>} block at
+ * configuration time and derives the versions from it, so there is no second copy to drift. What
+ * this test checks is that the single source actually holds: that no shared version has been
+ * re-hardcoded into a Gradle file, that the derivation is still in place rather than quietly
+ * unwound, and that the coordinates are declared in one place.
  *
- * <p><strong>How the version mapping is declared.</strong> Each version in
- * {@code build.gradle.kts} names the pom property it tracks in a trailing comment:
- *
- * <pre>{@code extra["asmVersion"] = "9.10.1"        // pom: asm.version}</pre>
- *
- * <p>That comment is the contract this test reads. A Gradle version with no {@code // pom:}
- * comment is deliberately unpinned (logback, for instance, is a test-only backend with no Maven
- * twin) and is skipped. A comment naming a property the pom does not define fails the test, so
- * renaming a pom property cannot silently orphan its Gradle copy.
+ * <p>It also pins the published description of each module, which is genuinely duplicated because
+ * neither build can compute prose, and the detector count inside the library's description, which
+ * is derived from the enum rather than restated.
  */
 class BuildMetadataSyncTest {
 
@@ -54,68 +47,114 @@ class BuildMetadataSyncTest {
             List.of("async-test-lib", "async-test-agent", "async-test-analysis");
 
     /**
-     * Lower bound on how many {@code // pom:}-mapped versions must be found. Without it a
-     * regex that stopped matching would make every assertion below pass vacuously — a green
-     * run proving only that the parser found nothing.
+     * Gradle-only versions, with the reason each has no Maven twin. Everything else has to come
+     * from {@code pom.xml}. Versions in the {@code plugins} block are not covered here: those are
+     * Gradle plugins with no Maven equivalent at all, and the gradle Dependabot ecosystem watches
+     * them.
      */
-    private static final int MIN_MAPPED_VERSIONS = 15;
+    private static final Map<String, String> GRADLE_ONLY_VERSIONS = Map.of(
+            "logbackVersion",
+            "test-only SLF4J backend; Maven's test run has no binding, so there is no pom twin");
 
-    private static final Pattern GRADLE_VERSION_LINE = Pattern.compile(
-            "^\\s*extra\\[\"([^\"]+)\"\\]\\s*=\\s*\"([^\"]+)\"\\s*//\\s*pom:\\s*(\\S+)\\s*$",
-            Pattern.MULTILINE);
+    /**
+     * Lower bound on how many versions must be derived from the pom. Without it, a derivation
+     * that stopped matching would leave every assertion here passing while checking nothing.
+     */
+    private static final int MIN_DERIVED_VERSIONS = 15;
+
+    /** Matches an {@code extra["xVersion"] = "1.2.3"} literal assignment. */
+    private static final Pattern GRADLE_VERSION_LITERAL = Pattern.compile(
+            "^\\s*extra\\[\"([^\"]+)\"\\]\\s*=\\s*\"([^\"]*\\d[^\"]*)\"", Pattern.MULTILINE);
+
+    /** Matches a hardcoded {@code "group:artifact:1.2.3"} coordinate in a Gradle file. */
+    private static final Pattern GRADLE_PINNED_COORDINATE = Pattern.compile(
+            "\"[A-Za-z0-9._-]+:[A-Za-z0-9._-]+:\\d[A-Za-z0-9._-]*\"");
+
+    /** Matches a {@code pomVersion("some.property")} lookup in the Gradle build. */
+    private static final Pattern POM_VERSION_LOOKUP = Pattern.compile(
+            "pomVersion\\(\"([^\"]+)\"\\)");
 
     private static final Pattern POM_PROPERTY = Pattern.compile(
             "<([A-Za-z0-9._-]+)>([^<>]*)</\\1>");
 
     @Test
-    @DisplayName("every Gradle version that names a pom property matches that property")
-    void gradleVersionsMatchTheirPomProperties() {
+    @DisplayName("no shared version is restated as a literal in a Gradle file")
+    void sharedVersionsAreReadFromThePomRatherThanRestated() {
         Path root = repoRoot();
-        Map<String, String> pomProps = pomProperties(read(root.resolve("pom.xml")));
-        String gradle = read(root.resolve("build.gradle.kts"));
+        List<String> restated = new ArrayList<>();
 
-        Matcher m = GRADLE_VERSION_LINE.matcher(gradle);
-        int mapped = 0;
+        Matcher m = GRADLE_VERSION_LITERAL.matcher(read(root.resolve("build.gradle.kts")));
         while (m.find()) {
-            String gradleKey = m.group(1);
-            String gradleValue = m.group(2);
-            String pomProperty = m.group(3);
-            mapped++;
-
-            assertTrue(pomProps.containsKey(pomProperty),
-                    "build.gradle.kts extra[\"" + gradleKey + "\"] tracks pom property <"
-                            + pomProperty + ">, which pom.xml does not define. Either the property "
-                            + "was renamed in pom.xml without updating the // pom: comment, or the "
-                            + "comment is a typo.");
-
-            assertEquals(pomProps.get(pomProperty), gradleValue,
-                    "Maven and Gradle disagree on " + pomProperty + ". pom.xml says "
-                            + pomProps.get(pomProperty) + ", build.gradle.kts extra[\"" + gradleKey
-                            + "\"] says " + gradleValue + ". Maven is canonical — update Gradle.");
+            if (!GRADLE_ONLY_VERSIONS.containsKey(m.group(1))) {
+                restated.add("build.gradle.kts: extra[\"" + m.group(1) + "\"] = \""
+                        + m.group(2) + "\"");
+            }
         }
 
-        assertTrue(mapped >= MIN_MAPPED_VERSIONS,
-                "Only " + mapped + " version mappings were parsed out of build.gradle.kts, below the "
-                        + MIN_MAPPED_VERSIONS + " expected. The // pom: comment format most likely "
-                        + "changed, which would make this gate pass without checking anything.");
+        for (String module : PUBLISHED_MODULES) {
+            Matcher c = GRADLE_PINNED_COORDINATE.matcher(
+                    read(root.resolve(module + "/build.gradle.kts")));
+            while (c.find()) {
+                restated.add(module + "/build.gradle.kts: " + c.group());
+            }
+        }
+
+        assertTrue(restated.isEmpty(),
+                "These pin a version in a Gradle file instead of reading it from pom.xml: "
+                        + restated + ". pom.xml is the single source, and it is the file Dependabot "
+                        + "raises update PRs against, so a number written here stops receiving them "
+                        + "and starts lagging. Add the property to pom.xml and use pomVersion(...). "
+                        + "If it genuinely has no Maven twin, add it to GRADLE_ONLY_VERSIONS with "
+                        + "the reason.");
     }
 
     @Test
-    @DisplayName("the project version is the same in pom.xml and gradle.properties")
-    void projectVersionMatchesAcrossBuilds() {
+    @DisplayName("the Gradle build really does read the pom, rather than passing vacuously")
+    void gradleDerivesItsVersionsFromThePom() {
         Path root = repoRoot();
-        String pomVersion = firstGroup(
-                Pattern.compile("<artifactId>async-test-parent</artifactId>\\s*<version>([^<]+)</version>"),
-                read(root.resolve("pom.xml")),
-                "reactor parent <version> in pom.xml");
-        String gradleVersion = firstGroup(
-                Pattern.compile("^version=(.+)$", Pattern.MULTILINE),
-                read(root.resolve("gradle.properties")),
-                "version= in gradle.properties");
+        String gradle = read(root.resolve("build.gradle.kts"));
 
-        assertEquals(pomVersion, gradleVersion.trim(),
-                "pom.xml and gradle.properties disagree on the project version. A release cut from "
-                        + "the wrong one publishes coordinates nobody expects.");
+        assertTrue(gradle.contains("providers.fileContents"),
+                "build.gradle.kts no longer reads pom.xml. If the derivation was replaced, the "
+                        + "literal check above passes while the versions are defined somewhere this "
+                        + "test does not look.");
+
+        Map<String, String> pomProps = pomProperties(read(root.resolve("pom.xml")));
+        Matcher m = POM_VERSION_LOOKUP.matcher(gradle);
+        int derived = 0;
+        while (m.find()) {
+            derived++;
+            assertTrue(pomProps.containsKey(m.group(1)),
+                    "build.gradle.kts reads pom property <" + m.group(1) + ">, which pom.xml does "
+                            + "not define. The Gradle build fails at configuration time on this, so "
+                            + "it is a real break rather than a style point.");
+        }
+
+        assertTrue(derived >= MIN_DERIVED_VERSIONS,
+                "Only " + derived + " versions are derived from pom.xml, below the "
+                        + MIN_DERIVED_VERSIONS + " expected. Either the derivation was unwound or "
+                        + "this test's pattern stopped matching; both make the checks here "
+                        + "meaningless.");
+    }
+
+    @Test
+    @DisplayName("the coordinates are declared in pom.xml only")
+    void coordinatesAreNotDeclaredTwice() {
+        Path root = repoRoot();
+        String gradleProperties = read(root.resolve("gradle.properties"));
+
+        for (String key : List.of("version", "group")) {
+            assertFalse(Pattern.compile("^\\s*" + key + "\\s*=", Pattern.MULTILINE)
+                            .matcher(gradleProperties).find(),
+                    "gradle.properties declares " + key + " again. It is read out of pom.xml by "
+                            + "build.gradle.kts precisely so a release bump is one edit. A "
+                            + "declaration here silently wins over the derived value, and the two "
+                            + "builds can then publish different coordinates.");
+        }
+
+        assertTrue(read(root.resolve("build.gradle.kts")).contains("async-test-parent"),
+                "build.gradle.kts no longer reads the reactor coordinates out of pom.xml, so "
+                        + "nothing sets group and version for the Gradle publication.");
     }
 
     @Test
@@ -149,8 +188,8 @@ class BuildMetadataSyncTest {
             assertTrue(text.contains(expected),
                     file + " does not describe the library as having " + expected + ". "
                             + "DetectorType has " + actual + " constants, and that description is "
-                            + "what Maven Central shows to every consumer — a stale number there is "
-                            + "a wrong claim, not a cosmetic one.");
+                            + "what Maven Central shows to every consumer, so a stale number there "
+                            + "is a wrong claim rather than a cosmetic one.");
         }
     }
 

@@ -1,4 +1,5 @@
 // The library. Keeps the artifactId consumers already depend on.
+val apiguardianVersion = rootProject.extra["apiguardianVersion"] as String
 val junitVersion = rootProject.extra["junitVersion"] as String
 val jazzerVersion = rootProject.extra["jazzerVersion"] as String
 val slf4jVersion = rootProject.extra["slf4jVersion"] as String
@@ -7,7 +8,7 @@ val archunitVersion = rootProject.extra["archunitVersion"] as String
 val logbackVersion = rootProject.extra["logbackVersion"] as String
 
 dependencies {
-    api("org.apiguardian:apiguardian-api:1.1.2")
+    api("org.apiguardian:apiguardian-api:$apiguardianVersion")
     api("org.junit.jupiter:junit-jupiter-api:$junitVersion")
     api("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
     api("org.slf4j:slf4j-api:$slf4jVersion")

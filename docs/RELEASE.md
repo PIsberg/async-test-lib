@@ -42,13 +42,14 @@ Semantic versioning, with `-RCn` for release candidates:
 
 ## Where the version lives
 
-`pom.xml` is **canonical**. These must all move together:
+`pom.xml` is **canonical**. The Gradle build reads the version out of it at configuration
+time, so `gradle.properties` is not in this list and does not need bumping. These must all move
+together:
 
 | File | What |
 | --- | --- |
 | `pom.xml` | `<version>` — canonical |
 | `async-test-lib/pom.xml`, `async-test-agent/pom.xml`, `async-test-analysis/pom.xml` | `<parent><version>` — the reactor modules |
-| `gradle.properties` | `version=` — the Gradle build reads it from here |
 | `consumer-fixture/pom.xml` | own `<version>` + `<async-test.version>` |
 | `consumer-fixture/build.gradle.kts` | `asyncTestVersion` |
 | `README.md` | Maven + Gradle install snippets |
