@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — an end-to-end test of the automatic detection path, with the real agent attached
+
+Every piece of the agent-to-detector chain had a test and the chain itself had none.
+`SelfAttachTest` proves the weaver emits an event and stops at the identifier string.
+`TelemetryBridgeTest` and `AgentTelemetryReachesDetectorsTest` prove the bridge forwards events and
+that the runner attaches it, but both publish those events by hand, because `ArchitectureTest` keeps
+byte-buddy off the library module's classpath. Nothing ran the real weaver's output through the real
+bridge into a real detector, which is the only thing a user running with `-javaagent` cares about.
+
+The gap mattered because the two halves assume something about each other. The advice identifies an
+access as `declaringType.methodName`, and `TelemetryBridge` maps that onto the field it accesses by
+stripping the accessor prefix, so that a getter and its setter land under one key and
+`AtomicityValidator` can see a field one thread read and another wrote. Had the weaver's identifier
+format been anything other than what the mapping expects, the mapping would have quietly done
+nothing, reads and writes would have stayed in separate buckets, and the finding would never have
+fired while every individual test still passed.
+
+`AgentFeedsDetectorEndToEndTest` self-attaches the agent, has one thread call only the getter and
+another call only the setter of a woven bean, and requires the resulting cross-thread read/write to
+be reported. It is not an `@AsyncTest`: driving the threads directly keeps it independent of the
+JUnit engine and of `ConcurrencyRunner`, so a failure points at the agent-to-detector chain rather
+than at the runner.
+
+Verified by disabling the accessor mapping in `TelemetryBridge` and confirming the test failed with
+`Findings were: []`, then restoring. The chain works, and now something says so if it stops.
+
+### Added — the agent's observation boundary is now a checked fact rather than a sentence
+
+The weaver matches `isGetter()` and `isSetter()`, so a field reached only from inside a method body,
+the `count++` in an `increment()`, produces no event however racy it is. That is the most common
+shape of a real race, and it was documented in `AGENT.md` and the `AsyncTestAgent` javadoc but
+checked nowhere.
+
+The second test in `AgentFeedsDetectorEndToEndTest` pins it. The assertion that matters is a
+negative one, and a negative is worthless on its own, because "no finding" also holds when the agent
+never attached, the bridge never forwarded or the flush never ran. Each thread therefore also
+exercises a woven accessor on a control bean in the same run, and the test requires that control to
+be reported first. Only once the pipeline has demonstrably worked does the absence of a finding for
+the directly-mutated field mean anything.
+
+Verified the same way: with the mapping disabled, this test fails on its control assertion, "the
+pipeline itself was not working", rather than passing silently on a negative that happened to hold.
+
+If the observation surface ever widens, both the assertion and the two documents it names have to
+change together, which is the point of pinning it.
+
 ### Changed — every shared version is declared once, in `pom.xml`, and Gradle reads it
 
 Sixteen versions were written twice, once in `pom.xml`'s `<properties>` and once in
