@@ -1,6 +1,7 @@
 package se.deversity.asynctest.telemetry;
 
 import java.util.Set;
+import java.util.function.LongPredicate;
 
 import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.AsyncTestContext;
@@ -73,7 +74,7 @@ import se.deversity.asynctest.diagnostics.VisibilityMonitor;
 public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback, AutoCloseable {
 
     private final AtomicityValidator atomicityValidator;
-    private final Set<Long> workerThreadIds;
+    private final LongPredicate workerFilter;
 
     /**
      * Enabled flag. Written by {@link #close()} on a test thread and read by
@@ -82,9 +83,9 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      */
     private volatile boolean active;
 
-    private TelemetryBridge(AtomicityValidator atomicityValidator, Set<Long> workerThreadIds) {
+    private TelemetryBridge(AtomicityValidator atomicityValidator, LongPredicate workerFilter) {
         this.atomicityValidator = atomicityValidator;
-        this.workerThreadIds = Set.copyOf(workerThreadIds);
+        this.workerFilter = workerFilter;
     }
 
     /**
@@ -113,7 +114,43 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         if (workerThreadIds == null) {
             throw new NullPointerException("workerThreadIds must not be null");
         }
-        TelemetryBridge bridge = new TelemetryBridge(atomicityValidator, workerThreadIds);
+        TelemetryBridge bridge = new TelemetryBridge(atomicityValidator, Set.copyOf(workerThreadIds)::contains);
+        bridge.active = true;
+        TelemetryRegistry.start(bridge);
+        return bridge;
+    }
+
+    /**
+     * Creates a bridge that forwards events from any thread the supplied filter accepts, and
+     * registers it as the {@link TelemetryRegistry} drain callback.
+     *
+     * <p>Unlike {@link #activate(AtomicityValidator, Set)}, which snapshots the ids up front,
+     * this overload consults {@code workerFilter} per event. That is what the runner needs:
+     * a round's worker threads do not exist yet when the bridge has to be attached, and with
+     * virtual threads each round brings new ones. The runner therefore passes a filter backed
+     * by a concurrent set that each worker adds itself to as it starts, so a thread begins
+     * being observed the moment it joins the run.
+     *
+     * <p>{@code workerFilter} is called on the telemetry drain thread, once per drained
+     * event, so it must be thread-safe and cheap. A {@code Set::contains} on a concurrent
+     * set is both.
+     *
+     * @param atomicityValidator the live detector to feed; must not be {@code null}
+     * @param workerFilter       accepts the thread ids whose events should be forwarded;
+     *                           must not be {@code null}
+     * @return the activated bridge, registered as the drain callback
+     * @throws NullPointerException if either argument is {@code null}
+     * @since 1.8.0
+     */
+    public static TelemetryBridge activateWithFilter(AtomicityValidator atomicityValidator,
+                                                     LongPredicate workerFilter) {
+        if (atomicityValidator == null) {
+            throw new NullPointerException("atomicityValidator must not be null");
+        }
+        if (workerFilter == null) {
+            throw new NullPointerException("workerFilter must not be null");
+        }
+        TelemetryBridge bridge = new TelemetryBridge(atomicityValidator, workerFilter);
         bridge.active = true;
         TelemetryRegistry.start(bridge);
         return bridge;
@@ -159,11 +196,11 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         if (!active) {
             return;
         }
-        if (!workerThreadIds.contains(threadId)) {
+        if (!workerFilter.test(threadId)) {
             return;
         }
         if (qualifiedName == null) return;
-        atomicityValidator.recordFieldAccess(qualifiedName, null, isWrite, threadId);
+        atomicityValidator.recordFieldAccess(fieldIdentifier(qualifiedName), null, isWrite, threadId);
     }
 
     /**
@@ -193,5 +230,70 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         }
         active = false;
         TelemetryRegistry.setCallback(null);
+    }
+
+    /**
+     * Maps an accessor identifier to the field it accesses, so a getter and its setter
+     * correlate.
+     *
+     * <p><strong>Why this exists.</strong> The advice identifies an access by
+     * {@code declaringType.methodName}, which means {@code Account.getBalance} and
+     * {@code Account.setBalance} arrive as two unrelated identifiers. {@code AtomicityValidator}
+     * keys its history by identifier and reports a field seen by more than one thread with both
+     * a read and a write — and a getter identifier only ever carries reads while a setter
+     * identifier only ever carries writes. That finding, the one the analysis exists for, could
+     * therefore never fire from agent data no matter how racy the code was. Only the weaker
+     * write-only branch could.
+     *
+     * <p>Normalising both to {@code Account.balance} puts them in one bucket, so a field one
+     * thread reads while another writes is reported as what it is.
+     *
+     * <p>Done here, on the drain thread, rather than in the advice: the advice prologue is
+     * deliberately allocation-free and its identifier is a constant-pool string, so stripping a
+     * prefix there would put string work on every intercepted access.
+     *
+     * <p>Conservative by design. Only {@code get}/{@code is}/{@code set} followed by an
+     * upper-case letter is treated as an accessor, so {@code getter()} or {@code isolate()} —
+     * which the weaver's JavaBean matchers can also select — keep their own identifier rather
+     * than being folded into a nonsense field name. Anything unrecognised is returned unchanged,
+     * which also leaves identifiers from manual {@code TelemetryRegistry.recordAccess} callers
+     * alone.
+     *
+     * @param qualifiedName the {@code declaringType.methodName} identifier from the advice
+     * @return the field-level identifier, or {@code qualifiedName} if it is not an accessor
+     */
+    static String fieldIdentifier(String qualifiedName) {
+        int dot = qualifiedName.lastIndexOf('.');
+        if (dot < 0 || dot == qualifiedName.length() - 1) {
+            return qualifiedName;
+        }
+        String method = qualifiedName.substring(dot + 1);
+        String property = propertyName(method);
+        return property == null ? qualifiedName : qualifiedName.substring(0, dot + 1) + property;
+    }
+
+    /**
+     * {@return the JavaBean property {@code method} accesses, or {@code null} if it is not a
+     * bean accessor}
+     */
+    private static @Nullable String propertyName(String method) {
+        if (method.startsWith("get") || method.startsWith("set")) {
+            return afterPrefix(method, 3);
+        }
+        if (method.startsWith("is")) {
+            return afterPrefix(method, 2);
+        }
+        return null;
+    }
+
+    private static @Nullable String afterPrefix(String method, int prefixLength) {
+        if (method.length() <= prefixLength) {
+            return null;
+        }
+        char first = method.charAt(prefixLength);
+        if (!Character.isUpperCase(first)) {
+            return null;
+        }
+        return Character.toLowerCase(first) + method.substring(prefixLength + 1);
     }
 }

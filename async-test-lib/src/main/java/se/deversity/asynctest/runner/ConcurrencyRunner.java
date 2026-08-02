@@ -13,12 +13,15 @@ import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.AsyncTestListenerRegistry;
 import se.deversity.asynctest.BeforeEachInvocation;
 import se.deversity.asynctest.benchmark.BenchmarkRecorder;
+import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.diagnostics.DeadlockDetector;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.MemoryModelValidator;
 import se.deversity.asynctest.diagnostics.Phase1DetectorSet;
 import se.deversity.asynctest.diagnostics.VirtualThreadStressConfig;
 import se.deversity.asynctest.report.Baseline;
+import se.deversity.asynctest.telemetry.TelemetryBridge;
+import se.deversity.asynctest.telemetry.TelemetryRegistry;
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 
 import java.lang.reflect.InvocationTargetException;
@@ -27,8 +30,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
@@ -133,6 +138,34 @@ public class ConcurrencyRunner {
         // constructing disconnected duplicates (see Phase1DetectorSet.from javadoc).
         Phase1DetectorSet phase1 = Phase1DetectorSet.from(config, phase2Context);
 
+        // Attach the agent's only consumer for the duration of this run.
+        //
+        // AsyncTestAgent weaves accessors and publishes every intercepted access to the
+        // telemetry ring buffer; TelemetryRegistry drains that buffer to whatever callback is
+        // registered, and TelemetryBridge is the callback that forwards events into this run's
+        // AtomicityValidator. Nothing registered it, so premain's no-argument start() left the
+        // callback null and the drain handed every event to a discard lambda: with the agent
+        // attached, captured accesses were thrown away and no detector ever saw one.
+        //
+        // The filter is a live set rather than a snapshot because the workers do not exist
+        // yet — the executor creates them per round, and under virtual threads each round
+        // brings new ones — so each worker adds its own id as it starts.
+        //
+        // Gated on isRunning() so this costs nothing when the agent is absent: activate()
+        // would otherwise start the drain thread for a pipeline with no producer. The
+        // registry holds one callback, so two @AsyncTest runs executing concurrently in one
+        // JVM would take it from each other; the per-run filter means the loser under-reports
+        // rather than mis-attributing another run's threads.
+        AtomicityValidator telemetryTarget = phase2Context.sharedAtomicityValidator();
+        @Nullable Set<Long> workerThreadIds =
+                (telemetryTarget != null && TelemetryRegistry.isRunning())
+                        ? ConcurrentHashMap.newKeySet()
+                        : null;
+        TelemetryBridge telemetryBridge = null;
+        if (telemetryTarget != null && workerThreadIds != null) {
+            telemetryBridge = TelemetryBridge.activateWithFilter(telemetryTarget, workerThreadIds::contains);
+        }
+
         // Validate JMM on the test framework itself
         MemoryModelValidator jmmValidator = new MemoryModelValidator();
         MemoryModelValidator.ValidationResult jmmResult = jmmValidator.validate();
@@ -225,7 +258,7 @@ public class ConcurrencyRunner {
                 invokeLifecycleMethods(testInstance, beforeInvocationMethods);
                 try {
                     runSingleInvocationRound(invocationContext, actualThreads,
-                        executor, phase1, phase2Context, remainingMs, testMethod);
+                        executor, phase1, phase2Context, remainingMs, workerThreadIds, testMethod);
                 } finally {
                     invokeLifecycleMethods(testInstance, afterInvocationMethods);
                 }
@@ -274,6 +307,29 @@ public class ConcurrencyRunner {
                 executor.awaitTermination(1, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+            }
+
+            // Drain, then detach — in that order, and after the executor is down.
+            //
+            // close() clears the callback, so anything still sitting in the ring buffer at
+            // that point is discarded on the next drain. analyzeAndGate() runs after this
+            // finally block, so detaching before flushing threw away the accesses from the
+            // last round of every passing test. Shutting the executor down first means there
+            // are no producers left to publish behind the flush.
+            //
+            // Each step is guarded on its own, matching the rule the worker cleanup follows:
+            // a failure in one must not skip the next.
+            if (telemetryBridge != null) {
+                try {
+                    TelemetryRegistry.flush();
+                } catch (RuntimeException e) {
+                    log.warn("Telemetry flush failed: {}", e.toString(), e);
+                }
+                try {
+                    telemetryBridge.close();
+                } catch (RuntimeException e) {
+                    log.warn("Telemetry bridge detach failed: {}", e.toString(), e);
+                }
             }
 
             if (benchmarkRecorder != null) {
@@ -468,6 +524,7 @@ public class ConcurrencyRunner {
                                                  Phase1DetectorSet phase1,
                                                  AsyncTestContext phase2Context,
                                                  long roundTimeoutMs,
+                                                 @Nullable Set<Long> workerThreadIds,
                                                  Method method) throws Throwable {
 
         ContentionBarrier barrier = createBarrier(threads, roundTimeoutMs);
@@ -489,6 +546,13 @@ public class ConcurrencyRunner {
                 // install / test body / uninstall / snapshot. Without this guarantee
                 // the runner blocks on latch.await() until timeoutMs, turning any
                 // bug in worker cleanup into a fake "deadlock detected" report.
+                // Join the set the telemetry bridge filters on, so accesses this worker makes
+                // are attributed to this run. Done first: a failure below still leaves the id
+                // registered, which only ever means one extra id in a set that dies with the run.
+                if (workerThreadIds != null) {
+                    workerThreadIds.add(Thread.currentThread().threadId());
+                }
+
                 boolean installed = false;
                 try {
                     AsyncTestContext.install(phase2Context);
@@ -671,6 +735,11 @@ public class ConcurrencyRunner {
         Map<String, String> get() {
             Map<String, String> memo = reports;
             if (memo == null) {
+                // Last chance for agent-captured accesses still in the ring buffer to reach
+                // the detectors. The periodic drain runs every millisecond, so without this the
+                // final round could contribute events or not depending on timing. No-op when
+                // the registry is not running, i.e. whenever the agent is not attached.
+                TelemetryRegistry.flush();
                 memo = ctx.analyzeAllNamed();
                 reports = memo;
             }

@@ -14,7 +14,7 @@
     <packaging>jar</packaging>
 
     <name>Async Test Library — Java agent</name>
-    <description>Optional Byte Buddy agent for async-test-lib: instruments field access so detectors record reads and writes without manual hooks. Attach with -javaagent:async-test-agent.jar, or call AsyncTestAgent.selfAttach().</description>
+    <description>Optional Byte Buddy agent for async-test-lib: instruments JavaBean accessors so detectors record reads and writes without manual hooks. Attach with -javaagent:async-test-agent.jar, or call AsyncTestAgent.selfAttach().</description>
 
     <dependencies>
         <dependency>

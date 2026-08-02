@@ -142,7 +142,7 @@ Can-Redefine-Classes: true
 
 Three attachment paths, all routed through the shared `install(...)`:
 
-- **Static attach** — `-javaagent:async-test-lib-<version>.jar[=<agentArgs>]` → `premain`.
+- **Static attach** — `-javaagent:async-test-agent-<version>.jar[=<agentArgs>]` → `premain`.
   Classes are woven as they load; no retransformation.
 - **Dynamic attach** — the Attach API or `selfAttach` → `agentmain`. Installs with
   `RedefinitionStrategy.RETRANSFORMATION` + `disableClassFormatChanges()`, so accessors of

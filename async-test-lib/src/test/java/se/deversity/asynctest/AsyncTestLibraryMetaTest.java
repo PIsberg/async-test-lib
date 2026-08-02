@@ -22,7 +22,10 @@ public class AsyncTestLibraryMetaTest {
                 .testEvents();
                 
         long failed = testEvents.failed().count();
-        assertEquals(1, failed, "The async test should have failed due to race condition.");
+        assertEquals(1, failed, "The unsynchronised counter should end below 20 x 100 and fail the "
+                + "dummy's own @AfterEach. This asserts that the bug manifests under contention, not "
+                + "that a detector reported it: failOn defaults to NONE, so no finding can fail "
+                + "this run. DetectionCoverageTest is where detector reporting is asserted.");
     }
 
     public static class RaceConditionDummy {
@@ -50,7 +53,9 @@ public class AsyncTestLibraryMetaTest {
                 .testEvents();
                 
         long failed = testEvents.failed().count();
-        assertEquals(1, failed, "The async test should have failed due to deadlock (timeout).");
+        assertEquals(1, failed, "The circular lock dependency should stall both threads until the "
+                + "round timeout and fail the run. DeadlockDetector also reports it, which "
+                + "DetectionCoverageTest asserts; this test only pins that the run fails.");
     }
 
     public static class DeadlockDummy {
@@ -75,32 +80,37 @@ public class AsyncTestLibraryMetaTest {
         }
     }
 
+    /**
+     * Whether a non-volatile flag is observed stale depends on the JVM, the CPU and the JIT, so
+     * whether this run fails is genuinely not decidable here. What is decidable is that the
+     * template executed: this used to assert nothing at all (its only assertion was commented out),
+     * which made it a test that would have passed with the library deleted. It now pins execution
+     * and leaves the outcome unasserted, deliberately and visibly.
+     *
+     * <p>Detector reporting is asserted in {@code DetectionCoverageTest}, where the scenarios are
+     * chosen to be deterministic.
+     */
     @Test
-    void testVisibilityIssueIsCaught() {
-        // NOTE: This test is inherently non-deterministic.
-        // Visibility without volatile depends on JVM/CPU behavior and may occasionally succeed.
-        // We test that the framework CAN detect it, but don't fail CI on rare false-negatives.
+    void visibilityDummyExecutes_thoughItsOutcomeIsNotDeterministic() {
         Events testEvents = EngineTestKit
                 .engine("junit-jupiter")
                 .selectors(selectClass(VisibilityDummy.class))
                 .execute()
                 .testEvents();
 
+        assertEquals(1, testEvents.started().count(),
+                "The @AsyncTest template should have produced exactly one test execution. Zero "
+                        + "means discovery or the extension broke, which is a real regression even "
+                        + "though the visibility outcome itself is not decidable here.");
+        assertEquals(0, testEvents.aborted().count(),
+                "The run should finish rather than abort: an abort means an assumption or "
+                        + "infrastructure failure, not the visibility bug this dummy exists for.");
+
         long failed = testEvents.failed().count();
-        
-        // Log the result for debugging
-        System.out.println("Visibility meta-test: failed=" + failed);
-        
-        // Accept either failure or timeout (both indicate the detector caught the issue)
-        // If test passed (0 failures), it means JVM happened to flush the cache - log warning
         if (failed == 0) {
-            System.err.println("WARNING: Visibility test passed unexpectedly. " +
-                "This is non-deterministic and may vary by JVM/hardware. " +
-                "The visibility detector may not have triggered, but the test completing is still valid.");
+            System.err.println("[meta] Visibility dummy passed this time. Non-deterministic by "
+                    + "nature: the JVM may have flushed the write. Not a failure of the library.");
         }
-        
-        // Don't assert - this is a best-effort validation
-        // assertEquals(1, failed, "Expected visibility test to fail or timeout");
     }
 
     public static class VisibilityDummy {

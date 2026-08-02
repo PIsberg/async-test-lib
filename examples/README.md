@@ -2,6 +2,31 @@
 
 Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest` finds but standard `@Test` misses.
 
+## What these prove, and what they do not
+
+Each example ships the buggy service, a sequential `@Test` that passes on it, and an `@AsyncTest`
+that exposes the bug. **The `@AsyncTest` demonstrations are `@Disabled`**: 98 of the 127 examples
+have one. That is deliberate: they demonstrate code that fails, so enabling them would make the
+examples pipeline permanently red. Each carries a reason saying so, and removing the annotation is
+the intended way to watch the bug surface.
+
+The consequence is worth stating plainly rather than leaving to inference. The examples pipeline
+builds all 127 and runs their enabled tests, so it proves the examples **compile and keep working
+against the current library**. It does not prove that any detector fires. The check that does that
+is `DetectionCoverageTest` in `async-test-lib`, which runs real buggy code through a real
+`@AsyncTest` and asserts on the detector reporting channel itself.
+
+The other thing these examples make concrete is how a detector gets its data. Only a few, such as
+`DeadlockDetector`, observe the JVM directly and need nothing from you. Most need the test body to
+tell them what happened, which is why you will see calls like
+
+```java
+AsyncTestContext.sharedCollectionMonitor().recordWrite(events, "event-log", "add");
+```
+
+in the disabled demonstrations. The alternative to writing those by hand is the agent, which weaves
+JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../docs/AGENT.md).
+
 ## Available Examples
 
 | # | Example | Primary Detector | Async Problem | Severity |

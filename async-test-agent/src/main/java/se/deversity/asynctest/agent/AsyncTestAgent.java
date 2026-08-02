@@ -17,8 +17,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Java instrumentation agent that transparently injects field-access telemetry into
- * application classes without requiring manual {@code recordFieldAccess()} callbacks.
+ * Java instrumentation agent that injects access telemetry into application classes by weaving
+ * their JavaBean accessors, so detectors observe reads and writes without manual
+ * {@code recordFieldAccess()} callbacks.
+ *
+ * <p><strong>What it does and does not see.</strong> The unit of observation is an accessor
+ * <em>call</em>, not a field access: the weaver matches {@link ElementMatchers#isGetter()} and
+ * {@link ElementMatchers#isSetter()}, so a field reached only from inside a method body, such as
+ * the {@code count++} in an {@code increment()}, produces no event. Code that goes through getters
+ * and setters is covered; code that touches its fields directly is not, and needs the manual
+ * recording hooks on {@code AsyncTestContext}.
  *
  * <h2>Motivation</h2>
  * The baseline approach requires test authors to pollute production service code with
@@ -46,7 +54,7 @@ import org.jspecify.annotations.Nullable;
  * There are two ways to attach the agent:
  * <ul>
  *   <li><b>Launch flag (static attach).</b> Add to the JVM launch command:
- *       <pre>{@code -javaagent:async-test-lib-<version>.jar}</pre>
+ *       <pre>{@code -javaagent:async-test-agent-<version>.jar}</pre>
  *       This routes through {@link #premain(String, Instrumentation)} before
  *       {@code main()} runs, so every subsequently loaded class is woven at load time.</li>
  *   <li><b>Runtime self-attach (dynamic attach).</b> Call
@@ -115,7 +123,7 @@ public final class AsyncTestAgent {
      *       {@link DiagnosticListener}).</li>
      * </ul>
      * Example:
-     * <pre>{@code -javaagent:async-test-lib.jar=includes=com.myapp;excludes=com.myapp.dto}</pre>
+     * <pre>{@code -javaagent:async-test-agent.jar=includes=com.myapp;excludes=com.myapp.dto}</pre>
      * Whitespace is trimmed, empty entries are skipped, and unknown keys are ignored.
      * A {@code null} or blank argument leaves the default behavior (instrument every
      * non-ignored class) unchanged. Parsing never throws — an exception thrown from
@@ -230,7 +238,7 @@ public final class AsyncTestAgent {
                     "AsyncTestAgent.selfAttach() could not attach to the current JVM. "
                     + "Self-attachment is disabled by default on JDK 9+; start the JVM with "
                     + "-Djdk.attach.allowAttachSelf=true, or fall back to launching with "
-                    + "-javaagent:async-test-lib-<version>.jar.", ex);
+                    + "-javaagent:async-test-agent-<version>.jar.", ex);
         }
         install(agentArgs, inst, true);
     }
