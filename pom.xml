@@ -56,6 +56,7 @@
         <junit.jupiter.version>6.1.2</junit.jupiter.version>
         <junit.platform.version>6.1.2</junit.platform.version>
         <jazzer.version>0.30.0</jazzer.version>
+        <apiguardian.version>1.1.2</apiguardian.version>
         <!-- License mock mode: default true so tests run without a real key; override with -Dlicense.mock.mode=false -->
         <license.mock.mode>true</license.mock.mode>
         <!-- Plugin versions -->
@@ -104,7 +105,7 @@
             <dependency>
                 <groupId>org.apiguardian</groupId>
                 <artifactId>apiguardian-api</artifactId>
-                <version>1.1.2</version>
+                <version>${apiguardian.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.junit.jupiter</groupId>

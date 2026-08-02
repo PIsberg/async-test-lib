@@ -54,7 +54,8 @@ ALLOWLIST=(
   async-test-lib/pom.xml
   async-test-agent/pom.xml
   async-test-analysis/pom.xml
-  gradle.properties
+  # gradle.properties is deliberately absent: build.gradle.kts reads the version out of
+  # pom.xml, so there is nothing to bump there.
   consumer-fixture/pom.xml
   consumer-fixture/build.gradle.kts
   README.md

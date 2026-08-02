@@ -14,26 +14,67 @@ plugins {
 }
 
 // ── Dependency versions ─────────────────────────────────────────────────────
-// Maven (pom.xml) is the canonical source of truth for versions.
-// Keep these in sync with the <properties> block in pom.xml. Everything the two builds share
-// belongs in this block rather than inline at the use site: the versions that drifted between
-// the builds (spotbugs, error-prone, pmd) were the three that were written as literals further
-// down, where nothing put them next to the pom property they are supposed to track.
-extra["junitVersion"] = "6.1.2"       // pom: junit.jupiter.version
-extra["junitPlatformVersion"] = "6.1.2" // pom: junit.platform.version
-extra["jazzerVersion"] = "0.30.0"     // pom: jazzer.version
-extra["byteBuddyVersion"] = "1.18.11" // pom: bytebuddy.version
-extra["asmVersion"] = "9.10.1"        // pom: asm.version
-extra["slf4jVersion"] = "2.0.18"      // pom: slf4j.version
-extra["commonLicenseLibVersion"] = "0.3.0" // pom: common-license-lib.version
-extra["archunitVersion"] = "1.4.2"    // pom: archunit.version
-extra["vibetagsVersion"] = "1.0.0-RC8" // pom: vibetags.version
-extra["spotbugsVersion"] = "4.10.3"   // pom: spotbugs.version
-extra["findsecbugsVersion"] = "1.14.0" // pom: findsecbugs.version
-extra["errorProneVersion"] = "2.50.0" // pom: error-prone.version
-extra["nullawayVersion"] = "0.13.8"   // pom: nullaway.version
-extra["jspecifyVersion"] = "1.0.0"    // pom: jspecify.version
-extra["pmdVersion"] = "7.26.0"        // pom: pmd.version
+// pom.xml is the single source of truth for every version the two builds share, and this block
+// reads it rather than restating it.
+//
+// These numbers used to be written twice, once here and once in pom.xml's <properties>, kept
+// equal by a comment asking people to remember. That failed repeatedly: spotbugs, error-prone
+// and pmd each drifted. It also lagged by construction, because Dependabot raises its update
+// PRs against pom.xml only, so every bump landed in Maven and left the Gradle copy behind until
+// somebody noticed. Deriving the values deletes the second copy instead of guarding it.
+//
+// Adding a shared version means adding it to pom.xml. There is nothing to mirror here, and
+// BuildMetadataSyncTest fails if a literal version reappears in this file.
+val pomText: String =
+    providers.fileContents(layout.projectDirectory.file("pom.xml")).asText.get()
+
+/** The reactor pom's `<properties>` block, which is where every shared version is declared. */
+val pomProperties: Map<String, String> = run {
+    val start = pomText.indexOf("<properties>")
+    val end = pomText.indexOf("</properties>", start)
+    require(start >= 0 && end > start) {
+        "pom.xml has no <properties> block, so there is nothing to read versions from."
+    }
+    Regex("""<([A-Za-z0-9._-]+)>([^<>]*)</\1>""")
+        .findAll(pomText.substring(start, end))
+        .associate { it.groupValues[1] to it.groupValues[2].trim() }
+}
+
+fun pomVersion(property: String): String = requireNotNull(pomProperties[property]) {
+    "pom.xml <properties> does not define <$property>. Maven is the single source for shared " +
+        "versions: add the property there rather than hard-coding a number in build.gradle.kts."
+}
+
+fun pomValue(pattern: String, what: String): String = requireNotNull(
+    Regex(pattern).find(pomText)?.groupValues?.get(1)
+) { "Could not read $what out of pom.xml." }
+
+// Coordinates come from the pom too, so a release bump moves one file rather than two.
+group = pomValue("""<groupId>([^<]+)</groupId>\s*<artifactId>async-test-parent</artifactId>""",
+                 "the reactor groupId")
+version = pomValue("""<artifactId>async-test-parent</artifactId>\s*<version>([^<]+)</version>""",
+                   "the reactor version")
+
+extra["apiguardianVersion"] = pomVersion("apiguardian.version")
+extra["junitVersion"] = pomVersion("junit.jupiter.version")
+extra["junitPlatformVersion"] = pomVersion("junit.platform.version")
+extra["jazzerVersion"] = pomVersion("jazzer.version")
+extra["byteBuddyVersion"] = pomVersion("bytebuddy.version")
+extra["asmVersion"] = pomVersion("asm.version")
+extra["slf4jVersion"] = pomVersion("slf4j.version")
+extra["commonLicenseLibVersion"] = pomVersion("common-license-lib.version")
+extra["archunitVersion"] = pomVersion("archunit.version")
+extra["vibetagsVersion"] = pomVersion("vibetags.version")
+extra["spotbugsVersion"] = pomVersion("spotbugs.version")
+extra["findsecbugsVersion"] = pomVersion("findsecbugs.version")
+extra["errorProneVersion"] = pomVersion("error-prone.version")
+extra["nullawayVersion"] = pomVersion("nullaway.version")
+extra["jspecifyVersion"] = pomVersion("jspecify.version")
+extra["pmdVersion"] = pomVersion("pmd.version")
+
+// Gradle-only, with no Maven twin: Maven's test run has no SLF4J binding, so this backend exists
+// only for `./gradlew test`. Kept current by the gradle Dependabot ecosystem, along with the
+// plugin versions above.
 extra["logbackVersion"] = "1.6.1"     // test-only SLF4J backend, built against slf4j 2.0.18
 
 subprojects {
@@ -44,7 +85,8 @@ subprojects {
     apply(plugin = "com.github.spotbugs")
     apply(plugin = "com.vanniktech.maven.publish")
 
-    // group and version are read from gradle.properties
+    group = rootProject.group
+    version = rootProject.version
 
     extensions.configure<JavaPluginExtension> {
         sourceCompatibility = JavaVersion.VERSION_21

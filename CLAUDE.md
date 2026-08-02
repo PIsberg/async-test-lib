@@ -32,12 +32,17 @@ question in [docs/analysis/roadmap-v2.md](docs/analysis/roadmap-v2.md) Train 3 i
 
 ## Build and test
 
-**Maven is canonical.** CI (`tests.yml`) and releases (`publish.yml`) run `mvn`. Gradle is a
-secondary developer build for fast local iteration — keep the two in sync when you change deps,
-plugin versions or artifact metadata. `BuildMetadataSyncTest` enforces that rather than trusting it:
-shared versions (mapped by the `// pom:` comments in `build.gradle.kts`), the project version and
-each published module's description have to match, so drift fails the build instead of reaching
-Maven Central.
+**Maven is canonical, and it is the only place versions are declared.** CI (`tests.yml`) and
+releases (`publish.yml`) run `mvn`. Gradle is a secondary developer build for fast local iteration,
+and `build.gradle.kts` reads `pom.xml`'s `<properties>` block at configuration time rather than
+restating it, so a shared version is changed in one file and both builds follow. The project
+coordinates come from there too, which is why `gradle.properties` declares neither.
+
+Add a shared version to `pom.xml` and read it with `pomVersion("...")`. `BuildMetadataSyncTest`
+fails if a version literal reappears in a Gradle file, if the derivation is unwound, or if the
+published descriptions stop matching. The only Gradle-declared versions are the ones with no Maven
+twin: the `plugins` block and the test-only logback backend, both watched by the gradle Dependabot
+ecosystem.
 
 ```bash
 mvn test                                   # everything

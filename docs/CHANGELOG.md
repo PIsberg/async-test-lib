@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — every shared version is declared once, in `pom.xml`, and Gradle reads it
+
+Sixteen versions were written twice, once in `pom.xml`'s `<properties>` and once in
+`build.gradle.kts`, kept equal by a comment asking people to remember. Two things went wrong with
+that. It drifted: the comment in `build.gradle.kts` recorded that spotbugs, error-prone and pmd had
+each already diverged, which means the two builds were running different analysers while both
+stayed green. And it lagged by construction, because Dependabot raises its update PRs against
+`pom.xml` only, so every accepted bump landed in Maven and left the Gradle copy on the old number
+until somebody noticed by hand.
+
+The previous release added a test that compared the two copies. That caught drift but did nothing
+about the lag, and it still required two edits per bump. This removes the second copy instead.
+`build.gradle.kts` now reads `pom.xml` at configuration time and derives every shared version from
+its `<properties>` block:
+
+```kotlin
+extra["asmVersion"] = pomVersion("asm.version")
+```
+
+Verified by changing `<asm.version>` to `9.9.1` in `pom.xml` alone and confirming
+`./gradlew :async-test-analysis:dependencies` resolved `org.ow2.asm:asm:9.9.1`, then restoring.
+
+The project coordinates moved the same way. `group` and `version` were declared in both
+`gradle.properties` and `pom.xml`, so a release bump was two edits that had to agree; Gradle now
+reads both from the pom, `gradle.properties` declares neither, and `gradle.properties` is out of
+`bump-version.sh`'s allowlist and out of the file table in [RELEASE.md](RELEASE.md).
+
+`apiguardian-api` was the last version still written as a literal in both builds. It now goes
+through `apiguardian.version` like the rest, which leaves zero shared version literals in any
+Gradle file.
+
+### Added — a `gradle` Dependabot ecosystem, for the versions nothing was watching
+
+Four Gradle plugin versions (vanniktech publish, errorprone, spotbugs, cyclonedx) and the test-only
+logback backend have no Maven twin, so the `maven` ecosystem never saw them and no update PR had
+ever been raised for any of them. They are the one category the change above cannot centralise,
+because there is nothing in `pom.xml` for them to point at.
+
+The new ecosystem cannot raise competing PRs for anything already covered: the shared versions are
+no longer literals in any Gradle file, so there is nothing there for it to bump.
+
+### Changed — `BuildMetadataSyncTest` now enforces the single source rather than comparing copies
+
+Comparing two copies is the right test when there are two copies. There are not any more, so the
+test checks what actually has to hold:
+
+- no shared version is restated as a literal in a Gradle file, whether as an `extra[...]`
+  assignment or a pinned `group:artifact:version` coordinate, with `GRADLE_ONLY_VERSIONS` listing
+  the exceptions and why each has no Maven twin;
+- the derivation is still in place and every `pomVersion("...")` names a property `pom.xml` really
+  defines, with a floor on how many are derived so an unwound derivation fails rather than passing
+  quietly;
+- `gradle.properties` declares neither `version` nor `group`, since a declaration there silently
+  wins over the derived value and the two builds could then publish different coordinates.
+
+The description and detector-count checks are unchanged: prose is genuinely duplicated, because
+neither build can compute it.
+
+Checked by reintroducing both mistakes at once, a literal `extra["asmVersion"] = "9.9.9"` and a
+`version=` line in `gradle.properties`, and confirming the test failed on each independently.
+
 ### Fixed — every instruction for attaching the agent named a JAR that cannot attach
 
 `Premain-Class` and `Agent-Class` are in `async-test-agent`'s manifest and nowhere else. Six current

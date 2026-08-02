@@ -16,3 +16,15 @@ updates:
     directory: /
     schedule:
       interval: daily
+
+  # Gradle-only versions. Everything the two builds share is declared in pom.xml and read from
+  # there by build.gradle.kts, so the maven ecosystem above already covers it and this entry
+  # cannot raise a competing PR for it: those numbers are not literals in any Gradle file.
+  #
+  # What is left here has no Maven twin and so had nothing watching it: the Gradle plugin
+  # versions (vanniktech publish, errorprone, spotbugs, cyclonedx) and the test-only logback
+  # backend that `./gradlew test` needs and Maven does not.
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: daily
