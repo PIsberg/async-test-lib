@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the published descriptions told Maven Central three wrong things
+
+`async-test-lib` described itself as having "121 problem detectors". `DetectorType` has 127. The
+description is what a consumer reads on the artifact page
+before deciding whether to depend on the library, so the number being six low is a wrong claim, not
+a cosmetic one. It is now derived-and-checked rather than restated: `BuildMetadataSyncTest` reads
+`DetectorType.values().length` and fails if the description does not name it.
+
+`async-test-agent` and `async-test-analysis` each published a shorter description from Gradle than
+from Maven. The agent's Gradle text stopped after "record reads and writes without manual hooks",
+dropping the sentence that says how to attach it (`-javaagent:async-test-agent.jar`, or
+`AsyncTestAgent.selfAttach()`), the one thing a reader of that description needs. The analysis
+module's dropped "Standalone, it depends on no other module in the project", which is the reason to
+pick it up separately. Whichever build runs the release decides what Central shows, so the two have
+to say the same thing. Maven was canonical; Gradle now matches it.
+
+### Added — `BuildMetadataSyncTest`, so Maven and Gradle cannot drift again in silence
+
+Every version the two builds share is written twice, and the only thing keeping the copies equal was
+a comment asking people to remember. The comment above the version block in `build.gradle.kts`
+records that this already failed three times: spotbugs, error-prone and pmd each drifted. That kind
+of drift is quiet. Both builds stay green; they just stop running the same analyser, and the one CI
+uses is no longer the one a developer runs locally.
+
+The gate reads the mapping the build files already declare. Each Gradle version names the pom
+property it tracks in a trailing comment:
+
+```kotlin
+extra["asmVersion"] = "9.10.1"        // pom: asm.version
+```
+
+A version with no `// pom:` comment is deliberately unpinned (logback is test-only and has no Maven
+twin) and is skipped. A comment naming a property the pom does not define fails, so renaming a pom
+property cannot orphan its Gradle copy. The test also pins the project version across `pom.xml` and
+`gradle.properties`, and the description of each published module across its pom and its Gradle
+script. It asserts a floor on how many mappings it parsed, so a change to the comment format makes
+it fail rather than pass while checking nothing.
+
+`common-license-lib` was the one shared version written outside that mapping: a literal `0.3.0` in
+`async-test-lib/build.gradle.kts` and an inline `<version>` in the reactor pom, exactly the shape the
+three earlier drifts had. It is now `common-license-lib.version` in the pom properties and
+`commonLicenseLibVersion` in the Gradle block, covered by the same check.
+
+Verified by writing the gate first and watching it fail on the real drift (the 121 count), fixing
+that, then changing `asmVersion` to `9.10.0` in `build.gradle.kts` alone and confirming it failed
+with "Maven and Gradle disagree on asm.version", then restoring. It passes under both `mvn` and
+`./gradlew`.
+
 ### Changed — `common-license-lib` 0.2.1 to 0.3.0, which fixes a license contradiction
 
 This project is PolyForm Noncommercial and its README promises "free for non-commercial use".

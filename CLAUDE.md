@@ -34,7 +34,10 @@ question in [docs/analysis/roadmap-v2.md](docs/analysis/roadmap-v2.md) Train 3 i
 
 **Maven is canonical.** CI (`tests.yml`) and releases (`publish.yml`) run `mvn`. Gradle is a
 secondary developer build for fast local iteration — keep the two in sync when you change deps,
-plugin versions or artifact metadata.
+plugin versions or artifact metadata. `BuildMetadataSyncTest` enforces that rather than trusting it:
+shared versions (mapped by the `// pom:` comments in `build.gradle.kts`), the project version and
+each published module's description have to match, so drift fails the build instead of reaching
+Maven Central.
 
 ```bash
 mvn test                                   # everything

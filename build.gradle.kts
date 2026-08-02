@@ -25,6 +25,7 @@ extra["jazzerVersion"] = "0.30.0"     // pom: jazzer.version
 extra["byteBuddyVersion"] = "1.18.11" // pom: bytebuddy.version
 extra["asmVersion"] = "9.10.1"        // pom: asm.version
 extra["slf4jVersion"] = "2.0.18"      // pom: slf4j.version
+extra["commonLicenseLibVersion"] = "0.3.0" // pom: common-license-lib.version
 extra["archunitVersion"] = "1.4.2"    // pom: archunit.version
 extra["vibetagsVersion"] = "1.0.0-RC8" // pom: vibetags.version
 extra["spotbugsVersion"] = "4.10.3"   // pom: spotbugs.version

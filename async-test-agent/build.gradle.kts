@@ -35,6 +35,7 @@ mavenPublishing {
     pom {
         name = "Async Test Library — Java agent"
         description = "Optional Byte Buddy agent for async-test-lib: instruments field access so detectors " +
-                "record reads and writes without manual hooks."
+                "record reads and writes without manual hooks. Attach with -javaagent:async-test-agent.jar, " +
+                "or call AsyncTestAgent.selfAttach()."
     }
 }
