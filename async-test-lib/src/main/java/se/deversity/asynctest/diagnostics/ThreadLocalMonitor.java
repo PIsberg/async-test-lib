@@ -26,6 +26,12 @@ public class ThreadLocalMonitor {
     private final Map<Integer, ThreadLocalState> threadLocals = new ConcurrentHashMap<>();
     private final Map<Long, Set<Integer>> threadLocalsByThread = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
+    /**
+     * Records thread local init so it can be analysed at the end of the run.
+     *
+     * @param threadLocal the thread local
+     * @param name the name
+     */
 
     public void recordThreadLocalInit(ThreadLocal<?> threadLocal, String name) {
         if (!enabled || threadLocal == null) {
@@ -38,6 +44,11 @@ public class ThreadLocalMonitor {
         state.initialized = true;
         recordThreadUsage(state, Thread.currentThread().threadId());
     }
+    /**
+     * Records thread local access so it can be analysed at the end of the run.
+     *
+     * @param threadLocal the thread local
+     */
 
     public void recordThreadLocalAccess(ThreadLocal<?> threadLocal) {
         if (!enabled || threadLocal == null) {
@@ -48,6 +59,11 @@ public class ThreadLocalMonitor {
         ThreadLocalState state = threadLocals.computeIfAbsent(id, ignored -> new ThreadLocalState("ThreadLocal-" + id, id));
         recordThreadUsage(state, Thread.currentThread().threadId());
     }
+    /**
+     * Records thread local cleanup so it can be analysed at the end of the run.
+     *
+     * @param threadLocal the thread local
+     */
 
     public void recordThreadLocalCleanup(ThreadLocal<?> threadLocal) {
         if (!enabled || threadLocal == null) {
@@ -65,6 +81,11 @@ public class ThreadLocalMonitor {
         state.threadsThatUsed.add(threadId);
         threadLocalsByThread.computeIfAbsent(threadId, ignored -> ConcurrentHashMap.newKeySet()).add(state.threadLocalId);
     }
+    /**
+     * Analyses what has been recorded about thread local leaks and builds the report for it.
+     *
+     * @return the analyze thread local leaks
+     */
 
     public ThreadLocalReport analyzeThreadLocalLeaks() {
         ThreadLocalReport report = new ThreadLocalReport();
@@ -105,15 +126,24 @@ public class ThreadLocalMonitor {
     public ThreadLocalReport analyze() {
         return analyzeThreadLocalLeaks();
     }
+    /**
+     * Clears recorded the observation so this instance can be reused for the next run.
+     */
 
     public void reset() {
         threadLocals.clear();
         threadLocalsByThread.clear();
     }
+    /**
+     * Disable.
+     */
 
     public void disable() {
         enabled = false;
     }
+    /**
+     * Enable.
+     */
 
     public void enable() {
         enabled = true;

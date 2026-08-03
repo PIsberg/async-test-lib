@@ -62,6 +62,11 @@ public final class TryLockMisuseDetector {
             threadResults.remove(thread.threadId());
         }
     }
+    /**
+     * Analyses what has been recorded about the observation and builds the report for it.
+     *
+     * @return the analyze
+     */
 
     public Report analyze() {
         Report r = new Report();

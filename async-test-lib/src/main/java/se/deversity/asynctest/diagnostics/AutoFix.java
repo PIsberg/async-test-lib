@@ -88,10 +88,20 @@ public final class AutoFix {
 
             Option 3: Use synchronized methods
             ─────────────────────────────────────────────────────────
+            /**
+             * Deposit.
+             *
+             * @param amount the amount
+             */
             // Before:
             public void deposit(long amount) {
                 balance += amount;
             }
+            /**
+             * Deposit.
+             *
+             * @param amount the amount
+             */
 
             // After:
             public synchronized void deposit(long amount) {
@@ -103,6 +113,11 @@ public final class AutoFix {
             ─────────────────────────────────────────────────────────
             private final ReentrantLock lock = new ReentrantLock();
             private long balance;
+            /**
+             * Deposit.
+             *
+             * @param amount the amount
+             */
 
             public void deposit(long amount) {
                 lock.lock();
@@ -147,10 +162,14 @@ public final class AutoFix {
             Option 3: Use synchronized
             ─────────────────────────────────────────────────────────
             private boolean ready = false;
+            /**
+             * Set ready.
+             */
 
             public synchronized void setReady() {
                 ready = true;
             }
+            /** {@return the is ready} */
 
             public synchronized boolean isReady() {
                 return ready;
@@ -422,6 +441,9 @@ public final class AutoFix {
             Option 3: Use synchronized
             ─────────────────────────────────────────────────────────
             private long counter;
+            /**
+             * Increment.
+             */
 
             public synchronized void increment() {
                 counter++;  // Now atomic
@@ -458,6 +480,9 @@ public final class AutoFix {
             class LockedResource implements AutoCloseable {
                 private final Lock lock;
                 LockedResource(Lock lock) { this.lock = lock; lock.lock(); }
+                /**
+                 * Close.
+                 */
                 public void close() { lock.unlock(); }
             }
 

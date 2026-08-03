@@ -121,15 +121,24 @@ public class PipelineMonitor {
     public PipelineReport analyze() {
         return analyzePipeline();
     }
+    /**
+     * Clears recorded the observation so this instance can be reused for the next run.
+     */
 
     public void reset() {
         stages.clear();
         eventLog.clear();
     }
+    /**
+     * Disable.
+     */
     
     public void disable() {
         enabled = false;
     }
+    /**
+     * Enable.
+     */
     
     public void enable() {
         enabled = true;
@@ -138,6 +147,7 @@ public class PipelineMonitor {
     public static class PipelineReport {
         /** The missing events. */
         public final Set<String> missingEvents = new HashSet<>();
+        /** The failed events. */
         public final Map<String, List<String>> failedEvents = new HashMap<>();
         /** The low processing rate. */
         public final Set<String> lowProcessingRate = new HashSet<>();

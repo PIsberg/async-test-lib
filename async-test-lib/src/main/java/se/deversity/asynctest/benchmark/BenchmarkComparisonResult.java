@@ -128,6 +128,7 @@ public final class BenchmarkComparisonResult {
     public int hashCode() {
         return Objects.hash(currentResult, baselineResult, percentChange, isRegression, isImprovement, isFirstRun);
     }
+    /** {@return the builder} */
 
     public static Builder builder() {
         return new Builder();
@@ -141,41 +142,84 @@ public final class BenchmarkComparisonResult {
         private boolean isImprovement;
         private boolean isFirstRun;
         private double thresholdPercent;
+        /**
+         * Current result.
+         *
+         * @param currentResult the current result
+         * @return the current result
+         */
 
         public Builder currentResult(BenchmarkResult currentResult) {
             this.currentResult = currentResult;
             return this;
         }
+        /**
+         * Baseline result.
+         *
+         * @param baselineResult the baseline result
+         * @return the baseline result
+         */
 
         public Builder baselineResult(BenchmarkResult baselineResult) {
             this.baselineResult = baselineResult;
             return this;
         }
+        /**
+         * Percent change.
+         *
+         * @param percentChange the percent change
+         * @return the percent change
+         */
 
         public Builder percentChange(double percentChange) {
             this.percentChange = percentChange;
             return this;
         }
+        /**
+         * Is regression.
+         *
+         * @param isRegression the is regression
+         * @return the is regression
+         */
 
         public Builder isRegression(boolean isRegression) {
             this.isRegression = isRegression;
             return this;
         }
+        /**
+         * Is improvement.
+         *
+         * @param isImprovement the is improvement
+         * @return the is improvement
+         */
 
         public Builder isImprovement(boolean isImprovement) {
             this.isImprovement = isImprovement;
             return this;
         }
+        /**
+         * Is first run.
+         *
+         * @param isFirstRun the is first run
+         * @return the is first run
+         */
 
         public Builder isFirstRun(boolean isFirstRun) {
             this.isFirstRun = isFirstRun;
             return this;
         }
+        /**
+         * Threshold percent.
+         *
+         * @param thresholdPercent the threshold percent
+         * @return the threshold percent
+         */
 
         public Builder thresholdPercent(double thresholdPercent) {
             this.thresholdPercent = thresholdPercent;
             return this;
         }
+        /** {@return the build} */
 
         public BenchmarkComparisonResult build() {
             return new BenchmarkComparisonResult(this);

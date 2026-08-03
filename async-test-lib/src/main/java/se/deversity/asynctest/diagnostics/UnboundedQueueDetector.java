@@ -195,6 +195,9 @@ public class UnboundedQueueDetector {
             events.clear();
         }
     }
+    /**
+     * Disable.
+     */
 
     public void disable() {
         this.enabled = false;

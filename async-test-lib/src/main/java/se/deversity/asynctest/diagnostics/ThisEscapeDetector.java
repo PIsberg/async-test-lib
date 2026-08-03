@@ -122,6 +122,11 @@ public final class ThisEscapeDetector {
         State s = instances.get(System.identityHashCode(instance));
         if (s != null) s.completed = true;
     }
+    /**
+     * Analyses what has been recorded about the observation and builds the report for it.
+     *
+     * @return the analyze
+     */
 
     public Report analyze() {
         Report r = new Report();

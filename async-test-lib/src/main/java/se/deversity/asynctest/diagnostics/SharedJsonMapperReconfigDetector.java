@@ -134,6 +134,11 @@ public final class SharedJsonMapperReconfigDetector {
         }
         return s;
     }
+    /**
+     * Analyses what has been recorded about the observation and builds the report for it.
+     *
+     * @return the analyze
+     */
 
     public Report analyze() {
         Report r = new Report();

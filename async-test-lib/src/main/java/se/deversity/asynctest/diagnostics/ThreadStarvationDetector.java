@@ -224,6 +224,9 @@ public class ThreadStarvationDetector {
             starvationEvents.clear();
         }
     }
+    /**
+     * Disable.
+     */
 
     public void disable() {
         this.enabled = false;

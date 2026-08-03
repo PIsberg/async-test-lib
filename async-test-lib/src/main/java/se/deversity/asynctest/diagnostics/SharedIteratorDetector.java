@@ -112,6 +112,11 @@ public final class SharedIteratorDetector {
         if (iterator instanceof Iterator) return "Iterator";
         return iterator.getClass().getSimpleName();
     }
+    /**
+     * Analyses what has been recorded about the observation and builds the report for it.
+     *
+     * @return the analyze
+     */
 
     public Report analyze() {
         Report r = new Report();

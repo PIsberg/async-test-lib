@@ -99,16 +99,25 @@ public class VisibilityMonitor {
     public VisibilityReport analyze() {
         return analyzeVisibility();
     }
+    /**
+     * Clears recorded the observation so this instance can be reused for the next run.
+     */
 
     public void reset() {
         fieldSnapshots.clear();
         seenValues.clear();
         invocationCounter.set(0);
     }
+    /**
+     * Disable.
+     */
     
     public void disable() {
         enabled = false;
     }
+    /**
+     * Enable.
+     */
     
     public void enable() {
         enabled = true;
@@ -117,6 +126,7 @@ public class VisibilityMonitor {
     public static class VisibilityReport {
         /** The suspected fields. */
         public final Set<String> suspectedFields = new HashSet<>();
+        /** The field value variations. */
         public final Map<String, Map<Long, Set<Object>>> fieldValueVariations = new HashMap<>();
         
         /** {@return whether there are issues} */

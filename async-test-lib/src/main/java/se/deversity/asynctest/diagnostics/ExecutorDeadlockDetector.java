@@ -30,6 +30,13 @@ public class ExecutorDeadlockDetector {
     }
 
     private final Map<Integer, ExecutorState> executors = new ConcurrentHashMap<>();
+    /**
+     * Registers executor for tracking.
+     *
+     * @param executor the executor
+     * @param name the name
+     * @param maxThreads the max threads
+     */
 
     public void registerExecutor(Object executor, String name, int maxThreads) {
         if (executor == null) {
@@ -38,6 +45,11 @@ public class ExecutorDeadlockDetector {
         executors.putIfAbsent(System.identityHashCode(executor),
             new ExecutorState(name == null || name.isBlank() ? "Executor" : name, maxThreads));
     }
+    /**
+     * Records task submitted so it can be analysed at the end of the run.
+     *
+     * @param executor the executor
+     */
 
     public void recordTaskSubmitted(Object executor) {
         ExecutorState state = stateFor(executor);
@@ -45,6 +57,11 @@ public class ExecutorDeadlockDetector {
             state.submitted.incrementAndGet();
         }
     }
+    /**
+     * Records task started so it can be analysed at the end of the run.
+     *
+     * @param executor the executor
+     */
 
     public void recordTaskStarted(Object executor) {
         ExecutorState state = stateFor(executor);
@@ -52,6 +69,11 @@ public class ExecutorDeadlockDetector {
             state.running.incrementAndGet();
         }
     }
+    /**
+     * Records waiting on sibling so it can be analysed at the end of the run.
+     *
+     * @param executor the executor
+     */
 
     public void recordWaitingOnSibling(Object executor) {
         ExecutorState state = stateFor(executor);
@@ -59,6 +81,11 @@ public class ExecutorDeadlockDetector {
             state.waitingOnSibling.incrementAndGet();
         }
     }
+    /**
+     * Records task completed so it can be analysed at the end of the run.
+     *
+     * @param executor the executor
+     */
 
     public void recordTaskCompleted(Object executor) {
         ExecutorState state = stateFor(executor);
@@ -70,6 +97,11 @@ public class ExecutorDeadlockDetector {
     private @Nullable ExecutorState stateFor(Object executor) {
         return executor == null ? null : executors.get(System.identityHashCode(executor));
     }
+    /**
+     * Analyses what has been recorded about the observation and builds the report for it.
+     *
+     * @return the analyze
+     */
 
     public ExecutorDeadlockReport analyze() {
         ExecutorDeadlockReport report = new ExecutorDeadlockReport();

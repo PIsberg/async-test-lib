@@ -40,6 +40,9 @@ public class DeadlockDetector {
             preexistingDeadlockedThreads = Set.copyOf(ids);
         }
     }
+    /**
+     * Prints thread dump to the report output.
+     */
 
     public static void printThreadDump() {
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();

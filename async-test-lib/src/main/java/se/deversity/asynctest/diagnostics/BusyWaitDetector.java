@@ -39,6 +39,9 @@ public class BusyWaitDetector {
 
     private final Map<Long, ThreadActivity> threadActivities = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
+    /**
+     * Records loop iteration so it can be analysed at the end of the run.
+     */
 
     public void recordLoopIteration() {
         if (!enabled) {
@@ -58,6 +61,9 @@ public class BusyWaitDetector {
             }
         }
     }
+    /**
+     * Records yield so it can be analysed at the end of the run.
+     */
 
     public void recordYield() {
         if (!enabled) {
@@ -83,6 +89,12 @@ public class BusyWaitDetector {
             activity.spinStartTime = 0;
         }
     }
+    /**
+     * Report spin loop.
+     *
+     * @param description the description
+     * @param iterations the iterations
+     */
 
     public void reportSpinLoop(String description, long iterations) {
         if (!enabled) {
@@ -103,6 +115,11 @@ public class BusyWaitDetector {
         StackTraceElement[] trace = Thread.currentThread().getStackTrace();
         return trace.length > 3 ? trace[3].toString() : "unknown";
     }
+    /**
+     * Analyses what has been recorded about busy waiting and builds the report for it.
+     *
+     * @return the analyze busy waiting
+     */
 
     public BusyWaitReport analyzeBusyWaiting() {
         BusyWaitReport report = new BusyWaitReport();
@@ -160,14 +177,23 @@ public class BusyWaitDetector {
     public BusyWaitReport analyze() {
         return analyzeBusyWaiting();
     }
+    /**
+     * Clears recorded the observation so this instance can be reused for the next run.
+     */
 
     public void reset() {
         threadActivities.clear();
     }
+    /**
+     * Disable.
+     */
 
     public void disable() {
         enabled = false;
     }
+    /**
+     * Enable.
+     */
 
     public void enable() {
         enabled = true;
@@ -178,6 +204,7 @@ public class BusyWaitDetector {
         public final Set<String> busyWaitLoops = new HashSet<>();
         /** The tight loops. */
         public final Set<String> tightLoops = new HashSet<>();
+        /** The cpu wasted. */
         public long cpuWasted;
 
         /** {@return whether there are issues} */

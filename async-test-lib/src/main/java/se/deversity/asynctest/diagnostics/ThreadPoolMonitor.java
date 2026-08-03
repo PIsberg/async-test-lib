@@ -156,14 +156,23 @@ public class ThreadPoolMonitor {
     public ThreadPoolReport analyze() {
         return analyzePoolHealth();
     }
+    /**
+     * Clears recorded the observation so this instance can be reused for the next run.
+     */
 
     public void reset() {
         pools.clear();
     }
+    /**
+     * Disable.
+     */
     
     public void disable() {
         enabled = false;
     }
+    /**
+     * Enable.
+     */
     
     public void enable() {
         enabled = true;

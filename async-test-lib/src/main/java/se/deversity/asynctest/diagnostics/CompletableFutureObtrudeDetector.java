@@ -48,6 +48,11 @@ public final class CompletableFutureObtrudeDetector {
             new State(name, old.obtrudeCount + 1, val.lastObtrudedByThread)
         );
     }
+    /**
+     * Analyses what has been recorded about the observation and builds the report for it.
+     *
+     * @return the analyze
+     */
 
     public Report analyze() {
         Report r = new Report();

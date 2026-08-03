@@ -47,6 +47,11 @@ public final class SpuriousWakeupDetector {
         ));
         s.threadsOutsideLoop.add(thread.getName());
     }
+    /**
+     * Analyses what has been recorded about the observation and builds the report for it.
+     *
+     * @return the analyze
+     */
 
     public Report analyze() {
         Report r = new Report();

@@ -104,6 +104,11 @@ public final class SharedCharsetCoderDetector {
             s.operations.add(operation);
         }
     }
+    /**
+     * Analyses what has been recorded about the observation and builds the report for it.
+     *
+     * @return the analyze
+     */
 
     public Report analyze() {
         Report r = new Report();

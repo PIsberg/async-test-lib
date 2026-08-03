@@ -213,20 +213,30 @@ public class ABAProblemDetector {
     public ABAReport analyze() {
         return analyzeABA();
     }
+    /**
+     * Clears recorded the observation so this instance can be reused for the next run.
+     */
 
     public void reset() {
         trackedVariables.clear();
     }
+    /**
+     * Disable.
+     */
     
     public void disable() {
         enabled = false;
     }
+    /**
+     * Enable.
+     */
     
     public void enable() {
         enabled = true;
     }
     
     public static class ABAReport {
+        /** The variables with cycles. */
         public final Map<String, Integer> variablesWithCycles = new HashMap<>();
         /** The successful ABA cases. */
         public final Set<String> successfulABACases = new HashSet<>();
