@@ -93,7 +93,7 @@ public final class NotifyWithoutMonitorDetector {
     /**
      * Report produced by {@link #analyze()}.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public Report analyze() {
         Report r = new Report();
@@ -123,9 +123,9 @@ public final class NotifyWithoutMonitorDetector {
 
     /** Report. */
     public static final class Report {
-        /** The violations. */
+        /** Findings as human-readable lines, for the text report. */
         public final List<String> violations = new ArrayList<>();
-        /** The structured violations. */
+        /** The same findings as {@link se.deversity.asynctest.report.Violation} objects, for machine-readable reports. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**

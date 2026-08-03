@@ -92,7 +92,7 @@ public class UnboundedQueueDetector {
     /**
      * Record an enqueue operation.
      *
-     * @param queue the queue
+     * @param queue the queue being recorded, tracked by identity
      */
     public void recordEnqueue(BlockingQueue<?> queue) {
         if (!enabled || queue == null) return;
@@ -131,7 +131,7 @@ public class UnboundedQueueDetector {
     /**
      * Record a dequeue operation.
      *
-     * @param queue the queue
+     * @param queue the queue being recorded, tracked by identity
      */
     public void recordDequeue(BlockingQueue<?> queue) {
         if (!enabled || queue == null) return;
@@ -198,7 +198,6 @@ public class UnboundedQueueDetector {
     /**
      * Disable.
      */
-
     public void disable() {
         this.enabled = false;
     }
@@ -206,7 +205,7 @@ public class UnboundedQueueDetector {
     /**
      * Set the warning threshold for queue size.
      *
-     * @param threshold the threshold
+     * @param threshold the value above which this detector reports
      */
     public void setWarningThreshold(int threshold) {
         this.warningThreshold = threshold;
@@ -216,14 +215,14 @@ public class UnboundedQueueDetector {
      * An unbounded queue event.
      */
     public static class UnboundedQueueEvent {
-        /** The queue name. */
+        /** Label identifying the queue in the report. */
         public final String queueName;
-        /** The description. */
+        /** What was observed, in the wording used by the report. */
         public final String description;
-        /** The capacity. */
+        /** Declared capacity of the queue, or unbounded when none was given. */
         public final int capacity;
         public final StackTraceElement @Nullable [] creationStack;
-        /** The fix suggestion. */
+        /** The change suggested to the reader of the report. */
         public final String fixSuggestion;
 
         UnboundedQueueEvent(String queueName, String description, int capacity,

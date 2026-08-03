@@ -37,10 +37,10 @@ public final class SpuriousWakeupDetector {
     /**
      * Record a wait/await operation.
      *
-     * @param monitor the monitor
-     * @param monitorName the monitor name
+     * @param monitor the object being used as a monitor, tracked by identity
+     * @param monitorName a label identifying the monitor in the report
      * @param insideLoop the {@code insideLoop} flag
-     * @param thread the thread
+     * @param thread the thread performing the operation
      */
     public void recordWait(Object monitor, String monitorName, boolean insideLoop, Thread thread) {
         if (monitor == null || thread == null) return;
@@ -55,9 +55,8 @@ public final class SpuriousWakeupDetector {
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
-
     public Report analyze() {
         Report r = new Report();
         for (State s : monitors.values()) {
@@ -84,9 +83,9 @@ public final class SpuriousWakeupDetector {
     }
 
     public static final class Report {
-        /** The violations. */
+        /** Findings as human-readable lines, for the text report. */
         public final List<String> violations = new ArrayList<>();
-        /** The structured violations. */
+        /** The same findings as {@link se.deversity.asynctest.report.Violation} objects, for machine-readable reports. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**

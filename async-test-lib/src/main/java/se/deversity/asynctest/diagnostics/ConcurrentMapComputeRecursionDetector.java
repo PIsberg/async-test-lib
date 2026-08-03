@@ -64,9 +64,9 @@ public class ConcurrentMapComputeRecursionDetector {
     /**
      * Record exit from a {@code compute*} / {@code merge} mapping function.
      *
-     * @param map the map
-     * @param key the key
-     * @param thread the thread
+     * @param map the map the computation was running on, tracked by identity
+     * @param key the key the entry is stored under
+     * @param thread the thread performing the operation
      */
     public void recordComputeEnd(Map<?, ?> map, Object key, Thread thread) {
         if (map == null || key == null || thread == null) return;

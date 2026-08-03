@@ -66,6 +66,16 @@ public final class SpinContentionBarrier {
     @SuppressWarnings("unused") private long pad11;
     @SuppressWarnings("unused") private long pad12;
 
+    /**
+     * Creates a barrier that releases once {@code totalThreads} threads have arrived.
+     *
+     * <p>Unlike {@link java.util.concurrent.CyclicBarrier}, arriving threads spin rather than
+     * park, so they resume within nanoseconds of the last arrival instead of waiting to be
+     * scheduled. That is what makes the collision tight enough for a race to reproduce.
+     *
+     * @param totalThreads how many threads must arrive before any is released; must be at least 1
+     * @throws IllegalArgumentException if {@code totalThreads} is less than 1
+     */
     public SpinContentionBarrier(int totalThreads) {
         if (totalThreads < 1) {
             throw new IllegalArgumentException("totalThreads must be >= 1, got: " + totalThreads);

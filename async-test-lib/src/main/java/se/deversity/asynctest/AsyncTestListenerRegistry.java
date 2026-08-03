@@ -146,7 +146,7 @@ public final class AsyncTestListenerRegistry {
      * <p>Severity is parsed from the report text using {@link IssueSeverity} markers
      * (emoji or keyword). Reports with no recognisable marker default to {@link IssueSeverity#HIGH}.
      *
-     * @param detectorName the detector name
+     * @param detectorName the reporting detector, as it appears in the report
      * @param report the report content
      */
     public static void fireDetectorReport(String detectorName, String report) {

@@ -191,7 +191,6 @@ public class SleepInLockDetector {
     /**
      * Disable.
      */
-
     public void disable() {
         this.enabled = false;
     }
@@ -200,15 +199,15 @@ public class SleepInLockDetector {
      * Immutable snapshot of a sleep-in-lock event.
      */
     public static class SleepInLockEventSnapshot {
-        /** The lock name. */
+        /** Label identifying the lock that was held while sleeping. */
         public final @Nullable String lockName;
-        /** The thread name. */
+        /** Label identifying the sleeping thread in the report. */
         public final String threadName;
-        /** The sleep duration. */
+        /** How long the thread slept while holding the lock, in nanoseconds. */
         public final long sleepDuration;
-        /** The stack trace. */
+        /** Where the sleep happened. */
         public final StackTraceElement[] stackTrace;
-        /** The lock type. */
+        /** Whether the lock held was {@code synchronized} or a {@code ReentrantLock}. */
         public final @Nullable String lockType;
 
         SleepInLockEventSnapshot(@Nullable String lockName, String threadName,

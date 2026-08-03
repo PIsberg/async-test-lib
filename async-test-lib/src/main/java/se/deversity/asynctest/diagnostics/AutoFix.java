@@ -95,7 +95,7 @@ public final class AutoFix {
             /**
              * Deposit.
              *
-             * @param amount the amount
+             * @param amount how many, for the operation being recorded
              */
             // Before:
             public void deposit(long amount) {
@@ -104,7 +104,7 @@ public final class AutoFix {
             /**
              * Deposit.
              *
-             * @param amount the amount
+             * @param amount how many, for the operation being recorded
              */
 
             // After:
@@ -120,9 +120,8 @@ public final class AutoFix {
             /**
              * Deposit.
              *
-             * @param amount the amount
+             * @param amount how many, for the operation being recorded
              */
-
             public void deposit(long amount) {
                 lock.lock();
                 try {
@@ -171,14 +170,12 @@ public final class AutoFix {
             /**
              * Set ready.
              */
-
             public synchronized void setReady() {
                 ready = true;
             }
             /**
              * {@return the is ready}
              */
-
             public synchronized boolean isReady() {
                 return ready;
             }
@@ -464,7 +461,6 @@ public final class AutoFix {
             /**
              * Increment.
              */
-
             public synchronized void increment() {
                 counter++;  // Now atomic
             }

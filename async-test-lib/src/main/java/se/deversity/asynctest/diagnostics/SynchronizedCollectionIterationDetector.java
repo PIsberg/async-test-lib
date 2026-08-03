@@ -48,8 +48,8 @@ public class SynchronizedCollectionIterationDetector {
     /**
      * Register a synchronized wrapper created by {@code Collections.synchronized*(collection)}.
      *
-     * @param wrapper the wrapper
-     * @param name the name
+     * @param wrapper the wrapper object being recorded, tracked by identity
+     * @param name a label identifying the wrapper in the report
      */
     public void recordWrapperCreated(Object wrapper, String name) {
         if (wrapper == null) return;

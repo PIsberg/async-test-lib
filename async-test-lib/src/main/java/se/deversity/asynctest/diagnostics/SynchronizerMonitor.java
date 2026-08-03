@@ -39,8 +39,8 @@ public class SynchronizerMonitor {
     /**
      * Register a synchronizer for monitoring.
      *
-     * @param synchronizer the synchronizer
-     * @param expectedParties the expected parties
+     * @param synchronizer the synchronizer being recorded, tracked by identity
+     * @param expectedParties the number of parties expected to arrive
      */
     public void registerSynchronizer(Object synchronizer, int expectedParties) {
         if (!enabled) return;
@@ -55,7 +55,7 @@ public class SynchronizerMonitor {
     /**
      * Record thread arriving at barrier.
      *
-     * @param synchronizer the synchronizer
+     * @param synchronizer the synchronizer being recorded, tracked by identity
      */
     public void recordBarrierArrival(Object synchronizer) {
         if (!enabled) return;
@@ -74,7 +74,7 @@ public class SynchronizerMonitor {
     /**
      * Record thread advancing past barrier.
      *
-     * @param synchronizer the synchronizer
+     * @param synchronizer the synchronizer being recorded, tracked by identity
      */
     public void recordBarrierAdvance(Object synchronizer) {
         if (!enabled) return;
@@ -90,7 +90,7 @@ public class SynchronizerMonitor {
     /**
      * Record barrier reset.
      *
-     * @param synchronizer the synchronizer
+     * @param synchronizer the synchronizer being recorded, tracked by identity
      */
     public void recordBarrierReset(Object synchronizer) {
         if (!enabled) return;
@@ -107,7 +107,7 @@ public class SynchronizerMonitor {
     /**
      * Analyze synchronizer behavior.
      *
-     * @return the analyze synchronizers
+     * @return the findings this detector collected during the run
      */
     public SynchronizerReport analyzeSynchronizers() {
         SynchronizerReport report = new SynchronizerReport();
@@ -138,7 +138,7 @@ public class SynchronizerMonitor {
     /**
      * Standardized alias for {@link #analyzeSynchronizers()}.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public SynchronizerReport analyze() {
         return analyzeSynchronizers();
@@ -146,29 +146,26 @@ public class SynchronizerMonitor {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-
     public void reset() {
         synchronizers.clear();
     }
     /**
      * Disable.
      */
-    
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-    
     public void enable() {
         enabled = true;
     }
     
     public static class SynchronizerReport {
-        /** The incomplete barriers. */
+        /** Barriers that never had all their parties arrive. */
         public final Set<String> incompleteBarriers = new HashSet<>();
-        /** The duplicate arrivals. */
+        /** Parties that arrived at a synchronizer more than once in a cycle. */
         public final Set<String> duplicateArrivals = new HashSet<>();
         
         /**

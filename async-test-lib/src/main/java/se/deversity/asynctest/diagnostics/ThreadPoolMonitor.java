@@ -46,11 +46,11 @@ public class ThreadPoolMonitor {
     /**
      * Register a thread pool for monitoring.
      *
-     * @param executor the executor
-     * @param name the name
-     * @param coreSize the core size
-     * @param maxSize the max size
-     * @param queueCapacity the queue capacity
+     * @param executor the executor being recorded, tracked by identity
+     * @param name a label identifying the executor in the report
+     * @param coreSize the configured core pool size
+     * @param maxSize the configured maximum pool size
+     * @param queueCapacity the configured work-queue capacity
      */
     public void registerPool(Object executor, String name, int coreSize, int maxSize, int queueCapacity) {
         if (!enabled) return;
@@ -62,7 +62,7 @@ public class ThreadPoolMonitor {
     /**
      * Record task submission.
      *
-     * @param executor the executor
+     * @param executor the executor being recorded, tracked by identity
      */
     public void recordTaskSubmitted(Object executor) {
         if (!enabled) return;
@@ -78,7 +78,7 @@ public class ThreadPoolMonitor {
     /**
      * Record task execution start.
      *
-     * @param executor the executor
+     * @param executor the executor being recorded, tracked by identity
      */
     public void recordTaskStarted(Object executor) {
         if (!enabled) return;
@@ -94,7 +94,7 @@ public class ThreadPoolMonitor {
     /**
      * Record task completion.
      *
-     * @param executor the executor
+     * @param executor the executor being recorded, tracked by identity
      * @param durationMs the duration in milliseconds
      */
     public void recordTaskCompleted(Object executor, long durationMs) {
@@ -112,8 +112,8 @@ public class ThreadPoolMonitor {
     /**
      * Record task rejection.
      *
-     * @param executor the executor
-     * @param reason the reason
+     * @param executor the executor being recorded, tracked by identity
+     * @param reason why the event was recorded, shown in the report
      */
     public void recordTaskRejected(Object executor, String reason) {
         if (!enabled) return;
@@ -130,7 +130,7 @@ public class ThreadPoolMonitor {
     /**
      * Analyze pool health.
      *
-     * @return the analyze pool health
+     * @return the findings this detector collected during the run
      */
     public ThreadPoolReport analyzePoolHealth() {
         ThreadPoolReport report = new ThreadPoolReport();
@@ -171,7 +171,7 @@ public class ThreadPoolMonitor {
     /**
      * Standardized alias for {@link #analyzePoolHealth()}.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public ThreadPoolReport analyze() {
         return analyzePoolHealth();
@@ -179,33 +179,30 @@ public class ThreadPoolMonitor {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-
     public void reset() {
         pools.clear();
     }
     /**
      * Disable.
      */
-    
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-    
     public void enable() {
         enabled = true;
     }
     
     public static class ThreadPoolReport {
-        /** The pools with rejections. */
+        /** Pools that rejected at least one submission. */
         public final Set<String> poolsWithRejections = new HashSet<>();
-        /** The saturated queues. */
+        /** Work queues observed at their capacity. */
         public final Set<String> saturatedQueues = new HashSet<>();
-        /** The long running tasks. */
+        /** Tasks that ran past the reporting threshold. */
         public final Set<String> longRunningTasks = new HashSet<>();
-        /** The thread starvation. */
+        /** Pools where work waited because no worker was free. */
         public final Set<String> threadStarvation = new HashSet<>();
         
         /**

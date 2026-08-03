@@ -56,9 +56,9 @@ public class OptimisticReadValidationDetector {
     /**
      * Call immediately after {@code StampedLock.tryOptimisticRead()}.
      *
-     * @param lock the lock
-     * @param stamp the stamp
-     * @param thread the thread
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param stamp the stamp returned by the {@code StampedLock} operation
+     * @param thread the thread performing the operation
      */
     public void recordOptimisticReadStarted(Object lock, long stamp, Thread thread) {
         if (lock == null || thread == null) return;
@@ -78,9 +78,9 @@ public class OptimisticReadValidationDetector {
      *
      * @param fieldName descriptive name for the data being read (for reports)
      *
-     * @param lock the lock
-     * @param stamp the stamp
-     * @param thread the thread
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param stamp the stamp returned by the {@code StampedLock} operation
+     * @param thread the thread performing the operation
      */
     public void recordDataAccessed(Object lock, long stamp, Thread thread, String fieldName) {
         if (lock == null || thread == null) return;
@@ -95,9 +95,9 @@ public class OptimisticReadValidationDetector {
      *
      * @param result the boolean returned by {@code validate()}
      *
-     * @param lock the lock
-     * @param stamp the stamp
-     * @param thread the thread
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param stamp the stamp returned by the {@code StampedLock} operation
+     * @param thread the thread performing the operation
      */
     public void recordValidateCalled(Object lock, long stamp, boolean result, Thread thread) {
         if (lock == null || thread == null) return;

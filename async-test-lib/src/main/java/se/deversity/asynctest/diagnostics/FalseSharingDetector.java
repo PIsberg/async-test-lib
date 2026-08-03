@@ -50,9 +50,9 @@ public class FalseSharingDetector {
     /**
      * Record a field access. Call this when a field is accessed in your test.
      *
-     * @param object the object
-     * @param fieldName the field name
-     * @param fieldType the field type
+     * @param object the object the access is on, tracked by identity
+     * @param fieldName the field involved, as it should appear in the report
+     * @param fieldType the declared type of the field
      */
     public void recordFieldAccess(Object object, String fieldName, Class<?> fieldType) {
         if (!enabled || object == null) return;
@@ -77,7 +77,7 @@ public class FalseSharingDetector {
     /**
      * Analyze for false sharing patterns.
      *
-     * @return the analyze false sharing
+     * @return the findings this detector collected during the run
      */
     public FalseSharingReport analyzeFalseSharing() {
         FalseSharingReport report = new FalseSharingReport();
@@ -122,7 +122,7 @@ public class FalseSharingDetector {
     /**
      * Standardized alias for {@link #analyzeFalseSharing()}.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public FalseSharingReport analyze() {
         return analyzeFalseSharing();
@@ -176,7 +176,6 @@ public class FalseSharingDetector {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-    
     public void reset() {
         fieldAccess.clear();
         accessHistory.clear();
@@ -184,31 +183,37 @@ public class FalseSharingDetector {
     /**
      * Disable.
      */
-    
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-    
     public void enable() {
         enabled = true;
     }
     
     public static class FalseSharingReport {
         public static class ContentionPair {
-            /** The field 1. */
+            /** First field of the contending pair. */
             public final String field1;
-            /** The field 2. */
+            /** Second field of the contending pair. */
             public final String field2;
-            /** The distance in bytes. */
+            /** Distance between the two fields; under a cache line means they share one. */
             public final long distanceInBytes;
-            /** The accesses 1. */
+            /** How many times the first field of the pair was accessed. */
             public final long accesses1;
-            /** The accesses 2. */
+            /** How many times the second field of the pair was accessed. */
             public final long accesses2;
-            
+            /**
+             * Creates a ContentionPair.
+             *
+             * @param f1 the first field of the contending pair
+             * @param f2 the second field of the contending pair
+             * @param dist the distance between the two fields in bytes; under a cache line means they share one
+             * @param acc1 how many times the first field was accessed
+             * @param acc2 how many times the second field was accessed
+             */
             public ContentionPair(String f1, String f2, long dist, long acc1, long acc2) {
                 this.field1 = f1;
                 this.field2 = f2;
@@ -218,9 +223,9 @@ public class FalseSharingDetector {
             }
         }
         
-        /** The false shared pairs. */
+        /** Field pairs close enough to share a cache line and written from different threads. */
         public final Set<ContentionPair> falseSharedPairs = new HashSet<>();
-        /** The high contention fields. */
+        /** Fields written often enough for cache-line sharing to matter. */
         public final Set<String> highContentionFields = new HashSet<>();
         
         /**

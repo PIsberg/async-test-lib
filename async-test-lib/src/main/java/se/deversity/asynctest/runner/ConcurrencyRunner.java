@@ -86,8 +86,11 @@ public class ConcurrencyRunner {
      * await and the async-body {@code CompletionStage} wait. See
      * {@link #resolveTimeoutMultiplier()} for the CI-scaling mechanism itself.
      *
-     * @param invocationContext the invocation context
-     * @param config the config
+     * @param invocationContext the JUnit invocation context carrying the test instance and method to run
+     * @param config the resolved configuration deciding threads, rounds, timeout and detectors
+     *
+     * @throws Throwable the failure from the test body, unwrapped, or an {@link AssertionError}
+     *     raised by the timeout path or the {@code failOn} gate
      */
     @AILoadBearing(
         invariant = "The timeoutAlreadyReported flag, and the per-step guarded cleanup in the "

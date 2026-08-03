@@ -123,7 +123,7 @@ public class SharedCollectionDetector {
     /**
      * Analyse collection usage and return a report.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public SharedCollectionReport analyze() {
         SharedCollectionReport report = new SharedCollectionReport();
@@ -170,7 +170,7 @@ public class SharedCollectionDetector {
         /**
          * Returns {@code true} when any concurrent-access violations were detected.
          *
-         * @return the has issues
+         * @return {@code true} when this detector recorded something worth reporting
          */
         public boolean hasIssues() {
             return !concurrentWriteViolations.isEmpty() || !mixedAccessViolations.isEmpty();

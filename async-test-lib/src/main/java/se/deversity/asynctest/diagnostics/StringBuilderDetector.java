@@ -162,7 +162,7 @@ public class StringBuilderDetector {
     /**
      * Analyse StringBuilder usage and return a report.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public StringBuilderReport analyze() {
         StringBuilderReport report = new StringBuilderReport();
@@ -215,7 +215,7 @@ public class StringBuilderDetector {
         /**
          * Returns {@code true} when shared-mutation or errors were detected.
          *
-         * @return the has issues
+         * @return {@code true} when this detector recorded something worth reporting
          */
         public boolean hasIssues() {
             return !sharedBuilderViolations.isEmpty() || !builderErrors.isEmpty();

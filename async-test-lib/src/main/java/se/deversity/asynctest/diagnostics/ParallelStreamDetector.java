@@ -74,7 +74,7 @@ public class ParallelStreamDetector {
     /**
      * Record a stateful lambda operation (bug in parallel stream).
      * 
-     * @param streamName the stream name
+     * @param streamName a label identifying the stream in the report
      * @param operation the operation type (forEach, map, filter, etc.)
      */
     public void recordStatefulOperation(String streamName, String operation) {
@@ -84,7 +84,7 @@ public class ParallelStreamDetector {
     /**
      * Record a stateless operation (safe in parallel stream).
      * 
-     * @param streamName the stream name
+     * @param streamName a label identifying the stream in the report
      * @param operation the operation type
      */
     public void recordStatelessOperation(String streamName, String operation) {
@@ -94,7 +94,7 @@ public class ParallelStreamDetector {
     /**
      * Record use of a non-thread-safe collector.
      * 
-     * @param streamName the stream name
+     * @param streamName a label identifying the stream in the report
      * @param collectorType the collector type (ArrayList, HashMap, etc.)
      */
     public void recordNonThreadSafeCollector(String streamName, String collectorType) {
@@ -111,7 +111,7 @@ public class ParallelStreamDetector {
     /**
      * Record side effects in parallel stream (bug).
      * 
-     * @param streamName the stream name
+     * @param streamName a label identifying the stream in the report
      * @param sideEffectType the type of side effect
      */
     public void recordSideEffect(String streamName, String sideEffectType) {
@@ -218,7 +218,7 @@ public class ParallelStreamDetector {
         /**
          * Check if any issues were detected.
          *
-         * @return the has issues
+         * @return {@code true} when this detector recorded something worth reporting
          */
         public boolean hasIssues() {
             return !statefulLambdas.isEmpty() || !nonThreadSafeCollectors.isEmpty() || !sideEffects.isEmpty();

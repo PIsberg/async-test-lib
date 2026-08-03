@@ -76,6 +76,8 @@ public final class TelemetryEventBuffer {
     private volatile long consumerCursor = -1;
 
     /**
+     * Creates a TelemetryEventBuffer.
+     *
      * @param capacityPowerOfTwo ring-buffer capacity; must be a power of two (e.g. 1024, 4096)
      */
     public TelemetryEventBuffer(int capacityPowerOfTwo) {
@@ -157,7 +159,7 @@ public final class TelemetryEventBuffer {
     /**
      * Returns the number of events published so far (monotonically increasing).
      *
-     * @return the published count
+     * @return the number of events published since this buffer was created
      */
     public long publishedCount() {
         return producerCursor.get() + 1;

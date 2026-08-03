@@ -27,6 +27,9 @@ public interface Formatter {
     /**
      * Render the violations. Empty lists must produce a non-null result
      * (typically an empty string, or a "no violations" marker — formatter's choice).
+     *
+     * @param violations the findings to render, possibly empty but never {@code null}
+     * @return the rendered report, never {@code null}
      */
     String format(List<Violation> violations);
 }

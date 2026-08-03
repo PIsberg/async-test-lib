@@ -55,7 +55,9 @@ public class VirtualThreadCarrierExhaustionDetector {
     private final AtomicInteger exhaustionEvents = new AtomicInteger(0);
     private final List<String> exhaustionDetails = Collections.synchronizedList(new ArrayList<>());
     private final Map<Long, String> activeBlocksByThread = new ConcurrentHashMap<>();
-
+    /**
+     * Creates a VirtualThreadCarrierExhaustionDetector.
+     */
     public VirtualThreadCarrierExhaustionDetector() {
         this(availableCarriers());
     }

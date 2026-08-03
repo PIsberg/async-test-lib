@@ -190,7 +190,7 @@ public class CompletableFutureExceptionDetector {
         /**
          * Check if any issues were detected.
          *
-         * @return the has issues
+         * @return {@code true} when this detector recorded something worth reporting
          */
         public boolean hasIssues() {
             return !unhandledExceptions.isEmpty() || !missingHandlers.isEmpty() || !swallowedExceptions.isEmpty();

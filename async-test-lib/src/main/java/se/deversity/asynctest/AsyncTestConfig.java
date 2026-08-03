@@ -531,8 +531,8 @@ public final class AsyncTestConfig {
     /**
      * Builds a config from an {@link AsyncTest} annotation instance.
      *
-     * @param ann the ann
-     * @return the from
+     * @param ann the annotation instance to read the declared values from
+     * @return the resolved configuration for this run
      */
     public static AsyncTestConfig from(AsyncTest ann) {
         return from(ann, ann.threads());
@@ -546,9 +546,9 @@ public final class AsyncTestConfig {
      *
      * @since 1.6.0
      *
-     * @param ann the ann
-     * @param threadsOverride the threads override
-     * @return the from
+     * @param ann the annotation instance to read the declared values from
+     * @param threadsOverride thread count to use instead of {@link AsyncTest#threads()}, as supplied by a parameterised template
+     * @return the resolved configuration for this run
      */
     public static AsyncTestConfig from(AsyncTest ann, int threadsOverride) {
         // Check for global benchmarking system property
@@ -1780,8 +1780,8 @@ public final class AsyncTestConfig {
          *
          * @since 1.7.0
          *
-         * @param v the v
-         * @return the includes
+         * @param v the detectors to enable exclusively; {@code null} or empty leaves the selection untouched
+         * @return this builder
          */
         public Builder includes(DetectorType[] v) {
             if (v != null && v.length > 0) {

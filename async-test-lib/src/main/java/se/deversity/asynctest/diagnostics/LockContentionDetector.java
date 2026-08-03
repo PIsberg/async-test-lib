@@ -120,7 +120,7 @@ public class LockContentionDetector {
     /**
      * Analyses recorded data and returns a contention report.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public LockContentionReport analyze() {
         LockContentionReport report = new LockContentionReport();
@@ -163,7 +163,7 @@ public class LockContentionDetector {
         /**
          * Returns {@code true} when any monitor exceeds the contention threshold.
          *
-         * @return the has issues
+         * @return {@code true} when this detector recorded something worth reporting
          */
         public boolean hasIssues() {
             return !hotLocks.isEmpty();

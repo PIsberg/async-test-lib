@@ -42,8 +42,8 @@ public class ThreadLocalContaminationDetector {
     /**
      * Call at the start of each task submitted to a thread pool.
      *
-     * @param thread the thread
-     * @param taskName the task name
+     * @param thread the thread performing the operation
+     * @param taskName a label identifying the task in the report
      */
     public void recordNewTask(Thread thread, String taskName) {
         if (thread == null) return;
@@ -55,9 +55,9 @@ public class ThreadLocalContaminationDetector {
     /**
      * Call after each {@code ThreadLocal.set()} inside a task.
      *
-     * @param thread the thread
-     * @param tl the tl
-     * @param name the name
+     * @param thread the thread performing the operation
+     * @param tl the thread-local being recorded, tracked by identity
+     * @param name a label identifying the tl in the report
      */
     public void recordSet(Thread thread, Object tl, String name) {
         if (thread == null || tl == null) return;
@@ -73,9 +73,9 @@ public class ThreadLocalContaminationDetector {
      *
      * @param hasValue {@code true} if the get returned a non-null value
      *
-     * @param thread the thread
-     * @param tl the tl
-     * @param name the name
+     * @param thread the thread performing the operation
+     * @param tl the thread-local being recorded, tracked by identity
+     * @param name a label identifying the tl in the report
      */
     public void recordGet(Thread thread, Object tl, String name, boolean hasValue) {
         if (thread == null || tl == null || !hasValue) return;

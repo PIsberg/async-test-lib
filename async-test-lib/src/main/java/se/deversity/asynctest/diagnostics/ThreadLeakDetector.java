@@ -195,7 +195,6 @@ public class ThreadLeakDetector {
     /**
      * Disable.
      */
-
     public void disable() {
         this.enabled = false;
     }
@@ -204,14 +203,14 @@ public class ThreadLeakDetector {
      * A thread leak event.
      */
     public static class ThreadLeakEvent {
-        /** The thread name. */
+        /** Label identifying the sleeping thread in the report. */
         public final String threadName;
-        /** The thread. */
+        /** The thread being tracked; cleared once it terminates. */
         public final @Nullable Thread thread;
-        /** The start time. */
+        /** When the thread was started, in nanoseconds. */
         public final long startTime;
         public final StackTraceElement @Nullable [] creationStack;
-        /** The reason. */
+        /** Why the thread was flagged, shown in the report. */
         public final String reason;
 
         ThreadLeakEvent(String threadName, @Nullable Thread thread, long startTime,

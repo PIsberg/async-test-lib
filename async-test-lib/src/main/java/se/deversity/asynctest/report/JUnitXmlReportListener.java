@@ -78,6 +78,8 @@ public final class JUnitXmlReportListener implements AsyncTestListener {
     }
 
     /**
+     * Creates a JUnitXmlReportListener.
+     *
      * @param outputDir            the directory to write the XML report into
      * @param registerShutdownHook whether to register a JVM shutdown hook for auto-flush
      */
@@ -120,7 +122,7 @@ public final class JUnitXmlReportListener implements AsyncTestListener {
     /**
      * Returns the number of accumulated findings (useful for assertions in tests of this listener).
      *
-     * @return the get finding count
+     * @return the number of findings written so far
      */
     public int getFindingCount() {
         return findings.size();

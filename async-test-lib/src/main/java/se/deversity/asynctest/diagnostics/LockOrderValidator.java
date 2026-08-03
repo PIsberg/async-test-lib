@@ -43,7 +43,7 @@ public class LockOrderValidator {
     /**
      * Record a lock acquisition.
      *
-     * @param lock the lock
+     * @param lock the lock being recorded, tracked by identity rather than equality
      */
     public void recordLockAcquisition(Object lock) {
         if (!enabled || lock == null) return;
@@ -70,7 +70,7 @@ public class LockOrderValidator {
     /**
      * Record lock release.
      *
-     * @param lock the lock
+     * @param lock the lock being recorded, tracked by identity rather than equality
      */
     public void recordLockRelease(Object lock) {
         if (!enabled || lock == null) return;
@@ -90,7 +90,7 @@ public class LockOrderValidator {
     /**
      * Validate lock ordering consistency.
      *
-     * @return the validate lock order
+     * @return the findings this detector collected during the run
      */
     public LockOrderReport validateLockOrder() {
         LockOrderReport report = new LockOrderReport();
@@ -171,29 +171,26 @@ public class LockOrderValidator {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-    
     public void reset() {
         threadLockOrders.clear();
     }
     /**
      * Disable.
      */
-    
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-    
     public void enable() {
         enabled = true;
     }
     
     public static class LockOrderReport {
-        /** The inconsistent orderings. */
+        /** Lock pairs acquired in one order by one thread and the reverse by another. */
         public final Set<String> inconsistentOrderings = new HashSet<>();
-        /** The potential deadlock cycles. */
+        /** Cycles in the observed lock-acquisition graph. */
         public final Set<String> potentialDeadlockCycles = new HashSet<>();
         
         /**

@@ -229,7 +229,7 @@ public final class TelemetryRegistry {
     /**
      * Exposes the shared buffer for testing and advanced consumers.
      *
-     * @return the buffer
+     * @return the buffer producers publish into
      */
     public static TelemetryEventBuffer buffer() {
         return BUFFER;

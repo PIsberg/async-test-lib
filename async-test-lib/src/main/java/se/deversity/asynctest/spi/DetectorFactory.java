@@ -28,6 +28,8 @@ public interface DetectorFactory {
     /**
      * Identity of the detector this factory produces. Must match
      * {@link Detector#type()} of the instances returned by {@link #create(AsyncTestConfig)}.
+     *
+     * @return the constant identifying the detector this factory produces
      */
     DetectorType type();
 
@@ -35,16 +37,22 @@ public interface DetectorFactory {
      * Whether this detector is active for the given test configuration.
      *
      * <p>{@code AsyncTestConfig} carries one boolean field per legacy detector
-     * (~85 fields) — each factory's adapter consults its own flag here. There is
+     * (132 fields) — each factory's adapter consults its own flag here. There is
      * no automatic mapping from {@link DetectorType} to a boolean field, so this
      * method must be implemented by every concrete factory. Returning {@code true}
      * unconditionally is acceptable for detectors that should always run.
+     *
+     * @param config the resolved configuration for the test about to run
+     * @return {@code true} to build and install this detector for that test
      */
     boolean isEnabledFor(AsyncTestConfig config);
 
     /**
      * Construct a fresh detector instance for one {@code @AsyncTest} method's
      * invocation rounds.
+     *
+     * @param config the resolved configuration for the test about to run
+     * @return a new detector, not shared with any other test
      */
     Detector create(AsyncTestConfig config);
 }

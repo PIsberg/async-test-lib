@@ -162,9 +162,9 @@ public class SharedMessageDigestDetector {
 
     /** Report produced by {@link #analyze()}. */
     public static class SharedMessageDigestReport {
-        /** The violations. */
+        /** Findings as human-readable lines, for the text report. */
         public final List<String> violations = new ArrayList<>();
-        /** The violated types. */
+        /** Algorithm names whose shared instance was used from more than one thread. */
         public final Set<String> violatedTypes = new LinkedHashSet<>();
         /** Structured mirror of {@link #violations} for {@link se.deversity.asynctest.report.Formatter}s. */
         public final List<Violation> structuredViolations = new ArrayList<>();

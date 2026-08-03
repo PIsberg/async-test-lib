@@ -24,9 +24,9 @@ public class PhaserDetector {
     /**
      * Register a Phaser for monitoring.
      *
-     * @param phaser the phaser
-     * @param name the name
-     * @param parties the parties
+     * @param phaser the phaser being recorded, tracked by identity
+     * @param name a label identifying the phaser in the report
+     * @param parties the number of parties the barrier was created for
      */
     public void registerPhaser(Phaser phaser, String name, int parties) {
         phaserRegistry.put(phaser, new PhaserInfo(name, parties));
@@ -35,7 +35,7 @@ public class PhaserDetector {
     /**
      * Record a thread arriving at the phaser.
      *
-     * @param phaser the phaser
+     * @param phaser the phaser being recorded, tracked by identity
      */
     public void recordArrive(Phaser phaser) {
         PhaserInfo info = phaserRegistry.get(phaser);
@@ -47,7 +47,7 @@ public class PhaserDetector {
     /**
      * Record a thread arriving and awaiting advance.
      *
-     * @param phaser the phaser
+     * @param phaser the phaser being recorded, tracked by identity
      */
     public void recordArriveAwaitAdvance(Phaser phaser) {
         PhaserInfo info = phaserRegistry.get(phaser);
@@ -60,7 +60,7 @@ public class PhaserDetector {
     /**
      * Record a phaser await that timed out.
      *
-     * @param phaser the phaser
+     * @param phaser the phaser being recorded, tracked by identity
      */
     public void recordTimeout(Phaser phaser) {
         timedOutPhasers.add(phaser);
@@ -69,7 +69,7 @@ public class PhaserDetector {
     /**
      * Record a phaser that was terminated.
      *
-     * @param phaser the phaser
+     * @param phaser the phaser being recorded, tracked by identity
      */
     public void recordTermination(Phaser phaser) {
         terminatedPhasers.add(phaser);
@@ -78,8 +78,8 @@ public class PhaserDetector {
     /**
      * Record successful phaser phase completion.
      *
-     * @param phaser the phaser
-     * @param phase the phase
+     * @param phaser the phaser being recorded, tracked by identity
+     * @param phase the phase number this event belongs to
      */
     public void recordPhaseComplete(Phaser phaser, int phase) {
         PhaserInfo info = phaserRegistry.get(phaser);
@@ -91,7 +91,7 @@ public class PhaserDetector {
     /**
      * Analyze phaser usage and return report.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public PhaserReport analyze() {
         return new PhaserReport(
@@ -108,7 +108,13 @@ public class PhaserDetector {
         private final Map<Phaser, PhaserInfo> phaserRegistry;
         private final Set<Phaser> timedOutPhasers;
         private final Set<Phaser> terminatedPhasers;
-
+        /**
+         * Creates a PhaserReport.
+         *
+         * @param phaserRegistry every registered phaser and what was observed on it
+         * @param timedOutPhasers the phasers whose await timed out
+         * @param terminatedPhasers the phasers that reached termination
+         */
         public PhaserReport(
             Map<Phaser, PhaserInfo> phaserRegistry,
             Set<Phaser> timedOutPhasers,
