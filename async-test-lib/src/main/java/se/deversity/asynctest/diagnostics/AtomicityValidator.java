@@ -201,10 +201,14 @@ public class AtomicityValidator {
     }
 
     public static class AtomicityReport {
+        /** The check then act violations. */
         public final Set<String> checkThenActViolations = new HashSet<>();
+        /** The unsafe field accesses. */
         public final Set<String> unsafeFieldAccesses = new HashSet<>();
+        /** The totcou races. */
         public final Set<String> totcouRaces = new HashSet<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !checkThenActViolations.isEmpty()
                 || !unsafeFieldAccesses.isEmpty()

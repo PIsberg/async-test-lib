@@ -103,6 +103,7 @@ public class NestedMonitorLockoutDetector {
     public static class NestedMonitorLockoutReport {
         final List<String> incidents = new ArrayList<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !incidents.isEmpty();
         }

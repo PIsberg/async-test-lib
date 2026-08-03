@@ -133,6 +133,7 @@ public class MemoryOrderingMonitor {
          */
         public final Set<String> suspiciousReorderings = new HashSet<>();
         
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !staleCoreads.isEmpty() || !suspiciousReorderings.isEmpty();
         }

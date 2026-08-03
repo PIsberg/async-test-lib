@@ -108,6 +108,7 @@ public class ForkJoinPoolDetector {
             this.taskStealCount = taskStealCount;
         }
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !forkedWithoutJoin.isEmpty() 
                 || !exceptionsInTasks.isEmpty();

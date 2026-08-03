@@ -186,10 +186,14 @@ public class LivelockDetector {
     }
     
     public static class LivelockReport {
+        /** The starved threads. */
         public final Set<String> starvedThreads = new HashSet<>();
+        /** The livelock candidates. */
         public final Set<String> livelockCandidates = new HashSet<>();
+        /** The no progress threads. */
         public final Set<String> noProgressThreads = new HashSet<>();
         
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !starvedThreads.isEmpty() || !livelockCandidates.isEmpty() || !noProgressThreads.isEmpty();
         }

@@ -89,6 +89,7 @@ public class UncaughtExceptionHandlerDetector {
     public static class UncaughtExceptionHandlerReport {
         final List<String> violations = new ArrayList<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

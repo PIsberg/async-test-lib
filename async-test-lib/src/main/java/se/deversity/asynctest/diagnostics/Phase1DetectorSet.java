@@ -21,12 +21,19 @@ import java.util.function.Supplier;
  */
 public final class Phase1DetectorSet {
 
+    /** The visibility. */
     public final @Nullable VisibilityMonitor      visibility;
+    /** The livelock. */
     public final @Nullable LivelockDetector       livelock;
+    /** The race. */
     public final @Nullable RaceConditionDetector  race;
+    /** The thread local. */
     public final @Nullable ThreadLocalMonitor     threadLocal;
+    /** The busy wait. */
     public final @Nullable BusyWaitDetector       busyWait;
+    /** The atomicity. */
     public final @Nullable AtomicityValidator     atomicity;
+    /** The interrupt. */
     public final @Nullable InterruptMonitor       interrupt;
 
     /**

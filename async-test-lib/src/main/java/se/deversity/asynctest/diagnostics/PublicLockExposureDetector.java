@@ -83,6 +83,7 @@ public class PublicLockExposureDetector {
     public static class PublicLockExposureReport {
         final List<String> violations = new ArrayList<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

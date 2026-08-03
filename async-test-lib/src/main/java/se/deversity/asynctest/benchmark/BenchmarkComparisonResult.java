@@ -41,30 +41,37 @@ public final class BenchmarkComparisonResult {
             .build();
     }
 
+    /** {@return the current result} */
     public @Nullable BenchmarkResult getCurrentResult() {
         return currentResult;
     }
 
+    /** {@return the baseline result} */
     public @Nullable BenchmarkResult getBaselineResult() {
         return baselineResult;
     }
 
+    /** {@return the percent change} */
     public double getPercentChange() {
         return percentChange;
     }
 
+    /** {@return whether regression} */
     public boolean isRegression() {
         return isRegression;
     }
 
+    /** {@return whether improvement} */
     public boolean isImprovement() {
         return isImprovement;
     }
 
+    /** {@return whether first run} */
     public boolean isFirstRun() {
         return isFirstRun;
     }
 
+    /** {@return the threshold percent} */
     public double getThresholdPercent() {
         return thresholdPercent;
     }

@@ -240,9 +240,13 @@ public class ThreadStarvationDetector {
      * Immutable snapshot of a starvation event.
      */
     public static class StarvationEventSnapshot {
+        /** The executor name. */
         public final String executorName;
+        /** The wait time in milliseconds. */
         public final long waitTimeMs;
+        /** The execution time in milliseconds. */
         public final long executionTimeMs;
+        /** The thread name. */
         public final String threadName;
 
         StarvationEventSnapshot(String executorName, long waitTimeMs,
@@ -271,10 +275,12 @@ public class ThreadStarvationDetector {
             this.maxWaitTimeMs = maxWaitTimeMs;
         }
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !events.isEmpty();
         }
 
+        /** {@return the events} */
         public List<StarvationEventSnapshot> getEvents() {
             return List.copyOf(events);
         }

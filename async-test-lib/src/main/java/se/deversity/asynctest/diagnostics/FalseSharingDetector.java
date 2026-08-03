@@ -181,10 +181,15 @@ public class FalseSharingDetector {
     
     public static class FalseSharingReport {
         public static class ContentionPair {
+            /** The field 1. */
             public final String field1;
+            /** The field 2. */
             public final String field2;
+            /** The distance in bytes. */
             public final long distanceInBytes;
+            /** The accesses 1. */
             public final long accesses1;
+            /** The accesses 2. */
             public final long accesses2;
             
             public ContentionPair(String f1, String f2, long dist, long acc1, long acc2) {
@@ -196,9 +201,12 @@ public class FalseSharingDetector {
             }
         }
         
+        /** The false shared pairs. */
         public final Set<ContentionPair> falseSharedPairs = new HashSet<>();
+        /** The high contention fields. */
         public final Set<String> highContentionFields = new HashSet<>();
         
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !falseSharedPairs.isEmpty() || !highContentionFields.isEmpty();
         }

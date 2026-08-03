@@ -211,10 +211,14 @@ public class UnboundedQueueDetector {
      * An unbounded queue event.
      */
     public static class UnboundedQueueEvent {
+        /** The queue name. */
         public final String queueName;
+        /** The description. */
         public final String description;
+        /** The capacity. */
         public final int capacity;
         public final StackTraceElement @Nullable [] creationStack;
+        /** The fix suggestion. */
         public final String fixSuggestion;
 
         UnboundedQueueEvent(String queueName, String description, int capacity,
@@ -242,10 +246,12 @@ public class UnboundedQueueDetector {
             this.totalTracked = totalTracked;
         }
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !events.isEmpty();
         }
 
+        /** {@return the events} */
         public List<UnboundedQueueEvent> getEvents() {
             return List.copyOf(events);
         }

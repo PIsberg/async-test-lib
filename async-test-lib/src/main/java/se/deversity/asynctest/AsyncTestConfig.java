@@ -31,10 +31,15 @@ import java.util.Set;
 public final class AsyncTestConfig {
 
     // ---- Execution ----
+    /** Resolved value of {@link AsyncTest#threads()} for this run. */
     public final int threads;
+    /** Resolved value of {@link AsyncTest#invocations()} for this run. */
     public final int invocations;
+    /** Resolved value of {@link AsyncTest#useVirtualThreads()} for this run. */
     public final boolean useVirtualThreads;
+    /** Resolved value of {@link AsyncTest#timeoutMs()} for this run. */
     public final long timeoutMs;
+    /** Resolved value of {@link AsyncTest#virtualThreadStressMode()} for this run. */
     public final String virtualThreadStressMode;
 
     // ---- Umbrella flag ----
@@ -55,182 +60,318 @@ public final class AsyncTestConfig {
     public final FailOn failOn;
 
     // ---- Phase 1 ----
+    /** Resolved value of {@link AsyncTest#detectDeadlocks()} for this run. */
     public final boolean detectDeadlocks;
+    /** Resolved value of {@link AsyncTest#detectVisibility()} for this run. */
     public final boolean detectVisibility;
+    /** Resolved value of {@link AsyncTest#detectLivelocks()} for this run. */
     public final boolean detectLivelocks;
 
     // ---- Phase 2 ----
+    /** Resolved value of {@link AsyncTest#detectFalseSharing()} for this run. */
     public final boolean detectFalseSharing;
+    /** Resolved value of {@link AsyncTest#detectWakeupIssues()} for this run. */
     public final boolean detectWakeupIssues;
+    /** Resolved value of {@link AsyncTest#validateConstructorSafety()} for this run. */
     public final boolean validateConstructorSafety;
+    /** Resolved value of {@link AsyncTest#detectABAProblem()} for this run. */
     public final boolean detectABAProblem;
+    /** Resolved value of {@link AsyncTest#validateLockOrder()} for this run. */
     public final boolean validateLockOrder;
+    /** Resolved value of {@link AsyncTest#monitorSynchronizers()} for this run. */
     public final boolean monitorSynchronizers;
+    /** Resolved value of {@link AsyncTest#monitorThreadPool()} for this run. */
     public final boolean monitorThreadPool;
+    /** Resolved value of {@link AsyncTest#detectMemoryOrderingViolations()} for this run. */
     public final boolean detectMemoryOrderingViolations;
+    /** Resolved value of {@link AsyncTest#monitorAsyncPipeline()} for this run. */
     public final boolean monitorAsyncPipeline;
+    /** Resolved value of {@link AsyncTest#monitorReadWriteLockFairness()} for this run. */
     public final boolean monitorReadWriteLockFairness;
 
     // ---- Phase 3 ----
+    /** Resolved value of {@link AsyncTest#detectRaceConditions()} for this run. */
     public final boolean detectRaceConditions;
+    /** Resolved value of {@link AsyncTest#detectThreadLocalLeaks()} for this run. */
     public final boolean detectThreadLocalLeaks;
+    /** Resolved value of {@link AsyncTest#detectBusyWaiting()} for this run. */
     public final boolean detectBusyWaiting;
+    /** Resolved value of {@link AsyncTest#detectAtomicityViolations()} for this run. */
     public final boolean detectAtomicityViolations;
+    /** Resolved value of {@link AsyncTest#detectInterruptMishandling()} for this run. */
     public final boolean detectInterruptMishandling;
 
     // ---- Phase 2 Additional ----
+    /** Resolved value of {@link AsyncTest#monitorSemaphore()} for this run. */
     public final boolean monitorSemaphore;
+    /** Resolved value of {@link AsyncTest#detectCompletableFutureExceptions()} for this run. */
     public final boolean detectCompletableFutureExceptions;
+    /** Resolved value of {@link AsyncTest#detectCompletableFutureCompletionLeaks()} for this run. */
     public final boolean detectCompletableFutureCompletionLeaks;
+    /** Resolved value of {@link AsyncTest#detectVirtualThreadPinning()} for this run. */
     public final boolean detectVirtualThreadPinning;
+    /** Resolved value of {@link AsyncTest#detectThreadPoolDeadlocks()} for this run. */
     public final boolean detectThreadPoolDeadlocks;
+    /** Resolved value of {@link AsyncTest#detectConcurrentModifications()} for this run. */
     public final boolean detectConcurrentModifications;
+    /** Resolved value of {@link AsyncTest#detectLockLeaks()} for this run. */
     public final boolean detectLockLeaks;
+    /** Resolved value of {@link AsyncTest#detectSharedRandom()} for this run. */
     public final boolean detectSharedRandom;
+    /** Resolved value of {@link AsyncTest#detectBlockingQueueIssues()} for this run. */
     public final boolean detectBlockingQueueIssues;
+    /** Resolved value of {@link AsyncTest#detectConditionVariableIssues()} for this run. */
     public final boolean detectConditionVariableIssues;
+    /** Resolved value of {@link AsyncTest#detectSimpleDateFormatIssues()} for this run. */
     public final boolean detectSimpleDateFormatIssues;
+    /** Resolved value of {@link AsyncTest#detectParallelStreamIssues()} for this run. */
     public final boolean detectParallelStreamIssues;
+    /** Resolved value of {@link AsyncTest#detectResourceLeaks()} for this run. */
     public final boolean detectResourceLeaks;
 
     // ---- Phase 2: Additional Concurrency ----
+    /** Resolved value of {@link AsyncTest#detectCountDownLatchIssues()} for this run. */
     public final boolean detectCountDownLatchIssues;
+    /** Resolved value of {@link AsyncTest#detectCyclicBarrierIssues()} for this run. */
     public final boolean detectCyclicBarrierIssues;
+    /** Resolved value of {@link AsyncTest#detectReentrantLockIssues()} for this run. */
     public final boolean detectReentrantLockIssues;
+    /** Resolved value of {@link AsyncTest#detectVolatileArrayIssues()} for this run. */
     public final boolean detectVolatileArrayIssues;
+    /** Resolved value of {@link AsyncTest#detectDoubleCheckedLocking()} for this run. */
     public final boolean detectDoubleCheckedLocking;
+    /** Resolved value of {@link AsyncTest#detectWaitTimeout()} for this run. */
     public final boolean detectWaitTimeout;
+    /** Resolved value of {@link AsyncTest#detectLockContention()} for this run. */
     public final boolean detectLockContention;
+    /** Resolved value of {@link AsyncTest#detectSynchronizedNonFinal()} for this run. */
     public final boolean detectSynchronizedNonFinal;
+    /** Resolved value of {@link AsyncTest#detectMissedSignals()} for this run. */
     public final boolean detectMissedSignals;
+    /** Resolved value of {@link AsyncTest#detectLazyInitRace()} for this run. */
     public final boolean detectLazyInitRace;
 
     // ---- Phase 2: Advanced Concurrency Utilities ----
+    /** Resolved value of {@link AsyncTest#detectPhaserIssues()} for this run. */
     public final boolean detectPhaserIssues;
+    /** Resolved value of {@link AsyncTest#detectStampedLockIssues()} for this run. */
     public final boolean detectStampedLockIssues;
+    /** Resolved value of {@link AsyncTest#detectExchangerIssues()} for this run. */
     public final boolean detectExchangerIssues;
+    /** Resolved value of {@link AsyncTest#detectScheduledExecutorIssues()} for this run. */
     public final boolean detectScheduledExecutorIssues;
+    /** Resolved value of {@link AsyncTest#detectForkJoinPoolIssues()} for this run. */
     public final boolean detectForkJoinPoolIssues;
+    /** Resolved value of {@link AsyncTest#detectThreadFactoryIssues()} for this run. */
     public final boolean detectThreadFactoryIssues;
+    /** Resolved value of {@link AsyncTest#detectThreadLeaks()} for this run. */
     public final boolean detectThreadLeaks;
+    /** Resolved value of {@link AsyncTest#detectSleepInLock()} for this run. */
     public final boolean detectSleepInLock;
+    /** Resolved value of {@link AsyncTest#detectUnboundedQueue()} for this run. */
     public final boolean detectUnboundedQueue;
+    /** Resolved value of {@link AsyncTest#detectThreadStarvation()} for this run. */
     public final boolean detectThreadStarvation;
 
     // ---- Phase 5: Thread-Safety of Common Types ----
+    /** Resolved value of {@link AsyncTest#detectCalendarIssues()} for this run. */
     public final boolean detectCalendarIssues;
+    /** Resolved value of {@link AsyncTest#detectSharedCollections()} for this run. */
     public final boolean detectSharedCollections;
+    /** Resolved value of {@link AsyncTest#detectTimerIssues()} for this run. */
     public final boolean detectTimerIssues;
+    /** Resolved value of {@link AsyncTest#detectCopyOnWriteCollectionIssues()} for this run. */
     public final boolean detectCopyOnWriteCollectionIssues;
+    /** Resolved value of {@link AsyncTest#detectStringBuilderIssues()} for this run. */
     public final boolean detectStringBuilderIssues;
 
     // ---- Phase 6: Virtual Thread Concurrency (Java 21+) ----
+    /** Resolved value of {@link AsyncTest#detectStructuredConcurrencyIssues()} for this run. */
     public final boolean detectStructuredConcurrencyIssues;
+    /** Resolved value of {@link AsyncTest#detectVirtualThreadContextLeaks()} for this run. */
     public final boolean detectVirtualThreadContextLeaks;
+    /** Resolved value of {@link AsyncTest#detectScopedValueMisuse()} for this run. */
     public final boolean detectScopedValueMisuse;
+    /** Resolved value of {@link AsyncTest#detectVirtualThreadCpuBoundTasks()} for this run. */
     public final boolean detectVirtualThreadCpuBoundTasks;
+    /** Resolved value of {@link AsyncTest#detectVirtualThreadCarrierExhaustion()} for this run. */
     public final boolean detectVirtualThreadCarrierExhaustion;
 
     // ---- Phase 7: High-Level Concurrency Patterns ----
+    /** Resolved value of {@link AsyncTest#detectHttpClientIssues()} for this run. */
     public final boolean detectHttpClientIssues;
+    /** Resolved value of {@link AsyncTest#detectStreamClosing()} for this run. */
     public final boolean detectStreamClosing;
+    /** Resolved value of {@link AsyncTest#detectCacheConcurrency()} for this run. */
     public final boolean detectCacheConcurrency;
+    /** Resolved value of {@link AsyncTest#detectCompletableFutureChainIssues()} for this run. */
     public final boolean detectCompletableFutureChainIssues;
 
     // ---- Phase 8: Lifecycle & Structural Correctness ----
+    /** Resolved value of {@link AsyncTest#detectExecutorShutdown()} for this run. */
     public final boolean detectExecutorShutdown;
+    /** Resolved value of {@link AsyncTest#detectMutableMapKeys()} for this run. */
     public final boolean detectMutableMapKeys;
+    /** Resolved value of {@link AsyncTest#detectNestedMonitorLockout()} for this run. */
     public final boolean detectNestedMonitorLockout;
+    /** Resolved value of {@link AsyncTest#detectLockDowngrade()} for this run. */
     public final boolean detectLockDowngrade;
+    /** Resolved value of {@link AsyncTest#detectInheritableThreadLocalMisuse()} for this run. */
     public final boolean detectInheritableThreadLocalMisuse;
+    /** Resolved value of {@link AsyncTest#detectUncommittedChanges()} for this run. */
     public final boolean detectUncommittedChanges;
 
     // ---- Phase 10: API Traps & Subtle Concurrency Bugs ----
+    /** Resolved value of {@link AsyncTest#detectThreadLocalContamination()} for this run. */
     public final boolean detectThreadLocalContamination;
+    /** Resolved value of {@link AsyncTest#detectAtomicNonAtomicUpdates()} for this run. */
     public final boolean detectAtomicNonAtomicUpdates;
+    /** Resolved value of {@link AsyncTest#detectSynchronizedCollectionIteration()} for this run. */
     public final boolean detectSynchronizedCollectionIteration;
+    /** Resolved value of {@link AsyncTest#detectSharedFormatter()} for this run. */
     public final boolean detectSharedFormatter;
+    /** Resolved value of {@link AsyncTest#detectConcurrentMapComputeRecursion()} for this run. */
     public final boolean detectConcurrentMapComputeRecursion;
+    /** Resolved value of {@link AsyncTest#detectSynchronizedOnLiteral()} for this run. */
     public final boolean detectSynchronizedOnLiteral;
+    /** Resolved value of {@link AsyncTest#detectPublicLockExposure()} for this run. */
     public final boolean detectPublicLockExposure;
+    /** Resolved value of {@link AsyncTest#detectForkJoinTaskBlocking()} for this run. */
     public final boolean detectForkJoinTaskBlocking;
+    /** Resolved value of {@link AsyncTest#detectOptimisticReadValidation()} for this run. */
     public final boolean detectOptimisticReadValidation;
+    /** Resolved value of {@link AsyncTest#detectCFCommonPoolBlocking()} for this run. */
     public final boolean detectCFCommonPoolBlocking;
 
     // ---- Phase 11: Thread-Safety of Additional Types & Patterns ----
+    /** Resolved value of {@link AsyncTest#detectSharedMatcher()} for this run. */
     public final boolean detectSharedMatcher;
+    /** Resolved value of {@link AsyncTest#detectSharedDecimalFormat()} for this run. */
     public final boolean detectSharedDecimalFormat;
+    /** Resolved value of {@link AsyncTest#detectWeakReferenceRace()} for this run. */
     public final boolean detectWeakReferenceRace;
+    /** Resolved value of {@link AsyncTest#detectStatefulLambda()} for this run. */
     public final boolean detectStatefulLambda;
+    /** Resolved value of {@link AsyncTest#detectSharedMessageDigest()} for this run. */
     public final boolean detectSharedMessageDigest;
 
     // ---- Phase 12: Operational & Hygiene Concurrency Issues ----
+    /** Resolved value of {@link AsyncTest#detectInterruptSwallowing()} for this run. */
     public final boolean detectInterruptSwallowing;
+    /** Resolved value of {@link AsyncTest#detectMdcContextLeak()} for this run. */
     public final boolean detectMdcContextLeak;
+    /** Resolved value of {@link AsyncTest#detectSystemPropertyMutation()} for this run. */
     public final boolean detectSystemPropertyMutation;
+    /** Resolved value of {@link AsyncTest#detectFutureIgnored()} for this run. */
     public final boolean detectFutureIgnored;
+    /** Resolved value of {@link AsyncTest#detectExplicitGc()} for this run. */
     public final boolean detectExplicitGc;
+    /** Resolved value of {@link AsyncTest#detectDeprecatedThreadApi()} for this run. */
     public final boolean detectDeprecatedThreadApi;
+    /** Resolved value of {@link AsyncTest#detectSharedXmlParser()} for this run. */
     public final boolean detectSharedXmlParser;
+    /** Resolved value of {@link AsyncTest#detectBoxedPrimitiveLock()} for this run. */
     public final boolean detectBoxedPrimitiveLock;
+    /** Resolved value of {@link AsyncTest#detectSharedTimeZone()} for this run. */
     public final boolean detectSharedTimeZone;
+    /** Resolved value of {@link AsyncTest#detectUncaughtExceptionHandler()} for this run. */
     public final boolean detectUncaughtExceptionHandler;
 
     // ---- Phase 13 (1.0.0+) ----
+    /** Resolved value of {@link AsyncTest#detectDaemonThreadHygiene()} for this run. */
     public final boolean detectDaemonThreadHygiene;
+    /** Resolved value of {@link AsyncTest#detectNotifyWithoutMonitor()} for this run. */
     public final boolean detectNotifyWithoutMonitor;
+    /** Resolved value of {@link AsyncTest#detectSharedSecureRandom()} for this run. */
     public final boolean detectSharedSecureRandom;
+    /** Resolved value of {@link AsyncTest#detectWeakHashMapShared()} for this run. */
     public final boolean detectWeakHashMapShared;
+    /** Resolved value of {@link AsyncTest#detectJdbcConnectionShared()} for this run. */
     public final boolean detectJdbcConnectionShared;
 
     // ---- Phase 14 (1.7.0+) ----
+    /** Resolved value of {@link AsyncTest#detectSharedStatefulCrypto()} for this run. */
     public final boolean detectSharedStatefulCrypto;
+    /** Resolved value of {@link AsyncTest#detectConcurrentMapCheckThenAct()} for this run. */
     public final boolean detectConcurrentMapCheckThenAct;
+    /** Resolved value of {@link AsyncTest#detectSharedDeflater()} for this run. */
     public final boolean detectSharedDeflater;
+    /** Resolved value of {@link AsyncTest#detectThisEscape()} for this run. */
     public final boolean detectThisEscape;
+    /** Resolved value of {@link AsyncTest#detectThreadLocalRandomMisuse()} for this run. */
     public final boolean detectThreadLocalRandomMisuse;
 
     // ---- Phase 15 (1.8.0+) ----
+    /** Resolved value of {@link AsyncTest#detectCompletableFutureObtrudeAbuse()} for this run. */
     public final boolean detectCompletableFutureObtrudeAbuse;
+    /** Resolved value of {@link AsyncTest#detectSpuriousWakeupHazard()} for this run. */
     public final boolean detectSpuriousWakeupHazard;
+    /** Resolved value of {@link AsyncTest#detectLockUpgradeDeadlock()} for this run. */
     public final boolean detectLockUpgradeDeadlock;
+    /** Resolved value of {@link AsyncTest#detectTryLockMisuse()} for this run. */
     public final boolean detectTryLockMisuse;
+    /** Resolved value of {@link AsyncTest#detectCFBlockingCallback()} for this run. */
     public final boolean detectCFBlockingCallback;
 
     // ---- Phase 16: JDK 25/26 preview-era detectors ----
+    /** Resolved value of {@link AsyncTest#detectStableValueMisuse()} for this run. */
     public final boolean detectStableValueMisuse;
+    /** Resolved value of {@link AsyncTest#detectStructuredTaskScopeMisuse()} for this run. */
     public final boolean detectStructuredTaskScopeMisuse;
+    /** Resolved value of {@link AsyncTest#detectGathererConcurrencyMisuse()} for this run. */
     public final boolean detectGathererConcurrencyMisuse;
 
     // ---- Phase 17: Shared stateful JDK objects, I/O position races & contention advisories ----
+    /** Resolved value of {@link AsyncTest#detectSharedByteBuffer()} for this run. */
     public final boolean detectSharedByteBuffer;
+    /** Resolved value of {@link AsyncTest#detectSharedCharsetCoder()} for this run. */
     public final boolean detectSharedCharsetCoder;
+    /** Resolved value of {@link AsyncTest#detectSharedChecksum()} for this run. */
     public final boolean detectSharedChecksum;
+    /** Resolved value of {@link AsyncTest#detectFileChannelPositionRace()} for this run. */
     public final boolean detectFileChannelPositionRace;
+    /** Resolved value of {@link AsyncTest#detectSharedIterator()} for this run. */
     public final boolean detectSharedIterator;
+    /** Resolved value of {@link AsyncTest#detectHighContentionAtomic()} for this run. */
     public final boolean detectHighContentionAtomic;
+    /** Resolved value of {@link AsyncTest#detectSharedJsonMapperReconfig()} for this run. */
     public final boolean detectSharedJsonMapperReconfig;
 
     // ---- Phase 18: JDK 25/26 GA-era concurrency detectors ----
+    /** Resolved value of {@link AsyncTest#detectLazyConstantMisuse()} for this run. */
     public final boolean detectLazyConstantMisuse;
+    /** Resolved value of {@link AsyncTest#detectFinalFieldMutation()} for this run. */
     public final boolean detectFinalFieldMutation;
+    /** Resolved value of {@link AsyncTest#detectSharedKdf()} for this run. */
     public final boolean detectSharedKdf;
+    /** Resolved value of {@link AsyncTest#detectLatchMisuse()} for this run. */
     public final boolean detectLatchMisuse;
+    /** Resolved value of {@link AsyncTest#detectExecutorDeadlock()} for this run. */
     public final boolean detectExecutorDeadlock;
+    /** Resolved value of {@link AsyncTest#detectFutureBlocking()} for this run. */
     public final boolean detectFutureBlocking;
 
     // ---- Benchmarking ----
+    /** Resolved value of {@link AsyncTest#enableBenchmarking()} for this run. */
     @AIFeatureFlag(flag = "async-test.benchmarking.enabled", defaultValue = false)
     public final boolean enableBenchmarking;
+    /** Resolved value of {@link AsyncTest#benchmarkRegressionThreshold()} for this run. */
     public final double benchmarkRegressionThreshold;
+    /** Resolved value of {@link AsyncTest#failOnBenchmarkRegression()} for this run. */
     public final boolean failOnBenchmarkRegression;
 
     // ---- License Gating ----
+    /** Resolved value of {@link AsyncTest#keygenAccountId()} for this run. */
     public final String keygenAccountId;
+    /** Resolved value of {@link AsyncTest#keygenApiKey()} for this run. */
     public final String keygenApiKey;
+    /** Resolved value of {@link AsyncTest#keygenProductId()} for this run. */
     public final String keygenProductId;
+    /** Resolved value of {@link AsyncTest#lemonSqueezyStore()} for this run. */
     public final String lemonSqueezyStore;
+    /** Resolved value of {@link AsyncTest#licenseKey()} for this run. */
     public final String licenseKey;
+    /** Resolved value of {@link AsyncTest#licenseMockMode()} for this run. */
     @AIFeatureFlag(flag = "license.mock.mode", defaultValue = false)
     public final boolean licenseMockMode;
 
@@ -584,6 +725,7 @@ public final class AsyncTestConfig {
             .build();
     }
 
+    /** {@return a new builder initialised with the library defaults} */
     public static Builder builder() {
         return new Builder();
     }
@@ -742,151 +884,876 @@ public final class AsyncTestConfig {
         private Set<DetectorType> excludes = EnumSet.noneOf(DetectorType.class);
         private Set<DetectorType> includes = EnumSet.noneOf(DetectorType.class);
 
+        /**
+         * Sets {@link AsyncTestConfig#threads}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder threads(int v)                        { threads = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#invocations}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder invocations(int v)                    { invocations = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#useVirtualThreads}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder useVirtualThreads(boolean v)          { useVirtualThreads = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#timeoutMs}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder timeoutMs(long v)                     { timeoutMs = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#virtualThreadStressMode}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder virtualThreadStressMode(String v)     { virtualThreadStressMode = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectAll}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectAll(boolean v)                  { detectAll = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#replaySeed}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder replaySeed(long v)                    { replaySeed = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#failOn}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder failOn(FailOn v)                      { failOn = (v != null) ? v : FailOn.NONE; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectDeadlocks}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectDeadlocks(boolean v)            { detectDeadlocks = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectVisibility}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectVisibility(boolean v)           { detectVisibility = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectLivelocks}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectLivelocks(boolean v)            { detectLivelocks = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectFalseSharing}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectFalseSharing(boolean v)         { detectFalseSharing = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectWakeupIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectWakeupIssues(boolean v)         { detectWakeupIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#validateConstructorSafety}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder validateConstructorSafety(boolean v)  { validateConstructorSafety = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectABAProblem}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectABAProblem(boolean v)           { detectABAProblem = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#validateLockOrder}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder validateLockOrder(boolean v)          { validateLockOrder = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#monitorSynchronizers}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder monitorSynchronizers(boolean v)       { monitorSynchronizers = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#monitorThreadPool}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder monitorThreadPool(boolean v)          { monitorThreadPool = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectMemoryOrderingViolations}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectMemoryOrderingViolations(boolean v) { detectMemoryOrderingViolations = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#monitorAsyncPipeline}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder monitorAsyncPipeline(boolean v)       { monitorAsyncPipeline = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#monitorReadWriteLockFairness}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder monitorReadWriteLockFairness(boolean v) { monitorReadWriteLockFairness = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectRaceConditions}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectRaceConditions(boolean v)       { detectRaceConditions = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectThreadLocalLeaks}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectThreadLocalLeaks(boolean v)     { detectThreadLocalLeaks = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectBusyWaiting}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectBusyWaiting(boolean v)          { detectBusyWaiting = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectAtomicityViolations}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectAtomicityViolations(boolean v)  { detectAtomicityViolations = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectInterruptMishandling}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectInterruptMishandling(boolean v) { detectInterruptMishandling = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#monitorSemaphore}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder monitorSemaphore(boolean v)           { monitorSemaphore = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectCompletableFutureExceptions}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectCompletableFutureExceptions(boolean v) { detectCompletableFutureExceptions = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectCompletableFutureCompletionLeaks}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectCompletableFutureCompletionLeaks(boolean v) { detectCompletableFutureCompletionLeaks = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectVirtualThreadPinning}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectVirtualThreadPinning(boolean v) { detectVirtualThreadPinning = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectThreadPoolDeadlocks}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectThreadPoolDeadlocks(boolean v) { detectThreadPoolDeadlocks = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectConcurrentModifications}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectConcurrentModifications(boolean v) { detectConcurrentModifications = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectLockLeaks}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectLockLeaks(boolean v) { detectLockLeaks = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedRandom}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSharedRandom(boolean v) { detectSharedRandom = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectBlockingQueueIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectBlockingQueueIssues(boolean v) { detectBlockingQueueIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectConditionVariableIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectConditionVariableIssues(boolean v) { detectConditionVariableIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSimpleDateFormatIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSimpleDateFormatIssues(boolean v) { detectSimpleDateFormatIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectParallelStreamIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectParallelStreamIssues(boolean v) { detectParallelStreamIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectResourceLeaks}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectResourceLeaks(boolean v) { detectResourceLeaks = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectCountDownLatchIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectCountDownLatchIssues(boolean v) { detectCountDownLatchIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectCyclicBarrierIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectCyclicBarrierIssues(boolean v) { detectCyclicBarrierIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectReentrantLockIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectReentrantLockIssues(boolean v) { detectReentrantLockIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectVolatileArrayIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectVolatileArrayIssues(boolean v) { detectVolatileArrayIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectDoubleCheckedLocking}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectDoubleCheckedLocking(boolean v) { detectDoubleCheckedLocking = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectWaitTimeout}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectWaitTimeout(boolean v) { detectWaitTimeout = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectLockContention}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectLockContention(boolean v) { detectLockContention = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSynchronizedNonFinal}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSynchronizedNonFinal(boolean v) { detectSynchronizedNonFinal = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectMissedSignals}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectMissedSignals(boolean v) { detectMissedSignals = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectLazyInitRace}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectLazyInitRace(boolean v) { detectLazyInitRace = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectPhaserIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectPhaserIssues(boolean v) { detectPhaserIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectStampedLockIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectStampedLockIssues(boolean v) { detectStampedLockIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectExchangerIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectExchangerIssues(boolean v) { detectExchangerIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectScheduledExecutorIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectScheduledExecutorIssues(boolean v) { detectScheduledExecutorIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectForkJoinPoolIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectForkJoinPoolIssues(boolean v) { detectForkJoinPoolIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectThreadFactoryIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectThreadFactoryIssues(boolean v) { detectThreadFactoryIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectThreadLeaks}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectThreadLeaks(boolean v) { detectThreadLeaks = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSleepInLock}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSleepInLock(boolean v) { detectSleepInLock = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectUnboundedQueue}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectUnboundedQueue(boolean v) { detectUnboundedQueue = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectThreadStarvation}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectThreadStarvation(boolean v) { detectThreadStarvation = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectCalendarIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectCalendarIssues(boolean v) { detectCalendarIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedCollections}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSharedCollections(boolean v) { detectSharedCollections = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectTimerIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectTimerIssues(boolean v) { detectTimerIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectCopyOnWriteCollectionIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectCopyOnWriteCollectionIssues(boolean v) { detectCopyOnWriteCollectionIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectStringBuilderIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectStringBuilderIssues(boolean v)           { detectStringBuilderIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectStructuredConcurrencyIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectStructuredConcurrencyIssues(boolean v)      { detectStructuredConcurrencyIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectVirtualThreadContextLeaks}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectVirtualThreadContextLeaks(boolean v)        { detectVirtualThreadContextLeaks = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectScopedValueMisuse}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectScopedValueMisuse(boolean v)                { detectScopedValueMisuse = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectVirtualThreadCpuBoundTasks}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectVirtualThreadCpuBoundTasks(boolean v)       { detectVirtualThreadCpuBoundTasks = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectVirtualThreadCarrierExhaustion}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectVirtualThreadCarrierExhaustion(boolean v)   { detectVirtualThreadCarrierExhaustion = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectHttpClientIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectHttpClientIssues(boolean v)                 { detectHttpClientIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectStreamClosing}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectStreamClosing(boolean v)                  { detectStreamClosing = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectCacheConcurrency}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectCacheConcurrency(boolean v)               { detectCacheConcurrency = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectCompletableFutureChainIssues}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectCompletableFutureChainIssues(boolean v)   { detectCompletableFutureChainIssues = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectExecutorShutdown}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectExecutorShutdown(boolean v)               { detectExecutorShutdown = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectMutableMapKeys}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectMutableMapKeys(boolean v)                 { detectMutableMapKeys = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectNestedMonitorLockout}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectNestedMonitorLockout(boolean v)           { detectNestedMonitorLockout = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectLockDowngrade}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectLockDowngrade(boolean v)                  { detectLockDowngrade = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectInheritableThreadLocalMisuse}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectInheritableThreadLocalMisuse(boolean v)   { detectInheritableThreadLocalMisuse = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectUncommittedChanges}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectUncommittedChanges(boolean v)             { detectUncommittedChanges = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectThreadLocalContamination}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectThreadLocalContamination(boolean v)       { detectThreadLocalContamination = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectAtomicNonAtomicUpdates}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectAtomicNonAtomicUpdates(boolean v)         { detectAtomicNonAtomicUpdates = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSynchronizedCollectionIteration}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSynchronizedCollectionIteration(boolean v){ detectSynchronizedCollectionIteration = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedFormatter}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSharedFormatter(boolean v)                { detectSharedFormatter = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectConcurrentMapComputeRecursion}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectConcurrentMapComputeRecursion(boolean v)  { detectConcurrentMapComputeRecursion = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSynchronizedOnLiteral}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSynchronizedOnLiteral(boolean v)          { detectSynchronizedOnLiteral = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectPublicLockExposure}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectPublicLockExposure(boolean v)             { detectPublicLockExposure = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectForkJoinTaskBlocking}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectForkJoinTaskBlocking(boolean v)           { detectForkJoinTaskBlocking = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectOptimisticReadValidation}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectOptimisticReadValidation(boolean v)       { detectOptimisticReadValidation = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectCFCommonPoolBlocking}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectCFCommonPoolBlocking(boolean v)           { detectCFCommonPoolBlocking = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedMatcher}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSharedMatcher(boolean v)                  { detectSharedMatcher = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedDecimalFormat}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSharedDecimalFormat(boolean v)            { detectSharedDecimalFormat = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectWeakReferenceRace}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectWeakReferenceRace(boolean v)              { detectWeakReferenceRace = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectStatefulLambda}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectStatefulLambda(boolean v)                 { detectStatefulLambda = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedMessageDigest}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSharedMessageDigest(boolean v)            { detectSharedMessageDigest = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectInterruptSwallowing}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectInterruptSwallowing(boolean v)            { detectInterruptSwallowing = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectMdcContextLeak}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectMdcContextLeak(boolean v)                 { detectMdcContextLeak = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSystemPropertyMutation}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSystemPropertyMutation(boolean v)         { detectSystemPropertyMutation = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectFutureIgnored}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectFutureIgnored(boolean v)                  { detectFutureIgnored = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectExplicitGc}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectExplicitGc(boolean v)                     { detectExplicitGc = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectDeprecatedThreadApi}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectDeprecatedThreadApi(boolean v)            { detectDeprecatedThreadApi = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedXmlParser}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSharedXmlParser(boolean v)                { detectSharedXmlParser = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectBoxedPrimitiveLock}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectBoxedPrimitiveLock(boolean v)             { detectBoxedPrimitiveLock = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedTimeZone}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSharedTimeZone(boolean v)                 { detectSharedTimeZone = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectUncaughtExceptionHandler}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectUncaughtExceptionHandler(boolean v)       { detectUncaughtExceptionHandler = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectDaemonThreadHygiene}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectDaemonThreadHygiene(boolean v)            { detectDaemonThreadHygiene = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectNotifyWithoutMonitor}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectNotifyWithoutMonitor(boolean v)           { detectNotifyWithoutMonitor = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedSecureRandom}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSharedSecureRandom(boolean v)             { detectSharedSecureRandom = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectWeakHashMapShared}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectWeakHashMapShared(boolean v)              { detectWeakHashMapShared = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectJdbcConnectionShared}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectJdbcConnectionShared(boolean v)           { detectJdbcConnectionShared = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedStatefulCrypto}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSharedStatefulCrypto(boolean v)           { detectSharedStatefulCrypto = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectConcurrentMapCheckThenAct}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectConcurrentMapCheckThenAct(boolean v)      { detectConcurrentMapCheckThenAct = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedDeflater}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSharedDeflater(boolean v)                 { detectSharedDeflater = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectThisEscape}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectThisEscape(boolean v)                     { detectThisEscape = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectThreadLocalRandomMisuse}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectThreadLocalRandomMisuse(boolean v)        { detectThreadLocalRandomMisuse = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectCompletableFutureObtrudeAbuse}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectCompletableFutureObtrudeAbuse(boolean v)  { detectCompletableFutureObtrudeAbuse = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSpuriousWakeupHazard}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSpuriousWakeupHazard(boolean v)           { detectSpuriousWakeupHazard = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectLockUpgradeDeadlock}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectLockUpgradeDeadlock(boolean v)            { detectLockUpgradeDeadlock = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectTryLockMisuse}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectTryLockMisuse(boolean v)                  { detectTryLockMisuse = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectCFBlockingCallback}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectCFBlockingCallback(boolean v)             { detectCFBlockingCallback = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectStableValueMisuse}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectStableValueMisuse(boolean v)              { detectStableValueMisuse = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectStructuredTaskScopeMisuse}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectStructuredTaskScopeMisuse(boolean v)      { detectStructuredTaskScopeMisuse = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectGathererConcurrencyMisuse}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectGathererConcurrencyMisuse(boolean v)      { detectGathererConcurrencyMisuse = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedByteBuffer}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSharedByteBuffer(boolean v)               { detectSharedByteBuffer = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedCharsetCoder}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSharedCharsetCoder(boolean v)             { detectSharedCharsetCoder = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedChecksum}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSharedChecksum(boolean v)                 { detectSharedChecksum = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectFileChannelPositionRace}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectFileChannelPositionRace(boolean v)        { detectFileChannelPositionRace = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedIterator}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSharedIterator(boolean v)                 { detectSharedIterator = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectHighContentionAtomic}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectHighContentionAtomic(boolean v)           { detectHighContentionAtomic = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedJsonMapperReconfig}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSharedJsonMapperReconfig(boolean v)       { detectSharedJsonMapperReconfig = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectLazyConstantMisuse}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectLazyConstantMisuse(boolean v)             { detectLazyConstantMisuse = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectFinalFieldMutation}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectFinalFieldMutation(boolean v)             { detectFinalFieldMutation = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedKdf}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectSharedKdf(boolean v)                      { detectSharedKdf = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectLatchMisuse}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectLatchMisuse(boolean v)                    { detectLatchMisuse = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectExecutorDeadlock}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectExecutorDeadlock(boolean v)               { detectExecutorDeadlock = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectFutureBlocking}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder detectFutureBlocking(boolean v)                 { detectFutureBlocking = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#enableBenchmarking}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder enableBenchmarking(boolean v) { enableBenchmarking = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#benchmarkRegressionThreshold}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder benchmarkRegressionThreshold(double v) { benchmarkRegressionThreshold = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#failOnBenchmarkRegression}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder failOnBenchmarkRegression(boolean v) { failOnBenchmarkRegression = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#keygenAccountId}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder keygenAccountId(String v) { keygenAccountId = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#keygenApiKey}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder keygenApiKey(String v) { keygenApiKey = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#keygenProductId}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder keygenProductId(String v) { keygenProductId = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#lemonSqueezyStore}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder lemonSqueezyStore(String v) { lemonSqueezyStore = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#licenseKey}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder licenseKey(String v) { licenseKey = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#licenseMockMode}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder licenseMockMode(boolean v) { licenseMockMode = v; return this; }
 
+        /**
+         * Sets {@link AsyncTest#excludes()}.
+         * @param v the value to use
+         * @return this builder
+         */
         public Builder excludes(DetectorType[] v) {
             if (v != null && v.length > 0) {
                 this.excludes.addAll(Arrays.asList(v));
@@ -909,6 +1776,7 @@ public final class AsyncTestConfig {
             return this;
         }
 
+        /** {@return the resolved configuration, with preset, includes and excludes applied} */
         public AsyncTestConfig build() {
             if (!includes.isEmpty()) {
                 // includes wins over detectAll/per-flag setters: force the

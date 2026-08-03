@@ -7,9 +7,13 @@ import se.deversity.asynctest.diagnostics.IssueSeverity;
  */
 public final class DetectorFinding {
 
+    /** The detector name. */
     public final String detectorName;
+    /** The severity. */
     public final IssueSeverity severity;
+    /** The report. */
     public final String report;
+    /** The timestamp in milliseconds. */
     public final long timestampMs;
 
     public DetectorFinding(String detectorName, IssueSeverity severity, String report, long timestampMs) {

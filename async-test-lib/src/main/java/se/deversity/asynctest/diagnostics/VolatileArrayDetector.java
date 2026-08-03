@@ -103,6 +103,7 @@ public class VolatileArrayDetector {
             this.problematicArrays = Collections.unmodifiableSet(new HashSet<>(problematicArrays));
         }
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !problematicArrays.isEmpty();
         }

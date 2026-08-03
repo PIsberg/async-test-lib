@@ -90,8 +90,10 @@ public class ExecutorDeadlockDetector {
     }
 
     public static class ExecutorDeadlockReport {
+        /** The self deadlocks. */
         public final Set<String> selfDeadlocks = new HashSet<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !selfDeadlocks.isEmpty();
         }

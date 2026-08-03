@@ -72,6 +72,7 @@ public class ForkJoinTaskBlockingDetector {
     public static class ForkJoinTaskBlockingReport {
         final List<String> blockingCalls = new ArrayList<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() { return !blockingCalls.isEmpty(); }
 
         @Override

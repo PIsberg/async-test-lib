@@ -322,15 +322,21 @@ public class StructuredTaskScopeMisuseDetector {
                 || !resultAfterTimeoutIssues.isEmpty();
         }
 
+        /** {@return the fork after join issues} */
         public List<String> getForkAfterJoinIssues()      { return Collections.unmodifiableList(forkAfterJoinIssues); }
+        /** {@return the result before join issues} */
         public List<String> getResultBeforeJoinIssues()   { return Collections.unmodifiableList(resultBeforeJoinIssues); }
+        /** {@return the confinement issues} */
         public List<String> getConfinementIssues()        { return Collections.unmodifiableList(confinementIssues); }
+        /** {@return the missing join issues} */
         public List<String> getMissingJoinIssues()        { return Collections.unmodifiableList(missingJoinIssues); }
         /** @since 1.7.0 */
         public List<String> getResultAfterTimeoutIssues() { return Collections.unmodifiableList(resultAfterTimeoutIssues); }
         /** @since 1.7.0 */
         public List<String> getTimeoutSwallowedWarnings() { return Collections.unmodifiableList(timeoutSwallowedWarnings); }
+        /** {@return the total scopes} */
         public int          getTotalScopes()              { return totalScopes; }
+        /** {@return the total forks} */
         public int          getTotalForks()               { return totalForks; }
 
         @Override

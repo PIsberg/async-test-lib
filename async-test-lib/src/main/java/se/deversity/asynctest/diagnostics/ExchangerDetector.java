@@ -99,6 +99,7 @@ public class ExchangerDetector {
             this.nullValueExchanges = nullValueExchanges;
         }
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !timedOutExchangers.isEmpty() 
                 || !interruptedExchangers.isEmpty()

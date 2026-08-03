@@ -157,10 +157,14 @@ public class WakeupDetector {
     }
     
     public static class WakeupReport {
+        /** The monitors with spurious wakeups. */
         public final Set<String> monitorsWithSpuriousWakeups = new HashSet<>();
+        /** The monitors with lost notifications. */
         public final Set<String> monitorsWithLostNotifications = new HashSet<>();
+        /** The always notify without wait. */
         public final Set<String> alwaysNotifyWithoutWait = new HashSet<>();
         
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !monitorsWithSpuriousWakeups.isEmpty() || !monitorsWithLostNotifications.isEmpty();
         }

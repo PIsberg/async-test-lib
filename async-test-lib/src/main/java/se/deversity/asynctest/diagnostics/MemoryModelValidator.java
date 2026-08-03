@@ -169,12 +169,15 @@ public class MemoryModelValidator {
     public static class ValidationResult {
         public int testsRun = 0;
         public int testsPassed = 0;
+        /** The observations. */
         public final List<String> observations = Collections.synchronizedList(new ArrayList<>());
         
+        /** {@return whether valid} */
         public boolean isValid() {
             return testsRun > 0 && testsPassed == testsRun;
         }
         
+        /** {@return the pass rate} */
         public double getPassRate() {
             return testsRun == 0 ? 0 : 100.0 * testsPassed / testsRun;
         }

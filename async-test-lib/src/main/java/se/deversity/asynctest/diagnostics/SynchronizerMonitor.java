@@ -144,9 +144,12 @@ public class SynchronizerMonitor {
     }
     
     public static class SynchronizerReport {
+        /** The incomplete barriers. */
         public final Set<String> incompleteBarriers = new HashSet<>();
+        /** The duplicate arrivals. */
         public final Set<String> duplicateArrivals = new HashSet<>();
         
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !incompleteBarriers.isEmpty() || !duplicateArrivals.isEmpty();
         }

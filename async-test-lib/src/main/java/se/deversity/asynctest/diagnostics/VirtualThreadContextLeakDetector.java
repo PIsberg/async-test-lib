@@ -216,10 +216,15 @@ public class VirtualThreadContextLeakDetector {
             return !leaks.isEmpty() || !inheritableInVirtualIssues.isEmpty();
         }
 
+        /** {@return the leaks} */
         public List<String> getLeaks()                        { return Collections.unmodifiableList(leaks); }
+        /** {@return the inheritable in virtual issues} */
         public List<String> getInheritableInVirtualIssues()   { return Collections.unmodifiableList(inheritableInVirtualIssues); }
+        /** {@return the high count warnings} */
         public List<String> getHighCountWarnings()             { return Collections.unmodifiableList(highCountWarnings); }
+        /** {@return the total sets} */
         public int          getTotalSets()                     { return totalSets; }
+        /** {@return the total removes} */
         public int          getTotalRemoves()                  { return totalRemoves; }
 
         @Override

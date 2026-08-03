@@ -120,10 +120,14 @@ public class ThreadLocalMonitor {
     }
 
     public static class ThreadLocalReport {
+        /** The uncleaned thread locals. */
         public final Set<String> uncleanedThreadLocals = new HashSet<>();
+        /** The likely leaks. */
         public final Set<String> likelyLeaks = new HashSet<>();
+        /** The thread local accumulation. */
         public final Set<String> threadLocalAccumulation = new HashSet<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !uncleanedThreadLocals.isEmpty()
                 || !likelyLeaks.isEmpty()

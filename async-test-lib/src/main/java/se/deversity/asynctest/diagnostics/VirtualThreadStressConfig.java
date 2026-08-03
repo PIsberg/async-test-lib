@@ -25,6 +25,7 @@ public class VirtualThreadStressConfig {
         /** 100,000+ virtual threads - extreme stress (may require -Xmx settings) */
         EXTREME(100000);
         
+        /** The thread count. */
         public final int threadCount;
         
         StressLevel(int threadCount) {
@@ -51,22 +52,27 @@ public class VirtualThreadStressConfig {
         return new Builder();
     }
     
+    /** {@return the stress level} */
     public StressLevel getStressLevel() {
         return stressLevel;
     }
     
+    /** {@return the thread count} */
     public int getThreadCount() {
         return stressLevel.threadCount;
     }
     
+    /** {@return whether detect thread pinning} */
     public boolean isDetectThreadPinning() {
         return detectThreadPinning;
     }
     
+    /** {@return whether enable virtual thread events} */
     public boolean isEnableVirtualThreadEvents() {
         return enableVirtualThreadEvents;
     }
     
+    /** {@return the timeout in milliseconds} */
     public long getTimeoutMs() {
         return timeoutMs;
     }

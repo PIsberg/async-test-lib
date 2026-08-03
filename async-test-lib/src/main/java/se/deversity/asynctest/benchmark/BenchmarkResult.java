@@ -42,42 +42,52 @@ public final class BenchmarkResult implements Serializable {
         this.invocationTimesNanos = new ArrayList<>(builder.invocationTimesNanos);
     }
 
+    /** {@return the test class} */
     public @Nullable String getTestClass() {
         return testClass;
     }
 
+    /** {@return the test method} */
     public @Nullable String getTestMethod() {
         return testMethod;
     }
 
+    /** {@return the timestamp} */
     public LocalDateTime getTimestamp() {
         return timestamp;
     }
 
+    /** {@return the threads} */
     public int getThreads() {
         return threads;
     }
 
+    /** {@return the invocations} */
     public int getInvocations() {
         return invocations;
     }
 
+    /** {@return the total execution time in nanoseconds} */
     public long getTotalExecutionTimeNanos() {
         return totalExecutionTimeNanos;
     }
 
+    /** {@return the avg time per invocation in nanoseconds} */
     public long getAvgTimePerInvocationNanos() {
         return avgTimePerInvocationNanos;
     }
 
+    /** {@return the min time per invocation in nanoseconds} */
     public long getMinTimePerInvocationNanos() {
         return minTimePerInvocationNanos;
     }
 
+    /** {@return the max time per invocation in nanoseconds} */
     public long getMaxTimePerInvocationNanos() {
         return maxTimePerInvocationNanos;
     }
 
+    /** {@return the invocation times in nanoseconds} */
     public List<Long> getInvocationTimesNanos() {
         return Collections.unmodifiableList(invocationTimesNanos);
     }

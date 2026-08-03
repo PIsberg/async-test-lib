@@ -98,6 +98,7 @@ public class StatefulLambdaDetector {
     public static class StatefulLambdaReport {
         final List<String> violations = new ArrayList<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

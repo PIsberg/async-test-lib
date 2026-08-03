@@ -178,12 +178,18 @@ public class ReadWriteLockMonitor {
     }
     
     public static class ReadWriteLockReport {
+        /** The reader dominated locks. */
         public final Set<String> readerDominatedLocks = new HashSet<>();
+        /** The starved writers. */
         public final Set<String> starvedWriters = new HashSet<>();
+        /** The long write waits. */
         public final Set<String> longWriteWaits = new HashSet<>();
+        /** The current write holders. */
         public final Set<String> currentWriteHolders = new HashSet<>();
+        /** The current read holders. */
         public final Set<String> currentReadHolders = new HashSet<>();
         
+        /** {@return whether there are fairness issues} */
         public boolean hasFairnessIssues() {
             return !readerDominatedLocks.isEmpty() || !starvedWriters.isEmpty();
         }

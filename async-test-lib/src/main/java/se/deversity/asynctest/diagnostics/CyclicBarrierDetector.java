@@ -131,10 +131,12 @@ public class CyclicBarrierDetector {
             this(barrierRegistry, timedOutBarriers, brokenBarriers, Collections.emptySet());
         }
 
+        /** {@return the reuse after broken barriers} */
         public Set<CyclicBarrier> getReuseAfterBrokenBarriers() {
             return reuseAfterBrokenBarriers;
         }
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !timedOutBarriers.isEmpty() || !brokenBarriers.isEmpty() || !reuseAfterBrokenBarriers.isEmpty();
         }

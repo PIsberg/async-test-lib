@@ -70,6 +70,7 @@ public class SharedMatcherDetector {
     public static class SharedMatcherReport {
         final List<String> violations = new ArrayList<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

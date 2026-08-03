@@ -162,9 +162,12 @@ public final class SharedStatefulCryptoDetector {
     }
 
     public static final class Report {
+        /** The violations. */
         public final List<String> violations = new ArrayList<>();
+        /** The structured violations. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

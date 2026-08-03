@@ -170,9 +170,13 @@ public class GathererConcurrencyMisuseDetector {
             return !missingCombinerIssues.isEmpty() || !sharedStateIssues.isEmpty();
         }
 
+        /** {@return the missing combiner issues} */
         public List<String> getMissingCombinerIssues() { return Collections.unmodifiableList(missingCombinerIssues); }
+        /** {@return the shared state issues} */
         public List<String> getSharedStateIssues()     { return Collections.unmodifiableList(sharedStateIssues); }
+        /** {@return the total gatherers} */
         public int          getTotalGatherers()        { return totalGatherers; }
+        /** {@return the total integrations} */
         public int          getTotalIntegrations()     { return totalIntegrations; }
 
         @Override

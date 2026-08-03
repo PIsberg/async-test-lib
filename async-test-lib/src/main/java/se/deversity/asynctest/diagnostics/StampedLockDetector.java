@@ -108,6 +108,7 @@ public class StampedLockDetector {
             this.stampNotReleased = Collections.unmodifiableSet(new HashSet<>(stampNotReleased));
         }
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !unvalidatedOptimisticReads.isEmpty() || !stampNotReleased.isEmpty();
         }

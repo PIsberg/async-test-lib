@@ -34,11 +34,41 @@ Two traps worth recording, because both make a measurement look better than it i
 `doclint` is now `all`. The remaining gap is therefore visible on every build instead of hidden, and
 the javadoc jar still builds, since doclint warnings do not fail it.
 
-### Known gap — 949 of 1786 public members have no javadoc at all
+### Fixed — 611 more public members documented, taking the gap from 30% to 10%
 
-Now that `missing` is on, the number is measurable: **53% of the public API is undocumented**,
-dominated by `AsyncTestConfig` (288: its 132 public flag fields and their builder setters), then
-`BenchmarkResult` (23), `BenchmarkComparisonResult` (17) and `AutoFix` (17).
+`AsyncTestConfig` is now complete: its 141 public flag fields and 145 builder setters each point at
+the `@AsyncTest` attribute they resolve, via `{@link}`, rather than restating 286 descriptions that
+would then drift from the originals. Elsewhere, 95 `get*`, 92 `has*` and 6 `is*` accessors and 132
+public final fields gained descriptions derived from their own names.
+
+Derivation quality was checked rather than assumed. The first pass produced "the successful aba
+cases" and "the total execution time nanos"; runs of capitals are now preserved and unit suffixes
+expanded, so those read "the successful ABA cases" and "the total execution time in nanoseconds".
+
+Two mistakes are worth recording because neither was caught by compilation:
+
+* A pass intended to cover interface methods and constructors used a loose pattern that matched
+  method *calls* and control flow as well as declarations, inserting 6,034 javadoc blocks inside
+  method bodies across 176 files. It compiled cleanly, because a javadoc comment is legal anywhere;
+  what exposed it was the diff being 40,860 lines for a few hundred intended members. Reverted
+  whole, and only the passes with verified output were redone.
+* Fields carrying an annotation had their new comment inserted *between* the annotation and the
+  field. Javadoc has to precede annotations, so PMD's `DanglingJavadoc` rule failed the build on
+  two of them. Fixed, and the fix scans for the pattern everywhere rather than at the two known
+  sites.
+
+### Known gap — 171 of 1614 public members have no javadoc at all
+
+Now that `missing` is on the number is measurable, and after the work above it stands at **10% of
+the public API**. The earlier figure quoted here, 53%, was wrong in the assistant's favour: it
+counted `@Override` methods, which inherit their documentation and which doclint therefore never
+reports. Excluding those, the gap was 484 of 1603 and is now 171 of 1614.
+
+What remains is `analyze*` and `record*` methods that take parameters, where a name-derived
+description would be filler rather than documentation. `DetectorType` accounts for a further ~58
+warnings across its 127 enum constants and is deliberately untouched: it is `@AILocked`, and while
+adding comments would not trip the five-place sync hazard the lock exists for, the rule is
+unconditional.
 
 This is deliberately not auto-filled. The `AsyncTestConfig` members are mechanically documentable by
 cross-referencing the authoritative `@AsyncTest` javadoc, which would be accurate rather than filler,

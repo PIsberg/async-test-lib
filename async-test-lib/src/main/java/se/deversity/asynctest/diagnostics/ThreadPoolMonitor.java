@@ -170,11 +170,16 @@ public class ThreadPoolMonitor {
     }
     
     public static class ThreadPoolReport {
+        /** The pools with rejections. */
         public final Set<String> poolsWithRejections = new HashSet<>();
+        /** The saturated queues. */
         public final Set<String> saturatedQueues = new HashSet<>();
+        /** The long running tasks. */
         public final Set<String> longRunningTasks = new HashSet<>();
+        /** The thread starvation. */
         public final Set<String> threadStarvation = new HashSet<>();
         
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !poolsWithRejections.isEmpty() || !saturatedQueues.isEmpty() || 
                    !longRunningTasks.isEmpty() || !threadStarvation.isEmpty();

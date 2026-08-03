@@ -82,6 +82,7 @@ public class ThreadFactoryDetector {
             this.unnamedThreads = Collections.unmodifiableSet(new HashSet<>(unnamedThreads));
         }
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !missingExceptionHandler.isEmpty() 
                 || !nonDaemonThreads.isEmpty()

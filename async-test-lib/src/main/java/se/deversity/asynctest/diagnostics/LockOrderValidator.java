@@ -176,9 +176,12 @@ public class LockOrderValidator {
     }
     
     public static class LockOrderReport {
+        /** The inconsistent orderings. */
         public final Set<String> inconsistentOrderings = new HashSet<>();
+        /** The potential deadlock cycles. */
         public final Set<String> potentialDeadlockCycles = new HashSet<>();
         
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !inconsistentOrderings.isEmpty() || !potentialDeadlockCycles.isEmpty();
         }

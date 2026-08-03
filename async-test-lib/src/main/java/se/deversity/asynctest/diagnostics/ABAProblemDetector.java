@@ -228,8 +228,10 @@ public class ABAProblemDetector {
     
     public static class ABAReport {
         public final Map<String, Integer> variablesWithCycles = new HashMap<>();
+        /** The successful ABA cases. */
         public final Set<String> successfulABACases = new HashSet<>();
         
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !variablesWithCycles.isEmpty() || !successfulABACases.isEmpty();
         }

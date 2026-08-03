@@ -136,10 +136,13 @@ public class PipelineMonitor {
     }
     
     public static class PipelineReport {
+        /** The missing events. */
         public final Set<String> missingEvents = new HashSet<>();
         public final Map<String, List<String>> failedEvents = new HashMap<>();
+        /** The low processing rate. */
         public final Set<String> lowProcessingRate = new HashSet<>();
         
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !missingEvents.isEmpty() || !failedEvents.isEmpty();
         }

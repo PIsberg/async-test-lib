@@ -121,8 +121,10 @@ public class NotifyAllValidator {
     }
 
     public static class NotifyAllReport {
+        /** The notify instead of notify all. */
         public final Set<String> notifyInsteadOfNotifyAll = new HashSet<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !notifyInsteadOfNotifyAll.isEmpty();
         }

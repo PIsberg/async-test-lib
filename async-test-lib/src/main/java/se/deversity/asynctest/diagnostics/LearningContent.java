@@ -9,6 +9,7 @@ public final class LearningContent {
 
     private LearningContent() { }
 
+    /** {@return the deadlock explanation} */
     public static String getDeadlockExplanation() {
         return """
             📚 LEARNING: What is a Deadlock?
@@ -30,6 +31,7 @@ public final class LearningContent {
             """;
     }
 
+    /** {@return the race condition explanation} */
     public static String getRaceConditionExplanation() {
         return """
             📚 LEARNING: What is a Race Condition?
@@ -47,6 +49,7 @@ public final class LearningContent {
             """;
     }
 
+    /** {@return the visibility explanation} */
     public static String getVisibilityExplanation() {
         return """
             📚 LEARNING: What is a Memory Visibility Issue?
@@ -62,6 +65,7 @@ public final class LearningContent {
             """;
     }
 
+    /** {@return the false sharing explanation} */
     public static String getFalseSharingExplanation() {
         return """
             📚 LEARNING: What is False Sharing?
@@ -79,6 +83,7 @@ public final class LearningContent {
             """;
     }
 
+    /** {@return the completable future leak explanation} */
     public static String getCompletableFutureLeakExplanation() {
         return """
             📚 LEARNING: What is a CompletableFuture Completion Leak?
@@ -95,6 +100,7 @@ public final class LearningContent {
             """;
     }
 
+    /** {@return the virtual thread pinning explanation} */
     public static String getVirtualThreadPinningExplanation() {
         return """
             📚 LEARNING: What is Virtual Thread Pinning?
@@ -111,6 +117,7 @@ public final class LearningContent {
             """;
     }
 
+    /** {@return the thread pool deadlock explanation} */
     public static String getThreadPoolDeadlockExplanation() {
         return """
             📚 LEARNING: What is a Thread Pool Deadlock?
@@ -128,6 +135,7 @@ public final class LearningContent {
             """;
     }
 
+    /** {@return the busy waiting explanation} */
     public static String getBusyWaitingExplanation() {
         return """
             📚 LEARNING: What is Busy Waiting?
@@ -148,6 +156,7 @@ public final class LearningContent {
             """;
     }
 
+    /** {@return the atomicity violation explanation} */
     public static String getAtomicityViolationExplanation() {
         return """
             📚 LEARNING: What is an Atomicity Violation?
@@ -169,6 +178,7 @@ public final class LearningContent {
             """;
     }
 
+    /** {@return the lock leak explanation} */
     public static String getLockLeakExplanation() {
         return """
             📚 LEARNING: What is a Lock Leak?

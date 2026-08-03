@@ -77,6 +77,7 @@ public class DoubleCheckedLockingDetector {
             this.brokenDCLs = Collections.unmodifiableSet(new HashSet<>(brokenDCLs));
         }
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !brokenDCLs.isEmpty();
         }

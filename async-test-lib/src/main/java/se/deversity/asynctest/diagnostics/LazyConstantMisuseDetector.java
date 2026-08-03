@@ -291,12 +291,19 @@ public class LazyConstantMisuseDetector {
                 || !nonDeterministicIssues.isEmpty();
         }
 
+        /** {@return the reentrant issues} */
         public List<String> getReentrantIssues()        { return Collections.unmodifiableList(reentrantIssues); }
+        /** {@return the null value issues} */
         public List<String> getNullValueIssues()        { return Collections.unmodifiableList(nullValueIssues); }
+        /** {@return the multiple compute issues} */
         public List<String> getMultipleComputeIssues()  { return Collections.unmodifiableList(multipleComputeIssues); }
+        /** {@return the non deterministic issues} */
         public List<String> getNonDeterministicIssues() { return Collections.unmodifiableList(nonDeterministicIssues); }
+        /** {@return the convoy warnings} */
         public List<String> getConvoyWarnings()         { return Collections.unmodifiableList(convoyWarnings); }
+        /** {@return the total gets} */
         public int          getTotalGets()              { return totalGets; }
+        /** {@return the total computes} */
         public int          getTotalComputes()          { return totalComputes; }
 
         @Override

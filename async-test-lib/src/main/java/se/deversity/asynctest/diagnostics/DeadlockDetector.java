@@ -261,6 +261,7 @@ public class DeadlockDetector {
             this.deadlocked = deadlocked;
         }
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return deadlocked;
         }

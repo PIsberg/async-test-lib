@@ -87,6 +87,7 @@ public class CountDownLatchDetector {
             this.extraCountDownLatches = Collections.unmodifiableSet(new HashSet<>(extraCountDownLatches));
         }
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !timedOutLatches.isEmpty() || !extraCountDownLatches.isEmpty();
         }

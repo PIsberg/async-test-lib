@@ -93,6 +93,7 @@ public class ReentrantLockDetector {
             this.starvationThreads = Collections.unmodifiableSet(new HashSet<>(starvationThreads));
         }
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !timeoutLocks.isEmpty() || !starvationThreads.isEmpty();
         }
