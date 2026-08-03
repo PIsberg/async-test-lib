@@ -140,7 +140,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      *                           must not be {@code null}
      * @return the activated bridge, registered as the drain callback
      * @throws NullPointerException if either argument is {@code null}
-     * @since 1.8.0
+     * @since 1.7.0
      */
     public static TelemetryBridge activateWithFilter(AtomicityValidator atomicityValidator,
                                                      LongPredicate workerFilter) {

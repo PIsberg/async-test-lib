@@ -174,7 +174,7 @@ Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
 > (`stableValueMisuseDetector()` … `lazyConstantMisuseDetector()`,
 > `finalFieldMutationDetector()`, `sharedKdfDetector()`); findings surface through the
 > standard report and `failOn` gate. `VirtualThreadPinningDetector` is JDK-version-aware
-> since 1.8.0: `synchronized`/`Object.wait` events are annotated as no-longer-pinning on
+> since 1.7.0: `synchronized`/`Object.wait` events are annotated as no-longer-pinning on
 > JDK 24+ (JEP 491), class-init waits on JDK 26+. See
 > [docs/DETECTOR_CATALOG.md](docs/DETECTOR_CATALOG.md).
 

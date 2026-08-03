@@ -2012,7 +2012,7 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link CompletableFutureObtrudeDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCompletableFutureObtrudeAbuse = false}
-     * @since 1.8.0
+     * @since 1.7.0
      */
     public static CompletableFutureObtrudeDetector completableFutureObtrudeDetector() {
         return require("detectCompletableFutureObtrudeAbuse", c -> c.completableFutureObtrudeDetector);
@@ -2021,7 +2021,7 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link SpuriousWakeupDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSpuriousWakeupHazard = false}
-     * @since 1.8.0
+     * @since 1.7.0
      */
     public static SpuriousWakeupDetector spuriousWakeupHazardDetector() {
         return require("detectSpuriousWakeupHazard", c -> c.spuriousWakeupHazardDetector);
@@ -2030,7 +2030,7 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link LockUpgradeDeadlockDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLockUpgradeDeadlock = false}
-     * @since 1.8.0
+     * @since 1.7.0
      */
     public static LockUpgradeDeadlockDetector lockUpgradeDeadlockDetector() {
         return require("detectLockUpgradeDeadlock", c -> c.lockUpgradeDeadlockDetector);
@@ -2039,7 +2039,7 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link TryLockMisuseDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectTryLockMisuse = false}
-     * @since 1.8.0
+     * @since 1.7.0
      */
     public static TryLockMisuseDetector tryLockMisuseDetector() {
         return require("detectTryLockMisuse", c -> c.tryLockMisuseDetector);
@@ -2048,7 +2048,7 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link CompletableFutureBlockingCallbackDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCFBlockingCallback = false}
-     * @since 1.8.0
+     * @since 1.7.0
      */
     public static CompletableFutureBlockingCallbackDetector cfBlockingCallbackDetector() {
         return require("detectCFBlockingCallback", c -> c.cfBlockingCallbackDetector);
@@ -2147,7 +2147,7 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link LazyConstantMisuseDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLazyConstantMisuse = false}
-     * @since 1.8.0
+     * @since 1.7.0
      */
     public static LazyConstantMisuseDetector lazyConstantMisuseDetector() {
         return require("detectLazyConstantMisuse", c -> c.lazyConstantMisuseDetector);
@@ -2156,7 +2156,7 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link FinalFieldMutationDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectFinalFieldMutation = false}
-     * @since 1.8.0
+     * @since 1.7.0
      */
     public static FinalFieldMutationDetector finalFieldMutationDetector() {
         return require("detectFinalFieldMutation", c -> c.finalFieldMutationDetector);
@@ -2165,7 +2165,7 @@ public final class AsyncTestContext {
     /**
      * Returns the {@link SharedKdfDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedKdf = false}
-     * @since 1.8.0
+     * @since 1.7.0
      */
     public static SharedKdfDetector sharedKdfDetector() {
         return require("detectSharedKdf", c -> c.sharedKdfDetector);

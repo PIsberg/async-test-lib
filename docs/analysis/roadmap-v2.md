@@ -8,19 +8,43 @@ a broken intermediate release.
 
 ## Blocked findings this plan unlocks
 
-1. `AsyncTestConfig` carries ~85 public boolean detector flags; adding a detector needs
-   synchronized edits in up to 10 places across 4 files.
-2. Dual registry: the ServiceLoader SPI (`spi.DetectorRegistry`, `LegacyDetectorFactories`,
-   ~110 `META-INF/services` entries) is never invoked at runtime; the hand-wired
-   `DetectorRegistry` + `AsyncTestContext` mirror is the live path.
+> Counts re-measured against the tree on 2026-08-03, ahead of 1.7.0 GA. Several had drifted
+> far enough from the originals to change what the finding says, so they are stated exactly
+> rather than approximately, with the command that produces each.
+
+1. `AsyncTestConfig` carries **132** public boolean flags, **127** of them per-detector;
+   adding a detector needs synchronized edits in several places across 4 files.
+2. Two registries coexist, but the SPI is **not** dead: `AsyncTestContext` calls
+   `spi.DetectorRegistry.buildExternal` on every construction, which is how third-party
+   detectors reach the reports and the `failOn` gate. What is *not* live is the built-in
+   half: `DetectorRegistry.build(config)`, the view that includes the 127 built-in bridge
+   factories, is called only from tests. Since the 1.7.0 performance fix those built-ins
+   are listed in `META-INF/async-test/builtin-detector-factories` rather than registered
+   for `ServiceLoader`, so the runtime no longer loads them. The 2.0 decision is therefore
+   narrower than "delete whichever registry lost": the SPI stays, and the question is only
+   what to do with the built-in bridge shims.
 3. The structured `Violation`/`Formatter` pipeline is unreachable end-to-end; severity and
    detector names are re-parsed out of prose reports.
 4. The SPI cannot introduce new detector identities (`Detector.type()` is bound to the
    closed `DetectorType` enum).
-5. ~83 detectors duplicate identical instance-tracking scaffolding, keyed by
+5. **84** detector classes duplicate instance-tracking scaffolding keyed by
    `System.identityHashCode` (collision + unbounded-retention hazard).
-6. A bare `@AsyncTest` enables all ~121 detectors; the ~110 deprecated boolean annotation
-   attributes dominate the public annotation surface.
+6. A bare `@AsyncTest` enables all **127** detectors; the **127** deprecated boolean
+   annotation attributes dominate the public annotation surface.
+
+Reproducing the counts:
+
+```bash
+# 1 and 6: public boolean flags, and deprecated annotation attributes
+grep -cE '^\s+public final boolean ' async-test-lib/src/main/java/se/deversity/asynctest/AsyncTestConfig.java
+grep -c '@Deprecated' async-test-lib/src/main/java/se/deversity/asynctest/AsyncTest.java
+# 2: who calls the all-inclusive SPI view
+git grep -n 'DetectorRegistry.build(' -- async-test-lib/src
+# 5: detectors keyed by identity hash
+grep -rl identityHashCode --include=*.java async-test-lib/src/main/java/se/deversity/asynctest/diagnostics | wc -l
+# 6: detector count
+grep -oE '^ +[A-Z][A-Z0-9_]{2,}' async-test-lib/src/main/java/se/deversity/asynctest/DetectorType.java | tr -d ' ' | sort -u | wc -l
+```
 
 ## Strategy: three trains, only the last one breaks
 
@@ -34,7 +58,7 @@ done behind the existing API. Only deletions must wait for 2.0.
   preset/includes/excludes/detectAll/legacy booleans. Keep every existing public boolean
   field, now assigned as a one-line derivation (`this.detectXxx = enabled.contains(XXX)`).
   Binary compatibility: unchanged — fields keep their signatures and values.
-* **Registry table**: replace the ~110 hand-written conditional constructions in
+* **Registry table**: replace the 127 hand-written conditional constructions in
   `DetectorRegistry` with a `Map<DetectorType, Supplier<Object>>` factory table iterated
   against `config.enabledDetectors`. The per-detector fields and accessors remain, assigned
   from the table's output, so `AsyncTestContext` and all tests are untouched.

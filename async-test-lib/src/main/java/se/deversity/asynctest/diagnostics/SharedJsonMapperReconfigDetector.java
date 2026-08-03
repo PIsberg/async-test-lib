@@ -50,7 +50,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * d.recordConfigMutation(objectMapper, "registerModule(JavaTimeModule)");
  * }</pre>
  *
- * @since 1.8.0
+ * @since 1.7.0
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; using-thread sets are ConcurrentHashMap.newKeySet(); violating mutations recorded in a CopyOnWriteArrayList.")
 @AITestDriven(

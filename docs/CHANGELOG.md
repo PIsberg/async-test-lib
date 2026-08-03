@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — 37 `@since` tags named a version that does not exist
+
+Thirty-five API elements were tagged `@since 1.8.0` and two `@since 1.9.0`, across 13 files. The
+line is 1.7.0, so all of that code ships in 1.7.0: published javadoc would have told every reader
+that API present in the artifact they were holding arrived in a later release.
+
+The same mislabelling had spread into the prose. `docs/AGENT.md` said the agent became "a separate
+module since 1.8.0"; `docs/DETECTOR_CATALOG.md` marked Phase 15 and three Phase 18 detectors
+"(1.8.0+)"; `docs/architecture/detector-architecture.md` and `README.md` said the same of the
+JDK-version-aware pinning detector.
+
+Checked against the tags rather than assumed. `SharedKdfDetector`, `LazyConstantMisuseDetector`,
+`FinalFieldMutationDetector`, `CompletableFutureObtrudeDetector` and `SpuriousWakeupDetector` all
+exist at `v1.7.0-RC6`, which is on Maven Central. `async-test-agent/pom.xml` is absent at `v1.6.0`
+and present at `v1.7.0-RC6`, so the module split landed in 1.7.0 too. Every one of these now reads
+1.7.0.
+
+Left alone: `docs/RELEASE.md` uses `1.8.0` as a semantic-versioning example, and
+`docs/analysis/roadmap-v2.md` plans future 1.8.x and 1.9.x trains. Neither is a claim about what
+shipped.
+
+### Fixed — `maven-jar-plugin` was unpinned, and silently resolving a 2013 release
+
+`async-test-agent/pom.xml` declared `maven-jar-plugin` with no version and nothing supplied one, so
+Maven fell back to its built-in default binding: **2.4**, released in 2013. Maven says as much on
+every build, in a warning that had become part of the noise:
+
+```
+'build.plugins.plugin.version' for org.apache.maven.plugins:maven-jar-plugin is missing
+It is highly recommended to fix these problems because they threaten the stability of your build.
+```
+
+It matters more here than the generic wording suggests. That plugin writes the agent's
+`Premain-Class`, `Agent-Class` and `Can-Retransform-Classes` manifest entries, which are the entire
+mechanism by which `-javaagent` works. An unpinned version means a different Maven can write that
+manifest differently, and nothing in the build would say so. Being unpinned also made it invisible
+to Dependabot, which cannot track a plugin that declares no version.
+
+Now pinned to 3.5.1, the current stable, through a `maven-jar-plugin.version` property alongside the
+other plugin versions. 4.0.0-beta-1 is the latest published release and was not chosen: a beta has
+no place in a GA build.
+
+Verified by rebuilding the agent jar and reading its manifest: `Created-By: Maven JAR Plugin 3.5.1`,
+with `Premain-Class`, `Agent-Class`, `Can-Retransform-Classes` and `Can-Redefine-Classes` all
+intact. The agent module's 43 tests pass, including `SelfAttachTest`, which attaches the rebuilt
+agent to a live JVM, and the end-to-end test that runs the real weaver into a real detector. The
+Maven warning is gone.
+
+`jacoco-maven-plugin` is also declared without a version in `async-test-lib/pom.xml`, and is
+deliberately left that way: the parent declares it in `<build><plugins>` with
+`${jacoco-maven-plugin.version}`, so the child inherits the version by merge. That is why Maven
+warned about one and not the other.
+
+### Fixed — contributor docs described a `build()` shape that no longer exists
+
+`docs/architecture/adding-a-detector.md` told anyone adding a detector to edit "**both branches of
+`build()`** (the `detectAll` if/else pair and the non-`detectAll` excludes line)", and
+`configuration-resolution.md` described the same two branches. There is one expression per detector
+and has been for some time:
+
+```java
+detectDeadlocks = (detectAll || detectDeadlocks) && !excludes.contains(DetectorType.DEADLOCKS);
+```
+
+Someone following the old instruction would go looking for a second place that is not there. Both
+documents now describe the single line, and `configuration-resolution.md` keeps the history that
+explains why it is one line: ten types were once missing from a separate excludes branch, and
+folding the branches together removed the possibility of a type being in one and not the other.
+
+### Changed — `roadmap-v2.md` counts re-measured, and one of its premises corrected
+
+The roadmap opened with approximate counts that had drifted far enough to change what the findings
+say: "~85 public boolean detector flags" is **132**, "~121 detectors" is **127**, "~83 detectors"
+keyed by identity hash is **84**.
+
+One premise was not merely stale but wrong. The document said the ServiceLoader SPI "is never
+invoked at runtime". It is: `AsyncTestContext` calls `spi.DetectorRegistry.buildExternal` on every
+construction, and that is how a third-party detector reaches the reports and the `failOn` gate. What
+is not live is the built-in half, `DetectorRegistry.build(config)`, which only tests call. That makes
+the 2.0 decision narrower than "delete whichever registry lost": the SPI stays, and the open question
+is only what to do with the built-in bridge shims.
+
+Each count now carries the command that reproduces it, so the next reader can check rather than
+trust.
+
 ## [1.7.0-RC7] - 2026-08-03
 
 ### Performance — detector discovery no longer loads 127 classes it discards, saving ~360 ms per forked JVM

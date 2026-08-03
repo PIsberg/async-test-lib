@@ -47,7 +47,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * d.recordAbsoluteAccess(buffer, "get(int)");
  * }</pre>
  *
- * @since 1.8.0
+ * @since 1.7.0
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name and operation sets are ConcurrentHashMap.newKeySet().")
 @AITestDriven(

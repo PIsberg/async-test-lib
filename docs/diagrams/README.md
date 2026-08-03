@@ -14,7 +14,7 @@ This folder contains PlantUML source files and generated PNG diagrams for the as
 | Benchmark Sequence | `benchmark-sequence.puml` | `BenchmarkSequence.png` (148 KB) | Benchmarking flow for baseline creation and comparison |
 | Activity Diagram | `activity-diagram.puml` | `ActivityDiagram.png` (209 KB) | Decision flow during test execution |
 | Deployment Diagram | `deployment-diagram.puml` | `DeploymentDiagram.png` (170 KB) | Library deployment and usage |
-| Detector Architecture | `detector-architecture.puml` | `DetectorArchitecture.png` (117 KB) | Structure and common pattern of all 35 detectors |
+| Detector Architecture | `detector-architecture.puml` | `DetectorArchitecture.png` (117 KB) | The structure every detector shares, drawn with a representative sample rather than all 127 |
 
 **Total Size**: ~1.6 MB
 

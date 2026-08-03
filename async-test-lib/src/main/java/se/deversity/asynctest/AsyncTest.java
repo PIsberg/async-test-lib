@@ -1488,7 +1488,7 @@ public @interface AsyncTest {
     /**
      * Enable CompletableFuture obtrude abuse detection. Flags calls to obtrudeValue()
      * or obtrudeException() which bypass normal async pipelines.
-     * @since 1.8.0
+     * @since 1.7.0
      *
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#COMPLETABLE_FUTURE_OBTRUDE_ABUSE} instead of this per-detector boolean flag.
@@ -1499,7 +1499,7 @@ public @interface AsyncTest {
     /**
      * Enable spurious wakeup hazard detection. Flags wait() or await() calls that
      * are not wrapped inside a while loop condition check.
-     * @since 1.8.0
+     * @since 1.7.0
      *
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SPURIOUS_WAKEUP_HAZARD} instead of this per-detector boolean flag.
@@ -1510,7 +1510,7 @@ public @interface AsyncTest {
     /**
      * Enable read-write lock upgrade deadlock detection. Flags attempts to upgrade
      * a read lock to a write lock on the same thread.
-     * @since 1.8.0
+     * @since 1.7.0
      *
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#LOCK_UPGRADE_DEADLOCK} instead of this per-detector boolean flag.
@@ -1520,7 +1520,7 @@ public @interface AsyncTest {
 
     /**
      * Enable tryLock misuse detection. Flags calls to unlock() without a successful tryLock().
-     * @since 1.8.0
+     * @since 1.7.0
      *
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#TRY_LOCK_MISUSE} instead of this per-detector boolean flag.
@@ -1531,7 +1531,7 @@ public @interface AsyncTest {
     /**
      * Enable CompletableFuture blocking callback detection. Flags blocking calls inside
      * CompletableFuture pipeline callbacks.
-     * @since 1.8.0
+     * @since 1.7.0
      *
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#COMPLETABLE_FUTURE_BLOCKING_CALLBACK} instead of this per-detector boolean flag.
@@ -1658,7 +1658,7 @@ public @interface AsyncTest {
      * suppliers, null-producing suppliers (NPE on JDK 26), computations that run more than
      * once, non-deterministic suppliers, and compute convoys. See
      * {@link se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector}.
-     * @since 1.8.0
+     * @since 1.7.0
      *
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#LAZY_CONSTANT_MISUSE} instead of this per-detector boolean flag.
@@ -1672,7 +1672,7 @@ public @interface AsyncTest {
      * {@code Field.set(...)} on {@code final} fields — warned on JDK 26, denied in a future
      * release, and a JMM final-field publication-guarantee violation today. See
      * {@link se.deversity.asynctest.diagnostics.FinalFieldMutationDetector}.
-     * @since 1.8.0
+     * @since 1.7.0
      *
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#FINAL_FIELD_MUTATION} instead of this per-detector boolean flag.
@@ -1686,7 +1686,7 @@ public @interface AsyncTest {
      * documented as not thread-safe unless the provider says otherwise; concurrent
      * {@code deriveKey}/{@code deriveData} calls can silently derive wrong keys. See
      * {@link se.deversity.asynctest.diagnostics.SharedKdfDetector}.
-     * @since 1.8.0
+     * @since 1.7.0
      *
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SHARED_KDF} instead of this per-detector boolean flag.

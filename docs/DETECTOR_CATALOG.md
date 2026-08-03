@@ -2365,7 +2365,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ---
 
-## Phase 15: Asynchronous Flow & Lock-Usage Hazards (1.8.0+)
+## Phase 15: Asynchronous Flow & Lock-Usage Hazards (1.7.0+)
 
 ### 107. CompletableFuture Obtrude Detector
 * **Severity**: `HIGH`
@@ -2795,7 +2795,7 @@ JDK 24/25/26.
   assertTrue(d.analyze().hasIssues());   // fires once seen on >1 thread without a combiner
   ```
 
-### D. LazyConstant Misuse Detector (Phase 18, 1.8.0+)
+### D. LazyConstant Misuse Detector (Phase 18, 1.7.0+)
 * **Class**: `LazyConstantMisuseDetector` · **JDK feature**: `LazyConstant` (Lazy Constants, second preview JDK 26 — renamed, simplified successor of `StableValue`)
 * **Severity**: `CRITICAL` (reentrant supplier) · `HIGH` (null value / repeat computation / non-determinism) · `LOW` (compute convoy)
 * **Description**: `LazyConstant.of(supplier)` computes at most once on first `get()`,
@@ -2826,7 +2826,7 @@ JDK 24/25/26.
   assertTrue(d.analyze().hasIssues());
   ```
 
-### E. Final Field Mutation Detector (Phase 18, 1.8.0+)
+### E. Final Field Mutation Detector (Phase 18, 1.7.0+)
 * **Class**: `FinalFieldMutationDetector` · **JDK feature**: JEP 500 — Warnings About Uses of Deep Reflection to Mutate Final Fields (JDK 26)
 * **Severity**: `HIGH` (any reflective final-field write) · `CRITICAL` (racing readers / concurrent mutators)
 * **Description**: JDK 26 warns on `Field.set(...)` of `final` fields
@@ -2853,7 +2853,7 @@ JDK 24/25/26.
   assertTrue(d.analyze().hasIssues());
   ```
 
-### F. Shared KDF Detector (Phase 18, 1.8.0+)
+### F. Shared KDF Detector (Phase 18, 1.7.0+)
 * **Class**: `SharedKdfDetector` · **JDK feature**: `javax.crypto.KDF` (JEP 510 — Key Derivation Function API, final JDK 25)
 * **Severity**: `HIGH`
 * **Description**: The `KDF` javadoc documents the type as **not thread-safe** unless the
@@ -2884,7 +2884,7 @@ JDK 24/25/26.
   assertTrue(d.analyze().hasIssues());
   ```
 
-### JDK 26 additions to existing detectors (1.8.0+)
+### JDK 26 additions to existing detectors (1.7.0+)
 
 * **`StructuredTaskScopeMisuseDetector`** — the JDK 26 sixth preview (JEP 525) adds
   `Joiner.onTimeout()`. New events: `recordJoinTimeout(scopeId, thread)` (join hit its

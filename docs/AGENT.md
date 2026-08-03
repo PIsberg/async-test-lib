@@ -5,7 +5,7 @@ records field-access telemetry from your code **without any source changes**. Th
 covers what it is, why it exists, how to attach it three different ways, how to consume the
 events it produces, how instrumentation scope is controlled, and its honest limitations.
 
-> **Artifact:** `se.deversity.async-test-lib:async-test-agent` — a **separate module** since 1.8.0
+> **Artifact:** `se.deversity.async-test-lib:async-test-agent` — a **separate module** since 1.7.0
 > **Package:** `se.deversity.asynctest.agent`
 > **Entry points:** `AsyncTestAgent.premain` / `agentmain` / `selfAttach`
 > **Since:** agent 1.6.0; dynamic self-attach, package filters, diagnostics, and the

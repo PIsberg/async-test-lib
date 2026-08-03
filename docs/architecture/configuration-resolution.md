@@ -24,15 +24,22 @@ excludes always win over explicit enables.**
 
 1. **includes** — a non-empty `includes` forces the `detectAll` path and excludes every type not
    listed. Explicit excludes still apply on top.
-2. **detectAll branch** — every type enabled unless excluded; one `if`/`else` pair per type.
-3. **non-detectAll branch** — explicit per-flag enables are respected, then excludes are applied;
-   one `if` per type.
+2. **one expression per type** — `build()` collapses the rest into a single line per detector:
 
-**Both branches must enumerate every `DetectorType`.** A type missing from either branch is a real
-bug — 10 types were missing from the excludes branch until mutation testing caught it. The exhaustive
-per-type mapping test in
+   ```java
+   detectDeadlocks = (detectAll || detectDeadlocks) && !excludes.contains(DetectorType.DEADLOCKS);
+   ```
+
+   `detectAll || flag` covers "on because everything is on" and "on because it was asked for";
+   `&& !excludes.contains(...)` gives excludes the last word in both cases.
+
+**That line must exist for every `DetectorType`.** A type missing from it is a real bug: it can be
+neither enabled by `detectAll` nor disabled by `excludes`. Ten types were once missing from what was
+then a separate excludes branch, and mutation testing caught it; folding the two branches into one
+expression removed the possibility of a type being present in one and absent from the other. The
+exhaustive per-type mapping test in
 `async-test-lib/src/test/java/se/deversity/asynctest/AsyncTestConfigBuildResolutionTest.java`
-derives the type→flag mapping empirically and pins both branches.
+derives the type→flag mapping empirically and pins it.
 
 ## DetectorType and Preset
 
