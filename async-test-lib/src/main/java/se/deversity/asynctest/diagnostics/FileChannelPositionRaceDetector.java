@@ -156,7 +156,9 @@ public final class FileChannelPositionRaceDetector {
         /** The structured violations. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

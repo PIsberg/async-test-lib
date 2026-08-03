@@ -49,6 +49,10 @@ public class FalseSharingDetector {
     
     /**
      * Record a field access. Call this when a field is accessed in your test.
+     *
+     * @param object the object
+     * @param fieldName the field name
+     * @param fieldType the field type
      */
     public void recordFieldAccess(Object object, String fieldName, Class<?> fieldType) {
         if (!enabled || object == null) return;
@@ -72,6 +76,8 @@ public class FalseSharingDetector {
     
     /**
      * Analyze for false sharing patterns.
+     *
+     * @return the analyze false sharing
      */
     public FalseSharingReport analyzeFalseSharing() {
         FalseSharingReport report = new FalseSharingReport();
@@ -115,6 +121,8 @@ public class FalseSharingDetector {
 
     /**
      * Standardized alias for {@link #analyzeFalseSharing()}.
+     *
+     * @return the analyze
      */
     public FalseSharingReport analyze() {
         return analyzeFalseSharing();
@@ -215,7 +223,9 @@ public class FalseSharingDetector {
         /** The high contention fields. */
         public final Set<String> highContentionFields = new HashSet<>();
         
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !falseSharedPairs.isEmpty() || !highContentionFields.isEmpty();
         }

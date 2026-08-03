@@ -79,7 +79,9 @@ public class MdcContextLeakDetector {
         snap.endMdc = mdcSnapshot != null ? new LinkedHashMap<>(mdcSnapshot) : Collections.emptyMap();
     }
 
-    /** {@return report of threads that left MDC entries behind after task completion} */
+    /**
+     * {@return report of threads that left MDC entries behind after task completion}
+     */
     public MdcContextLeakReport analyze() {
         MdcContextLeakReport r = new MdcContextLeakReport();
         for (TaskSnapshot snap : snapshots.values()) {
@@ -100,7 +102,9 @@ public class MdcContextLeakDetector {
     public static class MdcContextLeakReport {
         final List<String> violations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

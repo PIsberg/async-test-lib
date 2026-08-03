@@ -45,7 +45,13 @@ public class AtomicNonAtomicUpdateDetector {
             id -> new AtomicState(name != null ? name : "Atomic@" + id));
     }
 
-    /** Call after {@code atomic.get()}. */
+    /**
+     * Call after {@code atomic.get()}.
+     *
+     * @param atomic the atomic
+     * @param name the name
+     * @param thread the thread
+     */
     public void recordGet(Object atomic, String name, Thread thread) {
         if (atomic == null || thread == null) return;
         stateFor(atomic, name).pendingGetByThread.put(thread.threadId(), 1);
@@ -55,6 +61,10 @@ public class AtomicNonAtomicUpdateDetector {
      * Call after {@code atomic.set()} (a non-CAS write).
      * If the same thread previously called {@link #recordGet} without an intervening CAS,
      * the sequence is flagged as a lost-update race.
+     *
+     * @param atomic the atomic
+     * @param name the name
+     * @param thread the thread
      */
     public void recordSet(Object atomic, String name, Thread thread) {
         if (atomic == null || thread == null) return;
@@ -68,13 +78,21 @@ public class AtomicNonAtomicUpdateDetector {
         }
     }
 
-    /** Call after a successful {@code atomic.compareAndSet()} — clears the pending-get flag. */
+    /**
+     * Call after a successful {@code atomic.compareAndSet()} — clears the pending-get flag.
+     *
+     * @param atomic the atomic
+     * @param name the name
+     * @param thread the thread
+     */
     public void recordCas(Object atomic, String name, Thread thread) {
         if (atomic == null || thread == null) return;
         stateFor(atomic, name).pendingGetByThread.remove(thread.threadId());
     }
 
-    /** {@return report of non-atomic compound updates} */
+    /**
+     * {@return report of non-atomic compound updates}
+     */
     public AtomicNonAtomicUpdateReport analyze() {
         AtomicNonAtomicUpdateReport r = new AtomicNonAtomicUpdateReport();
         for (AtomicState s : atomics.values()) {
@@ -92,7 +110,9 @@ public class AtomicNonAtomicUpdateDetector {
         final List<String> violations = new ArrayList<>();
         final List<String> details    = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

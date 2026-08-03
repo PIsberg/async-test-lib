@@ -205,6 +205,8 @@ public class UnboundedQueueDetector {
 
     /**
      * Set the warning threshold for queue size.
+     *
+     * @param threshold the threshold
      */
     public void setWarningThreshold(int threshold) {
         this.warningThreshold = threshold;
@@ -249,12 +251,16 @@ public class UnboundedQueueDetector {
             this.totalTracked = totalTracked;
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !events.isEmpty();
         }
 
-        /** {@return the events} */
+        /**
+         * {@return the events}
+         */
         public List<UnboundedQueueEvent> getEvents() {
             return List.copyOf(events);
         }

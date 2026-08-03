@@ -23,6 +23,9 @@ public class ThreadFactoryDetector {
 
     /**
      * Register a ThreadFactory for monitoring.
+     *
+     * @param factory the factory
+     * @param name the name
      */
     public void registerFactory(ThreadFactory factory, String name) {
         factoryRegistry.put(factory, new FactoryInfo(name));
@@ -30,6 +33,10 @@ public class ThreadFactoryDetector {
 
     /**
      * Record a thread created by factory.
+     *
+     * @param factory the factory
+     * @param factoryName the factory name
+     * @param thread the thread
      */
     public void recordThreadCreated(ThreadFactory factory, String factoryName, Thread thread) {
         FactoryInfo info = factoryRegistry.get(factory);
@@ -55,6 +62,8 @@ public class ThreadFactoryDetector {
 
     /**
      * Analyze ThreadFactory usage and return report.
+     *
+     * @return the analyze
      */
     public ThreadFactoryReport analyze() {
         return new ThreadFactoryReport(
@@ -82,7 +91,9 @@ public class ThreadFactoryDetector {
             this.unnamedThreads = Collections.unmodifiableSet(new HashSet<>(unnamedThreads));
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !missingExceptionHandler.isEmpty() 
                 || !nonDaemonThreads.isEmpty()

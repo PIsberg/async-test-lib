@@ -143,7 +143,9 @@ public class InheritableThreadLocalMisuseDetector {
         final List<String> pooledSetIssues  = new ArrayList<>();
         final List<String> multiThreadAccess = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !pooledGetIssues.isEmpty()
                 || !pooledSetIssues.isEmpty()

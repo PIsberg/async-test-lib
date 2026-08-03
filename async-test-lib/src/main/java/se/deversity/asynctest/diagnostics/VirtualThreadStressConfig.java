@@ -47,33 +47,45 @@ public class VirtualThreadStressConfig {
         this.enableVirtualThreadEvents = enableVirtualThreadEvents;
         this.timeoutMs = timeoutMs;
     }
-    /** {@return the builder} */
+    /**
+     * {@return the builder}
+     */
     
     public static Builder builder() {
         return new Builder();
     }
     
-    /** {@return the stress level} */
+    /**
+     * {@return the stress level}
+     */
     public StressLevel getStressLevel() {
         return stressLevel;
     }
     
-    /** {@return the thread count} */
+    /**
+     * {@return the thread count}
+     */
     public int getThreadCount() {
         return stressLevel.threadCount;
     }
     
-    /** {@return whether detect thread pinning} */
+    /**
+     * {@return whether detect thread pinning}
+     */
     public boolean isDetectThreadPinning() {
         return detectThreadPinning;
     }
     
-    /** {@return whether enable virtual thread events} */
+    /**
+     * {@return whether enable virtual thread events}
+     */
     public boolean isEnableVirtualThreadEvents() {
         return enableVirtualThreadEvents;
     }
     
-    /** {@return the timeout in milliseconds} */
+    /**
+     * {@return the timeout in milliseconds}
+     */
     public long getTimeoutMs() {
         return timeoutMs;
     }
@@ -127,7 +139,9 @@ public class VirtualThreadStressConfig {
             this.timeoutMs = timeout;
             return this;
         }
-        /** {@return the build} */
+        /**
+         * {@return the build}
+         */
         
         public VirtualThreadStressConfig build() {
             return new VirtualThreadStressConfig(stressLevel, detectThreadPinning, 
@@ -137,6 +151,8 @@ public class VirtualThreadStressConfig {
     
     /**
      * Helper to check if this JVM supports virtual threads (Java 21+).
+     *
+     * @return the is virtual thread supported
      */
     public static boolean isVirtualThreadSupported() {
         try {
@@ -150,6 +166,8 @@ public class VirtualThreadStressConfig {
     /**
      * Utility to create a virtual thread executor with potential pinning detection.
      * Returns executor class name if virtual threads are available.
+     *
+     * @return the get virtual thread executor class
      */
     public static String getVirtualThreadExecutorClass() {
         if (isVirtualThreadSupported()) {

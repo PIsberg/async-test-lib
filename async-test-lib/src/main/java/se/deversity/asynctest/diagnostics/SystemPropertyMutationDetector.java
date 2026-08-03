@@ -72,7 +72,9 @@ public class SystemPropertyMutationDetector {
         events.add(new MutationEvent(key, null, thread.threadId(), thread.getName(), "clear"));
     }
 
-    /** {@return report of concurrent system property mutations} */
+    /**
+     * {@return report of concurrent system property mutations}
+     */
     public SystemPropertyMutationReport analyze() {
         SystemPropertyMutationReport r = new SystemPropertyMutationReport();
 
@@ -118,7 +120,9 @@ public class SystemPropertyMutationDetector {
         final List<String> violations             = new ArrayList<>();
         final List<String> singleThreadMutations  = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

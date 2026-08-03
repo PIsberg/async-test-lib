@@ -69,7 +69,9 @@ public class FutureIgnoredDetector {
         if (rec != null) rec.inspected = true;
     }
 
-    /** {@return report of Futures that were submitted but never inspected} */
+    /**
+     * {@return report of Futures that were submitted but never inspected}
+     */
     public FutureIgnoredReport analyze() {
         FutureIgnoredReport r = new FutureIgnoredReport();
         for (SubmitRecord rec : submits.values()) {
@@ -87,7 +89,9 @@ public class FutureIgnoredDetector {
     public static class FutureIgnoredReport {
         final List<String> violations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

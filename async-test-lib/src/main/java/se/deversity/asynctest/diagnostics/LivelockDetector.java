@@ -85,6 +85,8 @@ public class LivelockDetector {
     
     /**
      * Analyze captured snapshots for livelock and starvation patterns.
+     *
+     * @return the analyze livelocks
      */
     public LivelockReport analyzeLivelocks() {
         LivelockReport report = new LivelockReport();
@@ -116,6 +118,8 @@ public class LivelockDetector {
 
     /**
      * Standardized alias for {@link #analyzeLivelocks()}.
+     *
+     * @return the analyze
      */
     public LivelockReport analyze() {
         return analyzeLivelocks();
@@ -202,7 +206,9 @@ public class LivelockDetector {
         /** The no progress threads. */
         public final Set<String> noProgressThreads = new HashSet<>();
         
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !starvedThreads.isEmpty() || !livelockCandidates.isEmpty() || !noProgressThreads.isEmpty();
         }

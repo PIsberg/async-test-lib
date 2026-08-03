@@ -70,7 +70,9 @@ public class CompletableFutureCommonPoolBlockingDetector {
             thread.getName(), type, name));
     }
 
-    /** {@return report of blocking calls in common-pool futures} */
+    /**
+     * {@return report of blocking calls in common-pool futures}
+     */
     public CompletableFutureCommonPoolBlockingReport analyze() {
         CompletableFutureCommonPoolBlockingReport r = new CompletableFutureCommonPoolBlockingReport();
         r.violations.addAll(violations);
@@ -81,7 +83,9 @@ public class CompletableFutureCommonPoolBlockingDetector {
     public static class CompletableFutureCommonPoolBlockingReport {
         final List<String> violations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

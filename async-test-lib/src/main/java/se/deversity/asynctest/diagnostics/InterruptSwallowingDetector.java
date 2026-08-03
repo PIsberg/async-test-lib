@@ -59,7 +59,9 @@ public class InterruptSwallowingDetector {
                 location != null ? location : "unknown", restored));
     }
 
-    /** {@return report of threads that swallowed an InterruptedException} */
+    /**
+     * {@return report of threads that swallowed an InterruptedException}
+     */
     public InterruptSwallowingReport analyze() {
         InterruptSwallowingReport r = new InterruptSwallowingReport();
         for (CatchEvent e : events) {
@@ -78,7 +80,9 @@ public class InterruptSwallowingDetector {
     public static class InterruptSwallowingReport {
         final List<String> violations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

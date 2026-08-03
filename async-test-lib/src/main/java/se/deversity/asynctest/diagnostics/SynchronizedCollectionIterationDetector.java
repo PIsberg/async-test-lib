@@ -45,7 +45,12 @@ public class SynchronizedCollectionIterationDetector {
 
     private final Map<Integer, WrapperInfo> wrappers = new ConcurrentHashMap<>();
 
-    /** Register a synchronized wrapper created by {@code Collections.synchronized*(collection)}. */
+    /**
+     * Register a synchronized wrapper created by {@code Collections.synchronized*(collection)}.
+     *
+     * @param wrapper the wrapper
+     * @param name the name
+     */
     public void recordWrapperCreated(Object wrapper, String name) {
         if (wrapper == null) return;
         String label = name != null ? name : "collection@" + System.identityHashCode(wrapper);
@@ -70,7 +75,9 @@ public class SynchronizedCollectionIterationDetector {
             thread.getName(), info.name, info.name));
     }
 
-    /** {@return report of unsafe iterations} */
+    /**
+     * {@return report of unsafe iterations}
+     */
     public SynchronizedCollectionIterationReport analyze() {
         SynchronizedCollectionIterationReport r = new SynchronizedCollectionIterationReport();
         for (WrapperInfo w : wrappers.values()) {
@@ -88,7 +95,9 @@ public class SynchronizedCollectionIterationDetector {
         final List<String> violations = new ArrayList<>();
         final List<String> details    = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

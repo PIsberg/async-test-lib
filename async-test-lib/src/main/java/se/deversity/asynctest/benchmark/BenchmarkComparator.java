@@ -170,6 +170,9 @@ public class BenchmarkComparator {
 
     /**
      * Load baseline for a specific benchmark key.
+     *
+     * @param benchmarkKey the benchmark key
+     * @return the load baseline
      */
     public Optional<BenchmarkResult> loadBaseline(String benchmarkKey) {
         File storeFile = benchmarkStorePath.toFile();
@@ -224,6 +227,8 @@ public class BenchmarkComparator {
 
     /**
      * Save a benchmark result as the new baseline.
+     *
+     * @param result the result
      */
     public void saveBaseline(BenchmarkResult result) {
         Map<String, BenchmarkResult> store = loadAllBaselines();

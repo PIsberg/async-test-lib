@@ -234,6 +234,8 @@ public class ThreadStarvationDetector {
 
     /**
      * Set the starvation threshold in milliseconds.
+     *
+     * @param thresholdMs the threshold in milliseconds
      */
     public void setStarvationThresholdMs(long thresholdMs) {
         this.starvationThresholdMs = thresholdMs;
@@ -278,12 +280,16 @@ public class ThreadStarvationDetector {
             this.maxWaitTimeMs = maxWaitTimeMs;
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !events.isEmpty();
         }
 
-        /** {@return the events} */
+        /**
+         * {@return the events}
+         */
         public List<StarvationEventSnapshot> getEvents() {
             return List.copyOf(events);
         }

@@ -39,6 +39,10 @@ public final class CompletableFutureObtrudeDetector {
 
     /**
      * Record an obtrude action on a CompletableFuture.
+     *
+     * @param future the future
+     * @param label the label
+     * @param thread the thread
      */
     public void recordObtrude(CompletableFuture<?> future, String label, Thread thread) {
         if (future == null || thread == null) return;
@@ -84,7 +88,9 @@ public final class CompletableFutureObtrudeDetector {
         /** The structured violations. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

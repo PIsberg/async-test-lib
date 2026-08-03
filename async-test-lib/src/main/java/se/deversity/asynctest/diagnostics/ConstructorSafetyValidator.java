@@ -51,6 +51,8 @@ public class ConstructorSafetyValidator {
     
     /**
      * Mark the start of object construction.
+     *
+     * @param object the object
      */
     public void recordConstructionStart(Object object) {
         if (!enabled || object == null) return;
@@ -62,6 +64,8 @@ public class ConstructorSafetyValidator {
     
     /**
      * Mark the end of object construction.
+     *
+     * @param object the object
      */
     public void recordConstructionEnd(Object object) {
         if (!enabled) return;
@@ -76,6 +80,10 @@ public class ConstructorSafetyValidator {
     
     /**
      * Record a field access to a partially constructed object.
+     *
+     * @param object the object
+     * @param fieldName the field name
+     * @param timestamp the timestamp
      */
     public void recordFieldAccess(Object object, String fieldName, long timestamp) {
         if (!enabled) return;
@@ -107,6 +115,8 @@ public class ConstructorSafetyValidator {
     
     /**
      * Validate constructor safety.
+     *
+     * @return the validate constructor safety
      */
     public ConstructorSafetyReport validateConstructorSafety() {
         ConstructorSafetyReport report = new ConstructorSafetyReport();
@@ -184,7 +194,9 @@ public class ConstructorSafetyValidator {
         /** The fields accessed during construction. */
         public final Set<String> fieldsAccessedDuringConstruction = new HashSet<>();
         
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !unsafeObjects.isEmpty() || !fieldsAccessedDuringConstruction.isEmpty();
         }

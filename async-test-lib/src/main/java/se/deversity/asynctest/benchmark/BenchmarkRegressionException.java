@@ -19,7 +19,9 @@ public class BenchmarkRegressionException extends RuntimeException {
         this.comparisonResult = comparisonResult;
     }
 
-    /** {@return the comparison result} */
+    /**
+     * {@return the comparison result}
+     */
     public @Nullable BenchmarkComparisonResult getComparisonResult() {
         return comparisonResult;
     }

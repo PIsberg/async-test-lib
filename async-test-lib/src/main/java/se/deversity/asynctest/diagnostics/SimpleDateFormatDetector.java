@@ -200,6 +200,8 @@ public class SimpleDateFormatDetector {
 
         /**
          * Check if any issues were detected.
+         *
+         * @return the has issues
          */
         public boolean hasIssues() {
             return !sharedFormatters.isEmpty() || !formattingErrors.isEmpty();

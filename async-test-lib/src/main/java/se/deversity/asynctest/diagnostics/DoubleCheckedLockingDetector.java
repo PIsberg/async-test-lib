@@ -31,6 +31,12 @@ public class DoubleCheckedLockingDetector {
 
     /**
      * Register a double-checked locking pattern for monitoring.
+     *
+     * @param fieldName the field name
+     * @param isVolatile the {@code isVolatile} flag
+     * @param hasFirstCheck the {@code hasFirstCheck} flag
+     * @param hasSecondCheck the {@code hasSecondCheck} flag
+     * @param insideSynchronized the {@code insideSynchronized} flag
      */
     public void registerDCL(String fieldName, boolean isVolatile, boolean hasFirstCheck, 
                            boolean hasSecondCheck, boolean insideSynchronized) {
@@ -46,6 +52,10 @@ public class DoubleCheckedLockingDetector {
 
     /**
      * Record access to a field that might use DCL.
+     *
+     * @param fieldName the field name
+     * @param isRead the {@code isRead} flag
+     * @param isWrite the {@code isWrite} flag
      */
     public void recordAccess(String fieldName, boolean isRead, boolean isWrite) {
         DCLInfo info = dclRegistry.get(fieldName);
@@ -57,6 +67,8 @@ public class DoubleCheckedLockingDetector {
 
     /**
      * Analyze DCL patterns and return report.
+     *
+     * @return the analyze
      */
     public DoubleCheckedLockingReport analyze() {
         return new DoubleCheckedLockingReport(dclRegistry, brokenDCLs);
@@ -77,7 +89,9 @@ public class DoubleCheckedLockingDetector {
             this.brokenDCLs = Collections.unmodifiableSet(new HashSet<>(brokenDCLs));
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !brokenDCLs.isEmpty();
         }

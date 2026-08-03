@@ -39,7 +39,12 @@ public class ThreadLocalContaminationDetector {
     private final Map<Long, ThreadState> threadStates   = new ConcurrentHashMap<>();
     private final List<String>           contaminations = new CopyOnWriteArrayList<>();
 
-    /** Call at the start of each task submitted to a thread pool. */
+    /**
+     * Call at the start of each task submitted to a thread pool.
+     *
+     * @param thread the thread
+     * @param taskName the task name
+     */
     public void recordNewTask(Thread thread, String taskName) {
         if (thread == null) return;
         ThreadState s = threadStates.computeIfAbsent(thread.threadId(), id -> new ThreadState());
@@ -47,7 +52,13 @@ public class ThreadLocalContaminationDetector {
         s.currentTaskName = taskName != null ? taskName : "task-" + s.taskCount;
     }
 
-    /** Call after each {@code ThreadLocal.set()} inside a task. */
+    /**
+     * Call after each {@code ThreadLocal.set()} inside a task.
+     *
+     * @param thread the thread
+     * @param tl the tl
+     * @param name the name
+     */
     public void recordSet(Thread thread, Object tl, String name) {
         if (thread == null || tl == null) return;
         ThreadState s = threadStates.get(thread.threadId());
@@ -61,6 +72,10 @@ public class ThreadLocalContaminationDetector {
      * Call after each {@code ThreadLocal.get()} inside a task.
      *
      * @param hasValue {@code true} if the get returned a non-null value
+     *
+     * @param thread the thread
+     * @param tl the tl
+     * @param name the name
      */
     public void recordGet(Thread thread, Object tl, String name, boolean hasValue) {
         if (thread == null || tl == null || !hasValue) return;
@@ -76,7 +91,9 @@ public class ThreadLocalContaminationDetector {
         }
     }
 
-    /** {@return report of cross-task ThreadLocal contaminations} */
+    /**
+     * {@return report of cross-task ThreadLocal contaminations}
+     */
     public ThreadLocalContaminationReport analyze() {
         ThreadLocalContaminationReport r = new ThreadLocalContaminationReport();
         r.contaminations.addAll(contaminations);
@@ -87,7 +104,9 @@ public class ThreadLocalContaminationDetector {
     public static class ThreadLocalContaminationReport {
         final List<String> contaminations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !contaminations.isEmpty(); }
 
         @Override

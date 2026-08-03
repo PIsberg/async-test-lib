@@ -37,6 +37,11 @@ public final class TryLockMisuseDetector {
 
     /**
      * Record the result of a tryLock() call.
+     *
+     * @param lock the lock
+     * @param lockName the lock name
+     * @param acquired the {@code acquired} flag
+     * @param thread the thread
      */
     public void recordTryLockResult(Object lock, String lockName, boolean acquired, Thread thread) {
         if (lock == null || thread == null) return;
@@ -46,6 +51,10 @@ public final class TryLockMisuseDetector {
 
     /**
      * Record an unlock() call.
+     *
+     * @param lock the lock
+     * @param lockName the lock name
+     * @param thread the thread
      */
     public void recordUnlock(Object lock, String lockName, Thread thread) {
         if (lock == null || thread == null) return;
@@ -97,7 +106,9 @@ public final class TryLockMisuseDetector {
         /** The structured violations. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

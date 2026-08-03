@@ -75,6 +75,10 @@ public class ABAProblemDetector {
     
     /**
      * Record a value change in an atomic variable.
+     *
+     * @param variableName the variable name
+     * @param oldValue the old value
+     * @param newValue the new value
      */
     public void recordValueChange(String variableName, Object oldValue, Object newValue) {
         if (!enabled) return;
@@ -94,6 +98,12 @@ public class ABAProblemDetector {
     
     /**
      * Record a CAS (Compare-And-Swap) attempt.
+     *
+     * @param variableName the variable name
+     * @param expectedValue the expected value
+     * @param newValue the new value
+     * @param succeeded the {@code succeeded} flag
+     * @param actualCurrentValue the actual current value
      */
     public void recordCASAttempt(String variableName, Object expectedValue, Object newValue, 
                                  boolean succeeded, Object actualCurrentValue) {
@@ -183,6 +193,8 @@ public class ABAProblemDetector {
     
     /**
      * Analyze for ABA problems.
+     *
+     * @return the analyze ABA
      */
     public ABAReport analyzeABA() {
         ABAReport report = new ABAReport();
@@ -209,6 +221,8 @@ public class ABAProblemDetector {
 
     /**
      * Standardized alias for {@link #analyzeABA()}.
+     *
+     * @return the analyze
      */
     public ABAReport analyze() {
         return analyzeABA();
@@ -241,7 +255,9 @@ public class ABAProblemDetector {
         /** The successful ABA cases. */
         public final Set<String> successfulABACases = new HashSet<>();
         
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !variablesWithCycles.isEmpty() || !successfulABACases.isEmpty();
         }

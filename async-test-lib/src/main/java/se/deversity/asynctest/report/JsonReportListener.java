@@ -126,6 +126,8 @@ public final class JsonReportListener implements AsyncTestListener {
 
     /**
      * Returns the number of accumulated findings.
+     *
+     * @return the get finding count
      */
     public int getFindingCount() {
         return findings.size();

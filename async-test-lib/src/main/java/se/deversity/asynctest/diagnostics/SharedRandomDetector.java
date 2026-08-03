@@ -156,6 +156,8 @@ public class SharedRandomDetector {
 
         /**
          * Check if any issues were detected.
+         *
+         * @return the has issues
          */
         public boolean hasIssues() {
             return !sharedRandoms.isEmpty() || !highContention.isEmpty();

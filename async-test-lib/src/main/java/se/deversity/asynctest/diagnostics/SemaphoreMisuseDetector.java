@@ -172,6 +172,8 @@ public class SemaphoreMisuseDetector {
 
         /**
          * Check if any issues were detected.
+         *
+         * @return the has issues
          */
         public boolean hasIssues() {
             return !permitLeaks.isEmpty() || !overReleases.isEmpty() || !unreleasedPermits.isEmpty();

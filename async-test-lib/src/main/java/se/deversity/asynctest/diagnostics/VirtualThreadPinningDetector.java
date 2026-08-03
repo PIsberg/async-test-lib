@@ -80,6 +80,9 @@ public class VirtualThreadPinningDetector {
      * Classifies a caller-supplied blocking-operation description.
      *
      * @since 1.7.0
+     *
+     * @param blockingOperation the blocking operation
+     * @return the classify operation
      */
     public static PinningCause classifyOperation(String blockingOperation) {
         if (blockingOperation == null) return PinningCause.OTHER;
@@ -104,6 +107,10 @@ public class VirtualThreadPinningDetector {
      * version (e.g. {@code 21}, {@code 24}, {@code 26}).
      *
      * @since 1.7.0
+     *
+     * @param cause the cause
+     * @param jdkFeatureVersion the jdk feature version
+     * @return the still pins on
      */
     public static boolean stillPinsOn(PinningCause cause, int jdkFeatureVersion) {
         return switch (cause) {
@@ -355,6 +362,8 @@ public class VirtualThreadPinningDetector {
          * Returns how many recorded events no longer pin on the running JDK.
          *
          * @since 1.7.0
+         *
+         * @return the get obsolete event count
          */
         public long getObsoleteEventCount() {
             return events.stream().filter(PinningEventSnapshot::isObsoleteOnCurrentJdk).count();
@@ -447,6 +456,8 @@ public class VirtualThreadPinningDetector {
          * Returns the classified cause of this pinning event.
          *
          * @since 1.7.0
+         *
+         * @return the get cause
          */
         public PinningCause getCause() {
             return cause;
@@ -458,6 +469,8 @@ public class VirtualThreadPinningDetector {
          * waits on JDK 26+).
          *
          * @since 1.7.0
+         *
+         * @return the is obsolete on current jdk
          */
         public boolean isObsoleteOnCurrentJdk() {
             return obsoleteOnCurrentJdk;

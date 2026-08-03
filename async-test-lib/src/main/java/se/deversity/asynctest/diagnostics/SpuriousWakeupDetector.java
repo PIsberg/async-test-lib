@@ -36,6 +36,11 @@ public final class SpuriousWakeupDetector {
 
     /**
      * Record a wait/await operation.
+     *
+     * @param monitor the monitor
+     * @param monitorName the monitor name
+     * @param insideLoop the {@code insideLoop} flag
+     * @param thread the thread
      */
     public void recordWait(Object monitor, String monitorName, boolean insideLoop, Thread thread) {
         if (monitor == null || thread == null) return;
@@ -84,7 +89,9 @@ public final class SpuriousWakeupDetector {
         /** The structured violations. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

@@ -171,7 +171,9 @@ public class BoxedPrimitiveLockDetector {
         return null;
     }
 
-    /** {@return report of synchronizations on cached boxed primitives or value-based classes} */
+    /**
+     * {@return report of synchronizations on cached boxed primitives or value-based classes}
+     */
     public BoxedPrimitiveLockReport analyze() {
         BoxedPrimitiveLockReport r = new BoxedPrimitiveLockReport();
         for (LockEvent e : events) {
@@ -196,7 +198,9 @@ public class BoxedPrimitiveLockDetector {
         final List<String> violations = new ArrayList<>();
         private boolean hasValueBasedIssues;
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

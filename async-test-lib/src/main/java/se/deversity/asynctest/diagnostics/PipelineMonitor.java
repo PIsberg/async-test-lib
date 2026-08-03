@@ -38,6 +38,8 @@ public class PipelineMonitor {
     
     /**
      * Register a pipeline stage.
+     *
+     * @param stageName the stage name
      */
     public void registerStage(String stageName) {
         stages.putIfAbsent(stageName, new PipelineStage(stageName));
@@ -45,6 +47,9 @@ public class PipelineMonitor {
     
     /**
      * Record event published to a stage.
+     *
+     * @param stageName the stage name
+     * @param eventId the event id
      */
     public void recordEventPublished(String stageName, String eventId) {
         if (!enabled) return;
@@ -56,6 +61,9 @@ public class PipelineMonitor {
     
     /**
      * Record event processed by a stage.
+     *
+     * @param stageName the stage name
+     * @param eventId the event id
      */
     public void recordEventProcessed(String stageName, String eventId) {
         if (!enabled) return;
@@ -69,6 +77,10 @@ public class PipelineMonitor {
     
     /**
      * Record event failure.
+     *
+     * @param stageName the stage name
+     * @param eventId the event id
+     * @param reason the reason
      */
     public void recordEventFailed(String stageName, String eventId, String reason) {
         if (!enabled) return;
@@ -83,6 +95,8 @@ public class PipelineMonitor {
     
     /**
      * Analyze pipeline for signal loss.
+     *
+     * @return the analyze pipeline
      */
     public PipelineReport analyzePipeline() {
         PipelineReport report = new PipelineReport();
@@ -117,6 +131,8 @@ public class PipelineMonitor {
 
     /**
      * Standardized alias for {@link #analyzePipeline()}.
+     *
+     * @return the analyze
      */
     public PipelineReport analyze() {
         return analyzePipeline();
@@ -152,7 +168,9 @@ public class PipelineMonitor {
         /** The low processing rate. */
         public final Set<String> lowProcessingRate = new HashSet<>();
         
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !missingEvents.isEmpty() || !failedEvents.isEmpty();
         }

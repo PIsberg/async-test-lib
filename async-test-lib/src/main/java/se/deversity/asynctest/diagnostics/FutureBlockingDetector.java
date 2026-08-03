@@ -139,7 +139,9 @@ public class FutureBlockingDetector {
         /** The starvation risks. */
         public final Set<String> starvationRisks = new HashSet<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !starvationRisks.isEmpty();
         }

@@ -38,6 +38,9 @@ public class SynchronizerMonitor {
     
     /**
      * Register a synchronizer for monitoring.
+     *
+     * @param synchronizer the synchronizer
+     * @param expectedParties the expected parties
      */
     public void registerSynchronizer(Object synchronizer, int expectedParties) {
         if (!enabled) return;
@@ -51,6 +54,8 @@ public class SynchronizerMonitor {
     
     /**
      * Record thread arriving at barrier.
+     *
+     * @param synchronizer the synchronizer
      */
     public void recordBarrierArrival(Object synchronizer) {
         if (!enabled) return;
@@ -68,6 +73,8 @@ public class SynchronizerMonitor {
     
     /**
      * Record thread advancing past barrier.
+     *
+     * @param synchronizer the synchronizer
      */
     public void recordBarrierAdvance(Object synchronizer) {
         if (!enabled) return;
@@ -82,6 +89,8 @@ public class SynchronizerMonitor {
     
     /**
      * Record barrier reset.
+     *
+     * @param synchronizer the synchronizer
      */
     public void recordBarrierReset(Object synchronizer) {
         if (!enabled) return;
@@ -97,6 +106,8 @@ public class SynchronizerMonitor {
     
     /**
      * Analyze synchronizer behavior.
+     *
+     * @return the analyze synchronizers
      */
     public SynchronizerReport analyzeSynchronizers() {
         SynchronizerReport report = new SynchronizerReport();
@@ -126,6 +137,8 @@ public class SynchronizerMonitor {
 
     /**
      * Standardized alias for {@link #analyzeSynchronizers()}.
+     *
+     * @return the analyze
      */
     public SynchronizerReport analyze() {
         return analyzeSynchronizers();
@@ -158,7 +171,9 @@ public class SynchronizerMonitor {
         /** The duplicate arrivals. */
         public final Set<String> duplicateArrivals = new HashSet<>();
         
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !incompleteBarriers.isEmpty() || !duplicateArrivals.isEmpty();
         }

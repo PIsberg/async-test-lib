@@ -85,6 +85,9 @@ public class ConcurrencyRunner {
      * transitively, since both are derived from the round timeout — the {@code CyclicBarrier}
      * await and the async-body {@code CompletionStage} wait. See
      * {@link #resolveTimeoutMultiplier()} for the CI-scaling mechanism itself.
+     *
+     * @param invocationContext the invocation context
+     * @param config the config
      */
     @AILoadBearing(
         invariant = "The timeoutAlreadyReported flag, and the per-step guarded cleanup in the "

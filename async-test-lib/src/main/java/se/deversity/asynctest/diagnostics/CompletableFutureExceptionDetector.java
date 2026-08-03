@@ -189,6 +189,8 @@ public class CompletableFutureExceptionDetector {
 
         /**
          * Check if any issues were detected.
+         *
+         * @return the has issues
          */
         public boolean hasIssues() {
             return !unhandledExceptions.isEmpty() || !missingHandlers.isEmpty() || !swallowedExceptions.isEmpty();

@@ -45,6 +45,12 @@ public class ThreadPoolMonitor {
     
     /**
      * Register a thread pool for monitoring.
+     *
+     * @param executor the executor
+     * @param name the name
+     * @param coreSize the core size
+     * @param maxSize the max size
+     * @param queueCapacity the queue capacity
      */
     public void registerPool(Object executor, String name, int coreSize, int maxSize, int queueCapacity) {
         if (!enabled) return;
@@ -55,6 +61,8 @@ public class ThreadPoolMonitor {
     
     /**
      * Record task submission.
+     *
+     * @param executor the executor
      */
     public void recordTaskSubmitted(Object executor) {
         if (!enabled) return;
@@ -69,6 +77,8 @@ public class ThreadPoolMonitor {
     
     /**
      * Record task execution start.
+     *
+     * @param executor the executor
      */
     public void recordTaskStarted(Object executor) {
         if (!enabled) return;
@@ -83,6 +93,9 @@ public class ThreadPoolMonitor {
     
     /**
      * Record task completion.
+     *
+     * @param executor the executor
+     * @param durationMs the duration in milliseconds
      */
     public void recordTaskCompleted(Object executor, long durationMs) {
         if (!enabled) return;
@@ -98,6 +111,9 @@ public class ThreadPoolMonitor {
     
     /**
      * Record task rejection.
+     *
+     * @param executor the executor
+     * @param reason the reason
      */
     public void recordTaskRejected(Object executor, String reason) {
         if (!enabled) return;
@@ -113,6 +129,8 @@ public class ThreadPoolMonitor {
     
     /**
      * Analyze pool health.
+     *
+     * @return the analyze pool health
      */
     public ThreadPoolReport analyzePoolHealth() {
         ThreadPoolReport report = new ThreadPoolReport();
@@ -152,6 +170,8 @@ public class ThreadPoolMonitor {
 
     /**
      * Standardized alias for {@link #analyzePoolHealth()}.
+     *
+     * @return the analyze
      */
     public ThreadPoolReport analyze() {
         return analyzePoolHealth();
@@ -188,7 +208,9 @@ public class ThreadPoolMonitor {
         /** The thread starvation. */
         public final Set<String> threadStarvation = new HashSet<>();
         
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !poolsWithRejections.isEmpty() || !saturatedQueues.isEmpty() || 
                    !longRunningTasks.isEmpty() || !threadStarvation.isEmpty();

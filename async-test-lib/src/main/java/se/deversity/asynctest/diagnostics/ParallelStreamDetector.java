@@ -217,6 +217,8 @@ public class ParallelStreamDetector {
 
         /**
          * Check if any issues were detected.
+         *
+         * @return the has issues
          */
         public boolean hasIssues() {
             return !statefulLambdas.isEmpty() || !nonThreadSafeCollectors.isEmpty() || !sideEffects.isEmpty();

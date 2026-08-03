@@ -165,6 +165,8 @@ public class InterruptMonitor {
 
     /**
      * Standardized alias for {@link #analyzeInterruptHandling()}.
+     *
+     * @return the analyze
      */
     public InterruptReport analyze() {
         return analyzeInterruptHandling();
@@ -203,7 +205,9 @@ public class InterruptMonitor {
         /** The blocking without handling. */
         public final Set<String> blockingWithoutHandling = new HashSet<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !ignoredInterrupts.isEmpty()
                 || !repeatedIgnoredInterrupts.isEmpty()

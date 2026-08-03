@@ -99,6 +99,8 @@ public final class DaemonThreadHygieneDetector {
      * Analyze: a thread is flagged when it (1) was not marked daemon at
      * registration time, and (2) is still alive (or never started) at analysis
      * time — i.e. has not cleanly terminated.
+     *
+     * @return the analyze
      */
     public Report analyze() {
         Report r = new Report();
@@ -173,7 +175,9 @@ public final class DaemonThreadHygieneDetector {
         /** The structured violations. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

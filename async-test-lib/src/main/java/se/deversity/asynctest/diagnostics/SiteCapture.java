@@ -67,6 +67,8 @@ public final class SiteCapture {
     /**
      * Returns the first stack frame outside the framework / JDK reflection /
      * JUnit, or {@link Optional#empty()} if none could be identified (rare).
+     *
+     * @return the capture
      */
     public static Optional<Site> capture() {
         return WALKER.walk(stream -> stream
@@ -115,7 +117,11 @@ public final class SiteCapture {
                     f.getLineNumber());
         }
 
-        /** Human-readable {@code Class.method(File.java:42)} form. */
+        /**
+         * Human-readable {@code Class.method(File.java:42)} form.
+         *
+         * @return the render
+         */
         public String render() {
             String shortClass = className.contains(".")
                     ? className.substring(className.lastIndexOf('.') + 1)

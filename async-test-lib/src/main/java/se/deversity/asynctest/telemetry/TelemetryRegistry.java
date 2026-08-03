@@ -111,7 +111,9 @@ public final class TelemetryRegistry {
         Runtime.getRuntime().addShutdownHook(shutdownHook);
     }
 
-    /** Starts the registry with a no-op drain callback (events counted but not forwarded). */
+    /**
+     * Starts the registry with a no-op drain callback (events counted but not forwarded).
+     */
     public static void start() {
         start(null);
     }
@@ -224,7 +226,11 @@ public final class TelemetryRegistry {
         drainOnce(); // final flush
     }
 
-    /** Exposes the shared buffer for testing and advanced consumers. */
+    /**
+     * Exposes the shared buffer for testing and advanced consumers.
+     *
+     * @return the buffer
+     */
     public static TelemetryEventBuffer buffer() {
         return BUFFER;
     }

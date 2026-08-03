@@ -38,6 +38,9 @@ public class VisibilityMonitor {
     /**
      * Record a field access. Call this from test code to track when a field is read/written.
      * Format: className.fieldName
+     *
+     * @param fieldIdentifier the field identifier
+     * @param value the value
      */
     public void recordFieldAccess(String fieldIdentifier, Object value) {
         if (!enabled) return;
@@ -64,6 +67,8 @@ public class VisibilityMonitor {
     
     /**
      * Analyze visibility issues. Returns a report of suspected visibility issues.
+     *
+     * @return the analyze visibility
      */
     public VisibilityReport analyzeVisibility() {
         VisibilityReport report = new VisibilityReport();
@@ -95,6 +100,8 @@ public class VisibilityMonitor {
 
     /**
      * Standardized alias for {@link #analyzeVisibility()}.
+     *
+     * @return the analyze
      */
     public VisibilityReport analyze() {
         return analyzeVisibility();
@@ -129,7 +136,9 @@ public class VisibilityMonitor {
         /** The field value variations. */
         public final Map<String, Map<Long, Set<Object>>> fieldValueVariations = new HashMap<>();
         
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !suspectedFields.isEmpty();
         }

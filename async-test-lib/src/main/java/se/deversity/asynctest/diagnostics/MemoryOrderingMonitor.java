@@ -38,6 +38,9 @@ public class MemoryOrderingMonitor {
     
     /**
      * Record a memory read.
+     *
+     * @param location the location
+     * @param value the value
      */
     public void recordRead(String location, Object value) {
         if (!enabled) return;
@@ -46,6 +49,9 @@ public class MemoryOrderingMonitor {
     
     /**
      * Record a memory write.
+     *
+     * @param location the location
+     * @param value the value
      */
     public void recordWrite(String location, Object value) {
         if (!enabled) return;
@@ -54,6 +60,8 @@ public class MemoryOrderingMonitor {
     
     /**
      * Analyze for memory ordering violations.
+     *
+     * @return the analyze ordering
      */
     public MemoryOrderingReport analyzeOrdering() {
         MemoryOrderingReport report = new MemoryOrderingReport();
@@ -101,6 +109,8 @@ public class MemoryOrderingMonitor {
 
     /**
      * Standardized alias for {@link #analyzeOrdering()}.
+     *
+     * @return the analyze
      */
     public MemoryOrderingReport analyze() {
         return analyzeOrdering();
@@ -142,7 +152,9 @@ public class MemoryOrderingMonitor {
          */
         public final Set<String> suspiciousReorderings = new HashSet<>();
         
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !staleCoreads.isEmpty() || !suspiciousReorderings.isEmpty();
         }

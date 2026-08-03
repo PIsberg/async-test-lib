@@ -208,6 +208,8 @@ public class AtomicityValidator {
 
     /**
      * Standardized alias for {@link #analyzeAtomicity()}.
+     *
+     * @return the analyze
      */
     public AtomicityReport analyze() {
         return analyzeAtomicity();
@@ -248,7 +250,9 @@ public class AtomicityValidator {
         /** The totcou races. */
         public final Set<String> totcouRaces = new HashSet<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !checkThenActViolations.isEmpty()
                 || !unsafeFieldAccesses.isEmpty()

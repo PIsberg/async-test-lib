@@ -13,7 +13,9 @@ public final class AutoFix {
 
     // ============= Deadlock Fixes =============
 
-    /** {@return the deadlock fix} */
+    /**
+     * {@return the deadlock fix}
+     */
     public static String getDeadlockFix() {
         return """
             💡 AUTO-FIX: How to Fix This Deadlock
@@ -61,7 +63,9 @@ public final class AutoFix {
 
     // ============= Race Condition Fixes =============
 
-    /** {@return the race condition fix} */
+    /**
+     * {@return the race condition fix}
+     */
     public static String getRaceConditionFix() {
         return """
             💡 AUTO-FIX: How to Fix This Race Condition
@@ -132,7 +136,9 @@ public final class AutoFix {
 
     // ============= Visibility Fixes =============
 
-    /** {@return the visibility fix} */
+    /**
+     * {@return the visibility fix}
+     */
     public static String getVisibilityFix() {
         return """
             💡 AUTO-FIX: How to Fix This Visibility Issue
@@ -169,7 +175,9 @@ public final class AutoFix {
             public synchronized void setReady() {
                 ready = true;
             }
-            /** {@return the is ready} */
+            /**
+             * {@return the is ready}
+             */
 
             public synchronized boolean isReady() {
                 return ready;
@@ -179,7 +187,9 @@ public final class AutoFix {
 
     // ============= False Sharing Fixes =============
 
-    /** {@return the false sharing fix} */
+    /**
+     * {@return the false sharing fix}
+     */
     public static String getFalseSharingFix() {
         return """
             💡 AUTO-FIX: How to Fix False Sharing
@@ -227,7 +237,9 @@ public final class AutoFix {
 
     // ============= CompletableFuture Leak Fixes =============
 
-    /** {@return the completable future leak fix} */
+    /**
+     * {@return the completable future leak fix}
+     */
     public static String getCompletableFutureLeakFix() {
         return """
             💡 AUTO-FIX: How to Fix CompletableFuture Completion Leak
@@ -272,7 +284,9 @@ public final class AutoFix {
 
     // ============= Virtual Thread Pinning Fixes =============
 
-    /** {@return the virtual thread pinning fix} */
+    /**
+     * {@return the virtual thread pinning fix}
+     */
     public static String getVirtualThreadPinningFix() {
         return """
             💡 AUTO-FIX: How to Fix Virtual Thread Pinning
@@ -317,7 +331,9 @@ public final class AutoFix {
 
     // ============= Thread Pool Deadlock Fixes =============
 
-    /** {@return the thread pool deadlock fix} */
+    /**
+     * {@return the thread pool deadlock fix}
+     */
     public static String getThreadPoolDeadlockFix() {
         return """
             💡 AUTO-FIX: How to Fix Thread Pool Deadlock
@@ -365,7 +381,9 @@ public final class AutoFix {
 
     // ============= Busy Waiting Fixes =============
 
-    /** {@return the busy waiting fix} */
+    /**
+     * {@return the busy waiting fix}
+     */
     public static String getBusyWaitingFix() {
         return """
             💡 AUTO-FIX: How to Fix Busy Waiting
@@ -415,7 +433,9 @@ public final class AutoFix {
 
     // ============= Atomicity Violation Fixes =============
 
-    /** {@return the atomicity violation fix} */
+    /**
+     * {@return the atomicity violation fix}
+     */
     public static String getAtomicityViolationFix() {
         return """
             💡 AUTO-FIX: How to Fix Atomicity Violation
@@ -453,7 +473,9 @@ public final class AutoFix {
 
     // ============= Lock Leak Fixes =============
 
-    /** {@return the lock leak fix} */
+    /**
+     * {@return the lock leak fix}
+     */
     public static String getLockLeakFix() {
         return """
             💡 AUTO-FIX: How to Fix Lock Leak
