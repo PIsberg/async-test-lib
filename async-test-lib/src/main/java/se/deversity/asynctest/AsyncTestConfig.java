@@ -1794,6 +1794,19 @@ public final class AsyncTestConfig {
          * {@return the resolved configuration, with preset, includes and excludes applied}
          */
         public AsyncTestConfig build() {
+            // Fail here, before any thread or barrier exists, so a bad shape names the
+            // annotation attribute to fix. Without this bound, invocations <= 0 skipped the
+            // runner's round loop entirely: the interceptor had already told JUnit the
+            // invocation was handled, so the test reported green having run the body zero
+            // times. threads <= 0 failed loudly, but only as new CyclicBarrier(0) deep
+            // inside the first round.
+            if (invocations < 1) {
+                throw new IllegalArgumentException("invocations must be >= 1, was "
+                        + invocations + " — 0 would report a passing test whose body never ran");
+            }
+            if (threads < 1) {
+                throw new IllegalArgumentException("threads must be >= 1, was " + threads);
+            }
             if (!includes.isEmpty()) {
                 // includes wins over detectAll/per-flag setters: force the
                 // detectAll path and exclude everything outside the include set.
