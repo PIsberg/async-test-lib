@@ -28,6 +28,10 @@ public class VolatileArrayDetector {
 
     /**
      * Register a volatile array for monitoring.
+     *
+     * @param array the array
+     * @param name the name
+     * @param componentType the component type
      */
     public void registerArray(Object array, String name, Class<?> componentType) {
         ArrayInfo info = new ArrayInfo(name, array, componentType);
@@ -36,6 +40,10 @@ public class VolatileArrayDetector {
 
     /**
      * Record a write to an array element.
+     *
+     * @param array the array
+     * @param index the index
+     * @param arrayName the array name
      */
     public void recordElementWrite(Object array, int index, String arrayName) {
         ArrayInfo info = findArrayInfo(array, arrayName);
@@ -61,6 +69,10 @@ public class VolatileArrayDetector {
 
     /**
      * Record a read from an array element.
+     *
+     * @param array the array
+     * @param index the index
+     * @param arrayName the array name
      */
     public void recordElementRead(Object array, int index, String arrayName) {
         ArrayInfo info = findArrayInfo(array, arrayName);
@@ -84,6 +96,8 @@ public class VolatileArrayDetector {
 
     /**
      * Analyze array access patterns and return report.
+     *
+     * @return the analyze
      */
     public VolatileArrayReport analyze() {
         return new VolatileArrayReport(
@@ -103,7 +117,9 @@ public class VolatileArrayDetector {
             this.problematicArrays = Collections.unmodifiableSet(new HashSet<>(problematicArrays));
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !problematicArrays.isEmpty();
         }

@@ -201,6 +201,8 @@ public class ConditionVariableDetector {
 
         /**
          * Check if any issues were detected.
+         *
+         * @return the has issues
          */
         public boolean hasIssues() {
             return !lostSignals.isEmpty() || !stuckWaiters.isEmpty() || !missingSignals.isEmpty();

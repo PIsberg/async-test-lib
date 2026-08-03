@@ -182,22 +182,36 @@ public class ScopedValueMisuseDetector {
             this.unboundGetCount = unboundGetCount;
         }
 
-        /** {@return true if any ScopedValue misuse issues were detected} */
+        /**
+         * {@return true if any ScopedValue misuse issues were detected}
+         */
         public boolean hasIssues() {
             return !unboundGetIssues.isEmpty() || !rebindIssues.isEmpty();
         }
 
-        /** {@return the unbound get issues} */
+        /**
+         * {@return the unbound get issues}
+         */
         public List<String> getUnboundGetIssues()     { return Collections.unmodifiableList(unboundGetIssues); }
-        /** {@return the rebind issues} */
+        /**
+         * {@return the rebind issues}
+         */
         public List<String> getRebindIssues()          { return Collections.unmodifiableList(rebindIssues); }
-        /** {@return the high binding warnings} */
+        /**
+         * {@return the high binding warnings}
+         */
         public List<String> getHighBindingWarnings()   { return Collections.unmodifiableList(highBindingWarnings); }
-        /** {@return the total bindings} */
+        /**
+         * {@return the total bindings}
+         */
         public int          getTotalBindings()          { return totalBindings; }
-        /** {@return the total get calls} */
+        /**
+         * {@return the total get calls}
+         */
         public int          getTotalGetCalls()          { return totalGetCalls; }
-        /** {@return the unbound get count} */
+        /**
+         * {@return the unbound get count}
+         */
         public int          getUnboundGetCount()        { return unboundGetCount; }
 
         @Override

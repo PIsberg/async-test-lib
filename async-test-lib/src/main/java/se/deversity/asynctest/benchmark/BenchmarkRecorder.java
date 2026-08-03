@@ -86,6 +86,8 @@ public class BenchmarkRecorder {
 
     /**
      * Check if benchmarking is enabled.
+     *
+     * @return the is benchmarking enabled
      */
     public boolean isBenchmarkingEnabled() {
         return benchmarkingEnabled;
@@ -209,6 +211,8 @@ public class BenchmarkRecorder {
 
     /**
      * Get the total execution time in nanoseconds.
+     *
+     * @return the get total execution time in nanoseconds
      */
     public long getTotalExecutionTimeNanos() {
         return System.nanoTime() - startTimeNanos;
@@ -216,6 +220,8 @@ public class BenchmarkRecorder {
 
     /**
      * Get the number of recorded invocations.
+     *
+     * @return the get invocation count
      */
     public int getInvocationCount() {
         synchronized (invocationTimesNanos) {

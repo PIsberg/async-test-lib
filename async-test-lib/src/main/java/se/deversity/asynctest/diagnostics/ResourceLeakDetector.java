@@ -168,6 +168,8 @@ public class ResourceLeakDetector {
 
         /**
          * Check if any issues were detected.
+         *
+         * @return the has issues
          */
         public boolean hasIssues() {
             return !resourceLeaks.isEmpty() || !openResources.isEmpty();

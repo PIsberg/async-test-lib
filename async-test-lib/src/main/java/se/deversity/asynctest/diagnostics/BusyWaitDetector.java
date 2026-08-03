@@ -173,6 +173,8 @@ public class BusyWaitDetector {
 
     /**
      * Standardized alias for {@link #analyzeBusyWaiting()}.
+     *
+     * @return the analyze
      */
     public BusyWaitReport analyze() {
         return analyzeBusyWaiting();
@@ -207,7 +209,9 @@ public class BusyWaitDetector {
         /** The cpu wasted. */
         public long cpuWasted;
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !busyWaitLoops.isEmpty() || !tightLoops.isEmpty();
         }

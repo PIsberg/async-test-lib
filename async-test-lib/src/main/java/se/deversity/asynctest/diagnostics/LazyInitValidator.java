@@ -110,7 +110,9 @@ public class LazyInitValidator {
         /** The unsafe publication. */
         public final Set<String> unsafePublication = new HashSet<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !multipleInitializations.isEmpty() || !unsafePublication.isEmpty();
         }

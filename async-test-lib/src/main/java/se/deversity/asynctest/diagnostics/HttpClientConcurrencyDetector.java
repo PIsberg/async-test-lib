@@ -211,6 +211,8 @@ public class HttpClientConcurrencyDetector {
 
         /**
          * Check if any issues were detected.
+         *
+         * @return the has issues
          */
         public boolean hasIssues() {
             return !pendingRequests.isEmpty() || 

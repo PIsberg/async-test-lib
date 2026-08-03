@@ -29,6 +29,9 @@ public final class BenchmarkComparisonResult {
 
     /**
      * Create a result for the first run (no baseline exists).
+     *
+     * @param currentResult the current result
+     * @return the first run
      */
     public static BenchmarkComparisonResult firstRun(BenchmarkResult currentResult) {
         return builder()
@@ -41,43 +44,59 @@ public final class BenchmarkComparisonResult {
             .build();
     }
 
-    /** {@return the current result} */
+    /**
+     * {@return the current result}
+     */
     public @Nullable BenchmarkResult getCurrentResult() {
         return currentResult;
     }
 
-    /** {@return the baseline result} */
+    /**
+     * {@return the baseline result}
+     */
     public @Nullable BenchmarkResult getBaselineResult() {
         return baselineResult;
     }
 
-    /** {@return the percent change} */
+    /**
+     * {@return the percent change}
+     */
     public double getPercentChange() {
         return percentChange;
     }
 
-    /** {@return whether regression} */
+    /**
+     * {@return whether regression}
+     */
     public boolean isRegression() {
         return isRegression;
     }
 
-    /** {@return whether improvement} */
+    /**
+     * {@return whether improvement}
+     */
     public boolean isImprovement() {
         return isImprovement;
     }
 
-    /** {@return whether first run} */
+    /**
+     * {@return whether first run}
+     */
     public boolean isFirstRun() {
         return isFirstRun;
     }
 
-    /** {@return the threshold percent} */
+    /**
+     * {@return the threshold percent}
+     */
     public double getThresholdPercent() {
         return thresholdPercent;
     }
 
     /**
      * Check if the result is within acceptable bounds (not a regression or improvement).
+     *
+     * @return the is within threshold
      */
     public boolean isWithinThreshold() {
         return !isRegression && !isImprovement;
@@ -128,7 +147,9 @@ public final class BenchmarkComparisonResult {
     public int hashCode() {
         return Objects.hash(currentResult, baselineResult, percentChange, isRegression, isImprovement, isFirstRun);
     }
-    /** {@return the builder} */
+    /**
+     * {@return the builder}
+     */
 
     public static Builder builder() {
         return new Builder();
@@ -219,7 +240,9 @@ public final class BenchmarkComparisonResult {
             this.thresholdPercent = thresholdPercent;
             return this;
         }
-        /** {@return the build} */
+        /**
+         * {@return the build}
+         */
 
         public BenchmarkComparisonResult build() {
             return new BenchmarkComparisonResult(this);

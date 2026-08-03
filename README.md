@@ -439,13 +439,28 @@ See [intellij-plugin/README.md](intellij-plugin/README.md) for full instructions
 |---|---|
 | CI (any `GITHUB_ACTIONS` or `CI` env var set, no key) | Auto-mocked — tests run freely |
 | Local, no key, `-Dlicense.mock.mode=true` | Mock mode active — tests run freely |
-| Local, no key, no mock flag | License gate runs; outcome depends on the configured backend |
+| Local, no key, no mock flag | **The gate runs and can refuse.** See below |
 | Real key via `-Dlicense.key=<key>` | Full validation against the licensing backend |
+
+> **First run on a new machine.** With no key configured and no mock flag, the gate consults the
+> licensing backend and a denial throws, before any test body runs:
+>
+> ```
+> java.lang.SecurityException: LICENSE DENIED: <reason>
+>   To run locally without a key: -Dlicense.mock.mode=true
+>   In CI (GITHUB_ACTIONS or CI env var set, no key): mock mode activates automatically.
+> ```
+>
+> This is the gate working as intended, not a bug in your test. CI is unaffected: mock mode turns
+> itself on there when no key is present, which is why a suite that passes in CI can still stop on
+> a developer laptop.
 
 To run locally without a key during development:
 ```
 mvn test -Dlicense.mock.mode=true
 ```
-Or add to your IDE's JVM args: `-Dlicense.mock.mode=true`
+Or add to your IDE's JVM args: `-Dlicense.mock.mode=true`. Setting it once in your IDE's default
+JUnit configuration is the usual fix, so it applies to every run rather than being remembered
+per-test.
 
 Set your email identity when using a real key: `-Dlicense.user.email=you@example.com`

@@ -222,6 +222,8 @@ public class CacheConcurrencyDetector {
 
         /**
          * Check if any issues were detected.
+         *
+         * @return the has issues
          */
         public boolean hasIssues() {
             return !concurrentReadWrite.isEmpty() || 

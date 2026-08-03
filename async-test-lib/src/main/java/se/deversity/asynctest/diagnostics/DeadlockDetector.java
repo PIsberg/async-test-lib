@@ -197,6 +197,8 @@ public class DeadlockDetector {
      *
      * <p>This is a JVM-wide snapshot: unlike {@link #analyze()}, it also reports deadlocks
      * that predate any particular detector instance.
+     *
+     * @return the has deadlock
      */
     public static boolean hasDeadlock() {
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
@@ -206,6 +208,8 @@ public class DeadlockDetector {
 
     /**
      * Get a summary of current lock contention.
+     *
+     * @return the get lock contention summary
      */
     @SuppressWarnings("PMD.AssignmentInOperand") // counter++ in switch arrow case is idiomatic
     public static String getLockContentionSummary() {
@@ -243,6 +247,8 @@ public class DeadlockDetector {
      *
      * <p>Deadlocks that already existed when this detector was constructed are excluded,
      * so a report with issues always means the monitored test introduced a new deadlock.
+     *
+     * @return the analyze
      */
     public DeadlockReport analyze() {
         long[] current = ManagementFactory.getThreadMXBean().findDeadlockedThreads();
@@ -264,7 +270,9 @@ public class DeadlockDetector {
             this.deadlocked = deadlocked;
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return deadlocked;
         }

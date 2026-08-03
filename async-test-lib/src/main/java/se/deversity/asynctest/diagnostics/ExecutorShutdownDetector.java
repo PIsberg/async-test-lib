@@ -126,7 +126,9 @@ public class ExecutorShutdownDetector {
         final List<String> notShutDown       = new ArrayList<>();
         final List<String> noAwaitTermination = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !notShutDown.isEmpty() || !noAwaitTermination.isEmpty();
         }

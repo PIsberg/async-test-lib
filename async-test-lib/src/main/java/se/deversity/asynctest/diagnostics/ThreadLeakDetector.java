@@ -243,12 +243,16 @@ public class ThreadLeakDetector {
             this.autoMode = autoMode;
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !leaks.isEmpty();
         }
 
-        /** {@return the leaks} */
+        /**
+         * {@return the leaks}
+         */
         public List<ThreadLeakEvent> getLeaks() {
             return List.copyOf(leaks);
         }

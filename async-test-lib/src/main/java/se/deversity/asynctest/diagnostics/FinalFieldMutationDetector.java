@@ -188,16 +188,24 @@ public class FinalFieldMutationDetector {
             this.concurrentWriteIssues = concurrentWriteIssues;
         }
 
-        /** {@return true if any reflective final-field mutation was detected} */
+        /**
+         * {@return true if any reflective final-field mutation was detected}
+         */
         public boolean hasIssues() {
             return !mutationIssues.isEmpty();
         }
 
-        /** {@return the mutation issues} */
+        /**
+         * {@return the mutation issues}
+         */
         public List<String> getMutationIssues()        { return Collections.unmodifiableList(mutationIssues); }
-        /** {@return the racing reader issues} */
+        /**
+         * {@return the racing reader issues}
+         */
         public List<String> getRacingReaderIssues()    { return Collections.unmodifiableList(racingReaderIssues); }
-        /** {@return the concurrent write issues} */
+        /**
+         * {@return the concurrent write issues}
+         */
         public List<String> getConcurrentWriteIssues() { return Collections.unmodifiableList(concurrentWriteIssues); }
 
         @Override

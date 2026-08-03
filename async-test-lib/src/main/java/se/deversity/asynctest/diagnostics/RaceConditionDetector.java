@@ -161,6 +161,8 @@ public class RaceConditionDetector {
 
     /**
      * Standardized alias for {@link #analyzeRaceConditions()}.
+     *
+     * @return the analyze
      */
     public RaceConditionReport analyze() {
         return analyzeRaceConditions();
@@ -247,7 +249,9 @@ public class RaceConditionDetector {
         /** The potential races. */
         public final Set<String> potentialRaces = new HashSet<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !unsafeAccesses.isEmpty() || !potentialRaces.isEmpty();
         }

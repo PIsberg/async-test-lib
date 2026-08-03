@@ -241,6 +241,8 @@ public class BlockingQueueDetector {
 
         /**
          * Check if any issues were detected.
+         *
+         * @return the has issues
          */
         public boolean hasIssues() {
             return !silentFailures.isEmpty() || !emptyPolls.isEmpty() || 

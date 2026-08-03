@@ -38,6 +38,9 @@ public class ReadWriteLockMonitor {
     
     /**
      * Register a read-write lock for monitoring.
+     *
+     * @param rwLock the rw lock
+     * @param name the name
      */
     public void registerLock(Object rwLock, String name) {
         if (!enabled) return;
@@ -48,6 +51,9 @@ public class ReadWriteLockMonitor {
     
     /**
      * Record read lock acquisition.
+     *
+     * @param rwLock the rw lock
+     * @param waitTimeMs the wait time in milliseconds
      */
     public void recordReadLockAcquired(Object rwLock, long waitTimeMs) {
         if (!enabled) return;
@@ -63,6 +69,8 @@ public class ReadWriteLockMonitor {
     
     /**
      * Record read lock release.
+     *
+     * @param rwLock the rw lock
      */
     public void recordReadLockReleased(Object rwLock) {
         if (!enabled) return;
@@ -76,6 +84,9 @@ public class ReadWriteLockMonitor {
     
     /**
      * Record write lock acquisition.
+     *
+     * @param rwLock the rw lock
+     * @param waitTimeMs the wait time in milliseconds
      */
     public void recordWriteLockAcquired(Object rwLock, long waitTimeMs) {
         if (!enabled) return;
@@ -97,6 +108,8 @@ public class ReadWriteLockMonitor {
     
     /**
      * Record write lock release.
+     *
+     * @param rwLock the rw lock
      */
     public void recordWriteLockReleased(Object rwLock) {
         if (!enabled) return;
@@ -110,6 +123,8 @@ public class ReadWriteLockMonitor {
     
     /**
      * Analyze read-write lock fairness.
+     *
+     * @return the analyze fairness
      */
     public ReadWriteLockReport analyzeFairness() {
         ReadWriteLockReport report = new ReadWriteLockReport();
@@ -160,6 +175,8 @@ public class ReadWriteLockMonitor {
 
     /**
      * Standardized alias for {@link #analyzeFairness()}.
+     *
+     * @return the analyze
      */
     public ReadWriteLockReport analyze() {
         return analyzeFairness();
@@ -198,7 +215,9 @@ public class ReadWriteLockMonitor {
         /** The current read holders. */
         public final Set<String> currentReadHolders = new HashSet<>();
         
-        /** {@return whether there are fairness issues} */
+        /**
+         * {@return whether there are fairness issues}
+         */
         public boolean hasFairnessIssues() {
             return !readerDominatedLocks.isEmpty() || !starvedWriters.isEmpty();
         }

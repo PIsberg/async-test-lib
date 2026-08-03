@@ -23,6 +23,10 @@ public class CountDownLatchDetector {
 
     /**
      * Register a CountDownLatch for monitoring.
+     *
+     * @param latch the latch
+     * @param name the name
+     * @param initialCount the initial count
      */
     public void registerLatch(CountDownLatch latch, String name, int initialCount) {
         latchRegistry.put(latch, new LatchInfo(name, initialCount));
@@ -30,6 +34,8 @@ public class CountDownLatchDetector {
 
     /**
      * Record a countDown() call.
+     *
+     * @param latch the latch
      */
     public void recordCountDown(CountDownLatch latch) {
         LatchInfo info = latchRegistry.get(latch);
@@ -43,6 +49,8 @@ public class CountDownLatchDetector {
 
     /**
      * Record an await() call that timed out.
+     *
+     * @param latch the latch
      */
     public void recordTimeout(CountDownLatch latch) {
         timedOutLatches.add(latch);
@@ -50,6 +58,8 @@ public class CountDownLatchDetector {
 
     /**
      * Record a successful await() call.
+     *
+     * @param latch the latch
      */
     public void recordAwaitSuccess(CountDownLatch latch) {
         LatchInfo info = latchRegistry.get(latch);
@@ -60,6 +70,8 @@ public class CountDownLatchDetector {
 
     /**
      * Analyze latch usage and return report.
+     *
+     * @return the analyze
      */
     public CountDownLatchReport analyze() {
         return new CountDownLatchReport(
@@ -87,7 +99,9 @@ public class CountDownLatchDetector {
             this.extraCountDownLatches = Collections.unmodifiableSet(new HashSet<>(extraCountDownLatches));
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !timedOutLatches.isEmpty() || !extraCountDownLatches.isEmpty();
         }

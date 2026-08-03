@@ -23,6 +23,10 @@ public class PhaserDetector {
 
     /**
      * Register a Phaser for monitoring.
+     *
+     * @param phaser the phaser
+     * @param name the name
+     * @param parties the parties
      */
     public void registerPhaser(Phaser phaser, String name, int parties) {
         phaserRegistry.put(phaser, new PhaserInfo(name, parties));
@@ -30,6 +34,8 @@ public class PhaserDetector {
 
     /**
      * Record a thread arriving at the phaser.
+     *
+     * @param phaser the phaser
      */
     public void recordArrive(Phaser phaser) {
         PhaserInfo info = phaserRegistry.get(phaser);
@@ -40,6 +46,8 @@ public class PhaserDetector {
 
     /**
      * Record a thread arriving and awaiting advance.
+     *
+     * @param phaser the phaser
      */
     public void recordArriveAwaitAdvance(Phaser phaser) {
         PhaserInfo info = phaserRegistry.get(phaser);
@@ -51,6 +59,8 @@ public class PhaserDetector {
 
     /**
      * Record a phaser await that timed out.
+     *
+     * @param phaser the phaser
      */
     public void recordTimeout(Phaser phaser) {
         timedOutPhasers.add(phaser);
@@ -58,6 +68,8 @@ public class PhaserDetector {
 
     /**
      * Record a phaser that was terminated.
+     *
+     * @param phaser the phaser
      */
     public void recordTermination(Phaser phaser) {
         terminatedPhasers.add(phaser);
@@ -65,6 +77,9 @@ public class PhaserDetector {
 
     /**
      * Record successful phaser phase completion.
+     *
+     * @param phaser the phaser
+     * @param phase the phase
      */
     public void recordPhaseComplete(Phaser phaser, int phase) {
         PhaserInfo info = phaserRegistry.get(phaser);
@@ -75,6 +90,8 @@ public class PhaserDetector {
 
     /**
      * Analyze phaser usage and return report.
+     *
+     * @return the analyze
      */
     public PhaserReport analyze() {
         return new PhaserReport(
@@ -102,7 +119,9 @@ public class PhaserDetector {
             this.terminatedPhasers = Collections.unmodifiableSet(new HashSet<>(terminatedPhasers));
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !timedOutPhasers.isEmpty() || !terminatedPhasers.isEmpty();
         }

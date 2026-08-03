@@ -24,6 +24,10 @@ public class CyclicBarrierDetector {
 
     /**
      * Register a CyclicBarrier for monitoring.
+     *
+     * @param barrier the barrier
+     * @param name the name
+     * @param parties the parties
      */
     public void registerBarrier(CyclicBarrier barrier, String name, int parties) {
         barrierRegistry.put(barrier, new BarrierInfo(name, parties));
@@ -31,6 +35,8 @@ public class CyclicBarrierDetector {
 
     /**
      * Record a thread arriving at the barrier.
+     *
+     * @param barrier the barrier
      */
     public void recordArrival(CyclicBarrier barrier) {
         BarrierInfo info = barrierRegistry.get(barrier);
@@ -41,6 +47,8 @@ public class CyclicBarrierDetector {
 
     /**
      * Record a barrier await() that timed out.
+     *
+     * @param barrier the barrier
      */
     public void recordTimeout(CyclicBarrier barrier) {
         timedOutBarriers.add(barrier);
@@ -48,6 +56,8 @@ public class CyclicBarrierDetector {
 
     /**
      * Record a barrier that was broken.
+     *
+     * @param barrier the barrier
      */
     public void recordBroken(CyclicBarrier barrier) {
         brokenBarriers.add(barrier);
@@ -56,6 +66,8 @@ public class CyclicBarrierDetector {
     /**
      * Record a barrier that was reset, repairing it after it broke.
      * Subsequent await() calls are no longer considered reuse-after-broken.
+     *
+     * @param barrier the barrier
      */
     public void recordReset(CyclicBarrier barrier) {
         brokenBarriers.remove(barrier);
@@ -65,6 +77,8 @@ public class CyclicBarrierDetector {
      * Record a thread calling await() on the barrier. If the barrier is
      * currently broken and has not been reset since, this is flagged as
      * reuse of a broken barrier without an intervening reset().
+     *
+     * @param barrier the barrier
      */
     public void recordAwait(CyclicBarrier barrier) {
         if (brokenBarriers.contains(barrier)) {
@@ -74,6 +88,8 @@ public class CyclicBarrierDetector {
 
     /**
      * Record successful barrier completion.
+     *
+     * @param barrier the barrier
      */
     public void recordBarrierComplete(CyclicBarrier barrier) {
         BarrierInfo info = barrierRegistry.get(barrier);
@@ -84,6 +100,8 @@ public class CyclicBarrierDetector {
 
     /**
      * Analyze barrier usage and return report.
+     *
+     * @return the analyze
      */
     public CyclicBarrierReport analyze() {
         return new CyclicBarrierReport(
@@ -131,12 +149,16 @@ public class CyclicBarrierDetector {
             this(barrierRegistry, timedOutBarriers, brokenBarriers, Collections.emptySet());
         }
 
-        /** {@return the reuse after broken barriers} */
+        /**
+         * {@return the reuse after broken barriers}
+         */
         public Set<CyclicBarrier> getReuseAfterBrokenBarriers() {
             return reuseAfterBrokenBarriers;
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !timedOutBarriers.isEmpty() || !brokenBarriers.isEmpty() || !reuseAfterBrokenBarriers.isEmpty();
         }

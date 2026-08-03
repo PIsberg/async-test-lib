@@ -8,14 +8,14 @@ paths: ["**/DetectorType.java", "**/AsyncTestConfig.java", "**/DetectorRegistry.
 ## Locked Status
 
 ### se.deversity.asynctest.DetectorType
-- **Reason**: Each enum constant requires synchronized changes in five places: (1) @AsyncTest attribute, (2) AsyncTestConfig field, (3) AsyncTestConfig.Builder default, (4) both branches of AsyncTestConfig.build() (detectAll block + excludes block), and (5) DetectorRegistry constructor. Adding a value here in isolation breaks the system.
+- **Reason**: Adding or removing a constant requires synchronized changes in five places: (1) @AsyncTest attribute, (2) AsyncTestConfig field, (3) AsyncTestConfig.Builder default, (4) the resolution line in AsyncTestConfig.build() ((detectAll || flag) && !excludes.contains(TYPE)), and (5) DetectorRegistry constructor. Adding a value here in isolation compiles and detects nothing. The lock is on the constant set, not the file: editing javadoc on existing constants cannot break that invariant and needs no ceremony.
 
 ## Mirrored — Keep In Sync
 
 ### se.deversity.asynctest.DetectorType
 - **Rule**: Free to change, but every mirror must change in the same commit.
-- **Mirrors**: se.deversity.asynctest.AsyncTest, se.deversity.asynctest.AsyncTestConfig, se.deversity.asynctest.DetectorRegistry, se.deversity.asynctest.spi.LegacyDetectorFactories, META-INF/services/se.deversity.asynctest.spi.DetectorFactory
-- **Reason**: A detector is only reachable from the public API when all of these agree. The enum constant is the name users type in @AsyncTest(excludes=...); the annotation attribute, the config field and its Builder default carry it through resolution; the registry constructor instantiates it; and the SPI factory plus its services entry are what detectAll loads. Adding the constant alone compiles and silently detects nothing.
+- **Mirrors**: se.deversity.asynctest.AsyncTest, se.deversity.asynctest.AsyncTestConfig, se.deversity.asynctest.DetectorRegistry, se.deversity.asynctest.spi.LegacyDetectorFactories, META-INF/async-test/builtin-detector-factories
+- **Reason**: A detector is only reachable from the public API when all of these agree. The enum constant is the name users type in @AsyncTest(excludes=...); the annotation attribute, the config field and its Builder default carry it through resolution; the registry constructor instantiates it; and the SPI factory plus its entry in the built-in factory list are what detectAll loads. Adding the constant alone compiles and silently detects nothing.
 - **Enforced by**: se.deversity.asynctest.spi.AllDetectorsSpiCoverageTest
 
 ## Context & Focus

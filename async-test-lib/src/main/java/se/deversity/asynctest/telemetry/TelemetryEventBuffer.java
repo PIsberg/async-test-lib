@@ -154,7 +154,11 @@ public final class TelemetryEventBuffer {
         return count;
     }
 
-    /** Returns the number of events published so far (monotonically increasing). */
+    /**
+     * Returns the number of events published so far (monotonically increasing).
+     *
+     * @return the published count
+     */
     public long publishedCount() {
         return producerCursor.get() + 1;
     }

@@ -100,7 +100,11 @@ public final class LegacyDetectorAdapter<D> implements Detector {
         }
     }
 
-    /** Exposed for callers that need direct access to the wrapped legacy detector. */
+    /**
+     * Exposed for callers that need direct access to the wrapped legacy detector.
+     *
+     * @return the delegate
+     */
     public D delegate() {
         return delegate;
     }

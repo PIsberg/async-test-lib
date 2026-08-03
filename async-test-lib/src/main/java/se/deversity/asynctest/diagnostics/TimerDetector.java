@@ -161,6 +161,8 @@ public class TimerDetector {
 
     /**
      * Analyse Timer usage and return a report.
+     *
+     * @return the analyze
      */
     public TimerReport analyze() {
         TimerReport report = new TimerReport();
@@ -216,7 +218,11 @@ public class TimerDetector {
         final java.util.List<String> usageWarnings          = new java.util.ArrayList<>();
         final Map<String, String>    timerActivity          = new ConcurrentHashMap<>();
 
-        /** Returns {@code true} when timer thread failures or long-running tasks were detected. */
+        /**
+         * Returns {@code true} when timer thread failures or long-running tasks were detected.
+         *
+         * @return the has issues
+         */
         public boolean hasIssues() {
             return !timerThreadFailures.isEmpty() || !longRunningTaskWarnings.isEmpty();
         }

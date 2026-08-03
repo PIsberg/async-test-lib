@@ -22,6 +22,9 @@ public class StampedLockDetector {
 
     /**
      * Register a StampedLock for monitoring.
+     *
+     * @param lock the lock
+     * @param name the name
      */
     public void registerLock(StampedLock lock, String name) {
         lockRegistry.put(lock, new LockInfo(name));
@@ -29,6 +32,10 @@ public class StampedLockDetector {
 
     /**
      * Record an optimistic read stamp acquisition.
+     *
+     * @param lock the lock
+     * @param lockName the lock name
+     * @param stamp the stamp
      */
     public void recordOptimisticRead(StampedLock lock, String lockName, long stamp) {
         LockInfo info = lockRegistry.get(lock);
@@ -39,6 +46,11 @@ public class StampedLockDetector {
 
     /**
      * Record validation of optimistic read.
+     *
+     * @param lock the lock
+     * @param lockName the lock name
+     * @param stamp the stamp
+     * @param validated the {@code validated} flag
      */
     public void recordOptimisticValidation(StampedLock lock, String lockName, long stamp, boolean validated) {
         if (!validated) {
@@ -48,6 +60,10 @@ public class StampedLockDetector {
 
     /**
      * Record a read lock acquisition.
+     *
+     * @param lock the lock
+     * @param lockName the lock name
+     * @param stamp the stamp
      */
     public void recordReadLock(StampedLock lock, String lockName, long stamp) {
         LockInfo info = lockRegistry.get(lock);
@@ -58,6 +74,10 @@ public class StampedLockDetector {
 
     /**
      * Record a write lock acquisition.
+     *
+     * @param lock the lock
+     * @param lockName the lock name
+     * @param stamp the stamp
      */
     public void recordWriteLock(StampedLock lock, String lockName, long stamp) {
         LockInfo info = lockRegistry.get(lock);
@@ -68,6 +88,10 @@ public class StampedLockDetector {
 
     /**
      * Record a lock release.
+     *
+     * @param lock the lock
+     * @param lockName the lock name
+     * @param stamp the stamp
      */
     public void recordUnlock(StampedLock lock, String lockName, long stamp) {
         LockInfo info = lockRegistry.get(lock);
@@ -78,6 +102,9 @@ public class StampedLockDetector {
 
     /**
      * Record a stamp that was not released.
+     *
+     * @param lockName the lock name
+     * @param stamp the stamp
      */
     public void recordStampNotReleased(String lockName, long stamp) {
         stampNotReleased.add(lockName + " (stamp: " + stamp + ")");
@@ -85,6 +112,8 @@ public class StampedLockDetector {
 
     /**
      * Analyze StampedLock usage and return report.
+     *
+     * @return the analyze
      */
     public StampedLockReport analyze() {
         return new StampedLockReport(
@@ -108,7 +137,9 @@ public class StampedLockDetector {
             this.stampNotReleased = Collections.unmodifiableSet(new HashSet<>(stampNotReleased));
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !unvalidatedOptimisticReads.isEmpty() || !stampNotReleased.isEmpty();
         }

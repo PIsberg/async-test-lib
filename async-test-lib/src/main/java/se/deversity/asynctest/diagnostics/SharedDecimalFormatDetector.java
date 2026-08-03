@@ -52,7 +52,9 @@ public class SharedDecimalFormatDetector {
         s.accessingThreadNames.add(thread.getName());
     }
 
-    /** {@return report of DecimalFormat/NumberFormat instances accessed from multiple threads} */
+    /**
+     * {@return report of DecimalFormat/NumberFormat instances accessed from multiple threads}
+     */
     public SharedDecimalFormatReport analyze() {
         SharedDecimalFormatReport r = new SharedDecimalFormatReport();
         for (FormatState s : formats.values()) {
@@ -70,7 +72,9 @@ public class SharedDecimalFormatDetector {
     public static class SharedDecimalFormatReport {
         final List<String> violations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

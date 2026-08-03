@@ -154,6 +154,8 @@ public class UncommittedChangesDetector {
 
         /**
          * Check if any untracked or uncommitted changes were detected.
+         *
+         * @return the has issues
          */
         public boolean hasIssues() {
             return !uncommittedFiles.isEmpty() || !untrackedFiles.isEmpty() || error != null;

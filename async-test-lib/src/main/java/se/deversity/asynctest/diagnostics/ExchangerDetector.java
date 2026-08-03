@@ -24,6 +24,9 @@ public class ExchangerDetector {
 
     /**
      * Register an Exchanger for monitoring.
+     *
+     * @param exchanger the exchanger
+     * @param name the name
      */
     public void registerExchanger(Exchanger<?> exchanger, String name) {
         exchangerRegistry.put(exchanger, new ExchangerInfo(name));
@@ -31,6 +34,9 @@ public class ExchangerDetector {
 
     /**
      * Record a thread starting an exchange.
+     *
+     * @param exchanger the exchanger
+     * @param exchangerName the exchanger name
      */
     public void recordExchangeStart(Exchanger<?> exchanger, String exchangerName) {
         ExchangerInfo info = exchangerRegistry.get(exchanger);
@@ -41,6 +47,10 @@ public class ExchangerDetector {
 
     /**
      * Record a successful exchange completion.
+     *
+     * @param exchanger the exchanger
+     * @param exchangerName the exchanger name
+     * @param value the value
      */
     public void recordExchangeComplete(Exchanger<?> exchanger, String exchangerName, Object value) {
         ExchangerInfo info = exchangerRegistry.get(exchanger);
@@ -54,6 +64,8 @@ public class ExchangerDetector {
 
     /**
      * Record an exchange that timed out.
+     *
+     * @param exchanger the exchanger
      */
     public void recordTimeout(Exchanger<?> exchanger) {
         timedOutExchangers.add(exchanger);
@@ -61,6 +73,8 @@ public class ExchangerDetector {
 
     /**
      * Record an exchange that was interrupted.
+     *
+     * @param exchanger the exchanger
      */
     public void recordInterrupted(Exchanger<?> exchanger) {
         interruptedExchangers.add(exchanger);
@@ -68,6 +82,8 @@ public class ExchangerDetector {
 
     /**
      * Analyze Exchanger usage and return report.
+     *
+     * @return the analyze
      */
     public ExchangerReport analyze() {
         return new ExchangerReport(
@@ -99,7 +115,9 @@ public class ExchangerDetector {
             this.nullValueExchanges = nullValueExchanges;
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !timedOutExchangers.isEmpty() 
                 || !interruptedExchangers.isEmpty()

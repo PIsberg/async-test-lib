@@ -96,7 +96,9 @@ public class SharedMessageDigestDetector {
         SiteCapture.capture().ifPresent(s.accessSites::add);
     }
 
-    /** {@return report of JCA instances accessed from multiple threads} */
+    /**
+     * {@return report of JCA instances accessed from multiple threads}
+     */
     public SharedMessageDigestReport analyze() {
         SharedMessageDigestReport r = new SharedMessageDigestReport();
         for (DigestState s : digests.values()) {
@@ -167,7 +169,9 @@ public class SharedMessageDigestDetector {
         /** Structured mirror of {@link #violations} for {@link se.deversity.asynctest.report.Formatter}s. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

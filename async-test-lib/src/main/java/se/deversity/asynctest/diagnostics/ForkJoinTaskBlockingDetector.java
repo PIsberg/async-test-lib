@@ -32,13 +32,21 @@ public class ForkJoinTaskBlockingDetector {
     private final Set<Long>    activeForkJoinThreads = ConcurrentHashMap.newKeySet();
     private final List<String> blockingCalls         = new CopyOnWriteArrayList<>();
 
-    /** Call at the start of a {@code ForkJoinTask.compute()} or {@code exec()} body. */
+    /**
+     * Call at the start of a {@code ForkJoinTask.compute()} or {@code exec()} body.
+     *
+     * @param thread the thread
+     */
     public void recordForkJoinTaskEntered(Thread thread) {
         if (thread == null) return;
         activeForkJoinThreads.add(thread.threadId());
     }
 
-    /** Call at the end of a {@code ForkJoinTask.compute()} or {@code exec()} body. */
+    /**
+     * Call at the end of a {@code ForkJoinTask.compute()} or {@code exec()} body.
+     *
+     * @param thread the thread
+     */
     public void recordForkJoinTaskExited(Thread thread) {
         if (thread == null) return;
         activeForkJoinThreads.remove(thread.threadId());
@@ -61,7 +69,9 @@ public class ForkJoinTaskBlockingDetector {
             thread.getName(), type));
     }
 
-    /** {@return report of blocking calls inside ForkJoin tasks} */
+    /**
+     * {@return report of blocking calls inside ForkJoin tasks}
+     */
     public ForkJoinTaskBlockingReport analyze() {
         ForkJoinTaskBlockingReport r = new ForkJoinTaskBlockingReport();
         r.blockingCalls.addAll(blockingCalls);
@@ -72,7 +82,9 @@ public class ForkJoinTaskBlockingDetector {
     public static class ForkJoinTaskBlockingReport {
         final List<String> blockingCalls = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !blockingCalls.isEmpty(); }
 
         @Override

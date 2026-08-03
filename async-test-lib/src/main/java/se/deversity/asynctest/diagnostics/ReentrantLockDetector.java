@@ -25,6 +25,9 @@ public class ReentrantLockDetector {
 
     /**
      * Register a ReentrantLock for monitoring.
+     *
+     * @param lock the lock
+     * @param name the name
      */
     public void registerLock(ReentrantLock lock, String name) {
         lockRegistry.put(lock, new LockInfo(name));
@@ -32,6 +35,9 @@ public class ReentrantLockDetector {
 
     /**
      * Record a successful lock acquisition.
+     *
+     * @param lock the lock
+     * @param threadName the thread name
      */
     public void recordLockAcquired(ReentrantLock lock, String threadName) {
         LockInfo info = lockRegistry.get(lock);
@@ -42,6 +48,9 @@ public class ReentrantLockDetector {
 
     /**
      * Record a lock release.
+     *
+     * @param lock the lock
+     * @param threadName the thread name
      */
     public void recordLockReleased(ReentrantLock lock, String threadName) {
         LockInfo info = lockRegistry.get(lock);
@@ -52,6 +61,8 @@ public class ReentrantLockDetector {
 
     /**
      * Record a tryLock() that timed out.
+     *
+     * @param lock the lock
      */
     public void recordLockTimeout(ReentrantLock lock) {
         timeoutLocks.add(lock);
@@ -59,6 +70,9 @@ public class ReentrantLockDetector {
 
     /**
      * Record potential lock starvation (wait time exceeds threshold).
+     *
+     * @param threadName the thread name
+     * @param waitTimeMs the wait time in milliseconds
      */
     public void recordStarvation(String threadName, long waitTimeMs) {
         starvationThreads.add(threadName + " (waited " + waitTimeMs + "ms)");
@@ -66,6 +80,8 @@ public class ReentrantLockDetector {
 
     /**
      * Analyze lock usage and return report.
+     *
+     * @return the analyze
      */
     public ReentrantLockReport analyze() {
         return new ReentrantLockReport(
@@ -93,7 +109,9 @@ public class ReentrantLockDetector {
             this.starvationThreads = Collections.unmodifiableSet(new HashSet<>(starvationThreads));
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !timeoutLocks.isEmpty() || !starvationThreads.isEmpty();
         }

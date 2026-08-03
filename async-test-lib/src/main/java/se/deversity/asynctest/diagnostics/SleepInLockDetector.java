@@ -234,12 +234,16 @@ public class SleepInLockDetector {
             this.totalCount = totalCount;
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !events.isEmpty();
         }
 
-        /** {@return the events} */
+        /**
+         * {@return the events}
+         */
         public List<SleepInLockEventSnapshot> getEvents() {
             return List.copyOf(events);
         }

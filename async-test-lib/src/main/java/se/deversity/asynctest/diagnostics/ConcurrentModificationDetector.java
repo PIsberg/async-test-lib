@@ -206,6 +206,8 @@ public class ConcurrentModificationDetector {
 
         /**
          * Check if any issues were detected.
+         *
+         * @return the has issues
          */
         public boolean hasIssues() {
             return !concurrentModifications.isEmpty() || !concurrentIterations.isEmpty() || !concurrentMutations.isEmpty();

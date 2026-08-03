@@ -23,6 +23,10 @@ public class ForkJoinPoolDetector {
 
     /**
      * Register a ForkJoinPool for monitoring.
+     *
+     * @param pool the pool
+     * @param name the name
+     * @param parallelism the parallelism
      */
     public void registerPool(ForkJoinPool pool, String name, int parallelism) {
         poolRegistry.put(pool, new PoolInfo(name, parallelism));
@@ -30,6 +34,10 @@ public class ForkJoinPoolDetector {
 
     /**
      * Record a task being forked.
+     *
+     * @param pool the pool
+     * @param poolName the pool name
+     * @param taskName the task name
      */
     public void recordFork(ForkJoinPool pool, String poolName, String taskName) {
         PoolInfo info = poolRegistry.get(pool);
@@ -40,6 +48,10 @@ public class ForkJoinPoolDetector {
 
     /**
      * Record a task being joined.
+     *
+     * @param pool the pool
+     * @param poolName the pool name
+     * @param taskName the task name
      */
     public void recordJoin(ForkJoinPool pool, String poolName, String taskName) {
         PoolInfo info = poolRegistry.get(pool);
@@ -50,6 +62,9 @@ public class ForkJoinPoolDetector {
 
     /**
      * Record a task that was forked but never joined.
+     *
+     * @param poolName the pool name
+     * @param taskName the task name
      */
     public void recordForkWithoutJoin(String poolName, String taskName) {
         forkedWithoutJoin.add(poolName + ":" + taskName);
@@ -57,6 +72,10 @@ public class ForkJoinPoolDetector {
 
     /**
      * Record an exception in a forked task.
+     *
+     * @param poolName the pool name
+     * @param taskName the task name
+     * @param t the t
      */
     public void recordException(String poolName, String taskName, Throwable t) {
         exceptionsInTasks.add(poolName + ":" + taskName + " (" + t.getClass().getSimpleName() + ")");
@@ -64,6 +83,8 @@ public class ForkJoinPoolDetector {
 
     /**
      * Record work stealing event.
+     *
+     * @param pool the pool
      */
     public void recordWorkSteal(ForkJoinPool pool) {
         taskStealCount++;
@@ -71,6 +92,10 @@ public class ForkJoinPoolDetector {
 
     /**
      * Record task execution time.
+     *
+     * @param pool the pool
+     * @param poolName the pool name
+     * @param timeMs the time in milliseconds
      */
     public void recordTaskTime(ForkJoinPool pool, String poolName, long timeMs) {
         PoolInfo info = poolRegistry.get(pool);
@@ -81,6 +106,8 @@ public class ForkJoinPoolDetector {
 
     /**
      * Analyze ForkJoinPool usage and return report.
+     *
+     * @return the analyze
      */
     public ForkJoinPoolReport analyze() {
         return new ForkJoinPoolReport(
@@ -108,7 +135,9 @@ public class ForkJoinPoolDetector {
             this.taskStealCount = taskStealCount;
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !forkedWithoutJoin.isEmpty() 
                 || !exceptionsInTasks.isEmpty();

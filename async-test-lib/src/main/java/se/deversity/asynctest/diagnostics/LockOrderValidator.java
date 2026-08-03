@@ -42,6 +42,8 @@ public class LockOrderValidator {
     
     /**
      * Record a lock acquisition.
+     *
+     * @param lock the lock
      */
     public void recordLockAcquisition(Object lock) {
         if (!enabled || lock == null) return;
@@ -67,6 +69,8 @@ public class LockOrderValidator {
     
     /**
      * Record lock release.
+     *
+     * @param lock the lock
      */
     public void recordLockRelease(Object lock) {
         if (!enabled || lock == null) return;
@@ -85,6 +89,8 @@ public class LockOrderValidator {
     
     /**
      * Validate lock ordering consistency.
+     *
+     * @return the validate lock order
      */
     public LockOrderReport validateLockOrder() {
         LockOrderReport report = new LockOrderReport();
@@ -190,7 +196,9 @@ public class LockOrderValidator {
         /** The potential deadlock cycles. */
         public final Set<String> potentialDeadlockCycles = new HashSet<>();
         
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !inconsistentOrderings.isEmpty() || !potentialDeadlockCycles.isEmpty();
         }

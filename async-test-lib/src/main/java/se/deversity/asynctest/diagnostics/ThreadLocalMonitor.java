@@ -122,6 +122,8 @@ public class ThreadLocalMonitor {
 
     /**
      * Standardized alias for {@link #analyzeThreadLocalLeaks()}.
+     *
+     * @return the analyze
      */
     public ThreadLocalReport analyze() {
         return analyzeThreadLocalLeaks();
@@ -157,7 +159,9 @@ public class ThreadLocalMonitor {
         /** The thread local accumulation. */
         public final Set<String> threadLocalAccumulation = new HashSet<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !uncleanedThreadLocals.isEmpty()
                 || !likelyLeaks.isEmpty()

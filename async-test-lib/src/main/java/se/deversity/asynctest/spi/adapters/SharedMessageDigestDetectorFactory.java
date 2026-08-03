@@ -59,7 +59,11 @@ public final class SharedMessageDigestDetectorFactory implements DetectorFactory
             return List.copyOf(delegate.analyze().structuredViolations);
         }
 
-        /** Exposed for legacy users that need direct access to the wrapped detector. */
+        /**
+         * Exposed for legacy users that need direct access to the wrapped detector.
+         *
+         * @return the delegate
+         */
         public SharedMessageDigestDetector delegate() {
             return delegate;
         }

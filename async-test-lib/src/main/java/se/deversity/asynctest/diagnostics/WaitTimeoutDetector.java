@@ -34,6 +34,10 @@ public class WaitTimeoutDetector {
 
     /**
      * Register a wait() call without timeout.
+     *
+     * @param monitor the monitor
+     * @param monitorName the monitor name
+     * @param threadName the thread name
      */
     public void recordInfiniteWait(Object monitor, String monitorName, String threadName) {
         WaitInfo info = new WaitInfo(monitor, monitorName);
@@ -44,6 +48,11 @@ public class WaitTimeoutDetector {
 
     /**
      * Register a wait() call with timeout.
+     *
+     * @param monitor the monitor
+     * @param monitorName the monitor name
+     * @param threadName the thread name
+     * @param timeoutMs the timeout in milliseconds
      */
     public void recordTimedWait(Object monitor, String monitorName, String threadName, long timeoutMs) {
         WaitInfo info = new WaitInfo(monitor, monitorName);
@@ -53,6 +62,9 @@ public class WaitTimeoutDetector {
 
     /**
      * Record a notify() call.
+     *
+     * @param monitor the monitor
+     * @param monitorName the monitor name
      */
     public void recordNotify(Object monitor, String monitorName) {
         WaitInfo info = new WaitInfo(monitor, monitorName);
@@ -62,6 +74,9 @@ public class WaitTimeoutDetector {
 
     /**
      * Record a notifyAll() call.
+     *
+     * @param monitor the monitor
+     * @param monitorName the monitor name
      */
     public void recordNotifyAll(Object monitor, String monitorName) {
         WaitInfo info = new WaitInfo(monitor, monitorName);
@@ -71,6 +86,8 @@ public class WaitTimeoutDetector {
 
     /**
      * Analyze wait patterns and return report.
+     *
+     * @return the analyze
      */
     public WaitTimeoutReport analyze() {
         return new WaitTimeoutReport(waitEvents, infiniteWaits);
@@ -91,7 +108,9 @@ public class WaitTimeoutDetector {
             this.infiniteWaits = Collections.unmodifiableSet(new HashSet<>(infiniteWaits));
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !infiniteWaits.isEmpty();
         }

@@ -38,6 +38,10 @@ public final class LockUpgradeDeadlockDetector {
 
     /**
      * Record acquisition of a read lock.
+     *
+     * @param lock the lock
+     * @param lockName the lock name
+     * @param thread the thread
      */
     public void recordReadLockAcquired(ReentrantReadWriteLock lock, String lockName, Thread thread) {
         if (lock == null || thread == null) return;
@@ -47,6 +51,9 @@ public final class LockUpgradeDeadlockDetector {
 
     /**
      * Record release of a read lock.
+     *
+     * @param lock the lock
+     * @param thread the thread
      */
     public void recordReadLockReleased(ReentrantReadWriteLock lock, Thread thread) {
         if (lock == null || thread == null) return;
@@ -59,6 +66,10 @@ public final class LockUpgradeDeadlockDetector {
 
     /**
      * Record attempt to acquire a write lock.
+     *
+     * @param lock the lock
+     * @param lockName the lock name
+     * @param thread the thread
      */
     public void recordWriteLockAcquisitionAttempt(ReentrantReadWriteLock lock, String lockName, Thread thread) {
         if (lock == null || thread == null) return;
@@ -106,7 +117,9 @@ public final class LockUpgradeDeadlockDetector {
         /** The structured violations. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

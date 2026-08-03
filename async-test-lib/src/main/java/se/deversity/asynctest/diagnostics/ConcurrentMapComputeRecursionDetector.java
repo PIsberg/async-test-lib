@@ -61,13 +61,21 @@ public class ConcurrentMapComputeRecursionDetector {
         }
     }
 
-    /** Record exit from a {@code compute*} / {@code merge} mapping function. */
+    /**
+     * Record exit from a {@code compute*} / {@code merge} mapping function.
+     *
+     * @param map the map
+     * @param key the key
+     * @param thread the thread
+     */
     public void recordComputeEnd(Map<?, ?> map, Object key, Thread thread) {
         if (map == null || key == null || thread == null) return;
         activeComputes.remove(slot(map, key, thread));
     }
 
-    /** {@return report of recursive compute calls} */
+    /**
+     * {@return report of recursive compute calls}
+     */
     public ConcurrentMapComputeRecursionReport analyze() {
         ConcurrentMapComputeRecursionReport r = new ConcurrentMapComputeRecursionReport();
         r.recursions.addAll(recursions);
@@ -78,7 +86,9 @@ public class ConcurrentMapComputeRecursionDetector {
     public static class ConcurrentMapComputeRecursionReport {
         final List<String> recursions = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !recursions.isEmpty(); }
 
         @Override

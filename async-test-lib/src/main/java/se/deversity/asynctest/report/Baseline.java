@@ -67,6 +67,8 @@ public final class Baseline {
      * Resolves the active baseline from {@value #PATH_PROPERTY}; returns an empty
      * baseline when the property is unset. A missing file is treated as empty in
      * update mode (it will be created) and logged once otherwise.
+     *
+     * @return the from system properties
      */
     public static Baseline fromSystemProperties() {
         String prop = System.getProperty(PATH_PROPERTY);
@@ -76,12 +78,21 @@ public final class Baseline {
         return load(Path.of(prop));
     }
 
-    /** Whether {@value #UPDATE_PROPERTY} is set, switching the gate to record mode. */
+    /**
+     * Whether {@value #UPDATE_PROPERTY} is set, switching the gate to record mode.
+     *
+     * @return the update mode
+     */
     public static boolean updateMode() {
         return Boolean.getBoolean(UPDATE_PROPERTY);
     }
 
-    /** Loads (with caching by last-modified time) the baseline at {@code path}. */
+    /**
+     * Loads (with caching by last-modified time) the baseline at {@code path}.
+     *
+     * @param path the path
+     * @return the load
+     */
     public static Baseline load(Path path) {
         if (!Files.exists(path)) {
             if (!updateMode()) {
@@ -111,12 +122,22 @@ public final class Baseline {
         }
     }
 
-    /** Returns {@code true} when the (test, detector) finding is baselined. */
+    /**
+     * Returns {@code true} when the (test, detector) finding is baselined.
+     *
+     * @param testId the test id
+     * @param detectorName the detector name
+     * @return the contains
+     */
     public boolean contains(String testId, String detectorName) {
         return entries.contains(key(testId, detectorName));
     }
 
-    /** Number of entries in this baseline. */
+    /**
+     * Number of entries in this baseline.
+     *
+     * @return the size
+     */
     public int size() {
         return entries.size();
     }
@@ -127,6 +148,9 @@ public final class Baseline {
      * present. Thread-safe across concurrently-running tests in the same JVM.
      *
      * @return the number of entries actually added
+     *
+     * @param testId the test id
+     * @param detectorNames the detector names
      */
     public static int record(String testId, Collection<String> detectorNames) {
         String prop = System.getProperty(PATH_PROPERTY);

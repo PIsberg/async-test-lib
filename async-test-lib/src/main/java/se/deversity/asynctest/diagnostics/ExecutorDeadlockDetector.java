@@ -125,7 +125,9 @@ public class ExecutorDeadlockDetector {
         /** The self deadlocks. */
         public final Set<String> selfDeadlocks = new HashSet<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !selfDeadlocks.isEmpty();
         }

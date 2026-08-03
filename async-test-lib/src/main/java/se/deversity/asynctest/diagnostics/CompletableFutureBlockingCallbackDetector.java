@@ -37,6 +37,9 @@ public final class CompletableFutureBlockingCallbackDetector {
 
     /**
      * Record entry into a CompletableFuture callback.
+     *
+     * @param callbackName the callback name
+     * @param thread the thread
      */
     public void recordEnterCallback(String callbackName, Thread thread) {
         if (thread == null) return;
@@ -45,6 +48,8 @@ public final class CompletableFutureBlockingCallbackDetector {
 
     /**
      * Record exit from a CompletableFuture callback.
+     *
+     * @param thread the thread
      */
     public void recordExitCallback(Thread thread) {
         if (thread == null) return;
@@ -53,6 +58,9 @@ public final class CompletableFutureBlockingCallbackDetector {
 
     /**
      * Record a blocking call executed on a thread.
+     *
+     * @param thread the thread
+     * @param blockingApiName the blocking api name
      */
     public void recordBlockingCall(Thread thread, String blockingApiName) {
         if (thread == null) return;
@@ -97,7 +105,9 @@ public final class CompletableFutureBlockingCallbackDetector {
         /** The structured violations. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

@@ -90,7 +90,11 @@ public final class NotifyWithoutMonitorDetector {
         }
     }
 
-    /** Report produced by {@link #analyze()}. */
+    /**
+     * Report produced by {@link #analyze()}.
+     *
+     * @return the analyze
+     */
     public Report analyze() {
         Report r = new Report();
         synchronized (attempts) {
@@ -124,7 +128,9 @@ public final class NotifyWithoutMonitorDetector {
         /** The structured violations. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

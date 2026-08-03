@@ -77,6 +77,9 @@ public final class Phase1DetectorSet {
      * <p>Prefer {@link #from(AsyncTestConfig, AsyncTestContext)} whenever a context is
      * available (the runner always has one) — this overload always constructs fresh,
      * disconnected instances and is kept only for direct/unit-test construction.
+     *
+     * @param config the config
+     * @return the from
      */
     public static Phase1DetectorSet from(AsyncTestConfig config) {
         return from(config, null);
@@ -102,6 +105,10 @@ public final class Phase1DetectorSet {
      * disconnected-but-functional detector is safer than a {@code NullPointerException}.
      *
      * @since 1.7.0
+     *
+     * @param config the config
+     * @param ctx the ctx
+     * @return the from
      */
     public static Phase1DetectorSet from(AsyncTestConfig config, @Nullable AsyncTestContext ctx) {
         return new Phase1DetectorSet(
@@ -162,6 +169,8 @@ public final class Phase1DetectorSet {
      * so reporting them here too would double-count and double-print every finding.
      *
      * @since 1.7.0
+     *
+     * @return the collect reports
      */
     public Map<String, String> collectReports() {
         Map<String, String> out = new LinkedHashMap<>();

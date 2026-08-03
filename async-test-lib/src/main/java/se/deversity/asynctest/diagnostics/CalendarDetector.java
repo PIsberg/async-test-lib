@@ -139,6 +139,8 @@ public class CalendarDetector {
 
     /**
      * Analyse Calendar usage and return a report.
+     *
+     * @return the analyze
      */
     public CalendarReport analyze() {
         CalendarReport report = new CalendarReport();
@@ -190,7 +192,11 @@ public class CalendarDetector {
         final java.util.List<String> calendarErrors   = new java.util.ArrayList<>();
         final Map<String, String>   calendarActivity  = new ConcurrentHashMap<>();
 
-        /** Returns {@code true} when shared-access or errors were detected. */
+        /**
+         * Returns {@code true} when shared-access or errors were detected.
+         *
+         * @return the has issues
+         */
         public boolean hasIssues() {
             return !sharedCalendars.isEmpty() || !calendarErrors.isEmpty();
         }

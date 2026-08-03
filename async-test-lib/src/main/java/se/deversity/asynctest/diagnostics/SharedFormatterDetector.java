@@ -50,7 +50,9 @@ public class SharedFormatterDetector {
         s.accessingThreadNames.add(thread.getName());
     }
 
-    /** {@return report of formatters accessed from multiple threads} */
+    /**
+     * {@return report of formatters accessed from multiple threads}
+     */
     public SharedFormatterReport analyze() {
         SharedFormatterReport r = new SharedFormatterReport();
         for (FormatterState s : formatters.values()) {
@@ -68,7 +70,9 @@ public class SharedFormatterDetector {
     public static class SharedFormatterReport {
         final List<String> violations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

@@ -38,6 +38,8 @@ public class WakeupDetector {
     
     /**
      * Record that a thread is about to wait on a monitor.
+     *
+     * @param monitor the monitor
      */
     public void recordWaitEnter(Object monitor) {
         if (!enabled) return;
@@ -56,6 +58,9 @@ public class WakeupDetector {
     
     /**
      * Record that a thread has exited wait (either notified or spurious).
+     *
+     * @param monitor the monitor
+     * @param wasNotified the {@code wasNotified} flag
      */
     public void recordWaitExit(Object monitor, boolean wasNotified) {
         if (!enabled) return;
@@ -80,6 +85,9 @@ public class WakeupDetector {
     
     /**
      * Record a notify call on a monitor.
+     *
+     * @param monitor the monitor
+     * @param notifyAll the {@code notifyAll} flag
      */
     public void recordNotify(Object monitor, boolean notifyAll) {
         if (!enabled) return;
@@ -106,6 +114,8 @@ public class WakeupDetector {
     
     /**
      * Analyze wakeup patterns for issues.
+     *
+     * @return the analyze wakeups
      */
     public WakeupReport analyzeWakeups() {
         WakeupReport report = new WakeupReport();
@@ -139,6 +149,8 @@ public class WakeupDetector {
 
     /**
      * Standardized alias for {@link #analyzeWakeups()}.
+     *
+     * @return the analyze
      */
     public WakeupReport analyze() {
         return analyzeWakeups();
@@ -173,7 +185,9 @@ public class WakeupDetector {
         /** The always notify without wait. */
         public final Set<String> alwaysNotifyWithoutWait = new HashSet<>();
         
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !monitorsWithSpuriousWakeups.isEmpty() || !monitorsWithLostNotifications.isEmpty();
         }

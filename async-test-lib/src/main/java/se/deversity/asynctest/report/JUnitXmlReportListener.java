@@ -119,6 +119,8 @@ public final class JUnitXmlReportListener implements AsyncTestListener {
 
     /**
      * Returns the number of accumulated findings (useful for assertions in tests of this listener).
+     *
+     * @return the get finding count
      */
     public int getFindingCount() {
         return findings.size();

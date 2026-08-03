@@ -53,7 +53,13 @@ public class OptimisticReadValidationDetector {
         return System.identityHashCode(lock) + ":" + thread.threadId();
     }
 
-    /** Call immediately after {@code StampedLock.tryOptimisticRead()}. */
+    /**
+     * Call immediately after {@code StampedLock.tryOptimisticRead()}.
+     *
+     * @param lock the lock
+     * @param stamp the stamp
+     * @param thread the thread
+     */
     public void recordOptimisticReadStarted(Object lock, long stamp, Thread thread) {
         if (lock == null || thread == null) return;
         OptimisticRead replaced =
@@ -71,6 +77,10 @@ public class OptimisticReadValidationDetector {
      * Call when reading a field whose value was obtained during an optimistic read.
      *
      * @param fieldName descriptive name for the data being read (for reports)
+     *
+     * @param lock the lock
+     * @param stamp the stamp
+     * @param thread the thread
      */
     public void recordDataAccessed(Object lock, long stamp, Thread thread, String fieldName) {
         if (lock == null || thread == null) return;
@@ -84,6 +94,10 @@ public class OptimisticReadValidationDetector {
      * Call immediately after {@code lock.validate(stamp)}.
      *
      * @param result the boolean returned by {@code validate()}
+     *
+     * @param lock the lock
+     * @param stamp the stamp
+     * @param thread the thread
      */
     public void recordValidateCalled(Object lock, long stamp, boolean result, Thread thread) {
         if (lock == null || thread == null) return;
@@ -103,7 +117,9 @@ public class OptimisticReadValidationDetector {
         }
     }
 
-    /** {@return report of optimistic read validation failures} */
+    /**
+     * {@return report of optimistic read validation failures}
+     */
     public OptimisticReadValidationReport analyze() {
         OptimisticReadValidationReport r = new OptimisticReadValidationReport();
         // reads still pending at analysis time were never validated
@@ -126,7 +142,9 @@ public class OptimisticReadValidationDetector {
     public static class OptimisticReadValidationReport {
         final List<String> violations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override
