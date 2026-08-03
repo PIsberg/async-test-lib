@@ -13,7 +13,12 @@ public class BenchmarkRegressionException extends RuntimeException {
     // Not serialized: BenchmarkComparisonResult does not implement Serializable.
     // The message string (from super) carries the human-readable detail.
     private final transient BenchmarkComparisonResult comparisonResult;
-
+    /**
+     * Creates a BenchmarkRegressionException.
+     *
+     * @param message the assertion text shown to whoever the failing build lands on
+     * @param comparisonResult the measured comparison, retained so a reporter can show both runs
+     */
     public BenchmarkRegressionException(String message, BenchmarkComparisonResult comparisonResult) {
         super(message);
         this.comparisonResult = comparisonResult;

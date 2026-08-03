@@ -109,8 +109,8 @@ public class StructuredTaskScopeMisuseDetector {
      * Record that a {@code StructuredTaskScope.open(...)} returned a new scope,
      * confined to the opening (owner) thread.
      *
-     * @param scopeId the scope id
-     * @param owner the owner
+     * @param scopeId correlates the calls belonging to one scope across its lifecycle
+     * @param owner the thread currently holding it
      */
     public void recordScopeOpened(String scopeId, Thread owner) {
         if (scopeId == null || owner == null) return;
@@ -122,9 +122,9 @@ public class StructuredTaskScopeMisuseDetector {
      * Record a {@code scope.fork(task)} call. Flags fork-after-join and
      * owner-confinement violations.
      *
-     * @param scopeId the scope id
-     * @param subtaskId the subtask id
-     * @param thread the thread
+     * @param scopeId correlates the calls belonging to one scope across its lifecycle
+     * @param subtaskId correlates the calls belonging to one subtask
+     * @param thread the thread performing the operation
      */
     public void recordFork(String scopeId, String subtaskId, Thread thread) {
         if (scopeId == null || subtaskId == null || thread == null) return;
@@ -155,8 +155,8 @@ public class StructuredTaskScopeMisuseDetector {
      * Record a {@code scope.join()} call. Flags owner-confinement violations and
      * marks the scope as joined.
      *
-     * @param scopeId the scope id
-     * @param thread the thread
+     * @param scopeId correlates the calls belonging to one scope across its lifecycle
+     * @param thread the thread performing the operation
      */
     public void recordJoin(String scopeId, Thread thread) {
         if (scopeId == null || thread == null) return;
@@ -179,9 +179,9 @@ public class StructuredTaskScopeMisuseDetector {
      * scope has been joined, and reads that happen after {@code join()} timed out
      * (the subtask state is not {@code SUCCESS}, so {@code get()} throws).
      *
-     * @param scopeId the scope id
-     * @param subtaskId the subtask id
-     * @param thread the thread
+     * @param scopeId correlates the calls belonging to one scope across its lifecycle
+     * @param subtaskId correlates the calls belonging to one subtask
+     * @param thread the thread performing the operation
      */
     public void recordResultRead(String scopeId, String subtaskId, Thread thread) {
         if (scopeId == null || subtaskId == null || thread == null) return;
@@ -214,8 +214,8 @@ public class StructuredTaskScopeMisuseDetector {
      *
      * @since 1.7.0
      *
-     * @param scopeId the scope id
-     * @param thread the thread
+     * @param scopeId correlates the calls belonging to one scope across its lifecycle
+     * @param thread the thread performing the operation
      */
     public void recordJoinTimeout(String scopeId, Thread thread) {
         if (scopeId == null || thread == null) return;
@@ -242,8 +242,8 @@ public class StructuredTaskScopeMisuseDetector {
      *
      * @since 1.7.0
      *
-     * @param scopeId the scope id
-     * @param thread the thread
+     * @param scopeId correlates the calls belonging to one scope across its lifecycle
+     * @param thread the thread performing the operation
      */
     public void recordTimeoutSwallowed(String scopeId, Thread thread) {
         if (scopeId == null || thread == null) return;
@@ -268,8 +268,8 @@ public class StructuredTaskScopeMisuseDetector {
      * Record that the scope was closed (the try-with-resources block ended).
      * Flags a scope that forked subtasks but was never joined.
      *
-     * @param scopeId the scope id
-     * @param thread the thread
+     * @param scopeId correlates the calls belonging to one scope across its lifecycle
+     * @param thread the thread performing the operation
      */
     public void recordScopeClosed(String scopeId, Thread thread) {
         if (scopeId == null || thread == null) return;
@@ -364,15 +364,19 @@ public class StructuredTaskScopeMisuseDetector {
          */
         public List<String> getMissingJoinIssues()        { return Collections.unmodifiableList(missingJoinIssues); }
         /**
+         * Get result after timeout issues.
+         *
          * @since 1.7.0
          *
-         * @return the get result after timeout issues
+         * @return the recorded cases where a subtask result was read after the scope timed out
          */
         public List<String> getResultAfterTimeoutIssues() { return Collections.unmodifiableList(resultAfterTimeoutIssues); }
         /**
+         * Get timeout swallowed warnings.
+         *
          * @since 1.7.0
          *
-         * @return the get timeout swallowed warnings
+         * @return the recorded cases where a scope timeout was caught and discarded
          */
         public List<String> getTimeoutSwallowedWarnings() { return Collections.unmodifiableList(timeoutSwallowedWarnings); }
         /**

@@ -78,7 +78,7 @@ public class SynchronizedNonFinalDetector {
      * Analyses recorded lock objects and returns a report of slots where the
      * monitor reference changed across invocations.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public SynchronizedNonFinalReport analyze() {
         SynchronizedNonFinalReport report = new SynchronizedNonFinalReport();
@@ -106,7 +106,7 @@ public class SynchronizedNonFinalDetector {
         /**
          * Returns {@code true} when any reassignable-lock violation was detected.
          *
-         * @return the has issues
+         * @return {@code true} when this detector recorded something worth reporting
          */
         public boolean hasIssues() {
             return !violations.isEmpty();

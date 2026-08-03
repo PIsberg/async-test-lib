@@ -43,21 +43,33 @@ public class BenchmarkRecorder {
     private boolean benchmarkingEnabled;
 
     /**
+     * Creates a BenchmarkRecorder.
+     *
      * @see #BenchmarkRecorder(AsyncTestConfig, String, String, int) — prefer that
      * overload when the actual thread count may differ from {@code config.threads}
      * (e.g. {@code virtualThreadStressMode} overrides it). This overload records
      * {@code config.threads} as-is and exists for direct/unit-test construction.
+     *
+     * @param config the configuration whose thread and invocation counts the recorded run is keyed by
+     * @param testClass the fully-qualified test class, forming half of the benchmark key
+     * @param testMethod the test method, forming the other half of the benchmark key
      */
     public BenchmarkRecorder(AsyncTestConfig config, String testClass, String testMethod) {
         this(config, testClass, testMethod, config.threads);
     }
 
     /**
+     * Creates a BenchmarkRecorder.
+     *
      * @param actualThreads the thread count actually used for this run, which may
      *                      differ from {@code config.threads} when
      *                      {@code virtualThreadStressMode} overrides it; recorded on
      *                      the baseline so comparisons are labeled correctly.
      * @since 1.7.0
+     *
+     * @param config the configuration whose thread and invocation counts the recorded run is keyed by
+     * @param testClass the fully-qualified test class, forming half of the benchmark key
+     * @param testMethod the test method, forming the other half of the benchmark key
      */
     public BenchmarkRecorder(AsyncTestConfig config, String testClass, String testMethod, int actualThreads) {
         this.config = config;
@@ -87,7 +99,7 @@ public class BenchmarkRecorder {
     /**
      * Check if benchmarking is enabled.
      *
-     * @return the is benchmarking enabled
+     * @return {@code true} when benchmarking is switched on for this run
      */
     public boolean isBenchmarkingEnabled() {
         return benchmarkingEnabled;
@@ -221,7 +233,7 @@ public class BenchmarkRecorder {
     /**
      * Get the number of recorded invocations.
      *
-     * @return the get invocation count
+     * @return the number of invocations recorded so far
      */
     public int getInvocationCount() {
         synchronized (invocationTimesNanos) {

@@ -25,9 +25,9 @@ public class CyclicBarrierDetector {
     /**
      * Register a CyclicBarrier for monitoring.
      *
-     * @param barrier the barrier
-     * @param name the name
-     * @param parties the parties
+     * @param barrier the barrier being recorded, tracked by identity
+     * @param name a label identifying the barrier in the report
+     * @param parties the number of parties the barrier was created for
      */
     public void registerBarrier(CyclicBarrier barrier, String name, int parties) {
         barrierRegistry.put(barrier, new BarrierInfo(name, parties));
@@ -36,7 +36,7 @@ public class CyclicBarrierDetector {
     /**
      * Record a thread arriving at the barrier.
      *
-     * @param barrier the barrier
+     * @param barrier the barrier being recorded, tracked by identity
      */
     public void recordArrival(CyclicBarrier barrier) {
         BarrierInfo info = barrierRegistry.get(barrier);
@@ -48,7 +48,7 @@ public class CyclicBarrierDetector {
     /**
      * Record a barrier await() that timed out.
      *
-     * @param barrier the barrier
+     * @param barrier the barrier being recorded, tracked by identity
      */
     public void recordTimeout(CyclicBarrier barrier) {
         timedOutBarriers.add(barrier);
@@ -57,7 +57,7 @@ public class CyclicBarrierDetector {
     /**
      * Record a barrier that was broken.
      *
-     * @param barrier the barrier
+     * @param barrier the barrier being recorded, tracked by identity
      */
     public void recordBroken(CyclicBarrier barrier) {
         brokenBarriers.add(barrier);
@@ -67,7 +67,7 @@ public class CyclicBarrierDetector {
      * Record a barrier that was reset, repairing it after it broke.
      * Subsequent await() calls are no longer considered reuse-after-broken.
      *
-     * @param barrier the barrier
+     * @param barrier the barrier being recorded, tracked by identity
      */
     public void recordReset(CyclicBarrier barrier) {
         brokenBarriers.remove(barrier);
@@ -78,7 +78,7 @@ public class CyclicBarrierDetector {
      * currently broken and has not been reset since, this is flagged as
      * reuse of a broken barrier without an intervening reset().
      *
-     * @param barrier the barrier
+     * @param barrier the barrier being recorded, tracked by identity
      */
     public void recordAwait(CyclicBarrier barrier) {
         if (brokenBarriers.contains(barrier)) {
@@ -89,7 +89,7 @@ public class CyclicBarrierDetector {
     /**
      * Record successful barrier completion.
      *
-     * @param barrier the barrier
+     * @param barrier the barrier being recorded, tracked by identity
      */
     public void recordBarrierComplete(CyclicBarrier barrier) {
         BarrierInfo info = barrierRegistry.get(barrier);
@@ -101,7 +101,7 @@ public class CyclicBarrierDetector {
     /**
      * Analyze barrier usage and return report.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public CyclicBarrierReport analyze() {
         return new CyclicBarrierReport(
@@ -120,7 +120,14 @@ public class CyclicBarrierDetector {
         private final Set<CyclicBarrier> timedOutBarriers;
         private final Set<CyclicBarrier> brokenBarriers;
         private final Set<CyclicBarrier> reuseAfterBrokenBarriers;
-
+        /**
+         * Creates a CyclicBarrierReport.
+         *
+         * @param barrierRegistry every registered barrier and what was observed on it
+         * @param timedOutBarriers the barriers whose await timed out
+         * @param brokenBarriers the barriers left in a broken state
+         * @param reuseAfterBrokenBarriers the barriers used again after they had broken
+         */
         public CyclicBarrierReport(
             Map<CyclicBarrier, BarrierInfo> barrierRegistry,
             Set<CyclicBarrier> timedOutBarriers,
@@ -139,6 +146,10 @@ public class CyclicBarrierDetector {
          *
          * @deprecated since 1.7.0 — use the four-argument constructor; this overload
          *             reports no reuse-after-broken barriers.
+         *
+         * @param barrierRegistry every registered barrier and what was observed on it
+         * @param timedOutBarriers the barriers whose await timed out
+         * @param brokenBarriers the barriers left in a broken state
          */
         @Deprecated(since = "1.7.0")
         public CyclicBarrierReport(

@@ -162,7 +162,7 @@ public class TimerDetector {
     /**
      * Analyse Timer usage and return a report.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public TimerReport analyze() {
         TimerReport report = new TimerReport();
@@ -221,7 +221,7 @@ public class TimerDetector {
         /**
          * Returns {@code true} when timer thread failures or long-running tasks were detected.
          *
-         * @return the has issues
+         * @return {@code true} when this detector recorded something worth reporting
          */
         public boolean hasIssues() {
             return !timerThreadFailures.isEmpty() || !longRunningTaskWarnings.isEmpty();

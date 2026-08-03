@@ -30,13 +30,12 @@ public class LazyInitValidator {
     /**
      * Records access so it can be analysed at the end of the run.
      *
-     * @param fieldName the field name
-     * @param observedNull the observed null
-     * @param initializedValue the initialized value
-     * @param synchronizedAccess the synchronized access
-     * @param volatileField the volatile field
+     * @param fieldName the field involved, as it should appear in the report
+     * @param observedNull {@code true} when the reading thread saw {@code null}
+     * @param initializedValue {@code true} when the value had already been initialised
+     * @param synchronizedAccess {@code true} when the access was made while holding the lock
+     * @param volatileField {@code true} when the field is declared {@code volatile}
      */
-
     public void recordAccess(String fieldName, boolean observedNull, boolean initializedValue,
                              boolean synchronizedAccess, boolean volatileField) {
         if (!enabled || fieldName == null || fieldName.isBlank()) {
@@ -68,9 +67,8 @@ public class LazyInitValidator {
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
-
     public LazyInitReport analyze() {
         LazyInitReport report = new LazyInitReport();
 
@@ -99,15 +97,14 @@ public class LazyInitValidator {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-
     public void reset() {
         fields.clear();
     }
 
     public static class LazyInitReport {
-        /** The multiple initializations. */
+        /** Fields initialised more than once because the guard was not atomic. */
         public final Set<String> multipleInitializations = new HashSet<>();
-        /** The unsafe publication. */
+        /** Fields published without the ordering a reader would need to see them fully. */
         public final Set<String> unsafePublication = new HashSet<>();
 
         /**

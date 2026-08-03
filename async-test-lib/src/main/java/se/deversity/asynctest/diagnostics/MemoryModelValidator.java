@@ -26,7 +26,7 @@ public class MemoryModelValidator {
      * Run comprehensive JMM validation on the test framework.
      * This checks that all internal state transitions are properly synchronized.
      *
-     * @return the validate
+     * @return the findings this detector collected during the run
      */
     public ValidationResult validate() {
         ValidationResult result = new ValidationResult();
@@ -169,11 +169,11 @@ public class MemoryModelValidator {
     }
     
     public static class ValidationResult {
-        /** The tests run. */
+        /** How many ordering checks were run. */
         public int testsRun = 0;
-        /** The tests passed. */
+        /** How many of the ordering checks held. */
         public int testsPassed = 0;
-        /** The observations. */
+        /** Every recorded observation, in the order it was made. */
         public final List<String> observations = Collections.synchronizedList(new ArrayList<>());
         
         /**

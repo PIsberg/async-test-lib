@@ -84,11 +84,17 @@ public class VirtualThreadCpuBoundTaskDetector {
     private final AtomicInteger totalTasks = new AtomicInteger(0);
     private final AtomicLong totalDurationMs = new AtomicLong(0);
     private final AtomicLong maxObservedMs = new AtomicLong(0);
-
+    /**
+     * Creates a VirtualThreadCpuBoundTaskDetector.
+     */
     public VirtualThreadCpuBoundTaskDetector() {
         this(DEFAULT_CPU_THRESHOLD_MS);
     }
-
+    /**
+     * Creates a VirtualThreadCpuBoundTaskDetector.
+     *
+     * @param cpuThresholdMs the cpu threshold in milliseconds
+     */
     public VirtualThreadCpuBoundTaskDetector(long cpuThresholdMs) {
         this.cpuThresholdMs = cpuThresholdMs;
     }

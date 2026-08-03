@@ -39,7 +39,7 @@ public class PipelineMonitor {
     /**
      * Register a pipeline stage.
      *
-     * @param stageName the stage name
+     * @param stageName a label identifying the stage in the report
      */
     public void registerStage(String stageName) {
         stages.putIfAbsent(stageName, new PipelineStage(stageName));
@@ -48,8 +48,8 @@ public class PipelineMonitor {
     /**
      * Record event published to a stage.
      *
-     * @param stageName the stage name
-     * @param eventId the event id
+     * @param stageName a label identifying the stage in the report
+     * @param eventId correlates the calls belonging to one event
      */
     public void recordEventPublished(String stageName, String eventId) {
         if (!enabled) return;
@@ -62,8 +62,8 @@ public class PipelineMonitor {
     /**
      * Record event processed by a stage.
      *
-     * @param stageName the stage name
-     * @param eventId the event id
+     * @param stageName a label identifying the stage in the report
+     * @param eventId correlates the calls belonging to one event
      */
     public void recordEventProcessed(String stageName, String eventId) {
         if (!enabled) return;
@@ -78,9 +78,9 @@ public class PipelineMonitor {
     /**
      * Record event failure.
      *
-     * @param stageName the stage name
-     * @param eventId the event id
-     * @param reason the reason
+     * @param stageName a label identifying the stage in the report
+     * @param eventId correlates the calls belonging to one event
+     * @param reason why the event was recorded, shown in the report
      */
     public void recordEventFailed(String stageName, String eventId, String reason) {
         if (!enabled) return;
@@ -96,7 +96,7 @@ public class PipelineMonitor {
     /**
      * Analyze pipeline for signal loss.
      *
-     * @return the analyze pipeline
+     * @return the findings this detector collected during the run
      */
     public PipelineReport analyzePipeline() {
         PipelineReport report = new PipelineReport();
@@ -132,7 +132,7 @@ public class PipelineMonitor {
     /**
      * Standardized alias for {@link #analyzePipeline()}.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public PipelineReport analyze() {
         return analyzePipeline();
@@ -140,7 +140,6 @@ public class PipelineMonitor {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-
     public void reset() {
         stages.clear();
         eventLog.clear();
@@ -148,24 +147,22 @@ public class PipelineMonitor {
     /**
      * Disable.
      */
-    
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-    
     public void enable() {
         enabled = true;
     }
     
     public static class PipelineReport {
-        /** The missing events. */
+        /** Events entering a stage but never leaving it. */
         public final Set<String> missingEvents = new HashSet<>();
-        /** The failed events. */
+        /** Events that failed, keyed by the stage they failed in. */
         public final Map<String, List<String>> failedEvents = new HashMap<>();
-        /** The low processing rate. */
+        /** Stages that processed events more slowly than the threshold. */
         public final Set<String> lowProcessingRate = new HashSet<>();
         
         /**

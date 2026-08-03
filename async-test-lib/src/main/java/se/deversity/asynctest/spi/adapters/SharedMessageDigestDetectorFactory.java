@@ -44,7 +44,11 @@ public final class SharedMessageDigestDetectorFactory implements DetectorFactory
      */
     public static final class Adapter implements Detector {
         private final SharedMessageDigestDetector delegate;
-
+        /**
+         * Creates a Adapter.
+         *
+         * @param delegate the legacy detector whose findings this adapter republishes
+         */
         public Adapter(SharedMessageDigestDetector delegate) {
             this.delegate = delegate;
         }
@@ -62,7 +66,7 @@ public final class SharedMessageDigestDetectorFactory implements DetectorFactory
         /**
          * Exposed for legacy users that need direct access to the wrapped detector.
          *
-         * @return the delegate
+         * @return the wrapped legacy detector
          */
         public SharedMessageDigestDetector delegate() {
             return delegate;

@@ -34,7 +34,6 @@ public class FutureBlockingDetector {
     /**
      * Disable.
      */
-
     public void disable() { enabled = false; }
     /**
      * Enable.
@@ -43,11 +42,10 @@ public class FutureBlockingDetector {
     /**
      * Registers executor for tracking.
      *
-     * @param executor the executor
-     * @param name the name
-     * @param maxThreads the max threads
+     * @param executor the executor being recorded, tracked by identity
+     * @param name a label identifying the executor in the report
+     * @param maxThreads the configured maximum thread count
      */
-
     public void registerExecutor(Object executor, String name, int maxThreads) {
         if (!enabled || executor == null) {
             return;
@@ -58,9 +56,8 @@ public class FutureBlockingDetector {
     /**
      * Records task submitted so it can be analysed at the end of the run.
      *
-     * @param executor the executor
+     * @param executor the executor being recorded, tracked by identity
      */
-
     public void recordTaskSubmitted(Object executor) {
         ExecutorState state = stateFor(executor);
         if (state != null) {
@@ -70,9 +67,8 @@ public class FutureBlockingDetector {
     /**
      * Records task started so it can be analysed at the end of the run.
      *
-     * @param executor the executor
+     * @param executor the executor being recorded, tracked by identity
      */
-
     public void recordTaskStarted(Object executor) {
         ExecutorState state = stateFor(executor);
         if (state != null) {
@@ -82,9 +78,8 @@ public class FutureBlockingDetector {
     /**
      * Records blocking wait so it can be analysed at the end of the run.
      *
-     * @param executor the executor
+     * @param executor the executor being recorded, tracked by identity
      */
-
     public void recordBlockingWait(Object executor) {
         ExecutorState state = stateFor(executor);
         if (state != null) {
@@ -94,9 +89,8 @@ public class FutureBlockingDetector {
     /**
      * Records task completed so it can be analysed at the end of the run.
      *
-     * @param executor the executor
+     * @param executor the executor being recorded, tracked by identity
      */
-
     public void recordTaskCompleted(Object executor) {
         ExecutorState state = stateFor(executor);
         if (state != null) {
@@ -113,9 +107,8 @@ public class FutureBlockingDetector {
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
-
     public FutureBlockingReport analyze() {
         FutureBlockingReport report = new FutureBlockingReport();
 
@@ -136,7 +129,7 @@ public class FutureBlockingDetector {
     }
 
     public static class FutureBlockingReport {
-        /** The starvation risks. */
+        /** Blocking calls made from a pool thread, which can exhaust the pool. */
         public final Set<String> starvationRisks = new HashSet<>();
 
         /**

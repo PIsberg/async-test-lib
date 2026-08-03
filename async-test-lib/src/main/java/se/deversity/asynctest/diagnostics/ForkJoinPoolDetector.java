@@ -24,9 +24,9 @@ public class ForkJoinPoolDetector {
     /**
      * Register a ForkJoinPool for monitoring.
      *
-     * @param pool the pool
-     * @param name the name
-     * @param parallelism the parallelism
+     * @param pool the pool being recorded, tracked by identity
+     * @param name a label identifying the pool in the report
+     * @param parallelism the configured parallelism of the pool
      */
     public void registerPool(ForkJoinPool pool, String name, int parallelism) {
         poolRegistry.put(pool, new PoolInfo(name, parallelism));
@@ -35,9 +35,9 @@ public class ForkJoinPoolDetector {
     /**
      * Record a task being forked.
      *
-     * @param pool the pool
-     * @param poolName the pool name
-     * @param taskName the task name
+     * @param pool the pool being recorded, tracked by identity
+     * @param poolName a label identifying the pool in the report
+     * @param taskName a label identifying the task in the report
      */
     public void recordFork(ForkJoinPool pool, String poolName, String taskName) {
         PoolInfo info = poolRegistry.get(pool);
@@ -49,9 +49,9 @@ public class ForkJoinPoolDetector {
     /**
      * Record a task being joined.
      *
-     * @param pool the pool
-     * @param poolName the pool name
-     * @param taskName the task name
+     * @param pool the pool being recorded, tracked by identity
+     * @param poolName a label identifying the pool in the report
+     * @param taskName a label identifying the task in the report
      */
     public void recordJoin(ForkJoinPool pool, String poolName, String taskName) {
         PoolInfo info = poolRegistry.get(pool);
@@ -63,8 +63,8 @@ public class ForkJoinPoolDetector {
     /**
      * Record a task that was forked but never joined.
      *
-     * @param poolName the pool name
-     * @param taskName the task name
+     * @param poolName a label identifying the pool in the report
+     * @param taskName a label identifying the task in the report
      */
     public void recordForkWithoutJoin(String poolName, String taskName) {
         forkedWithoutJoin.add(poolName + ":" + taskName);
@@ -73,9 +73,9 @@ public class ForkJoinPoolDetector {
     /**
      * Record an exception in a forked task.
      *
-     * @param poolName the pool name
-     * @param taskName the task name
-     * @param t the t
+     * @param poolName a label identifying the pool in the report
+     * @param taskName a label identifying the task in the report
+     * @param t the throwable the task failed with
      */
     public void recordException(String poolName, String taskName, Throwable t) {
         exceptionsInTasks.add(poolName + ":" + taskName + " (" + t.getClass().getSimpleName() + ")");
@@ -84,7 +84,7 @@ public class ForkJoinPoolDetector {
     /**
      * Record work stealing event.
      *
-     * @param pool the pool
+     * @param pool the pool being recorded, tracked by identity
      */
     public void recordWorkSteal(ForkJoinPool pool) {
         taskStealCount++;
@@ -93,8 +93,8 @@ public class ForkJoinPoolDetector {
     /**
      * Record task execution time.
      *
-     * @param pool the pool
-     * @param poolName the pool name
+     * @param pool the pool being recorded, tracked by identity
+     * @param poolName a label identifying the pool in the report
      * @param timeMs the time in milliseconds
      */
     public void recordTaskTime(ForkJoinPool pool, String poolName, long timeMs) {
@@ -107,7 +107,7 @@ public class ForkJoinPoolDetector {
     /**
      * Analyze ForkJoinPool usage and return report.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public ForkJoinPoolReport analyze() {
         return new ForkJoinPoolReport(
@@ -124,7 +124,13 @@ public class ForkJoinPoolDetector {
         private final Set<String> forkedWithoutJoin;
         private final Set<String> exceptionsInTasks;
         private final int taskStealCount;
-
+        /**
+         * Creates a ForkJoinPoolReport.
+         *
+         * @param forkedWithoutJoin the tasks forked but never joined
+         * @param exceptionsInTasks the exceptions thrown inside pool tasks
+         * @param taskStealCount how many tasks were stolen between workers
+         */
         public ForkJoinPoolReport(
             Set<String> forkedWithoutJoin,
             Set<String> exceptionsInTasks,

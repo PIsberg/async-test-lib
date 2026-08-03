@@ -27,7 +27,9 @@ public class DeadlockDetector {
      * remain valid exclusion keys for the detector's lifetime.
      */
     private final Set<Long> preexistingDeadlockedThreads;
-
+    /**
+     * Creates a DeadlockDetector.
+     */
     public DeadlockDetector() {
         long[] existing = ManagementFactory.getThreadMXBean().findDeadlockedThreads();
         if (existing == null || existing.length == 0) {
@@ -43,7 +45,6 @@ public class DeadlockDetector {
     /**
      * Prints thread dump to the report output.
      */
-
     public static void printThreadDump() {
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
 
@@ -198,7 +199,7 @@ public class DeadlockDetector {
      * <p>This is a JVM-wide snapshot: unlike {@link #analyze()}, it also reports deadlocks
      * that predate any particular detector instance.
      *
-     * @return the has deadlock
+     * @return {@code true} when a lock-order cycle was observed
      */
     public static boolean hasDeadlock() {
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
@@ -209,7 +210,7 @@ public class DeadlockDetector {
     /**
      * Get a summary of current lock contention.
      *
-     * @return the get lock contention summary
+     * @return a human-readable summary of lock contention, for the report
      */
     @SuppressWarnings("PMD.AssignmentInOperand") // counter++ in switch arrow case is idiomatic
     public static String getLockContentionSummary() {
@@ -248,7 +249,7 @@ public class DeadlockDetector {
      * <p>Deadlocks that already existed when this detector was constructed are excluded,
      * so a report with issues always means the monitored test introduced a new deadlock.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public DeadlockReport analyze() {
         long[] current = ManagementFactory.getThreadMXBean().findDeadlockedThreads();
@@ -265,7 +266,11 @@ public class DeadlockDetector {
 
     public static class DeadlockReport {
         private final boolean deadlocked;
-
+        /**
+         * Creates a DeadlockReport.
+         *
+         * @param deadlocked the {@code deadlocked} flag
+         */
         public DeadlockReport(boolean deadlocked) {
             this.deadlocked = deadlocked;
         }

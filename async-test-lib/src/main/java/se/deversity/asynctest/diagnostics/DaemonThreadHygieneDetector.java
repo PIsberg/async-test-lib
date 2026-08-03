@@ -100,7 +100,7 @@ public final class DaemonThreadHygieneDetector {
      * registration time, and (2) is still alive (or never started) at analysis
      * time — i.e. has not cleanly terminated.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public Report analyze() {
         Report r = new Report();
@@ -168,11 +168,11 @@ public final class DaemonThreadHygieneDetector {
 
     /** Report produced by {@link #analyze()}. */
     public static final class Report {
-        /** The violations. */
+        /** Findings as human-readable lines, for the text report. */
         public final List<String> violations = new ArrayList<>();
-        /** The flagged. */
+        /** Threads whose daemon status does not match what the run expects. */
         public final Set<String> flagged = new LinkedHashSet<>();
-        /** The structured violations. */
+        /** The same findings as {@link se.deversity.asynctest.report.Violation} objects, for machine-readable reports. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**

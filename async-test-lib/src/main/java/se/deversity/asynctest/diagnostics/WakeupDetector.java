@@ -39,7 +39,7 @@ public class WakeupDetector {
     /**
      * Record that a thread is about to wait on a monitor.
      *
-     * @param monitor the monitor
+     * @param monitor the object being used as a monitor, tracked by identity
      */
     public void recordWaitEnter(Object monitor) {
         if (!enabled) return;
@@ -59,7 +59,7 @@ public class WakeupDetector {
     /**
      * Record that a thread has exited wait (either notified or spurious).
      *
-     * @param monitor the monitor
+     * @param monitor the object being used as a monitor, tracked by identity
      * @param wasNotified the {@code wasNotified} flag
      */
     public void recordWaitExit(Object monitor, boolean wasNotified) {
@@ -86,7 +86,7 @@ public class WakeupDetector {
     /**
      * Record a notify call on a monitor.
      *
-     * @param monitor the monitor
+     * @param monitor the object being used as a monitor, tracked by identity
      * @param notifyAll the {@code notifyAll} flag
      */
     public void recordNotify(Object monitor, boolean notifyAll) {
@@ -115,7 +115,7 @@ public class WakeupDetector {
     /**
      * Analyze wakeup patterns for issues.
      *
-     * @return the analyze wakeups
+     * @return the findings this detector collected during the run
      */
     public WakeupReport analyzeWakeups() {
         WakeupReport report = new WakeupReport();
@@ -150,7 +150,7 @@ public class WakeupDetector {
     /**
      * Standardized alias for {@link #analyzeWakeups()}.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public WakeupReport analyze() {
         return analyzeWakeups();
@@ -158,31 +158,28 @@ public class WakeupDetector {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-
     public void reset() {
         monitors.clear();
     }
     /**
      * Disable.
      */
-    
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-    
     public void enable() {
         enabled = true;
     }
     
     public static class WakeupReport {
-        /** The monitors with spurious wakeups. */
+        /** Monitors whose waiters woke without a matching notification. */
         public final Set<String> monitorsWithSpuriousWakeups = new HashSet<>();
-        /** The monitors with lost notifications. */
+        /** Monitors where a notification arrived before the waiter blocked. */
         public final Set<String> monitorsWithLostNotifications = new HashSet<>();
-        /** The always notify without wait. */
+        /** Monitors notified while nothing was waiting, so the signal was lost. */
         public final Set<String> alwaysNotifyWithoutWait = new HashSet<>();
         
         /**

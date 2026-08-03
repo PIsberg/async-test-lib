@@ -119,7 +119,7 @@ public class MissedSignalDetector {
      * Analyses recorded signal/wait data and returns a report of conditions
      * that suffered missed signals.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public MissedSignalReport analyze() {
         MissedSignalReport report = new MissedSignalReport();
@@ -155,7 +155,7 @@ public class MissedSignalDetector {
         /**
          * Returns {@code true} when at least one condition suffered a missed signal.
          *
-         * @return the has issues
+         * @return {@code true} when this detector recorded something worth reporting
          */
         public boolean hasIssues() {
             return !missedConditions.isEmpty();

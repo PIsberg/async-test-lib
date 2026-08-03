@@ -68,7 +68,7 @@ public final class Baseline {
      * baseline when the property is unset. A missing file is treated as empty in
      * update mode (it will be created) and logged once otherwise.
      *
-     * @return the from system properties
+     * @return the baseline named by the system properties, or an empty one when none is configured
      */
     public static Baseline fromSystemProperties() {
         String prop = System.getProperty(PATH_PROPERTY);
@@ -81,7 +81,7 @@ public final class Baseline {
     /**
      * Whether {@value #UPDATE_PROPERTY} is set, switching the gate to record mode.
      *
-     * @return the update mode
+     * @return {@code true} when findings are being recorded into the baseline rather than gated on
      */
     public static boolean updateMode() {
         return Boolean.getBoolean(UPDATE_PROPERTY);
@@ -90,8 +90,8 @@ public final class Baseline {
     /**
      * Loads (with caching by last-modified time) the baseline at {@code path}.
      *
-     * @param path the path
-     * @return the load
+     * @param path the baseline file to read; a missing file yields an empty baseline rather than an error
+     * @return the baseline read from that file, or an empty baseline when the file does not exist
      */
     public static Baseline load(Path path) {
         if (!Files.exists(path)) {
@@ -125,9 +125,9 @@ public final class Baseline {
     /**
      * Returns {@code true} when the (test, detector) finding is baselined.
      *
-     * @param testId the test id
-     * @param detectorName the detector name
-     * @return the contains
+     * @param testId the test the finding was raised against
+     * @param detectorName the detector that raised the finding
+     * @return {@code true} when that finding is already baselined and must not fail the build
      */
     public boolean contains(String testId, String detectorName) {
         return entries.contains(key(testId, detectorName));
@@ -136,7 +136,7 @@ public final class Baseline {
     /**
      * Number of entries in this baseline.
      *
-     * @return the size
+     * @return the number of baselined findings
      */
     public int size() {
         return entries.size();
@@ -149,8 +149,8 @@ public final class Baseline {
      *
      * @return the number of entries actually added
      *
-     * @param testId the test id
-     * @param detectorNames the detector names
+     * @param testId the test the finding was raised against
+     * @param detectorNames the detectors to baseline for this test; entries already present are skipped
      */
     public static int record(String testId, Collection<String> detectorNames) {
         String prop = System.getProperty(PATH_PROPERTY);

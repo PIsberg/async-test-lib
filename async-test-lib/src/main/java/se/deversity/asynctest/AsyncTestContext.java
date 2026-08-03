@@ -353,7 +353,11 @@ public final class AsyncTestContext {
     // Exposed via atomicityValidator() so se.deversity.asynctest.telemetry.TelemetryBridge
     // can route drained agent field-access events into the live per-test detector.
     final @Nullable AtomicityValidator                    atomicityValidator;
-
+    /**
+     * Creates a AsyncTestContext.
+     *
+     * @param cfg the resolved configuration deciding which detectors this context installs
+     */
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
         // Mirror registry references so package-private field access still works
@@ -633,7 +637,7 @@ public final class AsyncTestContext {
     /**
      * Installs {@code ctx} into the calling thread's ThreadLocal.
      *
-     * @param ctx the ctx
+     * @param ctx the context to bind to the calling thread; must be paired with an {@code uninstall()} in a {@code finally}
      */
     @AICallersOnly({"se.deversity.asynctest.runner.ConcurrencyRunner"})
     public static void install(AsyncTestContext ctx) {
@@ -691,7 +695,7 @@ public final class AsyncTestContext {
     /**
      * Internal: set by {@code ConcurrencyRunner} before each invocation round.
      *
-     * @param seed the seed
+     * @param seed the seed for this round, so a reported interleaving can be replayed
      */
     public void setReplaySeedForRound(long seed) {
         this.currentRoundSeed = seed;

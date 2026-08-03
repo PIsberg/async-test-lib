@@ -140,7 +140,7 @@ public class CalendarDetector {
     /**
      * Analyse Calendar usage and return a report.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public CalendarReport analyze() {
         CalendarReport report = new CalendarReport();
@@ -195,7 +195,7 @@ public class CalendarDetector {
         /**
          * Returns {@code true} when shared-access or errors were detected.
          *
-         * @return the has issues
+         * @return {@code true} when this detector recorded something worth reporting
          */
         public boolean hasIssues() {
             return !sharedCalendars.isEmpty() || !calendarErrors.isEmpty();

@@ -48,7 +48,7 @@ public final class LicenseGuard {
      * Validates the license for the given config. Throws {@link SecurityException}
      * if denied. Subsequent calls with the same fingerprint return immediately.
      *
-     * @param config the config
+     * @param config the configuration whose fingerprint keys the cached decision
      */
     @AIIdempotent(reason = "ConcurrentHashMap.computeIfAbsent guarantees the underlying gate.check fires at most once per Fingerprint; repeat calls return immediately. Denied results consistently throw SecurityException for the same fingerprint.")
     public static void check(AsyncTestConfig config) {

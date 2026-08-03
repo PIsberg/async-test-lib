@@ -39,9 +39,9 @@ public final class LockUpgradeDeadlockDetector {
     /**
      * Record acquisition of a read lock.
      *
-     * @param lock the lock
-     * @param lockName the lock name
-     * @param thread the thread
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param lockName a label identifying the lock in the report
+     * @param thread the thread performing the operation
      */
     public void recordReadLockAcquired(ReentrantReadWriteLock lock, String lockName, Thread thread) {
         if (lock == null || thread == null) return;
@@ -52,8 +52,8 @@ public final class LockUpgradeDeadlockDetector {
     /**
      * Record release of a read lock.
      *
-     * @param lock the lock
-     * @param thread the thread
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param thread the thread performing the operation
      */
     public void recordReadLockReleased(ReentrantReadWriteLock lock, Thread thread) {
         if (lock == null || thread == null) return;
@@ -67,9 +67,9 @@ public final class LockUpgradeDeadlockDetector {
     /**
      * Record attempt to acquire a write lock.
      *
-     * @param lock the lock
-     * @param lockName the lock name
-     * @param thread the thread
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param lockName a label identifying the lock in the report
+     * @param thread the thread performing the operation
      */
     public void recordWriteLockAcquisitionAttempt(ReentrantReadWriteLock lock, String lockName, Thread thread) {
         if (lock == null || thread == null) return;
@@ -85,9 +85,8 @@ public final class LockUpgradeDeadlockDetector {
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
-
     public Report analyze() {
         Report r = new Report();
         for (State s : violations.values()) {
@@ -112,9 +111,9 @@ public final class LockUpgradeDeadlockDetector {
     }
 
     public static final class Report {
-        /** The violations. */
+        /** Findings as human-readable lines, for the text report. */
         public final List<String> violations = new ArrayList<>();
-        /** The structured violations. */
+        /** The same findings as {@link se.deversity.asynctest.report.Violation} objects, for machine-readable reports. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**

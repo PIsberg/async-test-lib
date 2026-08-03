@@ -29,10 +29,9 @@ public class ThreadLocalMonitor {
     /**
      * Records thread local init so it can be analysed at the end of the run.
      *
-     * @param threadLocal the thread local
-     * @param name the name
+     * @param threadLocal the thread-local being recorded, tracked by identity
+     * @param name a label identifying the thread local in the report
      */
-
     public void recordThreadLocalInit(ThreadLocal<?> threadLocal, String name) {
         if (!enabled || threadLocal == null) {
             return;
@@ -47,9 +46,8 @@ public class ThreadLocalMonitor {
     /**
      * Records thread local access so it can be analysed at the end of the run.
      *
-     * @param threadLocal the thread local
+     * @param threadLocal the thread-local being recorded, tracked by identity
      */
-
     public void recordThreadLocalAccess(ThreadLocal<?> threadLocal) {
         if (!enabled || threadLocal == null) {
             return;
@@ -62,9 +60,8 @@ public class ThreadLocalMonitor {
     /**
      * Records thread local cleanup so it can be analysed at the end of the run.
      *
-     * @param threadLocal the thread local
+     * @param threadLocal the thread-local being recorded, tracked by identity
      */
-
     public void recordThreadLocalCleanup(ThreadLocal<?> threadLocal) {
         if (!enabled || threadLocal == null) {
             return;
@@ -84,9 +81,8 @@ public class ThreadLocalMonitor {
     /**
      * Analyses what has been recorded about thread local leaks and builds the report for it.
      *
-     * @return the analyze thread local leaks
+     * @return the findings this detector collected during the run
      */
-
     public ThreadLocalReport analyzeThreadLocalLeaks() {
         ThreadLocalReport report = new ThreadLocalReport();
 
@@ -123,7 +119,7 @@ public class ThreadLocalMonitor {
     /**
      * Standardized alias for {@link #analyzeThreadLocalLeaks()}.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public ThreadLocalReport analyze() {
         return analyzeThreadLocalLeaks();
@@ -131,7 +127,6 @@ public class ThreadLocalMonitor {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-
     public void reset() {
         threadLocals.clear();
         threadLocalsByThread.clear();
@@ -139,24 +134,22 @@ public class ThreadLocalMonitor {
     /**
      * Disable.
      */
-
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-
     public void enable() {
         enabled = true;
     }
 
     public static class ThreadLocalReport {
-        /** The uncleaned thread locals. */
+        /** Thread-locals never removed before the thread was returned to its pool. */
         public final Set<String> uncleanedThreadLocals = new HashSet<>();
-        /** The likely leaks. */
+        /** Thread-locals still set on pooled threads after the task finished. */
         public final Set<String> likelyLeaks = new HashSet<>();
-        /** The thread local accumulation. */
+        /** Thread-locals whose stored value grew across reused threads. */
         public final Set<String> threadLocalAccumulation = new HashSet<>();
 
         /**

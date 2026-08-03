@@ -24,8 +24,8 @@ public class ThreadFactoryDetector {
     /**
      * Register a ThreadFactory for monitoring.
      *
-     * @param factory the factory
-     * @param name the name
+     * @param factory the thread factory being recorded, tracked by identity
+     * @param name a label identifying the factory in the report
      */
     public void registerFactory(ThreadFactory factory, String name) {
         factoryRegistry.put(factory, new FactoryInfo(name));
@@ -34,9 +34,9 @@ public class ThreadFactoryDetector {
     /**
      * Record a thread created by factory.
      *
-     * @param factory the factory
-     * @param factoryName the factory name
-     * @param thread the thread
+     * @param factory the thread factory being recorded, tracked by identity
+     * @param factoryName a label identifying the thread factory in the report
+     * @param thread the thread performing the operation
      */
     public void recordThreadCreated(ThreadFactory factory, String factoryName, Thread thread) {
         FactoryInfo info = factoryRegistry.get(factory);
@@ -63,7 +63,7 @@ public class ThreadFactoryDetector {
     /**
      * Analyze ThreadFactory usage and return report.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public ThreadFactoryReport analyze() {
         return new ThreadFactoryReport(
@@ -80,7 +80,13 @@ public class ThreadFactoryDetector {
         private final Set<String> missingExceptionHandler;
         private final Set<String> nonDaemonThreads;
         private final Set<String> unnamedThreads;
-
+        /**
+         * Creates a ThreadFactoryReport.
+         *
+         * @param missingExceptionHandler the threads created without an uncaught-exception handler
+         * @param nonDaemonThreads the non-daemon threads created, which can keep the JVM alive
+         * @param unnamedThreads the threads created without a name, which are hard to attribute in a dump
+         */
         public ThreadFactoryReport(
             Set<String> missingExceptionHandler,
             Set<String> nonDaemonThreads,

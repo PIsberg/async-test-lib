@@ -39,8 +39,8 @@ public class VisibilityMonitor {
      * Record a field access. Call this from test code to track when a field is read/written.
      * Format: className.fieldName
      *
-     * @param fieldIdentifier the field identifier
-     * @param value the value
+     * @param fieldIdentifier the {@code Type.field} the access was on
+     * @param value the value read or written
      */
     public void recordFieldAccess(String fieldIdentifier, Object value) {
         if (!enabled) return;
@@ -68,7 +68,7 @@ public class VisibilityMonitor {
     /**
      * Analyze visibility issues. Returns a report of suspected visibility issues.
      *
-     * @return the analyze visibility
+     * @return the findings this detector collected during the run
      */
     public VisibilityReport analyzeVisibility() {
         VisibilityReport report = new VisibilityReport();
@@ -101,7 +101,7 @@ public class VisibilityMonitor {
     /**
      * Standardized alias for {@link #analyzeVisibility()}.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public VisibilityReport analyze() {
         return analyzeVisibility();
@@ -109,7 +109,6 @@ public class VisibilityMonitor {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-
     public void reset() {
         fieldSnapshots.clear();
         seenValues.clear();
@@ -118,22 +117,20 @@ public class VisibilityMonitor {
     /**
      * Disable.
      */
-    
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-    
     public void enable() {
         enabled = true;
     }
     
     public static class VisibilityReport {
-        /** The suspected fields. */
+        /** Fields where two threads observed different values at the same time. */
         public final Set<String> suspectedFields = new HashSet<>();
-        /** The field value variations. */
+        /** Values each thread observed per field, used to spot stale reads. */
         public final Map<String, Map<Long, Set<Object>>> fieldValueVariations = new HashMap<>();
         
         /**

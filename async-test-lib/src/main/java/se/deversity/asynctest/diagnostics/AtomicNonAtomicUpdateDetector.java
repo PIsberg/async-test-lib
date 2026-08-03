@@ -48,9 +48,9 @@ public class AtomicNonAtomicUpdateDetector {
     /**
      * Call after {@code atomic.get()}.
      *
-     * @param atomic the atomic
-     * @param name the name
-     * @param thread the thread
+     * @param atomic the atomic being recorded, tracked by identity
+     * @param name a label identifying the atomic in the report
+     * @param thread the thread performing the operation
      */
     public void recordGet(Object atomic, String name, Thread thread) {
         if (atomic == null || thread == null) return;
@@ -62,9 +62,9 @@ public class AtomicNonAtomicUpdateDetector {
      * If the same thread previously called {@link #recordGet} without an intervening CAS,
      * the sequence is flagged as a lost-update race.
      *
-     * @param atomic the atomic
-     * @param name the name
-     * @param thread the thread
+     * @param atomic the atomic being recorded, tracked by identity
+     * @param name a label identifying the atomic in the report
+     * @param thread the thread performing the operation
      */
     public void recordSet(Object atomic, String name, Thread thread) {
         if (atomic == null || thread == null) return;
@@ -81,9 +81,9 @@ public class AtomicNonAtomicUpdateDetector {
     /**
      * Call after a successful {@code atomic.compareAndSet()} — clears the pending-get flag.
      *
-     * @param atomic the atomic
-     * @param name the name
-     * @param thread the thread
+     * @param atomic the atomic being recorded, tracked by identity
+     * @param name a label identifying the atomic in the report
+     * @param thread the thread performing the operation
      */
     public void recordCas(Object atomic, String name, Thread thread) {
         if (atomic == null || thread == null) return;

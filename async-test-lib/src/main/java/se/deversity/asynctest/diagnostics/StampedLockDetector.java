@@ -23,8 +23,8 @@ public class StampedLockDetector {
     /**
      * Register a StampedLock for monitoring.
      *
-     * @param lock the lock
-     * @param name the name
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param name a label identifying the lock in the report
      */
     public void registerLock(StampedLock lock, String name) {
         lockRegistry.put(lock, new LockInfo(name));
@@ -33,9 +33,9 @@ public class StampedLockDetector {
     /**
      * Record an optimistic read stamp acquisition.
      *
-     * @param lock the lock
-     * @param lockName the lock name
-     * @param stamp the stamp
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param lockName a label identifying the lock in the report
+     * @param stamp the stamp returned by the {@code StampedLock} operation
      */
     public void recordOptimisticRead(StampedLock lock, String lockName, long stamp) {
         LockInfo info = lockRegistry.get(lock);
@@ -47,9 +47,9 @@ public class StampedLockDetector {
     /**
      * Record validation of optimistic read.
      *
-     * @param lock the lock
-     * @param lockName the lock name
-     * @param stamp the stamp
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param lockName a label identifying the lock in the report
+     * @param stamp the stamp returned by the {@code StampedLock} operation
      * @param validated the {@code validated} flag
      */
     public void recordOptimisticValidation(StampedLock lock, String lockName, long stamp, boolean validated) {
@@ -61,9 +61,9 @@ public class StampedLockDetector {
     /**
      * Record a read lock acquisition.
      *
-     * @param lock the lock
-     * @param lockName the lock name
-     * @param stamp the stamp
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param lockName a label identifying the lock in the report
+     * @param stamp the stamp returned by the {@code StampedLock} operation
      */
     public void recordReadLock(StampedLock lock, String lockName, long stamp) {
         LockInfo info = lockRegistry.get(lock);
@@ -75,9 +75,9 @@ public class StampedLockDetector {
     /**
      * Record a write lock acquisition.
      *
-     * @param lock the lock
-     * @param lockName the lock name
-     * @param stamp the stamp
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param lockName a label identifying the lock in the report
+     * @param stamp the stamp returned by the {@code StampedLock} operation
      */
     public void recordWriteLock(StampedLock lock, String lockName, long stamp) {
         LockInfo info = lockRegistry.get(lock);
@@ -89,9 +89,9 @@ public class StampedLockDetector {
     /**
      * Record a lock release.
      *
-     * @param lock the lock
-     * @param lockName the lock name
-     * @param stamp the stamp
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param lockName a label identifying the lock in the report
+     * @param stamp the stamp returned by the {@code StampedLock} operation
      */
     public void recordUnlock(StampedLock lock, String lockName, long stamp) {
         LockInfo info = lockRegistry.get(lock);
@@ -103,8 +103,8 @@ public class StampedLockDetector {
     /**
      * Record a stamp that was not released.
      *
-     * @param lockName the lock name
-     * @param stamp the stamp
+     * @param lockName a label identifying the lock in the report
+     * @param stamp the stamp returned by the {@code StampedLock} operation
      */
     public void recordStampNotReleased(String lockName, long stamp) {
         stampNotReleased.add(lockName + " (stamp: " + stamp + ")");
@@ -113,7 +113,7 @@ public class StampedLockDetector {
     /**
      * Analyze StampedLock usage and return report.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
     public StampedLockReport analyze() {
         return new StampedLockReport(
@@ -128,7 +128,12 @@ public class StampedLockDetector {
     public static class StampedLockReport {
         private final Set<String> unvalidatedOptimisticReads;
         private final Set<String> stampNotReleased;
-
+        /**
+         * Creates a StampedLockReport.
+         *
+         * @param unvalidatedOptimisticReads the optimistic reads whose stamp was never validated
+         * @param stampNotReleased the stamps acquired but never released
+         */
         public StampedLockReport(
             Set<String> unvalidatedOptimisticReads,
             Set<String> stampNotReleased

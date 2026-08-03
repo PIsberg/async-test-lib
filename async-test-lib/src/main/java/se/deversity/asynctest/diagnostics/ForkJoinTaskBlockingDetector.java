@@ -35,7 +35,7 @@ public class ForkJoinTaskBlockingDetector {
     /**
      * Call at the start of a {@code ForkJoinTask.compute()} or {@code exec()} body.
      *
-     * @param thread the thread
+     * @param thread the thread performing the operation
      */
     public void recordForkJoinTaskEntered(Thread thread) {
         if (thread == null) return;
@@ -45,7 +45,7 @@ public class ForkJoinTaskBlockingDetector {
     /**
      * Call at the end of a {@code ForkJoinTask.compute()} or {@code exec()} body.
      *
-     * @param thread the thread
+     * @param thread the thread performing the operation
      */
     public void recordForkJoinTaskExited(Thread thread) {
         if (thread == null) return;

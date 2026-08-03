@@ -133,18 +133,24 @@ public class AsyncAssert {
         }
 
         /**
+         * Get result.
+         *
          * @return the future's resolved value, or {@code null} if it has not completed
          *         successfully yet (or completed exceptionally)
          */
         public @Nullable T getResult() { return result.get(); }
 
         /**
+         * Get error.
+         *
          * @return the exception the future completed with, or {@code null} if it has not
          *         completed exceptionally
          */
         public @Nullable Throwable getError() { return error.get(); }
 
         /**
+         * Is complete.
+         *
          * @return {@code true} once the observed future has completed, successfully or not
          */
         public boolean isComplete() { return complete; }

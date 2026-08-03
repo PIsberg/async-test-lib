@@ -38,8 +38,8 @@ public final class CompletableFutureBlockingCallbackDetector {
     /**
      * Record entry into a CompletableFuture callback.
      *
-     * @param callbackName the callback name
-     * @param thread the thread
+     * @param callbackName a label identifying the callback in the report
+     * @param thread the thread performing the operation
      */
     public void recordEnterCallback(String callbackName, Thread thread) {
         if (thread == null) return;
@@ -49,7 +49,7 @@ public final class CompletableFutureBlockingCallbackDetector {
     /**
      * Record exit from a CompletableFuture callback.
      *
-     * @param thread the thread
+     * @param thread the thread performing the operation
      */
     public void recordExitCallback(Thread thread) {
         if (thread == null) return;
@@ -59,8 +59,8 @@ public final class CompletableFutureBlockingCallbackDetector {
     /**
      * Record a blocking call executed on a thread.
      *
-     * @param thread the thread
-     * @param blockingApiName the blocking api name
+     * @param thread the thread performing the operation
+     * @param blockingApiName the blocking API that was called, as it should appear in the report
      */
     public void recordBlockingCall(Thread thread, String blockingApiName) {
         if (thread == null) return;
@@ -73,9 +73,8 @@ public final class CompletableFutureBlockingCallbackDetector {
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
-
     public Report analyze() {
         Report r = new Report();
         for (State s : violations.values()) {
@@ -100,9 +99,9 @@ public final class CompletableFutureBlockingCallbackDetector {
     }
 
     public static final class Report {
-        /** The violations. */
+        /** Findings as human-readable lines, for the text report. */
         public final List<String> violations = new ArrayList<>();
-        /** The structured violations. */
+        /** The same findings as {@link se.deversity.asynctest.report.Violation} objects, for machine-readable reports. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
