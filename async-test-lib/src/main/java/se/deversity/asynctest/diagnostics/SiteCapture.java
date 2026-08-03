@@ -94,6 +94,11 @@ public final class SiteCapture {
     /**
      * Immutable record of a captured caller frame. Equality is by (class, line) so
      * a {@code Set<Site>} natively deduplicates repeat accesses from the same line.
+     *
+     * @param className  fully-qualified name of the class the frame is in
+     * @param methodName name of the method the frame is in
+     * @param fileName   source file the frame came from
+     * @param lineNumber line within {@code fileName}, and part of the equality contract
      */
     @AIPublicAPI
     @AIImmutable(note = "Java record — fields are final by language; types are all primitives or String.")

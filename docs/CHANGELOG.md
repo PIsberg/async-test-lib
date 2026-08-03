@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — javadoc reaching consumers was missing ~260 tags, and the build was configured not to notice
+
+`maven-javadoc-plugin` ran with `<doclint>all,-missing</doclint>`: every check except `missing`. So
+syntax, HTML, references and accessibility were enforced, while missing `@return`, missing `@param`
+and entirely undocumented members were not. A javadoc run reported zero problems, which read as
+"clean" and meant "not looking".
+
+`@AsyncTest` is the type every consumer touches, and it carried **zero** `@return` tags across its
+148 attributes. `AsyncTestContext`'s detector accessors carried none either. Both are now complete:
+127 detector flags share accurate semantics (`{@code true} to enable this detector, {@code false} to
+skip it`), the other 21 attributes and all 180 context accessors have individually derived text,
+nullable accessors say so, and `SiteCapture.Site` documents its four record components.
+
+Two traps worth recording, because both make a measurement look better than it is:
+
+* **Javadoc caps warnings at 100.** Each round of fixes simply refilled the list from the next file,
+  so the total never moved. This is the same truncation the pom's own `-Xmaxerrs 20000` comment
+  warns about for javac. `<additionalOptions>` breaks this plugin's invocation whether the option is
+  passed as one string or two, so `-Xmaxwarns` is not available here; the counts below come from
+  parsing the sources directly rather than from the capped output.
+* **Single-line `/** … */` blocks.** The first attempt at bulk insertion put the new tag *before* the
+  opening `/**` on the six single-line comments in `AsyncTest`, producing a file that did not parse.
+  The compile check caught it; the fix expands those blocks to multi-line first.
+
+`doclint` is now `all`. The remaining gap is therefore visible on every build instead of hidden, and
+the javadoc jar still builds, since doclint warnings do not fail it.
+
+### Known gap — 949 of 1786 public members have no javadoc at all
+
+Now that `missing` is on, the number is measurable: **53% of the public API is undocumented**,
+dominated by `AsyncTestConfig` (288: its 132 public flag fields and their builder setters), then
+`BenchmarkResult` (23), `BenchmarkComparisonResult` (17) and `AutoFix` (17).
+
+This is deliberately not auto-filled. The `AsyncTestConfig` members are mechanically documentable by
+cross-referencing the authoritative `@AsyncTest` javadoc, which would be accurate rather than filler,
+but it is a large generated change to a `Critical` file and a house-style decision — link-and-defer
+(`@see AsyncTest#detectDeadlocks()`) versus prose on each member — that belongs to the maintainer,
+not to a bulk edit.
+
+Reproducing the count:
+
+```bash
+# public members, and how many have no preceding javadoc block
+python - <<'PY'
+import re, os
+base='async-test-lib/src/main/java/'
+member=re.compile(r'^(\s+)public\s+(?!class|interface|enum|record|@)(?:static\s+)?(?:final\s+)?(?:@Nullable\s+)?[\w.<>\[\],\s]+\s+(\w+)\s*[\(;=]')
+tot=undoc=0
+for dp,_,fs in os.walk(base):
+    for fn in (f for f in fs if f.endswith('.java')):
+        lines=open(os.path.join(dp,fn),encoding='utf-8').read().split('\n')
+        for k,l in enumerate(lines):
+            if not member.match(l): continue
+            tot+=1
+            j=k-1
+            while j>=0 and (lines[j].strip().startswith('@') or lines[j].strip()==''): j-=1
+            if j<0 or not lines[j].strip().endswith('*/'): undoc+=1
+print(tot, undoc)
+PY
+```
+
+One case is left alone on purpose. `AsyncAssert`'s implicit constructor is flagged, and the clean fix
+for a static utility class is a private constructor — but that removes the implicit *public* one,
+which is a binary break on an `@API(STABLE)` type and exactly what the japicmp gate exists to stop.
+
 ### Fixed — 37 `@since` tags named a version that does not exist
 
 Thirty-five API elements were tagged `@since 1.8.0` and two `@since 1.9.0`, across 13 files. The

@@ -59,6 +59,8 @@ public @interface AsyncTest {
     /**
      * Number of threads to run concurrently per invocation.
      * Each thread will execute the test method once per invocation round.
+     *
+     * @return the number of threads that run the test body concurrently in each invocation round
      */
     int threads() default 10;
 
@@ -80,17 +82,23 @@ public @interface AsyncTest {
      * <p>Default empty array means "use {@link #threads()}" (legacy behavior).
      *
      * @since 1.6.0
+     *
+     * @return the thread counts to run the test at, one matrix entry each; empty to use {@link #threads()}
      */
     int[] threadCounts() default {};
 
     /**
      * Number of times the entire concurrent execution is repeated.
+     *
+     * @return the number of invocation rounds, each releasing every thread from the barrier at once
      */
     int invocations() default 100;
 
     /**
      * Whether to use Virtual Threads (Project Loom) instead of standard platform threads.
      * Requires Java 21+.
+     *
+     * @return {@code true} to run the test body on virtual threads instead of a fixed platform-thread pool
      */
     boolean useVirtualThreads() default true;
 
@@ -98,6 +106,8 @@ public @interface AsyncTest {
      * Maximum time to wait for the entire test (all threads and invocations) to complete.
      * If exceeded, a deadlock is assumed and a JVM Thread dump will be triggered.
      * Default is 5000ms.
+     *
+     * @return the per-test budget in milliseconds, before {@code async-test.timeout.multiplier} scaling
      */
     long timeoutMs() default 5000;
 
@@ -105,6 +115,7 @@ public @interface AsyncTest {
      * Enable deadlock detection with detailed lock analysis.
      * When test times out, provides information about which threads hold which locks.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#DEADLOCKS} instead of this per-detector boolean flag.
      */
@@ -116,6 +127,7 @@ public @interface AsyncTest {
      * Detects missing volatile keywords and insufficient synchronization.
      * This adds overhead, so only enable when testing code with potential visibility issues.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#VISIBILITY} instead of this per-detector boolean flag.
      */
@@ -127,6 +139,7 @@ public @interface AsyncTest {
      * Monitors for threads that change state rapidly without making progress,
      * or threads that never get CPU time.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#LIVELOCKS} instead of this per-detector boolean flag.
      */
@@ -144,6 +157,8 @@ public @interface AsyncTest {
      * - "MEDIUM": 1,000 threads
      * - "HIGH": 10,000 threads
      * - "EXTREME": 100,000+ threads (may require heap size adjustment)
+     *
+     * @return the stress level name, or {@code "OFF"} to leave the configured thread count alone
      */
     String virtualThreadStressMode() default "OFF";
 
@@ -155,6 +170,8 @@ public @interface AsyncTest {
      * <p><strong>Default is {@code true}</strong> — {@code @AsyncTest} alone enables all detectors.
      * <p>Example: {@code @AsyncTest} — all detectors enabled automatically.
      * <p>Example: {@code @AsyncTest(detectAll = false, detectDeadlocks = true)} — only deadlock detection.
+     *
+     * @return {@code true} to enable every detector, subject to {@link #excludes()}
      */
     boolean detectAll() default true;
 
@@ -174,6 +191,8 @@ public @interface AsyncTest {
      * one or two detectors from a curated bundle.
      *
      * @since 1.6.0
+     *
+     * @return the curated detector bundle to enable
      */
     Preset preset() default Preset.ALL;
 
@@ -203,6 +222,8 @@ public @interface AsyncTest {
      * }</pre>
      *
      * @since 1.6.0
+     *
+     * @return the fixed seed to reproduce a previous run, or {@code 0} to draw a fresh seed per round
      */
     long replaySeed() default 0L;
 
@@ -210,6 +231,8 @@ public @interface AsyncTest {
      * Specific detectors to exclude when {@code detectAll = true}.
      * Use {@link DetectorType} to specify which detectors to skip.
      * <p>Example: {@code @AsyncTest(detectAll = true, excludes = {DetectorType.BUSY_WAITING})}
+     *
+     * @return the detectors to switch off, which win over every other selection
      */
     DetectorType[] excludes() default {};
 
@@ -229,6 +252,8 @@ public @interface AsyncTest {
      * {@link #detectAll()} semantics apply unchanged.
      *
      * @since 1.7.0
+     *
+     * @return the only detectors to enable; a non-empty value overrides {@link #preset()} and {@link #detectAll()}
      */
     DetectorType[] includes() default {};
 
@@ -251,6 +276,8 @@ public @interface AsyncTest {
      * {@code com.example.MyTest#myMethod | DetectorName}.
      *
      * @since 1.7.0
+     *
+     * @return the lowest finding severity that should fail the test
      */
     FailOn failOn() default FailOn.NONE;
 
@@ -261,6 +288,7 @@ public @interface AsyncTest {
      * Detects when multiple threads access adjacent memory locations in the same cache line,
      * causing excessive cache coherency traffic.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#FALSE_SHARING} instead of this per-detector boolean flag.
      */
@@ -271,6 +299,7 @@ public @interface AsyncTest {
      * Enable wait/notify issue detection.
      * Detects spurious wakeups, lost notifications, and improper wait/notify coordination.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#WAKEUP_ISSUES} instead of this per-detector boolean flag.
      */
@@ -281,6 +310,7 @@ public @interface AsyncTest {
      * Enable constructor safety validation.
      * Verifies objects are fully constructed before being shared across threads.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#CONSTRUCTOR_SAFETY} instead of this per-detector boolean flag.
      */
@@ -291,6 +321,7 @@ public @interface AsyncTest {
      * Enable ABA problem detection.
      * Detects ABA scenarios in atomic operations and CAS loops that can cause data corruption.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#ABA_PROBLEM} instead of this per-detector boolean flag.
      */
@@ -301,6 +332,7 @@ public @interface AsyncTest {
      * Enable lock order validation.
      * Detects inconsistent lock orderings across threads that can cause deadlocks.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#LOCK_ORDER} instead of this per-detector boolean flag.
      */
@@ -311,6 +343,7 @@ public @interface AsyncTest {
      * Enable synchronizer monitoring (barriers, phasers, latches).
      * Detects synchronization issues like incomplete barrier advances.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SYNCHRONIZERS} instead of this per-detector boolean flag.
      */
@@ -321,6 +354,7 @@ public @interface AsyncTest {
      * Enable thread pool health monitoring.
      * Detects queue saturation, task rejection, worker starvation.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#THREAD_POOL} instead of this per-detector boolean flag.
      */
@@ -331,6 +365,7 @@ public @interface AsyncTest {
      * Enable memory ordering violation detection.
      * Detects compiler/CPU reordering that causes incorrect synchronization.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#MEMORY_ORDERING} instead of this per-detector boolean flag.
      */
@@ -341,6 +376,7 @@ public @interface AsyncTest {
      * Enable async pipeline monitoring.
      * Detects signal loss, missing events, and processing failures in event pipelines.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#ASYNC_PIPELINE} instead of this per-detector boolean flag.
      */
@@ -351,6 +387,7 @@ public @interface AsyncTest {
      * Enable read-write lock fairness monitoring.
      * Detects writer starvation and unfair lock distributions.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#READ_WRITE_LOCK_FAIRNESS} instead of this per-detector boolean flag.
      */
@@ -361,6 +398,7 @@ public @interface AsyncTest {
      * Enable race condition detection.
      * Detects concurrent field access patterns and unsynchronized mutations.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#RACE_CONDITIONS} instead of this per-detector boolean flag.
      */
@@ -371,6 +409,7 @@ public @interface AsyncTest {
      * Enable ThreadLocal leak detection.
      * Detects ThreadLocal values not cleaned up, causing memory leaks in thread pools.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#THREAD_LOCAL_LEAKS} instead of this per-detector boolean flag.
      */
@@ -381,6 +420,7 @@ public @interface AsyncTest {
      * Enable busy-waiting detection.
      * Detects CPU-intensive spin loops and polling patterns without proper synchronization.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#BUSY_WAITING} instead of this per-detector boolean flag.
      */
@@ -391,6 +431,7 @@ public @interface AsyncTest {
      * Enable atomicity violation detection.
      * Detects check-then-act patterns and compound operations that aren't properly synchronized.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#ATOMICITY_VIOLATIONS} instead of this per-detector boolean flag.
      */
@@ -401,6 +442,7 @@ public @interface AsyncTest {
      * Enable interrupt handling monitoring.
      * Detects caught but ignored InterruptException and improper thread cancellation handling.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#INTERRUPT_MISHANDLING} instead of this per-detector boolean flag.
      */
@@ -413,6 +455,7 @@ public @interface AsyncTest {
      * Enable semaphore misuse monitoring.
      * Detects permit leaks, over-release, and unreleased permits at completion.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SEMAPHORE} instead of this per-detector boolean flag.
      */
@@ -423,6 +466,7 @@ public @interface AsyncTest {
      * Enable CompletableFuture exception monitoring.
      * Detects unhandled exceptions, missing handlers, and swallowed exceptions in async chains.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#COMPLETABLE_FUTURE_EXCEPTIONS} instead of this per-detector boolean flag.
      */
@@ -434,6 +478,7 @@ public @interface AsyncTest {
      * Detects CompletableFutures created but never completed (completable future leaks).
      * @since 1.2.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#COMPLETABLE_FUTURE_COMPLETION_LEAKS} instead of this per-detector boolean flag.
      */
@@ -446,6 +491,7 @@ public @interface AsyncTest {
      * Requires Java 21+ with virtual thread support.
      * @since 1.2.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#VIRTUAL_THREAD_PINNING} instead of this per-detector boolean flag.
      */
@@ -457,6 +503,7 @@ public @interface AsyncTest {
      * Detects tasks submitting nested tasks to the same pool, which can cause deadlock.
      * @since 1.2.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#THREAD_POOL_DEADLOCK} instead of this per-detector boolean flag.
      */
@@ -467,6 +514,7 @@ public @interface AsyncTest {
      * Enable concurrent modification detection.
      * Detects collection modifications during iteration and concurrent mutations.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#CONCURRENT_MODIFICATIONS} instead of this per-detector boolean flag.
      */
@@ -477,6 +525,7 @@ public @interface AsyncTest {
      * Enable lock leak detection.
      * Detects locks acquired but never released and excessive hold times.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#LOCK_LEAKS} instead of this per-detector boolean flag.
      */
@@ -487,6 +536,7 @@ public @interface AsyncTest {
      * Enable shared Random detection.
      * Detects concurrent access to non-thread-safe Random instances.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SHARED_RANDOM} instead of this per-detector boolean flag.
      */
@@ -497,6 +547,7 @@ public @interface AsyncTest {
      * Enable BlockingQueue misuse detection.
      * Detects silent failures, queue saturation, and producer/consumer imbalance.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#BLOCKING_QUEUE} instead of this per-detector boolean flag.
      */
@@ -507,6 +558,7 @@ public @interface AsyncTest {
      * Enable Condition variable misuse detection.
      * Detects lost signals, stuck waiters, and missing signals.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#CONDITION_VARIABLES} instead of this per-detector boolean flag.
      */
@@ -517,6 +569,7 @@ public @interface AsyncTest {
      * Enable SimpleDateFormat misuse detection.
      * Detects concurrent access to non-thread-safe date formatters.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SIMPLE_DATE_FORMAT} instead of this per-detector boolean flag.
      */
@@ -527,6 +580,7 @@ public @interface AsyncTest {
      * Enable parallel stream misuse detection.
      * Detects stateful lambdas, non-thread-safe collectors, and side effects.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#PARALLEL_STREAMS} instead of this per-detector boolean flag.
      */
@@ -537,6 +591,7 @@ public @interface AsyncTest {
      * Enable resource leak detection.
      * Detects AutoCloseable resources not properly closed.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#RESOURCE_LEAKS} instead of this per-detector boolean flag.
      */
@@ -549,6 +604,7 @@ public @interface AsyncTest {
      * Enable CountDownLatch misuse detection.
      * Detects latch timeout, missing countDown, and extra countDown calls.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#COUNTDOWN_LATCH} instead of this per-detector boolean flag.
      */
@@ -559,6 +615,7 @@ public @interface AsyncTest {
      * Enable CyclicBarrier misuse detection.
      * Detects barrier timeout, broken barriers, and missing participants.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#CYCLIC_BARRIER} instead of this per-detector boolean flag.
      */
@@ -569,6 +626,7 @@ public @interface AsyncTest {
      * Enable ReentrantLock issue detection.
      * Detects lock starvation, unfair acquisition, and lock timeouts.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#REENTRANT_LOCK} instead of this per-detector boolean flag.
      */
@@ -579,6 +637,7 @@ public @interface AsyncTest {
      * Enable volatile array issue detection.
      * Detects multi-thread access to volatile array elements (which are not volatile).
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#VOLATILE_ARRAY} instead of this per-detector boolean flag.
      */
@@ -589,6 +648,7 @@ public @interface AsyncTest {
      * Enable broken double-checked locking detection.
      * Detects DCL patterns without volatile keyword.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#DOUBLE_CHECKED_LOCKING} instead of this per-detector boolean flag.
      */
@@ -599,6 +659,7 @@ public @interface AsyncTest {
      * Enable wait timeout detection.
      * Detects wait() calls without timeout (potential deadlock).
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#WAIT_TIMEOUT} instead of this per-detector boolean flag.
      */
@@ -610,6 +671,7 @@ public @interface AsyncTest {
      * Detects monitors where a high proportion of acquire attempts are blocked,
      * indicating a performance-degrading contention hotspot.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#LOCK_CONTENTION} instead of this per-detector boolean flag.
      */
@@ -621,6 +683,7 @@ public @interface AsyncTest {
      * Detects the anti-pattern of synchronizing on a field that is not declared
      * {@code final} and may be reassigned, breaking mutual exclusion guarantees.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SYNCHRONIZED_NON_FINAL} instead of this per-detector boolean flag.
      */
@@ -632,6 +695,7 @@ public @interface AsyncTest {
      * Detects {@code notify()} and {@code notifyAll()} calls made when no thread
      * is waiting on the condition, causing the signal to be silently lost.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#MISSED_SIGNAL} instead of this per-detector boolean flag.
      */
@@ -643,6 +707,7 @@ public @interface AsyncTest {
      * Detects fields that are initialized by multiple concurrent threads because
      * the null-guard is not properly synchronized or the field is not volatile.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#LAZY_INIT_RACE} instead of this per-detector boolean flag.
      */
@@ -655,6 +720,7 @@ public @interface AsyncTest {
      * Enable Phaser misuse detection.
      * Detects missing arrive() calls, timeouts, and termination issues.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#PHASER} instead of this per-detector boolean flag.
      */
@@ -665,6 +731,7 @@ public @interface AsyncTest {
      * Enable StampedLock issue detection.
      * Detects unvalidated optimistic reads and stamp release issues.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#STAMPED_LOCK} instead of this per-detector boolean flag.
      */
@@ -675,6 +742,7 @@ public @interface AsyncTest {
      * Enable Exchanger misuse detection.
      * Detects exchange timeouts and missing partners.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#EXCHANGER} instead of this per-detector boolean flag.
      */
@@ -685,6 +753,7 @@ public @interface AsyncTest {
      * Enable ScheduledExecutorService issue detection.
      * Detects missing shutdown, long-running tasks, and exceptions.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SCHEDULED_EXECUTOR} instead of this per-detector boolean flag.
      */
@@ -695,6 +764,7 @@ public @interface AsyncTest {
      * Enable ForkJoinPool issue detection.
      * Detects fork without join and task exceptions.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#FORK_JOIN_POOL} instead of this per-detector boolean flag.
      */
@@ -705,6 +775,7 @@ public @interface AsyncTest {
      * Enable ThreadFactory issue detection.
      * Detects missing exception handlers and poor thread naming.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#THREAD_FACTORY} instead of this per-detector boolean flag.
      */
@@ -717,6 +788,7 @@ public @interface AsyncTest {
      * Enable thread leak detection.
      * Detects threads created but never terminated, leading to resource exhaustion.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#THREAD_LEAKS} instead of this per-detector boolean flag.
      */
@@ -727,6 +799,7 @@ public @interface AsyncTest {
      * Enable sleep-in-lock detection.
      * Detects Thread.sleep() calls while holding locks.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SLEEP_IN_LOCK} instead of this per-detector boolean flag.
      */
@@ -737,6 +810,7 @@ public @interface AsyncTest {
      * Enable unbounded queue detection.
      * Detects BlockingQueue instances without capacity bounds.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#UNBOUNDED_QUEUE} instead of this per-detector boolean flag.
      */
@@ -747,6 +821,7 @@ public @interface AsyncTest {
      * Enable thread starvation detection.
      * Detects tasks waiting excessively long before execution.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#THREAD_STARVATION} instead of this per-detector boolean flag.
      */
@@ -759,6 +834,7 @@ public @interface AsyncTest {
      * Enable {@code java.util.Calendar} misuse detection.
      * Detects shared Calendar instances accessed by multiple threads (not thread-safe).
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#CALENDAR} instead of this per-detector boolean flag.
      */
@@ -770,6 +846,7 @@ public @interface AsyncTest {
      * Detects ArrayList, HashMap, HashSet, LinkedList, etc. accessed concurrently
      * without synchronization.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SHARED_COLLECTIONS} instead of this per-detector boolean flag.
      */
@@ -781,6 +858,7 @@ public @interface AsyncTest {
      * Detects timer thread failures (uncaught exceptions kill all tasks) and
      * long-running tasks that starve subsequent tasks.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#TIMER} instead of this per-detector boolean flag.
      */
@@ -792,6 +870,7 @@ public @interface AsyncTest {
      * Detects CopyOnWriteArrayList / CopyOnWriteArraySet used in write-heavy scenarios
      * where the O(n) copy-per-write overhead is significant.
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#COPY_ON_WRITE_COLLECTIONS} instead of this per-detector boolean flag.
      */
@@ -802,6 +881,7 @@ public @interface AsyncTest {
      * Enable {@code StringBuilder} sharing detection.
      * Detects StringBuilder instances mutated by multiple threads (not thread-safe).
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#STRING_BUILDER} instead of this per-detector boolean flag.
      */
@@ -816,6 +896,7 @@ public @interface AsyncTest {
      * subtask results accessed before {@code join()}, and empty scopes.
      * @since 0.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#STRUCTURED_CONCURRENCY} instead of this per-detector boolean flag.
      */
@@ -829,6 +910,7 @@ public @interface AsyncTest {
      * per-thread ThreadLocal usage (prefer {@code ScopedValue}).
      * @since 0.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#VIRTUAL_THREAD_CONTEXT_LEAKS} instead of this per-detector boolean flag.
      */
@@ -842,6 +924,7 @@ public @interface AsyncTest {
      * nested scopes, and excessive simultaneous binding counts.
      * @since 0.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SCOPED_VALUE} instead of this per-detector boolean flag.
      */
@@ -854,6 +937,7 @@ public @interface AsyncTest {
      * which monopolizes carrier threads and reduces scalability.
      * @since 0.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#VIRTUAL_THREAD_CPU_BOUND} instead of this per-detector boolean flag.
      */
@@ -867,6 +951,7 @@ public @interface AsyncTest {
      * starvation even without a classic deadlock.
      * @since 0.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#VIRTUAL_THREAD_CARRIER_EXHAUSTION} instead of this per-detector boolean flag.
      */
@@ -882,6 +967,7 @@ public @interface AsyncTest {
      * initiated but never awaited/completed.
      * @since 0.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#HTTP_CLIENT} instead of this per-detector boolean flag.
      */
@@ -895,6 +981,7 @@ public @interface AsyncTest {
      * and too many concurrently open streams (resource exhaustion risk).
      * @since 0.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#STREAM_CLOSING} instead of this per-detector boolean flag.
      */
@@ -908,6 +995,7 @@ public @interface AsyncTest {
      * modification, and cache stampede scenarios.
      * @since 0.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#CACHE_CONCURRENCY} instead of this per-detector boolean flag.
      */
@@ -921,6 +1009,7 @@ public @interface AsyncTest {
      * without proper exception handling.
      * @since 0.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#COMPLETABLEFUTURE_CHAIN} instead of this per-detector boolean flag.
      */
@@ -932,6 +1021,8 @@ public @interface AsyncTest {
     /**
      * Enable benchmarking for this test method.
      * When true, execution times are recorded and compared against baselines.
+     *
+     * @return {@code true} to record per-invocation timings and compare them against the stored baseline
      */
     boolean enableBenchmarking() default false;
 
@@ -940,6 +1031,8 @@ public @interface AsyncTest {
      * If execution time increases by more than this percentage compared to baseline,
      * a regression is detected.
      * Default is 20% (0.2 = 20%).
+     *
+     * @return the fraction by which a run may slow against its baseline before counting as a regression
      */
     double benchmarkRegressionThreshold() default 0.2;
 
@@ -947,6 +1040,8 @@ public @interface AsyncTest {
      * Fail the test on benchmark regression.
      * If true, a regression exceeding the threshold will cause test failure.
      * If false, only a warning is logged.
+     *
+     * @return {@code true} to fail the test when a benchmark regression exceeds the threshold
      */
     boolean failOnBenchmarkRegression() default false;
 
@@ -958,6 +1053,7 @@ public @interface AsyncTest {
      * without a subsequent {@code awaitTermination()} call.
      * @since 1.3.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#EXECUTOR_SHUTDOWN} instead of this per-detector boolean flag.
      */
@@ -970,6 +1066,7 @@ public @interface AsyncTest {
      * (including hashCode-changing mutations) after insertion.
      * @since 1.3.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#MUTABLE_MAP_KEY} instead of this per-detector boolean flag.
      */
@@ -982,6 +1079,7 @@ public @interface AsyncTest {
      * {@code Lock.lock()}) while holding a monitor on a different object.
      * @since 1.3.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#NESTED_MONITOR_LOCKOUT} instead of this per-detector boolean flag.
      */
@@ -994,6 +1092,7 @@ public @interface AsyncTest {
      * which deadlock immediately because the upgrade is not supported.
      * @since 1.3.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#LOCK_DOWNGRADE} instead of this per-detector boolean flag.
      */
@@ -1007,6 +1106,7 @@ public @interface AsyncTest {
      * causing stale or cross-task context contamination.
      * @since 1.3.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#INHERITABLE_THREAD_LOCAL} instead of this per-detector boolean flag.
      */
@@ -1021,6 +1121,7 @@ public @interface AsyncTest {
      * Helps ensure tests are run against a clean and reproducible repository state.
      * @since 1.4.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#UNCOMMITTED_CHANGES} instead of this per-detector boolean flag.
      */
@@ -1035,6 +1136,7 @@ public @interface AsyncTest {
      * pooled thread without an intervening {@code remove()} or {@code set()}.
      * @since 1.6.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#THREAD_LOCAL_CONTAMINATION} instead of this per-detector boolean flag.
      */
@@ -1047,6 +1149,7 @@ public @interface AsyncTest {
      * {@link java.util.concurrent.atomic.AtomicLong}, etc. without {@code compareAndSet()}.
      * @since 1.6.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#ATOMIC_NON_ATOMIC_UPDATE} instead of this per-detector boolean flag.
      */
@@ -1060,6 +1163,7 @@ public @interface AsyncTest {
      * wrapper's intrinsic lock.
      * @since 1.6.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SYNCHRONIZED_COLLECTION_ITERATION} instead of this per-detector boolean flag.
      */
@@ -1073,6 +1177,7 @@ public @interface AsyncTest {
      * external synchronization.
      * @since 1.6.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SHARED_FORMATTER} instead of this per-detector boolean flag.
      */
@@ -1086,6 +1191,7 @@ public @interface AsyncTest {
      * causing an infinite loop (Java 8) or {@link IllegalStateException} (Java 9+).
      * @since 1.6.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#CONCURRENT_MAP_COMPUTE_RECURSION} instead of this per-detector boolean flag.
      */
@@ -1098,6 +1204,7 @@ public @interface AsyncTest {
      * {@link Integer} / {@link Long} values (range [-128, 127]) — monitors shared JVM-wide.
      * @since 1.6.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SYNCHRONIZED_ON_LITERAL} instead of this per-detector boolean flag.
      */
@@ -1110,6 +1217,7 @@ public @interface AsyncTest {
      * accessible, exposing the internal lock to external callers.
      * @since 1.6.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#PUBLIC_LOCK_EXPOSURE} instead of this per-detector boolean flag.
      */
@@ -1123,6 +1231,7 @@ public @interface AsyncTest {
      * {@link java.util.concurrent.ForkJoinPool} carrier threads.
      * @since 1.6.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#FORK_JOIN_TASK_BLOCKING} instead of this per-detector boolean flag.
      */
@@ -1135,6 +1244,7 @@ public @interface AsyncTest {
      * without calling {@code validate(stamp)}, or data used after a failed validation.
      * @since 1.6.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#OPTIMISTIC_READ_VALIDATION} instead of this per-detector boolean flag.
      */
@@ -1147,6 +1257,7 @@ public @interface AsyncTest {
      * submitted to the common {@link java.util.concurrent.ForkJoinPool} without a dedicated executor.
      * @since 1.6.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#CF_COMMON_POOL_BLOCKING} instead of this per-detector boolean flag.
      */
@@ -1161,6 +1272,7 @@ public @interface AsyncTest {
      * threads. {@code Pattern} is thread-safe but {@code Matcher} holds mutable match state.
      * @since 0.9.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SHARED_MATCHER} instead of this per-detector boolean flag.
      */
@@ -1173,6 +1285,7 @@ public @interface AsyncTest {
      * accessed concurrently; neither is thread-safe.
      * @since 0.9.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SHARED_DECIMAL_FORMAT} instead of this per-detector boolean flag.
      */
@@ -1185,6 +1298,7 @@ public @interface AsyncTest {
      * was collected mid-test — leaving some threads with null while others had non-null.
      * @since 0.9.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#WEAK_REFERENCE_RACE} instead of this per-detector boolean flag.
      */
@@ -1197,6 +1311,7 @@ public @interface AsyncTest {
      * that capture mutable state and are executed concurrently from multiple threads.
      * @since 0.9.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#STATEFUL_LAMBDA} instead of this per-detector boolean flag.
      */
@@ -1210,6 +1325,7 @@ public @interface AsyncTest {
      * calls silently corrupt the hash state.
      * @since 0.9.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SHARED_MESSAGE_DIGEST} instead of this per-detector boolean flag.
      */
@@ -1225,6 +1341,7 @@ public @interface AsyncTest {
      * cooperative-cancellation signal.
      * @since 0.10.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#INTERRUPT_SWALLOWING} instead of this per-detector boolean flag.
      */
@@ -1237,6 +1354,7 @@ public @interface AsyncTest {
      * to the next task run on a reused pooled thread.
      * @since 0.10.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#MDC_CONTEXT_LEAK} instead of this per-detector boolean flag.
      */
@@ -1249,6 +1367,7 @@ public @interface AsyncTest {
      * during the test run, which cause non-deterministic configuration and test pollution.
      * @since 0.10.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SYSTEM_PROPERTY_MUTATION} instead of this per-detector boolean flag.
      */
@@ -1262,6 +1381,7 @@ public @interface AsyncTest {
      * to be silently swallowed.
      * @since 0.10.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#FUTURE_IGNORED} instead of this per-detector boolean flag.
      */
@@ -1275,6 +1395,7 @@ public @interface AsyncTest {
      * measurements and concurrency tests.
      * @since 0.10.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#EXPLICIT_GC} instead of this per-detector boolean flag.
      */
@@ -1289,6 +1410,7 @@ public @interface AsyncTest {
      * Java 20+.
      * @since 0.10.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#DEPRECATED_THREAD_API} instead of this per-detector boolean flag.
      */
@@ -1302,6 +1424,7 @@ public @interface AsyncTest {
      * accessed concurrently from multiple threads; all are non-thread-safe.
      * @since 0.10.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SHARED_XML_PARSER} instead of this per-detector boolean flag.
      */
@@ -1316,6 +1439,7 @@ public @interface AsyncTest {
      * shared instances that cause unexpected contention.
      * @since 0.10.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#BOXED_PRIMITIVE_LOCK} instead of this per-detector boolean flag.
      */
@@ -1329,6 +1453,7 @@ public @interface AsyncTest {
      * arithmetic.
      * @since 0.10.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SHARED_TIMEZONE} instead of this per-detector boolean flag.
      */
@@ -1342,6 +1467,7 @@ public @interface AsyncTest {
      * perspective.
      * @since 0.10.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#UNCAUGHT_EXCEPTION_HANDLER} instead of this per-detector boolean flag.
      */
@@ -1357,6 +1483,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector}.
      * @since 1.6.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#DAEMON_THREAD_HYGIENE} instead of this per-detector boolean flag.
      */
@@ -1370,6 +1497,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector}.
      * @since 1.6.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#NOTIFY_WITHOUT_MONITOR} instead of this per-detector boolean flag.
      */
@@ -1384,6 +1512,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.SharedSecureRandomDetector}.
      * @since 1.6.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SHARED_SECURE_RANDOM} instead of this per-detector boolean flag.
      */
@@ -1397,6 +1526,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector}.
      * @since 1.6.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#WEAK_HASH_MAP_SHARED} instead of this per-detector boolean flag.
      */
@@ -1411,6 +1541,7 @@ public @interface AsyncTest {
      * See {@link se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector}.
      * @since 1.6.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#JDBC_CONNECTION_SHARED} instead of this per-detector boolean flag.
      */
@@ -1426,6 +1557,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.SharedStatefulCryptoDetector}.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SHARED_STATEFUL_CRYPTO} instead of this per-detector boolean flag.
      */
@@ -1440,6 +1572,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.NonAtomicConcurrentMapUpdateDetector}.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#CONCURRENT_MAP_CHECK_THEN_ACT} instead of this per-detector boolean flag.
      */
@@ -1453,6 +1586,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.SharedDeflaterDetector}.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SHARED_DEFLATER} instead of this per-detector boolean flag.
      */
@@ -1466,6 +1600,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.ThisEscapeDetector}.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#THIS_ESCAPE} instead of this per-detector boolean flag.
      */
@@ -1479,6 +1614,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.ThreadLocalRandomMisuseDetector}.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#THREAD_LOCAL_RANDOM_MISUSE} instead of this per-detector boolean flag.
      */
@@ -1490,6 +1626,7 @@ public @interface AsyncTest {
      * or obtrudeException() which bypass normal async pipelines.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#COMPLETABLE_FUTURE_OBTRUDE_ABUSE} instead of this per-detector boolean flag.
      */
@@ -1501,6 +1638,7 @@ public @interface AsyncTest {
      * are not wrapped inside a while loop condition check.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SPURIOUS_WAKEUP_HAZARD} instead of this per-detector boolean flag.
      */
@@ -1512,6 +1650,7 @@ public @interface AsyncTest {
      * a read lock to a write lock on the same thread.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#LOCK_UPGRADE_DEADLOCK} instead of this per-detector boolean flag.
      */
@@ -1522,6 +1661,7 @@ public @interface AsyncTest {
      * Enable tryLock misuse detection. Flags calls to unlock() without a successful tryLock().
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#TRY_LOCK_MISUSE} instead of this per-detector boolean flag.
      */
@@ -1533,6 +1673,7 @@ public @interface AsyncTest {
      * CompletableFuture pipeline callbacks.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#COMPLETABLE_FUTURE_BLOCKING_CALLBACK} instead of this per-detector boolean flag.
      */
@@ -1546,6 +1687,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.StableValueMisuseDetector}.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#STABLE_VALUE_MISUSE} instead of this per-detector boolean flag.
      */
@@ -1559,6 +1701,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.StructuredTaskScopeMisuseDetector}.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#STRUCTURED_TASK_SCOPE_MISUSE} instead of this per-detector boolean flag.
      */
@@ -1572,6 +1715,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetector}.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#GATHERER_CONCURRENCY_MISUSE} instead of this per-detector boolean flag.
      */
@@ -1584,6 +1728,8 @@ public @interface AsyncTest {
      * two or more threads. See
      * {@link se.deversity.asynctest.diagnostics.SharedByteBufferDetector}.
      * @since 1.7.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      */
     @Deprecated
 
@@ -1595,6 +1741,8 @@ public @interface AsyncTest {
      * that state and garbles output. See
      * {@link se.deversity.asynctest.diagnostics.SharedCharsetCoderDetector}.
      * @since 1.7.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      */
     @Deprecated
 
@@ -1606,6 +1754,8 @@ public @interface AsyncTest {
      * updates without synchronization yield corrupt checksums. See
      * {@link se.deversity.asynctest.diagnostics.SharedChecksumDetector}.
      * @since 1.7.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      */
     @Deprecated
 
@@ -1617,6 +1767,8 @@ public @interface AsyncTest {
      * than one thread. See
      * {@link se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector}.
      * @since 1.7.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      */
     @Deprecated
 
@@ -1627,6 +1779,8 @@ public @interface AsyncTest {
      * detection. Flags a single iterator instance being driven from more than one thread. See
      * {@link se.deversity.asynctest.diagnostics.SharedIteratorDetector}.
      * @since 1.7.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      */
     @Deprecated
 
@@ -1637,6 +1791,8 @@ public @interface AsyncTest {
      * high-contention CAS churn that would benefit from {@code LongAdder}/{@code LongAccumulator}.
      * See {@link se.deversity.asynctest.diagnostics.HighContentionAtomicDetector}.
      * @since 1.7.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      */
     @Deprecated
 
@@ -1647,6 +1803,8 @@ public @interface AsyncTest {
      * (e.g. {@code ObjectMapper}, {@code Gson}) reconfigured after concurrent use has begun.
      * See {@link se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector}.
      * @since 1.7.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      */
     @Deprecated
 
@@ -1660,6 +1818,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector}.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#LAZY_CONSTANT_MISUSE} instead of this per-detector boolean flag.
      */
@@ -1674,6 +1833,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.FinalFieldMutationDetector}.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#FINAL_FIELD_MUTATION} instead of this per-detector boolean flag.
      */
@@ -1688,6 +1848,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.SharedKdfDetector}.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#SHARED_KDF} instead of this per-detector boolean flag.
      */
@@ -1702,6 +1863,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.LatchMisuseDetector}.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#LATCH_MISUSE} instead of this per-detector boolean flag.
      */
@@ -1716,6 +1878,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector}.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#EXECUTOR_DEADLOCK} instead of this per-detector boolean flag.
      */
@@ -1730,6 +1893,7 @@ public @interface AsyncTest {
      * {@link se.deversity.asynctest.diagnostics.FutureBlockingDetector}.
      * @since 1.7.0
      *
+     * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#FUTURE_BLOCKING} instead of this per-detector boolean flag.
      */
@@ -1739,22 +1903,46 @@ public @interface AsyncTest {
 
     // ============= License Gating (Integration) =============
 
-    /** Keygen Account ID. Defaults to System property 'keygen.account.id' if empty. */
+    /**
+     * Keygen Account ID. Defaults to System property 'keygen.account.id' if empty.
+     *
+     * @return the Keygen account id, or empty to take it from the environment
+     */
     String keygenAccountId() default "";
 
-    /** Keygen API Key. Defaults to System property 'keygen.api.key' if empty. */
+    /**
+     * Keygen API Key. Defaults to System property 'keygen.api.key' if empty.
+     *
+     * @return the Keygen API key, or empty to take it from the environment
+     */
     String keygenApiKey() default "";
 
-    /** Keygen Product Id. Defaults to System property 'keygen.product.id' if empty. */
+    /**
+     * Keygen Product Id. Defaults to System property 'keygen.product.id' if empty.
+     *
+     * @return the Keygen product id, or empty to take it from the environment
+     */
     String keygenProductId() default "";
 
-    /** LemonSqueezy store subdomain (e.g. 'acme' for acme.lemonsqueezy.com). */
+    /**
+     * LemonSqueezy store subdomain (e.g. 'acme' for acme.lemonsqueezy.com).
+     *
+     * @return the Lemon Squeezy store id, or empty to take it from the environment
+     */
     String lemonSqueezyStore() default "";
 
-    /** License key for Keygen validation. Defaults to System property 'license.key' if empty. */
+    /**
+     * License key for Keygen validation. Defaults to System property 'license.key' if empty.
+     *
+     * @return the license key, or empty to take it from the environment
+     */
     String licenseKey() default "";
 
-    /** When true, use mock mode for LicenseGate (no network calls). Defaults to System property 'license.mock.mode' if empty. */
+    /**
+     * When true, use mock mode for LicenseGate (no network calls). Defaults to System property 'license.mock.mode' if empty.
+     *
+     * @return {@code true} to bypass the license check for this test
+     */
     boolean licenseMockMode() default false;
 }
 
