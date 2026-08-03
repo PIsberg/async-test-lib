@@ -614,10 +614,21 @@ public class ConcurrencyRunner {
             for (Future<?> future : workerFutures) {
                 future.cancel(true);
             }
-            throw new AssertionError(
+            AssertionError roundTimeout = new AssertionError(
                 "Invocation round timed out: " + (threads - (int) latch.getCount()) + "/" + threads
                     + " threads completed within " + roundTimeoutMs + "ms. "
-                    + "A thread may be stuck before the test body (e.g. broken barrier).");
+                    + "A thread may be stuck before the test body (e.g. broken barrier)."
+                    + (failures.isEmpty() ? "" : " " + failures.size()
+                        + " worker failure(s) from this round are attached as suppressed."));
+            // The workers that DID finish often carry the diagnosis: a worker that threw
+            // before the barrier is the most common reason its peers never arrived, and
+            // throwing here without them reported only a thread count. `failures` is a
+            // CopyOnWriteArrayList, so cancelled workers appending concurrently race
+            // harmlessly against this snapshot iteration.
+            for (Throwable failure : failures) {
+                roundTimeout.addSuppressed(failure);
+            }
+            throw roundTimeout;
         }
 
         if (!failures.isEmpty()) {
