@@ -20,10 +20,6 @@
 
 ![async-test demo](docs/diagrams/demo.gif)
 
-[![Watch the async-test-lib walkthrough on YouTube](https://img.youtube.com/vi/5LBavovcHEg/hqdefault.jpg)](https://www.youtube.com/watch?v=5LBavovcHEg)
-
-▶ **[Watch the walkthrough on YouTube](https://www.youtube.com/watch?v=5LBavovcHEg)**
-
 </div>
 
 ---
@@ -34,6 +30,10 @@
 - **127 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types, JDBC sharing, MessageDigest/SecureRandom/Cipher integrity, and more — all on by default (`detectAll = true`), or pick a `Preset` for a curated subset.
 - **JUnit 5 native** — zero required configuration. Works anywhere JUnit 5 runs with no special JVM flags. An optional Java agent, shipped as a separate `async-test-agent` artifact (`-javaagent:async-test-agent.jar`), weaves JavaBean accessors with Byte Buddy so detectors observe reads and writes without hand-written hooks; a field touched only inside a method body is not observed. Default usage needs no agent, and the core artifact does not carry Byte Buddy.
 - **CI-ready out of the box** — ship JUnit XML reports, machine-readable JSON, or `AssertionError` fail-gates directly to GitHub Actions, Jenkins, and GitLab CI.
+
+[![Watch the async-test-lib walkthrough on YouTube](https://img.youtube.com/vi/5LBavovcHEg/hqdefault.jpg)](https://www.youtube.com/watch?v=5LBavovcHEg)
+
+▶ **[Watch the walkthrough on YouTube](https://www.youtube.com/watch?v=5LBavovcHEg)**
 
 ---
 
