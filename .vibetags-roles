@@ -1,4 +1,4 @@
-# VibeTags role routing (vibetags 1.0.0-RC8, se.deversity.vibetags.processor.internal.RoleConfig).
+# VibeTags role routing (vibetags 1.0.0-RC10, se.deversity.vibetags.processor.internal.RoleConfig).
 #
 # Presence of this file switches granular rule generation from "one file per annotated
 # class" to "one file per role". Without it, .claude/rules/ would hold ~130 files — one
