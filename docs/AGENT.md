@@ -385,6 +385,9 @@ at the cause.
 - **Only getters/setters are intercepted.** Matching is `ElementMatchers.isGetter()` /
   `isSetter()`. A **direct field access** — `this.x = 1` or `return x` *inside the class* that
   bypasses an accessor method — is **not** intercepted. Only accessor-method calls are seen.
+  `AgentFeedsDetectorEndToEndTest` pins both halves of this against the real weaver: a field a
+  woven getter reads and a woven setter writes *is* reported, and a field only mutated inside a
+  method is *not*, with a control in the same run proving the pipeline was live while that held.
 - **JDK and framework classes are never instrumented.** Anything under `java.`/`jdk.`/`sun.`/
   `com.sun.`, Byte Buddy, this library, synthetic types, and bootstrap-loaded types are
   excluded by design.
