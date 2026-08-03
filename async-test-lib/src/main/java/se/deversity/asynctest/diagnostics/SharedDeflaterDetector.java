@@ -19,7 +19,7 @@ import java.util.zip.Inflater;
  * <p><strong>Why it matters.</strong> Both classes wrap a native zlib stream
  * whose state machine ({@code setInput} then {@code deflate}/{@code inflate}
  * until {@code finished}) is advanced by every call. They are <em>not</em>
- * thread-safe. Concurrent use of
+ * thread-safe. Unsynchronized concurrent use of
  * one instance interleaves bytes from different logical streams, producing
  * corrupt/undecompressable output or a {@code NullPointerException} from the
  * native layer once one thread calls {@code end()} while another is mid-stream.
@@ -29,6 +29,11 @@ import java.util.zip.Inflater;
  * "someone else will close it" ownership confusion, which is also a resource
  * leak — but the thread-safety violation is the more acute bug, so findings are
  * reported here rather than via {@link ResourceLeakDetector}.
+ *
+ * <p>The detector observes sharing — which threads touched the instance — not
+ * locks: a shared deflater/inflater guarded by correct external synchronization
+ * is flagged all the same. Treat a finding as a prompt to verify that
+ * synchronization exists, or to move to a per-thread instance.
  *
  * <p>The safe pattern is one instance per thread (and a matching {@code end()}
  * in a {@code finally}), or a fresh instance per compression unit.
@@ -109,8 +114,10 @@ public final class SharedDeflaterDetector {
             if (s.accessingThreadIds.size() <= 1) continue;
             String msg = String.format(
                     "%s '%s' accessed from %d threads (%s) — java.util.zip %s wraps a "
-                            + "stateful native zlib stream and is not thread-safe; concurrent use "
-                            + "corrupts output or crashes when one thread calls end() mid-stream.",
+                            + "stateful native zlib stream and is not thread-safe; unsynchronized concurrent use "
+                            + "corrupts output or crashes when one thread calls end() mid-stream"
+                            + " (the detector observes sharing, not locks — verify external"
+                            + " synchronization or use a per-thread instance).",
                     s.kind,
                     s.label,
                     s.accessingThreadIds.size(),

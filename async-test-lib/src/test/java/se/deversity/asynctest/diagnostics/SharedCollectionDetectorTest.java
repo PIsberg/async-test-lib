@@ -54,6 +54,7 @@ public class SharedCollectionDetectorTest {
         assertNotNull(report);
         assertTrue(report.hasIssues(), "Concurrent writes should be detected");
         assertFalse(report.concurrentWriteViolations.isEmpty(), "Should report write violations");
+        assertTrue(report.concurrentWriteViolations.get(0).contains("observes sharing, not locks"));
     }
 
     @Test

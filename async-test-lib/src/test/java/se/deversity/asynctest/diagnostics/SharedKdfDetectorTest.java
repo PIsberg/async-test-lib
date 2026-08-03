@@ -63,6 +63,7 @@ class SharedKdfDetectorTest {
         assertTrue(v.contains("2 threads"), v);
         assertTrue(v.contains("deriveKey"), v);
         assertTrue(v.contains("not thread-safe"), v);
+        assertTrue(v.contains("observes sharing, not locks"), v);
     }
 
     @Test

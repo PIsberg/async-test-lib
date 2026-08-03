@@ -1930,7 +1930,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 87. Shared MessageDigest Detector
 * **Severity**: `HIGH`
-* **Description**: Detects a single `java.security.MessageDigest` instance shared across threads. Its internal digest state (running hash buffer, byte count, padding) is mutated by every `update()`/`digest()` call, so concurrent access silently corrupts the resulting hash without throwing any exception.
+* **Description**: Detects a single `java.security.MessageDigest` instance shared across threads. Its internal digest state (running hash buffer, byte count, padding) is mutated by every `update()`/`digest()` call, so unsynchronized concurrent access corrupts the resulting hash without throwing any exception (the detector observes sharing, not locks, so externally synchronized sharing is flagged too).
 * **Buggy Code**:
   ```java
   private static final MessageDigest SHA256 = MessageDigest.getInstance("SHA-256");
@@ -2472,7 +2472,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 112. Shared ByteBuffer Detector
 * **Severity**: `HIGH`
-* **Description**: Detects `Buffer`/`ByteBuffer` instances whose position-mutating operations (relative `get`/`put`, `flip()`, `rewind()`, `clear()`, `mark()`/`reset()`, single-arg `position()`/`limit()`) are performed from more than one thread. None of this cursor state is synchronized, so concurrent use corrupts it, producing `BufferUnderflowException`/`BufferOverflowException` or silently interleaved data. Absolute `get(int)`/`put(int, ...)` calls don't touch the cursor and are not flagged.
+* **Description**: Detects `Buffer`/`ByteBuffer` instances whose position-mutating operations (relative `get`/`put`, `flip()`, `rewind()`, `clear()`, `mark()`/`reset()`, single-arg `position()`/`limit()`) are performed from more than one thread. None of this cursor state is synchronized, so unsynchronized concurrent use corrupts it, producing `BufferUnderflowException`/`BufferOverflowException` or silently interleaved data. Absolute `get(int)`/`put(int, ...)` calls don't touch the cursor and are not flagged.
 * **Buggy Code**:
   ```java
   ByteBuffer shared = ByteBuffer.allocate(1024);

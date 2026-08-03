@@ -421,7 +421,7 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 | `detectSharedDecimalFormat` | `SHARED_DECIMAL_FORMAT` | `DecimalFormat`/`NumberFormat` shared concurrently |
 | `detectWeakReferenceRace` | `WEAK_REFERENCE_RACE` | `WeakReference.get()` results used without null check, or referent collected mid-test |
 | `detectStatefulLambda` | `STATEFUL_LAMBDA` | Lambda/`Runnable`/`Callable` capturing mutable containers (`int[]`, `Object[]`) executed concurrently |
-| `detectSharedMessageDigest` | `SHARED_MESSAGE_DIGEST` | `MessageDigest` accessed concurrently — silently corrupts hash state |
+| `detectSharedMessageDigest` | `SHARED_MESSAGE_DIGEST` | `MessageDigest` accessed from more than one thread — unsynchronized use corrupts hash state |
 
 ### Phase 12 — Operational & hygiene concurrency issues
 | Annotation field | DetectorType | What it catches |

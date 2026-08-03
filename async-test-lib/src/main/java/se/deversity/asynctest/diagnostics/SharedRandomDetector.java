@@ -8,15 +8,19 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Detects concurrent use of non-thread-safe Random instances.
+ * Flags {@link java.util.Random} instances accessed from more than one thread.
  * 
  * Common Random misuse issues detected:
- * - Shared Random instance accessed by multiple threads without synchronization
+ * - Shared Random instance accessed by multiple threads
  * - Thread contention on Random causing performance degradation
- * - Potential data corruption from concurrent nextInt()/nextLong() calls
+ * - Potential data corruption from unsynchronized concurrent nextInt()/nextLong() calls
  * 
  * Note: java.util.Random is thread-safe but uses atomic operations that can cause
  * contention. For high-concurrency scenarios, ThreadLocalRandom should be used instead.
+ *
+ * The detector observes sharing, not locks — a shared instance guarded by
+ * external synchronization is flagged all the same; treat a finding as a
+ * prompt to verify the sharing is intended, or to switch to ThreadLocalRandom.
  * 
  * Usage:
  * <pre>{@code
@@ -108,7 +112,9 @@ public class SharedRandomDetector {
             // Check for shared access (multiple threads using same Random)
             if (state.accessingThreads.size() > 1) {
                 report.sharedRandoms.add(String.format(
-                    "%s: accessed by %d threads (%d total accesses)",
+                    "%s: accessed by %d threads (%d total accesses)"
+                        + " (the detector observes sharing, not locks — verify external"
+                        + " synchronization or use a per-thread instance)",
                     state.name, state.accessingThreads.size(), state.accessCount.get()));
                 
                 // Build method breakdown

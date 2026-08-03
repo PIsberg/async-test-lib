@@ -12,8 +12,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Detects {@link java.nio.Buffer} / {@link java.nio.ByteBuffer} instances
- * shared across threads without coordination.
+ * Flags {@link java.nio.Buffer} / {@link java.nio.ByteBuffer} instances
+ * whose position-mutating operations were performed by more than one thread.
  *
  * <p><strong>Why it matters.</strong> Every {@code Buffer} carries mutable
  * cursor state — {@code position}, {@code limit}, and {@code mark} — that is
@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code flip()}, {@code rewind()}, {@code clear()}, {@code mark()}/
  * {@code reset()}, and the single-argument {@code position(int)}/
  * {@code limit(int)} setters. None of this is synchronized. When two threads
- * perform relative operations on the same instance concurrently, one thread's
+ * perform unsynchronized relative operations on the same instance concurrently, one thread's
  * {@code flip()} or {@code get()} silently moves the cursor out from under the
  * other, producing {@link java.nio.BufferUnderflowException} /
  * {@link java.nio.BufferOverflowException}, or — worse — no exception at all,
@@ -34,6 +34,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * does not attempt to cover). This detector therefore only flags concurrent
  * <em>position-mutating</em> access; absolute-only access from many threads is
  * reported as context, never as a violation.
+ *
+ * <p>The detector observes sharing — which threads performed position-mutating
+ * operations — not locks: a shared buffer guarded by correct external
+ * synchronization is flagged all the same. Treat a finding as a prompt to
+ * verify that synchronization exists, or to give each thread its own view.
  *
  * <p>The safe pattern is to give each thread its own view via
  * {@code duplicate()} or {@code slice()} (independent position/limit/mark over
@@ -133,9 +138,11 @@ public final class SharedByteBufferDetector {
             StringBuilder msg = new StringBuilder(String.format(
                     "%s '%s' had position-mutating operations (%s) performed by %d threads (%s) — "
                             + "java.nio.Buffer instances carry mutable position/limit/mark state that is not "
-                            + "thread-safe; concurrent relative get/put, flip(), rewind(), clear(), mark()/reset(), "
+                            + "thread-safe; unsynchronized concurrent relative get/put, flip(), rewind(), clear(), mark()/reset(), "
                             + "or position(int)/limit(int) calls corrupt that state, causing "
-                            + "BufferUnderflowException/BufferOverflowException or silently interleaved data.",
+                            + "BufferUnderflowException/BufferOverflowException or silently interleaved data"
+                            + " (the detector observes sharing, not locks — verify external"
+                            + " synchronization or use a per-thread instance).",
                     s.kind,
                     s.label,
                     String.join(", ", s.positionalOperations),

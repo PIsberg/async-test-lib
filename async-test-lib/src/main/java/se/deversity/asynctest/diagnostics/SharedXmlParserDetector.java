@@ -14,13 +14,18 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link javax.xml.parsers.SAXParser},
  * {@link javax.xml.transform.Transformer},
  * {@link javax.xml.xpath.XPath}.
- * Sharing a single instance across threads causes corrupted parse results,
+ * Unsynchronized sharing of a single instance across threads causes corrupted parse results,
  * wrong XPath evaluations, or {@link java.util.ConcurrentModificationException}s
  * that are difficult to reproduce and diagnose.
  *
  * <p>The corresponding factory classes ({@code DocumentBuilderFactory},
  * {@code SAXParserFactory}, {@code TransformerFactory}, {@code XPathFactory})
  * are thread-safe for {@code newXxx()} calls and can be shared freely.
+ *
+ * <p>The detector observes sharing — which threads touched the instance — not
+ * locks: a shared parser guarded by correct external synchronization is flagged
+ * all the same. Treat a finding as a prompt to verify that synchronization
+ * exists, or to create a per-thread parser from the shared factory.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -70,8 +75,10 @@ public class SharedXmlParserDetector {
             if (s.accessingThreadIds.size() > 1) {
                 r.violations.add(String.format(
                         "'%s' instance accessed from %d threads (%s) — "
-                                + "XML parsers are not thread-safe; concurrent use causes "
-                                + "corrupted parse results or ConcurrentModificationExceptions",
+                                + "XML parsers are not thread-safe; unsynchronized concurrent use causes "
+                                + "corrupted parse results or ConcurrentModificationExceptions"
+                                + " (the detector observes sharing, not locks — verify external"
+                                + " synchronization or use a per-thread instance)",
                         s.parserType, s.accessingThreadIds.size(),
                         String.join(", ", s.accessingThreadNames)));
             }

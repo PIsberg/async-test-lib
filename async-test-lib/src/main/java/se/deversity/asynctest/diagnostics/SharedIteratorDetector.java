@@ -43,6 +43,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * independent of whether any modification of the backing collection ever
  * occurs.
  *
+ * <p>The detector observes sharing — which threads drove the instance — not
+ * locks or handoffs: an iterator handed between threads under correct external
+ * synchronization is flagged all the same. Treat a finding as a prompt to
+ * verify that coordination exists, or to give each thread its own iterator.
+ *
  * <p>Cooperative API: call {@link #recordAccess} at each
  * {@code hasNext}/{@code next}/{@code remove}/{@code tryAdvance}/
  * {@code forEachRemaining} call site, passing the iterator instance and the
@@ -123,10 +128,12 @@ public final class SharedIteratorDetector {
             if (s.accessingThreadIds.size() <= 1) continue;
             String msg = String.format(
                     "%s '%s' accessed from %d threads (%s) via %s — iterators carry mutable cursor "
-                            + "state and are confined to a single thread; concurrent hasNext()/next()/remove()/"
+                            + "state and are confined to a single thread; unsynchronized concurrent hasNext()/next()/remove()/"
                             + "tryAdvance() calls on the same instance skip or duplicate elements, throw "
                             + "NoSuchElementException, or corrupt the underlying collection, even when that "
-                            + "collection is itself a concurrent collection.",
+                            + "collection is itself a concurrent collection"
+                            + " (the detector observes sharing, not locks — verify external"
+                            + " synchronization or use a per-thread instance).",
                     s.kind,
                     s.label,
                     s.accessingThreadIds.size(),

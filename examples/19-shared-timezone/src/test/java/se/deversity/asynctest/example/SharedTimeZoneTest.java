@@ -68,7 +68,7 @@ class SharedTimeZoneTest {
         //   sharedTz.setRawOffset(5 * 3_600_000); // mutating shared instance — flagged!
         //
         // The detector will report "TimeZone instance mutated from N threads —
-        // concurrent mutations corrupt date/time arithmetic silently."
+        // unsynchronized concurrent mutations corrupt date/time arithmetic."
         assertTrue(true, "Placeholder — see comments above");
     }
 

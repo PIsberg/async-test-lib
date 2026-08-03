@@ -40,6 +40,7 @@ class SharedCharsetCoderDetectorTest {
         String msg = report.violations.get(0);
         assertTrue(msg.contains("2 threads"));
         assertTrue(msg.contains("CharsetEncoder"));
+        assertTrue(msg.contains("observes sharing, not locks"));
         assertEquals(1, report.structuredViolations.size());
         assertEquals("SharedCharsetCoder", report.structuredViolations.get(0).detector());
         assertEquals("CharsetEncoder", report.structuredViolations.get(0).attributes().get("kind"));

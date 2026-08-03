@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>The following standard-library collections are <strong>not thread-safe</strong>
  * and will produce data corruption or {@link java.util.ConcurrentModificationException}
- * when mutated concurrently:
+ * when mutated concurrently without synchronization:
  * <ul>
  *   <li>{@code java.util.ArrayList}</li>
  *   <li>{@code java.util.HashMap} / {@code java.util.LinkedHashMap}</li>
@@ -27,6 +27,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li>Mixed read-write access without any synchronisation visible to the detector</li>
  *   <li>Structural modifications during concurrent reads</li>
  * </ul>
+ *
+ * <p>The detector observes sharing — which threads touched a registered
+ * collection — not locks: a shared collection guarded by correct external
+ * synchronization is flagged all the same. Treat a finding as a prompt to
+ * verify that synchronization exists, or to confine the collection to one
+ * thread.
  *
  * <p>Thread-safe alternatives:
  * <ul>
@@ -134,13 +140,17 @@ public class SharedCollectionDetector {
 
             if (allWriters.size() > 1) {
                 report.concurrentWriteViolations.add(String.format(
-                        "%s (%s): write operations from %d threads (writes: %d) — DATA CORRUPTION RISK!",
+                        "%s (%s): write operations from %d threads (writes: %d) — DATA CORRUPTION RISK"
+                                + " (the detector observes sharing, not locks — verify external"
+                                + " synchronization or use a per-thread instance)!",
                         state.name, state.collectionType,
                         allWriters.size(), state.writeCount.get()));
             } else if (allWriters.size() == 1 && allReaders.size() > 1) {
                 // One writer, multiple readers — still risky without synchronisation
                 report.mixedAccessViolations.add(String.format(
-                        "%s (%s): written by 1 thread, read by %d threads without visible synchronisation — VISIBILITY RISK",
+                        "%s (%s): written by 1 thread, read by %d threads without visible synchronisation — VISIBILITY RISK"
+                                + " (the detector observes sharing, not locks — verify external"
+                                + " synchronization or use a per-thread instance)",
                         state.name, state.collectionType, allReaders.size()));
             }
 

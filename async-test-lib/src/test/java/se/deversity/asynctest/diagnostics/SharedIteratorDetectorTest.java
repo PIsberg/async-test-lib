@@ -51,6 +51,7 @@ class SharedIteratorDetectorTest {
         String msg = report.violations.get(0);
         assertTrue(msg.contains("Iterator"));
         assertTrue(msg.contains("2 threads"));
+        assertTrue(msg.contains("observes sharing, not locks"));
         assertEquals(1, report.structuredViolations.size());
         assertEquals("SharedIterator", report.structuredViolations.get(0).detector());
         assertEquals("Iterator", report.structuredViolations.get(0).attributes().get("kind"));

@@ -16,9 +16,14 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
  *
  * <p>{@code MessageDigest} is <strong>not thread-safe</strong>. Its internal digest state
  * (the running hash buffer, byte count, and padding) is mutated by every {@code update()}
- * and {@code digest()} call. Concurrent access from multiple threads silently corrupts
+ * and {@code digest()} call. Unsynchronized concurrent access from multiple threads corrupts
  * the hash, producing wrong digests without any exception — one of the harder bugs to
  * diagnose in production.
+ *
+ * <p>The detector observes sharing — which threads touched the instance — not
+ * locks: a shared digest guarded by correct external synchronization is flagged
+ * all the same. Treat a finding as a prompt to verify that synchronization
+ * exists, or to move to a per-thread instance.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -108,25 +113,33 @@ public class SharedMessageDigestDetector {
                 if ("Cipher".equals(s.type)) {
                     msg = String.format(
                             "'%s' accessed from %d threads (%s) — Cipher is not thread-safe; "
-                                    + "concurrent encrypt/decrypt updates silently corrupt the block cipher states (e.g. IV, chaining blocks)",
+                                    + "unsynchronized concurrent encrypt/decrypt updates corrupt the block cipher states (e.g. IV, chaining blocks)"
+                                    + " (the detector observes sharing, not locks — verify external"
+                                    + " synchronization or use a per-thread instance)",
                             s.name, s.accessingThreadIds.size(),
                             String.join(", ", s.accessingThreadNames));
                 } else if ("Mac".equals(s.type)) {
                     msg = String.format(
                             "'%s' accessed from %d threads (%s) — Mac is not thread-safe; "
-                                    + "concurrent update()/doFinal() calls silently corrupt the running MAC byte calculations",
+                                    + "unsynchronized concurrent update()/doFinal() calls corrupt the running MAC byte calculations"
+                                    + " (the detector observes sharing, not locks — verify external"
+                                    + " synchronization or use a per-thread instance)",
                             s.name, s.accessingThreadIds.size(),
                             String.join(", ", s.accessingThreadNames));
                 } else if ("Signature".equals(s.type)) {
                     msg = String.format(
                             "'%s' accessed from %d threads (%s) — Signature is not thread-safe; "
-                                    + "concurrent update()/sign()/verify() calls silently corrupt stateful signing or verification operations",
+                                    + "unsynchronized concurrent update()/sign()/verify() calls corrupt stateful signing or verification operations"
+                                    + " (the detector observes sharing, not locks — verify external"
+                                    + " synchronization or use a per-thread instance)",
                             s.name, s.accessingThreadIds.size(),
                             String.join(", ", s.accessingThreadNames));
                 } else {
                     msg = String.format(
                             "'%s' accessed from %d threads (%s) — MessageDigest is not thread-safe; "
-                                    + "concurrent update()/digest() calls silently corrupt the hash state",
+                                    + "unsynchronized concurrent update()/digest() calls corrupt the hash state"
+                                    + " (the detector observes sharing, not locks — verify external"
+                                    + " synchronization or use a per-thread instance)",
                             s.name, s.accessingThreadIds.size(),
                             String.join(", ", s.accessingThreadNames));
                 }
