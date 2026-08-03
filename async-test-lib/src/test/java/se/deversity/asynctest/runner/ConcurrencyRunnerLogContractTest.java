@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
 
@@ -95,6 +96,39 @@ class ConcurrencyRunnerLogContractTest {
             "every round carries the replay seed, which is the reproduction handle");
         assertTrue(eventStartingWith("runner.round.done").contains("durationMs="),
             "the round reports what it cost");
+    }
+
+    @Test
+    @DisplayName("the first run without the agent announces it once, at INFO")
+    void agentAbsenceIsAnnouncedOnceAtInfo() {
+        ConcurrencyRunner.AGENT_ABSENCE_LOGGED.set(false);
+
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(NarratedDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(NarratedDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        List<ILoggingEvent> announcements = appender.list.stream()
+            .filter(e -> e.getFormattedMessage().startsWith("runner.agent.absent"))
+            .toList();
+        assertEquals(1, announcements.size(),
+            "the agent's absence is a JVM-global fact: exactly one announcement across "
+                + "any number of runs, or a large suite drowns in repetition. Got: " + events());
+        ILoggingEvent announcement = announcements.get(0);
+        assertSame(Level.INFO, announcement.getLevel(),
+            "INFO, not DEBUG: the user who never attached the agent is exactly the user "
+                + "who will not have DEBUG enabled");
+        String message = announcement.getFormattedMessage();
+        assertTrue(message.contains("test="),
+            "the event names the test that triggered it: " + message);
+        assertTrue(message.contains("async-test-agent"),
+            "the hint names the artifact that closes the gap: " + message);
     }
 
     /** Runs under the extension so the narrative is produced by the real code path. */
