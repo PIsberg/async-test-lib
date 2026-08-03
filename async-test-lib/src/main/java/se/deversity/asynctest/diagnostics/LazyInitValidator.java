@@ -27,6 +27,15 @@ public class LazyInitValidator {
 
     private final Map<String, LazyFieldState> fields = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
+    /**
+     * Records access so it can be analysed at the end of the run.
+     *
+     * @param fieldName the field name
+     * @param observedNull the observed null
+     * @param initializedValue the initialized value
+     * @param synchronizedAccess the synchronized access
+     * @param volatileField the volatile field
+     */
 
     public void recordAccess(String fieldName, boolean observedNull, boolean initializedValue,
                              boolean synchronizedAccess, boolean volatileField) {
@@ -56,6 +65,11 @@ public class LazyInitValidator {
             state.initializationAttempts.incrementAndGet();
         }
     }
+    /**
+     * Analyses what has been recorded about the observation and builds the report for it.
+     *
+     * @return the analyze
+     */
 
     public LazyInitReport analyze() {
         LazyInitReport report = new LazyInitReport();
@@ -82,6 +96,9 @@ public class LazyInitValidator {
 
         return report;
     }
+    /**
+     * Clears recorded the observation so this instance can be reused for the next run.
+     */
 
     public void reset() {
         fields.clear();

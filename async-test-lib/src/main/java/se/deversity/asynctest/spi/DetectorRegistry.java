@@ -224,10 +224,16 @@ public final class DetectorRegistry {
         }
         return out;
     }
+    /**
+     * Fire on test start.
+     */
 
     public void fireOnTestStart() {
         for (Detector d : byType.values()) d.onTestStart();
     }
+    /**
+     * Fire on test end.
+     */
 
     public void fireOnTestEnd() {
         for (Detector d : byType.values()) d.onTestEnd();

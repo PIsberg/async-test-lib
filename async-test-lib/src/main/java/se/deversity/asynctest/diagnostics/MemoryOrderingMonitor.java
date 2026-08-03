@@ -105,14 +105,23 @@ public class MemoryOrderingMonitor {
     public MemoryOrderingReport analyze() {
         return analyzeOrdering();
     }
+    /**
+     * Clears recorded the observation so this instance can be reused for the next run.
+     */
 
     public void reset() {
         accessLog.clear();
     }
+    /**
+     * Disable.
+     */
     
     public void disable() {
         enabled = false;
     }
+    /**
+     * Enable.
+     */
     
     public void enable() {
         enabled = true;

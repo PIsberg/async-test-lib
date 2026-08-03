@@ -165,15 +165,24 @@ public class FalseSharingDetector {
         if (type == byte.class || type == boolean.class) return 1;
         return 8; // References
     }
+    /**
+     * Clears recorded the observation so this instance can be reused for the next run.
+     */
     
     public void reset() {
         fieldAccess.clear();
         accessHistory.clear();
     }
+    /**
+     * Disable.
+     */
     
     public void disable() {
         enabled = false;
     }
+    /**
+     * Enable.
+     */
     
     public void enable() {
         enabled = true;

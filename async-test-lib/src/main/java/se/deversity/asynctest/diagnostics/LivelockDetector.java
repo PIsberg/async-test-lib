@@ -171,15 +171,24 @@ public class LivelockDetector {
         // Otherwise: progress means CPU time advanced, or the thread moved between states.
         return last.cpuTime > first.cpuTime || first.state != last.state;
     }
+    /**
+     * Clears recorded the observation so this instance can be reused for the next run.
+     */
     
     public void reset() {
         threadHistory.clear();
         observedThreads.clear();
     }
+    /**
+     * Disable.
+     */
     
     public void disable() {
         enabled = false;
     }
+    /**
+     * Enable.
+     */
     
     public void enable() {
         enabled = true;

@@ -192,6 +192,9 @@ public class ThreadLeakDetector {
         trackedThreads.clear();
         maxThreadCount = 0;
     }
+    /**
+     * Disable.
+     */
 
     public void disable() {
         this.enabled = false;

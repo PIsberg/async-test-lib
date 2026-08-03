@@ -29,6 +29,13 @@ public class LatchMisuseDetector {
     }
 
     private final Map<Integer, LatchState> latches = new ConcurrentHashMap<>();
+    /**
+     * Registers latch for tracking.
+     *
+     * @param latch the latch
+     * @param name the name
+     * @param initialCount the initial count
+     */
 
     public void registerLatch(Object latch, String name, int initialCount) {
         if (latch == null) {
@@ -37,6 +44,11 @@ public class LatchMisuseDetector {
         latches.putIfAbsent(System.identityHashCode(latch),
             new LatchState(name == null || name.isBlank() ? "CountDownLatch" : name, initialCount));
     }
+    /**
+     * Records await so it can be analysed at the end of the run.
+     *
+     * @param latch the latch
+     */
 
     public void recordAwait(Object latch) {
         LatchState state = stateFor(latch);
@@ -44,6 +56,11 @@ public class LatchMisuseDetector {
             state.awaitCalls.incrementAndGet();
         }
     }
+    /**
+     * Records count down so it can be analysed at the end of the run.
+     *
+     * @param latch the latch
+     */
 
     public void recordCountDown(Object latch) {
         LatchState state = stateFor(latch);
@@ -55,6 +72,11 @@ public class LatchMisuseDetector {
     private @Nullable LatchState stateFor(Object latch) {
         return latch == null ? null : latches.get(System.identityHashCode(latch));
     }
+    /**
+     * Analyses what has been recorded about the observation and builds the report for it.
+     *
+     * @return the analyze
+     */
 
     public LatchMisuseReport analyze() {
         LatchMisuseReport report = new LatchMisuseReport();

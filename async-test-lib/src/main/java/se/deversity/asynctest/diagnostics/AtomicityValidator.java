@@ -47,6 +47,11 @@ public class AtomicityValidator {
      */
     private final Queue<String> atomicityViolations = new ConcurrentLinkedQueue<>();
     private volatile boolean enabled = true;
+    /**
+     * Records compound operation start so it can be analysed at the end of the run.
+     *
+     * @param operationName the operation name
+     */
 
     public void recordCompoundOperationStart(String operationName) {
         if (!enabled || operationName == null || operationName.isBlank()) {
@@ -56,6 +61,11 @@ public class AtomicityValidator {
         activeOperations.put(operationKey(operationName),
             new CompoundOperation(operationName, Thread.currentThread().threadId()));
     }
+    /**
+     * Records compound operation end so it can be analysed at the end of the run.
+     *
+     * @param operationName the operation name
+     */
 
     public void recordCompoundOperationEnd(String operationName) {
         if (!enabled || operationName == null || operationName.isBlank()) {
@@ -64,6 +74,13 @@ public class AtomicityValidator {
 
         activeOperations.remove(operationKey(operationName));
     }
+    /**
+     * Records field access so it can be analysed at the end of the run.
+     *
+     * @param fieldName the field name
+     * @param value the value
+     * @param isWrite the is write
+     */
 
     public void recordFieldAccess(String fieldName, @Nullable Object value, boolean isWrite) {
         recordFieldAccess(fieldName, value, isWrite, Thread.currentThread().threadId());
@@ -122,6 +139,15 @@ public class AtomicityValidator {
             }
         }
     }
+    /**
+     * Detect check then act violation.
+     *
+     * @param fieldName the field name
+     * @param checkValue the check value
+     * @param expectedValue the expected value
+     * @param wouldAct the would act
+     * @return the detect check then act violation
+     */
 
     public boolean detectCheckThenActViolation(String fieldName, Object checkValue,
                                                Object expectedValue, boolean wouldAct) {
@@ -138,6 +164,11 @@ public class AtomicityValidator {
         }
         return violation;
     }
+    /**
+     * Analyses what has been recorded about atomicity and builds the report for it.
+     *
+     * @return the analyze atomicity
+     */
 
     public AtomicityReport analyzeAtomicity() {
         AtomicityReport report = new AtomicityReport();
@@ -185,16 +216,25 @@ public class AtomicityValidator {
     private String operationKey(String operationName) {
         return Thread.currentThread().threadId() + ":" + operationName;
     }
+    /**
+     * Clears recorded the observation so this instance can be reused for the next run.
+     */
 
     public void reset() {
         activeOperations.clear();
         fieldHistory.clear();
         atomicityViolations.clear();
     }
+    /**
+     * Disable.
+     */
 
     public void disable() {
         enabled = false;
     }
+    /**
+     * Enable.
+     */
 
     public void enable() {
         enabled = true;

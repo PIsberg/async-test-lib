@@ -31,9 +31,22 @@ public class FutureBlockingDetector {
 
     private final Map<Integer, ExecutorState> executors = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
+    /**
+     * Disable.
+     */
 
     public void disable() { enabled = false; }
+    /**
+     * Enable.
+     */
     public void enable()  { enabled = true;  }
+    /**
+     * Registers executor for tracking.
+     *
+     * @param executor the executor
+     * @param name the name
+     * @param maxThreads the max threads
+     */
 
     public void registerExecutor(Object executor, String name, int maxThreads) {
         if (!enabled || executor == null) {
@@ -42,6 +55,11 @@ public class FutureBlockingDetector {
         executors.putIfAbsent(System.identityHashCode(executor),
             new ExecutorState(name == null || name.isBlank() ? "Executor" : name, maxThreads));
     }
+    /**
+     * Records task submitted so it can be analysed at the end of the run.
+     *
+     * @param executor the executor
+     */
 
     public void recordTaskSubmitted(Object executor) {
         ExecutorState state = stateFor(executor);
@@ -49,6 +67,11 @@ public class FutureBlockingDetector {
             state.submittedTasks.incrementAndGet();
         }
     }
+    /**
+     * Records task started so it can be analysed at the end of the run.
+     *
+     * @param executor the executor
+     */
 
     public void recordTaskStarted(Object executor) {
         ExecutorState state = stateFor(executor);
@@ -56,6 +79,11 @@ public class FutureBlockingDetector {
             state.runningTasks.incrementAndGet();
         }
     }
+    /**
+     * Records blocking wait so it can be analysed at the end of the run.
+     *
+     * @param executor the executor
+     */
 
     public void recordBlockingWait(Object executor) {
         ExecutorState state = stateFor(executor);
@@ -63,6 +91,11 @@ public class FutureBlockingDetector {
             state.blockingTasks.incrementAndGet();
         }
     }
+    /**
+     * Records task completed so it can be analysed at the end of the run.
+     *
+     * @param executor the executor
+     */
 
     public void recordTaskCompleted(Object executor) {
         ExecutorState state = stateFor(executor);
@@ -77,6 +110,11 @@ public class FutureBlockingDetector {
         }
         return executors.get(System.identityHashCode(executor));
     }
+    /**
+     * Analyses what has been recorded about the observation and builds the report for it.
+     *
+     * @return the analyze
+     */
 
     public FutureBlockingReport analyze() {
         FutureBlockingReport report = new FutureBlockingReport();

@@ -160,6 +160,7 @@ public final class BenchmarkResult implements Serializable {
     public int hashCode() {
         return Objects.hash(testClass, testMethod, timestamp);
     }
+    /** {@return the builder} */
 
     public static Builder builder() {
         return new Builder();
@@ -176,56 +177,117 @@ public final class BenchmarkResult implements Serializable {
         private long minTimePerInvocationNanos;
         private long maxTimePerInvocationNanos;
         private List<Long> invocationTimesNanos = new ArrayList<>();
+        /**
+         * Test class.
+         *
+         * @param testClass the test class
+         * @return the test class
+         */
 
         public Builder testClass(String testClass) {
             this.testClass = testClass;
             return this;
         }
+        /**
+         * Test method.
+         *
+         * @param testMethod the test method
+         * @return the test method
+         */
 
         public Builder testMethod(String testMethod) {
             this.testMethod = testMethod;
             return this;
         }
+        /**
+         * Timestamp.
+         *
+         * @param timestamp the timestamp
+         * @return the timestamp
+         */
 
         public Builder timestamp(LocalDateTime timestamp) {
             this.timestamp = timestamp;
             return this;
         }
+        /**
+         * Threads.
+         *
+         * @param threads the threads
+         * @return the threads
+         */
 
         public Builder threads(int threads) {
             this.threads = threads;
             return this;
         }
+        /**
+         * Invocations.
+         *
+         * @param invocations the invocations
+         * @return the invocations
+         */
 
         public Builder invocations(int invocations) {
             this.invocations = invocations;
             return this;
         }
+        /**
+         * Total execution time in nanoseconds.
+         *
+         * @param totalExecutionTimeNanos the total execution time in nanoseconds
+         * @return the total execution time in nanoseconds
+         */
 
         public Builder totalExecutionTimeNanos(long totalExecutionTimeNanos) {
             this.totalExecutionTimeNanos = totalExecutionTimeNanos;
             return this;
         }
+        /**
+         * Avg time per invocation in nanoseconds.
+         *
+         * @param avgTimePerInvocationNanos the avg time per invocation in nanoseconds
+         * @return the avg time per invocation in nanoseconds
+         */
 
         public Builder avgTimePerInvocationNanos(long avgTimePerInvocationNanos) {
             this.avgTimePerInvocationNanos = avgTimePerInvocationNanos;
             return this;
         }
+        /**
+         * Min time per invocation in nanoseconds.
+         *
+         * @param minTimePerInvocationNanos the min time per invocation in nanoseconds
+         * @return the min time per invocation in nanoseconds
+         */
 
         public Builder minTimePerInvocationNanos(long minTimePerInvocationNanos) {
             this.minTimePerInvocationNanos = minTimePerInvocationNanos;
             return this;
         }
+        /**
+         * Max time per invocation in nanoseconds.
+         *
+         * @param maxTimePerInvocationNanos the max time per invocation in nanoseconds
+         * @return the max time per invocation in nanoseconds
+         */
 
         public Builder maxTimePerInvocationNanos(long maxTimePerInvocationNanos) {
             this.maxTimePerInvocationNanos = maxTimePerInvocationNanos;
             return this;
         }
+        /**
+         * Invocation times in nanoseconds.
+         *
+         * @param invocationTimesNanos the invocation times in nanoseconds
+         * @return the invocation times in nanoseconds
+         */
 
         public Builder invocationTimesNanos(List<Long> invocationTimesNanos) {
             this.invocationTimesNanos = new ArrayList<>(invocationTimesNanos);
             return this;
         }
+        /** {@return the build} */
 
         public BenchmarkResult build() {
             return new BenchmarkResult(this);

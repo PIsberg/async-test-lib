@@ -188,6 +188,9 @@ public class SleepInLockDetector {
         }
         eventCount.set(0);
     }
+    /**
+     * Disable.
+     */
 
     public void disable() {
         this.enabled = false;

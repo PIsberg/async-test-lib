@@ -167,7 +167,9 @@ public class MemoryModelValidator {
     }
     
     public static class ValidationResult {
+        /** The tests run. */
         public int testsRun = 0;
+        /** The tests passed. */
         public int testsPassed = 0;
         /** The observations. */
         public final List<String> observations = Collections.synchronizedList(new ArrayList<>());

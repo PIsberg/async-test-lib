@@ -32,6 +32,12 @@ public class NotifyAllValidator {
 
     private final Map<Integer, MonitorState> monitors = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
+    /**
+     * Records waiter added so it can be analysed at the end of the run.
+     *
+     * @param monitor the monitor
+     * @param monitorName the monitor name
+     */
 
     public void recordWaiterAdded(Object monitor, String monitorName) {
         if (!enabled || monitor == null) {
@@ -47,6 +53,11 @@ public class NotifyAllValidator {
         int parked = state.waitingThreads.incrementAndGet();
         state.peakWaitingThreads.updateAndGet(peak -> Math.max(peak, parked));
     }
+    /**
+     * Records waiter released so it can be analysed at the end of the run.
+     *
+     * @param monitor the monitor
+     */
 
     public void recordWaiterReleased(Object monitor) {
         if (!enabled || monitor == null) {
@@ -58,6 +69,12 @@ public class NotifyAllValidator {
             state.waitingThreads.updateAndGet(current -> Math.max(0, current - 1));
         }
     }
+    /**
+     * Records notify so it can be analysed at the end of the run.
+     *
+     * @param monitor the monitor
+     * @param notifyAll the notify all
+     */
 
     public void recordNotify(Object monitor, boolean notifyAll) {
         if (!enabled || monitor == null) {
@@ -81,6 +98,11 @@ public class NotifyAllValidator {
             }
         }
     }
+    /**
+     * Analyses what has been recorded about the observation and builds the report for it.
+     *
+     * @return the analyze
+     */
 
     public NotifyAllReport analyze() {
         NotifyAllReport report = new NotifyAllReport();
@@ -107,14 +129,23 @@ public class NotifyAllValidator {
 
         return report;
     }
+    /**
+     * Clears recorded the observation so this instance can be reused for the next run.
+     */
 
     public void reset() {
         monitors.clear();
     }
+    /**
+     * Disable.
+     */
 
     public void disable() {
         enabled = false;
     }
+    /**
+     * Enable.
+     */
 
     public void enable() {
         enabled = true;

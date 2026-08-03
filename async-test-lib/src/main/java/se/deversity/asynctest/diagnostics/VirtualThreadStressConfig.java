@@ -47,6 +47,7 @@ public class VirtualThreadStressConfig {
         this.enableVirtualThreadEvents = enableVirtualThreadEvents;
         this.timeoutMs = timeoutMs;
     }
+    /** {@return the builder} */
     
     public static Builder builder() {
         return new Builder();
@@ -82,26 +83,51 @@ public class VirtualThreadStressConfig {
         private boolean detectThreadPinning = true;
         private boolean enableVirtualThreadEvents = false;
         private long timeoutMs = 30000; // 30 seconds for extreme stress tests
+        /**
+         * Stress level.
+         *
+         * @param level the level
+         * @return the stress level
+         */
         
         public Builder stressLevel(StressLevel level) {
             this.stressLevel = level;
             return this;
         }
+        /**
+         * Detect thread pinning.
+         *
+         * @param detect the detect
+         * @return the detect thread pinning
+         */
         
         public Builder detectThreadPinning(boolean detect) {
             this.detectThreadPinning = detect;
             return this;
         }
+        /**
+         * Enable virtual thread events.
+         *
+         * @param enable the enable
+         * @return the enable virtual thread events
+         */
         
         public Builder enableVirtualThreadEvents(boolean enable) {
             this.enableVirtualThreadEvents = enable;
             return this;
         }
+        /**
+         * Timeout in milliseconds.
+         *
+         * @param timeout the timeout
+         * @return the timeout in milliseconds
+         */
         
         public Builder timeoutMs(long timeout) {
             this.timeoutMs = timeout;
             return this;
         }
+        /** {@return the build} */
         
         public VirtualThreadStressConfig build() {
             return new VirtualThreadStressConfig(stressLevel, detectThreadPinning, 

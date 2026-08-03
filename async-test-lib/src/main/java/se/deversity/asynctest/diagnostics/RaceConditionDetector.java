@@ -40,6 +40,12 @@ public class RaceConditionDetector {
     private final Map<Integer, ObjectFieldState> objects = new ConcurrentHashMap<>();
     private final IssueDeduplicator<RaceConditionEvent> deduplicator = new IssueDeduplicator<>();
     private volatile boolean enabled = true;
+    /**
+     * Records field read so it can be analysed at the end of the run.
+     *
+     * @param object the object
+     * @param fieldName the field name
+     */
 
     public void recordFieldRead(Object object, String fieldName) {
         if (!enabled || object == null || fieldName == null || fieldName.isBlank()) {
@@ -47,6 +53,12 @@ public class RaceConditionDetector {
         }
         recordAccess(object, fieldName, false);
     }
+    /**
+     * Records field write so it can be analysed at the end of the run.
+     *
+     * @param object the object
+     * @param fieldName the field name
+     */
 
     public void recordFieldWrite(Object object, String fieldName) {
         if (!enabled || object == null || fieldName == null || fieldName.isBlank()) {
@@ -65,6 +77,11 @@ public class RaceConditionDetector {
         state.fieldAccesses.computeIfAbsent(fieldName, ignored -> Collections.synchronizedList(new ArrayList<>()))
             .add(new FieldAccess(Thread.currentThread().threadId(), write));
     }
+    /**
+     * Analyses what has been recorded about race conditions and builds the report for it.
+     *
+     * @return the analyze race conditions
+     */
 
     public RaceConditionReport analyzeRaceConditions() {
         RaceConditionReport report = new RaceConditionReport();
@@ -148,15 +165,24 @@ public class RaceConditionDetector {
     public RaceConditionReport analyze() {
         return analyzeRaceConditions();
     }
+    /**
+     * Clears recorded the observation so this instance can be reused for the next run.
+     */
 
     public void reset() {
         objects.clear();
         deduplicator.clear();
     }
+    /**
+     * Disable.
+     */
 
     public void disable() {
         enabled = false;
     }
+    /**
+     * Enable.
+     */
 
     public void enable() {
         enabled = true;

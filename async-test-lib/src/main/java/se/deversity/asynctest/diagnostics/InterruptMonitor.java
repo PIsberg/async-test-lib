@@ -31,6 +31,11 @@ public class InterruptMonitor {
     private final Set<String> ignoredDescriptions = ConcurrentHashMap.newKeySet();
     private final Set<String> blockingWithoutHandling = ConcurrentHashMap.newKeySet();
     private volatile boolean enabled = true;
+    /**
+     * Records interrupt exception so it can be analysed at the end of the run.
+     *
+     * @param ex the ex
+     */
 
     public void recordInterruptException(InterruptedException ex) {
         if (!enabled) {
@@ -49,6 +54,9 @@ public class InterruptMonitor {
             interruptEvents.add(event);
         }
     }
+    /**
+     * Records interrupt restored so it can be analysed at the end of the run.
+     */
 
     public void recordInterruptRestored() {
         if (!enabled) {
@@ -66,6 +74,11 @@ public class InterruptMonitor {
             }
         }
     }
+    /**
+     * Records ignored exception so it can be analysed at the end of the run.
+     *
+     * @param description the description
+     */
 
     public void recordIgnoredException(String description) {
         if (!enabled) {
@@ -79,6 +92,11 @@ public class InterruptMonitor {
             description
         ));
     }
+    /**
+     * Records blocking operation without interrupt handling so it can be analysed at the end of the run.
+     *
+     * @param operationName the operation name
+     */
 
     public void recordBlockingOperationWithoutInterruptHandling(String operationName) {
         if (!enabled) {
@@ -97,6 +115,11 @@ public class InterruptMonitor {
         StackTraceElement[] trace = Thread.currentThread().getStackTrace();
         return trace.length > 3 ? trace[3].toString() : "unknown";
     }
+    /**
+     * Analyses what has been recorded about interrupt handling and builds the report for it.
+     *
+     * @return the analyze interrupt handling
+     */
 
     public InterruptReport analyzeInterruptHandling() {
         InterruptReport report = new InterruptReport();
@@ -146,6 +169,9 @@ public class InterruptMonitor {
     public InterruptReport analyze() {
         return analyzeInterruptHandling();
     }
+    /**
+     * Clears recorded the observation so this instance can be reused for the next run.
+     */
 
     public void reset() {
         synchronized (interruptEvents) {
@@ -154,10 +180,16 @@ public class InterruptMonitor {
         ignoredDescriptions.clear();
         blockingWithoutHandling.clear();
     }
+    /**
+     * Disable.
+     */
 
     public void disable() {
         enabled = false;
     }
+    /**
+     * Enable.
+     */
 
     public void enable() {
         enabled = true;

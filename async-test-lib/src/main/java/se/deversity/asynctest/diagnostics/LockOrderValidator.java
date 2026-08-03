@@ -162,14 +162,23 @@ public class LockOrderValidator {
         recursionStack.remove(node);
         return false;
     }
+    /**
+     * Clears recorded the observation so this instance can be reused for the next run.
+     */
     
     public void reset() {
         threadLockOrders.clear();
     }
+    /**
+     * Disable.
+     */
     
     public void disable() {
         enabled = false;
     }
+    /**
+     * Enable.
+     */
     
     public void enable() {
         enabled = true;
