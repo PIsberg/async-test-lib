@@ -8,12 +8,14 @@ The legacy detector architecture required synchronized edits across five places
 (annotation field, config field+builder+defaults, both `build()` branches,
 registry instantiation arm) — a documented fan-out risk in `CLAUDE.md`. The SPI
 in `se.deversity.asynctest.spi` collapses that to **one class + one
-META-INF/services line**.
+line in `META-INF/async-test/builtin-detector-factories`**.
 
 ```
-META-INF/services/se.deversity.asynctest.spi.DetectorFactory
-        │
-        ▼  ServiceLoader.load(...)
+META-INF/services/…DetectorFactory              ← third-party detectors only
+        │                                          (ServiceLoader.load)
+        │   META-INF/async-test/builtin-detector-factories
+        │           │                              ← built-ins, read directly by build()
+        ▼           ▼
 DetectorFactory(s)                              ← user-implemented or built-in
         │
         ▼  build(AsyncTestConfig)

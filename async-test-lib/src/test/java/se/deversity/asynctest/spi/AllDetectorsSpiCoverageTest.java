@@ -7,9 +7,7 @@ import se.deversity.asynctest.DetectorType;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.ServiceLoader;
 import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -24,9 +22,12 @@ class AllDetectorsSpiCoverageTest {
 
     @Test
     void everyDetectorTypeHasARegisteredFactory() {
-        Set<DetectorType> covered = StreamSupport
-                .stream(ServiceLoader.load(DetectorFactory.class).spliterator(), false)
-                .map(DetectorFactory::type)
+        // Built-ins are listed in META-INF/async-test/builtin-detector-factories rather than in a
+        // services file, so this asks the registry that reads that list rather than ServiceLoader.
+        // The guarantee is unchanged: every DetectorType must be addressable through the SPI.
+        AsyncTestConfig cfg = AsyncTestConfig.builder().detectAll(true).build();
+        Set<DetectorType> covered = DetectorRegistry.build(cfg).all().stream()
+                .map(Detector::type)
                 .collect(Collectors.toCollection(HashSet::new));
 
         Set<DetectorType> missing = EnumSet.allOf(DetectorType.class);
@@ -34,7 +35,8 @@ class AllDetectorsSpiCoverageTest {
 
         assertTrue(missing.isEmpty(),
                 "DetectorType values without a registered DetectorFactory: " + missing
-                        + ". Add an entry in LegacyDetectorFactories and the META-INF/services file.");
+                        + ". Add an entry in LegacyDetectorFactories and in "
+                        + "META-INF/async-test/builtin-detector-factories.");
     }
 
     @Test
@@ -52,21 +54,23 @@ class AllDetectorsSpiCoverageTest {
     }
 
     @Test
-    void factoriesUseStableServiceLoaderOrdering() {
-        // ServiceLoader returns factories in the order listed in META-INF/services.
-        // Even though we don't depend on a specific order at runtime, exercising
-        // the full iteration confirms every entry instantiates cleanly (no
-        // ClassNotFoundException from a typo in the services file).
+    void everyBuiltInFactoryEntryInstantiatesCleanly() {
+        // Exercising the full list confirms every entry instantiates: a typo in
+        // META-INF/async-test/builtin-detector-factories is a ClassNotFoundException at build()
+        // time, not a quietly smaller registry.
         //
-        // Counted over the built-in bridge package only: third-party factories are exactly
-        // what the SPI is for, and one of them (ExternalTestDetectorFactory) is registered on
-        // the test classpath. Counting those here would turn "a user added a detector" into a
-        // failure of the built-in-completeness check.
-        long count = StreamSupport
-                .stream(ServiceLoader.load(DetectorFactory.class).spliterator(), false)
-                .filter(f -> f.getClass().getName().startsWith("se.deversity.asynctest.spi.adapters."))
-                .map(DetectorFactory::type)
+        // Counted over the built-in bridge package only. Third-party factories are exactly what
+        // the SPI is for, and one (ExternalTestDetectorFactory) is registered on the test
+        // classpath; counting it here would turn "a user added a detector" into a failure of the
+        // built-in-completeness check.
+        AsyncTestConfig cfg = AsyncTestConfig.builder().detectAll(true).build();
+        long count = DetectorRegistry.build(cfg).all().stream()
+                .filter(d -> d.getClass().getName().startsWith("se.deversity.asynctest.")
+                        && !d.getClass().getName().contains("ExternalTestDetector"))
+                .map(Detector::type)
+                .distinct()
                 .count();
+
         assertEquals(DetectorType.values().length, count,
                 "Built-in factory count must equal DetectorType.values().length; "
                         + "this catches duplicates and missing entries simultaneously.");

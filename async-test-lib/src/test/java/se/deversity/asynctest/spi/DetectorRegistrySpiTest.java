@@ -29,12 +29,26 @@ import static org.junit.jupiter.api.Assertions.*;
 class DetectorRegistrySpiTest {
 
     @Test
-    void serviceLoader_discoversBuiltInFactories() {
-        var found = StreamSupport.stream(ServiceLoader.load(DetectorFactory.class).spliterator(), false)
-                .map(f -> f.getClass().getName())
+    void builtInFactoriesAreListedOutsideServiceLoader() {
+        // Built-ins are registered in META-INF/async-test/builtin-detector-factories, not in a
+        // services file, so that ServiceLoader discovery at runtime does not have to load 127
+        // classes it will then discard. Both halves of that are asserted here.
+        AsyncTestConfig cfg = AsyncTestConfig.builder().detectAll(true).build();
+        var viaRegistry = DetectorRegistry.build(cfg).all().stream()
+                .map(d -> d.getClass().getName())
                 .collect(Collectors.toSet());
-        assertTrue(found.contains(SharedMessageDigestDetectorFactory.class.getName()),
-                "SharedMessageDigestDetectorFactory must be registered via META-INF/services; found: " + found);
+        assertTrue(viaRegistry.stream().anyMatch(n -> n.contains("SharedMessageDigest")),
+                "The built-in list must still reach DetectorRegistry.build; found: " + viaRegistry);
+
+        var viaServiceLoader = StreamSupport
+                .stream(ServiceLoader.load(DetectorFactory.class).spliterator(), false)
+                .map(f -> f.getClass().getName())
+                .filter(n -> n.startsWith("se.deversity.asynctest.spi.adapters."))
+                .collect(Collectors.toSet());
+        assertTrue(viaServiceLoader.isEmpty(),
+                "No built-in factory may be registered for ServiceLoader discovery: loading them "
+                        + "is the ~340 ms per forked JVM this arrangement exists to avoid. Found: "
+                        + viaServiceLoader);
     }
 
     @Test

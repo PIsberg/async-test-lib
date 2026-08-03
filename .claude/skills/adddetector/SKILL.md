@@ -1,6 +1,6 @@
 ---
 name: adddetector
-description: Scaffold a new async-test-lib concurrency detector from just its name and wire it in completely. Use when the user runs /adddetector <Name>, or asks to add / create / scaffold a new detector. Generates the detector + test, performs every synchronized wiring edit (DetectorType, AsyncTest, AsyncTestConfig, DetectorRegistry, LegacyDetectorFactories, META-INF/services), updates docs, and verifies with the build.
+description: Scaffold a new async-test-lib concurrency detector from just its name and wire it in completely. Use when the user runs /adddetector <Name>, or asks to add / create / scaffold a new detector. Generates the detector + test, performs every synchronized wiring edit (DetectorType, AsyncTest, AsyncTestConfig, DetectorRegistry, LegacyDetectorFactories, the built-in factory list), updates docs, and verifies with the build.
 ---
 
 # Add a detector
@@ -189,8 +189,11 @@ construction, or construction without an `analyzeAll` call, silently skips detec
    }
    ```
 
-### 8. `META-INF/services/se.deversity.asynctest.spi.DetectorFactory`
-Append the fully-qualified nested factory name (note the `$`):
+### 8. `META-INF/async-test/builtin-detector-factories`
+Append the fully-qualified nested factory name (note the `$`). This is deliberately not a
+`META-INF/services` file: ServiceLoader must load a provider class to read its type, and built-ins
+are addressability shims the runtime skips, so listing them for discovery cost ~340 ms per forked
+JVM. `AllDetectorsSpiCoverageTest` fails if you forget this line.
 ```
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories${{FACTORY}}
 ```
