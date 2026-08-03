@@ -29,6 +29,9 @@ public final class BenchmarkComparisonResult {
 
     /**
      * Create a result for the first run (no baseline exists).
+     *
+     * @param currentResult the run just measured
+     * @return a result marked as a first run, with no comparison performed
      */
     public static BenchmarkComparisonResult firstRun(BenchmarkResult currentResult) {
         return builder()
@@ -41,43 +44,59 @@ public final class BenchmarkComparisonResult {
             .build();
     }
 
-    /** {@return the current result} */
+    /**
+     * {@return the current result}
+     */
     public @Nullable BenchmarkResult getCurrentResult() {
         return currentResult;
     }
 
-    /** {@return the baseline result} */
+    /**
+     * {@return the baseline result}
+     */
     public @Nullable BenchmarkResult getBaselineResult() {
         return baselineResult;
     }
 
-    /** {@return the percent change} */
+    /**
+     * {@return the percent change}
+     */
     public double getPercentChange() {
         return percentChange;
     }
 
-    /** {@return whether regression} */
+    /**
+     * {@return whether regression}
+     */
     public boolean isRegression() {
         return isRegression;
     }
 
-    /** {@return whether improvement} */
+    /**
+     * {@return whether improvement}
+     */
     public boolean isImprovement() {
         return isImprovement;
     }
 
-    /** {@return whether first run} */
+    /**
+     * {@return whether first run}
+     */
     public boolean isFirstRun() {
         return isFirstRun;
     }
 
-    /** {@return the threshold percent} */
+    /**
+     * {@return the threshold percent}
+     */
     public double getThresholdPercent() {
         return thresholdPercent;
     }
 
     /**
      * Check if the result is within acceptable bounds (not a regression or improvement).
+     *
+     * @return {@code true} when the change stayed inside the configured threshold
      */
     public boolean isWithinThreshold() {
         return !isRegression && !isImprovement;
@@ -128,8 +147,9 @@ public final class BenchmarkComparisonResult {
     public int hashCode() {
         return Objects.hash(currentResult, baselineResult, percentChange, isRegression, isImprovement, isFirstRun);
     }
-    /** {@return the builder} */
-
+    /**
+     * {@return the builder}
+     */
     public static Builder builder() {
         return new Builder();
     }
@@ -145,10 +165,9 @@ public final class BenchmarkComparisonResult {
         /**
          * Current result.
          *
-         * @param currentResult the current result
-         * @return the current result
+         * @param currentResult the run just measured
+         * @return this builder
          */
-
         public Builder currentResult(BenchmarkResult currentResult) {
             this.currentResult = currentResult;
             return this;
@@ -156,10 +175,9 @@ public final class BenchmarkComparisonResult {
         /**
          * Baseline result.
          *
-         * @param baselineResult the baseline result
-         * @return the baseline result
+         * @param baselineResult the previously stored run being compared against
+         * @return this builder
          */
-
         public Builder baselineResult(BenchmarkResult baselineResult) {
             this.baselineResult = baselineResult;
             return this;
@@ -167,10 +185,9 @@ public final class BenchmarkComparisonResult {
         /**
          * Percent change.
          *
-         * @param percentChange the percent change
-         * @return the percent change
+         * @param percentChange change against the baseline, positive when the current run is slower
+         * @return this builder
          */
-
         public Builder percentChange(double percentChange) {
             this.percentChange = percentChange;
             return this;
@@ -178,10 +195,9 @@ public final class BenchmarkComparisonResult {
         /**
          * Is regression.
          *
-         * @param isRegression the is regression
-         * @return the is regression
+         * @param isRegression {@code true} when the slowdown exceeded the configured threshold
+         * @return this builder
          */
-
         public Builder isRegression(boolean isRegression) {
             this.isRegression = isRegression;
             return this;
@@ -189,10 +205,9 @@ public final class BenchmarkComparisonResult {
         /**
          * Is improvement.
          *
-         * @param isImprovement the is improvement
-         * @return the is improvement
+         * @param isImprovement {@code true} when the current run was measurably faster than the baseline
+         * @return this builder
          */
-
         public Builder isImprovement(boolean isImprovement) {
             this.isImprovement = isImprovement;
             return this;
@@ -200,10 +215,9 @@ public final class BenchmarkComparisonResult {
         /**
          * Is first run.
          *
-         * @param isFirstRun the is first run
-         * @return the is first run
+         * @param isFirstRun {@code true} when no baseline existed, so nothing was compared
+         * @return this builder
          */
-
         public Builder isFirstRun(boolean isFirstRun) {
             this.isFirstRun = isFirstRun;
             return this;
@@ -211,16 +225,16 @@ public final class BenchmarkComparisonResult {
         /**
          * Threshold percent.
          *
-         * @param thresholdPercent the threshold percent
-         * @return the threshold percent
+         * @param thresholdPercent the slowdown, in percent, above which a change counts as a regression
+         * @return this builder
          */
-
         public Builder thresholdPercent(double thresholdPercent) {
             this.thresholdPercent = thresholdPercent;
             return this;
         }
-        /** {@return the build} */
-
+        /**
+         * {@return the build}
+         */
         public BenchmarkComparisonResult build() {
             return new BenchmarkComparisonResult(this);
         }

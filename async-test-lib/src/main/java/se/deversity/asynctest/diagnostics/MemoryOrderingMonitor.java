@@ -38,6 +38,9 @@ public class MemoryOrderingMonitor {
     
     /**
      * Record a memory read.
+     *
+     * @param location where in the code this happened, shown in the report
+     * @param value the value read or written
      */
     public void recordRead(String location, Object value) {
         if (!enabled) return;
@@ -46,6 +49,9 @@ public class MemoryOrderingMonitor {
     
     /**
      * Record a memory write.
+     *
+     * @param location where in the code this happened, shown in the report
+     * @param value the value read or written
      */
     public void recordWrite(String location, Object value) {
         if (!enabled) return;
@@ -54,6 +60,8 @@ public class MemoryOrderingMonitor {
     
     /**
      * Analyze for memory ordering violations.
+     *
+     * @return the findings this detector collected during the run
      */
     public MemoryOrderingReport analyzeOrdering() {
         MemoryOrderingReport report = new MemoryOrderingReport();
@@ -101,6 +109,8 @@ public class MemoryOrderingMonitor {
 
     /**
      * Standardized alias for {@link #analyzeOrdering()}.
+     *
+     * @return the findings this detector collected during the run
      */
     public MemoryOrderingReport analyze() {
         return analyzeOrdering();
@@ -108,21 +118,18 @@ public class MemoryOrderingMonitor {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-
     public void reset() {
         accessLog.clear();
     }
     /**
      * Disable.
      */
-    
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-    
     public void enable() {
         enabled = true;
     }
@@ -142,7 +149,9 @@ public class MemoryOrderingMonitor {
          */
         public final Set<String> suspiciousReorderings = new HashSet<>();
         
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !staleCoreads.isEmpty() || !suspiciousReorderings.isEmpty();
         }

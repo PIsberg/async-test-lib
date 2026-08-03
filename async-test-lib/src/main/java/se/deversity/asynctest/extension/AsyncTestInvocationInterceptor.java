@@ -23,7 +23,11 @@ public class AsyncTestInvocationInterceptor implements InvocationInterceptor {
 
     private final AsyncTest asyncTest;
     private final int threadCount;
-
+    /**
+     * Creates a AsyncTestInvocationInterceptor.
+     *
+     * @param asyncTest the annotation on the test method, supplying the run configuration
+     */
     public AsyncTestInvocationInterceptor(AsyncTest asyncTest) {
         this(asyncTest, asyncTest.threads());
     }
@@ -34,6 +38,9 @@ public class AsyncTestInvocationInterceptor implements InvocationInterceptor {
      * its own count.
      *
      * @since 1.6.0
+     *
+     * @param asyncTest the annotation on the test method, supplying the run configuration
+     * @param threadCount thread count to use instead of the annotation value, for a parameterised template
      */
     public AsyncTestInvocationInterceptor(AsyncTest asyncTest, int threadCount) {
         this.asyncTest = asyncTest;

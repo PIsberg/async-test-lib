@@ -75,6 +75,10 @@ public class ABAProblemDetector {
     
     /**
      * Record a value change in an atomic variable.
+     *
+     * @param variableName a label identifying the variable in the report
+     * @param oldValue the value present before the write
+     * @param newValue the value being written
      */
     public void recordValueChange(String variableName, Object oldValue, Object newValue) {
         if (!enabled) return;
@@ -94,6 +98,12 @@ public class ABAProblemDetector {
     
     /**
      * Record a CAS (Compare-And-Swap) attempt.
+     *
+     * @param variableName a label identifying the variable in the report
+     * @param expectedValue the value the compare-and-set expected to find
+     * @param newValue the value being written
+     * @param succeeded the {@code succeeded} flag
+     * @param actualCurrentValue the value actually found, when it differed from the expected one
      */
     public void recordCASAttempt(String variableName, Object expectedValue, Object newValue, 
                                  boolean succeeded, Object actualCurrentValue) {
@@ -183,6 +193,8 @@ public class ABAProblemDetector {
     
     /**
      * Analyze for ABA problems.
+     *
+     * @return the findings this detector collected during the run
      */
     public ABAReport analyzeABA() {
         ABAReport report = new ABAReport();
@@ -209,6 +221,8 @@ public class ABAProblemDetector {
 
     /**
      * Standardized alias for {@link #analyzeABA()}.
+     *
+     * @return the findings this detector collected during the run
      */
     public ABAReport analyze() {
         return analyzeABA();
@@ -216,32 +230,31 @@ public class ABAProblemDetector {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-
     public void reset() {
         trackedVariables.clear();
     }
     /**
      * Disable.
      */
-    
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-    
     public void enable() {
         enabled = true;
     }
     
     public static class ABAReport {
-        /** The variables with cycles. */
+        /** How many A-B-A cycles were observed per variable. */
         public final Map<String, Integer> variablesWithCycles = new HashMap<>();
-        /** The successful ABA cases. */
+        /** Compare-and-set calls that succeeded even though the value had changed and changed back. */
         public final Set<String> successfulABACases = new HashSet<>();
         
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !variablesWithCycles.isEmpty() || !successfulABACases.isEmpty();
         }

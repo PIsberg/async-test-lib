@@ -59,3 +59,49 @@ Default timeouts (5,000ms) that work locally can easily trigger timeouts in reso
 * **Tuning Guide**:
   * **Local / High-Spec CI**: Use `virtualThreadStressMode = "MEDIUM"` (spawns 500 virtual threads).
   * **Low-Spec CI / Containerized Runs**: Use `virtualThreadStressMode = "LOW"` (spawns 100 virtual threads) or `OFF`.
+
+---
+
+## 6. `SecurityException: LICENSE DENIED` before any test runs
+
+### Symptom
+
+A run stops immediately, before a single test body executes:
+
+```
+java.lang.SecurityException: LICENSE DENIED: <reason>
+  To run locally without a key: -Dlicense.mock.mode=true
+  In CI (GITHUB_ACTIONS or CI env var set, no key): mock mode activates automatically.
+```
+
+### Cause
+
+`LicenseGuard` runs once per configuration at the start of `ConcurrencyRunner.execute`, before the
+`CyclicBarrier` is built. It is not reacting to anything your test did; it decided before the test
+started.
+
+Mock mode, which bypasses the check, turns itself on in exactly two situations:
+
+* `-Dlicense.mock.mode=true` is set, or
+* the run looks like CI (`GITHUB_ACTIONS` or `CI` is set in the environment) **and** no key is
+  configured.
+
+A developer machine with no key matches neither, so the gate consults the backend and can refuse.
+This is why the same suite passes in CI and stops locally: CI is silently mocked, your laptop is not.
+
+### Fix
+
+For local development, set the flag once rather than per run:
+
+* **Maven**: `mvn test -Dlicense.mock.mode=true`, or add it to `.mvn/jvm.config`.
+* **Gradle**: `systemProperty("license.mock.mode", "true")` in your `test { }` block.
+* **IDE**: add `-Dlicense.mock.mode=true` to the default JUnit run configuration, so every new test
+  you create inherits it.
+
+With a real key, pass `-Dlicense.key=<key>` and set `-Dlicense.user.email=you@example.com`.
+
+### Why it is not simply off by default
+
+The library is [PolyForm Noncommercial](../LICENSE); the gate is the mechanism behind that, not an
+accident. It is deliberately loud rather than silently degrading, so that a run which was not
+licensed never looks like a run that found no bugs.

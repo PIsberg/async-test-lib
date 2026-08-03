@@ -161,6 +161,8 @@ public class StringBuilderDetector {
 
     /**
      * Analyse StringBuilder usage and return a report.
+     *
+     * @return the findings this detector collected during the run
      */
     public StringBuilderReport analyze() {
         StringBuilderReport report = new StringBuilderReport();
@@ -210,7 +212,11 @@ public class StringBuilderDetector {
         final java.util.List<String> builderErrors           = new java.util.ArrayList<>();
         final Map<String, String>    builderActivity         = new ConcurrentHashMap<>();
 
-        /** Returns {@code true} when shared-mutation or errors were detected. */
+        /**
+         * Returns {@code true} when shared-mutation or errors were detected.
+         *
+         * @return {@code true} when this detector recorded something worth reporting
+         */
         public boolean hasIssues() {
             return !sharedBuilderViolations.isEmpty() || !builderErrors.isEmpty();
         }

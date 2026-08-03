@@ -70,6 +70,9 @@ public final class DetectorRegistry {
      * <p>This is the addressability view, used to prove every {@link DetectorType} is reachable
      * through the SPI. It is not the path the runner takes: see
      * {@link #buildExternal(AsyncTestConfig)}.
+     *
+     * @param config the configuration deciding which factories report themselves as enabled
+     * @return a registry holding every enabled detector, built-in and third-party
      */
     public static DetectorRegistry build(AsyncTestConfig config) {
         Map<DetectorType, Detector> detectors = new EnumMap<>(DetectorType.class);
@@ -99,6 +102,9 @@ public final class DetectorRegistry {
      * #build(AsyncTestConfig)} reads, so runtime discovery sees only genuine third-party providers.
      *
      * @since 1.7.0
+     *
+     * @param config the configuration deciding which factories report themselves as enabled
+     * @return a registry holding only the enabled third-party detectors
      */
     public static DetectorRegistry buildExternal(AsyncTestConfig config) {
         Map<DetectorType, Detector> detectors = new EnumMap<>(DetectorType.class);
@@ -175,7 +181,9 @@ public final class DetectorRegistry {
         }
     }
 
-    /** {@return {@code true} when no detector is active in this registry} */
+    /**
+     * {@return {@code true} when no detector is active in this registry}
+     */
     public boolean isEmpty() {
         return byType.isEmpty();
     }
@@ -186,6 +194,10 @@ public final class DetectorRegistry {
      * <p>Calls into user code should treat null as "feature off" rather than an
      * error — matches the behavior of the legacy {@code AsyncTestContext.require}
      * accessors but without the exception.
+     *
+     * @param <T>            the detector type being looked up
+     * @param detectorClass  the class to match against the active detectors
+     * @return the active detector of that class, or {@code null} when it is not enabled
      */
     @SuppressWarnings("unchecked")
     public <T extends Detector> @Nullable T get(Class<T> detectorClass) {
@@ -195,17 +207,30 @@ public final class DetectorRegistry {
         return null;
     }
 
-    /** Type-keyed lookup. */
+    /**
+     * Type-keyed lookup.
+     *
+     * @param type the detector to look up
+     * @return the active detector for that type, or {@code null} when it is not enabled
+     */
     public @Nullable Detector get(DetectorType type) {
         return byType.get(type);
     }
 
-    /** All active detectors (snapshot). */
+    /**
+     * All active detectors (snapshot).
+     *
+     * @return the active detectors, in {@link DetectorType} order
+     */
     public List<Detector> all() {
         return new ArrayList<>(byType.values());
     }
 
-    /** Aggregated violations from every active detector for the current round. */
+    /**
+     * Aggregated violations from every active detector for the current round.
+     *
+     * @return the violations reported by every active detector
+     */
     @AIIdempotent(reason = "Each Detector.analyze() must return the same violations for the same observed state (the SPI contract). Calling analyzeAll() N times on a quiescent registry yields N identical lists; do not introduce stateful side-effects in analyze().")
     public List<Violation> analyzeAll() {
         List<Violation> out = new ArrayList<>();
@@ -227,14 +252,12 @@ public final class DetectorRegistry {
     /**
      * Fire on test start.
      */
-
     public void fireOnTestStart() {
         for (Detector d : byType.values()) d.onTestStart();
     }
     /**
      * Fire on test end.
      */
-
     public void fireOnTestEnd() {
         for (Detector d : byType.values()) d.onTestEnd();
     }

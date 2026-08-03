@@ -24,6 +24,10 @@ public class ScheduledExecutorDetector {
 
     /**
      * Register a ScheduledExecutorService for monitoring.
+     *
+     * @param executor the executor being recorded, tracked by identity
+     * @param name a label identifying the executor in the report
+     * @param corePoolSize the configured core pool size
      */
     public void registerExecutor(ScheduledExecutorService executor, String name, int corePoolSize) {
         executorRegistry.put(executor, new ExecutorInfo(name, corePoolSize));
@@ -31,6 +35,10 @@ public class ScheduledExecutorDetector {
 
     /**
      * Record a task being scheduled.
+     *
+     * @param executor the executor being recorded, tracked by identity
+     * @param executorName a label identifying the executor in the report
+     * @param taskName a label identifying the task in the report
      */
     public void recordSchedule(ScheduledExecutorService executor, String executorName, String taskName) {
         ExecutorInfo info = executorRegistry.get(executor);
@@ -41,6 +49,10 @@ public class ScheduledExecutorDetector {
 
     /**
      * Record a task starting execution.
+     *
+     * @param executor the executor being recorded, tracked by identity
+     * @param executorName a label identifying the executor in the report
+     * @param taskName a label identifying the task in the report
      */
     public void recordTaskStart(ScheduledExecutorService executor, String executorName, String taskName) {
         ExecutorInfo info = executorRegistry.get(executor);
@@ -51,6 +63,11 @@ public class ScheduledExecutorDetector {
 
     /**
      * Record a task completing execution.
+     *
+     * @param executor the executor being recorded, tracked by identity
+     * @param executorName a label identifying the executor in the report
+     * @param taskName a label identifying the task in the report
+     * @param durationMs the duration in milliseconds
      */
     public void recordTaskComplete(ScheduledExecutorService executor, String executorName, String taskName, long durationMs) {
         ExecutorInfo info = executorRegistry.get(executor);
@@ -64,6 +81,9 @@ public class ScheduledExecutorDetector {
 
     /**
      * Record an exception in a scheduled task.
+     *
+     * @param executor the executor being recorded, tracked by identity
+     * @param executorName a label identifying the executor in the report
      */
     public void recordException(ScheduledExecutorService executor, String executorName) {
         exceptionInTasks++;
@@ -71,6 +91,8 @@ public class ScheduledExecutorDetector {
 
     /**
      * Record executor shutdown.
+     *
+     * @param executor the executor being recorded, tracked by identity
      */
     public void recordShutdown(ScheduledExecutorService executor) {
         ExecutorInfo info = executorRegistry.get(executor);
@@ -92,6 +114,8 @@ public class ScheduledExecutorDetector {
 
     /**
      * Analyze ScheduledExecutorService usage and return report.
+     *
+     * @return the findings this detector collected during the run
      */
     public ScheduledExecutorReport analyze() {
         checkShutdown();
@@ -111,7 +135,14 @@ public class ScheduledExecutorDetector {
         private final Set<ScheduledExecutorService> notShutdownExecutors;
         private final Set<String> longRunningTasks;
         private final int exceptionInTasks;
-
+        /**
+         * Creates a ScheduledExecutorReport.
+         *
+         * @param executorRegistry every registered executor and what was observed on it
+         * @param notShutdownExecutors the executors never shut down
+         * @param longRunningTasks the tasks that ran past the reporting threshold
+         * @param exceptionInTasks the exceptions thrown inside scheduled tasks
+         */
         public ScheduledExecutorReport(
             Map<ScheduledExecutorService, ExecutorInfo> executorRegistry,
             Set<ScheduledExecutorService> notShutdownExecutors,
@@ -124,7 +155,9 @@ public class ScheduledExecutorDetector {
             this.exceptionInTasks = exceptionInTasks;
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !notShutdownExecutors.isEmpty() 
                 || !longRunningTasks.isEmpty()

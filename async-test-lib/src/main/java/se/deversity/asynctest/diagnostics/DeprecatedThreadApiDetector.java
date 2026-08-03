@@ -64,7 +64,9 @@ public class DeprecatedThreadApiDetector {
         events.add(new ApiUseEvent(apiName, thread.getName()));
     }
 
-    /** {@return report of deprecated Thread API usages} */
+    /**
+     * {@return report of deprecated Thread API usages}
+     */
     public DeprecatedThreadApiReport analyze() {
         DeprecatedThreadApiReport r = new DeprecatedThreadApiReport();
         for (ApiUseEvent e : events) {
@@ -80,7 +82,9 @@ public class DeprecatedThreadApiDetector {
     public static class DeprecatedThreadApiReport {
         final List<String> violations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

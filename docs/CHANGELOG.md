@@ -7,6 +7,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — 733 published javadoc descriptions said nothing, and a test now says so
+
+The previous entries in this release closed every doclint warning. Doclint answers exactly one
+question, is the tag present, so closing its warnings does not mean a reader learns anything. It
+cannot tell `@param timeout the timeout` from a description. Counting what the mechanical pass had
+actually produced:
+
+| Restatement | Count | All on public members |
+|---|---|---|
+| `@param` tags | 432 | yes |
+| `@return` tags | 166 | yes |
+| one-line summaries | 135 | yes |
+
+Every one restated the identifier it documented and nothing else. `@param lockName the lock name`.
+`@return the size` on `size()`. The worst read `/** The totcou races. */` over a public field
+recording time-of-check-to-time-of-use races, where the generated prose had respelled a misspelled
+acronym into a non-word. All 733 now describe something a caller cannot read off the signature: the
+unit on `sleepDuration` (nanoseconds), the null rule on `SiteCapture.capture()`, that detectors
+track subjects by identity rather than equality, that `distanceInBytes` under a cache line is what
+makes two fields share one.
+
+Two defects surfaced while doing it, both invisible to doclint because it checks nothing below
+`protected` by default:
+
+- `SpinContentionBarrier`'s constructor javadoc had been placed between two cache-line padding
+  fields, documenting `pad7`. The public constructor had no javadoc at all, and the build was
+  silent about it. Reattached, and it now states the contract that matters, that arriving threads
+  spin rather than park so the collision stays tight enough to reproduce a race.
+- 183 stray blank lines sat between a javadoc block and the member it documents.
+
+`totcouRaces` keeps its misspelled name. It is a public field and renaming it would break binary
+compatibility against the 1.6.0 baseline; the javadoc now spells out what it records and notes the
+name is kept deliberately.
+
+`JavadocDescribesRatherThanRestatesTest` pins all of this. It asks the question doclint cannot:
+whether a description, ignoring a leading article, is anything more than its identifier respelled.
+It does not measure length or style, because a short description can be complete (`@return this
+builder`) and no prose rule survives contact with 127 detectors. It was verified in both
+directions: it failed on the real tree before the fix, naming
+`ABAProblemDetector.java:197  * @return the analyze ABA` and one other that the initial sweep's
+acronym handling had missed, and putting a single placeholder back afterwards turned it red again
+with the exact file and line. It also asserts it scanned more than 100 files, so it cannot pass by
+looking in the wrong directory and finding nothing.
+
+### Added — DetectorType's 127 constants documented, and its lock text corrected
+
+The enum a user types into `@AsyncTest(excludes = ...)` had no documentation on any of its 127
+constants, so the published javadoc listed 127 bare names. Each now carries the first sentence of
+the detector it selects, taken from that detector's own class javadoc rather than invented, so
+`DEADLOCKS` reads "Enhanced deadlock detector that analyzes thread dumps and identifies circular
+lock dependencies..." The mapping is derived, not hand-maintained: `AsyncTestConfig.build()` gives
+constant to flag, `DetectorRegistry`'s constructor gives flag to detector class, and all 127 resolve
+with none left over.
+
+The file is `@AILocked`, and the lock was waived for this deliberately. Its own reason says a
+constant needs synchronized edits in five places; a comment adds no constant and cannot break that.
+The annotation now says so, so the next reader does not have to ask: the lock is on the constant
+set, not on the file.
+
+Two pieces of that guardrail had also gone stale and are corrected in the same change. It still
+described "both branches of `AsyncTestConfig.build()` (detectAll block + excludes block)", which has
+been a single expression per detector for some time, and `@AIKeepInSync` still listed
+`META-INF/services/…DetectorFactory` as the file that must agree, which stopped being true when the
+built-in factories moved to `META-INF/async-test/builtin-detector-factories`. Both feed the
+generated `CLAUDE.md`, so a stale guardrail misdirects every future contributor.
+
+### Added — 295 `@param` and 122 `@return` tags on already-documented members
+
+Tags were appended to existing blocks rather than blocks being rebuilt. That distinction is the
+whole change: an earlier attempt rebuilt each block and replaced real prose with a generated stub,
+turning `ConcurrencyRunner.execute`'s detailed javadoc into "Execute.". Appending cannot lose text.
+287 single-line comments were expanded to multi-line first, as a separate pass, so no insertion had
+to reason about indices that another insertion had already moved.
+
+### Documented — what happens on a first run with no licence key
+
+`LicenseGuard` denies a developer who has no key and has not set `-Dlicense.mock.mode=true`; mock
+mode turns itself on only in CI. That is intended behaviour for a PolyForm Noncommercial library and
+is left alone, but the README described it as "outcome depends on the configured backend", which
+does not prepare anyone for a `SecurityException` before a single test body runs.
+
+The README now shows the actual error and says plainly that CI is silently mocked while a laptop is
+not, which is why the same suite can pass in CI and stop locally. `TROUBLESHOOTING.md` gains a
+section with the fix for Maven, Gradle and the IDE, and with the reason the gate is loud rather than
+silently degrading: a run that was not licensed must never look like a run that found no bugs.
+
+Not changed: the 51 default-constructor javadoc warnings. Clearing them means adding 51 public
+constructors to satisfy a style rule, which widens the documented API surface for no functional
+gain, so the warnings stay.
+
 ### Fixed — javadoc reaching consumers was missing ~260 tags, and the build was configured not to notice
 
 `maven-javadoc-plugin` ran with `<doclint>all,-missing</doclint>`: every check except `missing`. So

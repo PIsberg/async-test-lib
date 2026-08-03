@@ -71,7 +71,9 @@ public class UncaughtExceptionHandlerDetector {
         if (rec != null) rec.uncaughtException = throwable;
     }
 
-    /** {@return report of threads that threw without a custom UncaughtExceptionHandler} */
+    /**
+     * {@return report of threads that threw without a custom UncaughtExceptionHandler}
+     */
     public UncaughtExceptionHandlerReport analyze() {
         UncaughtExceptionHandlerReport r = new UncaughtExceptionHandlerReport();
         for (ThreadRecord rec : threads.values()) {
@@ -89,7 +91,9 @@ public class UncaughtExceptionHandlerDetector {
     public static class UncaughtExceptionHandlerReport {
         final List<String> violations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

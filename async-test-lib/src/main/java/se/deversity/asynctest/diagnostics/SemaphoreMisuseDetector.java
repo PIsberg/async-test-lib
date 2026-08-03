@@ -73,7 +73,7 @@ public class SemaphoreMisuseDetector {
     /**
      * Record a permit acquisition.
      * 
-     * @param semaphore the semaphore
+     * @param semaphore the semaphore being recorded, tracked by identity
      * @param name the semaphore name (should match registration)
      */
     public void recordAcquire(Semaphore semaphore, String name) {
@@ -96,7 +96,7 @@ public class SemaphoreMisuseDetector {
     /**
      * Record a permit release.
      * 
-     * @param semaphore the semaphore
+     * @param semaphore the semaphore being recorded, tracked by identity
      * @param name the semaphore name (should match registration)
      */
     public void recordRelease(Semaphore semaphore, String name) {
@@ -172,6 +172,8 @@ public class SemaphoreMisuseDetector {
 
         /**
          * Check if any issues were detected.
+         *
+         * @return {@code true} when this detector recorded something worth reporting
          */
         public boolean hasIssues() {
             return !permitLeaks.isEmpty() || !overReleases.isEmpty() || !unreleasedPermits.isEmpty();

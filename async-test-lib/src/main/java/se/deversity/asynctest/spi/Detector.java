@@ -54,6 +54,8 @@ public interface Detector {
      * Identity of this detector. Must be a value from the {@link DetectorType}
      * enum so that {@code @AsyncTest(excludes = {...})} and
      * {@code Preset.enabled()} can address it.
+     *
+     * @return the constant identifying this detector
      */
     DetectorType type();
 

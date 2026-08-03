@@ -122,6 +122,8 @@ public class SharedCollectionDetector {
 
     /**
      * Analyse collection usage and return a report.
+     *
+     * @return the findings this detector collected during the run
      */
     public SharedCollectionReport analyze() {
         SharedCollectionReport report = new SharedCollectionReport();
@@ -165,7 +167,11 @@ public class SharedCollectionDetector {
         final java.util.List<String> mixedAccessViolations     = new java.util.ArrayList<>();
         final Map<String, String>    collectionActivity        = new ConcurrentHashMap<>();
 
-        /** Returns {@code true} when any concurrent-access violations were detected. */
+        /**
+         * Returns {@code true} when any concurrent-access violations were detected.
+         *
+         * @return {@code true} when this detector recorded something worth reporting
+         */
         public boolean hasIssues() {
             return !concurrentWriteViolations.isEmpty() || !mixedAccessViolations.isEmpty();
         }

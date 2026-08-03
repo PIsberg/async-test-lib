@@ -53,17 +53,23 @@ public enum IssueSeverity {
         this.description = description;
     }
 
-    /** {@return the display label with emoji indicator} */
+    /**
+     * {@return the display label with emoji indicator}
+     */
     public String getLabel() {
         return label;
     }
 
-    /** {@return a brief description of what this severity means} */
+    /**
+     * {@return a brief description of what this severity means}
+     */
     public String getDescription() {
         return description;
     }
 
-    /** {@return ANSI color code for terminal output} */
+    /**
+     * {@return ANSI color code for terminal output}
+     */
     public String getAnsiColor() {
         switch (this) {
             case CRITICAL: return "\u001B[31m"; // Red
@@ -74,7 +80,9 @@ public enum IssueSeverity {
         }
     }
 
-    /** {@return ANSI reset code} */
+    /**
+     * {@return ANSI reset code}
+     */
     public String getAnsiReset() {
         return "\u001B[0m";
     }

@@ -38,6 +38,9 @@ public class ReadWriteLockMonitor {
     
     /**
      * Register a read-write lock for monitoring.
+     *
+     * @param rwLock the read-write lock being recorded, tracked by identity
+     * @param name a label identifying the rw lock in the report
      */
     public void registerLock(Object rwLock, String name) {
         if (!enabled) return;
@@ -48,6 +51,9 @@ public class ReadWriteLockMonitor {
     
     /**
      * Record read lock acquisition.
+     *
+     * @param rwLock the read-write lock being recorded, tracked by identity
+     * @param waitTimeMs the wait time in milliseconds
      */
     public void recordReadLockAcquired(Object rwLock, long waitTimeMs) {
         if (!enabled) return;
@@ -63,6 +69,8 @@ public class ReadWriteLockMonitor {
     
     /**
      * Record read lock release.
+     *
+     * @param rwLock the read-write lock being recorded, tracked by identity
      */
     public void recordReadLockReleased(Object rwLock) {
         if (!enabled) return;
@@ -76,6 +84,9 @@ public class ReadWriteLockMonitor {
     
     /**
      * Record write lock acquisition.
+     *
+     * @param rwLock the read-write lock being recorded, tracked by identity
+     * @param waitTimeMs the wait time in milliseconds
      */
     public void recordWriteLockAcquired(Object rwLock, long waitTimeMs) {
         if (!enabled) return;
@@ -97,6 +108,8 @@ public class ReadWriteLockMonitor {
     
     /**
      * Record write lock release.
+     *
+     * @param rwLock the read-write lock being recorded, tracked by identity
      */
     public void recordWriteLockReleased(Object rwLock) {
         if (!enabled) return;
@@ -110,6 +123,8 @@ public class ReadWriteLockMonitor {
     
     /**
      * Analyze read-write lock fairness.
+     *
+     * @return the findings this detector collected during the run
      */
     public ReadWriteLockReport analyzeFairness() {
         ReadWriteLockReport report = new ReadWriteLockReport();
@@ -160,6 +175,8 @@ public class ReadWriteLockMonitor {
 
     /**
      * Standardized alias for {@link #analyzeFairness()}.
+     *
+     * @return the findings this detector collected during the run
      */
     public ReadWriteLockReport analyze() {
         return analyzeFairness();
@@ -167,38 +184,37 @@ public class ReadWriteLockMonitor {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-
     public void reset() {
         locks.clear();
     }
     /**
      * Disable.
      */
-    
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-    
     public void enable() {
         enabled = true;
     }
     
     public static class ReadWriteLockReport {
-        /** The reader dominated locks. */
+        /** Locks where readers arrived often enough to hold writers off. */
         public final Set<String> readerDominatedLocks = new HashSet<>();
-        /** The starved writers. */
+        /** Writers that never acquired the lock during the run. */
         public final Set<String> starvedWriters = new HashSet<>();
-        /** The long write waits. */
+        /** Writers that waited longer than the reporting threshold. */
         public final Set<String> longWriteWaits = new HashSet<>();
-        /** The current write holders. */
+        /** Threads currently holding the write lock. */
         public final Set<String> currentWriteHolders = new HashSet<>();
-        /** The current read holders. */
+        /** Threads currently holding the read lock. */
         public final Set<String> currentReadHolders = new HashSet<>();
         
-        /** {@return whether there are fairness issues} */
+        /**
+         * {@return whether there are fairness issues}
+         */
         public boolean hasFairnessIssues() {
             return !readerDominatedLocks.isEmpty() || !starvedWriters.isEmpty();
         }

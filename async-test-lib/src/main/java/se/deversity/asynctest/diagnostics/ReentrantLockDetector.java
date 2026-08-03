@@ -25,6 +25,9 @@ public class ReentrantLockDetector {
 
     /**
      * Register a ReentrantLock for monitoring.
+     *
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param name a label identifying the lock in the report
      */
     public void registerLock(ReentrantLock lock, String name) {
         lockRegistry.put(lock, new LockInfo(name));
@@ -32,6 +35,9 @@ public class ReentrantLockDetector {
 
     /**
      * Record a successful lock acquisition.
+     *
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param threadName a label identifying the thread in the report
      */
     public void recordLockAcquired(ReentrantLock lock, String threadName) {
         LockInfo info = lockRegistry.get(lock);
@@ -42,6 +48,9 @@ public class ReentrantLockDetector {
 
     /**
      * Record a lock release.
+     *
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param threadName a label identifying the thread in the report
      */
     public void recordLockReleased(ReentrantLock lock, String threadName) {
         LockInfo info = lockRegistry.get(lock);
@@ -52,6 +61,8 @@ public class ReentrantLockDetector {
 
     /**
      * Record a tryLock() that timed out.
+     *
+     * @param lock the lock being recorded, tracked by identity rather than equality
      */
     public void recordLockTimeout(ReentrantLock lock) {
         timeoutLocks.add(lock);
@@ -59,6 +70,9 @@ public class ReentrantLockDetector {
 
     /**
      * Record potential lock starvation (wait time exceeds threshold).
+     *
+     * @param threadName a label identifying the thread in the report
+     * @param waitTimeMs the wait time in milliseconds
      */
     public void recordStarvation(String threadName, long waitTimeMs) {
         starvationThreads.add(threadName + " (waited " + waitTimeMs + "ms)");
@@ -66,6 +80,8 @@ public class ReentrantLockDetector {
 
     /**
      * Analyze lock usage and return report.
+     *
+     * @return the findings this detector collected during the run
      */
     public ReentrantLockReport analyze() {
         return new ReentrantLockReport(
@@ -82,7 +98,13 @@ public class ReentrantLockDetector {
         private final Map<ReentrantLock, LockInfo> lockRegistry;
         private final Set<ReentrantLock> timeoutLocks;
         private final Set<String> starvationThreads;
-
+        /**
+         * Creates a ReentrantLockReport.
+         *
+         * @param lockRegistry every registered lock and what was observed on it
+         * @param timeoutLocks the locks whose timed acquisition failed
+         * @param starvationThreads the threads that waited long enough to count as starved
+         */
         public ReentrantLockReport(
             Map<ReentrantLock, LockInfo> lockRegistry,
             Set<ReentrantLock> timeoutLocks,
@@ -93,7 +115,9 @@ public class ReentrantLockDetector {
             this.starvationThreads = Collections.unmodifiableSet(new HashSet<>(starvationThreads));
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !timeoutLocks.isEmpty() || !starvationThreads.isEmpty();
         }

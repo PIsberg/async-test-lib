@@ -108,6 +108,8 @@ public class LazyInitRaceDetector {
     /**
      * Analyses recorded initialization data and returns a report of fields
      * where duplicate initialization was detected.
+     *
+     * @return the findings this detector collected during the run
      */
     public LazyInitRaceReport analyze() {
         LazyInitRaceReport report = new LazyInitRaceReport();
@@ -153,7 +155,11 @@ public class LazyInitRaceDetector {
         final List<String> races          = new ArrayList<>();
         final List<String> visibilityRisks = new ArrayList<>();
 
-        /** Returns {@code true} when any lazy-init race or visibility risk was detected. */
+        /**
+         * Returns {@code true} when any lazy-init race or visibility risk was detected.
+         *
+         * @return {@code true} when this detector recorded something worth reporting
+         */
         public boolean hasIssues() {
             return !races.isEmpty() || !visibilityRisks.isEmpty();
         }

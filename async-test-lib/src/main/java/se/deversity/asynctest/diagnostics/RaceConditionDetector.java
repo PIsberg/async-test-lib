@@ -43,10 +43,9 @@ public class RaceConditionDetector {
     /**
      * Records field read so it can be analysed at the end of the run.
      *
-     * @param object the object
-     * @param fieldName the field name
+     * @param object the object the access is on, tracked by identity
+     * @param fieldName the field involved, as it should appear in the report
      */
-
     public void recordFieldRead(Object object, String fieldName) {
         if (!enabled || object == null || fieldName == null || fieldName.isBlank()) {
             return;
@@ -56,10 +55,9 @@ public class RaceConditionDetector {
     /**
      * Records field write so it can be analysed at the end of the run.
      *
-     * @param object the object
-     * @param fieldName the field name
+     * @param object the object the access is on, tracked by identity
+     * @param fieldName the field involved, as it should appear in the report
      */
-
     public void recordFieldWrite(Object object, String fieldName) {
         if (!enabled || object == null || fieldName == null || fieldName.isBlank()) {
             return;
@@ -80,9 +78,8 @@ public class RaceConditionDetector {
     /**
      * Analyses what has been recorded about race conditions and builds the report for it.
      *
-     * @return the analyze race conditions
+     * @return the findings this detector collected during the run
      */
-
     public RaceConditionReport analyzeRaceConditions() {
         RaceConditionReport report = new RaceConditionReport();
 
@@ -161,6 +158,8 @@ public class RaceConditionDetector {
 
     /**
      * Standardized alias for {@link #analyzeRaceConditions()}.
+     *
+     * @return the findings this detector collected during the run
      */
     public RaceConditionReport analyze() {
         return analyzeRaceConditions();
@@ -168,7 +167,6 @@ public class RaceConditionDetector {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-
     public void reset() {
         objects.clear();
         deduplicator.clear();
@@ -176,14 +174,12 @@ public class RaceConditionDetector {
     /**
      * Disable.
      */
-
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-
     public void enable() {
         enabled = true;
     }
@@ -206,7 +202,14 @@ public class RaceConditionDetector {
         private final String location;
         private final int lineNumber;
         private final long threadId;
-
+        /**
+         * Creates a RaceConditionEvent.
+         *
+         * @param type the kind of event being recorded, shown in the report
+         * @param location where in the code this happened, shown in the report
+         * @param lineNumber the source line the access came from
+         * @param threadId the id of the thread performing the operation
+         */
         public RaceConditionEvent(String type, String location, int lineNumber, long threadId) {
             this.type = type;
             this.location = location;
@@ -242,12 +245,14 @@ public class RaceConditionDetector {
     }
 
     public static class RaceConditionReport {
-        /** The unsafe accesses. */
+        /** Individual accesses that took part in a suspected race. */
         public final Set<String> unsafeAccesses = new HashSet<>();
-        /** The potential races. */
+        /** Fields accessed from more than one thread without synchronization. */
         public final Set<String> potentialRaces = new HashSet<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !unsafeAccesses.isEmpty() || !potentialRaces.isEmpty();
         }

@@ -353,7 +353,11 @@ public final class AsyncTestContext {
     // Exposed via atomicityValidator() so se.deversity.asynctest.telemetry.TelemetryBridge
     // can route drained agent field-access events into the live per-test detector.
     final @Nullable AtomicityValidator                    atomicityValidator;
-
+    /**
+     * Creates a AsyncTestContext.
+     *
+     * @param cfg the resolved configuration deciding which detectors this context installs
+     */
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
         // Mirror registry references so package-private field access still works
@@ -630,13 +634,19 @@ public final class AsyncTestContext {
 
     // ---- Lifecycle (called by ConcurrencyRunner) ----
 
-    /** Installs {@code ctx} into the calling thread's ThreadLocal. */
+    /**
+     * Installs {@code ctx} into the calling thread's ThreadLocal.
+     *
+     * @param ctx the context to bind to the calling thread; must be paired with an {@code uninstall()} in a {@code finally}
+     */
     @AICallersOnly({"se.deversity.asynctest.runner.ConcurrencyRunner"})
     public static void install(AsyncTestContext ctx) {
         CURRENT.set(ctx);
     }
 
-    /** Removes the context from the calling thread's ThreadLocal. */
+    /**
+     * Removes the context from the calling thread's ThreadLocal.
+     */
     @AIIdempotent(reason = "ThreadLocal.remove() is documented as a no-op when the thread has no value set; the install/uninstall symmetry rule (CLAUDE.md) tolerates extra uninstalls. ConcurrencyRunner relies on this in its outermost-finally cleanup.")
     public static void uninstall() {
         CURRENT.remove();
@@ -682,7 +692,11 @@ public final class AsyncTestContext {
         return ctx == null ? 0L : ctx.currentRoundSeed;
     }
 
-    /** Internal: set by {@code ConcurrencyRunner} before each invocation round. */
+    /**
+     * Internal: set by {@code ConcurrencyRunner} before each invocation round.
+     *
+     * @param seed the seed for this round, so a reported interleaving can be replayed
+     */
     public void setReplaySeedForRound(long seed) {
         this.currentRoundSeed = seed;
     }

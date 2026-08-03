@@ -105,13 +105,19 @@ public enum Preset {
      * lets callers distinguish "use everything available right now" from "use
      * exactly this set", which matters when new detectors are added in future
      * releases.
+     *
+     * @return the detectors this preset turns on, as an unmodifiable set
      */
     @SuppressFBWarnings(value = "EI_EXPOSE_REP", justification = "enabled is already an unmodifiable Set.copyOf snapshot stored in a final field")
     public @Nullable Set<DetectorType> enabled() {
         return enabled;
     }
 
-    /** True when the preset is the legacy default. */
+    /**
+     * True when the preset is the legacy default.
+     *
+     * @return {@code true} when this preset enables every {@link DetectorType}
+     */
     public boolean isAll() {
         return this == ALL || this == STRICT;
     }

@@ -83,7 +83,7 @@ public class BlockingQueueDetector {
     /**
      * Record an offer() call.
      * 
-     * @param queue the queue
+     * @param queue the queue being recorded, tracked by identity
      * @param name the queue name (should match registration)
      * @param success true if offer succeeded, false if queue was full
      */
@@ -107,7 +107,7 @@ public class BlockingQueueDetector {
     /**
      * Record a poll() call.
      * 
-     * @param queue the queue
+     * @param queue the queue being recorded, tracked by identity
      * @param name the queue name (should match registration)
      * @param success true if poll returned an element, false if queue was empty
      */
@@ -131,7 +131,7 @@ public class BlockingQueueDetector {
     /**
      * Record a put() call (blocking insert).
      * 
-     * @param queue the queue
+     * @param queue the queue being recorded, tracked by identity
      * @param name the queue name (should match registration)
      */
     public void recordPut(BlockingQueue<?> queue, String name) {
@@ -149,7 +149,7 @@ public class BlockingQueueDetector {
     /**
      * Record a take() call (blocking retrieval).
      * 
-     * @param queue the queue
+     * @param queue the queue being recorded, tracked by identity
      * @param name the queue name (should match registration)
      */
     public void recordTake(BlockingQueue<?> queue, String name) {
@@ -241,6 +241,8 @@ public class BlockingQueueDetector {
 
         /**
          * Check if any issues were detected.
+         *
+         * @return {@code true} when this detector recorded something worth reporting
          */
         public boolean hasIssues() {
             return !silentFailures.isEmpty() || !emptyPolls.isEmpty() || 

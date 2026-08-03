@@ -50,7 +50,9 @@ public class ExplicitGcDetector {
                 location != null ? location : "unknown"));
     }
 
-    /** {@return report of explicit GC invocations} */
+    /**
+     * {@return report of explicit GC invocations}
+     */
     public ExplicitGcReport analyze() {
         ExplicitGcReport r = new ExplicitGcReport();
         for (GcEvent e : events) {
@@ -67,7 +69,9 @@ public class ExplicitGcDetector {
     public static class ExplicitGcReport {
         final List<String> violations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

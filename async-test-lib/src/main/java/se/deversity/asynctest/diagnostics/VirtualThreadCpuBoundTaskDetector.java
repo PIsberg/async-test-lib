@@ -84,11 +84,17 @@ public class VirtualThreadCpuBoundTaskDetector {
     private final AtomicInteger totalTasks = new AtomicInteger(0);
     private final AtomicLong totalDurationMs = new AtomicLong(0);
     private final AtomicLong maxObservedMs = new AtomicLong(0);
-
+    /**
+     * Creates a VirtualThreadCpuBoundTaskDetector.
+     */
     public VirtualThreadCpuBoundTaskDetector() {
         this(DEFAULT_CPU_THRESHOLD_MS);
     }
-
+    /**
+     * Creates a VirtualThreadCpuBoundTaskDetector.
+     *
+     * @param cpuThresholdMs the cpu threshold in milliseconds
+     */
     public VirtualThreadCpuBoundTaskDetector(long cpuThresholdMs) {
         this.cpuThresholdMs = cpuThresholdMs;
     }
@@ -217,20 +223,32 @@ public class VirtualThreadCpuBoundTaskDetector {
             this.thresholdMs = thresholdMs;
         }
 
-        /** {@return true if any CPU-bound tasks were detected on virtual threads} */
+        /**
+         * {@return true if any CPU-bound tasks were detected on virtual threads}
+         */
         public boolean hasIssues() {
             return !violations.isEmpty();
         }
 
-        /** {@return the violations} */
+        /**
+         * {@return the violations}
+         */
         public List<String> getViolations()    { return Collections.unmodifiableList(violations); }
-        /** {@return the total tasks} */
+        /**
+         * {@return the total tasks}
+         */
         public int          getTotalTasks()     { return totalTasks; }
-        /** {@return the average duration in milliseconds} */
+        /**
+         * {@return the average duration in milliseconds}
+         */
         public long         getAverageDurationMs() { return averageDurationMs; }
-        /** {@return the max duration in milliseconds} */
+        /**
+         * {@return the max duration in milliseconds}
+         */
         public long         getMaxDurationMs()  { return maxDurationMs; }
-        /** {@return the threshold in milliseconds} */
+        /**
+         * {@return the threshold in milliseconds}
+         */
         public long         getThresholdMs()    { return thresholdMs; }
 
         @Override

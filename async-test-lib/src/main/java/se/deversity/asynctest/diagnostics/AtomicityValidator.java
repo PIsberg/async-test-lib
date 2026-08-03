@@ -50,9 +50,8 @@ public class AtomicityValidator {
     /**
      * Records compound operation start so it can be analysed at the end of the run.
      *
-     * @param operationName the operation name
+     * @param operationName a label identifying the operation in the report
      */
-
     public void recordCompoundOperationStart(String operationName) {
         if (!enabled || operationName == null || operationName.isBlank()) {
             return;
@@ -64,9 +63,8 @@ public class AtomicityValidator {
     /**
      * Records compound operation end so it can be analysed at the end of the run.
      *
-     * @param operationName the operation name
+     * @param operationName a label identifying the operation in the report
      */
-
     public void recordCompoundOperationEnd(String operationName) {
         if (!enabled || operationName == null || operationName.isBlank()) {
             return;
@@ -77,11 +75,10 @@ public class AtomicityValidator {
     /**
      * Records field access so it can be analysed at the end of the run.
      *
-     * @param fieldName the field name
-     * @param value the value
-     * @param isWrite the is write
+     * @param fieldName the field involved, as it should appear in the report
+     * @param value the value read or written
+     * @param isWrite {@code true} for a write, {@code false} for a read
      */
-
     public void recordFieldAccess(String fieldName, @Nullable Object value, boolean isWrite) {
         recordFieldAccess(fieldName, value, isWrite, Thread.currentThread().threadId());
     }
@@ -142,13 +139,12 @@ public class AtomicityValidator {
     /**
      * Detect check then act violation.
      *
-     * @param fieldName the field name
-     * @param checkValue the check value
-     * @param expectedValue the expected value
-     * @param wouldAct the would act
-     * @return the detect check then act violation
+     * @param fieldName the field involved, as it should appear in the report
+     * @param checkValue the value observed by the check
+     * @param expectedValue the value the caller expected to find
+     * @param wouldAct {@code true} when the caller would have acted on the checked value
+     * @return {@code true} when a check-then-act sequence was observed on that field
      */
-
     public boolean detectCheckThenActViolation(String fieldName, Object checkValue,
                                                Object expectedValue, boolean wouldAct) {
         if (!enabled || !wouldAct) {
@@ -167,9 +163,8 @@ public class AtomicityValidator {
     /**
      * Analyses what has been recorded about atomicity and builds the report for it.
      *
-     * @return the analyze atomicity
+     * @return the findings this detector collected during the run
      */
-
     public AtomicityReport analyzeAtomicity() {
         AtomicityReport report = new AtomicityReport();
         report.checkThenActViolations.addAll(atomicityViolations);
@@ -208,6 +203,8 @@ public class AtomicityValidator {
 
     /**
      * Standardized alias for {@link #analyzeAtomicity()}.
+     *
+     * @return the findings this detector collected during the run
      */
     public AtomicityReport analyze() {
         return analyzeAtomicity();
@@ -219,7 +216,6 @@ public class AtomicityValidator {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-
     public void reset() {
         activeOperations.clear();
         fieldHistory.clear();
@@ -228,27 +224,27 @@ public class AtomicityValidator {
     /**
      * Disable.
      */
-
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-
     public void enable() {
         enabled = true;
     }
 
     public static class AtomicityReport {
-        /** The check then act violations. */
+        /** Fields checked and then acted on without holding a lock across both. */
         public final Set<String> checkThenActViolations = new HashSet<>();
-        /** The unsafe field accesses. */
+        /** Fields with mixed reads and writes from more than one thread. */
         public final Set<String> unsafeFieldAccesses = new HashSet<>();
-        /** The totcou races. */
+        /** Fields whose state changed between the check and the use (TOCTOU). The field name misspells the acronym; it is public API and kept as-is for compatibility. */
         public final Set<String> totcouRaces = new HashSet<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !checkThenActViolations.isEmpty()
                 || !unsafeFieldAccesses.isEmpty()

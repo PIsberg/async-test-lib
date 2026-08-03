@@ -61,7 +61,9 @@ public class SharedXmlParserDetector {
         s.accessingThreadNames.add(thread.getName());
     }
 
-    /** {@return report of XML parser instances accessed from multiple threads} */
+    /**
+     * {@return report of XML parser instances accessed from multiple threads}
+     */
     public SharedXmlParserReport analyze() {
         SharedXmlParserReport r = new SharedXmlParserReport();
         for (ParserState s : parsers.values()) {
@@ -81,7 +83,9 @@ public class SharedXmlParserDetector {
     public static class SharedXmlParserReport {
         final List<String> violations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

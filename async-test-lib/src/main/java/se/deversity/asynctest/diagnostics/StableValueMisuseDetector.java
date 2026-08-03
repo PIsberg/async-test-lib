@@ -239,24 +239,38 @@ public class StableValueMisuseDetector {
             this.totalSets = totalSets;
         }
 
-        /** {@return true if any correctness-affecting StableValue misuse was detected} */
+        /**
+         * {@return true if any correctness-affecting StableValue misuse was detected}
+         */
         public boolean hasIssues() {
             return !readBeforeSetIssues.isEmpty()
                 || !doubleSetIssues.isEmpty()
                 || !reentrantIssues.isEmpty();
         }
 
-        /** {@return the read before set issues} */
+        /**
+         * {@return the read before set issues}
+         */
         public List<String> getReadBeforeSetIssues() { return Collections.unmodifiableList(readBeforeSetIssues); }
-        /** {@return the double set issues} */
+        /**
+         * {@return the double set issues}
+         */
         public List<String> getDoubleSetIssues()      { return Collections.unmodifiableList(doubleSetIssues); }
-        /** {@return the reentrant issues} */
+        /**
+         * {@return the reentrant issues}
+         */
         public List<String> getReentrantIssues()      { return Collections.unmodifiableList(reentrantIssues); }
-        /** {@return the contention warnings} */
+        /**
+         * {@return the contention warnings}
+         */
         public List<String> getContentionWarnings()   { return Collections.unmodifiableList(contentionWarnings); }
-        /** {@return the total reads} */
+        /**
+         * {@return the total reads}
+         */
         public int          getTotalReads()           { return totalReads; }
-        /** {@return the total sets} */
+        /**
+         * {@return the total sets}
+         */
         public int          getTotalSets()            { return totalSets; }
 
         @Override

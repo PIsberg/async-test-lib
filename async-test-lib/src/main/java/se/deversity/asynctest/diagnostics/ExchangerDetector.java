@@ -24,6 +24,9 @@ public class ExchangerDetector {
 
     /**
      * Register an Exchanger for monitoring.
+     *
+     * @param exchanger the exchanger being recorded, tracked by identity
+     * @param name a label identifying the exchanger in the report
      */
     public void registerExchanger(Exchanger<?> exchanger, String name) {
         exchangerRegistry.put(exchanger, new ExchangerInfo(name));
@@ -31,6 +34,9 @@ public class ExchangerDetector {
 
     /**
      * Record a thread starting an exchange.
+     *
+     * @param exchanger the exchanger being recorded, tracked by identity
+     * @param exchangerName a label identifying the exchanger in the report
      */
     public void recordExchangeStart(Exchanger<?> exchanger, String exchangerName) {
         ExchangerInfo info = exchangerRegistry.get(exchanger);
@@ -41,6 +47,10 @@ public class ExchangerDetector {
 
     /**
      * Record a successful exchange completion.
+     *
+     * @param exchanger the exchanger being recorded, tracked by identity
+     * @param exchangerName a label identifying the exchanger in the report
+     * @param value the value handed to the partner in the exchange
      */
     public void recordExchangeComplete(Exchanger<?> exchanger, String exchangerName, Object value) {
         ExchangerInfo info = exchangerRegistry.get(exchanger);
@@ -54,6 +64,8 @@ public class ExchangerDetector {
 
     /**
      * Record an exchange that timed out.
+     *
+     * @param exchanger the exchanger being recorded, tracked by identity
      */
     public void recordTimeout(Exchanger<?> exchanger) {
         timedOutExchangers.add(exchanger);
@@ -61,6 +73,8 @@ public class ExchangerDetector {
 
     /**
      * Record an exchange that was interrupted.
+     *
+     * @param exchanger the exchanger being recorded, tracked by identity
      */
     public void recordInterrupted(Exchanger<?> exchanger) {
         interruptedExchangers.add(exchanger);
@@ -68,6 +82,8 @@ public class ExchangerDetector {
 
     /**
      * Analyze Exchanger usage and return report.
+     *
+     * @return the findings this detector collected during the run
      */
     public ExchangerReport analyze() {
         return new ExchangerReport(
@@ -86,7 +102,14 @@ public class ExchangerDetector {
         private final Set<Exchanger<?>> timedOutExchangers;
         private final Set<Exchanger<?>> interruptedExchangers;
         private final int nullValueExchanges;
-
+        /**
+         * Creates a ExchangerReport.
+         *
+         * @param exchangerRegistry every registered exchanger and what was observed on it
+         * @param timedOutExchangers the exchangers whose exchange timed out
+         * @param interruptedExchangers the exchangers whose exchange was interrupted
+         * @param nullValueExchanges the exchanges that transferred {@code null}
+         */
         public ExchangerReport(
             Map<Exchanger<?>, ExchangerInfo> exchangerRegistry,
             Set<Exchanger<?>> timedOutExchangers,
@@ -99,7 +122,9 @@ public class ExchangerDetector {
             this.nullValueExchanges = nullValueExchanges;
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !timedOutExchangers.isEmpty() 
                 || !interruptedExchangers.isEmpty()

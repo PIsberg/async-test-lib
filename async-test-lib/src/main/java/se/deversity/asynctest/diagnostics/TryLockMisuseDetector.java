@@ -37,6 +37,11 @@ public final class TryLockMisuseDetector {
 
     /**
      * Record the result of a tryLock() call.
+     *
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param lockName a label identifying the lock in the report
+     * @param acquired the {@code acquired} flag
+     * @param thread the thread performing the operation
      */
     public void recordTryLockResult(Object lock, String lockName, boolean acquired, Thread thread) {
         if (lock == null || thread == null) return;
@@ -46,6 +51,10 @@ public final class TryLockMisuseDetector {
 
     /**
      * Record an unlock() call.
+     *
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param lockName a label identifying the lock in the report
+     * @param thread the thread performing the operation
      */
     public void recordUnlock(Object lock, String lockName, Thread thread) {
         if (lock == null || thread == null) return;
@@ -65,9 +74,8 @@ public final class TryLockMisuseDetector {
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
-
     public Report analyze() {
         Report r = new Report();
         for (State s : violations.values()) {
@@ -92,12 +100,14 @@ public final class TryLockMisuseDetector {
     }
 
     public static final class Report {
-        /** The violations. */
+        /** Findings as human-readable lines, for the text report. */
         public final List<String> violations = new ArrayList<>();
-        /** The structured violations. */
+        /** The same findings as {@link se.deversity.asynctest.report.Violation} objects, for machine-readable reports. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

@@ -55,7 +55,9 @@ public class VirtualThreadCarrierExhaustionDetector {
     private final AtomicInteger exhaustionEvents = new AtomicInteger(0);
     private final List<String> exhaustionDetails = Collections.synchronizedList(new ArrayList<>());
     private final Map<Long, String> activeBlocksByThread = new ConcurrentHashMap<>();
-
+    /**
+     * Creates a VirtualThreadCarrierExhaustionDetector.
+     */
     public VirtualThreadCarrierExhaustionDetector() {
         this(availableCarriers());
     }
@@ -174,18 +176,28 @@ public class VirtualThreadCarrierExhaustionDetector {
             this.carrierCount = carrierCount;
         }
 
-        /** {@return true if carrier exhaustion was reached or approached} */
+        /**
+         * {@return true if carrier exhaustion was reached or approached}
+         */
         public boolean hasIssues() {
             return exhaustionEventCount > 0;
         }
 
-        /** {@return the exhaustion details} */
+        /**
+         * {@return the exhaustion details}
+         */
         public List<String> getExhaustionDetails()   { return Collections.unmodifiableList(exhaustionDetails); }
-        /** {@return the peak concurrently blocked} */
+        /**
+         * {@return the peak concurrently blocked}
+         */
         public int          getPeakConcurrentlyBlocked() { return peakConcurrentlyBlocked; }
-        /** {@return the exhaustion event count} */
+        /**
+         * {@return the exhaustion event count}
+         */
         public int          getExhaustionEventCount() { return exhaustionEventCount; }
-        /** {@return the carrier count} */
+        /**
+         * {@return the carrier count}
+         */
         public int          getCarrierCount()         { return carrierCount; }
 
         @Override

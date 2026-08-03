@@ -79,7 +79,7 @@ public class ResourceLeakDetector {
     /**
      * Record that a resource was opened/acquired.
      * 
-     * @param resource the resource
+     * @param resource the resource being recorded, tracked by identity
      * @param name the resource name (should match registration)
      */
     public void recordResourceOpened(Object resource, String name) {
@@ -98,7 +98,7 @@ public class ResourceLeakDetector {
     /**
      * Record that a resource was closed/released.
      * 
-     * @param resource the resource
+     * @param resource the resource being recorded, tracked by identity
      * @param name the resource name (should match registration)
      */
     public void recordResourceClosed(Object resource, String name) {
@@ -168,6 +168,8 @@ public class ResourceLeakDetector {
 
         /**
          * Check if any issues were detected.
+         *
+         * @return {@code true} when this detector recorded something worth reporting
          */
         public boolean hasIssues() {
             return !resourceLeaks.isEmpty() || !openResources.isEmpty();

@@ -85,6 +85,8 @@ public class LivelockDetector {
     
     /**
      * Analyze captured snapshots for livelock and starvation patterns.
+     *
+     * @return the findings this detector collected during the run
      */
     public LivelockReport analyzeLivelocks() {
         LivelockReport report = new LivelockReport();
@@ -116,6 +118,8 @@ public class LivelockDetector {
 
     /**
      * Standardized alias for {@link #analyzeLivelocks()}.
+     *
+     * @return the findings this detector collected during the run
      */
     public LivelockReport analyze() {
         return analyzeLivelocks();
@@ -174,7 +178,6 @@ public class LivelockDetector {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-    
     public void reset() {
         threadHistory.clear();
         observedThreads.clear();
@@ -182,27 +185,27 @@ public class LivelockDetector {
     /**
      * Disable.
      */
-    
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-    
     public void enable() {
         enabled = true;
     }
     
     public static class LivelockReport {
-        /** The starved threads. */
+        /** Threads that never got to run during the observation window. */
         public final Set<String> starvedThreads = new HashSet<>();
-        /** The livelock candidates. */
+        /** Threads that kept running while making no progress. */
         public final Set<String> livelockCandidates = new HashSet<>();
-        /** The no progress threads. */
+        /** Threads that reported no progress for the whole observation window. */
         public final Set<String> noProgressThreads = new HashSet<>();
         
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !starvedThreads.isEmpty() || !livelockCandidates.isEmpty() || !noProgressThreads.isEmpty();
         }

@@ -28,6 +28,10 @@ public class VolatileArrayDetector {
 
     /**
      * Register a volatile array for monitoring.
+     *
+     * @param array the array being recorded, tracked by identity
+     * @param name a label identifying the array in the report
+     * @param componentType the component type of the array
      */
     public void registerArray(Object array, String name, Class<?> componentType) {
         ArrayInfo info = new ArrayInfo(name, array, componentType);
@@ -36,6 +40,10 @@ public class VolatileArrayDetector {
 
     /**
      * Record a write to an array element.
+     *
+     * @param array the array being recorded, tracked by identity
+     * @param index the array index being accessed
+     * @param arrayName a label identifying the array in the report
      */
     public void recordElementWrite(Object array, int index, String arrayName) {
         ArrayInfo info = findArrayInfo(array, arrayName);
@@ -61,6 +69,10 @@ public class VolatileArrayDetector {
 
     /**
      * Record a read from an array element.
+     *
+     * @param array the array being recorded, tracked by identity
+     * @param index the array index being accessed
+     * @param arrayName a label identifying the array in the report
      */
     public void recordElementRead(Object array, int index, String arrayName) {
         ArrayInfo info = findArrayInfo(array, arrayName);
@@ -84,6 +96,8 @@ public class VolatileArrayDetector {
 
     /**
      * Analyze array access patterns and return report.
+     *
+     * @return the findings this detector collected during the run
      */
     public VolatileArrayReport analyze() {
         return new VolatileArrayReport(
@@ -96,14 +110,20 @@ public class VolatileArrayDetector {
      */
     public static class VolatileArrayReport {
         private final Set<ArrayInfo> problematicArrays;
-
+        /**
+         * Creates a VolatileArrayReport.
+         *
+         * @param problematicArrays the arrays whose elements were accessed without the ordering the code assumes
+         */
         public VolatileArrayReport(
             Set<ArrayInfo> problematicArrays
         ) {
             this.problematicArrays = Collections.unmodifiableSet(new HashSet<>(problematicArrays));
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !problematicArrays.isEmpty();
         }

@@ -21,19 +21,19 @@ import java.util.function.Supplier;
  */
 public final class Phase1DetectorSet {
 
-    /** The visibility. */
+    /** The visibility monitor for this run, or {@code null} when it is disabled. */
     public final @Nullable VisibilityMonitor      visibility;
-    /** The livelock. */
+    /** The livelock detector for this run, or {@code null} when it is disabled. */
     public final @Nullable LivelockDetector       livelock;
-    /** The race. */
+    /** The race-condition detector for this run, or {@code null} when it is disabled. */
     public final @Nullable RaceConditionDetector  race;
-    /** The thread local. */
+    /** The thread-local monitor for this run, or {@code null} when it is disabled. */
     public final @Nullable ThreadLocalMonitor     threadLocal;
-    /** The busy wait. */
+    /** The busy-wait detector for this run, or {@code null} when it is disabled. */
     public final @Nullable BusyWaitDetector       busyWait;
-    /** The atomicity. */
+    /** The atomicity validator for this run, or {@code null} when it is disabled. */
     public final @Nullable AtomicityValidator     atomicity;
-    /** The interrupt. */
+    /** The interrupt monitor for this run, or {@code null} when it is disabled. */
     public final @Nullable InterruptMonitor       interrupt;
 
     /**
@@ -77,6 +77,9 @@ public final class Phase1DetectorSet {
      * <p>Prefer {@link #from(AsyncTestConfig, AsyncTestContext)} whenever a context is
      * available (the runner always has one) — this overload always constructs fresh,
      * disconnected instances and is kept only for direct/unit-test construction.
+     *
+     * @param config the resolved configuration for this run
+     * @return the detector set matching that configuration
      */
     public static Phase1DetectorSet from(AsyncTestConfig config) {
         return from(config, null);
@@ -102,6 +105,10 @@ public final class Phase1DetectorSet {
      * disconnected-but-functional detector is safer than a {@code NullPointerException}.
      *
      * @since 1.7.0
+     *
+     * @param config the resolved configuration for this run
+     * @param ctx the context this detector reports into
+     * @return the detector set matching that configuration
      */
     public static Phase1DetectorSet from(AsyncTestConfig config, @Nullable AsyncTestContext ctx) {
         return new Phase1DetectorSet(
@@ -162,6 +169,8 @@ public final class Phase1DetectorSet {
      * so reporting them here too would double-count and double-print every finding.
      *
      * @since 1.7.0
+     *
+     * @return the reports collected from each detector, keyed by detector name
      */
     public Map<String, String> collectReports() {
         Map<String, String> out = new LinkedHashMap<>();

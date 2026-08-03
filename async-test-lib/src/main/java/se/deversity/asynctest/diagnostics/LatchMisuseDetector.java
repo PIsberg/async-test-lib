@@ -32,11 +32,10 @@ public class LatchMisuseDetector {
     /**
      * Registers latch for tracking.
      *
-     * @param latch the latch
-     * @param name the name
-     * @param initialCount the initial count
+     * @param latch the latch being recorded, tracked by identity
+     * @param name a label identifying the latch in the report
+     * @param initialCount the count the latch was created with
      */
-
     public void registerLatch(Object latch, String name, int initialCount) {
         if (latch == null) {
             return;
@@ -47,9 +46,8 @@ public class LatchMisuseDetector {
     /**
      * Records await so it can be analysed at the end of the run.
      *
-     * @param latch the latch
+     * @param latch the latch being recorded, tracked by identity
      */
-
     public void recordAwait(Object latch) {
         LatchState state = stateFor(latch);
         if (state != null) {
@@ -59,9 +57,8 @@ public class LatchMisuseDetector {
     /**
      * Records count down so it can be analysed at the end of the run.
      *
-     * @param latch the latch
+     * @param latch the latch being recorded, tracked by identity
      */
-
     public void recordCountDown(Object latch) {
         LatchState state = stateFor(latch);
         if (state != null) {
@@ -75,9 +72,8 @@ public class LatchMisuseDetector {
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
-
     public LatchMisuseReport analyze() {
         LatchMisuseReport report = new LatchMisuseReport();
 
@@ -105,12 +101,14 @@ public class LatchMisuseDetector {
     }
 
     public static class LatchMisuseReport {
-        /** The missing count downs. */
+        /** Latches never counted down to zero. */
         public final Set<String> missingCountDowns = new HashSet<>();
-        /** The extra count downs. */
+        /** Latches counted down more times than they were created for. */
         public final Set<String> extraCountDowns = new HashSet<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !missingCountDowns.isEmpty() || !extraCountDowns.isEmpty();
         }

@@ -85,7 +85,7 @@ public class ThreadStarvationDetector {
     /**
      * Register an executor for starvation monitoring.
      *
-     * @param executor the executor
+     * @param executor the executor being recorded, tracked by identity
      * @param name a descriptive name
      * @param poolSize the number of threads in the pool
      */
@@ -99,7 +99,7 @@ public class ThreadStarvationDetector {
     /**
      * Record a task being submitted to an executor.
      *
-     * @param executor the executor
+     * @param executor the executor being recorded, tracked by identity
      * @return the submission timestamp in nanoseconds
      */
     public long recordTaskSubmission(ExecutorService executor) {
@@ -119,7 +119,7 @@ public class ThreadStarvationDetector {
     /**
      * Record a task starting execution.
      *
-     * @param executorName the executor name
+     * @param executorName a label identifying the executor in the report
      * @param submitTimeNanos the submission time (from recordTaskSubmission)
      */
     public void recordTaskStart(String executorName, long submitTimeNanos) {
@@ -162,7 +162,7 @@ public class ThreadStarvationDetector {
     /**
      * Record a task completing execution.
      *
-     * @param executorName the executor name
+     * @param executorName a label identifying the executor in the report
      */
     public void recordTaskEnd(String executorName) {
         if (!enabled) return;
@@ -227,13 +227,14 @@ public class ThreadStarvationDetector {
     /**
      * Disable.
      */
-
     public void disable() {
         this.enabled = false;
     }
 
     /**
      * Set the starvation threshold in milliseconds.
+     *
+     * @param thresholdMs the threshold in milliseconds
      */
     public void setStarvationThresholdMs(long thresholdMs) {
         this.starvationThresholdMs = thresholdMs;
@@ -243,13 +244,13 @@ public class ThreadStarvationDetector {
      * Immutable snapshot of a starvation event.
      */
     public static class StarvationEventSnapshot {
-        /** The executor name. */
+        /** Label identifying the executor in the report. */
         public final String executorName;
         /** The wait time in milliseconds. */
         public final long waitTimeMs;
         /** The execution time in milliseconds. */
         public final long executionTimeMs;
-        /** The thread name. */
+        /** Label identifying the sleeping thread in the report. */
         public final String threadName;
 
         StarvationEventSnapshot(String executorName, long waitTimeMs,
@@ -278,12 +279,16 @@ public class ThreadStarvationDetector {
             this.maxWaitTimeMs = maxWaitTimeMs;
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !events.isEmpty();
         }
 
-        /** {@return the events} */
+        /**
+         * {@return the events}
+         */
         public List<StarvationEventSnapshot> getEvents() {
             return List.copyOf(events);
         }

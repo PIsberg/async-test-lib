@@ -42,58 +42,80 @@ public final class BenchmarkResult implements Serializable {
         this.invocationTimesNanos = new ArrayList<>(builder.invocationTimesNanos);
     }
 
-    /** {@return the test class} */
+    /**
+     * {@return the test class}
+     */
     public @Nullable String getTestClass() {
         return testClass;
     }
 
-    /** {@return the test method} */
+    /**
+     * {@return the test method}
+     */
     public @Nullable String getTestMethod() {
         return testMethod;
     }
 
-    /** {@return the timestamp} */
+    /**
+     * {@return the timestamp}
+     */
     public LocalDateTime getTimestamp() {
         return timestamp;
     }
 
-    /** {@return the threads} */
+    /**
+     * {@return the threads}
+     */
     public int getThreads() {
         return threads;
     }
 
-    /** {@return the invocations} */
+    /**
+     * {@return the invocations}
+     */
     public int getInvocations() {
         return invocations;
     }
 
-    /** {@return the total execution time in nanoseconds} */
+    /**
+     * {@return the total execution time in nanoseconds}
+     */
     public long getTotalExecutionTimeNanos() {
         return totalExecutionTimeNanos;
     }
 
-    /** {@return the avg time per invocation in nanoseconds} */
+    /**
+     * {@return the avg time per invocation in nanoseconds}
+     */
     public long getAvgTimePerInvocationNanos() {
         return avgTimePerInvocationNanos;
     }
 
-    /** {@return the min time per invocation in nanoseconds} */
+    /**
+     * {@return the min time per invocation in nanoseconds}
+     */
     public long getMinTimePerInvocationNanos() {
         return minTimePerInvocationNanos;
     }
 
-    /** {@return the max time per invocation in nanoseconds} */
+    /**
+     * {@return the max time per invocation in nanoseconds}
+     */
     public long getMaxTimePerInvocationNanos() {
         return maxTimePerInvocationNanos;
     }
 
-    /** {@return the invocation times in nanoseconds} */
+    /**
+     * {@return the invocation times in nanoseconds}
+     */
     public List<Long> getInvocationTimesNanos() {
         return Collections.unmodifiableList(invocationTimesNanos);
     }
 
     /**
      * Get a unique key for this benchmark (class + method).
+     *
+     * @return the key this result is stored under, {@code testClass#testMethod}
      */
     public String getBenchmarkKey() {
         return testClass + "#" + testMethod;
@@ -101,6 +123,8 @@ public final class BenchmarkResult implements Serializable {
 
     /**
      * Calculate the standard deviation of invocation times.
+     *
+     * @return the standard deviation of the recorded timings, in nanoseconds
      */
     public double getStandardDeviation() {
         if (invocationTimesNanos.size() <= 1) {
@@ -117,6 +141,9 @@ public final class BenchmarkResult implements Serializable {
 
     /**
      * Format time in nanoseconds to a human-readable string.
+     *
+     * @param nanos the in nanoseconds
+     * @return the duration rendered with a unit, for display in a report
      */
     public static String formatTime(long nanos) {
         if (nanos < 1_000) {
@@ -160,8 +187,9 @@ public final class BenchmarkResult implements Serializable {
     public int hashCode() {
         return Objects.hash(testClass, testMethod, timestamp);
     }
-    /** {@return the builder} */
-
+    /**
+     * {@return the builder}
+     */
     public static Builder builder() {
         return new Builder();
     }
@@ -180,10 +208,9 @@ public final class BenchmarkResult implements Serializable {
         /**
          * Test class.
          *
-         * @param testClass the test class
-         * @return the test class
+         * @param testClass the fully-qualified test class this measurement came from
+         * @return this builder
          */
-
         public Builder testClass(String testClass) {
             this.testClass = testClass;
             return this;
@@ -191,10 +218,9 @@ public final class BenchmarkResult implements Serializable {
         /**
          * Test method.
          *
-         * @param testMethod the test method
-         * @return the test method
+         * @param testMethod the test method this measurement came from
+         * @return this builder
          */
-
         public Builder testMethod(String testMethod) {
             this.testMethod = testMethod;
             return this;
@@ -202,10 +228,9 @@ public final class BenchmarkResult implements Serializable {
         /**
          * Timestamp.
          *
-         * @param timestamp the timestamp
-         * @return the timestamp
+         * @param timestamp when the measurement was taken
+         * @return this builder
          */
-
         public Builder timestamp(LocalDateTime timestamp) {
             this.timestamp = timestamp;
             return this;
@@ -213,10 +238,9 @@ public final class BenchmarkResult implements Serializable {
         /**
          * Threads.
          *
-         * @param threads the threads
-         * @return the threads
+         * @param threads the number of threads the measured run used
+         * @return this builder
          */
-
         public Builder threads(int threads) {
             this.threads = threads;
             return this;
@@ -224,10 +248,9 @@ public final class BenchmarkResult implements Serializable {
         /**
          * Invocations.
          *
-         * @param invocations the invocations
-         * @return the invocations
+         * @param invocations the number of invocations the measured run performed
+         * @return this builder
          */
-
         public Builder invocations(int invocations) {
             this.invocations = invocations;
             return this;
@@ -238,7 +261,6 @@ public final class BenchmarkResult implements Serializable {
          * @param totalExecutionTimeNanos the total execution time in nanoseconds
          * @return the total execution time in nanoseconds
          */
-
         public Builder totalExecutionTimeNanos(long totalExecutionTimeNanos) {
             this.totalExecutionTimeNanos = totalExecutionTimeNanos;
             return this;
@@ -249,7 +271,6 @@ public final class BenchmarkResult implements Serializable {
          * @param avgTimePerInvocationNanos the avg time per invocation in nanoseconds
          * @return the avg time per invocation in nanoseconds
          */
-
         public Builder avgTimePerInvocationNanos(long avgTimePerInvocationNanos) {
             this.avgTimePerInvocationNanos = avgTimePerInvocationNanos;
             return this;
@@ -260,7 +281,6 @@ public final class BenchmarkResult implements Serializable {
          * @param minTimePerInvocationNanos the min time per invocation in nanoseconds
          * @return the min time per invocation in nanoseconds
          */
-
         public Builder minTimePerInvocationNanos(long minTimePerInvocationNanos) {
             this.minTimePerInvocationNanos = minTimePerInvocationNanos;
             return this;
@@ -271,7 +291,6 @@ public final class BenchmarkResult implements Serializable {
          * @param maxTimePerInvocationNanos the max time per invocation in nanoseconds
          * @return the max time per invocation in nanoseconds
          */
-
         public Builder maxTimePerInvocationNanos(long maxTimePerInvocationNanos) {
             this.maxTimePerInvocationNanos = maxTimePerInvocationNanos;
             return this;
@@ -282,13 +301,13 @@ public final class BenchmarkResult implements Serializable {
          * @param invocationTimesNanos the invocation times in nanoseconds
          * @return the invocation times in nanoseconds
          */
-
         public Builder invocationTimesNanos(List<Long> invocationTimesNanos) {
             this.invocationTimesNanos = new ArrayList<>(invocationTimesNanos);
             return this;
         }
-        /** {@return the build} */
-
+        /**
+         * {@return the build}
+         */
         public BenchmarkResult build() {
             return new BenchmarkResult(this);
         }

@@ -47,7 +47,13 @@ public final class LegacyDetectorAdapter<D> implements Detector {
     private final @Nullable Method analyzeMethod;
     private final @Nullable NoSuchMethodException analyzeMethodLookupFailure;
     private final @Nullable Method hasIssuesMethod;
-
+    /**
+     * Creates a LegacyDetectorAdapter.
+     *
+     * @param delegate the legacy detector to expose through the SPI; findings are read from this instance
+     * @param type the constant this detector answers to
+     * @param detectorName the name this detector reports under
+     */
     public LegacyDetectorAdapter(D delegate, DetectorType type, String detectorName) {
         this.delegate = delegate;
         this.type = type;
@@ -100,7 +106,11 @@ public final class LegacyDetectorAdapter<D> implements Detector {
         }
     }
 
-    /** Exposed for callers that need direct access to the wrapped legacy detector. */
+    /**
+     * Exposed for callers that need direct access to the wrapped legacy detector.
+     *
+     * @return the wrapped legacy detector
+     */
     public D delegate() {
         return delegate;
     }

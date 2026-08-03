@@ -42,7 +42,6 @@ public class BusyWaitDetector {
     /**
      * Records loop iteration so it can be analysed at the end of the run.
      */
-
     public void recordLoopIteration() {
         if (!enabled) {
             return;
@@ -64,7 +63,6 @@ public class BusyWaitDetector {
     /**
      * Records yield so it can be analysed at the end of the run.
      */
-
     public void recordYield() {
         if (!enabled) {
             return;
@@ -92,10 +90,9 @@ public class BusyWaitDetector {
     /**
      * Report spin loop.
      *
-     * @param description the description
-     * @param iterations the iterations
+     * @param description free text describing the event, shown in the report
+     * @param iterations how many iterations the spin ran for
      */
-
     public void reportSpinLoop(String description, long iterations) {
         if (!enabled) {
             return;
@@ -118,9 +115,8 @@ public class BusyWaitDetector {
     /**
      * Analyses what has been recorded about busy waiting and builds the report for it.
      *
-     * @return the analyze busy waiting
+     * @return the findings this detector collected during the run
      */
-
     public BusyWaitReport analyzeBusyWaiting() {
         BusyWaitReport report = new BusyWaitReport();
 
@@ -173,6 +169,8 @@ public class BusyWaitDetector {
 
     /**
      * Standardized alias for {@link #analyzeBusyWaiting()}.
+     *
+     * @return the findings this detector collected during the run
      */
     public BusyWaitReport analyze() {
         return analyzeBusyWaiting();
@@ -180,34 +178,33 @@ public class BusyWaitDetector {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-
     public void reset() {
         threadActivities.clear();
     }
     /**
      * Disable.
      */
-
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-
     public void enable() {
         enabled = true;
     }
 
     public static class BusyWaitReport {
-        /** The busy wait loops. */
+        /** Loops that spun waiting for a condition instead of blocking. */
         public final Set<String> busyWaitLoops = new HashSet<>();
-        /** The tight loops. */
+        /** Loops that spun with no back-off at all. */
         public final Set<String> tightLoops = new HashSet<>();
-        /** The cpu wasted. */
+        /** Nanoseconds of CPU time spent spinning rather than blocking. */
         public long cpuWasted;
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !busyWaitLoops.isEmpty() || !tightLoops.isEmpty();
         }

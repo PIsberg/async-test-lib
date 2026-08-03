@@ -117,6 +117,8 @@ public class CopyOnWriteCollectionDetector {
 
     /**
      * Analyse Copy-on-Write collection usage and return a report.
+     *
+     * @return the findings this detector collected during the run
      */
     public CopyOnWriteReport analyze() {
         CopyOnWriteReport report = new CopyOnWriteReport();
@@ -158,7 +160,11 @@ public class CopyOnWriteCollectionDetector {
         final java.util.List<String> writeHeavyViolations = new java.util.ArrayList<>();
         final Map<String, String>    collectionActivity   = new ConcurrentHashMap<>();
 
-        /** Returns {@code true} when any write-heavy violations were detected. */
+        /**
+         * Returns {@code true} when any write-heavy violations were detected.
+         *
+         * @return {@code true} when this detector recorded something worth reporting
+         */
         public boolean hasIssues() {
             return !writeHeavyViolations.isEmpty();
         }

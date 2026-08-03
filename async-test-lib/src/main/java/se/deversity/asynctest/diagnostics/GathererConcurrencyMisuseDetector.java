@@ -165,18 +165,28 @@ public class GathererConcurrencyMisuseDetector {
             this.totalIntegrations = totalIntegrations;
         }
 
-        /** {@return true if any unsafe parallel-gatherer usage was detected} */
+        /**
+         * {@return true if any unsafe parallel-gatherer usage was detected}
+         */
         public boolean hasIssues() {
             return !missingCombinerIssues.isEmpty() || !sharedStateIssues.isEmpty();
         }
 
-        /** {@return the missing combiner issues} */
+        /**
+         * {@return the missing combiner issues}
+         */
         public List<String> getMissingCombinerIssues() { return Collections.unmodifiableList(missingCombinerIssues); }
-        /** {@return the shared state issues} */
+        /**
+         * {@return the shared state issues}
+         */
         public List<String> getSharedStateIssues()     { return Collections.unmodifiableList(sharedStateIssues); }
-        /** {@return the total gatherers} */
+        /**
+         * {@return the total gatherers}
+         */
         public int          getTotalGatherers()        { return totalGatherers; }
-        /** {@return the total integrations} */
+        /**
+         * {@return the total integrations}
+         */
         public int          getTotalIntegrations()     { return totalIntegrations; }
 
         @Override

@@ -23,6 +23,10 @@ public class CountDownLatchDetector {
 
     /**
      * Register a CountDownLatch for monitoring.
+     *
+     * @param latch the latch being recorded, tracked by identity
+     * @param name a label identifying the latch in the report
+     * @param initialCount the count the latch was created with
      */
     public void registerLatch(CountDownLatch latch, String name, int initialCount) {
         latchRegistry.put(latch, new LatchInfo(name, initialCount));
@@ -30,6 +34,8 @@ public class CountDownLatchDetector {
 
     /**
      * Record a countDown() call.
+     *
+     * @param latch the latch being recorded, tracked by identity
      */
     public void recordCountDown(CountDownLatch latch) {
         LatchInfo info = latchRegistry.get(latch);
@@ -43,6 +49,8 @@ public class CountDownLatchDetector {
 
     /**
      * Record an await() call that timed out.
+     *
+     * @param latch the latch being recorded, tracked by identity
      */
     public void recordTimeout(CountDownLatch latch) {
         timedOutLatches.add(latch);
@@ -50,6 +58,8 @@ public class CountDownLatchDetector {
 
     /**
      * Record a successful await() call.
+     *
+     * @param latch the latch being recorded, tracked by identity
      */
     public void recordAwaitSuccess(CountDownLatch latch) {
         LatchInfo info = latchRegistry.get(latch);
@@ -60,6 +70,8 @@ public class CountDownLatchDetector {
 
     /**
      * Analyze latch usage and return report.
+     *
+     * @return the findings this detector collected during the run
      */
     public CountDownLatchReport analyze() {
         return new CountDownLatchReport(
@@ -76,7 +88,13 @@ public class CountDownLatchDetector {
         private final Map<CountDownLatch, LatchInfo> latchRegistry;
         private final Set<CountDownLatch> timedOutLatches;
         private final Set<CountDownLatch> extraCountDownLatches;
-
+        /**
+         * Creates a CountDownLatchReport.
+         *
+         * @param latchRegistry every registered latch and what was observed on it
+         * @param timedOutLatches the latches whose await timed out
+         * @param extraCountDownLatches the latches counted down more times than they were created for
+         */
         public CountDownLatchReport(
             Map<CountDownLatch, LatchInfo> latchRegistry,
             Set<CountDownLatch> timedOutLatches,
@@ -87,7 +105,9 @@ public class CountDownLatchDetector {
             this.extraCountDownLatches = Collections.unmodifiableSet(new HashSet<>(extraCountDownLatches));
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !timedOutLatches.isEmpty() || !extraCountDownLatches.isEmpty();
         }

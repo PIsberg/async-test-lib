@@ -80,6 +80,9 @@ public class VirtualThreadPinningDetector {
      * Classifies a caller-supplied blocking-operation description.
      *
      * @since 1.7.0
+     *
+     * @param blockingOperation the blocking operation that was called, as it should appear in the report
+     * @return the pinning cause that operation falls under
      */
     public static PinningCause classifyOperation(String blockingOperation) {
         if (blockingOperation == null) return PinningCause.OTHER;
@@ -104,6 +107,10 @@ public class VirtualThreadPinningDetector {
      * version (e.g. {@code 21}, {@code 24}, {@code 26}).
      *
      * @since 1.7.0
+     *
+     * @param cause what pinned the virtual thread to its carrier
+     * @param jdkFeatureVersion the JDK feature version to evaluate the finding against
+     * @return {@code true} when that cause still pins a virtual thread on the given JDK
      */
     public static boolean stillPinsOn(PinningCause cause, int jdkFeatureVersion) {
         return switch (cause) {
@@ -355,6 +362,8 @@ public class VirtualThreadPinningDetector {
          * Returns how many recorded events no longer pin on the running JDK.
          *
          * @since 1.7.0
+         *
+         * @return the number of recorded events that no longer pin on the running JDK
          */
         public long getObsoleteEventCount() {
             return events.stream().filter(PinningEventSnapshot::isObsoleteOnCurrentJdk).count();
@@ -447,6 +456,8 @@ public class VirtualThreadPinningDetector {
          * Returns the classified cause of this pinning event.
          *
          * @since 1.7.0
+         *
+         * @return what pinned the virtual thread to its carrier
          */
         public PinningCause getCause() {
             return cause;
@@ -458,6 +469,8 @@ public class VirtualThreadPinningDetector {
          * waits on JDK 26+).
          *
          * @since 1.7.0
+         *
+         * @return {@code true} when this event no longer pins on the running JDK
          */
         public boolean isObsoleteOnCurrentJdk() {
             return obsoleteOnCurrentJdk;

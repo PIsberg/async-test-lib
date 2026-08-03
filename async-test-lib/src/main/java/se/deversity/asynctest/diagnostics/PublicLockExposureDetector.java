@@ -63,7 +63,9 @@ public class PublicLockExposureDetector {
         if (context != null) publishContexts.put(id, context);
     }
 
-    /** {@return report of publicly exposed internal locks} */
+    /**
+     * {@return report of publicly exposed internal locks}
+     */
     public PublicLockExposureReport analyze() {
         PublicLockExposureReport r = new PublicLockExposureReport();
         for (int id : synchronizedObjects) {
@@ -83,7 +85,9 @@ public class PublicLockExposureDetector {
     public static class PublicLockExposureReport {
         final List<String> violations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

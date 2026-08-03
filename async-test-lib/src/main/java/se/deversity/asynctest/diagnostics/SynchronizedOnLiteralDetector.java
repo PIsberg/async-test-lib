@@ -78,7 +78,9 @@ public class SynchronizedOnLiteralDetector {
         return null;
     }
 
-    /** {@return report of synchronized-on-literal usages} */
+    /**
+     * {@return report of synchronized-on-literal usages}
+     */
     public SynchronizedOnLiteralReport analyze() {
         SynchronizedOnLiteralReport r = new SynchronizedOnLiteralReport();
         for (LiteralUsage u : literals.values()) {
@@ -95,7 +97,9 @@ public class SynchronizedOnLiteralDetector {
     public static class SynchronizedOnLiteralReport {
         final List<String> violations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

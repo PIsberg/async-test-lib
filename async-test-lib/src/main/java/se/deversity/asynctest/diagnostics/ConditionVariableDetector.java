@@ -80,7 +80,7 @@ public class ConditionVariableDetector {
     /**
      * Record an await() call.
      * 
-     * @param condition the Condition
+     * @param condition the condition being awaited or signalled, tracked by identity
      * @param name the condition name (should match registration)
      */
     public void recordAwait(Condition condition, String name) {
@@ -98,7 +98,7 @@ public class ConditionVariableDetector {
     /**
      * Record an await() exit (normal or timeout).
      * 
-     * @param condition the Condition
+     * @param condition the condition being awaited or signalled, tracked by identity
      * @param name the condition name (should match registration)
      * @param timedOut true if await timed out, false if signaled
      */
@@ -116,7 +116,7 @@ public class ConditionVariableDetector {
     /**
      * Record a signal() call.
      * 
-     * @param condition the Condition
+     * @param condition the condition being awaited or signalled, tracked by identity
      * @param name the condition name (should match registration)
      * @param isSignalAll true if signalAll(), false if signal()
      */
@@ -201,6 +201,8 @@ public class ConditionVariableDetector {
 
         /**
          * Check if any issues were detected.
+         *
+         * @return {@code true} when this detector recorded something worth reporting
          */
         public boolean hasIssues() {
             return !lostSignals.isEmpty() || !stuckWaiters.isEmpty() || !missingSignals.isEmpty();

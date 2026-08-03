@@ -33,11 +33,10 @@ public class ExecutorDeadlockDetector {
     /**
      * Registers executor for tracking.
      *
-     * @param executor the executor
-     * @param name the name
-     * @param maxThreads the max threads
+     * @param executor the executor being recorded, tracked by identity
+     * @param name a label identifying the executor in the report
+     * @param maxThreads the configured maximum thread count
      */
-
     public void registerExecutor(Object executor, String name, int maxThreads) {
         if (executor == null) {
             return;
@@ -48,9 +47,8 @@ public class ExecutorDeadlockDetector {
     /**
      * Records task submitted so it can be analysed at the end of the run.
      *
-     * @param executor the executor
+     * @param executor the executor being recorded, tracked by identity
      */
-
     public void recordTaskSubmitted(Object executor) {
         ExecutorState state = stateFor(executor);
         if (state != null) {
@@ -60,9 +58,8 @@ public class ExecutorDeadlockDetector {
     /**
      * Records task started so it can be analysed at the end of the run.
      *
-     * @param executor the executor
+     * @param executor the executor being recorded, tracked by identity
      */
-
     public void recordTaskStarted(Object executor) {
         ExecutorState state = stateFor(executor);
         if (state != null) {
@@ -72,9 +69,8 @@ public class ExecutorDeadlockDetector {
     /**
      * Records waiting on sibling so it can be analysed at the end of the run.
      *
-     * @param executor the executor
+     * @param executor the executor being recorded, tracked by identity
      */
-
     public void recordWaitingOnSibling(Object executor) {
         ExecutorState state = stateFor(executor);
         if (state != null) {
@@ -84,9 +80,8 @@ public class ExecutorDeadlockDetector {
     /**
      * Records task completed so it can be analysed at the end of the run.
      *
-     * @param executor the executor
+     * @param executor the executor being recorded, tracked by identity
      */
-
     public void recordTaskCompleted(Object executor) {
         ExecutorState state = stateFor(executor);
         if (state != null) {
@@ -100,9 +95,8 @@ public class ExecutorDeadlockDetector {
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
-
     public ExecutorDeadlockReport analyze() {
         ExecutorDeadlockReport report = new ExecutorDeadlockReport();
 
@@ -122,10 +116,12 @@ public class ExecutorDeadlockDetector {
     }
 
     public static class ExecutorDeadlockReport {
-        /** The self deadlocks. */
+        /** Tasks that blocked waiting for another task on the same single-threaded executor. */
         public final Set<String> selfDeadlocks = new HashSet<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !selfDeadlocks.isEmpty();
         }

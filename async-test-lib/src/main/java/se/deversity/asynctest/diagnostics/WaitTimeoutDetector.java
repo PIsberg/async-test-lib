@@ -34,6 +34,10 @@ public class WaitTimeoutDetector {
 
     /**
      * Register a wait() call without timeout.
+     *
+     * @param monitor the object being used as a monitor, tracked by identity
+     * @param monitorName a label identifying the monitor in the report
+     * @param threadName a label identifying the thread in the report
      */
     public void recordInfiniteWait(Object monitor, String monitorName, String threadName) {
         WaitInfo info = new WaitInfo(monitor, monitorName);
@@ -44,6 +48,11 @@ public class WaitTimeoutDetector {
 
     /**
      * Register a wait() call with timeout.
+     *
+     * @param monitor the object being used as a monitor, tracked by identity
+     * @param monitorName a label identifying the monitor in the report
+     * @param threadName a label identifying the thread in the report
+     * @param timeoutMs the timeout in milliseconds
      */
     public void recordTimedWait(Object monitor, String monitorName, String threadName, long timeoutMs) {
         WaitInfo info = new WaitInfo(monitor, monitorName);
@@ -53,6 +62,9 @@ public class WaitTimeoutDetector {
 
     /**
      * Record a notify() call.
+     *
+     * @param monitor the object being used as a monitor, tracked by identity
+     * @param monitorName a label identifying the monitor in the report
      */
     public void recordNotify(Object monitor, String monitorName) {
         WaitInfo info = new WaitInfo(monitor, monitorName);
@@ -62,6 +74,9 @@ public class WaitTimeoutDetector {
 
     /**
      * Record a notifyAll() call.
+     *
+     * @param monitor the object being used as a monitor, tracked by identity
+     * @param monitorName a label identifying the monitor in the report
      */
     public void recordNotifyAll(Object monitor, String monitorName) {
         WaitInfo info = new WaitInfo(monitor, monitorName);
@@ -71,6 +86,8 @@ public class WaitTimeoutDetector {
 
     /**
      * Analyze wait patterns and return report.
+     *
+     * @return the findings this detector collected during the run
      */
     public WaitTimeoutReport analyze() {
         return new WaitTimeoutReport(waitEvents, infiniteWaits);
@@ -82,7 +99,12 @@ public class WaitTimeoutDetector {
     public static class WaitTimeoutReport {
         private final Map<WaitInfo, Set<String>> waitEvents;
         private final Set<WaitInfo> infiniteWaits;
-
+        /**
+         * Creates a WaitTimeoutReport.
+         *
+         * @param waitEvents every recorded wait and what was observed on it
+         * @param infiniteWaits the waits entered without a timeout
+         */
         public WaitTimeoutReport(
             Map<WaitInfo, Set<String>> waitEvents,
             Set<WaitInfo> infiniteWaits
@@ -91,7 +113,9 @@ public class WaitTimeoutDetector {
             this.infiniteWaits = Collections.unmodifiableSet(new HashSet<>(infiniteWaits));
         }
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !infiniteWaits.isEmpty();
         }

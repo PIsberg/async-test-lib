@@ -191,12 +191,14 @@ public final class HighContentionAtomicDetector {
 
     /** Report produced by {@link #analyze()}. */
     public static final class Report {
-        /** The violations. */
+        /** Findings as human-readable lines, for the text report. */
         public final List<String> violations = new ArrayList<>();
-        /** The structured violations. */
+        /** The same findings as {@link se.deversity.asynctest.report.Violation} objects, for machine-readable reports. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

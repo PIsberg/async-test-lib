@@ -170,6 +170,9 @@ public class BenchmarkComparator {
 
     /**
      * Load baseline for a specific benchmark key.
+     *
+     * @param benchmarkKey identifies the stored baseline, normally {@code testClass#testMethod}
+     * @return the stored baseline for that key, or empty when none has been recorded
      */
     public Optional<BenchmarkResult> loadBaseline(String benchmarkKey) {
         File storeFile = benchmarkStorePath.toFile();
@@ -224,6 +227,8 @@ public class BenchmarkComparator {
 
     /**
      * Save a benchmark result as the new baseline.
+     *
+     * @param result the run to store as the new baseline, replacing any existing one for its key
      */
     public void saveBaseline(BenchmarkResult result) {
         Map<String, BenchmarkResult> store = loadAllBaselines();

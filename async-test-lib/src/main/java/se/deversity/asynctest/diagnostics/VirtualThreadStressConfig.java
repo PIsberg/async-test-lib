@@ -25,7 +25,7 @@ public class VirtualThreadStressConfig {
         /** 100,000+ virtual threads - extreme stress (may require -Xmx settings) */
         EXTREME(100000);
         
-        /** The thread count. */
+        /** How many virtual threads the stress run starts. */
         public final int threadCount;
         
         StressLevel(int threadCount) {
@@ -37,7 +37,14 @@ public class VirtualThreadStressConfig {
     private final boolean detectThreadPinning;
     private final boolean enableVirtualThreadEvents;
     private final long timeoutMs;
-    
+    /**
+     * Creates a VirtualThreadStressConfig.
+     *
+     * @param stressLevel the stress level to apply
+     * @param detectThreadPinning the {@code detectThreadPinning} flag
+     * @param enableVirtualThreadEvents the {@code enableVirtualThreadEvents} flag
+     * @param timeoutMs the timeout in milliseconds
+     */
     public VirtualThreadStressConfig(StressLevel stressLevel, 
                                      boolean detectThreadPinning,
                                      boolean enableVirtualThreadEvents,
@@ -47,33 +54,44 @@ public class VirtualThreadStressConfig {
         this.enableVirtualThreadEvents = enableVirtualThreadEvents;
         this.timeoutMs = timeoutMs;
     }
-    /** {@return the builder} */
-    
+    /**
+     * {@return the builder}
+     */
     public static Builder builder() {
         return new Builder();
     }
     
-    /** {@return the stress level} */
+    /**
+     * {@return the stress level}
+     */
     public StressLevel getStressLevel() {
         return stressLevel;
     }
     
-    /** {@return the thread count} */
+    /**
+     * {@return the thread count}
+     */
     public int getThreadCount() {
         return stressLevel.threadCount;
     }
     
-    /** {@return whether detect thread pinning} */
+    /**
+     * {@return whether detect thread pinning}
+     */
     public boolean isDetectThreadPinning() {
         return detectThreadPinning;
     }
     
-    /** {@return whether enable virtual thread events} */
+    /**
+     * {@return whether enable virtual thread events}
+     */
     public boolean isEnableVirtualThreadEvents() {
         return enableVirtualThreadEvents;
     }
     
-    /** {@return the timeout in milliseconds} */
+    /**
+     * {@return the timeout in milliseconds}
+     */
     public long getTimeoutMs() {
         return timeoutMs;
     }
@@ -86,10 +104,9 @@ public class VirtualThreadStressConfig {
         /**
          * Stress level.
          *
-         * @param level the level
-         * @return the stress level
+         * @param level the stress level to apply
+         * @return this builder
          */
-        
         public Builder stressLevel(StressLevel level) {
             this.stressLevel = level;
             return this;
@@ -97,10 +114,9 @@ public class VirtualThreadStressConfig {
         /**
          * Detect thread pinning.
          *
-         * @param detect the detect
-         * @return the detect thread pinning
+         * @param detect {@code true} to enable this detector for the run
+         * @return this builder
          */
-        
         public Builder detectThreadPinning(boolean detect) {
             this.detectThreadPinning = detect;
             return this;
@@ -108,10 +124,9 @@ public class VirtualThreadStressConfig {
         /**
          * Enable virtual thread events.
          *
-         * @param enable the enable
-         * @return the enable virtual thread events
+         * @param enable {@code true} to enable this detector for the run
+         * @return this builder
          */
-        
         public Builder enableVirtualThreadEvents(boolean enable) {
             this.enableVirtualThreadEvents = enable;
             return this;
@@ -119,16 +134,16 @@ public class VirtualThreadStressConfig {
         /**
          * Timeout in milliseconds.
          *
-         * @param timeout the timeout
+         * @param timeout the timeout supplied by the caller
          * @return the timeout in milliseconds
          */
-        
         public Builder timeoutMs(long timeout) {
             this.timeoutMs = timeout;
             return this;
         }
-        /** {@return the build} */
-        
+        /**
+         * {@return the build}
+         */
         public VirtualThreadStressConfig build() {
             return new VirtualThreadStressConfig(stressLevel, detectThreadPinning, 
                                                  enableVirtualThreadEvents, timeoutMs);
@@ -137,6 +152,8 @@ public class VirtualThreadStressConfig {
     
     /**
      * Helper to check if this JVM supports virtual threads (Java 21+).
+     *
+     * @return {@code true} when the running JDK provides virtual threads
      */
     public static boolean isVirtualThreadSupported() {
         try {
@@ -150,6 +167,8 @@ public class VirtualThreadStressConfig {
     /**
      * Utility to create a virtual thread executor with potential pinning detection.
      * Returns executor class name if virtual threads are available.
+     *
+     * @return the class name of the virtual-thread executor, for reporting
      */
     public static String getVirtualThreadExecutorClass() {
         if (isVirtualThreadSupported()) {

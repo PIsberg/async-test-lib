@@ -35,10 +35,9 @@ public class NotifyAllValidator {
     /**
      * Records waiter added so it can be analysed at the end of the run.
      *
-     * @param monitor the monitor
-     * @param monitorName the monitor name
+     * @param monitor the object being used as a monitor, tracked by identity
+     * @param monitorName a label identifying the monitor in the report
      */
-
     public void recordWaiterAdded(Object monitor, String monitorName) {
         if (!enabled || monitor == null) {
             return;
@@ -56,9 +55,8 @@ public class NotifyAllValidator {
     /**
      * Records waiter released so it can be analysed at the end of the run.
      *
-     * @param monitor the monitor
+     * @param monitor the object being used as a monitor, tracked by identity
      */
-
     public void recordWaiterReleased(Object monitor) {
         if (!enabled || monitor == null) {
             return;
@@ -72,10 +70,9 @@ public class NotifyAllValidator {
     /**
      * Records notify so it can be analysed at the end of the run.
      *
-     * @param monitor the monitor
-     * @param notifyAll the notify all
+     * @param monitor the object being used as a monitor, tracked by identity
+     * @param notifyAll {@code true} when {@code notifyAll} was called rather than {@code notify}
      */
-
     public void recordNotify(Object monitor, boolean notifyAll) {
         if (!enabled || monitor == null) {
             return;
@@ -101,9 +98,8 @@ public class NotifyAllValidator {
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
      *
-     * @return the analyze
+     * @return the findings this detector collected during the run
      */
-
     public NotifyAllReport analyze() {
         NotifyAllReport report = new NotifyAllReport();
 
@@ -132,30 +128,29 @@ public class NotifyAllValidator {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-
     public void reset() {
         monitors.clear();
     }
     /**
      * Disable.
      */
-
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-
     public void enable() {
         enabled = true;
     }
 
     public static class NotifyAllReport {
-        /** The notify instead of notify all. */
+        /** Monitors signalled with {@code notify} where waiters await different conditions. */
         public final Set<String> notifyInsteadOfNotifyAll = new HashSet<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !notifyInsteadOfNotifyAll.isEmpty();
         }

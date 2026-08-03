@@ -108,6 +108,9 @@ public class StructuredTaskScopeMisuseDetector {
     /**
      * Record that a {@code StructuredTaskScope.open(...)} returned a new scope,
      * confined to the opening (owner) thread.
+     *
+     * @param scopeId correlates the calls belonging to one scope across its lifecycle
+     * @param owner the thread currently holding it
      */
     public void recordScopeOpened(String scopeId, Thread owner) {
         if (scopeId == null || owner == null) return;
@@ -118,6 +121,10 @@ public class StructuredTaskScopeMisuseDetector {
     /**
      * Record a {@code scope.fork(task)} call. Flags fork-after-join and
      * owner-confinement violations.
+     *
+     * @param scopeId correlates the calls belonging to one scope across its lifecycle
+     * @param subtaskId correlates the calls belonging to one subtask
+     * @param thread the thread performing the operation
      */
     public void recordFork(String scopeId, String subtaskId, Thread thread) {
         if (scopeId == null || subtaskId == null || thread == null) return;
@@ -147,6 +154,9 @@ public class StructuredTaskScopeMisuseDetector {
     /**
      * Record a {@code scope.join()} call. Flags owner-confinement violations and
      * marks the scope as joined.
+     *
+     * @param scopeId correlates the calls belonging to one scope across its lifecycle
+     * @param thread the thread performing the operation
      */
     public void recordJoin(String scopeId, Thread thread) {
         if (scopeId == null || thread == null) return;
@@ -168,6 +178,10 @@ public class StructuredTaskScopeMisuseDetector {
      * Record a {@code Subtask.get()} call. Flags reads that happen before the
      * scope has been joined, and reads that happen after {@code join()} timed out
      * (the subtask state is not {@code SUCCESS}, so {@code get()} throws).
+     *
+     * @param scopeId correlates the calls belonging to one scope across its lifecycle
+     * @param subtaskId correlates the calls belonging to one subtask
+     * @param thread the thread performing the operation
      */
     public void recordResultRead(String scopeId, String subtaskId, Thread thread) {
         if (scopeId == null || subtaskId == null || thread == null) return;
@@ -199,6 +213,9 @@ public class StructuredTaskScopeMisuseDetector {
      * cancelled. Marks the scope as no longer accepting result reads.
      *
      * @since 1.7.0
+     *
+     * @param scopeId correlates the calls belonging to one scope across its lifecycle
+     * @param thread the thread performing the operation
      */
     public void recordJoinTimeout(String scopeId, Thread thread) {
         if (scopeId == null || thread == null) return;
@@ -224,6 +241,9 @@ public class StructuredTaskScopeMisuseDetector {
      * be half-applied, and the fallback must not depend on their state.
      *
      * @since 1.7.0
+     *
+     * @param scopeId correlates the calls belonging to one scope across its lifecycle
+     * @param thread the thread performing the operation
      */
     public void recordTimeoutSwallowed(String scopeId, Thread thread) {
         if (scopeId == null || thread == null) return;
@@ -247,6 +267,9 @@ public class StructuredTaskScopeMisuseDetector {
     /**
      * Record that the scope was closed (the try-with-resources block ended).
      * Flags a scope that forked subtasks but was never joined.
+     *
+     * @param scopeId correlates the calls belonging to one scope across its lifecycle
+     * @param thread the thread performing the operation
      */
     public void recordScopeClosed(String scopeId, Thread thread) {
         if (scopeId == null || thread == null) return;
@@ -313,7 +336,9 @@ public class StructuredTaskScopeMisuseDetector {
             this.totalForks = totalForks;
         }
 
-        /** {@return true if any StructuredTaskScope misuse was detected} */
+        /**
+         * {@return true if any StructuredTaskScope misuse was detected}
+         */
         public boolean hasIssues() {
             return !forkAfterJoinIssues.isEmpty()
                 || !resultBeforeJoinIssues.isEmpty()
@@ -322,21 +347,45 @@ public class StructuredTaskScopeMisuseDetector {
                 || !resultAfterTimeoutIssues.isEmpty();
         }
 
-        /** {@return the fork after join issues} */
+        /**
+         * {@return the fork after join issues}
+         */
         public List<String> getForkAfterJoinIssues()      { return Collections.unmodifiableList(forkAfterJoinIssues); }
-        /** {@return the result before join issues} */
+        /**
+         * {@return the result before join issues}
+         */
         public List<String> getResultBeforeJoinIssues()   { return Collections.unmodifiableList(resultBeforeJoinIssues); }
-        /** {@return the confinement issues} */
+        /**
+         * {@return the confinement issues}
+         */
         public List<String> getConfinementIssues()        { return Collections.unmodifiableList(confinementIssues); }
-        /** {@return the missing join issues} */
+        /**
+         * {@return the missing join issues}
+         */
         public List<String> getMissingJoinIssues()        { return Collections.unmodifiableList(missingJoinIssues); }
-        /** @since 1.7.0 */
+        /**
+         * Get result after timeout issues.
+         *
+         * @since 1.7.0
+         *
+         * @return the recorded cases where a subtask result was read after the scope timed out
+         */
         public List<String> getResultAfterTimeoutIssues() { return Collections.unmodifiableList(resultAfterTimeoutIssues); }
-        /** @since 1.7.0 */
+        /**
+         * Get timeout swallowed warnings.
+         *
+         * @since 1.7.0
+         *
+         * @return the recorded cases where a scope timeout was caught and discarded
+         */
         public List<String> getTimeoutSwallowedWarnings() { return Collections.unmodifiableList(timeoutSwallowedWarnings); }
-        /** {@return the total scopes} */
+        /**
+         * {@return the total scopes}
+         */
         public int          getTotalScopes()              { return totalScopes; }
-        /** {@return the total forks} */
+        /**
+         * {@return the total forks}
+         */
         public int          getTotalForks()               { return totalForks; }
 
         @Override

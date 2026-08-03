@@ -51,6 +51,8 @@ public class ConstructorSafetyValidator {
     
     /**
      * Mark the start of object construction.
+     *
+     * @param object the object the access is on, tracked by identity
      */
     public void recordConstructionStart(Object object) {
         if (!enabled || object == null) return;
@@ -62,6 +64,8 @@ public class ConstructorSafetyValidator {
     
     /**
      * Mark the end of object construction.
+     *
+     * @param object the object the access is on, tracked by identity
      */
     public void recordConstructionEnd(Object object) {
         if (!enabled) return;
@@ -76,6 +80,10 @@ public class ConstructorSafetyValidator {
     
     /**
      * Record a field access to a partially constructed object.
+     *
+     * @param object the object the access is on, tracked by identity
+     * @param fieldName the field involved, as it should appear in the report
+     * @param timestamp when the event happened, in nanoseconds
      */
     public void recordFieldAccess(Object object, String fieldName, long timestamp) {
         if (!enabled) return;
@@ -107,6 +115,8 @@ public class ConstructorSafetyValidator {
     
     /**
      * Validate constructor safety.
+     *
+     * @return the findings this detector collected during the run
      */
     public ConstructorSafetyReport validateConstructorSafety() {
         ConstructorSafetyReport report = new ConstructorSafetyReport();
@@ -157,34 +167,33 @@ public class ConstructorSafetyValidator {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-    
     public void reset() {
         objects.clear();
     }
     /**
      * Disable.
      */
-    
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-    
     public void enable() {
         enabled = true;
     }
     
     public static class ConstructorSafetyReport {
-        /** The unsafe objects. */
+        /** Objects whose reference escaped their constructor. */
         public final Set<String> unsafeObjects = new HashSet<>();
-        /** The possibly incomplete constructions. */
+        /** Objects published before construction finished. */
         public final Set<String> possiblyIncompleteConstructions = new HashSet<>();
-        /** The fields accessed during construction. */
+        /** Fields read by another thread before the constructor returned. */
         public final Set<String> fieldsAccessedDuringConstruction = new HashSet<>();
         
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !unsafeObjects.isEmpty() || !fieldsAccessedDuringConstruction.isEmpty();
         }

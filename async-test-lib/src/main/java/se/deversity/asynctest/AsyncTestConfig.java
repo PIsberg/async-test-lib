@@ -528,7 +528,12 @@ public final class AsyncTestConfig {
         licenseMockMode                = b.licenseMockMode;
     }
 
-    /** Builds a config from an {@link AsyncTest} annotation instance. */
+    /**
+     * Builds a config from an {@link AsyncTest} annotation instance.
+     *
+     * @param ann the annotation instance to read the declared values from
+     * @return the resolved configuration for this run
+     */
     public static AsyncTestConfig from(AsyncTest ann) {
         return from(ann, ann.threads());
     }
@@ -540,6 +545,10 @@ public final class AsyncTestConfig {
      * other annotation fields.
      *
      * @since 1.6.0
+     *
+     * @param ann the annotation instance to read the declared values from
+     * @param threadsOverride thread count to use instead of {@link AsyncTest#threads()}, as supplied by a parameterised template
+     * @return the resolved configuration for this run
      */
     public static AsyncTestConfig from(AsyncTest ann, int threadsOverride) {
         // Check for global benchmarking system property
@@ -725,7 +734,9 @@ public final class AsyncTestConfig {
             .build();
     }
 
-    /** {@return a new builder initialised with the library defaults} */
+    /**
+     * {@return a new builder initialised with the library defaults}
+     */
     public static Builder builder() {
         return new Builder();
     }
@@ -1768,6 +1779,9 @@ public final class AsyncTestConfig {
          * {@link #excludes(DetectorType[])} still layers on top.
          *
          * @since 1.7.0
+         *
+         * @param v the detectors to enable exclusively; {@code null} or empty leaves the selection untouched
+         * @return this builder
          */
         public Builder includes(DetectorType[] v) {
             if (v != null && v.length > 0) {
@@ -1776,7 +1790,9 @@ public final class AsyncTestConfig {
             return this;
         }
 
-        /** {@return the resolved configuration, with preset, includes and excludes applied} */
+        /**
+         * {@return the resolved configuration, with preset, includes and excludes applied}
+         */
         public AsyncTestConfig build() {
             if (!includes.isEmpty()) {
                 // includes wins over detectAll/per-flag setters: force the

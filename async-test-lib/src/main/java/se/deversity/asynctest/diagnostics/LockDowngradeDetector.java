@@ -172,7 +172,9 @@ public class LockDowngradeDetector {
     public static class LockDowngradeReport {
         final List<String> upgradeAttempts = new ArrayList<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !upgradeAttempts.isEmpty();
         }

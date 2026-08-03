@@ -34,9 +34,8 @@ public class InterruptMonitor {
     /**
      * Records interrupt exception so it can be analysed at the end of the run.
      *
-     * @param ex the ex
+     * @param ex the interruption that ended the wait
      */
-
     public void recordInterruptException(InterruptedException ex) {
         if (!enabled) {
             return;
@@ -57,7 +56,6 @@ public class InterruptMonitor {
     /**
      * Records interrupt restored so it can be analysed at the end of the run.
      */
-
     public void recordInterruptRestored() {
         if (!enabled) {
             return;
@@ -77,9 +75,8 @@ public class InterruptMonitor {
     /**
      * Records ignored exception so it can be analysed at the end of the run.
      *
-     * @param description the description
+     * @param description free text describing the event, shown in the report
      */
-
     public void recordIgnoredException(String description) {
         if (!enabled) {
             return;
@@ -95,9 +92,8 @@ public class InterruptMonitor {
     /**
      * Records blocking operation without interrupt handling so it can be analysed at the end of the run.
      *
-     * @param operationName the operation name
+     * @param operationName a label identifying the operation in the report
      */
-
     public void recordBlockingOperationWithoutInterruptHandling(String operationName) {
         if (!enabled) {
             return;
@@ -118,9 +114,8 @@ public class InterruptMonitor {
     /**
      * Analyses what has been recorded about interrupt handling and builds the report for it.
      *
-     * @return the analyze interrupt handling
+     * @return the findings this detector collected during the run
      */
-
     public InterruptReport analyzeInterruptHandling() {
         InterruptReport report = new InterruptReport();
 
@@ -165,6 +160,8 @@ public class InterruptMonitor {
 
     /**
      * Standardized alias for {@link #analyzeInterruptHandling()}.
+     *
+     * @return the findings this detector collected during the run
      */
     public InterruptReport analyze() {
         return analyzeInterruptHandling();
@@ -172,7 +169,6 @@ public class InterruptMonitor {
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
-
     public void reset() {
         synchronized (interruptEvents) {
             interruptEvents.clear();
@@ -183,27 +179,27 @@ public class InterruptMonitor {
     /**
      * Disable.
      */
-
     public void disable() {
         enabled = false;
     }
     /**
      * Enable.
      */
-
     public void enable() {
         enabled = true;
     }
 
     public static class InterruptReport {
-        /** The ignored interrupts. */
+        /** Interrupts caught and discarded without restoring the flag. */
         public final Set<String> ignoredInterrupts = new HashSet<>();
-        /** The repeated ignored interrupts. */
+        /** Threads that ignored an interrupt more than once. */
         public final Set<String> repeatedIgnoredInterrupts = new HashSet<>();
-        /** The blocking without handling. */
+        /** Blocking calls made without handling {@code InterruptedException}. */
         public final Set<String> blockingWithoutHandling = new HashSet<>();
 
-        /** {@return whether there are issues} */
+        /**
+         * {@return whether there are issues}
+         */
         public boolean hasIssues() {
             return !ignoredInterrupts.isEmpty()
                 || !repeatedIgnoredInterrupts.isEmpty()

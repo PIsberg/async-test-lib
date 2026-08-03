@@ -79,7 +79,7 @@ public class LockLeakDetector {
     /**
      * Record that a lock was acquired.
      * 
-     * @param lock the Lock
+     * @param lock the lock being recorded, tracked by identity rather than equality
      * @param name the lock name (should match registration)
      */
     public void recordLockAcquired(Lock lock, String name) {
@@ -102,7 +102,7 @@ public class LockLeakDetector {
     /**
      * Record that a lock was released.
      * 
-     * @param lock the Lock
+     * @param lock the lock being recorded, tracked by identity rather than equality
      * @param name the lock name (should match registration)
      */
     public void recordLockReleased(Lock lock, String name) {
@@ -189,6 +189,8 @@ public class LockLeakDetector {
 
         /**
          * Check if any issues were detected.
+         *
+         * @return {@code true} when this detector recorded something worth reporting
          */
         public boolean hasIssues() {
             return !lockLeaks.isEmpty() || !heldLocks.isEmpty() || !excessiveHoldTimes.isEmpty();
