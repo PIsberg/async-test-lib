@@ -80,7 +80,7 @@
         <archunit.version>1.4.2</archunit.version>
         <error-prone.version>2.50.0</error-prone.version>
         <nullaway.version>0.13.8</nullaway.version>
-        <jspecify.version>1.0.0</jspecify.version>
+        <jspecify.version>1.0.1</jspecify.version>
         <asm.version>9.10.1</asm.version>
         <bytebuddy.version>1.18.11</bytebuddy.version>
         <slf4j.version>2.0.18</slf4j.version>
