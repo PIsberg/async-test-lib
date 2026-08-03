@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance — detector discovery no longer loads 127 classes it discards, saving ~360 ms per forked JVM
+
+`AsyncTestContext` builds an SPI registry of third-party detectors on construction, through
+`spi.DetectorRegistry.buildExternal`. That call enumerated `ServiceLoader.load(DetectorFactory)` and
+skipped the built-in bridge factories by package name. The filter was correct and the cost was not
+visible in it: `ServiceLoader` must load a provider class before it can report that provider's type,
+so every enumeration loaded all 127 built-in factory classes in order to reject all 127 of them. In
+the common case, where no third-party detector is installed, the work produced an empty registry.
+
+Because `forkEvery = 1` gives each test class its own JVM, that class-loading was charged once per
+test class rather than once per suite.
+
+#### Measured
+
+Cold, in a fresh JVM, on one developer machine (Windows, JDK 21):
+
+| | before | after |
+|---|---|---|
+| `buildExternal`, no third-party detectors installed | 382.8 ms | **23.1 ms** |
+
+The attribution was established by control rather than inference: emptying the services file
+entirely, with no other change, brought the same call to 42.5 ms, placing ~340 ms of the original
+383 ms on loading the built-in factory classes.
+
+The same measurement also disposes of a related assumption. Cold cost is not a function of how many
+detectors are enabled: a full `detectAll` context and a four-detector context cost 1558 ms and
+1580 ms respectively, within noise of each other. Reducing the enabled detector set was therefore
+never going to address this, and the `async-test.timeout.multiplier` machinery, whose javadoc
+attributes CI timeout pressure to "detectAll's ~120 detectors finish their setup", is compensating
+for something other than the detector count.
+
+#### Change
+
+Built-in factories are listed in `META-INF/async-test/builtin-detector-factories`, read directly by
+`DetectorRegistry.build(AsyncTestConfig)`, instead of being registered for `ServiceLoader`
+discovery. Runtime discovery now sees only genuine third-party providers, and the built-in classes
+are loaded only by callers that ask for them.
+
+The built-ins were always addressability shims rather than a live detection path. They construct
+fresh legacy detector instances disconnected from the ones a running test records into, which is why
+`buildExternal` excluded them in the first place; the registry javadoc has said so since 1.7.0.
+
+#### Compatibility
+
+No binary or source break: no signature changed, and japicmp is green against the 1.6.0 baseline.
+
+One behavioural change is worth stating plainly. Code that enumerates
+`ServiceLoader.load(DetectorFactory.class)` directly previously observed the 127 built-in factories
+and now observes only third-party providers. `DetectorRegistry.build(AsyncTestConfig)`, the public
+API for that view, is unchanged and still returns every `DetectorType`. The SPI's documented purpose
+is shipping detectors from outside the library, and that path is untouched:
+`ExternalDetectorSpiWiringTest` continues to assert that a user-supplied factory is discovered,
+instantiated, and reaches the reports and the `failOn` gate.
+
+#### Verification
+
+`AllDetectorsSpiCoverageTest` still fails with a precise list when a `DetectorType` has no factory,
+now checked through `DetectorRegistry.build`; removing the `Deadlocks` entry from the new resource
+was confirmed to fail with `DetectorType values without a registered DetectorFactory: [DEADLOCKS]`.
+`DetectorRegistrySpiTest` additionally asserts the inverse, that no factory in
+`se.deversity.asynctest.spi.adapters` is registered for `ServiceLoader` discovery, so the saving
+cannot be silently given back. A mistyped or renamed entry fails at `build()` with the offending
+class name rather than yielding a quietly smaller registry.
+
+Figures above are from a single machine and include one-time `ServiceLoader` machinery that is not
+purely per-provider; the before/after and the emptied-file control were taken under identical
+conditions.
+
 ### Added — an end-to-end test of the automatic detection path, with the real agent attached
 
 Every piece of the agent-to-detector chain had a test and the chain itself had none.
