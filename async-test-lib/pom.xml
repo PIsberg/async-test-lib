@@ -17,6 +17,14 @@
     <name>Async Test Library</name>
     <description>Enterprise-grade JUnit 5 concurrency testing library with 127 problem detectors for detecting deadlocks, visibility issues, false sharing, livelocks, and other subtle concurrency bugs.</description>
 
+    <licenses>
+        <license>
+            <name>PolyForm Noncommercial License 1.0.0</name>
+            <url>https://polyformproject.org/licenses/noncommercial/1.0.0/</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
     <dependencies>
         <dependency>
             <groupId>org.apiguardian</groupId>

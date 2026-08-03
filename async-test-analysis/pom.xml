@@ -16,6 +16,14 @@
     <name>Async Test Library — static analysis</name>
     <description>Optional ASM-based pre-scanner for async-test-lib: finds Loom pinning sites in compiled classes before a test run. Standalone — it depends on no other module in the project.</description>
 
+    <licenses>
+        <license>
+            <name>PolyForm Noncommercial License 1.0.0</name>
+            <url>https://polyformproject.org/licenses/noncommercial/1.0.0/</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
     <dependencies>
         <!-- ASM: static bytecode pre-scanner for Loom pinning sites (StaticPinningScanner) -->
         <dependency>
