@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0-RC7] - 2026-08-03
+
 ### Performance — detector discovery no longer loads 127 classes it discards, saving ~360 ms per forked JVM
 
 `AsyncTestContext` builds an SPI registry of third-party detectors on construction, through
