@@ -98,8 +98,10 @@ public class FutureBlockingDetector {
     }
 
     public static class FutureBlockingReport {
+        /** The starvation risks. */
         public final Set<String> starvationRisks = new HashSet<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !starvationRisks.isEmpty();
         }

@@ -174,10 +174,13 @@ public class BusyWaitDetector {
     }
 
     public static class BusyWaitReport {
+        /** The busy wait loops. */
         public final Set<String> busyWaitLoops = new HashSet<>();
+        /** The tight loops. */
         public final Set<String> tightLoops = new HashSet<>();
         public long cpuWasted;
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !busyWaitLoops.isEmpty() || !tightLoops.isEmpty();
         }

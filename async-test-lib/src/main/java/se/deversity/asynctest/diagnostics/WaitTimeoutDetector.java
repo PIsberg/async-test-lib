@@ -91,6 +91,7 @@ public class WaitTimeoutDetector {
             this.infiniteWaits = Collections.unmodifiableSet(new HashSet<>(infiniteWaits));
         }
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !infiniteWaits.isEmpty();
         }

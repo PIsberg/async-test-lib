@@ -21,12 +21,19 @@ import java.util.function.Supplier;
  */
 public final class Phase1DetectorSet {
 
+    /** The visibility. */
     public final @Nullable VisibilityMonitor      visibility;
+    /** The livelock. */
     public final @Nullable LivelockDetector       livelock;
+    /** The race. */
     public final @Nullable RaceConditionDetector  race;
+    /** The thread local. */
     public final @Nullable ThreadLocalMonitor     threadLocal;
+    /** The busy wait. */
     public final @Nullable BusyWaitDetector       busyWait;
+    /** The atomicity. */
     public final @Nullable AtomicityValidator     atomicity;
+    /** The interrupt. */
     public final @Nullable InterruptMonitor       interrupt;
 
     /**
@@ -94,7 +101,7 @@ public final class Phase1DetectorSet {
      * happen in practice since both are built from the same {@code config}, but a
      * disconnected-but-functional detector is safer than a {@code NullPointerException}.
      *
-     * @since 1.9.0
+     * @since 1.7.0
      */
     public static Phase1DetectorSet from(AsyncTestConfig config, @Nullable AsyncTestContext ctx) {
         return new Phase1DetectorSet(

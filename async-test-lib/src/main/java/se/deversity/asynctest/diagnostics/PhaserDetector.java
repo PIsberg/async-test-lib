@@ -102,6 +102,7 @@ public class PhaserDetector {
             this.terminatedPhasers = Collections.unmodifiableSet(new HashSet<>(terminatedPhasers));
         }
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !timedOutPhasers.isEmpty() || !terminatedPhasers.isEmpty();
         }

@@ -115,9 +115,11 @@ public class VisibilityMonitor {
     }
     
     public static class VisibilityReport {
+        /** The suspected fields. */
         public final Set<String> suspectedFields = new HashSet<>();
         public final Map<String, Map<Long, Set<Object>>> fieldValueVariations = new HashMap<>();
         
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !suspectedFields.isEmpty();
         }

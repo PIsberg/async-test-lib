@@ -119,6 +119,7 @@ public class MutableMapKeyDetector {
         final List<String> mutatedKeys    = new ArrayList<>();
         final List<String> mutationDetails = new ArrayList<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !mutatedKeys.isEmpty();
         }

@@ -164,10 +164,14 @@ public class InterruptMonitor {
     }
 
     public static class InterruptReport {
+        /** The ignored interrupts. */
         public final Set<String> ignoredInterrupts = new HashSet<>();
+        /** The repeated ignored interrupts. */
         public final Set<String> repeatedIgnoredInterrupts = new HashSet<>();
+        /** The blocking without handling. */
         public final Set<String> blockingWithoutHandling = new HashSet<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !ignoredInterrupts.isEmpty()
                 || !repeatedIgnoredInterrupts.isEmpty()

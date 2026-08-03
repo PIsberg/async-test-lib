@@ -80,6 +80,7 @@ public class DeprecatedThreadApiDetector {
     public static class DeprecatedThreadApiReport {
         final List<String> violations = new ArrayList<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

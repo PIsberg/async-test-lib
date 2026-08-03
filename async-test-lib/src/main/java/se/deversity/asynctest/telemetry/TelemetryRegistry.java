@@ -147,7 +147,7 @@ public final class TelemetryRegistry {
      * whether to attach a {@link TelemetryBridge} for a run — can gate on this rather than
      * paying for a bridge nothing will ever feed.
      *
-     * @since 1.8.0
+     * @since 1.7.0
      */
     public static boolean isRunning() {
         return RUNNING.get();
@@ -173,7 +173,7 @@ public final class TelemetryRegistry {
      * drain, and a drain that is rejected, interrupted or slow leaves the pending events for
      * the next periodic cycle rather than failing the test that asked for the flush.
      *
-     * @since 1.8.0
+     * @since 1.7.0
      */
     public static void flush() {
         ScheduledExecutorService executor = drainExecutor;

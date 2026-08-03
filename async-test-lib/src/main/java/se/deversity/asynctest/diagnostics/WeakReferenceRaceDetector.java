@@ -119,6 +119,7 @@ public class WeakReferenceRaceDetector {
         final List<String> violations = new ArrayList<>();
         final List<String> warnings   = new ArrayList<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() { return !violations.isEmpty() || !warnings.isEmpty(); }
 
         @Override

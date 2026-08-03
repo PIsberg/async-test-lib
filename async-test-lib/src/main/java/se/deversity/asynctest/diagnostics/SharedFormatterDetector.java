@@ -68,6 +68,7 @@ public class SharedFormatterDetector {
     public static class SharedFormatterReport {
         final List<String> violations = new ArrayList<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

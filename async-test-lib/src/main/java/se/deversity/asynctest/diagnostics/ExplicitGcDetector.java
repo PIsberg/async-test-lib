@@ -67,6 +67,7 @@ public class ExplicitGcDetector {
     public static class ExplicitGcReport {
         final List<String> violations = new ArrayList<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

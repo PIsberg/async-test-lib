@@ -63,7 +63,7 @@ public class VirtualThreadPinningDetector {
      * Classification of what caused a virtual thread to pin. Determines whether the
      * event still pins on the running JDK version.
      *
-     * @since 1.8.0
+     * @since 1.7.0
      */
     public enum PinningCause {
         /** {@code synchronized} / monitor / {@code Object.wait()} — no longer pins since JDK 24 (JEP 491). */
@@ -79,7 +79,7 @@ public class VirtualThreadPinningDetector {
     /**
      * Classifies a caller-supplied blocking-operation description.
      *
-     * @since 1.8.0
+     * @since 1.7.0
      */
     public static PinningCause classifyOperation(String blockingOperation) {
         if (blockingOperation == null) return PinningCause.OTHER;
@@ -103,7 +103,7 @@ public class VirtualThreadPinningDetector {
      * Whether the given cause still pins a virtual thread on the given JDK feature
      * version (e.g. {@code 21}, {@code 24}, {@code 26}).
      *
-     * @since 1.8.0
+     * @since 1.7.0
      */
     public static boolean stillPinsOn(PinningCause cause, int jdkFeatureVersion) {
         return switch (cause) {
@@ -344,7 +344,7 @@ public class VirtualThreadPinningDetector {
          * class-init waits on JDK 26+) are excluded.
          *
          * @return true if any recorded event still pins on the current JDK
-         * @since 1.8.0
+         * @since 1.7.0
          */
         public boolean hasEffectivePinningIssues() {
             return virtualThreadSupported
@@ -354,7 +354,7 @@ public class VirtualThreadPinningDetector {
         /**
          * Returns how many recorded events no longer pin on the running JDK.
          *
-         * @since 1.8.0
+         * @since 1.7.0
          */
         public long getObsoleteEventCount() {
             return events.stream().filter(PinningEventSnapshot::isObsoleteOnCurrentJdk).count();
@@ -446,7 +446,7 @@ public class VirtualThreadPinningDetector {
         /**
          * Returns the classified cause of this pinning event.
          *
-         * @since 1.8.0
+         * @since 1.7.0
          */
         public PinningCause getCause() {
             return cause;
@@ -457,7 +457,7 @@ public class VirtualThreadPinningDetector {
          * ({@code synchronized}/{@code Object.wait} on JDK 24+ per JEP 491, class-init
          * waits on JDK 26+).
          *
-         * @since 1.8.0
+         * @since 1.7.0
          */
         public boolean isObsoleteOnCurrentJdk() {
             return obsoleteOnCurrentJdk;

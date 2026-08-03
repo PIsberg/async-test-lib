@@ -57,7 +57,7 @@ public class BenchmarkRecorder {
      *                      differ from {@code config.threads} when
      *                      {@code virtualThreadStressMode} overrides it; recorded on
      *                      the baseline so comparisons are labeled correctly.
-     * @since 1.9.0
+     * @since 1.7.0
      */
     public BenchmarkRecorder(AsyncTestConfig config, String testClass, String testMethod, int actualThreads) {
         this.config = config;

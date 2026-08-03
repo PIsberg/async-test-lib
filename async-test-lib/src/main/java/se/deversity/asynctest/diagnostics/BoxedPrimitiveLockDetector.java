@@ -196,6 +196,7 @@ public class BoxedPrimitiveLockDetector {
         final List<String> violations = new ArrayList<>();
         private boolean hasValueBasedIssues;
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

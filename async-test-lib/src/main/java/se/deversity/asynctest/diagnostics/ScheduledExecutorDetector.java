@@ -124,6 +124,7 @@ public class ScheduledExecutorDetector {
             this.exceptionInTasks = exceptionInTasks;
         }
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !notShutdownExecutors.isEmpty() 
                 || !longRunningTasks.isEmpty()

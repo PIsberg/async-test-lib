@@ -17,8 +17,8 @@ One new `DetectorType` constant requires simultaneous changes in five files, all
 2. **`AsyncTest.java`** — the matching `detectXxx()` annotation attribute. Its name and default
    become stable public API.
 3. **`AsyncTestConfig.java`** — public final flag field, `Builder` field plus same-named setter, the
-   `from(AsyncTest)` call chain, **and both branches of `build()`** (the `detectAll` if/else pair and
-   the non-`detectAll` excludes line). See
+   `from(AsyncTest)` call chain, **and the resolution line in `build()`**
+   (`(detectAll || flag) && !excludes.contains(TYPE)`, one per detector). See
    [configuration-resolution.md](configuration-resolution.md).
 4. **`DetectorRegistry.java`** — three steps that must land together: (a) the final field,
    (b) conditional construction in the constructor keyed on the config flag, (c) an `analyzeAll()`

@@ -219,10 +219,15 @@ public class StructuredConcurrencyMisuseDetector {
                 || !emptyScopes.isEmpty();
         }
 
+        /** {@return the unclosed scopes} */
         public List<String> getUnclosedScopes()           { return Collections.unmodifiableList(unclosedScopes); }
+        /** {@return the closed without join} */
         public List<String> getClosedWithoutJoin()        { return Collections.unmodifiableList(closedWithoutJoin); }
+        /** {@return the result accessed before join} */
         public List<String> getResultAccessedBeforeJoin() { return Collections.unmodifiableList(resultAccessedBeforeJoin); }
+        /** {@return the empty scopes} */
         public List<String> getEmptyScopes()              { return Collections.unmodifiableList(emptyScopes); }
+        /** {@return the max nesting depth} */
         public int          getMaxNestingDepth()           { return maxNestingDepth; }
 
         @Override

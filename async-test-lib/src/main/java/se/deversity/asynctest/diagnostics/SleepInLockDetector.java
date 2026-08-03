@@ -197,10 +197,15 @@ public class SleepInLockDetector {
      * Immutable snapshot of a sleep-in-lock event.
      */
     public static class SleepInLockEventSnapshot {
+        /** The lock name. */
         public final @Nullable String lockName;
+        /** The thread name. */
         public final String threadName;
+        /** The sleep duration. */
         public final long sleepDuration;
+        /** The stack trace. */
         public final StackTraceElement[] stackTrace;
+        /** The lock type. */
         public final @Nullable String lockType;
 
         SleepInLockEventSnapshot(@Nullable String lockName, String threadName,
@@ -226,10 +231,12 @@ public class SleepInLockDetector {
             this.totalCount = totalCount;
         }
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !events.isEmpty();
         }
 
+        /** {@return the events} */
         public List<SleepInLockEventSnapshot> getEvents() {
             return List.copyOf(events);
         }

@@ -222,10 +222,15 @@ public class VirtualThreadCpuBoundTaskDetector {
             return !violations.isEmpty();
         }
 
+        /** {@return the violations} */
         public List<String> getViolations()    { return Collections.unmodifiableList(violations); }
+        /** {@return the total tasks} */
         public int          getTotalTasks()     { return totalTasks; }
+        /** {@return the average duration in milliseconds} */
         public long         getAverageDurationMs() { return averageDurationMs; }
+        /** {@return the max duration in milliseconds} */
         public long         getMaxDurationMs()  { return maxDurationMs; }
+        /** {@return the threshold in milliseconds} */
         public long         getThresholdMs()    { return thresholdMs; }
 
         @Override

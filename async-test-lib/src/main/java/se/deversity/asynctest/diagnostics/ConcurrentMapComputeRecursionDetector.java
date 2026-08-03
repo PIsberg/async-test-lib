@@ -78,6 +78,7 @@ public class ConcurrentMapComputeRecursionDetector {
     public static class ConcurrentMapComputeRecursionReport {
         final List<String> recursions = new ArrayList<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() { return !recursions.isEmpty(); }
 
         @Override

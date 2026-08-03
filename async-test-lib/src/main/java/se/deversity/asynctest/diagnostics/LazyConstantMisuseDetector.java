@@ -70,7 +70,7 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
  * }
  * }</pre>
  *
- * @since 1.8.0
+ * @since 1.7.0
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Per-constant state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id sets are ConcurrentHashMap.newKeySet(); reports are synchronized lists.")
 @AITestDriven(
@@ -291,12 +291,19 @@ public class LazyConstantMisuseDetector {
                 || !nonDeterministicIssues.isEmpty();
         }
 
+        /** {@return the reentrant issues} */
         public List<String> getReentrantIssues()        { return Collections.unmodifiableList(reentrantIssues); }
+        /** {@return the null value issues} */
         public List<String> getNullValueIssues()        { return Collections.unmodifiableList(nullValueIssues); }
+        /** {@return the multiple compute issues} */
         public List<String> getMultipleComputeIssues()  { return Collections.unmodifiableList(multipleComputeIssues); }
+        /** {@return the non deterministic issues} */
         public List<String> getNonDeterministicIssues() { return Collections.unmodifiableList(nonDeterministicIssues); }
+        /** {@return the convoy warnings} */
         public List<String> getConvoyWarnings()         { return Collections.unmodifiableList(convoyWarnings); }
+        /** {@return the total gets} */
         public int          getTotalGets()              { return totalGets; }
+        /** {@return the total computes} */
         public int          getTotalComputes()          { return totalComputes; }
 
         @Override

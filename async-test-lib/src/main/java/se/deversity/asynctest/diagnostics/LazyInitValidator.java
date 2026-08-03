@@ -88,9 +88,12 @@ public class LazyInitValidator {
     }
 
     public static class LazyInitReport {
+        /** The multiple initializations. */
         public final Set<String> multipleInitializations = new HashSet<>();
+        /** The unsafe publication. */
         public final Set<String> unsafePublication = new HashSet<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !multipleInitializations.isEmpty() || !unsafePublication.isEmpty();
         }

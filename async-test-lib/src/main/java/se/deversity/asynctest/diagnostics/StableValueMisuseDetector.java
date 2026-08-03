@@ -246,11 +246,17 @@ public class StableValueMisuseDetector {
                 || !reentrantIssues.isEmpty();
         }
 
+        /** {@return the read before set issues} */
         public List<String> getReadBeforeSetIssues() { return Collections.unmodifiableList(readBeforeSetIssues); }
+        /** {@return the double set issues} */
         public List<String> getDoubleSetIssues()      { return Collections.unmodifiableList(doubleSetIssues); }
+        /** {@return the reentrant issues} */
         public List<String> getReentrantIssues()      { return Collections.unmodifiableList(reentrantIssues); }
+        /** {@return the contention warnings} */
         public List<String> getContentionWarnings()   { return Collections.unmodifiableList(contentionWarnings); }
+        /** {@return the total reads} */
         public int          getTotalReads()           { return totalReads; }
+        /** {@return the total sets} */
         public int          getTotalSets()            { return totalSets; }
 
         @Override

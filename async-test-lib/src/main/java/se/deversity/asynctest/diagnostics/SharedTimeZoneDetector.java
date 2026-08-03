@@ -75,6 +75,7 @@ public class SharedTimeZoneDetector {
     public static class SharedTimeZoneReport {
         final List<String> violations = new ArrayList<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

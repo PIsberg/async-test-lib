@@ -216,9 +216,12 @@ public class RaceConditionDetector {
     }
 
     public static class RaceConditionReport {
+        /** The unsafe accesses. */
         public final Set<String> unsafeAccesses = new HashSet<>();
+        /** The potential races. */
         public final Set<String> potentialRaces = new HashSet<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !unsafeAccesses.isEmpty() || !potentialRaces.isEmpty();
         }

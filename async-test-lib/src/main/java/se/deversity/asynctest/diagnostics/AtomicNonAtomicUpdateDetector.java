@@ -92,6 +92,7 @@ public class AtomicNonAtomicUpdateDetector {
         final List<String> violations = new ArrayList<>();
         final List<String> details    = new ArrayList<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

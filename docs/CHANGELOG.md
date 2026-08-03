@@ -7,6 +7,186 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — javadoc reaching consumers was missing ~260 tags, and the build was configured not to notice
+
+`maven-javadoc-plugin` ran with `<doclint>all,-missing</doclint>`: every check except `missing`. So
+syntax, HTML, references and accessibility were enforced, while missing `@return`, missing `@param`
+and entirely undocumented members were not. A javadoc run reported zero problems, which read as
+"clean" and meant "not looking".
+
+`@AsyncTest` is the type every consumer touches, and it carried **zero** `@return` tags across its
+148 attributes. `AsyncTestContext`'s detector accessors carried none either. Both are now complete:
+127 detector flags share accurate semantics (`{@code true} to enable this detector, {@code false} to
+skip it`), the other 21 attributes and all 180 context accessors have individually derived text,
+nullable accessors say so, and `SiteCapture.Site` documents its four record components.
+
+Two traps worth recording, because both make a measurement look better than it is:
+
+* **Javadoc caps warnings at 100.** Each round of fixes simply refilled the list from the next file,
+  so the total never moved. This is the same truncation the pom's own `-Xmaxerrs 20000` comment
+  warns about for javac. `<additionalOptions>` breaks this plugin's invocation whether the option is
+  passed as one string or two, so `-Xmaxwarns` is not available here; the counts below come from
+  parsing the sources directly rather than from the capped output.
+* **Single-line `/** … */` blocks.** The first attempt at bulk insertion put the new tag *before* the
+  opening `/**` on the six single-line comments in `AsyncTest`, producing a file that did not parse.
+  The compile check caught it; the fix expands those blocks to multi-line first.
+
+`doclint` is now `all`. The remaining gap is therefore visible on every build instead of hidden, and
+the javadoc jar still builds, since doclint warnings do not fail it.
+
+### Fixed — 611 more public members documented, taking the gap from 30% to 10%
+
+`AsyncTestConfig` is now complete: its 141 public flag fields and 145 builder setters each point at
+the `@AsyncTest` attribute they resolve, via `{@link}`, rather than restating 286 descriptions that
+would then drift from the originals. Elsewhere, 95 `get*`, 92 `has*` and 6 `is*` accessors and 132
+public final fields gained descriptions derived from their own names.
+
+Derivation quality was checked rather than assumed. The first pass produced "the successful aba
+cases" and "the total execution time nanos"; runs of capitals are now preserved and unit suffixes
+expanded, so those read "the successful ABA cases" and "the total execution time in nanoseconds".
+
+Two mistakes are worth recording because neither was caught by compilation:
+
+* A pass intended to cover interface methods and constructors used a loose pattern that matched
+  method *calls* and control flow as well as declarations, inserting 6,034 javadoc blocks inside
+  method bodies across 176 files. It compiled cleanly, because a javadoc comment is legal anywhere;
+  what exposed it was the diff being 40,860 lines for a few hundred intended members. Reverted
+  whole, and only the passes with verified output were redone.
+* Fields carrying an annotation had their new comment inserted *between* the annotation and the
+  field. Javadoc has to precede annotations, so PMD's `DanglingJavadoc` rule failed the build on
+  two of them. Fixed, and the fix scans for the pattern everywhere rather than at the two known
+  sites.
+
+### Known gap — 171 of 1614 public members have no javadoc at all
+
+Now that `missing` is on the number is measurable, and after the work above it stands at **10% of
+the public API**. The earlier figure quoted here, 53%, was wrong in the assistant's favour: it
+counted `@Override` methods, which inherit their documentation and which doclint therefore never
+reports. Excluding those, the gap was 484 of 1603 and is now 171 of 1614.
+
+What remains is `analyze*` and `record*` methods that take parameters, where a name-derived
+description would be filler rather than documentation. `DetectorType` accounts for a further ~58
+warnings across its 127 enum constants and is deliberately untouched: it is `@AILocked`, and while
+adding comments would not trip the five-place sync hazard the lock exists for, the rule is
+unconditional.
+
+This is deliberately not auto-filled. The `AsyncTestConfig` members are mechanically documentable by
+cross-referencing the authoritative `@AsyncTest` javadoc, which would be accurate rather than filler,
+but it is a large generated change to a `Critical` file and a house-style decision — link-and-defer
+(`@see AsyncTest#detectDeadlocks()`) versus prose on each member — that belongs to the maintainer,
+not to a bulk edit.
+
+Reproducing the count:
+
+```bash
+# public members, and how many have no preceding javadoc block
+python - <<'PY'
+import re, os
+base='async-test-lib/src/main/java/'
+member=re.compile(r'^(\s+)public\s+(?!class|interface|enum|record|@)(?:static\s+)?(?:final\s+)?(?:@Nullable\s+)?[\w.<>\[\],\s]+\s+(\w+)\s*[\(;=]')
+tot=undoc=0
+for dp,_,fs in os.walk(base):
+    for fn in (f for f in fs if f.endswith('.java')):
+        lines=open(os.path.join(dp,fn),encoding='utf-8').read().split('\n')
+        for k,l in enumerate(lines):
+            if not member.match(l): continue
+            tot+=1
+            j=k-1
+            while j>=0 and (lines[j].strip().startswith('@') or lines[j].strip()==''): j-=1
+            if j<0 or not lines[j].strip().endswith('*/'): undoc+=1
+print(tot, undoc)
+PY
+```
+
+One case is left alone on purpose. `AsyncAssert`'s implicit constructor is flagged, and the clean fix
+for a static utility class is a private constructor — but that removes the implicit *public* one,
+which is a binary break on an `@API(STABLE)` type and exactly what the japicmp gate exists to stop.
+
+### Fixed — 37 `@since` tags named a version that does not exist
+
+Thirty-five API elements were tagged `@since 1.8.0` and two `@since 1.9.0`, across 13 files. The
+line is 1.7.0, so all of that code ships in 1.7.0: published javadoc would have told every reader
+that API present in the artifact they were holding arrived in a later release.
+
+The same mislabelling had spread into the prose. `docs/AGENT.md` said the agent became "a separate
+module since 1.8.0"; `docs/DETECTOR_CATALOG.md` marked Phase 15 and three Phase 18 detectors
+"(1.8.0+)"; `docs/architecture/detector-architecture.md` and `README.md` said the same of the
+JDK-version-aware pinning detector.
+
+Checked against the tags rather than assumed. `SharedKdfDetector`, `LazyConstantMisuseDetector`,
+`FinalFieldMutationDetector`, `CompletableFutureObtrudeDetector` and `SpuriousWakeupDetector` all
+exist at `v1.7.0-RC6`, which is on Maven Central. `async-test-agent/pom.xml` is absent at `v1.6.0`
+and present at `v1.7.0-RC6`, so the module split landed in 1.7.0 too. Every one of these now reads
+1.7.0.
+
+Left alone: `docs/RELEASE.md` uses `1.8.0` as a semantic-versioning example, and
+`docs/analysis/roadmap-v2.md` plans future 1.8.x and 1.9.x trains. Neither is a claim about what
+shipped.
+
+### Fixed — `maven-jar-plugin` was unpinned, and silently resolving a 2013 release
+
+`async-test-agent/pom.xml` declared `maven-jar-plugin` with no version and nothing supplied one, so
+Maven fell back to its built-in default binding: **2.4**, released in 2013. Maven says as much on
+every build, in a warning that had become part of the noise:
+
+```
+'build.plugins.plugin.version' for org.apache.maven.plugins:maven-jar-plugin is missing
+It is highly recommended to fix these problems because they threaten the stability of your build.
+```
+
+It matters more here than the generic wording suggests. That plugin writes the agent's
+`Premain-Class`, `Agent-Class` and `Can-Retransform-Classes` manifest entries, which are the entire
+mechanism by which `-javaagent` works. An unpinned version means a different Maven can write that
+manifest differently, and nothing in the build would say so. Being unpinned also made it invisible
+to Dependabot, which cannot track a plugin that declares no version.
+
+Now pinned to 3.5.1, the current stable, through a `maven-jar-plugin.version` property alongside the
+other plugin versions. 4.0.0-beta-1 is the latest published release and was not chosen: a beta has
+no place in a GA build.
+
+Verified by rebuilding the agent jar and reading its manifest: `Created-By: Maven JAR Plugin 3.5.1`,
+with `Premain-Class`, `Agent-Class`, `Can-Retransform-Classes` and `Can-Redefine-Classes` all
+intact. The agent module's 43 tests pass, including `SelfAttachTest`, which attaches the rebuilt
+agent to a live JVM, and the end-to-end test that runs the real weaver into a real detector. The
+Maven warning is gone.
+
+`jacoco-maven-plugin` is also declared without a version in `async-test-lib/pom.xml`, and is
+deliberately left that way: the parent declares it in `<build><plugins>` with
+`${jacoco-maven-plugin.version}`, so the child inherits the version by merge. That is why Maven
+warned about one and not the other.
+
+### Fixed — contributor docs described a `build()` shape that no longer exists
+
+`docs/architecture/adding-a-detector.md` told anyone adding a detector to edit "**both branches of
+`build()`** (the `detectAll` if/else pair and the non-`detectAll` excludes line)", and
+`configuration-resolution.md` described the same two branches. There is one expression per detector
+and has been for some time:
+
+```java
+detectDeadlocks = (detectAll || detectDeadlocks) && !excludes.contains(DetectorType.DEADLOCKS);
+```
+
+Someone following the old instruction would go looking for a second place that is not there. Both
+documents now describe the single line, and `configuration-resolution.md` keeps the history that
+explains why it is one line: ten types were once missing from a separate excludes branch, and
+folding the branches together removed the possibility of a type being in one and not the other.
+
+### Changed — `roadmap-v2.md` counts re-measured, and one of its premises corrected
+
+The roadmap opened with approximate counts that had drifted far enough to change what the findings
+say: "~85 public boolean detector flags" is **132**, "~121 detectors" is **127**, "~83 detectors"
+keyed by identity hash is **84**.
+
+One premise was not merely stale but wrong. The document said the ServiceLoader SPI "is never
+invoked at runtime". It is: `AsyncTestContext` calls `spi.DetectorRegistry.buildExternal` on every
+construction, and that is how a third-party detector reaches the reports and the `failOn` gate. What
+is not live is the built-in half, `DetectorRegistry.build(config)`, which only tests call. That makes
+the 2.0 decision narrower than "delete whichever registry lost": the SPI stays, and the open question
+is only what to do with the built-in bridge shims.
+
+Each count now carries the command that reproduces it, so the next reader can check rather than
+trust.
+
 ## [1.7.0-RC7] - 2026-08-03
 
 ### Performance — detector discovery no longer loads 127 classes it discards, saving ~360 ms per forked JVM

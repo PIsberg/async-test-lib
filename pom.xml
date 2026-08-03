@@ -62,6 +62,12 @@
         <!-- Plugin versions -->
         <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
+        <!-- Pinned because nothing else does: without it Maven falls back to its built-in
+             default binding, which resolves maven-jar-plugin 2.4 (2013). That plugin writes
+             the agent's Premain-Class manifest, and an unpinned version means a different
+             Maven can write it differently. Pinning also brings it under Dependabot, which
+             cannot see a plugin that declares no version. -->
+        <maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
         <maven-source-plugin.version>3.4.0</maven-source-plugin.version>
         <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
         <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
@@ -305,7 +311,7 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <doclint>all,-missing</doclint>
+                    <doclint>all</doclint>
                     <encoding>UTF-8</encoding>
                     <docencoding>UTF-8</docencoding>
                 </configuration>

@@ -160,11 +160,14 @@ public class SharedMessageDigestDetector {
 
     /** Report produced by {@link #analyze()}. */
     public static class SharedMessageDigestReport {
+        /** The violations. */
         public final List<String> violations = new ArrayList<>();
+        /** The violated types. */
         public final Set<String> violatedTypes = new LinkedHashSet<>();
         /** Structured mirror of {@link #violations} for {@link se.deversity.asynctest.report.Formatter}s. */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

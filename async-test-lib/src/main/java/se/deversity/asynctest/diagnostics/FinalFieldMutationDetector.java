@@ -61,7 +61,7 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
  * }
  * }</pre>
  *
- * @since 1.8.0
+ * @since 1.7.0
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Per-field state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().")
 @AITestDriven(
@@ -193,8 +193,11 @@ public class FinalFieldMutationDetector {
             return !mutationIssues.isEmpty();
         }
 
+        /** {@return the mutation issues} */
         public List<String> getMutationIssues()        { return Collections.unmodifiableList(mutationIssues); }
+        /** {@return the racing reader issues} */
         public List<String> getRacingReaderIssues()    { return Collections.unmodifiableList(racingReaderIssues); }
+        /** {@return the concurrent write issues} */
         public List<String> getConcurrentWriteIssues() { return Collections.unmodifiableList(concurrentWriteIssues); }
 
         @Override

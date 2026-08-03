@@ -83,9 +83,12 @@ public class LatchMisuseDetector {
     }
 
     public static class LatchMisuseReport {
+        /** The missing count downs. */
         public final Set<String> missingCountDowns = new HashSet<>();
+        /** The extra count downs. */
         public final Set<String> extraCountDowns = new HashSet<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !missingCountDowns.isEmpty() || !extraCountDowns.isEmpty();
         }

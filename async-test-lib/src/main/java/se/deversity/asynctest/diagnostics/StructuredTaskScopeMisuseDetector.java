@@ -198,7 +198,7 @@ public class StructuredTaskScopeMisuseDetector {
      * implementation throws {@code TimeoutException}). Still-running subtasks are
      * cancelled. Marks the scope as no longer accepting result reads.
      *
-     * @since 1.8.0
+     * @since 1.7.0
      */
     public void recordJoinTimeout(String scopeId, Thread thread) {
         if (scopeId == null || thread == null) return;
@@ -223,7 +223,7 @@ public class StructuredTaskScopeMisuseDetector {
      * as a warning when subtasks were cancelled mid-flight: their side effects may
      * be half-applied, and the fallback must not depend on their state.
      *
-     * @since 1.8.0
+     * @since 1.7.0
      */
     public void recordTimeoutSwallowed(String scopeId, Thread thread) {
         if (scopeId == null || thread == null) return;
@@ -322,15 +322,21 @@ public class StructuredTaskScopeMisuseDetector {
                 || !resultAfterTimeoutIssues.isEmpty();
         }
 
+        /** {@return the fork after join issues} */
         public List<String> getForkAfterJoinIssues()      { return Collections.unmodifiableList(forkAfterJoinIssues); }
+        /** {@return the result before join issues} */
         public List<String> getResultBeforeJoinIssues()   { return Collections.unmodifiableList(resultBeforeJoinIssues); }
+        /** {@return the confinement issues} */
         public List<String> getConfinementIssues()        { return Collections.unmodifiableList(confinementIssues); }
+        /** {@return the missing join issues} */
         public List<String> getMissingJoinIssues()        { return Collections.unmodifiableList(missingJoinIssues); }
-        /** @since 1.8.0 */
+        /** @since 1.7.0 */
         public List<String> getResultAfterTimeoutIssues() { return Collections.unmodifiableList(resultAfterTimeoutIssues); }
-        /** @since 1.8.0 */
+        /** @since 1.7.0 */
         public List<String> getTimeoutSwallowedWarnings() { return Collections.unmodifiableList(timeoutSwallowedWarnings); }
+        /** {@return the total scopes} */
         public int          getTotalScopes()              { return totalScopes; }
+        /** {@return the total forks} */
         public int          getTotalForks()               { return totalForks; }
 
         @Override

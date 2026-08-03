@@ -168,10 +168,14 @@ public class ConstructorSafetyValidator {
     }
     
     public static class ConstructorSafetyReport {
+        /** The unsafe objects. */
         public final Set<String> unsafeObjects = new HashSet<>();
+        /** The possibly incomplete constructions. */
         public final Set<String> possiblyIncompleteConstructions = new HashSet<>();
+        /** The fields accessed during construction. */
         public final Set<String> fieldsAccessedDuringConstruction = new HashSet<>();
         
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !unsafeObjects.isEmpty() || !fieldsAccessedDuringConstruction.isEmpty();
         }

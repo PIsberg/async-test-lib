@@ -201,10 +201,14 @@ public class ThreadLeakDetector {
      * A thread leak event.
      */
     public static class ThreadLeakEvent {
+        /** The thread name. */
         public final String threadName;
+        /** The thread. */
         public final @Nullable Thread thread;
+        /** The start time. */
         public final long startTime;
         public final StackTraceElement @Nullable [] creationStack;
+        /** The reason. */
         public final String reason;
 
         ThreadLeakEvent(String threadName, @Nullable Thread thread, long startTime,
@@ -236,10 +240,12 @@ public class ThreadLeakDetector {
             this.autoMode = autoMode;
         }
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() {
             return !leaks.isEmpty();
         }
 
+        /** {@return the leaks} */
         public List<ThreadLeakEvent> getLeaks() {
             return List.copyOf(leaks);
         }

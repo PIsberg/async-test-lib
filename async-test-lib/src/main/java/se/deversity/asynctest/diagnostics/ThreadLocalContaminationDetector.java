@@ -87,6 +87,7 @@ public class ThreadLocalContaminationDetector {
     public static class ThreadLocalContaminationReport {
         final List<String> contaminations = new ArrayList<>();
 
+        /** {@return whether there are issues} */
         public boolean hasIssues() { return !contaminations.isEmpty(); }
 
         @Override
