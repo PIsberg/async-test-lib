@@ -33,6 +33,7 @@ public class SharedDecimalFormatDetectorTest {
         assertTrue(d.analyze().hasIssues());
         assertTrue(d.analyze().violations.get(0).contains("df"));
         assertTrue(d.analyze().violations.get(0).contains("2"));
+        assertTrue(d.analyze().violations.get(0).contains("observes sharing, not locks"));
     }
 
     @Test

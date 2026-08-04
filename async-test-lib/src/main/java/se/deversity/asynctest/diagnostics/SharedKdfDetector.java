@@ -20,10 +20,15 @@ import java.util.concurrent.ConcurrentHashMap;
  * are not thread-safe. Multiple threads that need to access a single object
  * concurrently should synchronize amongst themselves." A KDF derivation
  * ({@code deriveKey}/{@code deriveData}) threads algorithm parameters and
- * provider state through the underlying SPI; concurrent derivations on one
+ * provider state through the underlying SPI; unsynchronized concurrent derivations on one
  * instance can interleave that state and produce wrong keys — a silent
  * cryptographic-integrity failure (the derived key simply doesn't match what the
  * peer derives) with no exception at the point of corruption.
+ *
+ * <p>The detector observes sharing — which threads touched the instance — not
+ * locks: a shared KDF guarded by correct external synchronization is flagged
+ * all the same. Treat a finding as a prompt to verify that synchronization
+ * exists, or to move to a per-thread instance.
  *
  * <p>The safe pattern is one {@code KDF} instance per thread (KDF construction
  * via {@code KDF.getInstance(...)} is cheap), or full external synchronization
@@ -100,9 +105,11 @@ public final class SharedKdfDetector {
             String msg = String.format(
                     "KDF '%s' (algorithm %s) accessed from %d threads (%s) via %s — "
                             + "javax.crypto.KDF is documented as not thread-safe unless the "
-                            + "provider says otherwise; concurrent deriveKey()/deriveData() "
+                            + "provider says otherwise; unsynchronized concurrent deriveKey()/deriveData() "
                             + "calls can interleave provider state and silently derive wrong "
-                            + "keys that fail to match the peer's.",
+                            + "keys that fail to match the peer's"
+                            + " (the detector observes sharing, not locks — verify external"
+                            + " synchronization or use a per-thread instance).",
                     s.label,
                     s.algorithm,
                     s.accessingThreadIds.size(),

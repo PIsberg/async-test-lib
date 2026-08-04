@@ -61,6 +61,7 @@ public class SharedRandomDetectorTest {
         assertNotNull(report);
         assertTrue(report.hasIssues(), "Should detect shared random access");
         assertFalse(report.sharedRandoms.isEmpty(), "Should report shared randoms");
+        assertTrue(report.sharedRandoms.get(0).contains("observes sharing, not locks"));
     }
 
     @Test

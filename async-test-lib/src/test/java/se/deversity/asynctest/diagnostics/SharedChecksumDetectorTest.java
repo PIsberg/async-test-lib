@@ -41,6 +41,7 @@ class SharedChecksumDetectorTest {
         assertTrue(msg.contains("2 threads"));
         assertTrue(msg.contains("update"));
         assertTrue(msg.contains("getValue"));
+        assertTrue(msg.contains("observes sharing, not locks"));
         assertEquals(1, report.structuredViolations.size());
         assertEquals("SharedChecksum", report.structuredViolations.get(0).detector());
         assertEquals(2, report.structuredViolations.get(0).attributes().get("threadCount"));

@@ -11,9 +11,14 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link java.io.PrintStream} instances shared across multiple threads without
  * external synchronization.
  *
- * <p>These classes are not thread-safe. Concurrent use produces interleaved output,
+ * <p>These classes are not thread-safe. Unsynchronized concurrent use produces interleaved output,
  * garbled format strings, or internal state corruption. {@link System#out} and
  * {@link System#err} are {@code PrintStream} instances that are commonly shared unknowingly.
+ *
+ * <p>The detector observes sharing — which threads touched the instance — not
+ * locks: a shared formatter guarded by correct external synchronization is
+ * flagged all the same. Treat a finding as a prompt to verify that
+ * synchronization exists, or to move to a per-thread instance.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -58,7 +63,9 @@ public class SharedFormatterDetector {
         for (FormatterState s : formatters.values()) {
             if (s.accessingThreadIds.size() > 1) {
                 r.violations.add(String.format(
-                    "'%s' accessed from %d threads (%s) — not thread-safe, output will be interleaved",
+                    "'%s' accessed from %d threads (%s) — not thread-safe; unsynchronized concurrent"
+                        + " writes interleave output (the detector observes sharing, not locks —"
+                        + " verify external synchronization or use a per-thread instance)",
                     s.name, s.accessingThreadIds.size(),
                     String.join(", ", s.accessingThreadNames)));
             }

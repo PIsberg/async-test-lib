@@ -8,12 +8,17 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Detects {@link java.text.DecimalFormat} and {@link java.text.NumberFormat} instances
- * shared across multiple threads without external synchronization.
+ * accessed from more than one thread.
  *
  * <p>Neither {@code DecimalFormat} nor its parent {@code NumberFormat} is thread-safe.
- * Concurrent {@code format()} / {@code parse()} calls corrupt internal multiplier and
+ * Unsynchronized concurrent {@code format()} / {@code parse()} calls corrupt internal multiplier and
  * grouping state, producing garbled output or {@link java.text.ParseException}.
  * This is the numeric-formatting equivalent of {@code SimpleDateFormat} misuse.
+ *
+ * <p>The detector observes sharing — which threads touched the instance — not
+ * locks: a shared format guarded by correct external synchronization is flagged
+ * all the same. Treat a finding as a prompt to verify that synchronization
+ * exists, or to move to a per-thread instance.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -60,7 +65,9 @@ public class SharedDecimalFormatDetector {
         for (FormatState s : formats.values()) {
             if (s.accessingThreadIds.size() > 1) {
                 r.violations.add(String.format(
-                        "'%s' accessed from %d threads (%s) — DecimalFormat/NumberFormat is not thread-safe",
+                        "'%s' accessed from %d threads (%s) — DecimalFormat/NumberFormat is not thread-safe"
+                                + " (the detector observes sharing, not locks — verify external"
+                                + " synchronization or use a per-thread instance)",
                         s.name, s.accessingThreadIds.size(),
                         String.join(", ", s.accessingThreadNames)));
             }

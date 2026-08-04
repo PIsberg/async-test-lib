@@ -14,9 +14,14 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>{@code TimeZone} is a mutable class: {@code setRawOffset()} and {@code setID()}
  * alter the shared instance in place. Although read operations are effectively safe
- * in practice, concurrent writes (or a write concurrent with a read) produce
+ * in practice, unsynchronized concurrent writes (or a write concurrent with a read) produce
  * non-deterministic timezone offsets and IDs — silently wrong date/time arithmetic
  * that is notoriously hard to reproduce.
+ *
+ * <p>The detector observes sharing — which threads mutated the instance — not
+ * locks: mutations guarded by correct external synchronization are flagged all
+ * the same. Treat a finding as a prompt to verify that synchronization exists,
+ * or to prefer immutable {@link java.time.ZoneId} or a per-thread copy.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -64,7 +69,9 @@ public class SharedTimeZoneDetector {
             if (s.mutatingThreadIds.size() > 1) {
                 r.violations.add(String.format(
                         "TimeZone instance mutated from %d threads (%s) via '%s' — "
-                                + "concurrent mutations corrupt date/time arithmetic silently",
+                                + "unsynchronized concurrent mutations corrupt date/time arithmetic"
+                                + " (the detector observes sharing, not locks — verify external"
+                                + " synchronization or use a per-thread instance)",
                         s.mutatingThreadIds.size(),
                         String.join(", ", s.mutatingThreadNames),
                         s.firstOperation));

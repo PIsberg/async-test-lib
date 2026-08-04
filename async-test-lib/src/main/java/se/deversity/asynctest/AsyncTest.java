@@ -1322,7 +1322,7 @@ public @interface AsyncTest {
      * Enable shared MessageDigest detection.
      * Detects {@link java.security.MessageDigest} instances accessed concurrently;
      * {@code MessageDigest} is not thread-safe and concurrent {@code update()}/{@code digest()}
-     * calls silently corrupt the hash state.
+     * calls corrupt the hash state when not externally synchronized.
      * @since 0.9.0
      *
      * @return {@code true} to enable this detector, {@code false} to skip it

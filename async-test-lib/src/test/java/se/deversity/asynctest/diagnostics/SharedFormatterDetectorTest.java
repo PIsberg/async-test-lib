@@ -34,6 +34,7 @@ public class SharedFormatterDetectorTest {
         assertTrue(d.analyze().hasIssues());
         assertTrue(d.analyze().violations.get(0).contains("fmt"));
         assertTrue(d.analyze().violations.get(0).contains("2"));
+        assertTrue(d.analyze().violations.get(0).contains("observes sharing, not locks"));
     }
 
     @Test

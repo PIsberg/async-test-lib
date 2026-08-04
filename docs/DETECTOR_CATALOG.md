@@ -229,6 +229,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 9. False Sharing Detector
 * **Severity**: `MEDIUM`
+* **Status**: **Experimental - findings off by default.** Cache-line effects are not observable from pure Java: the detector estimates offsets by summing nominal type sizes in declaration order, while the JVM reorders fields, compresses references, and honors `@Contended` padding, so the estimated offsets do not correspond to real memory layout. Its reports are therefore not evidence of false sharing. Enable with `-Dasync-test.experimental.false-sharing=true`; without the property, `analyze()` returns an empty report (recording is unaffected).
 * **Description**: Flags fields accessed by different threads whose estimated memory offsets fall within the same CPU cache line (64 bytes), which causes cache-coherency traffic and performance degradation even without a logical data race.
 * **Buggy Code**:
   ```java
@@ -1929,7 +1930,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 87. Shared MessageDigest Detector
 * **Severity**: `HIGH`
-* **Description**: Detects a single `java.security.MessageDigest` instance shared across threads. Its internal digest state (running hash buffer, byte count, padding) is mutated by every `update()`/`digest()` call, so concurrent access silently corrupts the resulting hash without throwing any exception.
+* **Description**: Detects a single `java.security.MessageDigest` instance shared across threads. Its internal digest state (running hash buffer, byte count, padding) is mutated by every `update()`/`digest()` call, so unsynchronized concurrent access corrupts the resulting hash without throwing any exception (the detector observes sharing, not locks, so externally synchronized sharing is flagged too).
 * **Buggy Code**:
   ```java
   private static final MessageDigest SHA256 = MessageDigest.getInstance("SHA-256");
@@ -2471,7 +2472,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 112. Shared ByteBuffer Detector
 * **Severity**: `HIGH`
-* **Description**: Detects `Buffer`/`ByteBuffer` instances whose position-mutating operations (relative `get`/`put`, `flip()`, `rewind()`, `clear()`, `mark()`/`reset()`, single-arg `position()`/`limit()`) are performed from more than one thread. None of this cursor state is synchronized, so concurrent use corrupts it, producing `BufferUnderflowException`/`BufferOverflowException` or silently interleaved data. Absolute `get(int)`/`put(int, ...)` calls don't touch the cursor and are not flagged.
+* **Description**: Detects `Buffer`/`ByteBuffer` instances whose position-mutating operations (relative `get`/`put`, `flip()`, `rewind()`, `clear()`, `mark()`/`reset()`, single-arg `position()`/`limit()`) are performed from more than one thread. None of this cursor state is synchronized, so unsynchronized concurrent use corrupts it, producing `BufferUnderflowException`/`BufferOverflowException` or silently interleaved data. Absolute `get(int)`/`put(int, ...)` calls don't touch the cursor and are not flagged.
 * **Buggy Code**:
   ```java
   ByteBuffer shared = ByteBuffer.allocate(1024);

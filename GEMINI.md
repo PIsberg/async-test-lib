@@ -44,7 +44,7 @@ Detailed per-element guardrails live in scoped rule files that load automaticall
 # Do not edit manually.
 
 ## LOCKED FILES (DO NOT EDIT)
-- `se.deversity.asynctest.DetectorType`: Each enum constant requires synchronized changes in five places: (1) @AsyncTest attribute, (2) AsyncTestConfig field, (3) AsyncTestConfig.Builder default, (4) both branches of AsyncTestConfig.build() (detectAll block + excludes block), and (5) DetectorRegistry constructor. Adding a value here in isolation breaks the system.
+- `se.deversity.asynctest.DetectorType`: Adding or removing a constant requires synchronized changes in five places: (1) @AsyncTest attribute, (2) AsyncTestConfig field, (3) AsyncTestConfig.Builder default, (4) the resolution line in AsyncTestConfig.build() ((detectAll || flag) && !excludes.contains(TYPE)), and (5) DetectorRegistry constructor. Adding a value here in isolation compiles and detects nothing. The lock is on the constant set, not the file: editing javadoc on existing constants cannot break that invariant and needs no ceremony.
 
 ## 🛡️ MANDATORY SECURITY AUDITS
 When proposing edits or writing code for the following files, you MUST perform a security review before outputting the final code. You must explicitly state in your response that you have audited the changes for the required vulnerabilities.

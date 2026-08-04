@@ -84,4 +84,36 @@ class SharedSecureRandomDetectorTest {
         assertTrue(msg.contains("provider="),
                 "Report must include the SecureRandom's provider name");
     }
+
+    @Test
+    void severityIsMediumBecauseJdkProvidersAreDocumentedSafe() throws Exception {
+        var d = new SharedSecureRandomDetector();
+        var rng = new SecureRandom();
+        d.recordAccess(rng, "shared-rng", Thread.currentThread());
+        Thread t = new Thread(() -> d.recordAccess(rng, "shared-rng", Thread.currentThread()));
+        t.start();
+        t.join();
+        var report = d.analyze();
+        assertEquals(IssueSeverity.MEDIUM, report.structuredViolations.get(0).severity(),
+                "java.security.SecureRandom documents instances as safe for concurrent use, "
+                        + "and JDK providers synchronize internally. Sharing one is the common "
+                        + "correct idiom; what the detector observes is contention plus a "
+                        + "provider-portability risk, not corruption, and HIGH made "
+                        + "failOn = HIGH fail builds over documented-safe code.");
+    }
+
+    @Test
+    void renderedReportCarriesAnExplicitMediumSeverityMarker() throws Exception {
+        var d = new SharedSecureRandomDetector();
+        var rng = new SecureRandom();
+        d.recordAccess(rng, "shared-rng", Thread.currentThread());
+        Thread t = new Thread(() -> d.recordAccess(rng, "shared-rng", Thread.currentThread()));
+        t.start();
+        t.join();
+        assertEquals(IssueSeverity.MEDIUM, IssueSeverity.fromReport(d.analyze().toString()),
+                "The failOn gate reads severity out of the rendered text "
+                        + "(IssueSeverity.fromReport), and an untagged report defaults to "
+                        + "HIGH. Without an explicit marker in toString(), the structured "
+                        + "MEDIUM above never reaches the gate.");
+    }
 }

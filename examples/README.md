@@ -365,7 +365,7 @@ examples/
 
 ## Phase 11: Thread-Safety of Additional Types & Patterns (New in 0.10.0)
 
-Five new detectors for JDK types that look thread-safe but silently corrupt state under
+Five new detectors for JDK types that look thread-safe but corrupt state under unsynchronized
 concurrent use. All five follow the same manual-recording pattern — test code registers
 the shared object with the detector before exercising it.
 

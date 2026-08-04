@@ -29,6 +29,7 @@ public class SharedTimeZoneDetectorTest {
         var report = d.analyze();
         assertTrue(report.hasIssues());
         assertTrue(report.violations.get(0).contains("2"));
+        assertTrue(report.violations.get(0).contains("observes sharing, not locks"));
     }
 
     @Test

@@ -68,6 +68,7 @@ read them for the reasoning, not as current reference.
 | [analysis/roadmap-v2.md](analysis/roadmap-v2.md) | Planned v2 work |
 | [analysis/refactoring-history.md](analysis/refactoring-history.md) | The v1.2.0 refactor — what was broken up and why |
 | [analysis/comparison.md](analysis/comparison.md) | How async-test differs from JUnit, stress tests, ThreadSanitizer |
+| [analysis/detector-accuracy-eval.md](analysis/detector-accuracy-eval.md) | Measured detector behavior on buggy code vs its synchronized twin, enforced by `DetectorAccuracyEvalTest` |
 | [analysis/codecov-troubleshooting.md](analysis/codecov-troubleshooting.md) | Coverage-upload troubleshooting |
 
 > **Removed docs.** `docs/CLAUDE.md` held the module layout, build commands and inlined architecture

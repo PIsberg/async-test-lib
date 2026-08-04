@@ -22,12 +22,17 @@ import java.util.concurrent.ConcurrentHashMap;
  * that is advanced by every call to {@code encode()}/{@code decode()} and reset
  * by {@code reset()}/{@code flush()}. They are documented as <em>not</em>
  * thread-safe: "instances of this class are not thread-safe and appropriate
- * external synchronization is necessary." Concurrent use of one instance from
+ * external synchronization is necessary." Unsynchronized concurrent use of one instance from
  * multiple threads interleaves state transitions, producing corrupted or
  * garbled output, or an {@code IllegalStateException} when one thread calls
  * {@code encode}/{@code decode} while another mid-flight call has left the
  * coder in {@code CODING} or {@code FLUSHED} state that the caller did not
  * expect.
+ *
+ * <p>The detector observes sharing — which threads touched the coder — not
+ * locks: a shared coder guarded by correct external synchronization is flagged
+ * all the same. Treat a finding as a prompt to verify that synchronization
+ * exists, or to move to a per-thread coder.
  *
  * <p>The safe pattern is a fresh coder per thread — cheap to obtain via
  * {@code Charset.newEncoder()}/{@code Charset.newDecoder()} since
@@ -115,8 +120,10 @@ public final class SharedCharsetCoderDetector {
             if (s.accessingThreadIds.size() <= 1) continue;
             String msg = String.format(
                     "%s '%s' accessed from %d threads (%s) via operations %s — %s carries mutable "
-                            + "internal coding state and is not thread-safe; concurrent use corrupts "
-                            + "the coder state, garbles output, or throws IllegalStateException.",
+                            + "internal coding state and is not thread-safe; unsynchronized concurrent use corrupts "
+                            + "the coder state, garbles output, or throws IllegalStateException"
+                            + " (the detector observes sharing, not locks — verify external"
+                            + " synchronization or use a per-thread instance).",
                     s.kind,
                     s.label,
                     s.accessingThreadIds.size(),

@@ -12,14 +12,33 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Detects False Sharing - when multiple threads access adjacent memory locations
+ * Heuristic for False Sharing - multiple threads accessing adjacent memory locations
  * that fall within the same CPU cache line (typically 64 bytes).
+ *
+ * <p><strong>Experimental, findings off by default.</strong> Cache-line effects are not
+ * observable from pure Java: this detector estimates field offsets by summing nominal
+ * type sizes in declaration order, while the JVM reorders fields, compresses references,
+ * and honors {@code @Contended} padding, so the estimated offsets do not correspond to
+ * real memory layout. Keying is per class rather than per object, so thread-confined
+ * instances of one class are indistinguishable from a genuinely shared instance. The
+ * findings are therefore not evidence of false sharing, and {@link #analyze()} returns
+ * an empty report unless {@link #EXPERIMENTAL_PROPERTY} is set.
  * 
  * False sharing causes cache coherency traffic and performance degradation.
  * This detector identifies fields accessed by different threads with adjacent memory offsets.
  */
 public class FalseSharingDetector {
     
+    /**
+     * System property that opts in to this detector's findings
+     * ({@code -Dasync-test.experimental.false-sharing=true}). Without it, {@link #analyze()}
+     * returns an empty report: the offset model behind the findings is declaration-order
+     * arithmetic that real JVM field layout (reordering, compressed oops, {@code @Contended}
+     * padding) does not follow, so the pairs it names are not evidence of actual cache-line
+     * sharing. Recording is unaffected by the property.
+     */
+    public static final String EXPERIMENTAL_PROPERTY = "async-test.experimental.false-sharing";
+
     private static final int CACHE_LINE_SIZE = 64; // Common cache line size
     private static final int FIELD_ACCESS_THRESHOLD = 100; // Accesses to trigger analysis
     
@@ -82,6 +101,14 @@ public class FalseSharingDetector {
     public FalseSharingReport analyzeFalseSharing() {
         FalseSharingReport report = new FalseSharingReport();
         
+        // Findings are opt-in (see EXPERIMENTAL_PROPERTY): the offsets below are estimates
+        // the JVM's real field layout does not follow, so without explicit opt-in the
+        // detector must stay silent rather than report pairs it cannot substantiate.
+        // Recording still ran, so setting the property and re-analyzing needs no re-run.
+        if (!Boolean.getBoolean(EXPERIMENTAL_PROPERTY)) {
+            return report;
+        }
+
         List<FieldAccessInfo> fields = new ArrayList<>(fieldAccess.values());
         
         // Find fields in same cache line accessed by different threads

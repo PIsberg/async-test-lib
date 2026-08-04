@@ -44,6 +44,7 @@ class SharedByteBufferDetectorTest {
         assertTrue(msg.contains("2 threads"));
         assertTrue(msg.contains("put"));
         assertTrue(msg.contains("flip"));
+        assertTrue(msg.contains("observes sharing, not locks"));
 
         assertEquals(1, report.structuredViolations.size());
         Violation v = report.structuredViolations.get(0);

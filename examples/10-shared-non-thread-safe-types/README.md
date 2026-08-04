@@ -70,7 +70,7 @@ SHARED DECIMAL FORMAT / NUMBER FORMAT DETECTED:
 
 SHARED MESSAGE DIGEST DETECTED:
   - 'sha256' accessed from 8 threads — MessageDigest is not thread-safe; concurrent
-    update()/digest() calls silently corrupt the hash state
+    unsynchronized concurrent update()/digest() calls corrupt the hash state
 ```
 
 ## Running the Example

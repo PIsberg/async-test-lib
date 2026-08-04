@@ -10,9 +10,15 @@ import java.util.concurrent.ConcurrentHashMap;
  * Detects {@link java.util.regex.Matcher} instances shared across multiple threads.
  *
  * <p>{@link java.util.regex.Pattern} is thread-safe, but {@link java.util.regex.Matcher}
- * is not — it holds per-match state (position, groups, last-append offset). Concurrent
+ * is not — it holds per-match state (position, groups, last-append offset). Unsynchronized concurrent
  * use of the same {@code Matcher} instance produces incorrect matches or
  * {@link java.lang.StringIndexOutOfBoundsException}.
+ *
+ * <p>The detector observes sharing — which threads touched the instance — not
+ * locks: a shared matcher guarded by correct external synchronization is
+ * flagged all the same. Treat a finding as a prompt to verify that
+ * synchronization exists, or to obtain a fresh matcher per thread from the
+ * shared {@code Pattern}.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -60,7 +66,9 @@ public class SharedMatcherDetector {
             if (s.accessingThreadIds.size() > 1) {
                 r.violations.add(String.format(
                         "'%s' accessed from %d threads (%s) — Matcher is not thread-safe; "
-                                + "Pattern is safe but each Matcher holds mutable match state",
+                                + "Pattern is safe but each Matcher holds mutable match state"
+                                + " (the detector observes sharing, not locks — verify external"
+                                + " synchronization or use a per-thread instance)",
                         s.name, s.accessingThreadIds.size(),
                         String.join(", ", s.accessingThreadNames)));
             }

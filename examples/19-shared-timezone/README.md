@@ -42,7 +42,7 @@ The detector reports:
 ```
 SHARED TIMEZONE MUTATION DETECTED:
   - TimeZone instance mutated from 4 threads via 'setRawOffset'
-    Concurrent mutations corrupt date/time arithmetic silently.
+    unsynchronized concurrent mutations corrupt date/time arithmetic
     Fix: create a new TimeZone per operation, or switch to the immutable java.time.ZoneId API.
 ```
 

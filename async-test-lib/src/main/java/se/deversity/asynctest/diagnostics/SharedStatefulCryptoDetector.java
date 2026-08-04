@@ -23,7 +23,7 @@ import javax.crypto.Mac;
  * (covered by {@link SharedMessageDigestDetector}), these three primitives carry
  * <em>mutable per-operation state</em> across an {@code init → update* → doFinal}
  * (or {@code sign}/{@code verify}) call sequence. None of them is thread-safe.
- * When two threads interleave operations on the same instance:
+ * When two threads interleave operations on the same instance without synchronization:
  *
  * <ul>
  *   <li>{@code Cipher} mixes plaintext/ciphertext blocks from different streams,
@@ -40,6 +40,11 @@ import javax.crypto.Mac;
  * <p>This detector flags any instance accessed by more than one thread during the
  * test, regardless of provider. It is the stateful-primitive sibling of
  * {@link SharedMessageDigestDetector} and {@link SharedSecureRandomDetector}.
+ *
+ * <p>The detector observes sharing — which threads touched the instance — not
+ * locks: a shared primitive guarded by correct external synchronization is
+ * flagged all the same. Treat a finding as a prompt to verify that
+ * synchronization exists, or to move to a per-thread instance.
  *
  * <p>Usage:
  * <pre>{@code
@@ -137,8 +142,10 @@ public final class SharedStatefulCryptoDetector {
             if (s.accessingThreadIds.size() <= 1) continue;
             String msg = String.format(
                     "%s '%s' (algorithm=%s) accessed from %d threads (%s) — %s is stateful "
-                            + "and not thread-safe; concurrent init/update/doFinal interleaving "
-                            + "corrupts output or breaks integrity.",
+                            + "and not thread-safe; unsynchronized concurrent init/update/doFinal interleaving "
+                            + "corrupts output or breaks integrity"
+                            + " (the detector observes sharing, not locks — verify external"
+                            + " synchronization or use a per-thread instance).",
                     s.kind,
                     s.label,
                     s.algorithm,

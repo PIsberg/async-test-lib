@@ -149,7 +149,7 @@ class SharedNonThreadSafeTypesTest {
      *
      *   SHARED MESSAGE DIGEST DETECTED:
      *     - 'sha256' accessed from 8 threads — concurrent update()/digest() calls
-     *       silently corrupt the hash state
+     *       corrupt the hash state when not externally synchronized
      *
      * NOTE: Under concurrent load the fingerprint() results may also differ across
      * threads for the same input, demonstrating the silent corruption directly.

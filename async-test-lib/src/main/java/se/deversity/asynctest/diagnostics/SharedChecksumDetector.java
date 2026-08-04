@@ -19,11 +19,16 @@ import java.util.zip.Checksum;
  * <p><strong>Why it matters.</strong> A {@code Checksum} accumulates internal
  * running state with every {@code update()} call; {@code getValue()} reads that
  * accumulated state and {@code reset()} clears it. None of the JDK
- * implementations are thread-safe. Concurrent {@code update()}/{@code getValue()}/
+ * implementations are thread-safe. Unsynchronized concurrent {@code update()}/{@code getValue()}/
  * {@code reset()} calls from multiple threads interleave updates to the same
  * accumulator, silently producing a wrong checksum value — there is no exception,
  * no crash, just data-integrity corruption that surfaces later as a checksum
  * mismatch far from the code that caused it.
+ *
+ * <p>The detector observes sharing — which threads touched the instance — not
+ * locks: a shared checksum guarded by correct external synchronization is
+ * flagged all the same. Treat a finding as a prompt to verify that
+ * synchronization exists, or to move to a per-thread instance.
  *
  * <p>The safe pattern is one {@code Checksum} instance per thread (a
  * {@link ThreadLocal} works well), or computing a checksum per-chunk on each
@@ -93,8 +98,10 @@ public final class SharedChecksumDetector {
             String msg = String.format(
                     "Checksum '%s' accessed from %d threads (%s) via %s — java.util.zip "
                             + "Checksum implementations accumulate mutable running state and are "
-                            + "not thread-safe; concurrent update()/getValue()/reset() calls silently "
-                            + "produce wrong checksum values with no exception.",
+                            + "not thread-safe; unsynchronized concurrent update()/getValue()/reset() calls "
+                            + "produce wrong checksum values with no exception"
+                            + " (the detector observes sharing, not locks — verify external"
+                            + " synchronization or use a per-thread instance).",
                     s.label,
                     s.accessingThreadIds.size(),
                     String.join(", ", s.accessingThreadNames),

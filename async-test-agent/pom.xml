@@ -16,6 +16,14 @@
     <name>Async Test Library — Java agent</name>
     <description>Optional Byte Buddy agent for async-test-lib: instruments JavaBean accessors so detectors record reads and writes without manual hooks. Attach with -javaagent:async-test-agent.jar, or call AsyncTestAgent.selfAttach().</description>
 
+    <licenses>
+        <license>
+            <name>PolyForm Noncommercial License 1.0.0</name>
+            <url>https://polyformproject.org/licenses/noncommercial/1.0.0/</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
     <dependencies>
         <dependency>
             <groupId>se.deversity.async-test-lib</groupId>

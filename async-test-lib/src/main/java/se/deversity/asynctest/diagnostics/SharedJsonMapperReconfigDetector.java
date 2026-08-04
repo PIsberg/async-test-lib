@@ -36,6 +36,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * comes from a thread that never used the instance, or the instance has already been used
  * from two or more distinct threads — the exact preconditions for a configuration race.
  *
+ * <p>The detector observes the cross-thread ordering of uses and mutations —
+ * not locks: a reconfiguration guarded by correct external synchronization is
+ * flagged all the same. Treat a finding as a prompt to verify that
+ * synchronization exists, or to freeze configuration before sharing.
+ *
  * <p>The safe pattern is to freeze configuration before publishing the mapper to other
  * threads, and to obtain per-call variation via {@code ObjectMapper.copy()},
  * {@code ObjectReader}/{@code ObjectWriter}, or by building a fresh {@code Gson} per
@@ -154,9 +159,11 @@ public final class SharedJsonMapperReconfigDetector {
             String msg = String.format(
                     "%s reconfigured after concurrent use had begun: %s (mutated by %s) while "
                             + "used by %d thread(s) (%s) — configuration methods are not safe once a "
-                            + "serializer/mapper is visible to other threads; racing with "
+                            + "serializer/mapper is visible to other threads; an unsynchronized reconfiguration racing with "
                             + "serialize/deserialize calls causes intermittent corruption or "
-                            + "ConcurrentModificationException in internal caches.",
+                            + "ConcurrentModificationException in internal caches"
+                            + " (the detector observes sharing, not locks — verify external"
+                            + " synchronization or use a per-thread instance).",
                     s.className,
                     String.join(", ", descriptions),
                     String.join(", ", mutatingThreads),

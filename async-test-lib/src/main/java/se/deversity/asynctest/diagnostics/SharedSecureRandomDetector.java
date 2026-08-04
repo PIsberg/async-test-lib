@@ -16,17 +16,16 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Detects {@link SecureRandom} instances accessed from multiple threads.
  *
- * <p><strong>Why it matters.</strong> Most JDK {@code SecureRandom}
- * implementations are <em>not</em> guaranteed to be thread-safe. The default
- * {@code SHA1PRNG} provider serializes via internal synchronization (so it
- * works correctly but at significant contention cost), while
- * {@code NativePRNG} on Linux is internally synchronized too but blocks all
- * callers on a shared {@code /dev/urandom} file handle. Other providers
- * (Bouncy Castle, custom SPI implementations) may not synchronize at all,
- * producing biased, predictable, or duplicate "random" output under
- * concurrent access — a security bug.
+ * <p><strong>Why it matters.</strong> {@link SecureRandom} documents its instances as
+ * safe for use by multiple concurrent threads, and the JDK providers honor that:
+ * {@code SHA1PRNG} serializes via internal synchronization, and {@code NativePRNG} on
+ * Linux additionally blocks all callers on a shared {@code /dev/urandom} file handle.
+ * A shared instance is therefore the documented-safe idiom, and what it costs is
+ * contention, because every caller queues on the same internal lock. The residual
+ * correctness risk is provider-dependent: a non-JDK SPI implementation that skips
+ * synchronization can produce biased or duplicate output under concurrent access.
  *
- * <p>The safe pattern is one of:
+ * <p>To avoid the contention (or any non-JDK provider risk) use one of:
  * <ul>
  *   <li>{@code ThreadLocal<SecureRandom>} — each thread gets its own instance.</li>
  *   <li>Use {@code SecureRandom.getInstanceStrong()} per call (slow but always safe).</li>
@@ -34,8 +33,10 @@ import java.util.concurrent.ConcurrentHashMap;
  *       cryptographic-grade randomness.</li>
  * </ul>
  *
- * <p>This detector flags any {@code SecureRandom} accessed by more than one
- * thread during the test, regardless of which provider it uses. Distinct from
+ * <p>This detector reports any {@code SecureRandom} accessed by more than one thread,
+ * regardless of provider, as a medium-severity observation: on JDK providers it is a
+ * contention note rather than a bug, and a defect signal only when the provider is a
+ * custom SPI that does not synchronize. Distinct from
  * {@link SharedRandomDetector} which covers {@code java.util.Random}.
  *
  * <p>Usage:
@@ -109,8 +110,11 @@ public final class SharedSecureRandomDetector {
             if (s.accessingThreadIds.size() <= 1) continue;
             String msg = String.format(
                     "'%s' (algorithm=%s, provider=%s) accessed from %d threads (%s) — "
-                            + "SecureRandom is provider-dependent for thread safety; concurrent "
-                            + "access can produce biased, duplicate, or predictable output.",
+                            + "SecureRandom thread safety is provider-dependent: JDK providers "
+                            + "synchronize internally (documented-safe, callers serialize on one "
+                            + "lock), while a non-JDK SPI that skips synchronization can produce "
+                            + "biased or duplicate output. Shared use is a contention cost first, "
+                            + "a correctness risk only off the JDK providers.",
                     s.label,
                     s.algorithm,
                     s.provider,
@@ -119,7 +123,7 @@ public final class SharedSecureRandomDetector {
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
                     "SharedSecureRandom",
-                    IssueSeverity.HIGH,
+                    IssueSeverity.MEDIUM,
                     msg,
                     List.of(),
                     Map.of(
@@ -151,6 +155,11 @@ public final class SharedSecureRandomDetector {
         public String toString() {
             if (violations.isEmpty()) return "SHARED SECURE RANDOM — clean";
             StringBuilder sb = new StringBuilder("SHARED SECURE RANDOM DETECTED:\n");
+            // The explicit marker below is what IssueSeverity.fromReport reads; without
+            // it an untagged report defaults to HIGH and the failOn gate treats the
+            // documented-safe shared-SecureRandom idiom as a build-breaking finding.
+            sb.append("  Severity: MEDIUM — documented-safe on JDK providers; a contention and\n")
+              .append("  provider-portability observation, not corruption.\n");
             for (String v : violations) sb.append("  - ").append(v).append('\n');
             sb.append("  Fix:\n")
               .append("    - Use ThreadLocal<SecureRandom> to give each thread its own instance.\n")
