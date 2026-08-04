@@ -132,7 +132,7 @@ traces). Absent/blank args preserve the default `any()` behavior. A `DiagnosticL
 for weaving errors that Byte Buddy would otherwise swallow.
 
 #### Attachment
-The library JAR is agent-capable — its MANIFEST contains:
+The agent JAR (`async-test-agent`; the manifest moved there in the module split) is the agent-capable artifact — its MANIFEST contains:
 ```
 Premain-Class: se.deversity.asynctest.agent.AsyncTestAgent
 Agent-Class:   se.deversity.asynctest.agent.AsyncTestAgent

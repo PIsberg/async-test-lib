@@ -170,6 +170,12 @@ subprojects {
         // and would run intentionally-buggy "Dummy" fixtures directly, causing failures.
         filter {
             excludeTestsMatching("*\$*")
+            // Failsafe integration tests (*IT) verify the Maven-packaged artifact — for
+            // the agent, the shaded jar that only the Maven build produces. Gradle builds
+            // an unshaded jar for local iteration, so running them here would fail on a
+            // difference that is expected. Maven (`mvn verify`, and CI's `mvn clean
+            // install`) is the build that runs them.
+            excludeTestsMatching("*IT")
         }
     }
 
