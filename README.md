@@ -46,7 +46,7 @@
    <dependency>
        <groupId>se.deversity.async-test-lib</groupId>
        <artifactId>async-test-lib</artifactId>
-       <version>1.7.0-RC8</version>
+       <version>1.7.0</version>
        <scope>test</scope>
    </dependency>
    ```
@@ -74,7 +74,7 @@
 
 1. **Add the dependency** to `build.gradle.kts`:
    ```kotlin
-   testImplementation("se.deversity.async-test-lib:async-test-lib:1.7.0-RC8")
+   testImplementation("se.deversity.async-test-lib:async-test-lib:1.7.0")
    ```
 
 2. **Write your first stress test**:

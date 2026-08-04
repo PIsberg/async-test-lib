@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-08-04
+
+### Added — a dependency inventory with a reasoned entry per library
+
+[docs/DEPENDENCIES.md](DEPENDENCIES.md) lists every third-party library ordered by how far it
+travels toward a consumer's classpath, names each version's `pom.xml` property instead of
+repeating the number, and replaces the stale dependency section in DISTRIBUTION.md (which still
+claimed JUnit 5.10.2 and zero runtime dependencies). ArchUnit moved 1.4.2 → 1.5.0 and PITest
+1.25.8 → 1.25.9 — the only two of sixteen third-party versions Dependabot had not already
+caught up.
+
+### Changed — supply-chain hardening closed or resolved all 19 Scorecard alerts
+
+Workflow actions in demo.yml, gradle-tests.yml and load-tests.yml now pin to commit SHAs like
+the rest of the repo; the demo workflow's pip install is hash-verified via
+`tools/demo/requirements.txt` and its agg binary pins a release version checked against the
+published sha256; demo.yml's token is read-only at workflow level; sbom.yml dropped an unused
+`packages: write`. The eight structural alerts (wrapper jars, branch protection, solo-maintainer
+code review, external registrations, required job-level writes) are dismissed with recorded
+reasons.
+
 ### Fixed — the published agent jar aborted every consumer JVM it was attached to
 
 `-javaagent:async-test-agent-<version>.jar`, the attach flag AGENT.md documents, was fatal in
