@@ -7,6 +7,129 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0-RC8] - 2026-08-04
+
+### Fixed — 17 shared-instance detectors asserted corruption they cannot observe
+
+The `Shared*` detectors track which threads touched an instance and fire when more than one did.
+They carry no representation of locks, so a correctly synchronized shared instance fires exactly
+like a raced one. That is now measured and pinned in `DetectorAccuracyEvalTest`. Every report none
+the less asserted that corruption had happened ("concurrent update()/digest() calls silently corrupt
+the hash state"), which turned the library's most common false positive into a confident wrong claim
+about the user's most careful code.
+
+Each violation message now states the conditional fact (unsynchronized concurrent use corrupts X)
+and closes with "the detector observes sharing, not locks — verify external synchronization or use a
+per-thread instance". The class javadoc says the same. Severities, report headers and `Fix:` lines
+are unchanged, and no added prose contains an uppercase severity token, so the regex-scraped
+`failOn` gate reads what it read before.
+
+`SharedSecureRandomDetector` drops from HIGH to MEDIUM, with an explicit `Severity: MEDIUM` marker
+in the rendered report. `java.security.SecureRandom` documents its instances as safe for concurrent
+use and the JDK providers synchronize internally, so a shared instance is the documented-safe idiom
+and HIGH was failing `failOn=HIGH` builds over correct code. `failOn=MEDIUM` restores the old gating
+for anyone who relied on it. The other two security-listed crypto detectors keep HIGH and their
+concrete consequences, now qualified by "unsynchronized"; detection fires on identical inputs, so
+the change adds no false negatives.
+
+Verified failing-first for the severity change, both new `SharedSecureRandomDetector` assertions
+were red at HIGH before the edit, then across the full surface after: 180 tests over the 17 detector
+test classes, `DetectorAccuracyEvalTest`, `DetectionCoverageTest`, `IssueSeverityTest` and
+`FailOnGateTest`, 0 failures.
+
+### Added — a detector-accuracy eval, so a finding's meaning is measured rather than assumed
+
+Nothing in the repo measured whether a detector finding means the code is wrong. The
+buggy-versus-synchronized-twin eval now runs in CI as a characterization suite of 12 assertions, and
+[docs/analysis/detector-accuracy-eval.md](analysis/detector-accuracy-eval.md) publishes the table it
+produces.
+
+Measured: 6 of 6 buggy variants fire. 3 of 6 correctly synchronized twins stay silent
+(`LockOrderValidator`, `AtomicNonAtomicUpdateDetector`, `DeadlockDetector`). The three that fire on
+correct code (`RaceConditionDetector`, `AtomicityValidator`, `SharedMessageDigestDetector`) share
+one cause: their input is `(thread, access)` tuples with no representation of locks. Those false
+positives are pinned deliberately, in the `DetectionCoverageTest` tradition. If a detector gains
+synchronization awareness the assertion goes red, and the document says to flip it and move the row
+up.
+
+### Changed — `FalseSharingDetector` findings now require `-Dasync-test.experimental.false-sharing=true`
+
+The detector's findings are uncorrelated with the phenomenon it names. Field offsets are estimated
+by summing nominal type sizes in declaration order, while the JVM reorders fields, compresses
+references and honors `@Contended` padding; keying is per class, so thread-confined instances, the
+standard fix, look identical to genuine sharing; and the pair predicate requires unequal thread
+sets, which excludes the textbook case of every thread hammering both adjacent fields. Cache-line
+effects are not observable from pure Java without PMU counters.
+
+`analyze()` returns an empty report unless the property is set. Recording is unaffected, so opting
+in needs no re-run. The catalog entry says the same.
+
+Verified in both directions: with the gate active, the fixture that fires the pre-gate analysis
+reports nothing (11 of 11 green); with the property forced on globally, the gate test goes red,
+which proves the test detects the detector firing.
+
+### Added — one INFO line when agent-backed detection is inactive
+
+A first-time user adds the dependency, writes `@AsyncTest`, and sees a green suite under a "127
+detectors" banner, while the telemetry pipeline that feeds `AtomicityValidator` is not running
+because the agent was never attached. Nothing said so. `DetectionCoverageTest` already pins that a
+bare `@AsyncTest` detects almost nothing without instrumentation; the runtime now admits it.
+
+One `runner.agent.absent` event per JVM, at INFO, because the affected user is exactly the one
+without DEBUG on. It names the test, the affected detector, and the `async-test-agent` artifact that
+closes the gap. Once per JVM rather than per test, so a large suite is not drowned in repetition.
+
+Verified failing-first: the new `ConcurrencyRunnerLogContractTest` assertion saw 0 announcements
+before the log line existed and exactly 1 across two engine runs after.
+
+### Fixed — a round timeout discarded the worker failures that explain it
+
+When `latch.await` expired, `runSingleInvocationRound` threw "Invocation round timed out" before
+ever reading the failures list. A round where 5 of 8 workers threw real assertion errors and 3 hung
+reported only a thread count, and the thrown failures, which usually explain why the peers never
+arrived, were dropped on exactly the path where diagnostics matter most.
+
+The collected failures now ride along as suppressed exceptions on the round-timeout error, and the
+message says how many are attached. They stay reachable through the cause chain of the "Test timed
+out after ..." error the user sees.
+
+Verified failing-first: `RoundTimeoutFailurePreservationTest` (one worker throws, one hangs) failed
+on the unpatched tree because the worker's `IllegalStateException` was unreachable from the reported
+error, and passes after.
+
+### Fixed — `invocations = 0` reported a green test whose body never ran
+
+`@AsyncTest(invocations = 0)` passed. The interceptor had already called `invocation.skip()`, so
+JUnit counted the test as executed while the runner's round loop never entered. `threads = 0` failed
+loudly, but only as `new CyclicBarrier(0)` deep inside the first round, naming the barrier rather
+than the configuration mistake.
+
+Both bounds now fail in `Builder.build()`, naming the offending parameter, before any thread exists.
+The annotation path is covered because `AsyncTestConfig.from()` resolves through the same `build()`.
+
+Verified failing-first: `AsyncTestConfigValidationTest` showed 4 failures ("nothing was thrown") on
+the unpatched tree, and 5 of 5 pass after the guard.
+
+### Fixed — the tool comparison table had ThreadSanitizer's capabilities inverted
+
+The table scored ThreadSanitizer "no" on race detection, deadlock detection and lock-order
+validation. Happens-before race detection is precisely what ThreadSanitizer does; its real
+limitation for this audience is that it does not instrument JVM bytecode at all. Anyone who knows
+the tooling space read that table as a credibility problem for every claim near it.
+
+Rewritten with the capabilities each tool actually has, jcstress added as the honest Java-side
+comparison, and async-test's differentiators stated as what they are: the JUnit-5-native harness,
+zero-config deadlock detection, and the report and gate pipeline. Not race proof. It links ahead to
+the detector-accuracy eval.
+
+### Changed — every module pom declares the PolyForm Noncommercial license explicitly
+
+The parent pom and the Gradle publishing block already declared it, and the three module poms
+relied on Maven inheritance, which leaves the license absent from the raw pom a consumer or a
+scanner reads without resolving the parent. Each module pom now states it, byte-identical to the
+parent's block. `BuildMetadataSyncTest` stays green.
+
+
 ### Fixed — 733 published javadoc descriptions said nothing, and a test now says so
 
 The previous entries in this release closed every doclint warning. Doclint answers exactly one
