@@ -39,7 +39,7 @@ jobs:
           cache: maven
 
       - name: Install asciinema
-        run: pip install asciinema==2.4.0
+        run: pip install --require-hashes -r tools/demo/requirements.txt
 
       - name: Install agg
         run: |

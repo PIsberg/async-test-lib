@@ -1,0 +1,8 @@
+# Hash-pinned for the demo workflow's pip install (Scorecard alert 51: a version
+# pin alone still trusts PyPI at download time; --require-hashes does not).
+# asciinema is stdlib-only (requires_dist is empty on PyPI), so this one entry
+# is the whole closure --require-hashes needs. Both published 2.4.0 artifacts:
+# wheel first, sdist fallback.
+asciinema==2.4.0 \
+    --hash=sha256:249ccf108509d643ddaf38979dac48c99e9e251f597173d8553a30d7a6423104 \
+    --hash=sha256:828e04c36ba622a7b8f8f912c8f0c1329538b6c7ed1c0d1b131bbbfe3a221707
