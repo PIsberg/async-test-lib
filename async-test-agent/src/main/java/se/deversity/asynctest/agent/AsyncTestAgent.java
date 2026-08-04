@@ -320,11 +320,17 @@ public final class AsyncTestAgent {
      * @return an ignore matcher over {@link TypeDescription}
      */
     static ElementMatcher.Junction<TypeDescription> ignoreMatcher() {
+        // Assembled at runtime so the Shade plugin's relocation cannot rewrite it: a
+        // literal "net.bytebuddy." would be relocated along with the type references,
+        // and the matcher would stop ignoring a consumer's own (unrelocated) Byte Buddy
+        // — for example Mockito's. The shaded copy needs no entry of its own: it lives
+        // under se.deversity.asynctest., which the next prefix already covers.
+        String byteBuddyPrefix = String.join(".", "net", "bytebuddy") + ".";
         return ElementMatchers.<TypeDescription>nameStartsWith("java.")
                 .or(ElementMatchers.nameStartsWith("jdk."))
                 .or(ElementMatchers.nameStartsWith("sun."))
                 .or(ElementMatchers.nameStartsWith("com.sun."))
-                .or(ElementMatchers.nameStartsWith("net.bytebuddy."))
+                .or(ElementMatchers.nameStartsWith(byteBuddyPrefix))
                 .or(ElementMatchers.nameStartsWith("se.deversity.asynctest."))
                 .or(ElementMatchers.isSynthetic());
     }

@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the published agent jar aborted every consumer JVM it was attached to
+
+`-javaagent:async-test-agent-<version>.jar`, the attach flag AGENT.md documents, was fatal in
+every 1.7.0 release candidate: the jar shipped without Byte Buddy, the JVM resolves
+`AsyncTestAgent`'s method signatures before `premain` runs, and the resulting
+`NoClassDefFoundError: net/bytebuddy/matcher/ElementMatcher` escalates to `FATAL ERROR in native
+method: processing of -javaagent failed` — the consumer's test JVM never starts. Nothing caught it
+because no gate ever attached the packaged jar standalone: the agent's own tests run with Byte
+Buddy on the module test classpath, and downstream suites use the library without the agent.
+
+The agent jar now bundles `byte-buddy` and `byte-buddy-agent`, relocated to
+`se.deversity.asynctest.agent.shaded.bytebuddy` (11.7 KB → ~5.2 MB). Relocation rather than plain
+bundling, so the copy cannot collide with a consumer's own Byte Buddy — Mockito's, typically. The
+published pom no longer declares Byte Buddy at all (dependency-reduced pom), so `selfAttach()`
+consumers also stop pulling it transitively; the relocated copy inside the jar serves both attach
+modes. The ignore-matcher prefix for `net.bytebuddy.` is now assembled at runtime so relocation
+cannot rewrite the literal — consumers' unrelocated Byte Buddy stays unwoven, pinned by the
+existing `ignoreMatcher_ignoresByteBuddyClasses`.
+
+The gate is `AgentJarPremainIT` (Failsafe, so it runs against the packaged artifact in
+`mvn verify` and CI's `mvn clean install`): it launches a fresh JVM whose classpath contains
+async-test-lib but no Byte Buddy — a consumer's classpath — and attaches the packaged jar via
+`-javaagent:` in one scenario and `selfAttach()` in the other, requiring both children to reach
+`main`. Verified failing-first: against the unshaded jar the premain scenario reproduces the fatal
+abort verbatim; with shading both scenarios pass and the agent's 43 unit and end-to-end tests are
+unchanged. Also corrected AGENT.md and contention-engine.md, which still claimed the library JAR
+carries the premain manifest — it moved to the agent jar in the module split.
+
 ## [1.7.0-RC8] - 2026-08-04
 
 ### Fixed — 17 shared-instance detectors asserted corruption they cannot observe

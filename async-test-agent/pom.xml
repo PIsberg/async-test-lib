@@ -71,6 +71,89 @@
                     </archive>
                 </configuration>
             </plugin>
+            <!-- Attach-the-packaged-jar gate. Failsafe (not Surefire) because the subject is
+                 the jar that package produced, not the classes: the 1.7.0-RC1..RC8 jars aborted
+                 every consumer JVM at premain (unshaded Byte Buddy) and no test ever noticed,
+                 because nothing attached the artifact the way docs/AGENT.md documents. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>${maven-surefire-plugin.version}</version>
+                <configuration>
+                    <!-- AgentJarPremainIT filters Byte Buddy out of java.class.path; a
+                         manifest-only booter jar would hide the real entries from it. -->
+                    <useManifestOnlyJar>false</useManifestOnlyJar>
+                    <systemPropertyVariables>
+                        <agent.jar>${project.build.directory}/${project.build.finalName}.jar</agent.jar>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Bundle Byte Buddy into the agent jar, relocated. -javaagent: loads this jar on
+                 its own: the JVM resolves AsyncTestAgent's method signatures before premain runs,
+                 and every 1.7.0-RC jar aborted consumer JVM startup right there
+                 (NoClassDefFoundError: net.bytebuddy...) because nothing on a consumer classpath
+                 provides Byte Buddy — ArchitectureTest forbids the library from carrying it.
+                 Relocation (rather than plain bundling) keeps the copy invisible to consumers
+                 that ship their own Byte Buddy, such as anything using Mockito. AgentJarPremainIT
+                 is the gate: it attaches the packaged jar to a Byte-Buddy-free JVM. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>${maven-shade-plugin.version}</version>
+                <configuration>
+                    <artifactSet>
+                        <includes>
+                            <include>net.bytebuddy:byte-buddy</include>
+                            <include>net.bytebuddy:byte-buddy-agent</include>
+                        </includes>
+                    </artifactSet>
+                    <relocations>
+                        <relocation>
+                            <pattern>net.bytebuddy</pattern>
+                            <shadedPattern>se.deversity.asynctest.agent.shaded.bytebuddy</shadedPattern>
+                        </relocation>
+                    </relocations>
+                    <filters>
+                        <filter>
+                            <artifact>net.bytebuddy:*</artifact>
+                            <excludes>
+                                <!-- The shaded jar stays a classpath artifact; a relocated
+                                     module descriptor would be a lie in two ways. -->
+                                <exclude>module-info.class</exclude>
+                                <exclude>META-INF/versions/*/module-info.class</exclude>
+                            </excludes>
+                        </filter>
+                    </filters>
+                    <transformers>
+                        <!-- Byte Buddy is a multi-release jar; its versioned classes are
+                             relocated under META-INF/versions/ and need this flag to load. -->
+                        <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                            <manifestEntries>
+                                <Multi-Release>true</Multi-Release>
+                            </manifestEntries>
+                        </transformer>
+                    </transformers>
+                    <!-- Out of the source tree: the reduced pom (no bundled deps) is what
+                         deploy publishes, but it is a build product, not a source. -->
+                    <dependencyReducedPomLocation>${project.build.directory}/dependency-reduced-pom.xml</dependencyReducedPomLocation>
+                </configuration>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>
