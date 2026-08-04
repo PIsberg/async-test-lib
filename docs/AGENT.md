@@ -108,8 +108,9 @@ spin path is never taken.
 
 ## 3. How to attach (all three ways)
 
-The library JAR is agent-capable: its `MANIFEST.MF` declares `Premain-Class`, `Agent-Class`,
-`Can-Retransform-Classes: true`, and `Can-Redefine-Classes: true`.
+The agent JAR (`async-test-agent`, not the library JAR — the manifest moved there in the
+module split) is the agent-capable artifact: its `MANIFEST.MF` declares `Premain-Class`,
+`Agent-Class`, `Can-Retransform-Classes: true`, and `Can-Redefine-Classes: true`.
 
 ### 3.1 Launch flag (static attach), plain
 
