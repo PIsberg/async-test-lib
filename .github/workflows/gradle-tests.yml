@@ -54,7 +54,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6.2.0
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
         with:
           # Uses the version declared in gradle/wrapper/gradle-wrapper.properties
           # gradle-wrapper.jar is generated locally via: gradle wrapper --gradle-version 8.13
@@ -208,7 +208,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6.2.0
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
         with:
           gradle-version: wrapper
 
@@ -278,7 +278,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6.2.0
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
         with:
           gradle-version: wrapper
 
@@ -348,7 +348,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6.2.0
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
         with:
           gradle-version: wrapper
 
