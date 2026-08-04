@@ -46,6 +46,7 @@ guardrails live.
 | [architecture/file-structure.md](architecture/file-structure.md) | Where each package and class lives |
 | [BUILDING.md](BUILDING.md) | Building from source with Maven and Gradle |
 | [QUALITY_GATES.md](QUALITY_GATES.md) | What must stay green — static analysis, coverage, mutation testing, japicmp, and the build quirks behind them |
+| [DEPENDENCIES.md](DEPENDENCIES.md) | Every third-party library, why it is used, and how far it travels toward a consumer's classpath |
 | [WORKFLOW.md](WORKFLOW.md) | Development workflow |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 

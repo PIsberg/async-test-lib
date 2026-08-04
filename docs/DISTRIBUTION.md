@@ -135,21 +135,12 @@ GitHub Releases Page (PIsberg/async-test-lib/releases)
 
 ## Artifact Dependencies
 
-### Compile-time Dependencies
-The library depends on:
-- **junit-jupiter-api** (5.10.2+) - JUnit 5 API
-- **junit-jupiter-engine** (5.10.2+) - JUnit 5 Runtime
-- **junit-platform-engine** (implicit)
-- **java.base** (Java 21+)
-
-### Runtime Dependencies
-None (besides JUnit core)
-
-### Optional Dependencies
-- **junit-platform-testkit** (for integration testing only)
-
-### Transitive Dependencies
-Maven automatically pulls in JUnit dependencies. Users don't need to configure them manually.
+What `async-test-lib` puts on a consumer's test classpath: JUnit Jupiter (api and engine),
+`slf4j-api`, `apiguardian-api`, and the first-party `common-license-lib`. The optional
+`async-test-agent` and `async-test-analysis` artifacts carry Byte Buddy and ASM respectively;
+neither is transitive from the library. [DEPENDENCIES.md](DEPENDENCIES.md) lists every
+third-party library, why it is used, and where its version is declared - versions live only in
+the root `pom.xml` properties block, so none are repeated here.
 
 ## File Structure in Distribution
 
