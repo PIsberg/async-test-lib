@@ -106,6 +106,29 @@ The store check matters more than it looks. `/v1/licenses/validate` takes no cre
 answers for **every store on Lemon Squeezy**, so `valid: true` on its own only means "this is
 someone's key". `meta.store_id` is what makes it *yours*.
 
+## If they bought with the wrong address
+
+This will happen. Someone checks out with a personal address, or an accounts-payable one, and the
+licence ends up scoped to a domain their developers do not use.
+
+You do not need a refund or a second purchase. **`meta.customer_email` reflects the customer's
+*current* email, not the address captured at checkout**, so editing the customer record re-scopes
+the existing key:
+
+**Store → Customers →** the customer **→ … → Edit profile →** change the email **→ Save changes**.
+
+The next validate call returns the new address, and the same key immediately covers the new
+domain. Verified against a live key: after the edit, a run under the new domain went from
+`FREE_PROVIDER_EMAIL` to `LICENSE GRANTED: LICENSE_VALID`.
+
+Two consequences worth holding on to:
+
+- It is a **re-scoping tool**, so treat customer-email edits as a licensing change, not an
+  administrative one. Moving a customer to a different domain silently moves who their licence
+  covers.
+- A customer who changes their own billing email changes their licence scope with it. If their
+  developers stop being able to build after an address change, this is the first thing to check.
+
 ## Step 5 — log it
 
 ```bash

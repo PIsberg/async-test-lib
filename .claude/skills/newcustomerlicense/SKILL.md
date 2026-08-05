@@ -114,6 +114,12 @@ that `meta.customer_email` is on the domain you promised them. If the domain dif
 the customer's developers actually use, the licence will deny on their first run — fix it now,
 not after they complain.
 
+**If the domain is wrong, do not issue a second licence.** `meta.customer_email` reports the
+customer's *current* address, not the one captured at checkout, so editing the customer record
+re-scopes the existing key: **Store → Customers →** the customer **→ … → Edit profile**. The next
+validate call returns the new address and the same key starts covering the new domain. Treat that
+as a licensing change rather than an administrative one — it moves who the licence covers.
+
 ## 5. Record it
 
 Append a line to the customer log (outside git, alongside the store details):
