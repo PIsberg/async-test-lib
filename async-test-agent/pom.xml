@@ -7,7 +7,7 @@
     <parent>
         <groupId>se.deversity.async-test-lib</groupId>
         <artifactId>async-test-parent</artifactId>
-        <version>1.7.0</version>
+        <version>1.7.1</version>
     </parent>
 
     <artifactId>async-test-agent</artifactId>
@@ -72,7 +72,7 @@
                 </configuration>
             </plugin>
             <!-- Attach-the-packaged-jar gate. Failsafe (not Surefire) because the subject is
-                 the jar that package produced, not the classes: the 1.7.0-RC1..RC8 jars aborted
+                 the jar that package produced, not the classes: the 1.7.1-RC1..RC8 jars aborted
                  every consumer JVM at premain (unshaded Byte Buddy) and no test ever noticed,
                  because nothing attached the artifact the way docs/AGENT.md documents. -->
             <plugin>
@@ -98,7 +98,7 @@
             </plugin>
             <!-- Bundle Byte Buddy into the agent jar, relocated. -javaagent: loads this jar on
                  its own: the JVM resolves AsyncTestAgent's method signatures before premain runs,
-                 and every 1.7.0-RC jar aborted consumer JVM startup right there
+                 and every 1.7.1-RC jar aborted consumer JVM startup right there
                  (NoClassDefFoundError: net.bytebuddy...) because nothing on a consumer classpath
                  provides Byte Buddy — ArchitectureTest forbids the library from carrying it.
                  Relocation (rather than plain bundling) keeps the copy invisible to consumers
