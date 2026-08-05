@@ -5,12 +5,16 @@ import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.common.license.LicenseConfig;
 import se.deversity.common.license.LicenseGate;
 import se.deversity.common.license.LicenseResult;
+import se.deversity.common.license.lemonsqueezy.LemonSqueezyValidator;
+import se.deversity.common.license.lemonsqueezy.LemonSqueezyValidator.EmailBinding;
 import se.deversity.vibetags.annotations.AIIdempotent;
 import se.deversity.vibetags.annotations.AISecure;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.URI;
+import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -61,25 +65,45 @@ public final class LicenseGuard {
     }
 
     private static void performCheck(Fingerprint fp) {
-        boolean isCi   = System.getenv("GITHUB_ACTIONS") != null || System.getenv("CI") != null;
-        boolean hasKey = fp.keygenApiKey != null && !fp.keygenApiKey.isBlank();
+        boolean isCi = System.getenv("GITHUB_ACTIONS") != null || System.getenv("CI") != null;
+        boolean lemonSqueezy = fp.licenseProvider == LicenseConfig.Provider.LEMONSQUEEZY;
+
+        // "Configured to validate for real" means something different per provider: Keygen
+        // authenticates the caller with an API key, LemonSqueezy has no caller credential at all
+        // and is scoped by store id plus the key under test. Reusing the Keygen test here would
+        // auto-mock a correctly configured LemonSqueezy run in CI and announce GRANTED without
+        // having validated anything.
+        boolean hasCredentials = lemonSqueezy
+            ? fp.lemonSqueezyStoreId != null && fp.licenseKey != null && !fp.licenseKey.isBlank()
+            : fp.keygenApiKey != null && !fp.keygenApiKey.isBlank();
+
         boolean mock   = fp.licenseMockMode
                        || Boolean.getBoolean("license.mock.mode")
-                       || (isCi && !hasKey);
+                       || (isCi && !hasCredentials);
         String licenseIdentity   = fp.licenseUserEmail;
         String keygenKeyForCheck = (fp.keygenApiKey == null) ? "dummy-key" : fp.keygenApiKey;
 
-        LicenseGate gate = LicenseGate.of(
-            LicenseConfig.builder()
-                .keygenAccountId(fp.keygenAccountId)
-                .keygenApiKey(keygenKeyForCheck)
-                .keygenProductId(fp.keygenProductId)
-                .lemonSqueezyStoreSubdomain(fp.lemonSqueezyStore)
-                .mockMode(mock)
-                .build()
-        );
+        LicenseConfig.Builder cfg = LicenseConfig.builder()
+            .licenseProvider(fp.licenseProvider)
+            .lemonSqueezyStoreSubdomain(fp.lemonSqueezyStore)
+            .mockMode(mock);
+        if (lemonSqueezy) {
+            cfg.lemonSqueezyStoreId(fp.lemonSqueezyStoreId)
+               .lemonSqueezyProductId(fp.lemonSqueezyProductId);
+            if (fp.lemonSqueezyBaseUri != null) {
+                cfg.lemonSqueezyBaseUri(URI.create(fp.lemonSqueezyBaseUri));
+            }
+            if (fp.lemonSqueezyEmailBinding != null) {
+                cfg.lemonSqueezyEmailBinding(fp.lemonSqueezyEmailBinding);
+            }
+        } else {
+            cfg.keygenAccountId(fp.keygenAccountId)
+               .keygenApiKey(keygenKeyForCheck)
+               .keygenProductId(fp.keygenProductId);
+        }
+        LicenseGate gate = LicenseGate.of(cfg.build());
 
-        if (mock && isCi && !hasKey && !announcedCiMock) {
+        if (mock && isCi && !hasCredentials && !announcedCiMock) {
             announcedCiMock = true;
             log.info("LICENSE: Zero-Config CI mode active (Auto-Mocked)");
         }
@@ -91,13 +115,17 @@ public final class LicenseGuard {
                 + (denied.message() != null ? " - " + denied.message() : "");
             String guidance = "\n  To run locally without a key: -Dlicense.mock.mode=true"
                 + "\n  In CI (GITHUB_ACTIONS or CI env var set, no key): mock mode activates automatically."
-                + "\n  To use a real license: -Dlicense.key=<key> -Dlicense.user.email=<email>";
+                + "\n  To use a Keygen license: -Dlicense.key=<key> -Dlicense.user.email=<email>"
+                + "\n  To use a LemonSqueezy license: -Dlicense.provider=lemonsqueezy"
+                + " -Dls.store.id=<storeId> -Dlicense.key=<key> -Dlicense.user.email=<email>"
+                + "\n  (the email must be the address the license was bought with)";
             log.error("{}{}", msg, guidance);
             throw new SecurityException(msg + guidance);
         }
         if (!announcedGranted) {
             announcedGranted = true;
-            log.info("LICENSE GRANTED: {}", ((LicenseResult.Allowed) result).reason());
+            log.info("LICENSE GRANTED: {} provider={}",
+                ((LicenseResult.Allowed) result).reason(), fp.licenseProvider);
         }
     }
 
@@ -114,24 +142,80 @@ public final class LicenseGuard {
     }
 
     private record Fingerprint(
+        LicenseConfig.Provider licenseProvider,
         String keygenAccountId,
         @Nullable String keygenApiKey,
         String keygenProductId,
         @Nullable String lemonSqueezyStore,
+        @Nullable Long lemonSqueezyStoreId,
+        @Nullable Long lemonSqueezyProductId,
+        @Nullable String lemonSqueezyBaseUri,
+        @Nullable EmailBinding lemonSqueezyEmailBinding,
         @Nullable String licenseKey,
         String licenseUserEmail,
         boolean licenseMockMode
     ) {
         static Fingerprint from(AsyncTestConfig c) {
             return new Fingerprint(
+                resolveProvider(),
                 resolve(c.keygenAccountId,   "keygen.account.id", "dummy-account"),
                 resolveOptional(c.keygenApiKey,      "keygen.api.key"),
                 resolve(c.keygenProductId,   "keygen.product.id", "dummy-prod"),
                 resolveOptional(c.lemonSqueezyStore, "ls.store.subdomain"),
+                resolveLong("ls.store.id"),
+                resolveLong("ls.product.id"),
+                System.getProperty("ls.api.base.uri"),
+                resolveEmailBinding(),
                 resolveOptional(c.licenseKey,        "license.key"),
                 System.getProperty("license.user.email", ""),
                 c.licenseMockMode
             );
+        }
+
+        /**
+         * Which service validates the key, from {@code -Dlicense.provider}. Defaults to Keygen,
+         * so a run that names no provider behaves exactly as it did before LemonSqueezy support
+         * existed. An unrecognised value is rejected rather than quietly falling back — a typo
+         * that silently reverted to Keygen would look like a license failure, not a config error.
+         */
+        private static LicenseConfig.Provider resolveProvider() {
+            String raw = System.getProperty("license.provider");
+            if (raw == null || raw.isBlank()) return LicenseConfig.Provider.KEYGEN;
+            return switch (raw.trim().toLowerCase(Locale.ROOT)) {
+                case "keygen" -> LicenseConfig.Provider.KEYGEN;
+                case "lemonsqueezy", "lemon-squeezy", "ls" -> LicenseConfig.Provider.LEMONSQUEEZY;
+                default -> throw new IllegalArgumentException(
+                    "Unknown license.provider '" + raw + "' (expected 'keygen' or 'lemonsqueezy')");
+            };
+        }
+
+        /**
+         * How a LemonSqueezy key is matched to the running user, from {@code -Dls.email.binding}.
+         * {@code null} leaves the library default, which is {@code DOMAIN} — one company purchase
+         * covering every developer on the buyer's email domain. {@code exact} narrows it to the
+         * buying address alone, for per-seat licensing.
+         */
+        private static @Nullable EmailBinding resolveEmailBinding() {
+            String raw = System.getProperty("ls.email.binding");
+            if (raw == null || raw.isBlank()) return null;
+            return switch (raw.trim().toLowerCase(Locale.ROOT)) {
+                case "domain" -> EmailBinding.DOMAIN;
+                case "exact"  -> EmailBinding.EXACT;
+                default -> throw new IllegalArgumentException(
+                    "Unknown ls.email.binding '" + raw + "' (expected 'domain' or 'exact')");
+            };
+        }
+
+        /** Resolves a numeric system property, absent when unset. */
+        private static @Nullable Long resolveLong(String sysProp) {
+            String v = System.getProperty(sysProp);
+            if (v == null || v.isBlank()) return null;
+            try {
+                return Long.valueOf(v.trim());
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException(
+                    sysProp + " must be a number, got '" + v + "'", e);
+            }
         }
         /**
          * Resolves a fingerprint component that always ends up with a value: the config, else

@@ -13,8 +13,12 @@ engine should not know about license vendors).
 `LicenseGuard` (in `se.deversity.asynctest.runner`) now owns the concern:
 
 - `check(config)` is a `ConcurrentHashMap.get()` on a `Fingerprint` derived from
-  the resolved license-config fields (account, key, product, store, license,
-  mockMode + their System-property fallbacks).
+  the resolved license-config fields (provider, Keygen account/key/product,
+  LemonSqueezy store subdomain/store id/product id/API base URI/email binding,
+  license key, user email, mockMode + their System-property fallbacks).
+- Every input that can change the decision is in the fingerprint. Switching
+  provider or store id mid-JVM therefore recomputes the gate rather than
+  reusing a grant issued under different terms.
 - First call per fingerprint runs the real gate exactly once; all later calls
   with matching fingerprints return immediately.
 - "Zero-Config CI" announcement and "LICENSE GRANTED" message are guarded by

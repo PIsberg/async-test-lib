@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-08-05
+
+### Added — a LemonSqueezy licence can now actually license a run
+
+`@AsyncTest` accepted a `lemonSqueezyStore` attribute and an `-Dls.store.subdomain` property, but
+neither had any effect on whether a run was licensed. Both fed `LicenseConfig`'s checkout-URL
+builder, which by its own javadoc never calls the LemonSqueezy API. `LicenseGate.check` had a
+single validation path — Keygen — so a real LemonSqueezy key was posted to Keygen and denied.
+Selling a licence on LemonSqueezy therefore did not produce a licence this library would accept.
+
+Requires **common-license-lib 0.4.0**, which adds the validator this release drives.
+
+Opt in with `-Dlicense.provider=lemonsqueezy`:
+
+| Property | Meaning | Default |
+|---|---|---|
+| `license.provider` | `keygen` or `lemonsqueezy` | `keygen` |
+| `ls.store.id` | Numeric store id; **required** for LemonSqueezy | — |
+| `ls.product.id` | Optional narrower product scope | unset |
+| `ls.email.binding` | `domain` or `exact` | `domain` |
+| `ls.api.base.uri` | Override the API host; for tests | LemonSqueezy |
+
+`ls.store.id` is not optional, because `POST /v1/licenses/validate` is unauthenticated and
+answers for every store on LemonSqueezy — without a store scope, a key bought from an unrelated
+vendor validates. Default binding is by **email domain**, so one company purchase covers every
+developer on the buyer's domain; `exact` narrows it to the buying address for per-seat licensing.
+
+[docs/LICENSING.md](LICENSING.md) is the new end-to-end runbook: issuing a licence, the flags to
+send a customer, what an expiry looks like, and how renewal works. The `/newcustomerlicense`
+skill automates the issuing side.
+
+### Fixed — CI auto-mock could report GRANTED without validating anything
+
+`LicenseGuard`'s zero-config CI path mocks the licence when `GITHUB_ACTIONS`/`CI` is set and no
+key is present, where "no key" was tested as *no Keygen API key*. A correctly configured
+LemonSqueezy run supplies no Keygen key, so that run would have silently mocked itself in CI and
+logged `LICENSE GRANTED` while validating nothing. The test is now per-provider: LemonSqueezy
+counts as configured when a store id and licence key are present. The Keygen path is unchanged.
+
+`license.provider`, `ls.store.id`, `ls.product.id` and `ls.email.binding` are part of
+`LicenseGuard`'s cache fingerprint, so changing a provider or store within one JVM recomputes the
+decision rather than reusing a cached grant.
+
+### Compatibility
+
+No change for existing users. The provider defaults to `keygen`, so a build that names no
+provider behaves exactly as it did in 1.7.0. No public API was added, removed or changed — the
+whole surface is system properties.
+
+
 ## [1.7.0] - 2026-08-04
 
 ### Added — a dependency inventory with a reasoned entry per library
