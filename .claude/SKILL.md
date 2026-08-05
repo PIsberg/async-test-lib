@@ -446,7 +446,7 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 | `detectWeakHashMapShared` | `WEAK_HASH_MAP_SHARED` | `WeakHashMap` or `IdentityHashMap` instances accessed from multiple threads. Both have additional concurrency hazards beyond regular `HashMap`: GC-driven entry removal mutates the table on every get/put; linear probing can drop or duplicate entries under concurrent puts. |
 | `detectJdbcConnectionShared` | `JDBC_CONNECTION_SHARED` | `java.sql.Connection`/`Statement`/`PreparedStatement`/`ResultSet` accessed from multiple threads. JDBC spec does not require any of these to be thread-safe; most drivers (Postgres/MySQL/Oracle) document one-thread-per-Connection. Concurrent use produces mixed cursors, protocol corruption, or transaction leakage. |
 
-### Phase 14 — Additional thread-unsafe primitives & publication hazards (1.7.1+)
+### Phase 14 — Additional thread-unsafe primitives & publication hazards (1.7.0+)
 | Annotation field | DetectorType | What it catches |
 |-----------------|-------------|-----------------|
 | `detectSharedStatefulCrypto` | `SHARED_STATEFUL_CRYPTO` | `javax.crypto.Cipher`, `javax.crypto.Mac`, and `java.security.Signature` instances accessed from multiple threads. Unlike `MessageDigest`, these carry mutable per-operation state across `init → update → doFinal`/`sign`/`verify`; interleaved calls corrupt ciphertext or fold bytes from two callers into one MAC/signature that verifies for neither. Instrument via `AsyncTestContext.sharedStatefulCryptoDetector().recordAccess(cipher/mac/signature, name, thread)`. Sibling of `SHARED_MESSAGE_DIGEST` / `SHARED_SECURE_RANDOM`. |
@@ -455,7 +455,7 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 | `detectThisEscape` | `THIS_ESCAPE` | A constructor that publishes `this` before returning (starts a thread, registers a listener, stores into shared state), exposing a partially-constructed object — no final-field visibility guarantee, fields may still be default. Instrument via `recordConstructorEscape(this, how, thread)`, plus optional `recordExternalAccess(instance, thread)` / `recordConstructionComplete(instance)`. MEDIUM, escalated to HIGH when another thread observes it before completion. |
 | `detectThreadLocalRandomMisuse` | `THREAD_LOCAL_RANDOM_MISUSE` | A `ThreadLocalRandom.current()` reference cached (e.g. in a field) and used from a thread other than the one that obtained it, defeating its per-thread isolation. Instrument via `recordObtain(rng, name, thread)` then `recordUse(rng, thread)`. Distinct from `SHARED_RANDOM` (`java.util.Random`) and `SHARED_SECURE_RANDOM`. |
 
-### Phase 17 — Shared stateful JDK objects, I/O position races & contention advisories (1.7.1+)
+### Phase 17 — Shared stateful JDK objects, I/O position races & contention advisories (1.7.0+)
 | Annotation field | DetectorType | What it catches |
 |-----------------|-------------|-----------------|
 | `detectSharedByteBuffer` | `SHARED_BYTE_BUFFER` | A `ByteBuffer` (position/limit/mark are mutable state) accessed from multiple threads |
@@ -466,7 +466,7 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 | `detectHighContentionAtomic` | `HIGH_CONTENTION_ATOMIC` | CAS retry storms on hot `Atomic*` fields — advisory to switch to `LongAdder` |
 | `detectSharedJsonMapperReconfig` | `SHARED_JSON_MAPPER_RECONFIG` | Mapper (`ObjectMapper`, `Gson`) reconfigured after concurrent use began |
 
-### JDK 25/26 detectors — Phases 16 & 18 (1.7.1+ / 1.8.0+)
+### JDK 25/26 detectors — Phases 16 & 18 (1.7.0+ / 1.8.0+)
 
 These six detectors target concurrency features introduced/finalized in JDK 24–26. They
 are **wired into the `@AsyncTest` pipeline** — each has a `DetectorType` constant, a

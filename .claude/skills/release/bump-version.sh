@@ -4,7 +4,14 @@
 #   bash .claude/skills/release/bump-version.sh 1.7.0
 #
 # Two passes:
-#   1. Allowlisted files  — replace the exact current version string.
+#   1. Allowlisted files  — rewrite the current version only where it is a PIN
+#                           (<version>, <*.version>, an async-test-lib coordinate, or
+#                           asyncTestVersion). Prose that merely mentions the version is
+#                           reported, never rewritten: this pass used to be a blind
+#                           s/CURRENT/NEW/g, which moved "since 1.7.0" notes onto the new
+#                           release and reattributed the broken 1.7.0-RC jars to RCs that
+#                           never existed. A surviving PIN is a hard error; surviving prose
+#                           is printed for a human to judge.
 #   2. examples/          — replace the pin by PATTERN, whatever it currently says. Examples
 #                           resolve mavenLocal() before mavenCentral(), and CI publishes the
 #                           current version to mavenLocal before building them; an example
@@ -77,13 +84,39 @@ for f in "${ALLOWLIST[@]}"; do
     continue
   fi
   # \Q..\E quotes the dotted version so '.' can't match arbitrary characters.
-  perl -pi -e "s/\Q$CURRENT\E/$NEW/g" "$f"
+  perl -pi -e "
+    s|(<version>)\Q$CURRENT\E(</version>)|\${1}$NEW\${2}|g;
+    s|(<[A-Za-z0-9._-]+\.version>)\Q$CURRENT\E(</[A-Za-z0-9._-]+\.version>)|\${1}$NEW\${2}|g;
+    s|(async-test-lib:)\Q$CURRENT\E|\${1}$NEW|g;
+    s|(asyncTestVersion = \")\Q$CURRENT\E(\")|\${1}$NEW\${2}|g;
+  " "$f"
   echo "  ✓ $f ($hits occurrence(s))"
   changed=$((changed + hits))
 done
 
 echo
-echo "Rewrote $changed occurrence(s) across ${#ALLOWLIST[@]} allowlisted file(s)."
+remaining="$(grep -c -F "$CURRENT" "${ALLOWLIST[@]}" 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')"
+pins=$((changed - remaining))
+echo "Rewrote $pins pin(s) across ${#ALLOWLIST[@]} allowlisted file(s)."
+
+# The rewrite above is deliberately pin-shaped, so prose that merely mentions the version
+# survives. That is the point: a "since 1.7.0" floor or a historical note about which jars
+# were broken must NOT move with the release. Report them so a human judges each one.
+if [[ "$remaining" -gt 0 ]]; then
+  echo
+  echo "$remaining prose mention(s) of $CURRENT left alone — check each one:"
+  grep -n -F "$CURRENT" "${ALLOWLIST[@]}" 2>/dev/null | sed 's/^/  - /'
+fi
+
+# A pin left behind is the dangerous case: the build would resolve the PREVIOUS release.
+missed="$(grep -nE "(<version>|\.version>|async-test-lib:|asyncTestVersion = \")$CURRENT" \
+  "${ALLOWLIST[@]}" 2>/dev/null || true)"
+if [[ -n "$missed" ]]; then
+  echo
+  echo "error: pin-shaped occurrences of $CURRENT survived the rewrite:" >&2
+  echo "$missed" | sed 's/^/  - /' >&2
+  exit 1
+fi
 
 # Pass 2 — examples pin by pattern, so a stale pin is corrected even if it wasn't at $CURRENT.
 echo
