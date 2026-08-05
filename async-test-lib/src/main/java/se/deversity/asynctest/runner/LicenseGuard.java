@@ -5,7 +5,6 @@ import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.common.license.LicenseConfig;
 import se.deversity.common.license.LicenseGate;
 import se.deversity.common.license.LicenseResult;
-import se.deversity.common.license.lemonsqueezy.LemonSqueezyValidator;
 import se.deversity.common.license.lemonsqueezy.LemonSqueezyValidator.EmailBinding;
 import se.deversity.vibetags.annotations.AIIdempotent;
 import se.deversity.vibetags.annotations.AISecure;
@@ -14,7 +13,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
-import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -181,7 +179,7 @@ public final class LicenseGuard {
         private static LicenseConfig.Provider resolveProvider() {
             String raw = System.getProperty("license.provider");
             if (raw == null || raw.isBlank()) return LicenseConfig.Provider.KEYGEN;
-            return switch (raw.trim().toLowerCase(Locale.ROOT)) {
+            return switch (asciiLower(raw.trim())) {
                 case "keygen" -> LicenseConfig.Provider.KEYGEN;
                 case "lemonsqueezy", "lemon-squeezy", "ls" -> LicenseConfig.Provider.LEMONSQUEEZY;
                 default -> throw new IllegalArgumentException(
@@ -198,12 +196,33 @@ public final class LicenseGuard {
         private static @Nullable EmailBinding resolveEmailBinding() {
             String raw = System.getProperty("ls.email.binding");
             if (raw == null || raw.isBlank()) return null;
-            return switch (raw.trim().toLowerCase(Locale.ROOT)) {
+            return switch (asciiLower(raw.trim())) {
                 case "domain" -> EmailBinding.DOMAIN;
                 case "exact"  -> EmailBinding.EXACT;
                 default -> throw new IllegalArgumentException(
                     "Unknown ls.email.binding '" + raw + "' (expected 'domain' or 'exact')");
             };
+        }
+
+        /**
+         * ASCII-only lower-casing, used to match config keywords case-insensitively.
+         *
+         * <p>Deliberately not {@code String.toLowerCase}, even with {@code Locale.ROOT}. Unicode
+         * case mapping folds characters outside ASCII onto ASCII ones — the Kelvin sign lowercases
+         * to {@code k}, and dotted-I forms produce an {@code i} plus a combining mark — so a
+         * value that is not the keyword can be mapped onto it. These two properties choose which
+         * validator authorises a run, so the mapping must not be able to invent a match that the
+         * literal text does not contain. Restricting the fold to {@code A-Z} makes the comparison
+         * exactly "the same ASCII word, any case", and anything else falls to the default branch
+         * and throws.
+         */
+        private static String asciiLower(String s) {
+            StringBuilder out = new StringBuilder(s.length());
+            for (int i = 0; i < s.length(); i++) {
+                char c = s.charAt(i);
+                out.append(c >= 'A' && c <= 'Z' ? (char) (c - 'A' + 'a') : c);
+            }
+            return out.toString();
         }
 
         /** Resolves a numeric system property, absent when unset. */

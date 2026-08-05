@@ -208,6 +208,25 @@ class LicenseGuardLemonSqueezyTest {
     }
 
     @Test
+    void providerKeywordIsCaseInsensitiveButAsciiOnly() {
+        // Mixed case is accepted.
+        set("license.provider", "LemonSqueezy");
+        responseStatus = 200;
+        responseBody = validPayload(OUR_STORE, BUYER);
+        assertDoesNotThrow(() -> LicenseGuard.check(config()));
+
+        // But a character outside ASCII that Unicode case-folding would map onto an ASCII
+        // letter must not be able to impersonate the keyword. U+212A is the Kelvin sign,
+        // which String.toLowerCase folds to a plain 'k' — asciiLower leaves it alone, so
+        // this falls through to the default branch instead of selecting a provider.
+        resetCache();
+        set("license.provider", "Keygen");
+        IllegalArgumentException ex =
+            assertThrows(IllegalArgumentException.class, () -> LicenseGuard.check(config()));
+        assertTrue(ex.getMessage().contains("Unknown license.provider"), ex.getMessage());
+    }
+
+    @Test
     void nonNumericStoreIdIsRejected() {
         set("ls.store.id", "not-a-number");
         IllegalArgumentException ex =
