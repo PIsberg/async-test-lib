@@ -433,6 +433,25 @@ See [intellij-plugin/README.md](intellij-plugin/README.md) for full instructions
 
 [PolyForm Noncommercial License 1.0.0](LICENSE) — free for non-commercial use.
 
+### Commercial licensing — pricing
+
+Commercial use requires an annual license, billed per email domain: every developer on your
+company domain is covered, no per-seat keys. Buy directly:
+
+| Developers | Price (EUR/year) | Checkout |
+|---|---|---|
+| 1–9 | €250 | [Buy — 1–9 developers](https://deversityse-sas.lemonsqueezy.com/checkout/buy/cac1ef33-d4db-4dad-b718-e45e2ff83742?enabled=1989284) |
+| 10–49 | €900 | [Buy — 10–49 developers](https://deversityse-sas.lemonsqueezy.com/checkout/buy/cac1ef33-d4db-4dad-b718-e45e2ff83742?enabled=1986116) |
+| 50–199 | €2,500 | [Buy — 50–199 developers](https://deversityse-sas.lemonsqueezy.com/checkout/buy/cac1ef33-d4db-4dad-b718-e45e2ff83742?enabled=1989263) |
+| 200+ | €4,300 | [Buy — 200+ developers](https://deversityse-sas.lemonsqueezy.com/checkout/buy/cac1ef33-d4db-4dad-b718-e45e2ff83742?enabled=1989350) |
+| OEM / redistribution | from €10,000, negotiated | [email us](mailto:isberg.peter@gmail.com) |
+
+All tiers on [one checkout page](https://deversityse-sas.lemonsqueezy.com/checkout/buy/cac1ef33-d4db-4dad-b718-e45e2ff83742)
+if you prefer to pick there. Checkout is handled by Lemon Squeezy (card or PayPal), the license
+key arrives by email after payment, and the subscription renews yearly. Buy under your company
+email address — the license binds to that domain. Operator runbook and what to send customers:
+[docs/LICENSING.md](docs/LICENSING.md).
+
 ### Running without a license key
 
 | Environment | Behavior |

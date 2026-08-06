@@ -20,6 +20,7 @@ They are deliberately outside every repo:
 ```bash
 set -a; . ~/.config/deversity/lemonsqueezy.env; set +a
 echo "store=$LS_STORE_ID variant=$LS_VARIANT_UUID test_mode=$LS_TEST_MODE"
+echo "tiers: 1-9=$LS_VARIANT_ID_TIER_1_9 10-49=$LS_VARIANT_ID_TIER_10_49 50-199=$LS_VARIANT_ID_TIER_50_199 200+=$LS_VARIANT_ID_TIER_200_PLUS"
 ```
 
 If that file is missing, stop and tell the user — do not guess IDs, and never hard-code them
@@ -27,8 +28,11 @@ into the repo.
 
 **If `LS_TEST_MODE=true`, stop and say so.** A test-mode key will not validate for a real
 customer: test-mode orders live in a separate data set, and the store id a real customer would
-be given will not match `meta.store_id` on a test key. Selling from a test-mode product produces
-a licence that denies on the customer's first run.
+be given will not match `meta.store_id` on a test key. The product catalog is shared between
+modes, so nothing needs re-creating — the flag stays `true` while the store is unactivated
+(identity verification pending or rejected under Settings → General → Store activation), because
+Lemon Squeezy pins an unactivated store in test mode. Selling in that state produces a licence
+that denies on the customer's first run.
 
 ## 1. Collect the inputs
 
@@ -38,6 +42,7 @@ Required:
 |---|---|
 | **Company name** | Goes into checkout custom data, so the order is attributable |
 | **Billing email domain** | **This is the licence scope.** Validation binds on the *domain* of the buying address, so every developer at that domain is covered — and nobody outside it is |
+| **Developer count** | Picks the tier variant: 1–9 → €250/yr, 10–49 → €900/yr, 50–199 → €2,500/yr, 200+ → €4,300/yr (Lemon Squeezy caps prices at the USD 5,000 equivalent). OEM (from €10,000) is negotiated — invoice it off-platform |
 
 Ask for the billing email if the user only gave a company name. The domain is not cosmetic: it
 is the thing that decides who can run the library. A company that buys as `ops@acme-corp.com`
@@ -53,22 +58,25 @@ rather than selling them a licence that their own address makes redundant.
 No API call needed — this is a plain URL:
 
 ```bash
-COMPANY="Acme Corp"
-EMAIL="ops@acme-corp.com"
+export COMPANY="Acme Corp"
+export EMAIL="ops@acme-corp.com"
+export TIER_ID="$LS_VARIANT_ID_TIER_10_49"   # from the developer count
 
 python - <<'EOF'
 import os, urllib.parse
-company = os.environ["COMPANY"]; email = os.environ["EMAIL"]
 q = urllib.parse.urlencode({
-    "checkout[email]": email,
-    "checkout[custom][company]": company,
+    "enabled": os.environ["TIER_ID"],
+    "checkout[email]": os.environ["EMAIL"],
+    "checkout[custom][company]": os.environ["COMPANY"],
 })
 print(f"https://{os.environ['LS_STORE_SUBDOMAIN']}.lemonsqueezy.com/checkout/buy/{os.environ['LS_VARIANT_UUID']}?{q}")
 EOF
 ```
 
-This is the same URL shape `LemonSqueezyCheckout.buildCheckoutUrl(email, variantId, customData)`
-produces in `common-license-lib`, so the library and this skill stay in agreement.
+`enabled` restricts the checkout page to the one tier the customer is buying; omit it to show
+all three and let them pick. The base URL is the same shape
+`LemonSqueezyCheckout.buildCheckoutUrl(email, variantId, customData)` produces in
+`common-license-lib` — `enabled` is a storefront display filter the library never sees.
 
 Send that link to the customer. Do not attempt to pay on their behalf, and never enter card
 details for them.
@@ -125,7 +133,7 @@ as a licensing change rather than an administrative one — it moves who the lic
 Append a line to the customer log (outside git, alongside the store details):
 
 ```bash
-echo "$(date -I)  <company>  <billing-domain>  <order-id>  renews:<date>" \
+echo "$(date -I)  <company>  <billing-domain>  <tier>  <order-id>  renews:<date>" \
   >> ~/.config/deversity/customers.tsv
 ```
 
