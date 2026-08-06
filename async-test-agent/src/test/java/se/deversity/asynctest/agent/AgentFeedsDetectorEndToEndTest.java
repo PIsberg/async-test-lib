@@ -1,4 +1,5 @@
 package se.deversity.asynctest.agent;
+import org.junit.jupiter.api.Tag;
 
 import com.example.agentfixture.DirectFieldMutationBean;
 import com.example.agentfixture.SharedCounterBean;
@@ -43,6 +44,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * independent of the JUnit engine and of {@code ConcurrencyRunner}'s wiring, so a failure points at
  * the agent-to-detector chain rather than at the runner.
  */
+@Tag("e2e")
 class AgentFeedsDetectorEndToEndTest {
 
     @BeforeAll

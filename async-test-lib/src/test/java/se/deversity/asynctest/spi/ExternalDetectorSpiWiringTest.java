@@ -1,4 +1,5 @@
 package se.deversity.asynctest.spi;
+import se.deversity.asynctest.E2E;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code onTestEnd()}, and its violations reached neither the reports nor the
  * {@code failOn} gate. These tests pin the wiring that closes that gap.
  */
+@E2E
 class ExternalDetectorSpiWiringTest {
 
     @AfterEach

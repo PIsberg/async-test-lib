@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — `FLOW_PUBLISHER_CONCURRENCY`: the first Flow API detector (detector 128)
+
+`java.util.concurrent.Flow` was the one JDK concurrency API with no detector at all.
+`FlowPublisherConcurrencyDetector` records `onSubscribe` / `request` / bracketed `onNext` /
+terminal signals and reports three reactive-streams contract violations: overlapping `onNext`
+delivery (rule 1.3, HIGH — observed via a concurrent-delivery high-water mark, not inferred),
+signals after a terminal signal (rule 1.7, HIGH), and deliveries exceeding recorded demand
+(rule 1.1, MEDIUM with conditional wording, and only when at least one `request()` was
+recorded, so partial instrumentation cannot fake an overrun). Wired through the full
+synchronized set (enum, annotation attribute, config, both registries, SPI factory list,
+`AsyncTestContext.flowPublisherConcurrencyDetector()` accessor) and verified by the existing
+wiring gates.
+
+### Changed — local `mvn test` runs the plain-JUnit tier; CI still runs everything
+
+The 22 `EngineTestKit` meta-test classes plus the two agent end-to-end classes now carry
+`@Tag("e2e")` (via the `@E2E` meta-annotation) and are excluded from the default local
+`mvn test` / `gradlew test` run — measured on 2026-08-05 they were 48.5% of in-test time for
+4.9% of the tests. The `e2e` Maven profile clears the exclusion and auto-activates on the `CI`
+environment variable, so every GitHub Actions workflow (tests, publish, gradle) still runs the
+full suite with no flag changes; locally `-P e2e` / `-Pe2e` opts in. The jacoco check gate is
+skipped (and logs the skip) when the e2e tier is excluded, because that tier carries most
+`runner/` and `extension/` coverage; CI always enforces it. `E2eTagGuardTest` pins the tag set
+in both drift directions. See `docs/analysis/test-profiles-and-detector-gaps.md` for the
+measurements and design.
+
 ## [1.7.1] - 2026-08-05
 
 ### Added — a LemonSqueezy licence can now actually license a run

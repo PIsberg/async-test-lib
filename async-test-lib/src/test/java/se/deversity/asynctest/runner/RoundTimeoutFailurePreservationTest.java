@@ -1,4 +1,5 @@
 package se.deversity.asynctest.runner;
+import se.deversity.asynctest.E2E;
 
 import org.junit.jupiter.api.Test;
 import org.junit.platform.engine.TestExecutionResult;
@@ -25,6 +26,7 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  * exceptions on the round-timeout error, which the timeout path preserves as the cause chain
  * of the "Test timed out after ..." error the user sees.
  */
+@E2E
 class RoundTimeoutFailurePreservationTest {
 
     @Test

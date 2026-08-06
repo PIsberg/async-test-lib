@@ -19,6 +19,7 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  * - Livelock and starvation detection
  * - Virtual thread stress testing
  */
+@E2E
 public class AdvancedAsyncTestsTest {
 
     // ============= Deadlock Detection Tests =============

@@ -1,4 +1,5 @@
 package se.deversity.asynctest.extension;
+import se.deversity.asynctest.E2E;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestTemplate;
@@ -23,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *   <li>a method-level {@code @AsyncTest} wins over the class-level one.</li>
  * </ul>
  */
+@E2E
 class ClassLevelAsyncTestTest {
 
     @Test

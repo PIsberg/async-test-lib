@@ -27,6 +27,9 @@
 ### se.deversity.asynctest.diagnostics.FinalFieldMutationDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/FinalFieldMutationDetectorTest.java
 
+### se.deversity.asynctest.diagnostics.FlowPublisherConcurrencyDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/FlowPublisherConcurrencyDetectorTest.java
+
 ### se.deversity.asynctest.diagnostics.HighContentionAtomicDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/HighContentionAtomicDetectorTest.java
 
@@ -111,6 +114,10 @@
 ### se.deversity.asynctest.diagnostics.FinalFieldMutationDetector
 - **Strategy**: OTHER
 - **Note**: Per-field state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().
+
+### se.deversity.asynctest.diagnostics.FlowPublisherConcurrencyDetector
+- **Strategy**: OTHER
+- **Note**: Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name sets are ConcurrentHashMap.newKeySet(); counters are LongAdder / AtomicInteger with a CAS high-water mark.
 
 ### se.deversity.asynctest.diagnostics.HighContentionAtomicDetector
 - **Strategy**: OTHER

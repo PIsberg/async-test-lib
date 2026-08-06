@@ -127,6 +127,7 @@ import se.deversity.asynctest.diagnostics.FinalFieldMutationDetector;
 import se.deversity.asynctest.diagnostics.SharedKdfDetector;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 import se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector;
+import se.deversity.asynctest.diagnostics.FlowPublisherConcurrencyDetector;
 import se.deversity.asynctest.diagnostics.FutureBlockingDetector;
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -327,6 +328,7 @@ final class DetectorRegistry {
     final @Nullable LatchMisuseDetector                   latchMisuseDetector;
     final @Nullable ExecutorDeadlockDetector              executorDeadlockDetector;
     final @Nullable FutureBlockingDetector                futureBlockingDetector;
+    final @Nullable FlowPublisherConcurrencyDetector      flowPublisherConcurrencyDetector;
 
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
@@ -510,6 +512,7 @@ final class DetectorRegistry {
         latchMisuseDetector              = cfg.detectLatchMisuse              ? new LatchMisuseDetector()              : null;
         executorDeadlockDetector         = cfg.detectExecutorDeadlock         ? new ExecutorDeadlockDetector()         : null;
         futureBlockingDetector           = cfg.detectFutureBlocking           ? new FutureBlockingDetector()           : null;
+        flowPublisherConcurrencyDetector = cfg.detectFlowPublisherConcurrency ? new FlowPublisherConcurrencyDetector() : null;
     }
 
     /**
@@ -956,6 +959,10 @@ final class DetectorRegistry {
         ifIssue(futureBlockingDetector,
                 FutureBlockingDetector::analyze,
                 FutureBlockingDetector.FutureBlockingReport::hasIssues, out);
+
+        ifIssue(flowPublisherConcurrencyDetector,
+                FlowPublisherConcurrencyDetector::analyze,
+                FlowPublisherConcurrencyDetector.Report::hasIssues, out);
 
         return out;
     }

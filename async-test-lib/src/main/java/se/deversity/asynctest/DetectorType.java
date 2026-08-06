@@ -324,5 +324,9 @@ public enum DetectorType {
     /** Detects self-deadlock patterns in single-thread or bounded executors. */
     EXECUTOR_DEADLOCK,
     /** Detects blocking waits on sibling futures inside bounded executors. */
-    FUTURE_BLOCKING
+    FUTURE_BLOCKING,
+
+    // Phase 19: reactive-streams (java.util.concurrent.Flow) detectors
+    /** Detects reactive-streams contract violations on Flow subscribers: overlapping onNext delivery, signals after a terminal signal, and deliveries exceeding recorded demand. */
+    FLOW_PUBLISHER_CONCURRENCY
 }

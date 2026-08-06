@@ -1,4 +1,5 @@
 package se.deversity.asynctest.runner;
+import se.deversity.asynctest.E2E;
 
 import org.junit.jupiter.api.Test;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
@@ -22,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *   <li>Default ({@code replaySeed = 0}) produces a fresh seed per round.</li>
  * </ul>
  */
+@E2E
 class ReplaySeedTest {
 
     static final ConcurrentLinkedQueue<Long> SEEDS_OBSERVED = new ConcurrentLinkedQueue<>();

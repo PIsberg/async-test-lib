@@ -127,6 +127,7 @@ import se.deversity.asynctest.diagnostics.FinalFieldMutationDetector;
 import se.deversity.asynctest.diagnostics.SharedKdfDetector;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 import se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector;
+import se.deversity.asynctest.diagnostics.FlowPublisherConcurrencyDetector;
 import se.deversity.asynctest.diagnostics.FutureBlockingDetector;
 import se.deversity.asynctest.spi.Detector;
 import se.deversity.asynctest.spi.DetectorFactory;
@@ -1201,6 +1202,14 @@ public final class LegacyDetectorFactories {
         @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectFutureBlocking; }
         @Override public Detector create(AsyncTestConfig c) {
             return new LegacyDetectorAdapter<>(new FutureBlockingDetector(), DetectorType.FUTURE_BLOCKING, "FutureBlocking");
+        }
+    }
+
+    public static final class FlowPublisherConcurrency implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.FLOW_PUBLISHER_CONCURRENCY; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectFlowPublisherConcurrency; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new FlowPublisherConcurrencyDetector(), DetectorType.FLOW_PUBLISHER_CONCURRENCY, "FlowPublisherConcurrency");
         }
     }
 }

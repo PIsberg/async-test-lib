@@ -17,6 +17,7 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  * The new annotations let tests reset (or assert) state around every individual
  * invocation round without embedding that logic inside the test body itself.
  */
+@E2E
 class PerInvocationLifecycleTest {
 
     // ---- @BeforeEachInvocation resets state between rounds ----

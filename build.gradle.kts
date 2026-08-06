@@ -140,7 +140,14 @@ subprojects {
     }
 
     tasks.named<Test>("test") {
-        useJUnitPlatform()
+        useJUnitPlatform {
+            // Mirrors Maven's surefire.excludedGroups default: local runs skip the
+            // @Tag("e2e") engine tier. CI (Actions always sets the CI env var) and
+            // -Pe2e run the full suite.
+            if (System.getenv("CI") == null && !project.hasProperty("e2e")) {
+                excludeTags("e2e")
+            }
+        }
         // Match Maven surefire forkCount=1, reuseForks=false: new JVM for each test class
         forkEvery = 1
         // Run multiple test JVMs in parallel. forkEvery=1 already gives each class its own

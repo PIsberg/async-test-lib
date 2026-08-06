@@ -1,4 +1,5 @@
 package se.deversity.asynctest.report;
+import se.deversity.asynctest.E2E;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Verifies the known-findings baseline: file parsing, matching, update mode,
  * and end-to-end suppression of the {@code failOn} gate.
  */
+@E2E
 class BaselineTest {
 
     @TempDir

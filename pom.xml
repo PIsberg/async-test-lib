@@ -59,6 +59,13 @@
         <apiguardian.version>1.1.2</apiguardian.version>
         <!-- License mock mode: default true so tests run without a real key; override with -Dlicense.mock.mode=false -->
         <license.mock.mode>true</license.mock.mode>
+        <!-- Local `mvn test` runs the plain-JUnit tier only; @Tag("e2e") classes (the
+             EngineTestKit engine tests and agent end-to-end tests) run in CI and under
+             -P e2e, which clears both properties below. The jacoco check gate is skipped
+             alongside them because the e2e tier carries most runner/extension coverage:
+             a skipped gate is logged by jacoco, and CI always runs it. -->
+        <surefire.excludedGroups>e2e</surefire.excludedGroups>
+        <jacoco.check.skip>true</jacoco.check.skip>
         <!-- Plugin versions -->
         <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
@@ -264,6 +271,9 @@
                 <configuration>
                     <forkCount>1</forkCount>
                     <reuseForks>false</reuseForks>
+                    <!-- Local default skips the @Tag("e2e") engine tier; the e2e profile
+                         (auto-active in CI) clears this. E2eTagGuardTest pins the tag set. -->
+                    <excludedGroups>${surefire.excludedGroups}</excludedGroups>
                     <!-- @{argLine} preserves JaCoCo's late-bound agent argLine; the extra flag
                          permits AsyncTestAgent.selfAttach() to attach to the forked test JVM
                          (self-attach is disabled by default since JDK 9). -->
@@ -524,6 +534,22 @@
                     </plugin>
                 </plugins>
             </build>
+        </profile>
+        <!-- Full suite: clears the e2e tag exclusion and re-enables the coverage gate.
+             Auto-activated in GitHub Actions (which always sets the CI env var), so every
+             workflow runs everything with no flag; opt in locally with -P e2e.
+             See docs/analysis/test-profiles-and-detector-gaps.md. -->
+        <profile>
+            <id>e2e</id>
+            <activation>
+                <property>
+                    <name>env.CI</name>
+                </property>
+            </activation>
+            <properties>
+                <surefire.excludedGroups></surefire.excludedGroups>
+                <jacoco.check.skip>false</jacoco.check.skip>
+            </properties>
         </profile>
     </profiles>
 

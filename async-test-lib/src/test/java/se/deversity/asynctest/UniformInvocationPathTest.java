@@ -23,6 +23,7 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  *  - Total execution count equals threads × invocations exactly.
  *  - No "extra" execution on the coordinator thread.
  */
+@E2E
 class UniformInvocationPathTest {
 
     @Test

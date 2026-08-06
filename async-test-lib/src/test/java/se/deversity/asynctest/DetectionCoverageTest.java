@@ -37,6 +37,7 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  * being assumed away. If it ever fails because the finding now appears, that is good news and the
  * test should become a positive assertion.
  */
+@E2E
 class DetectionCoverageTest {
 
     @Test

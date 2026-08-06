@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 `@AsyncTest` is a JUnit 5 `@TestTemplate` that runs a test body on N threads for M rounds, forcing
-them to collide on a `CyclicBarrier`, and reports what 127 detectors saw. This file is the map. It
+them to collide on a `CyclicBarrier`, and reports what 128 detectors saw. This file is the map. It
 is deliberately short — it loads on every session, so anything needed only sometimes lives behind a
 link.
 
@@ -45,11 +45,12 @@ twin: the `plugins` block and the test-only logback backend, both watched by the
 ecosystem.
 
 ```bash
-mvn test                                   # everything
+mvn test                                   # local tier (@Tag("e2e") engine tests excluded)
+mvn test -P e2e                            # full suite: what CI runs (auto via env.CI)
 mvn -pl async-test-lib test                # one module
 mvn -Dtest=AsyncTestContextTest test       # one class
 mvn clean install
-./gradlew test                             # secondary build
+./gradlew test                             # secondary build (same split; -Pe2e for full)
 ./gradlew test --tests "se.deversity.asynctest.diagnostics.*"
 ```
 
@@ -61,7 +62,9 @@ pinned to 7.26.0, which reports 0 `LooseCoupling` violations where 7.17.0 report
 
 `forkEvery = 1` means each test class gets its own JVM. Nested classes matching `*$*` are excluded
 from direct discovery — they run only via JUnit's `EngineTestKit` in meta-tests such as
-`AsyncTestLibraryMetaTest`.
+`AsyncTestLibraryMetaTest`. Those meta-tests carry `@E2E` (= `@Tag("e2e")`) and are excluded from
+the default local run; the `e2e` profile (automatic in CI via the `CI` env var) runs them and
+re-enables the jacoco check gate. `E2eTagGuardTest` pins the tag set.
 
 ## Guardrails
 

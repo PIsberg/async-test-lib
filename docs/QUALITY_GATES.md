@@ -7,8 +7,19 @@ as a lifecycle phase.
 
 ## Test suite conventions
 
-`mvn test` runs the full suite (~1600 tests, ~5 min). `-Dtest=<Class>` does filter normally — add
-`-DfailIfNoSpecifiedTests=false` when scoping to a module that has no match.
+`mvn test` runs the local tier: the plain-JUnit tests, with the `@Tag("e2e")` classes excluded via
+the `surefire.excludedGroups` property. The e2e tier is the 22 `EngineTestKit` classes plus the two
+agent end-to-end classes; measured on 2026-08-05 they were 48.5% of in-test time for 4.9% of the
+tests. The `e2e` profile clears the exclusion and auto-activates on the `CI` env var, so every
+workflow still runs the full suite (~1700 tests); locally, `mvn test -P e2e`. `E2eTagGuardTest`
+pins the tag set in both drift directions.
+
+The jacoco `check` gate rides the same switch: without the e2e tier the coverage floor would fail
+over `runner/` and `extension/` code that is covered in CI, so the gate is skipped (jacoco logs the
+skip) unless the `e2e` profile runs. A skipped gate is not a passed gate; CI always runs it.
+
+`-Dtest=<Class>` does filter normally — add `-DfailIfNoSpecifiedTests=false` when scoping to a
+module that has no match, and `-P e2e` when the class is tagged `@E2E`.
 
 Surefire forks a fresh JVM per class (`reuseForks=false`), which masks cross-test JVM contamination;
 pitest's shared JVM surfaces it, so tests must not assume a pristine JVM (see

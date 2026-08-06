@@ -1901,6 +1901,21 @@ public @interface AsyncTest {
 
     boolean detectFutureBlocking() default true;
 
+    /**
+     * Enable reactive-streams contract checking on {@code java.util.concurrent.Flow}
+     * subscribers: overlapping {@code onNext} delivery, signals after a terminal signal,
+     * and deliveries exceeding recorded demand. See
+     * {@link se.deversity.asynctest.diagnostics.FlowPublisherConcurrencyDetector}.
+     * @since 1.7.1
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#FLOW_PUBLISHER_CONCURRENCY} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectFlowPublisherConcurrency() default true;
+
     // ============= License Gating (Integration) =============
 
     /**
