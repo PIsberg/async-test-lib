@@ -72,6 +72,7 @@ read them for the reasoning, not as current reference.
 | [analysis/comparison.md](analysis/comparison.md) | How async-test differs from JUnit, stress tests, ThreadSanitizer |
 | [analysis/detector-accuracy-eval.md](analysis/detector-accuracy-eval.md) | Measured detector behavior on buggy code vs its synchronized twin, enforced by `DetectorAccuracyEvalTest` |
 | [analysis/codecov-troubleshooting.md](analysis/codecov-troubleshooting.md) | Coverage-upload troubleshooting |
+| [analysis/test-profiles-and-detector-gaps.md](analysis/test-profiles-and-detector-gaps.md) | Investigation: splitting the suite into a fast local tier and a CI-only e2e tier, and which bug classes the 127 detectors miss |
 
 > **Removed docs.** `docs/CLAUDE.md` held the module layout, build commands and inlined architecture
 > notes; the orientation half moved to the repository-root [CLAUDE.md](../CLAUDE.md) and the rest
