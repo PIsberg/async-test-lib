@@ -350,6 +350,8 @@ public final class AsyncTestConfig {
     public final boolean detectExecutorDeadlock;
     /** Resolved value of {@link AsyncTest#detectFutureBlocking()} for this run. */
     public final boolean detectFutureBlocking;
+    /** Resolved value of {@link AsyncTest#detectFlowPublisherConcurrency()} for this run. */
+    public final boolean detectFlowPublisherConcurrency;
 
     // ---- Benchmarking ----
     /** Resolved value of {@link AsyncTest#enableBenchmarking()} for this run. */
@@ -517,6 +519,7 @@ public final class AsyncTestConfig {
         detectLatchMisuse               = b.detectLatchMisuse;
         detectExecutorDeadlock          = b.detectExecutorDeadlock;
         detectFutureBlocking            = b.detectFutureBlocking;
+        detectFlowPublisherConcurrency  = b.detectFlowPublisherConcurrency;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -721,6 +724,7 @@ public final class AsyncTestConfig {
             .detectLatchMisuse(ann.detectLatchMisuse())
             .detectExecutorDeadlock(ann.detectExecutorDeadlock())
             .detectFutureBlocking(ann.detectFutureBlocking())
+            .detectFlowPublisherConcurrency(ann.detectFlowPublisherConcurrency())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -883,6 +887,7 @@ public final class AsyncTestConfig {
         private boolean detectLatchMisuse               = false;
         private boolean detectExecutorDeadlock          = false;
         private boolean detectFutureBlocking            = false;
+        private boolean detectFlowPublisherConcurrency  = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -1706,6 +1711,12 @@ public final class AsyncTestConfig {
          */
         public Builder detectFutureBlocking(boolean v)                 { detectFutureBlocking = v; return this; }
         /**
+         * Sets {@link AsyncTestConfig#detectFlowPublisherConcurrency}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectFlowPublisherConcurrency(boolean v)       { detectFlowPublisherConcurrency = v; return this; }
+        /**
          * Sets {@link AsyncTestConfig#enableBenchmarking}.
          * @param v the value to use
          * @return this builder
@@ -1956,6 +1967,7 @@ public final class AsyncTestConfig {
             detectLatchMisuse = (detectAll || detectLatchMisuse) && !excludes.contains(DetectorType.LATCH_MISUSE);
             detectExecutorDeadlock = (detectAll || detectExecutorDeadlock) && !excludes.contains(DetectorType.EXECUTOR_DEADLOCK);
             detectFutureBlocking = (detectAll || detectFutureBlocking) && !excludes.contains(DetectorType.FUTURE_BLOCKING);
+            detectFlowPublisherConcurrency = (detectAll || detectFlowPublisherConcurrency) && !excludes.contains(DetectorType.FLOW_PUBLISHER_CONCURRENCY);
             return new AsyncTestConfig(this);
         }
     }

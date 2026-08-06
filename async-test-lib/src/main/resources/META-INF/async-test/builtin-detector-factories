@@ -135,3 +135,4 @@ se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedKdf
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$LatchMisuse
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ExecutorDeadlock
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$FutureBlocking
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$FlowPublisherConcurrency

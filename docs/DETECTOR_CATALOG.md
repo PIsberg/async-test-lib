@@ -1,6 +1,6 @@
 # Detector Catalog
 
-`async-test-lib` includes **127 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
+`async-test-lib` includes **128 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
 
 ---
 
@@ -2899,3 +2899,45 @@ JDK 24/25/26.
   JDK 26+), `NATIVE` (always pins), or `OTHER`. Obsolete events stay in the report but
   are annotated; use `PinningReport.hasEffectivePinningIssues()` /
   `getObsoleteEventCount()` to filter.
+
+## Phase 19: Reactive Streams — Flow API (1.7.1+)
+
+### Flow Publisher Concurrency Detector
+* **Class**: `FlowPublisherConcurrencyDetector` · **JDK feature**: `java.util.concurrent.Flow` (JDK 9+)
+* **Severity**: `HIGH` (overlapping `onNext`, signals after a terminal signal), `MEDIUM` (delivery beyond recorded demand — conditional wording, since only recorded `request()` calls are visible)
+* **Description**: The Flow API inherits the reactive-streams specification: signals to a
+  `Subscriber` must be serialized (rule 1.3), at most one terminal signal may be delivered
+  and nothing after it (rule 1.7), and a publisher must not outrun requested demand
+  (rule 1.1). A hand-rolled `Publisher` that fans deliveries out to an executor breaks
+  rule 1.3 first: two threads inside `onNext` at once corrupt any non-thread-safe
+  subscriber state. Overlap is observed, not inferred — `recordNextStart`/`recordNextEnd`
+  bracket each delivery and the finding is the high-water mark of concurrent in-flight
+  deliveries. No demand finding is emitted if no `request()` was ever recorded.
+* **Buggy Code**:
+  ```java
+  class FanOutPublisher implements Flow.Publisher<Event> {
+      private final ExecutorService pool = Executors.newFixedThreadPool(4);
+      public void publish(Event e) {
+          for (Flow.Subscriber<? super Event> s : subscribers) {
+              pool.submit(() -> s.onNext(e));   // rule 1.3 violation: unserialized onNext
+          }
+      }
+  }
+  ```
+* **Fixed Code**:
+  ```java
+  // SubmissionPublisher serializes delivery per subscriber and honors demand
+  try (SubmissionPublisher<Event> publisher = new SubmissionPublisher<>()) {
+      publisher.subscribe(subscriber);
+      publisher.submit(event);
+  }
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.flowPublisherConcurrencyDetector();  // or new FlowPublisherConcurrencyDetector()
+  d.recordNextStart(subscriber, threadA);
+  d.recordNextStart(subscriber, threadB);   // 2 threads inside onNext at once → flagged
+  d.recordNextEnd(subscriber);
+  d.recordNextEnd(subscriber);
+  assertTrue(d.analyze().hasIssues());
+  ```

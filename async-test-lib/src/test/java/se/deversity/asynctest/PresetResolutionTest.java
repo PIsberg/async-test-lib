@@ -261,6 +261,7 @@ class PresetResolutionTest {
         @Override public boolean detectLatchMisuse() { return def("detectLatchMisuse"); }
         @Override public boolean detectExecutorDeadlock() { return def("detectExecutorDeadlock"); }
         @Override public boolean detectFutureBlocking() { return def("detectFutureBlocking"); }
+        @Override public boolean detectFlowPublisherConcurrency() { return def("detectFlowPublisherConcurrency"); }
         @Override public boolean enableBenchmarking() { return def("enableBenchmarking"); }
         @Override public double benchmarkRegressionThreshold() { return def("benchmarkRegressionThreshold"); }
         @Override public boolean failOnBenchmarkRegression() { return def("failOnBenchmarkRegression"); }

@@ -130,6 +130,7 @@ import se.deversity.asynctest.diagnostics.FinalFieldMutationDetector;
 import se.deversity.asynctest.diagnostics.SharedKdfDetector;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 import se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector;
+import se.deversity.asynctest.diagnostics.FlowPublisherConcurrencyDetector;
 import se.deversity.asynctest.diagnostics.FutureBlockingDetector;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICallersOnly;
@@ -348,6 +349,7 @@ public final class AsyncTestContext {
     final @Nullable LatchMisuseDetector                   latchMisuseDetector;
     final @Nullable ExecutorDeadlockDetector              executorDeadlockDetector;
     final @Nullable FutureBlockingDetector                futureBlockingDetector;
+    final @Nullable FlowPublisherConcurrencyDetector      flowPublisherConcurrencyDetector;
 
     // ---- Agent-telemetry bridge target (1.7.0+) ----
     // Exposed via atomicityValidator() so se.deversity.asynctest.telemetry.TelemetryBridge
@@ -489,6 +491,7 @@ public final class AsyncTestContext {
         latchMisuseDetector                    = registry.latchMisuseDetector;
         executorDeadlockDetector               = registry.executorDeadlockDetector;
         futureBlockingDetector                 = registry.futureBlockingDetector;
+        flowPublisherConcurrencyDetector       = registry.flowPublisherConcurrencyDetector;
         // Agent-telemetry bridge target
         atomicityValidator                     = registry.atomicityValidator;
 
@@ -2569,6 +2572,22 @@ public final class AsyncTestContext {
      */
     public static FutureBlockingDetector futureBlockingDetector() {
         return require("detectFutureBlocking", c -> c.futureBlockingDetector);
+    }
+
+    /**
+     * Returns the {@link FlowPublisherConcurrencyDetector} for the current test.
+     *
+     * <p>Bracket each {@code onNext} delivery with {@code recordNextStart} /
+     * {@code recordNextEnd}, record demand with {@code recordRequest}, and terminal
+     * signals with {@code recordComplete} / {@code recordError}.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectFlowPublisherConcurrency = false}
+     * @since 1.7.1
+     *
+     * @return the {@link FlowPublisherConcurrencyDetector} for the active {@code @AsyncTest} context
+     */
+    public static FlowPublisherConcurrencyDetector flowPublisherConcurrencyDetector() {
+        return require("detectFlowPublisherConcurrency", c -> c.flowPublisherConcurrencyDetector);
     }
 
     // ---- Phase 1 / Phase 3 detector accessors ----
