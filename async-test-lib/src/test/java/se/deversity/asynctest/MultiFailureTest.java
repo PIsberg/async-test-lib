@@ -17,6 +17,7 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  * silently dropped. Now a CopyOnWriteArrayList collects every failure and the error
  * message names all of them (with the first as cause and the rest as suppressed).
  */
+@E2E
 class MultiFailureTest {
 
     @Test

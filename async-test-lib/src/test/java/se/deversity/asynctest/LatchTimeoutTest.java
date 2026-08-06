@@ -14,6 +14,7 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  * forever. The runner now throws an AssertionError after (timeoutMs + 5s), so the
  * test fails quickly and the error message shows how many threads completed.
  */
+@E2E
 class LatchTimeoutTest {
 
     @Test

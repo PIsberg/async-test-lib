@@ -1,4 +1,5 @@
 package se.deversity.asynctest.agent;
+import org.junit.jupiter.api.Tag;
 
 import com.example.agentfixture.BeforeAttachBean;
 import net.bytebuddy.agent.ByteBuddyAgent;
@@ -34,6 +35,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * example an IDE launch), {@link #attachOnce()} detects the missing capability and aborts
  * the whole class via {@link org.junit.jupiter.api.Assumptions}.
  */
+@Tag("e2e")
 class SelfAttachTest {
 
     @BeforeAll

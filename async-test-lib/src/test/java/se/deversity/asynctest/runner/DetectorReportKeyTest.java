@@ -1,4 +1,5 @@
 package se.deversity.asynctest.runner;
+import se.deversity.asynctest.E2E;
 
 import org.junit.jupiter.api.Test;
 import org.junit.platform.testkit.engine.EngineTestKit;
@@ -36,6 +37,7 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  *       brand-new data race.</li>
  * </ul>
  */
+@E2E
 class DetectorReportKeyTest {
 
     /** The ASCII escape character that opens every ANSI colour sequence. */

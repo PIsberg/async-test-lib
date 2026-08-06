@@ -1,4 +1,5 @@
 package se.deversity.asynctest.runner;
+import se.deversity.asynctest.E2E;
 
 import org.junit.jupiter.api.Test;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
@@ -28,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *       that uses awaitAsync inside the body.</li>
  * </ul>
  */
+@E2E
 class AsyncBodyRunnerTest {
 
     static final AtomicInteger ASYNC_COMPLETIONS = new AtomicInteger(0);

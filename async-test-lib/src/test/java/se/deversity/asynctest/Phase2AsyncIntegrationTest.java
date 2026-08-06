@@ -24,6 +24,7 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  * 3. Detector reports are generated and meaningful
  * 4. Detection works across multiple invocations
  */
+@E2E
 public class Phase2AsyncIntegrationTest {
 
     // ============= False Sharing Integration Test =============

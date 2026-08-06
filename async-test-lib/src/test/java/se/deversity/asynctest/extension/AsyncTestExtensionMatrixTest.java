@@ -1,4 +1,5 @@
 package se.deversity.asynctest.extension;
+import se.deversity.asynctest.E2E;
 
 import org.junit.jupiter.api.Test;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
@@ -20,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>The runner's per-thread execution semantics are covered elsewhere; this
  * class only needs to confirm the matrix wiring in AsyncTestExtension.
  */
+@E2E
 class AsyncTestExtensionMatrixTest {
 
     @Test

@@ -129,6 +129,10 @@
                             <goal>check</goal>
                         </goals>
                         <configuration>
+                            <!-- True unless the e2e profile runs: the excluded engine tier
+                                 carries most runner/extension coverage, so gating a partial
+                                 run would fail over code that is covered in CI. -->
+                            <skip>${jacoco.check.skip}</skip>
                             <rules>
                                 <rule>
                                     <element>BUNDLE</element>

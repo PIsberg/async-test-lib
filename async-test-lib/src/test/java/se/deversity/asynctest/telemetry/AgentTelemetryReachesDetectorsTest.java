@@ -1,4 +1,5 @@
 package se.deversity.asynctest.telemetry;
+import se.deversity.asynctest.E2E;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -37,6 +38,7 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  * published from the worker threads of a live {@code @AsyncTest} run has to be drained into
  * that run's detector and be visible to the {@code failOn} gate.
  */
+@E2E
 class AgentTelemetryReachesDetectorsTest {
 
     @AfterEach

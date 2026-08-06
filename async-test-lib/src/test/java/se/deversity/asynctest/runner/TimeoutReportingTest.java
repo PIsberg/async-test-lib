@@ -1,4 +1,5 @@
 package se.deversity.asynctest.runner;
+import se.deversity.asynctest.E2E;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * it through {@code timeoutError} a second time, so a single timeout produced two
  * {@code onTimeout} callbacks and two copies of every report.
  */
+@E2E
 class TimeoutReportingTest {
 
     private static final String MULTIPLIER_PROPERTY = "async-test.timeout.multiplier";

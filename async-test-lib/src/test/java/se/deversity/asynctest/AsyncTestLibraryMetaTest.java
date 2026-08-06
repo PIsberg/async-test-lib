@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
 
+@E2E
 public class AsyncTestLibraryMetaTest {
 
     @Test

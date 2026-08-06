@@ -1,4 +1,5 @@
 package se.deversity.asynctest.runner;
+import se.deversity.asynctest.E2E;
 
 import org.junit.jupiter.api.Test;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
@@ -28,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * (severity HIGH) by recording the same {@link MessageDigest} instance from
  * every worker thread — also exercising {@code includes = {...}} end-to-end.
  */
+@E2E
 class FailOnGateTest {
 
     @Test

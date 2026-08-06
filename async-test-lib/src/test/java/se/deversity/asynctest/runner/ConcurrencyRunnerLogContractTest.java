@@ -1,4 +1,5 @@
 package se.deversity.asynctest.runner;
+import se.deversity.asynctest.E2E;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
@@ -33,6 +34,7 @@ import org.junit.platform.testkit.engine.EngineTestKit;
  * <p>Renaming an event or a field asserted here is a breaking change. See CLAUDE.md, "Logging".
  */
 @DisplayName("ConcurrencyRunner DEBUG events")
+@E2E
 class ConcurrencyRunnerLogContractTest {
 
     private ch.qos.logback.classic.Logger runnerLog;

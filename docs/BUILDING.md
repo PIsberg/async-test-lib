@@ -22,8 +22,11 @@ cd async-test-lib
 ### Maven
 
 ```bash
-# Run all library tests
+# Run the local tier (plain JUnit; @Tag("e2e") engine tests excluded)
 mvn test
+
+# Run the full suite including the e2e tier (what CI runs automatically)
+mvn test -P e2e
 
 # Build and install to local Maven repository
 mvn clean install
@@ -47,8 +50,11 @@ mvn javadoc:javadoc
 The Gradle wrapper (`gradlew` / `gradlew.bat`) is included — no local Gradle installation needed.
 
 ```bash
-# Run all library tests
+# Run the local tier (plain JUnit; @Tag("e2e") engine tests excluded)
 ./gradlew test
+
+# Run the full suite including the e2e tier (what CI runs)
+./gradlew test -Pe2e
 
 # Build and publish to local Maven repository
 ./gradlew publishToMavenLocal
