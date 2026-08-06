@@ -20,7 +20,7 @@ They are deliberately outside every repo:
 ```bash
 set -a; . ~/.config/deversity/lemonsqueezy.env; set +a
 echo "store=$LS_STORE_ID variant=$LS_VARIANT_UUID test_mode=$LS_TEST_MODE"
-echo "tiers: 1-9=$LS_VARIANT_ID_TIER_1_9 10-49=$LS_VARIANT_ID_TIER_10_49 50-199=$LS_VARIANT_ID_TIER_50_199"
+echo "tiers: 1-9=$LS_VARIANT_ID_TIER_1_9 10-49=$LS_VARIANT_ID_TIER_10_49 50-199=$LS_VARIANT_ID_TIER_50_199 200+=$LS_VARIANT_ID_TIER_200_PLUS"
 ```
 
 If that file is missing, stop and tell the user — do not guess IDs, and never hard-code them
@@ -42,7 +42,7 @@ Required:
 |---|---|
 | **Company name** | Goes into checkout custom data, so the order is attributable |
 | **Billing email domain** | **This is the licence scope.** Validation binds on the *domain* of the buying address, so every developer at that domain is covered — and nobody outside it is |
-| **Developer count** | Picks the tier variant: 1–9 → €250/yr, 10–49 → €900/yr, 50–199 → €2,500/yr. 200+ (€6,000) and OEM (from €10,000) are not self-serve — invoice those off-platform |
+| **Developer count** | Picks the tier variant: 1–9 → €250/yr, 10–49 → €900/yr, 50–199 → €2,500/yr, 200+ → €4,300/yr (Lemon Squeezy caps prices at the USD 5,000 equivalent). OEM (from €10,000) is negotiated — invoice it off-platform |
 
 Ask for the billing email if the user only gave a company name. The domain is not cosmetic: it
 is the thing that decides who can run the library. A company that buys as `ops@acme-corp.com`

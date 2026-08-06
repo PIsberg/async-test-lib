@@ -69,9 +69,9 @@ env file.
 ## Step 2 — send the checkout link
 
 The product has one tier variant per team size, priced in EUR per year: 1–9 developers at 250,
-10–49 at 900, 50–199 at 2,500. Pick the tier from the customer's developer count and take its
-numeric variant id from the env file (`LS_VARIANT_ID_TIER_1_9`, `LS_VARIANT_ID_TIER_10_49`,
-`LS_VARIANT_ID_TIER_50_199`):
+10–49 at 900, 50–199 at 2,500, 200+ at 4,300. Pick the tier from the customer's developer count
+and take its numeric variant id from the env file (`LS_VARIANT_ID_TIER_1_9`,
+`LS_VARIANT_ID_TIER_10_49`, `LS_VARIANT_ID_TIER_50_199`, `LS_VARIANT_ID_TIER_200_PLUS`):
 
 ```
 https://<LS_STORE_SUBDOMAIN>.lemonsqueezy.com/checkout/buy/<LS_VARIANT_UUID>
@@ -80,10 +80,9 @@ https://<LS_STORE_SUBDOMAIN>.lemonsqueezy.com/checkout/buy/<LS_VARIANT_UUID>
     &checkout%5Bcustom%5D%5Bcompany%5D=<their-company-name>
 ```
 
-`enabled` restricts the checkout to that one tier; omit it to let the customer pick. Two tiers
-are **not** self-serve: 200+ developers (6,000/year) exceeds Lemon Squeezy's price cap of
-USD 5,000-equivalent per variant, and OEM/redistribution (from 10,000) is negotiated — both are
-invoiced off-platform.
+`enabled` restricts the checkout to that one tier; omit it to let the customer pick. The 200+
+price is 4,300 rather than a rounder number because Lemon Squeezy caps variant prices at the
+USD 5,000 equivalent. OEM/redistribution (from 10,000) is negotiated and invoiced off-platform.
 
 The customer pays. You do not enter their payment details for them.
 
