@@ -102,7 +102,6 @@ import se.deversity.asynctest.diagnostics.ThreadStarvationDetector;
 import se.deversity.asynctest.diagnostics.TimerDetector;
 import se.deversity.asynctest.diagnostics.UnboundedQueueDetector;
 import se.deversity.asynctest.diagnostics.UncaughtExceptionHandlerDetector;
-import se.deversity.asynctest.diagnostics.UncommittedChangesDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadCarrierExhaustionDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadContextLeakDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadCpuBoundTaskDetector;
@@ -272,7 +271,6 @@ public final class AsyncTestContext {
     final @Nullable NestedMonitorLockoutDetector        nestedMonitorLockoutDetector;
     final @Nullable LockDowngradeDetector               lockDowngradeDetector;
     final @Nullable InheritableThreadLocalMisuseDetector inheritableThreadLocalMisuseDetector;
-    final @Nullable UncommittedChangesDetector           uncommittedChangesDetector;
 
     // ---- Phase 10: API Traps & Subtle Concurrency Bugs ----
     final @Nullable ThreadLocalContaminationDetector         threadLocalContaminationDetector;
@@ -427,7 +425,6 @@ public final class AsyncTestContext {
         nestedMonitorLockoutDetector           = registry.nestedMonitorLockoutDetector;
         lockDowngradeDetector                  = registry.lockDowngradeDetector;
         inheritableThreadLocalMisuseDetector   = registry.inheritableThreadLocalMisuseDetector;
-        uncommittedChangesDetector             = registry.uncommittedChangesDetector;
         threadLocalContaminationDetector       = registry.threadLocalContaminationDetector;
         atomicNonAtomicUpdateDetector          = registry.atomicNonAtomicUpdateDetector;
         synchronizedCollectionIterationDetector = registry.synchronizedCollectionIterationDetector;
@@ -1790,28 +1787,6 @@ public final class AsyncTestContext {
      */
     public static InheritableThreadLocalMisuseDetector inheritableThreadLocalMisuseDetector() {
         return inheritableThreadLocalMisuseMonitor();
-    }
-
-    /**
-     * Returns the {@link UncommittedChangesDetector} for the current test.
-     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectUncommittedChanges = false}
-     * @deprecated use {@link #uncommittedChangesDetector()}
-     *
-     * @return the {@link UncommittedChangesDetector} for the active {@code @AsyncTest} context
-     */
-    @Deprecated
-    public static UncommittedChangesDetector uncommittedChangesMonitor() {
-        return require("detectUncommittedChanges", c -> c.uncommittedChangesDetector);
-    }
-
-    /**
-     * Returns the {@link UncommittedChangesDetector} for the current test.
-     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectUncommittedChanges = false}
-     *
-     * @return the {@link UncommittedChangesDetector} for the active {@code @AsyncTest} context
-     */
-    public static UncommittedChangesDetector uncommittedChangesDetector() {
-        return uncommittedChangesMonitor();
     }
 
     /**

@@ -39,6 +39,39 @@ public class AtomicityValidatorTest {
                 "Single-thread compound operation must not be flagged for cross-thread race");
     }
 
+    // ---- Harness-derived happens-before: rounds are ordered, cross-round pairs cannot race ----
+
+    @Test
+    void crossRoundAccessesOrderedByTheHarnessAreNotFlagged() {
+        AtomicityValidator validator = new AtomicityValidator();
+
+        validator.markInvocationStart();
+        validator.recordFieldAccess("handoff", 1, true, 101L);   // round 1: thread 101 writes
+
+        validator.markInvocationStart();
+        validator.recordFieldAccess("handoff", 1, false, 202L);  // round 2: thread 202 reads
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+
+        assertFalse(report.hasIssues(),
+                "a write in round 1 and a read in round 2 are ordered by the harness's own "
+                        + "latch/submit happens-before edges and must not be reported");
+    }
+
+    @Test
+    void sameRoundMixedAccessStillFlaggedAfterEpochScoping() {
+        AtomicityValidator validator = new AtomicityValidator();
+
+        validator.markInvocationStart();
+        validator.recordFieldAccess("state", 1, true, 101L);
+        validator.recordFieldAccess("state", 1, false, 202L);
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+
+        assertFalse(report.unsafeFieldAccesses.isEmpty(),
+                "mixed read/write from two threads within one round must still be flagged");
+    }
+
     @Test
     void checkThenActViolationDetected() {
         AtomicityValidator validator = new AtomicityValidator();

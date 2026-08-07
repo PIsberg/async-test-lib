@@ -82,8 +82,8 @@ class DetectorRegistrySpiTest {
     @Test
     void adapter_surfacesStructuredViolationsThroughSpi() throws Exception {
         // Narrow the config to ONLY SHARED_MESSAGE_DIGEST so other detector
-        // factories don't activate and emit unrelated findings (e.g.
-        // UncommittedChangesDetector). detectAll=true plus excluding every
+        // factories don't activate and emit unrelated findings. detectAll=true
+        // plus excluding every
         // other type achieves that.
         AsyncTestConfig.Builder b = AsyncTestConfig.builder().detectAll(true);
         for (DetectorType t : DetectorType.values()) {

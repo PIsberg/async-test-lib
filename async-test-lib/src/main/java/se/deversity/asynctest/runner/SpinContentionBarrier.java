@@ -26,8 +26,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  * the barrier is re-usable across invocation rounds.
  *
  * <p><strong>Interruption:</strong> the spin loop checks {@link Thread#interrupted()} every
- * 64 iterations and throws {@link InterruptedException} if the flag is set, ensuring
- * virtual-thread cooperative yield points and clean test teardown.
+ * 64 iterations and throws {@link InterruptedException} if the flag is set, so cancelled
+ * rounds tear down cleanly. Note that neither {@link Thread#onSpinWait()} nor the
+ * interrupted-flag check is a <em>virtual-thread scheduling point</em>: a spinning virtual
+ * thread never unmounts from its carrier, which is why {@code ConcurrencyRunner} always
+ * selects the {@code CyclicBarrier} path for {@code useVirtualThreads = true} runs
+ * regardless of the spin-barrier system property.
  *
  * @since 1.6.0
  */

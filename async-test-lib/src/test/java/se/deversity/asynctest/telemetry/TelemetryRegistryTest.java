@@ -43,6 +43,44 @@ class TelemetryRegistryTest {
     }
 
     @Test
+    void recordAccessAfterStopIsDiscardedInsteadOfBuffered() {
+        TelemetryRegistry.start();
+        TelemetryRegistry.stop();
+
+        // After stop() there is no drain thread left, ever. Buffering here just fills the
+        // ring until it is full, at which point every instrumented thread in the JVM used
+        // to spin forever inside publish() — including application threads running woven
+        // getters during JVM shutdown, hanging the shutdown itself.
+        long publishedBefore = TelemetryRegistry.buffer().publishedCount();
+        TelemetryRegistry.recordAccess(Thread.currentThread().threadId(), "StoppedService", "setValue");
+        assertEquals(publishedBefore, TelemetryRegistry.buffer().publishedCount(),
+                "recordAccess after stop() must discard the event, not buffer it for a consumer "
+                        + "that no longer exists");
+    }
+
+    @Test
+    void periodicDrainSurvivesCallbackStackOverflowError() throws Exception {
+        CountDownLatch delivered = new CountDownLatch(1);
+        AtomicBoolean thrown = new AtomicBoolean(false);
+        TelemetryRegistry.start((tid, targetField, isWrite) -> {
+            if (thrown.compareAndSet(false, true)) {
+                throw new StackOverflowError("detector callback recursed");
+            }
+            delivered.countDown();
+        });
+
+        TelemetryRegistry.recordAccess(Thread.currentThread().threadId(), "ErrService", "setA");
+
+        // A task that throws out of scheduleAtFixedRate cancels every future execution:
+        // before the fix a single callback Error killed the periodic drain for the rest of
+        // the JVM, and no event was ever delivered again. The drain must swallow the Error
+        // (same containment rule as DetectorRegistry.ifIssue) and redeliver on a later cycle.
+        assertTrue(delivered.await(5, TimeUnit.SECONDS),
+                "a callback Error must not kill the periodic drain — the event should be "
+                        + "redelivered on the next 1ms cycle");
+    }
+
+    @Test
     void testCallbackExecution() throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
         List<String> events = Collections.synchronizedList(new ArrayList<>());

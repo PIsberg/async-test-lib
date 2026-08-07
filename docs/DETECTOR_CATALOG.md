@@ -1,6 +1,6 @@
 # Detector Catalog
 
-`async-test-lib` includes **128 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
+`async-test-lib` includes **127 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
 
 ---
 
@@ -1586,29 +1586,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ## Phase 9: Repository & Environment State
 
-### 72. Uncommitted Changes Detector
-* **Severity**: `LOW`
-* **Description**: Runs `git status --porcelain` to surface untracked or uncommitted files in the repository at test time, helping catch forgotten local edits that would make test behavior diverge from what CI sees on a clean checkout. The subprocess runs **once per JVM** and every later call replays the result — forking it per test method cost 99% of the whole analysis sweep. In a runner that reuses one JVM for a whole session, committing mid-session will not change what this detector reports until the JVM restarts.
-* **Buggy Code**:
-  ```java
-  @AsyncTest(threads = 4)
-  void testFeature() {
-      // Developer forgot to commit a config change before running the stress test;
-      // CI checks out a clean tree and the test behaves differently.
-  }
-  ```
-* **Fixed Code**:
-  ```java
-  // Before merging/publishing, verify a clean tree:
-  UncommittedChangesReport report = new UncommittedChangesDetector().analyze();
-  assertFalse(report.hasIssues(), "Uncommitted changes: " + report.uncommittedFiles);
-  ```
-
----
-
-## Phase 10: API Traps & Subtle Concurrency Bugs
-
-### 73. ThreadLocal Contamination Detector
+### 72. ThreadLocal Contamination Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `ThreadLocal` values that bleed from one pooled-thread task into the next task reusing the same thread. Unlike a plain memory leak, this is a correctness bug — request-scoped state such as MDC loggers or security contexts silently becomes visible to an unrelated later task.
 * **Buggy Code**:
@@ -1635,7 +1613,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 74. Atomic/Non-Atomic Update Mixing Detector
+### 73. Atomic/Non-Atomic Update Mixing Detector
 * **Severity**: `HIGH`
 * **Description**: Detects non-atomic compound updates on `AtomicInteger`/`AtomicLong`/`AtomicReference` — a `get()` followed by a later `set()` instead of `compareAndSet()`/`updateAndGet()`. The per-operation atomicity of the Atomic* classes does not make the surrounding read-modify-write sequence atomic, so concurrent updates are silently lost.
 * **Buggy Code**:
@@ -1657,7 +1635,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 75. Synchronized Collection Iteration Detector
+### 74. Synchronized Collection Iteration Detector
 * **Severity**: `HIGH`
 * **Description**: Detects iteration over `Collections.synchronizedList`/`synchronizedMap`/`synchronizedSet` wrappers without holding the wrapper's own intrinsic lock, as the JDK Javadoc requires. Unsynchronized iteration allows a concurrent modification to throw `ConcurrentModificationException` or silently skip elements.
 * **Buggy Code**:
@@ -1683,7 +1661,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 76. Shared Formatter Detector
+### 75. Shared Formatter Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `java.util.Formatter`, `PrintWriter`, and `PrintStream` instances (including `System.out`/`System.err`) accessed concurrently from multiple threads without external synchronization. These classes are not thread-safe, so concurrent use interleaves output or corrupts internal formatting state.
 * **Buggy Code**:
@@ -1706,7 +1684,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 77. ConcurrentMap Compute Recursion Detector
+### 76. ConcurrentMap Compute Recursion Detector
 * **Severity**: `HIGH`
 * **Description**: Detects recursive calls to `ConcurrentHashMap.computeIfAbsent`/`compute`/`merge` on the same map and key from within the mapping function itself — a well-known JDK footgun that infinite-loops on Java 8 and throws `IllegalStateException` on Java 9+, most commonly triggered by naive recursive memoization.
 * **Buggy Code**:
@@ -1729,7 +1707,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 78. Synchronized-on-Literal Detector
+### 77. Synchronized-on-Literal Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `synchronized` blocks locking on interned `String` literals or JVM-cached boxed `Integer`/`Long` values (`-128..127`). Because the JVM shares these instances, unrelated classes synchronizing on the same literal or small integer share a single JVM-wide monitor, causing silent cross-module lock coupling and potential deadlock.
 * **Buggy Code**:
@@ -1751,7 +1729,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 79. Public Lock Exposure Detector
+### 78. Public Lock Exposure Detector
 * **Severity**: `HIGH`
 * **Description**: Detects classes that synchronize on `this` (or use `synchronized` instance methods) while the instance is publicly reachable, letting external callers acquire the same monitor. This enables deadlock against an external lock holder and violates the encapsulation invariant that only the class controls its own synchronization.
 * **Buggy Code**:
@@ -1776,7 +1754,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 80. ForkJoinTask Blocking Detector
+### 79. ForkJoinTask Blocking Detector
 * **Severity**: `HIGH`
 * **Description**: Detects blocking calls (`Thread.sleep`, `Object.wait`, `Future.get()`, blocking I/O) made from within a `ForkJoinTask` body. `ForkJoinPool` uses a bounded set of carrier threads, so a blocked task ties one up without doing useful work, starving every other submitted task and parallel stream.
 * **Buggy Code**:
@@ -1799,7 +1777,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   );
   ```
 
-### 81. Optimistic Read Validation Detector
+### 80. Optimistic Read Validation Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `StampedLock` optimistic reads whose data is used without a matching `validate(stamp)` call, or where `validate()` fails but the stale data is used anyway. An optimistic read stamp is only valid if no write lock was acquired in between, so skipping validation silently introduces torn-snapshot data corruption.
 * **Buggy Code**:
@@ -1822,7 +1800,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   process(localX, localY);
   ```
 
-### 82. CompletableFuture Common-Pool Blocking Detector
+### 81. CompletableFuture Common-Pool Blocking Detector
 * **Severity**: `HIGH`
 * **Description**: Detects blocking operations executed inside `CompletableFuture` stages submitted without an explicit `Executor` — i.e. running on the shared `ForkJoinPool.commonPool()`. Blocking there starves that pool for every other caller in the JVM, including parallel streams.
 * **Buggy Code**:
@@ -1842,7 +1820,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ## Phase 11: Thread-Safety of Additional Types
 
-### 83. Shared Matcher Detector
+### 82. Shared Matcher Detector
 * **Severity**: `HIGH`
 * **Description**: Detects a single `java.util.regex.Matcher` instance used concurrently by multiple threads. Unlike the thread-safe `Pattern`, `Matcher` carries per-match state (position, groups, last-append offset), so concurrent use produces incorrect matches or `StringIndexOutOfBoundsException`.
 * **Buggy Code**:
@@ -1863,7 +1841,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 84. Shared DecimalFormat Detector
+### 83. Shared DecimalFormat Detector
 * **Severity**: `HIGH`
 * **Description**: Detects a single `DecimalFormat`/`NumberFormat` instance shared across threads without synchronization. Neither class is thread-safe; concurrent `format()`/`parse()` calls corrupt internal multiplier and grouping state, producing garbled output or `ParseException` — the numeric-formatting equivalent of `SimpleDateFormat` misuse.
 * **Buggy Code**:
@@ -1884,7 +1862,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 85. WeakReference Race Detector
+### 84. WeakReference Race Detector
 * **Severity**: `HIGH`
 * **Description**: Detects two failure modes around `WeakReference`/`SoftReference`: using `get()`'s result without a null check, and a referent observed non-null on one thread but null on another, indicating it was collected mid-test. Either pattern produces an intermittent `NullPointerException` driven by GC timing.
 * **Buggy Code**:
@@ -1908,7 +1886,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 86. Stateful Lambda Detector
+### 85. Stateful Lambda Detector
 * **Severity**: `HIGH`
 * **Description**: Detects lambdas/`Runnable`/`Callable` instances that capture a mutable container (an array, an outer field, or an Atomic used via get+set) and are subsequently executed concurrently. The JVM's effectively-final rule only covers the captured *reference*, not a mutable container's contents, so shared execution introduces a data race.
 * **Buggy Code**:
@@ -1928,7 +1906,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   executor.submit(task);
   ```
 
-### 87. Shared MessageDigest Detector
+### 86. Shared MessageDigest Detector
 * **Severity**: `HIGH`
 * **Description**: Detects a single `java.security.MessageDigest` instance shared across threads. Its internal digest state (running hash buffer, byte count, padding) is mutated by every `update()`/`digest()` call, so unsynchronized concurrent access corrupts the resulting hash without throwing any exception (the detector observes sharing, not locks, so externally synchronized sharing is flagged too).
 * **Buggy Code**:
@@ -1953,7 +1931,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ## Phase 12: Operational & Hygiene Concurrency Issues
 
-### 88. Interrupt Swallowing Detector
+### 87. Interrupt Swallowing Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `catch (InterruptedException e)` blocks that neither restore the interrupt flag nor rethrow, permanently suppressing the cooperative-cancellation signal so executors and blocking operations upstream can no longer observe that the thread was interrupted.
 * **Buggy Code**:
@@ -1974,7 +1952,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 89. MDC Context Leak Detector
+### 88. MDC Context Leak Detector
 * **Severity**: `MEDIUM`
 * **Description**: Detects SLF4J MDC (Mapped Diagnostic Context) entries not cleared at task end. When a thread pool reuses a thread, diagnostic context (request ID, user, trace ID) set by one task leaks into the next task run on that thread, making unrelated log lines look correlated.
 * **Buggy Code**:
@@ -1997,7 +1975,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 90. System Property Mutation Detector
+### 89. System Property Mutation Detector
 * **Severity**: `MEDIUM`
 * **Description**: Detects concurrent `System.setProperty()`/`clearProperty()` calls during an async test run. System properties are global mutable state backed by a single `Properties` instance, so concurrent writers race and pollute configuration read by unrelated threads or later tests.
 * **Buggy Code**:
@@ -2023,7 +2001,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 91. Future Ignored Detector
+### 90. Future Ignored Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `Future` instances returned from `ExecutorService.submit()` that are never inspected via `get()`/`isDone()`/`isCancelled()`/`cancel()`. When the submitted task throws, the exception is captured inside the `Future` and silently discarded if no one ever checks it.
 * **Buggy Code**:
@@ -2041,7 +2019,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 92. Explicit GC Detector
+### 91. Explicit GC Detector
 * **Severity**: `LOW`
 * **Description**: Detects explicit `System.gc()`/`Runtime.gc()` invocations during a concurrent test run. Explicit GC causes a stop-the-world pause of indeterminate length, inflating latency measurements and skewing thread-scheduling timing enough to mask real concurrency bugs.
 * **Buggy Code**:
@@ -2059,7 +2037,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 93. Deprecated Thread API Detector
+### 92. Deprecated Thread API Detector
 * **Severity**: `HIGH`
 * **Description**: Detects use of the removed/deprecated `Thread.stop()`, `suspend()`, `resume()`, `destroy()`, and `countStackFrames()` methods. `stop()` releases all monitors held by the thread, leaving shared state partially updated, and `suspend()`/`resume()` are inherently deadlock-prone.
 * **Buggy Code**:
@@ -2081,7 +2059,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   worker.join();
   ```
 
-### 94. Shared XML Parser Detector
+### 93. Shared XML Parser Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `DocumentBuilder`/`SAXParser`/`Transformer`/`XPath` instances shared across threads. Unlike their corresponding factories, these parser objects are not thread-safe, and concurrent parse/transform/evaluate calls corrupt results or throw `ConcurrentModificationException`.
 * **Buggy Code**:
@@ -2101,7 +2079,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 95. Boxed Primitive Lock Detector
+### 94. Boxed Primitive Lock Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `synchronized` blocks locking on cached boxed `Integer`/`Long` values, `Boolean.TRUE`/`FALSE`, or JEP 390 value-based classes (`Optional`, `Instant`, `LocalDate`, etc.). Because the JVM shares these instances by identity, synchronizing on them couples the monitor to unrelated code anywhere in the process.
 * **Buggy Code**:
@@ -2122,7 +2100,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 96. Shared TimeZone Detector
+### 95. Shared TimeZone Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `java.util.TimeZone` instances whose mutable state (`setRawOffset()`, `setID()`) is modified while accessed from multiple threads. Concurrent writes, or a write racing a read, produce non-deterministic offsets and IDs — silently wrong date/time arithmetic that is notoriously hard to reproduce.
 * **Buggy Code**:
@@ -2142,7 +2120,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 97. Uncaught Exception Handler Detector
+### 96. Uncaught Exception Handler Detector
 * **Severity**: `MEDIUM`
 * **Description**: Detects threads started without a custom `Thread.UncaughtExceptionHandler` that subsequently throw an uncaught exception. Without a handler, the exception only reaches the thread group's default (stderr) handler, so the submitting code has no way to detect that the thread died.
 * **Buggy Code**:
@@ -2162,7 +2140,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ## Phase 13: Additional Concurrency-Bug Categories (1.0.0+)
 
-### 98. Daemon Thread Hygiene Detector
+### 97. Daemon Thread Hygiene Detector
 * **Severity**: `MEDIUM`
 * **Description**: Flags `Thread` instances created by user code without `setDaemon(true)` that are still alive at detector tear-down. A leaked non-daemon thread keeps the JVM from exiting, and the resulting hang is usually blamed on whatever test happens to be running when CI times out rather than on the actual leaking test.
 * **Buggy Code**:
@@ -2181,7 +2159,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 99. Notify Without Monitor Detector
+### 98. Notify Without Monitor Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `notify()`/`notifyAll()` calls attempted while the calling thread does not hold the target object's monitor. The JVM throws `IllegalMonitorStateException` for this at runtime, but in production that exception is often swallowed by a high-level catch-all, leaving `wait()`-ers blocked forever in a way that looks like a deadlock rather than a missed signal.
 * **Buggy Code**:
@@ -2199,7 +2177,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 100. Shared SecureRandom Detector
+### 99. Shared SecureRandom Detector
 * **Severity**: `HIGH`
 * **Description**: Flags a `SecureRandom` instance accessed from more than one thread. Thread safety is provider-dependent — some providers serialize internally at a large contention cost, others (Bouncy Castle, custom SPIs) may not synchronize at all, producing biased, predictable, or duplicate output under concurrent access, which is a security bug.
 * **Buggy Code**:
@@ -2224,7 +2202,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 101. Shared WeakHashMap Detector
+### 100. Shared WeakHashMap Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `WeakHashMap` or `IdentityHashMap` instances accessed from more than one thread. Both are documented as not thread-safe; `WeakHashMap`'s GC-driven cleanup mutates its table on every `get`/`put` without locking (risking infinite loops in the entry chain), and `IdentityHashMap`'s linear-probing open addressing can silently drop or duplicate entries under concurrent puts.
 * **Buggy Code**:
@@ -2247,7 +2225,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 102. Shared JDBC Connection Detector
+### 101. Shared JDBC Connection Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `Connection`, `Statement`, `PreparedStatement`, or `ResultSet` instances accessed from more than one thread. The JDBC spec does not require any of these to be thread-safe, and production drivers document a single `Connection` as usable by at most one thread at a time — concurrent access can mix result-set cursors, corrupt the wire protocol, or leak transaction state between threads.
 * **Buggy Code**:
@@ -2274,7 +2252,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ## Phase 14: Additional Thread-Unsafe Primitives & Publication Hazards (1.7.0+)
 
-### 103. Shared Stateful Crypto Detector
+### 102. Shared Stateful Crypto Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `Cipher`, `Mac`, and `Signature` instances shared across threads. Unlike `MessageDigest`, these carry mutable per-operation state across an `init → update* → doFinal` sequence; interleaved calls from different threads mix plaintext/ciphertext blocks or fold bytes from both callers into one running digest, silently breaking confidentiality, integrity, or authenticity.
 * **Buggy Code**:
@@ -2295,7 +2273,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 104. Shared Deflater/Inflater Detector
+### 103. Shared Deflater/Inflater Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `Deflater`/`Inflater` instances shared across threads. Both wrap a native zlib stream advanced by every call; concurrent use interleaves bytes from different logical streams, producing corrupt/undecompressable output or a native-layer crash if one thread calls `end()` while another is mid-stream.
 * **Buggy Code**:
@@ -2320,7 +2298,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 105. This-Escape Detector
+### 104. This-Escape Detector
 * **Severity**: `HIGH`
 * **Description**: Detects a constructor publishing `this` before construction finishes — starting a thread, registering a listener, or storing `this` into a shared collection mid-constructor. Because final-field visibility and non-default field values are only guaranteed once the constructor returns, another thread that observes the reference early can see a partially-constructed object.
 * **Buggy Code**:
@@ -2346,7 +2324,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 106. ThreadLocalRandom Misuse Detector
+### 105. ThreadLocalRandom Misuse Detector
 * **Severity**: `MEDIUM`
 * **Description**: Detects a cached `ThreadLocalRandom.current()` reference used from a thread other than the one that obtained it. The whole point of the class is per-thread isolation with no shared state; caching and reusing the reference across threads reintroduces contention and (since it lacks `Random`'s synchronization) state corruption and biased output.
 * **Buggy Code**:
@@ -2368,7 +2346,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ## Phase 15: Asynchronous Flow & Lock-Usage Hazards (1.7.0+)
 
-### 107. CompletableFuture Obtrude Detector
+### 106. CompletableFuture Obtrude Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `CompletableFuture.obtrudeValue()`/`obtrudeException()` calls, which force-overwrite a future's outcome regardless of any in-flight or already-published completion, bypassing the normal completion pipeline and racing with downstream consumers.
 * **Buggy Code**:
@@ -2382,7 +2360,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   future.complete("fallback"); // no-op if already completed; no race with pipeline consumers
   ```
 
-### 108. Spurious Wakeup Detector
+### 107. Spurious Wakeup Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `wait()`/`Condition.await()` calls made outside a condition-checking loop. A thread can wake up spuriously — without `notify()` ever being called — and proceed as if the awaited condition were satisfied when it was not.
 * **Buggy Code**:
@@ -2402,7 +2380,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 109. Lock Upgrade Deadlock Detector
+### 108. Lock Upgrade Deadlock Detector
 * **Severity**: `HIGH`
 * **Description**: Detects a thread attempting to acquire the write lock of a `ReentrantReadWriteLock` while it still holds that lock's read lock. `ReentrantReadWriteLock` does not support upgrading a read lock to a write lock on the same thread, so the attempt deadlocks permanently.
 * **Buggy Code**:
@@ -2429,7 +2407,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 110. TryLock Misuse Detector
+### 109. TryLock Misuse Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `Lock.unlock()` called after `tryLock()` returned `false` (or without checking its result at all). Unlocking a lock the thread never acquired throws `IllegalMonitorStateException` or corrupts the lock's internal state.
 * **Buggy Code**:
@@ -2452,7 +2430,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 111. CompletableFuture Blocking Callback Detector
+### 110. CompletableFuture Blocking Callback Detector
 * **Severity**: `HIGH`
 * **Description**: Detects blocking calls (`get()`, `join()`, `sleep()`) executed inside a `CompletableFuture` callback pipeline. Blocking a callback stage can exhaust the common pool (or whatever executor drives it), starving other tasks and potentially deadlocking the pipeline.
 * **Buggy Code**:
@@ -2470,7 +2448,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ## Phase 17: Shared Stateful JDK Objects, I/O Position Races & Contention Advisories
 
-### 112. Shared ByteBuffer Detector
+### 111. Shared ByteBuffer Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `Buffer`/`ByteBuffer` instances whose position-mutating operations (relative `get`/`put`, `flip()`, `rewind()`, `clear()`, `mark()`/`reset()`, single-arg `position()`/`limit()`) are performed from more than one thread. None of this cursor state is synchronized, so unsynchronized concurrent use corrupts it, producing `BufferUnderflowException`/`BufferOverflowException` or silently interleaved data. Absolute `get(int)`/`put(int, ...)` calls don't touch the cursor and are not flagged.
 * **Buggy Code**:
@@ -2493,7 +2471,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 113. Shared CharsetEncoder/Decoder Detector
+### 112. Shared CharsetEncoder/Decoder Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `CharsetEncoder`/`CharsetDecoder` instances shared across threads. Both carry mutable internal coding state advanced by every `encode()`/`decode()` call and are documented as not thread-safe; concurrent use interleaves state transitions, garbling output or throwing `IllegalStateException`.
 * **Buggy Code**:
@@ -2512,7 +2490,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 114. Shared Checksum Detector
+### 113. Shared Checksum Detector
 * **Severity**: `HIGH`
 * **Description**: Detects `Checksum` implementations (`CRC32`, `CRC32C`, `Adler32`) shared across threads. None are thread-safe; concurrent `update()`/`getValue()`/`reset()` calls interleave updates to the same accumulator, silently producing a wrong checksum with no exception or crash.
 * **Buggy Code**:
@@ -2536,7 +2514,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 115. FileChannel Position Race Detector
+### 114. FileChannel Position Race Detector
 * **Severity**: `HIGH`
 * **Description**: Detects a `FileChannel`/`SeekableByteChannel` whose implicit (shared) position is read or mutated from more than one thread via `read(buffer)`, `write(buffer)`, `position(long)`, `truncate`, or `transferFrom`. Interleaved seek-then-read/write pairs from different threads perform I/O at the wrong offset, corrupting or losing data. The positional overloads that take an explicit offset are unaffected and never flagged.
 * **Buggy Code**:
@@ -2553,7 +2531,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 116. Shared Iterator Detector
+### 115. Shared Iterator Detector
 * **Severity**: `HIGH`
 * **Description**: Detects a single `Iterator`/`ListIterator`/`Spliterator` instance driven from more than one thread. An iterator carries mutable cursor state confined to the thread that obtained it, regardless of whether the backing collection is itself thread-safe; racing `hasNext()`/`next()`/`remove()` calls on the same instance skip or duplicate elements, throw a spurious `NoSuchElementException`, or corrupt the underlying structure.
 * **Buggy Code**:
@@ -2576,7 +2554,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   }
   ```
 
-### 117. High-Contention Atomic Detector
+### 116. High-Contention Atomic Detector
 * **Severity**: `LOW`
 * **Description**: An advisory (non-correctness) detector for hot compare-and-swap loops on a shared `AtomicLong`/`AtomicInteger`/`AtomicReference` that would perform better as a `LongAdder`/`LongAccumulator`. Under heavy contention, every writer spins against the same memory location and the CAS failure rate climbs, collapsing throughput; striped accumulators avoid this for pure counters/statistics.
 * **Buggy Code**:
@@ -2598,7 +2576,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   long total() { return counter.sum(); }
   ```
 
-### 118. Shared JSON Mapper Reconfiguration Detector
+### 117. Shared JSON Mapper Reconfiguration Detector
 * **Severity**: `HIGH`
 * **Description**: Detects a serializer/mapper (Jackson `ObjectMapper`, a Gson built via `GsonBuilder`, or similar) being reconfigured (`configure`, `registerModule`, builder-style setters) after it has already been used concurrently. Read/write operations are typically safe once configured, but a configuration mutation racing with an in-flight (de)serialization can corrupt output intermittently or throw out of an internal cache. The correct "configure fully, then publish" pattern is never flagged.
 * **Buggy Code**:
@@ -2628,7 +2606,7 @@ Three detectors that shipped implemented and unit-tested but unwired until 1.7.0
 `DetectorType`, no config flag, no registry field, so a real `@AsyncTest` never constructed
 them. Now part of `detectAll` like every other detector.
 
-### 119. Latch Misuse Detector
+### 118. Latch Misuse Detector
 * **Severity**: `HIGH`
 * **Description**: A `CountDownLatch` that is awaited but never counted down to zero (the
   awaiting thread blocks forever), or counted down more times than its initial count (a
@@ -2641,7 +2619,7 @@ them. Now part of `detectAll` like every other detector.
   d.recordCountDown(latch);      // only 1 of 2 → flagged
   ```
 
-### 120. Executor Deadlock Detector
+### 119. Executor Deadlock Detector
 * **Severity**: `CRITICAL`
 * **Description**: Self-deadlock in a bounded or single-thread executor: tasks already
   running on the pool wait on sibling tasks submitted to that same pool, so no thread is
@@ -2655,7 +2633,7 @@ them. Now part of `detectAll` like every other detector.
   d.recordWaitingOnSibling(pool);   // pool saturated + waiting → flagged
   ```
 
-### 121. Future Blocking Detector
+### 120. Future Blocking Detector
 * **Severity**: `HIGH`
 * **Description**: A task blocks on `Future.get()` (or similar) from inside the same
   bounded pool that owns the future, consuming a worker thread while it waits — thread

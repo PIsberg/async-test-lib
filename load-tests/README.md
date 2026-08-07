@@ -56,7 +56,7 @@ which changes observable semantics of a published extension point — and
 open over that same code. 331 µs against the 170 ms below is not worth pre-empting that decision.
 
 `analyzeSweep_allDetectors` is why this class exists. It first measured **170 ms** per sweep, and
-attributing that detector by detector put 99.2% of a 290 ms profile in `UncommittedChangesDetector`
+attributing that detector by detector put 99.2% of a 290 ms profile in `UncommittedChangesDetector` (since removed)
 alone, which forked `git status` on every call. With the subprocess cached per JVM the same
 benchmark on the same machine measures **32.5 µs ± 6.6** — the one number in this file where before
 and after are separated by four orders of magnitude rather than by measurement noise.

@@ -1,6 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -29,10 +30,13 @@ public class AtomicityValidator {
     private static class FieldAccessRecord {
         final long threadId;
         final boolean write;
+        /** Invocation round this access belongs to — see {@link #markInvocationStart()}. */
+        final long epoch;
 
-        FieldAccessRecord(long threadId, boolean write) {
+        FieldAccessRecord(long threadId, boolean write, long epoch) {
             this.threadId = threadId;
             this.write = write;
+            this.epoch = epoch;
         }
     }
 
@@ -46,7 +50,31 @@ public class AtomicityValidator {
      * them, and can throw ArrayIndexOutOfBoundsException into the user's test body.
      */
     private final Queue<String> atomicityViolations = new ConcurrentLinkedQueue<>();
+
+    /**
+     * Current invocation round, bumped by {@link #markInvocationStart()}. Accesses from
+     * different rounds are ordered by the runner's own happens-before edges (the round's
+     * worker latch, then the next round's task submissions), so analysis only ever pairs
+     * same-epoch accesses. Standalone use without round marks leaves every access in
+     * epoch 0, which preserves the single-pool behavior.
+     */
+    private final java.util.concurrent.atomic.AtomicLong invocationEpoch =
+            new java.util.concurrent.atomic.AtomicLong();
     private volatile boolean enabled = true;
+
+    /**
+     * Marks the start of a new invocation round.
+     *
+     * <p>Called by {@code ConcurrencyRunner} before each round (after flushing pending
+     * telemetry, so agent-captured accesses are attributed to the round that produced
+     * them). Accesses recorded after this call belong to the new round and are never
+     * paired with earlier rounds' accesses: the harness itself orders rounds.
+     *
+     * @since 1.7.3
+     */
+    public void markInvocationStart() {
+        invocationEpoch.incrementAndGet();
+    }
     /**
      * Records compound operation start so it can be analysed at the end of the run.
      *
@@ -115,7 +143,7 @@ public class AtomicityValidator {
 
         List<FieldAccessRecord> history = fieldHistory.computeIfAbsent(fieldName, ignored -> new ArrayList<>());
         synchronized (history) {
-            history.add(new FieldAccessRecord(threadId, isWrite));
+            history.add(new FieldAccessRecord(threadId, isWrite, invocationEpoch.get()));
         }
 
         for (CompoundOperation operation : activeOperations.values()) {
@@ -170,31 +198,43 @@ public class AtomicityValidator {
         report.checkThenActViolations.addAll(atomicityViolations);
 
         for (Map.Entry<String, List<FieldAccessRecord>> entry : fieldHistory.entrySet()) {
-            Set<Long> threads = new HashSet<>();
-            boolean hasRead = false;
-            boolean hasWrite = false;
-
+            // Copy under the list's lock, then analyze per invocation round: rounds are
+            // ordered by the runner (worker latch, then the next round's submissions), so
+            // only same-round accesses can lack a happens-before edge. Without round marks
+            // (standalone use) every record is in epoch 0 and behavior is unchanged.
+            List<FieldAccessRecord> copy;
             synchronized (entry.getValue()) {
-                for (FieldAccessRecord access : entry.getValue()) {
+                copy = new ArrayList<>(entry.getValue());
+            }
+            Map<Long, List<FieldAccessRecord>> byEpoch = new HashMap<>();
+            for (FieldAccessRecord access : copy) {
+                byEpoch.computeIfAbsent(access.epoch, ignored -> new ArrayList<>()).add(access);
+            }
+
+            for (List<FieldAccessRecord> roundAccesses : byEpoch.values()) {
+                Set<Long> threads = new HashSet<>();
+                boolean hasRead = false;
+                boolean hasWrite = false;
+                for (FieldAccessRecord access : roundAccesses) {
                     threads.add(access.threadId);
                     hasRead |= !access.write;
                     hasWrite |= access.write;
                 }
-            }
 
-            if (threads.size() > 1 && hasRead && hasWrite) {
-                report.unsafeFieldAccesses.add(String.format(
-                    "%s: mixed read/write compound access across %d threads",
-                    entry.getKey(),
-                    threads.size()
-                ));
-            }
-            if (threads.size() > 1 && hasWrite) {
-                report.totcouRaces.add(String.format(
-                    "%s: state changed between check/use windows on %d threads",
-                    entry.getKey(),
-                    threads.size()
-                ));
+                if (threads.size() > 1 && hasRead && hasWrite) {
+                    report.unsafeFieldAccesses.add(String.format(
+                        "%s: mixed read/write compound access across %d threads",
+                        entry.getKey(),
+                        threads.size()
+                    ));
+                }
+                if (threads.size() > 1 && hasWrite) {
+                    report.totcouRaces.add(String.format(
+                        "%s: state changed between check/use windows on %d threads",
+                        entry.getKey(),
+                        threads.size()
+                    ));
+                }
             }
         }
 
@@ -220,6 +260,7 @@ public class AtomicityValidator {
         activeOperations.clear();
         fieldHistory.clear();
         atomicityViolations.clear();
+        invocationEpoch.set(0);
     }
     /**
      * Disable.

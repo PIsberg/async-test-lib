@@ -24,7 +24,7 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  * use the default {@code failOn = NONE}, and {@link FailOn#triggeredBy} returns {@code false}
  * unconditionally for {@code NONE}, so a detector finding can never fail those runs. The failure
  * they observe is the dummy's own {@code @AfterEach} assertion. Every one of them would still pass
- * with all 127 detectors switched off.
+ * with every detector switched off.
  *
  * <p>So nothing connected the two halves: config to registry to context to recording to analysis to
  * the report a user actually sees. That is exactly the seam where the agent's telemetry turned out

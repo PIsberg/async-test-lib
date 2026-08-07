@@ -97,12 +97,23 @@ class ConcurrencyRunnerTest {
         assertEquals(0L, remaining, "Past deadline must yield 0 (not negative)");
     }
 
-    // ---- isTimeoutLike ----
+    // ---- isTimeoutLike: routes on the runner's own RoundTimeoutError marker type ----
+    //
+    // Previously this matched any AssertionError whose message contained "timed out",
+    // which misclassified user assertion failures that happened to mention those words:
+    // the user's failure was rewrapped as "Test timed out after ...", the replay-seed
+    // line was skipped, and listeners got onTimeout instead of onTestFailed.
 
     @Test
-    void isTimeoutLike_messageContainsTimedOut_returnsTrue() throws Exception {
+    void isTimeoutLike_runnerRoundTimeoutError_returnsTrue() throws Exception {
+        assertTrue(invokeIsTimeoutLike(newRoundTimeoutError("Invocation round timed out: 0/2")));
+    }
+
+    @Test
+    void isTimeoutLike_userErrorMentioningTimedOut_returnsFalse() throws Exception {
         AssertionError e = new AssertionError("latch timed out after 5000ms");
-        assertTrue(invokeIsTimeoutLike(e));
+        assertFalse(invokeIsTimeoutLike(e),
+                "a user assertion mentioning 'timed out' must not be treated as a harness timeout");
     }
 
     @Test
@@ -131,7 +142,7 @@ class ConcurrencyRunnerTest {
         String previous = System.getProperty("async-test.spin-barrier.enabled");
         System.clearProperty("async-test.spin-barrier.enabled");
         try {
-            Object barrier = invokeCreateBarrier(2, 150L); // 2 participants, 150ms timeout
+            Object barrier = invokeCreateBarrier(2, 150L, false); // 2 participants, 150ms timeout
             Method arrive = findNoArgMethod(barrier.getClass(), "arrive");
 
             long startNanos = System.nanoTime();
@@ -155,7 +166,7 @@ class ConcurrencyRunnerTest {
         System.clearProperty("async-test.spin-barrier.enabled");
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
-            Object barrier = invokeCreateBarrier(2, 5_000L); // generous timeout, well within test bounds
+            Object barrier = invokeCreateBarrier(2, 5_000L, false); // generous timeout, well within test bounds
             Method arrive = findNoArgMethod(barrier.getClass(), "arrive");
 
             Future<?> f1 = pool.submit(() -> invokeArriveUnchecked(arrive, barrier));
@@ -167,6 +178,224 @@ class ConcurrencyRunnerTest {
         } finally {
             pool.shutdownNow();
             restoreProperty("async-test.spin-barrier.enabled", previous);
+        }
+    }
+
+    @Test
+    void createBarrier_virtualThreads_forcesCyclicBarrierEvenWhenSpinRequested() throws Exception {
+        String previous = System.getProperty("async-test.spin-barrier.enabled");
+        System.setProperty("async-test.spin-barrier.enabled", "true");
+        try {
+            // With useVirtualThreads=true the spin barrier must be ignored: neither
+            // Thread.onSpinWait() nor Thread.interrupted() is a virtual-thread scheduling
+            // point, so with more participants than carriers the spinners occupy every
+            // carrier and the missing parties can never mount to arrive — a livelock that
+            // burns the whole round budget and reports a spurious timeout with zero
+            // detector activity. The CyclicBarrier path is provable from the outside: a
+            // missing party makes arrive() throw Timeout/BrokenBarrier at ~150ms, where
+            // the spin path (which has no timed await at all) would spin forever.
+            Object barrier = invokeCreateBarrier(2, 150L, true);
+            Method arrive = findNoArgMethod(barrier.getClass(), "arrive");
+
+            assertTimeoutPreemptively(java.time.Duration.ofSeconds(5), () -> {
+                InvocationTargetException ite = assertThrows(InvocationTargetException.class,
+                        () -> arrive.invoke(barrier));
+                Throwable cause = ite.getCause();
+                assertTrue(cause instanceof TimeoutException || cause instanceof BrokenBarrierException,
+                        "virtual-thread runs must get the timed CyclicBarrier path even with the "
+                                + "spin-barrier property set, got: " + cause);
+            });
+        } finally {
+            restoreProperty("async-test.spin-barrier.enabled", previous);
+        }
+    }
+
+    // ---- execute(): user failures mentioning "timed out" keep their identity ----
+
+    /** Thrown by {@link TimedOutMessageFixture}; static so the test can assertSame on it. */
+    private static final AssertionError USER_TIMED_OUT_FAILURE =
+            new AssertionError("operation timed out unexpectedly (user assertion)");
+
+    static final class TimedOutMessageFixture {
+        private void failsMentioningTimedOut() {
+            throw USER_TIMED_OUT_FAILURE;
+        }
+    }
+
+    @Test
+    void execute_userAssertionMentioningTimedOut_keepsItsIdentityAndListenersSeeFailure() throws Exception {
+        String previousLicense = System.getProperty("license.mock.mode");
+        System.setProperty("license.mock.mode", "true");
+        java.util.concurrent.atomic.AtomicBoolean timeoutFired = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicBoolean failureFired = new java.util.concurrent.atomic.AtomicBoolean();
+        try (AsyncTestListenerRegistry.Registration ignored = AsyncTestListenerRegistry.registerScoped(
+                new AsyncTestListener() {
+                    @Override public void onTimeout(long timeoutMs) { timeoutFired.set(true); }
+                    @Override public void onTestFailed(Throwable cause) { failureFired.set(true); }
+                })) {
+            AsyncTestConfig config = AsyncTestConfig.builder()
+                    .threads(1).invocations(1).useVirtualThreads(false)
+                    .timeoutMs(10_000).detectAll(false).detectDeadlocks(false)
+                    .build();
+            TimedOutMessageFixture fixture = new TimedOutMessageFixture();
+            Method method = TimedOutMessageFixture.class.getDeclaredMethod("failsMentioningTimedOut");
+            FakeInvocationContext context = new FakeInvocationContext(fixture, method, List.of());
+
+            AssertionError thrown = assertThrows(AssertionError.class,
+                    () -> se.deversity.asynctest.runner.ConcurrencyRunner.execute(context, config));
+
+            assertSame(USER_TIMED_OUT_FAILURE, thrown,
+                    "a user assertion mentioning 'timed out' must propagate unchanged, not be "
+                            + "rewrapped as a harness timeout");
+            assertTrue(failureFired.get(), "listeners must see onTestFailed for a user failure");
+            assertFalse(timeoutFired.get(), "listeners must NOT see onTimeout for a user failure");
+        } finally {
+            restoreProperty("license.mock.mode", previousLicense);
+        }
+    }
+
+    // ---- execute(): timeout path quiesces cancelled workers before analyzing ----
+
+    /** Set when {@link StubbornFixture}'s body finally unwinds; reset by the test. */
+    private static final java.util.concurrent.atomic.AtomicBoolean STUBBORN_WORKER_EXITED =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
+    /**
+     * A body that outlives its round budget and shrugs off the cancel interrupt for
+     * ~400ms before exiting — user code that unwinds slowly after cancellation. While it
+     * runs it is exactly the worker whose detector writes a concurrent analysis would race.
+     */
+    static final class StubbornFixture {
+        private void ignoresInterruptsBriefly() {
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(400);
+            while (System.nanoTime() < deadline) {
+                try {
+                    Thread.sleep(5);
+                } catch (InterruptedException ignored) {
+                    // Deliberately swallowed: the worker must keep running after cancel(true).
+                }
+            }
+            STUBBORN_WORKER_EXITED.set(true);
+        }
+    }
+
+    @Test
+    void execute_roundTimeout_quiescesCancelledWorkersBeforeReporting() throws Exception {
+        String previousLicense = System.getProperty("license.mock.mode");
+        String previousMultiplier = System.getProperty("async-test.timeout.multiplier");
+        System.setProperty("license.mock.mode", "true");
+        // Pin to 1: CI exports ASYNC_TEST_TIMEOUT_MULTIPLIER on slow legs, and the scaled
+        // budget must stay far below the fixture's 400ms unwind so the timeout fires first.
+        System.setProperty("async-test.timeout.multiplier", "1");
+        STUBBORN_WORKER_EXITED.set(false);
+        java.util.concurrent.atomic.AtomicBoolean workerHadExitedWhenTimeoutFired =
+                new java.util.concurrent.atomic.AtomicBoolean();
+        try (AsyncTestListenerRegistry.Registration ignored = AsyncTestListenerRegistry.registerScoped(
+                new AsyncTestListener() {
+                    @Override public void onTimeout(long timeoutMs) {
+                        // timeoutError() fires this immediately before the detector reports:
+                        // by now quiesceWorkers() must have let the cancelled worker finish.
+                        workerHadExitedWhenTimeoutFired.set(STUBBORN_WORKER_EXITED.get());
+                    }
+                })) {
+            AsyncTestConfig config = AsyncTestConfig.builder()
+                    .threads(1).invocations(1).useVirtualThreads(false)
+                    .timeoutMs(100).detectAll(false).detectDeadlocks(false)
+                    .build();
+            StubbornFixture fixture = new StubbornFixture();
+            Method method = StubbornFixture.class.getDeclaredMethod("ignoresInterruptsBriefly");
+            FakeInvocationContext context = new FakeInvocationContext(fixture, method, List.of());
+
+            AssertionError timeout = assertThrows(AssertionError.class,
+                    () -> se.deversity.asynctest.runner.ConcurrencyRunner.execute(context, config));
+            assertTrue(timeout.getMessage() != null && timeout.getMessage().contains("timed out"),
+                    "the 100ms budget must time out against the ~400ms stubborn body: " + timeout.getMessage());
+
+            assertTrue(workerHadExitedWhenTimeoutFired.get(),
+                    "reporting (onTimeout + detector analysis) must not begin until cancelled "
+                            + "workers stopped running — analyzing concurrently tears detector state "
+                            + "and loses findings on exactly the timeout runs that need them");
+        } finally {
+            restoreProperty("async-test.timeout.multiplier", previousMultiplier);
+            restoreProperty("license.mock.mode", previousLicense);
+        }
+    }
+
+    @Test
+    void quiesceGracePropertyBoundsTheWaitForStuckWorkers() throws Exception {
+        String previousLicense = System.getProperty("license.mock.mode");
+        String previousMultiplier = System.getProperty("async-test.timeout.multiplier");
+        String previousGrace = System.getProperty("async-test.quiesce.grace.ms");
+        System.setProperty("license.mock.mode", "true");
+        System.setProperty("async-test.timeout.multiplier", "1");
+        // 50ms grace against a worker that shrugs off interrupts for ~400ms: reporting
+        // must proceed once the bound expires instead of waiting the full unwind out.
+        System.setProperty("async-test.quiesce.grace.ms", "50");
+        STUBBORN_WORKER_EXITED.set(false);
+        java.util.concurrent.atomic.AtomicBoolean workerHadExitedWhenTimeoutFired =
+                new java.util.concurrent.atomic.AtomicBoolean(true);
+        try (AsyncTestListenerRegistry.Registration ignored = AsyncTestListenerRegistry.registerScoped(
+                new AsyncTestListener() {
+                    @Override public void onTimeout(long timeoutMs) {
+                        workerHadExitedWhenTimeoutFired.set(STUBBORN_WORKER_EXITED.get());
+                    }
+                })) {
+            AsyncTestConfig config = AsyncTestConfig.builder()
+                    .threads(1).invocations(1).useVirtualThreads(false)
+                    .timeoutMs(100).detectAll(false).detectDeadlocks(false)
+                    .build();
+            StubbornFixture fixture = new StubbornFixture();
+            Method method = StubbornFixture.class.getDeclaredMethod("ignoresInterruptsBriefly");
+            assertThrows(AssertionError.class, () -> se.deversity.asynctest.runner.ConcurrencyRunner
+                    .execute(new FakeInvocationContext(fixture, method, List.of()), config));
+
+            assertFalse(workerHadExitedWhenTimeoutFired.get(),
+                    "with a 50ms grace the runner must proceed to reporting while the stubborn "
+                            + "worker is still unwinding — the property bounds the wait");
+        } finally {
+            restoreProperty("async-test.quiesce.grace.ms", previousGrace);
+            restoreProperty("async-test.timeout.multiplier", previousMultiplier);
+            restoreProperty("license.mock.mode", previousLicense);
+        }
+    }
+
+    // ---- Worker threads carry the harness name prefix ----
+
+    /** Set by {@link NameCaptureFixture}; reset per test iteration. */
+    private static final java.util.concurrent.atomic.AtomicReference<String> CAPTURED_WORKER_NAME =
+            new java.util.concurrent.atomic.AtomicReference<>();
+
+    static final class NameCaptureFixture {
+        private void captureWorkerName() {
+            CAPTURED_WORKER_NAME.set(Thread.currentThread().getName());
+        }
+    }
+
+    @Test
+    void workerThreadsCarryTheHarnessNamePrefix() throws Throwable {
+        String previousLicense = System.getProperty("license.mock.mode");
+        System.setProperty("license.mock.mode", "true");
+        try {
+            for (boolean virtualThreads : new boolean[] {false, true}) {
+                CAPTURED_WORKER_NAME.set(null);
+                AsyncTestConfig config = AsyncTestConfig.builder()
+                        .threads(1).invocations(1).useVirtualThreads(virtualThreads)
+                        .timeoutMs(10_000).detectAll(false).detectDeadlocks(false)
+                        .build();
+                NameCaptureFixture fixture = new NameCaptureFixture();
+                Method method = NameCaptureFixture.class.getDeclaredMethod("captureWorkerName");
+                se.deversity.asynctest.runner.ConcurrencyRunner.execute(
+                        new FakeInvocationContext(fixture, method, List.of()), config);
+
+                String name = CAPTURED_WORKER_NAME.get();
+                assertNotNull(name, "the worker must have run (virtualThreads=" + virtualThreads + ")");
+                assertTrue(name.startsWith("async-test-worker-"),
+                        "worker threads must carry the harness prefix so thread dumps and the "
+                                + "quiesce stack dump identify them (virtualThreads=" + virtualThreads
+                                + ", name=" + name + ")");
+            }
+        } finally {
+            restoreProperty("license.mock.mode", previousLicense);
         }
     }
 
@@ -392,10 +621,11 @@ class ConcurrencyRunnerTest {
 
     // ---- Reflection helpers ----
 
-    private static Object invokeCreateBarrier(int threads, long timeoutMs) throws Exception {
-        Method m = RUNNER_CLASS.getDeclaredMethod("createBarrier", int.class, long.class);
+    private static Object invokeCreateBarrier(int threads, long timeoutMs,
+                                              boolean useVirtualThreads) throws Exception {
+        Method m = RUNNER_CLASS.getDeclaredMethod("createBarrier", int.class, long.class, boolean.class);
         m.setAccessible(true);
-        return m.invoke(null, threads, timeoutMs);
+        return m.invoke(null, threads, timeoutMs, useVirtualThreads);
     }
 
     private static Method findNoArgMethod(Class<?> clazz, String name) {
@@ -438,5 +668,20 @@ class ConcurrencyRunnerTest {
         Method m = RUNNER_CLASS.getDeclaredMethod("isTimeoutLike", AssertionError.class);
         m.setAccessible(true);
         return (boolean) m.invoke(null, e);
+    }
+
+    /**
+     * Builds the runner's package-private RoundTimeoutError marker via reflection
+     * (this test class lives outside the runner package on purpose).
+     */
+    private static AssertionError newRoundTimeoutError(String message) throws Exception {
+        for (Class<?> nested : RUNNER_CLASS.getDeclaredClasses()) {
+            if (nested.getSimpleName().equals("RoundTimeoutError")) {
+                Constructor<?> ctor = nested.getDeclaredConstructor(String.class);
+                ctor.setAccessible(true);
+                return (AssertionError) ctor.newInstance(message);
+            }
+        }
+        throw new AssertionError("ConcurrencyRunner must declare a RoundTimeoutError nested type");
     }
 }

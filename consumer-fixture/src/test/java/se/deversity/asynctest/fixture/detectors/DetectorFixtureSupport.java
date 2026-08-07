@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  *       against the JAR, not against the library sources.</li>
  * </ol>
  *
- * <p>All 127 detectors make this claim. Seven of them could not until 1.7.0 added their
+ * <p>Every detector makes this claim. Seven of them could not until 1.7.0 added their
  * accessors: {@code DEADLOCKS}, {@code VISIBILITY}, {@code LIVELOCKS},
  * {@code RACE_CONDITIONS}, {@code THREAD_LOCAL_LEAKS}, {@code BUSY_WAITING} and
  * {@code INTERRUPT_MISHANDLING} were reachable only through {@code AsyncTestContext}'s

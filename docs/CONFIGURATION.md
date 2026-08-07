@@ -36,21 +36,7 @@ void myEnterpriseTest() {
 
 ```
  
- ## 3. Repository Health: Uncommitted Changes Detection
- 
- The library can detect if your Git repository has untracked or uncommitted changes. This ensures that your concurrent tests are run against a clean baseline, which is critical for reproducibility.
- 
- - **Annotation**: `@AsyncTest(detectUncommittedChanges = true)` (Enabled by default if `detectAll = true`)
- - **Behavior**: If changes are detected, a `LOW` severity issue will be reported in the diagnostic output.
- - **Requirement**: `git` must be available in the system PATH.
- - **Cost**: `git status` is forked once per JVM and the result replayed, not run per test method. The working tree does not change under a running suite, and forking per test cost 99% of the analysis sweep. The trade: in a runner that keeps one JVM for a whole session, a mid-session commit is not visible until the JVM restarts.
- 
- ## 4. Enforcement
-The library uses a **Fail-Closed** policy by default. If the license check fails (Invalid key, expired, or network error), the runner will throw a `SecurityException` and the test will fail.
-
-To allow testing during network outages, you can set `-Dlicense.allow.on.network.error=true` (if supported by your `LicenseGate` version).
-
-## 4. Account Setup & License Acquisition
+## 3. Account Setup & License Acquisition
 
 ### Zero-Config CI (GitHub Actions)
 The library includes **Zero-Config CI support**. If it detects a CI environment (e.g., `GITHUB_ACTIONS=true` or `CI=true`) and no license credentials are provided, it will **automatically enable mock mode**. This allows your public builds and pull requests to pass without needing to manage secrets or license keys.

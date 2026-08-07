@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed — `UNCOMMITTED_CHANGES`: the git-status environment check leaves the detector set
+
+**Breaking.** `UncommittedChangesDetector` inspected the working tree (`git status
+--porcelain`), an environment-hygiene property rather than a concurrency one, and its
+subprocess once accounted for 99% of the whole analysis sweep. Removed across the full
+synchronized set: the `DetectorType` constant, the deprecated `detectUncommittedChanges`
+annotation attribute, the config field/builder/resolution line, both registries, the SPI
+factory and its `builtin-detector-factories` entry, the `AsyncTestContext` accessors, the
+consumer fixture and its Phase 9 coverage class, `examples/09-uncommitted-changes-detection`,
+and the documentation (catalog renumbered). Suites that want the old behavior can run
+`git status --porcelain` as a build step outside the test JVM.
+
 ## [1.7.2] - 2026-08-07
 
 ### Added — `FLOW_PUBLISHER_CONCURRENCY`: the first Flow API detector (detector 128)

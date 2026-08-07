@@ -15,7 +15,7 @@ guardrails live.
 | [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | One-page cheatsheet |
 | [CONFIGURATION.md](CONFIGURATION.md) | Configuration options in depth |
 | [LICENSING.md](LICENSING.md) | Issuing a commercial licence to a customer, the flags they run with, expiry and renewal |
-| [DETECTOR_CATALOG.md](DETECTOR_CATALOG.md) | All 128 detectors with buggy-vs-fixed examples |
+| [DETECTOR_CATALOG.md](DETECTOR_CATALOG.md) | All 127 detectors with buggy-vs-fixed examples |
 | [ASYNC_ASSERT.md](ASYNC_ASSERT.md) | `AsyncAssert` — polling for side effects that land asynchronously |
 | [BEST_PRACTICES.md](BEST_PRACTICES.md) | How to write an `@AsyncTest` that actually finds bugs |
 | [OBSERVABILITY.md](OBSERVABILITY.md) | `AsyncTestListener` — hooking test events into logging, metrics, CI |

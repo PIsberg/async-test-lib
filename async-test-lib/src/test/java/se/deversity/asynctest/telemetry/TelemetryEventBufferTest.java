@@ -1,6 +1,7 @@
 package se.deversity.asynctest.telemetry;
 
 import org.junit.jupiter.api.Test;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -10,6 +11,30 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 class TelemetryEventBufferTest {
+
+    @Test
+    void publishGivesUpInsteadOfHangingWhenNoConsumerEverDrains() {
+        TelemetryEventBuffer buffer = new TelemetryEventBuffer(4);
+        for (int i = 1; i <= 4; i++) {
+            buffer.publish(i, "Field#" + i, true);
+        }
+
+        // Before the fix this spun forever: with no consumer nothing ever advances the
+        // cursor, so a full buffer turned every publishing (instrumented) thread into a
+        // busy-spinning hostage — the JVM-shutdown hang, since woven application code
+        // keeps publishing after the shutdown hook stopped the drain thread.
+        assertTimeoutPreemptively(Duration.ofSeconds(10),
+                () -> buffer.publish(5L, "Field#overflow", true),
+                "publish into a full buffer with no consumer must give up after the wait bound, not hang");
+
+        assertEquals(1L, buffer.droppedCount(), "the overflow event must be counted as dropped");
+        assertEquals(4L, buffer.publishedCount(), "a dropped event must not claim a sequence");
+
+        List<String> drained = new ArrayList<>();
+        buffer.drain((tid, field, write) -> drained.add(field));
+        assertEquals(List.of("Field#1", "Field#2", "Field#3", "Field#4"), drained,
+                "the four buffered events must survive the drop intact");
+    }
 
     @Test
     void testBasicPublishAndDrain() {

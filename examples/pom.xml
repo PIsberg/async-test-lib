@@ -17,7 +17,6 @@
         <module>06-deadlock</module>
         <module>07-livelock</module>
         <module>08-race-condition</module>
-        <module>09-uncommitted-changes-detection</module>
         <module>100-constructor-safety</module>
         <module>101-memory-ordering</module>
         <module>102-synchronizer-monitor</module>

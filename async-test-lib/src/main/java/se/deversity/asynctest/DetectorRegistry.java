@@ -99,7 +99,6 @@ import se.deversity.asynctest.diagnostics.ThreadStarvationDetector;
 import se.deversity.asynctest.diagnostics.TimerDetector;
 import se.deversity.asynctest.diagnostics.UnboundedQueueDetector;
 import se.deversity.asynctest.diagnostics.UncaughtExceptionHandlerDetector;
-import se.deversity.asynctest.diagnostics.UncommittedChangesDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadCarrierExhaustionDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadContextLeakDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadCpuBoundTaskDetector;
@@ -251,7 +250,6 @@ final class DetectorRegistry {
     final @Nullable NestedMonitorLockoutDetector        nestedMonitorLockoutDetector;
     final @Nullable LockDowngradeDetector               lockDowngradeDetector;
     final @Nullable InheritableThreadLocalMisuseDetector inheritableThreadLocalMisuseDetector;
-    final @Nullable UncommittedChangesDetector          uncommittedChangesDetector;
 
     // ---- Phase 10: API Traps & Subtle Concurrency Bugs ----
     final @Nullable ThreadLocalContaminationDetector         threadLocalContaminationDetector;
@@ -430,8 +428,6 @@ final class DetectorRegistry {
                 ? new LockDowngradeDetector() : null;
         inheritableThreadLocalMisuseDetector = cfg.detectInheritableThreadLocalMisuse
                 ? new InheritableThreadLocalMisuseDetector() : null;
-        uncommittedChangesDetector = cfg.detectUncommittedChanges
-                ? new UncommittedChangesDetector() : null;
 
         // ---- Phase 10: API Traps & Subtle Concurrency Bugs ----
         threadLocalContaminationDetector = cfg.detectThreadLocalContamination
@@ -769,9 +765,6 @@ final class DetectorRegistry {
         ifIssue(inheritableThreadLocalMisuseDetector,
                 InheritableThreadLocalMisuseDetector::analyze,
                 InheritableThreadLocalMisuseDetector.InheritableThreadLocalReport::hasIssues, out);
-        ifIssue(uncommittedChangesDetector,
-                UncommittedChangesDetector::analyze,
-                UncommittedChangesDetector.UncommittedChangesReport::hasIssues, out);
 
         // ---- Phase 10: API Traps & Subtle Concurrency Bugs ----
         ifIssue(threadLocalContaminationDetector,

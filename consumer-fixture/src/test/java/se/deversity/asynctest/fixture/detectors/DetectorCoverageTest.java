@@ -46,7 +46,6 @@ class DetectorCoverageTest {
         Phase06VirtualThreadDetectorsFixtureTest.class,
         Phase07HighLevelPatternDetectorsFixtureTest.class,
         Phase08LifecycleDetectorsFixtureTest.class,
-        Phase09EnvironmentDetectorsFixtureTest.class,
         Phase10ApiTrapDetectorsFixtureTest.class,
         Phase11SharedTypeDetectorsFixtureTest.class,
         Phase12OperationalHygieneDetectorsFixtureTest.class,

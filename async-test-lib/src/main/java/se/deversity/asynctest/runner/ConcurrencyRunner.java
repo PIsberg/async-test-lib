@@ -88,6 +88,15 @@ public class ConcurrencyRunner {
     /** See {@link #resolveTimeoutMultiplier()}. */
     private static final String TIMEOUT_MULTIPLIER_ENV_VAR = "ASYNC_TEST_TIMEOUT_MULTIPLIER";
 
+    /** See {@link #resolveQuiesceGraceMillis()}. */
+    private static final String QUIESCE_GRACE_PROPERTY = "async-test.quiesce.grace.ms";
+
+    /** Default for {@link #resolveQuiesceGraceMillis()}. */
+    private static final long DEFAULT_QUIESCE_GRACE_MS = 2_000L;
+
+    /** Name prefix for worker threads — see the executor construction in {@link #execute}. */
+    private static final String WORKER_THREAD_PREFIX = "async-test-worker-";
+
     /**
      * Runs {@code testMethod} N×M times (see the class Javadoc), scaling
      * {@link AsyncTestConfig#timeoutMs} by {@link #resolveTimeoutMultiplier()} before it
@@ -205,9 +214,13 @@ public class ConcurrencyRunner {
             log.debug("runner.jmm ok=true");
         }
 
+        // Workers carry the async-test-worker- prefix so thread dumps, deadlock reports
+        // and the quiesce stack dump read as the harness's own workers instead of
+        // anonymous pool-N-thread-M entries.
         ExecutorService executor = config.useVirtualThreads
-            ? Executors.newVirtualThreadPerTaskExecutor()
-            : Executors.newFixedThreadPool(actualThreads);
+            ? Executors.newThreadPerTaskExecutor(
+                Thread.ofVirtual().name(WORKER_THREAD_PREFIX, 0).factory())
+            : Executors.newFixedThreadPool(actualThreads, namedWorkerFactory());
 
         // setAccessible once per test, not once per invocation round
         Method testMethod = invocationContext.getExecutable();
@@ -278,8 +291,22 @@ public class ConcurrencyRunner {
                     benchmarkStart = benchmarkRecorder.recordInvocationStart();
                 }
 
+                // Round-epoch happens-before: the previous round's workers all finished
+                // before latch.await returned, and this thread's submissions start the
+                // next round, so rounds are totally ordered through the runner thread.
+                // Flushing telemetry first attributes agent-captured accesses still in
+                // the ring to the round that produced them (no-op without the agent);
+                // the epoch bumps then let the record-based detectors refuse to pair
+                // accesses from different rounds — those pairs cannot race.
+                TelemetryRegistry.flush();
                 if (phase1.visibility != null) {
                     phase1.visibility.markInvocationStart();
+                }
+                if (phase1.race != null) {
+                    phase1.race.markInvocationStart();
+                }
+                if (phase1.atomicity != null) {
+                    phase1.atomicity.markInvocationStart();
                 }
                 AsyncTestListenerRegistry.fireInvocationStarted(i, actualThreads);
                 long roundStartNanos = System.nanoTime();
@@ -288,7 +315,8 @@ public class ConcurrencyRunner {
                 invokeLifecycleMethods(testInstance, beforeInvocationMethods);
                 try {
                     runSingleInvocationRound(invocationContext, actualThreads,
-                        executor, phase1, phase2Context, remainingMs, workerThreadIds, testMethod);
+                        executor, phase1, phase2Context, remainingMs,
+                        config.useVirtualThreads, workerThreadIds, testMethod);
                 } finally {
                     invokeLifecycleMethods(testInstance, afterInvocationMethods);
                 }
@@ -305,9 +333,20 @@ public class ConcurrencyRunner {
             if (timeoutAlreadyReported) {
                 // Thrown by the pre-round deadline check above, which already went through
                 // timeoutError(): re-reporting it here would duplicate the onTimeout event,
-                // the thread dump and every detector report for a single timeout.
+                // the thread dump and every detector report for a single timeout. (No
+                // quiescence needed either: the deadline check runs between rounds, when
+                // every worker of the previous round has already counted down the latch.)
                 throw e;
             }
+            // A timed-out round leaves cancelled workers that may still be unwinding, and
+            // the analysis below (timeoutError → printPhase2Reports → analyzeAll) reads
+            // the detector state those workers are still writing. Torn reads produce wrong
+            // findings, and a ConcurrentModificationException inside one detector is
+            // contained by DetectorRegistry.ifIssue as a silently empty report — on
+            // exactly the timeout runs where the diagnosis matters most. Quiesce first.
+            // For an AssertionError from a completed round the workers have already
+            // finished and this is a fast no-op.
+            quiesceWorkers(executor, testMethod);
             if (isTimeoutLike(e)) {
                 throw timeoutError(effectiveTimeoutMs, e, phase1, phase2Analysis,
                         config.detectDeadlocks);
@@ -324,6 +363,11 @@ public class ConcurrencyRunner {
             printPhase2Reports(phase2Analysis);
             throw e;
         } catch (Throwable t) {
+            // Same quiescence rule as the AssertionError branch: this path is reachable
+            // with every worker of the round still alive (e.g. the runner thread itself
+            // interrupted out of latch.await by a JUnit-level timeout), and the reports
+            // below must not read detector state that live workers are still writing.
+            quiesceWorkers(executor, testMethod);
             System.err.println("[AsyncTest] Failure with replaySeed=" + currentSeed
                     + "L — paste into @AsyncTest(replaySeed=...) to reproduce.");
             AsyncTestListenerRegistry.fireTestFailed(t);
@@ -538,9 +582,21 @@ public class ConcurrencyRunner {
      * {@code Future.cancel(true)} calls added to {@code runSingleInvocationRound} for
      * the same scenario, so stranded spin-barrier workers are still reclaimed at the
      * round-timeout boundary rather than only at the final {@code shutdownNow()}.
+     *
+     * <p><strong>Virtual threads never spin:</strong> when {@code useVirtualThreads} is
+     * {@code true} the spin-barrier property is ignored and the {@link CyclicBarrier}
+     * path is used regardless. Neither {@link Thread#onSpinWait()} nor
+     * {@link Thread#interrupted()} is a virtual-thread scheduling point, so a spinning
+     * virtual thread occupies its carrier until it exits the loop on its own. With more
+     * participants than carrier threads (the default carrier count is the core count,
+     * and stress mode configures hundreds of participants), the first {@code carriers}
+     * arrivals spin on every carrier while the remaining participants can never mount to
+     * arrive — a livelock that burns the whole round timeout and reports a spurious
+     * "Invocation round timed out" with zero detector activity, on every round.
      */
-    private static ContentionBarrier createBarrier(int threads, long timeoutMs) {
-        if (Boolean.getBoolean("async-test.spin-barrier.enabled")) {
+    private static ContentionBarrier createBarrier(int threads, long timeoutMs,
+                                                   boolean useVirtualThreads) {
+        if (!useVirtualThreads && Boolean.getBoolean("async-test.spin-barrier.enabled")) {
             SpinContentionBarrier spin = new SpinContentionBarrier(threads);
             return spin::await;
         }
@@ -554,10 +610,11 @@ public class ConcurrencyRunner {
                                                  Phase1DetectorSet phase1,
                                                  AsyncTestContext phase2Context,
                                                  long roundTimeoutMs,
+                                                 boolean useVirtualThreads,
                                                  @Nullable Set<Long> workerThreadIds,
                                                  Method method) throws Throwable {
 
-        ContentionBarrier barrier = createBarrier(threads, roundTimeoutMs);
+        ContentionBarrier barrier = createBarrier(threads, roundTimeoutMs, useVirtualThreads);
         List<Throwable> failures = new CopyOnWriteArrayList<>();
         CountDownLatch latch = new CountDownLatch(threads);
 
@@ -638,7 +695,7 @@ public class ConcurrencyRunner {
             for (Future<?> future : workerFutures) {
                 future.cancel(true);
             }
-            AssertionError roundTimeout = new AssertionError(
+            AssertionError roundTimeout = new RoundTimeoutError(
                 "Invocation round timed out: " + (threads - (int) latch.getCount()) + "/" + threads
                     + " threads completed within " + roundTimeoutMs + "ms. "
                     + "A thread may be stuck before the test body (e.g. broken barrier)."
@@ -700,18 +757,48 @@ public class ConcurrencyRunner {
         return Math.max(0L, TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime()));
     }
 
+    /**
+     * True only for the runner's own timeout marker, {@link RoundTimeoutError}.
+     *
+     * <p>Deliberately a type check, not message sniffing: the previous implementation
+     * matched any {@link AssertionError} whose message contained "timed out", which
+     * misclassified a <em>user's</em> assertion failure that happened to mention those
+     * words — the failure was rewrapped as "Test timed out after …", the replay-seed
+     * line was never printed, and listeners received {@code onTimeout} instead of
+     * {@code onTestFailed}.
+     */
     private static boolean isTimeoutLike(AssertionError e) {
-        String message = e.getMessage();
-        return message != null && message.contains("timed out");
+        return e instanceof RoundTimeoutError;
+    }
+
+    /**
+     * Marker type for timeouts raised by the runner itself (a round that did not finish
+     * within its budget, or the overall deadline expiring between rounds). The
+     * {@code catch (AssertionError)} block in {@link #execute} routes on this type — see
+     * {@link #isTimeoutLike} — so user assertion failures can never be mistaken for
+     * harness timeouts, whatever their message says. Extends {@link AssertionError}, so
+     * user-facing behavior ({@code assertThrows(AssertionError.class, …)}, JUnit
+     * reporting) is unchanged.
+     */
+    // The PMD suppression is deliberate: this type MUST be an AssertionError so JUnit
+    // reports it as a test failure and existing assertThrows(AssertionError.class, ...)
+    // callers keep passing — the runner threw bare AssertionError for timeouts before this
+    // type existed. It is a marker for routing, not a new error category.
+    @SuppressWarnings("PMD.DoNotExtendJavaLangError")
+    static final class RoundTimeoutError extends AssertionError {
+        private static final long serialVersionUID = 1L;
+        RoundTimeoutError(String message) {
+            super(message);
+        }
     }
 
     /**
      * Reports a timeout exactly once — listeners notified, thread dump printed, Phase 1 and
-     * Phase 2 reports flushed — and returns the {@link AssertionError} to throw.
+     * Phase 2 reports flushed — and returns the {@link RoundTimeoutError} to throw.
      *
      * <p>Callers that throw the returned error from inside {@link #execute}'s try block must
-     * set {@code timeoutAlreadyReported} first: the message ("Test timed out after …")
-     * satisfies {@link #isTimeoutLike}, so the enclosing {@code catch (AssertionError)} would
+     * set {@code timeoutAlreadyReported} first: the returned type satisfies
+     * {@link #isTimeoutLike}, so the enclosing {@code catch (AssertionError)} would
      * otherwise route it through here a second time.
      */
     private static AssertionError timeoutError(long timeoutMs,
@@ -728,12 +815,100 @@ public class ConcurrencyRunner {
         // Report-only: this is a failure/timeout path, so the failOn gate in
         // analyzeAndGate (success-path-only) is never reached for this run.
         printPhase2Reports(phase2Analysis);
-        AssertionError error = new AssertionError(
+        AssertionError error = new RoundTimeoutError(
             "Test timed out after " + timeoutMs + "ms. Possible deadlock, starvation, or visibility issue.");
         if (cause != null) {
             error.initCause(cause);
         }
         return error;
+    }
+
+    /**
+     * Brings the round's workers to rest before detector state is read for reporting.
+     *
+     * <p>{@code shutdownNow()} interrupts anything still running (idempotent — the
+     * {@code finally} block in {@link #execute} calls it again harmlessly), and the
+     * bounded wait gives cancelled workers time to unwind out of the test body, the
+     * {@code AsyncTestContext.uninstall()} call and the livelock snapshot before
+     * analysis reads the detectors they were writing to. The bound defaults to 2s and is
+     * tunable via {@code -Dasync-test.quiesce.grace.ms} for suites whose code unwinds
+     * slowly after cancellation. A worker stuck in uninterruptible user code can outlive
+     * any grace period — threads cannot be killed — in which case analysis proceeds
+     * anyway (the detectors' own snapshotting plus {@code ifIssue} containment degrade
+     * that to a partial report rather than a crash), and the WARNs below say so, with
+     * the surviving workers' stacks, instead of letting the report silently lie.
+     */
+    private static void quiesceWorkers(ExecutorService executor, Method testMethod) {
+        executor.shutdownNow();
+        long graceMs = resolveQuiesceGraceMillis();
+        try {
+            if (!executor.awaitTermination(graceMs, TimeUnit.MILLISECONDS)) {
+                log.warn("runner.quiesce.incomplete test={} graceMs={} "
+                        + "hint=\"a worker is still running (likely uninterruptible user "
+                        + "code); detector reports below may be missing its last accesses; "
+                        + "raise -D{} if the code just unwinds slowly\"",
+                    testMethod.getName(), graceMs, QUIESCE_GRACE_PROPERTY);
+                logSurvivingWorkerStacks();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Resolves the quiesce grace from {@code -Dasync-test.quiesce.grace.ms}, defaulting to
+     * {@value #DEFAULT_QUIESCE_GRACE_MS}ms. Parsing is defensive — a missing, blank,
+     * non-numeric or negative value falls back to the default rather than throwing.
+     */
+    private static long resolveQuiesceGraceMillis() {
+        String raw = System.getProperty(QUIESCE_GRACE_PROPERTY);
+        if (raw == null || raw.isBlank()) {
+            return DEFAULT_QUIESCE_GRACE_MS;
+        }
+        try {
+            long parsed = Long.parseLong(raw.trim());
+            return parsed >= 0 ? parsed : DEFAULT_QUIESCE_GRACE_MS;
+        } catch (NumberFormatException e) {
+            return DEFAULT_QUIESCE_GRACE_MS;
+        }
+    }
+
+    /**
+     * WARN-logs the stack of every still-live worker thread (named
+     * {@value #WORKER_THREAD_PREFIX}…) so the user sees <em>where</em> the stuck worker
+     * is, not just that one exists. Only platform workers appear in
+     * {@link Thread#getAllStackTraces()}; a stuck virtual worker is invisible here, and
+     * the {@code runner.quiesce.incomplete} event still reports the situation.
+     */
+    private static void logSurvivingWorkerStacks() {
+        for (Map.Entry<Thread, StackTraceElement[]> entry : Thread.getAllStackTraces().entrySet()) {
+            Thread thread = entry.getKey();
+            if (!thread.isAlive() || !thread.getName().startsWith(WORKER_THREAD_PREFIX)) {
+                continue;
+            }
+            StackTraceElement[] stack = entry.getValue();
+            StringBuilder frames = new StringBuilder();
+            for (int i = 0; i < Math.min(stack.length, 12); i++) {
+                frames.append("\n    at ").append(stack[i]);
+            }
+            log.warn("runner.quiesce.stuck-worker thread={} state={}{}",
+                thread.getName(), thread.getState(), frames);
+        }
+    }
+
+    /**
+     * Names platform worker threads {@code async-test-worker-N}. A fresh factory (and
+     * counter) per {@link #execute} call keeps numbering stable within a run without any
+     * cross-run shared state.
+     */
+    private static java.util.concurrent.ThreadFactory namedWorkerFactory() {
+        java.util.concurrent.ThreadFactory defaults = Executors.defaultThreadFactory();
+        java.util.concurrent.atomic.AtomicInteger seq = new java.util.concurrent.atomic.AtomicInteger();
+        return runnable -> {
+            Thread thread = defaults.newThread(runnable);
+            thread.setName(WORKER_THREAD_PREFIX + seq.getAndIncrement());
+            return thread;
+        };
     }
 
     private static void printPhase2Reports(Phase2Analysis phase2Analysis) {

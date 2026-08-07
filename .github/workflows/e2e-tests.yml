@@ -143,7 +143,7 @@ jobs:
           if [ "${{ steps.filter.outputs.examples }}" = "true" ]; then
             changed=$(printf '%s\n' ${{ steps.filter.outputs.examples_files }} \
               | awk -F/ 'NF>=3 && $1=="examples" {print $2}' \
-              | while read m; do [ -f "examples/$m/pom.xml" ] && echo "$m"; done)
+              | while read m; do if [ -f "examples/$m/pom.xml" ]; then echo "$m"; fi; done)
           fi
 
           # 2. A library change edits no examples/** path, but every example consumes the built
