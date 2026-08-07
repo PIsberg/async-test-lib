@@ -71,14 +71,11 @@ import java.util.concurrent.TimeoutException;
  * 
  * @since 1.0.0
  */
-@AIAudit(
-    vulnerabilities = {"Thread Safety issues", "Resource Leaks"}
-)
 @AICore(
     sensitivity = "Critical",
     note = "Core stress-test execution engine. The CyclicBarrier pattern forces maximum thread contention. Timeout logic and AsyncTestContext install/uninstall are carefully calibrated — subtle changes introduce flaky tests or missed detector activations."
 )
-@AILoadBearing(reason = "The heartbeat of the entire library. A regression here breaks the core value proposition of maximizing data races.")
+@AIAudit(checkFor = {"Thread Safety issues", "Resource Leaks"})
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Coordinates concurrency using CyclicBarrier to maximize thread contention.")
 public class ConcurrencyRunner {
 
