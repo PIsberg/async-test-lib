@@ -32,15 +32,19 @@ true microsecond-level memory-ordering races.
   during the spin, and the interrupt flag is checked every 64 iterations for clean teardown.
 
 #### Integration
-`ConcurrencyRunner.createBarrier(threads)` returns a `ContentionBarrier` functional interface.
-Enable the spin variant at runtime with:
+`ConcurrencyRunner.createBarrier(threads, timeoutMs, useVirtualThreads)` returns a
+`ContentionBarrier` functional interface. Enable the spin variant at runtime with:
 
 ```
--Dasyc-test.spin-barrier.enabled=true
+-Dasync-test.spin-barrier.enabled=true
 ```
 
-The default remains `CyclicBarrier` to preserve compatibility with virtual-thread schedulers
-that are not benefit from busy-spinning platform threads.
+The default remains `CyclicBarrier`. When `@AsyncTest(useVirtualThreads = true)` is set, the
+property is ignored and the `CyclicBarrier` path is always used: neither `Thread.onSpinWait()`
+nor `Thread.interrupted()` is a virtual-thread scheduling point, so with more participants
+than carrier threads the spinners occupy every carrier while the remaining participants can
+never mount to arrive — a livelock that burns the whole round budget and reports a spurious
+timeout with zero detector activity.
 
 ---
 
@@ -60,11 +64,11 @@ An MPSC (multi-producer single-consumer) ring buffer modelled after the
 
 | Concern | Solution |
 |---------|----------|
-| Slot claim (producer) | `AtomicLong.getAndIncrement()` — no lock, no CAS loop |
+| Slot claim (producer) | `AtomicLong.compareAndSet` pre-claim — no lock; the claim only happens once the slot is known free, so a full buffer can be abandoned without wedging the consumer on an unpublished sequence |
 | Publication signal | `VarHandle.setRelease` on the per-slot `sequence` field |
 | Consumer ordering | `VarHandle.getAcquire` check before processing each slot |
 | Allocation on hot path | Zero — all `AccessEvent` slots are pre-allocated at construction |
-| Capacity | Power-of-two (default 16 384); on overflow producers **spin-wait** (`Thread.onSpinWait()`) until the consumer drains — slots are never overwritten |
+| Capacity | Power-of-two (default 16 384); on overflow producers **spin-wait** (`Thread.onSpinWait()`) until the consumer drains — slots are never overwritten. If the buffer stays full with **no consumer progress for ~1s** (drain thread stopped or dead), `publish` drops the event and counts it in `droppedCount()` instead of spinning forever — an unbounded spin turned every woven thread into a busy-spinning hostage once the shutdown hook had stopped the drain |
 
 **Key API:**
 

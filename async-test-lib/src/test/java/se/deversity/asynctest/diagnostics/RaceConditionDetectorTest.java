@@ -2,12 +2,57 @@ package se.deversity.asynctest.diagnostics;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Unit tests for RaceConditionDetector.
  */
 public class RaceConditionDetectorTest {
+
+    // ---- Analysis concurrent with recording: the runner's timeout path ----
+    //
+    // When a round times out, ConcurrencyRunner cancels the workers and reports; a
+    // cancelled worker can still be unwinding (recording accesses) while the runner
+    // thread analyzes. Analysis must tolerate concurrent recordAccess without throwing
+    // ConcurrentModificationException — a CME here is contained by DetectorRegistry.ifIssue,
+    // which silently costs this detector's entire report on exactly the runs (timeouts)
+    // where the diagnosis matters most.
+    @Test
+    void analyzeWhileRecordingDoesNotThrow() throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Object shared = new Object();
+
+        // Seed a cross-thread write so analysis enters the per-field scan immediately.
+        Thread seeder = new Thread(() -> detector.recordFieldWrite(shared, "hot"));
+        seeder.start();
+        seeder.join();
+        detector.recordFieldWrite(shared, "hot");
+
+        List<Thread> writers = new ArrayList<>();
+        for (int i = 0; i < 2; i++) {
+            Thread writer = new Thread(() -> {
+                for (int n = 0; n < 100_000; n++) {
+                    detector.recordFieldWrite(shared, "hot");
+                }
+            });
+            writer.start();
+            writers.add(writer);
+        }
+        try {
+            assertDoesNotThrow(() -> {
+                while (writers.stream().anyMatch(Thread::isAlive)) {
+                    detector.analyzeRaceConditions();
+                }
+            }, "analyzing while recorder threads are still running must not throw");
+        } finally {
+            for (Thread writer : writers) {
+                writer.join();
+            }
+        }
+    }
 
     @Test
     void noRecordingsReturnNoIssues() {

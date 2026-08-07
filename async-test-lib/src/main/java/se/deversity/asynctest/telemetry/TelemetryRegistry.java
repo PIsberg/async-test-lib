@@ -40,6 +40,16 @@ public final class TelemetryRegistry {
     private static final TelemetryEventBuffer BUFFER = new TelemetryEventBuffer(BUFFER_CAPACITY);
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
 
+    /**
+     * True from {@link #stop()} until the next {@link #start}. Distinct from
+     * {@code !RUNNING.get()}: before the first start the registry buffers events for the
+     * drain thread that {@code premain} is about to create, but after stop() no drain
+     * thread will ever exist again, so {@link #recordAccess(long, String, boolean)}
+     * discards instead of filling a ring nobody empties (see its Javadoc for why that
+     * distinction is load-bearing during JVM shutdown).
+     */
+    private static final AtomicBoolean STOPPED = new AtomicBoolean(false);
+
     private static volatile TelemetryEventBuffer.@Nullable DrainCallback drainCallback = null;
     private static @Nullable ScheduledExecutorService drainExecutor = null;
     private static @Nullable Thread shutdownHook = null;
@@ -54,6 +64,13 @@ public final class TelemetryRegistry {
      * concatenation or prefix inspection. The read/write decision is bound at
      * instrumentation time by {@code AsyncTestAgent}'s split getter/setter advice.
      *
+     * <p>After {@link #stop()} the event is discarded instead of buffered: no drain thread
+     * will ever exist again, so buffering would only fill the ring until every publishing
+     * (woven) thread in the JVM stalled against it — which is exactly what happened during
+     * JVM shutdown, where application threads still run woven accessors after the shutdown
+     * hook has stopped the registry. Events published <em>before</em> {@link #start()} are
+     * still buffered, preserving the pre-start capture window.
+     *
      * @param threadId       {@code Thread.currentThread().threadId()}
      * @param qualifiedName  combined {@code declaringClass.methodName} identifier
      *                       (a constant-pool string produced by {@code @Advice.Origin})
@@ -62,6 +79,9 @@ public final class TelemetryRegistry {
      * @since 1.7.0
      */
     public static void recordAccess(long threadId, String qualifiedName, boolean isWrite) {
+        if (STOPPED.get()) {
+            return;
+        }
         BUFFER.publish(threadId, qualifiedName, isWrite);
     }
 
@@ -100,6 +120,9 @@ public final class TelemetryRegistry {
             setCallback(callback);
             return;
         }
+        // Re-arm recordAccess before the drain exists: events published in this window
+        // are buffered (the pre-start capture behavior), not dropped.
+        STOPPED.set(false);
         drainCallback = callback;
         drainExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "async-test-telemetry-drain");
@@ -205,6 +228,9 @@ public final class TelemetryRegistry {
         if (!RUNNING.compareAndSet(true, false)) {
             return;
         }
+        // Set before tearing anything down so producers stop feeding the ring as early
+        // as possible; recordAccess discards from here on.
+        STOPPED.set(true);
         if (shutdownHook != null) {
             try {
                 Runtime.getRuntime().removeShutdownHook(shutdownHook);
@@ -243,9 +269,13 @@ public final class TelemetryRegistry {
             } else {
                 BUFFER.drain((tid, field, write) -> { /* discard */ });
             }
-        } catch (RuntimeException ignored) { // NOPMD EmptyCatchBlock — best-effort drain must survive a misbehaving callback
+        } catch (RuntimeException | StackOverflowError ignored) { // NOPMD EmptyCatchBlock — best-effort drain must survive a misbehaving callback
             // scheduleAtFixedRate cancels all future executions if the task throws;
             // telemetry is best-effort, so swallow and keep the periodic drainer alive.
+            // StackOverflowError is included (same containment rule as DetectorRegistry
+            // .ifIssue): callbacks feed detector code that accumulates user-driven state,
+            // and one blown stack must not kill the drain for the rest of the JVM —
+            // undrained events would then stall every instrumented thread at the buffer.
         }
     }
 }

@@ -2,12 +2,13 @@ package se.deversity.asynctest.diagnostics;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * Detects potential race conditions by tracking cross-thread field accesses.
@@ -29,7 +30,7 @@ public class RaceConditionDetector {
     private static class ObjectFieldState {
         final String className;
         final int objectId;
-        final Map<String, List<FieldAccess>> fieldAccesses = new ConcurrentHashMap<>();
+        final Map<String, Queue<FieldAccess>> fieldAccesses = new ConcurrentHashMap<>();
 
         ObjectFieldState(String className, int objectId) {
             this.className = className;
@@ -72,7 +73,13 @@ public class RaceConditionDetector {
             ignored -> new ObjectFieldState(object.getClass().getSimpleName(), objectId)
         );
 
-        state.fieldAccesses.computeIfAbsent(fieldName, ignored -> Collections.synchronizedList(new ArrayList<>()))
+        // ConcurrentLinkedQueue, deliberately not a synchronizedList: this method runs on
+        // the racing threads themselves, between the very accesses being hunted. A shared
+        // monitor here is a probe effect — it serializes the racing threads at every record
+        // (and pins virtual threads to their carrier on JDK < 24), which can mask the race
+        // this detector exists to find. A lock-free CAS enqueue keeps the cross-thread
+        // rendezvous to a single cache line and never parks a recording thread.
+        state.fieldAccesses.computeIfAbsent(fieldName, ignored -> new ConcurrentLinkedQueue<>())
             .add(new FieldAccess(Thread.currentThread().threadId(), write));
     }
     /**
@@ -84,23 +91,25 @@ public class RaceConditionDetector {
         RaceConditionReport report = new RaceConditionReport();
 
         for (ObjectFieldState state : objects.values()) {
-            for (Map.Entry<String, List<FieldAccess>> entry : state.fieldAccesses.entrySet()) {
+            for (Map.Entry<String, Queue<FieldAccess>> entry : state.fieldAccesses.entrySet()) {
                 String fieldName = entry.getKey();
-                List<FieldAccess> accesses = entry.getValue();
-                if (accesses.size() < 2) {
+                // One weakly-consistent snapshot per field, taken up front: safe against
+                // concurrent recordAccess (the runner's timeout path analyzes while
+                // cancelled workers may still be unwinding), and every check below then
+                // reasons about the same fixed data instead of a moving target.
+                List<FieldAccess> snapshot = new ArrayList<>(entry.getValue());
+                if (snapshot.size() < 2) {
                     continue;
                 }
 
                 Set<Long> threads = new HashSet<>();
                 boolean hasWrite = false;
                 int writeCount = 0;
-                synchronized (accesses) {
-                    for (FieldAccess access : accesses) {
-                        threads.add(access.threadId);
-                        if (access.write) {
-                            hasWrite = true;
-                            writeCount++;
-                        }
+                for (FieldAccess access : snapshot) {
+                    threads.add(access.threadId);
+                    if (access.write) {
+                        hasWrite = true;
+                        writeCount++;
                     }
                 }
 
@@ -109,9 +118,9 @@ public class RaceConditionDetector {
                 }
 
                 String fieldRef = String.format("%s@%x.%s", state.className, state.objectId, fieldName);
-                
+
                 // Record events for deduplication
-                for (FieldAccess access : accesses) {
+                for (FieldAccess access : snapshot) {
                     if (access.write) {
                         deduplicator.record(new RaceConditionEvent(
                             "RaceCondition",
@@ -121,7 +130,7 @@ public class RaceConditionDetector {
                         ));
                     }
                 }
-                
+
                 if (writeCount > 1) {
                     report.potentialRaces.add(String.format(
                         "%s: %d writes observed across %d threads",
@@ -129,10 +138,6 @@ public class RaceConditionDetector {
                     ));
                 }
 
-                List<FieldAccess> snapshot;
-                synchronized (accesses) {
-                    snapshot = new ArrayList<>(accesses);
-                }
                 snapshot.sort((left, right) -> Long.compare(left.timestamp, right.timestamp));
 
                 for (int i = 1; i < snapshot.size(); i++) {

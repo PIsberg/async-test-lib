@@ -34,6 +34,18 @@ public class VisibilityMonitor {
     private final AtomicLong invocationCounter = new AtomicLong(0);
     private final Map<String, Set<Object>> seenValues = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
+
+    /**
+     * Stand-in stored for recorded {@code null} values, so they survive the
+     * {@link ConcurrentHashMap}-backed value sets (which reject {@code null}) and still
+     * count as one distinct observed value. Prints as {@code "null"} in reports.
+     */
+    private static final Object NULL_VALUE = new Object() {
+        @Override
+        public String toString() {
+            return "null";
+        }
+    };
     
     /**
      * Record a field access. Call this from test code to track when a field is read/written.
@@ -44,10 +56,15 @@ public class VisibilityMonitor {
      */
     public void recordFieldAccess(String fieldIdentifier, Object value) {
         if (!enabled) return;
-        
+
+        // Map null to the sentinel: a stale null read is precisely the observation a
+        // visibility monitor exists to accept, and the seenValues sets below are backed by
+        // ConcurrentHashMap, which rejects null with a NullPointerException thrown straight
+        // into the user's test body.
+        Object tracked = (value != null) ? value : NULL_VALUE;
         long invId = invocationCounter.get();
-        FieldSnapshot snapshot = new FieldSnapshot(invId, value);
-        
+        FieldSnapshot snapshot = new FieldSnapshot(invId, tracked);
+
         fieldSnapshots.computeIfAbsent(fieldIdentifier, k -> 
             Collections.synchronizedList(new ArrayList<>())
         ).add(snapshot);
@@ -55,7 +72,7 @@ public class VisibilityMonitor {
         // Track distinct values seen
         seenValues.computeIfAbsent(fieldIdentifier, k -> 
             ConcurrentHashMap.newKeySet()
-        ).add(value);
+        ).add(tracked);
     }
     
     /**
@@ -76,10 +93,19 @@ public class VisibilityMonitor {
         for (Map.Entry<String, List<FieldSnapshot>> entry : fieldSnapshots.entrySet()) {
             String fieldId = entry.getKey();
             List<FieldSnapshot> snapshots = entry.getValue();
-            
+
+            // Copy under the list's own lock: this is a Collections.synchronizedList, and
+            // iterating it unguarded races a concurrent recordFieldAccess (the runner's
+            // timeout path can analyze while a cancelled worker is still unwinding), which
+            // throws ConcurrentModificationException and costs the whole report.
+            List<FieldSnapshot> copy;
+            synchronized (snapshots) {
+                copy = new ArrayList<>(snapshots);
+            }
+
             // Check for field value changing across invocations
             Map<Long, Set<Object>> valuesByInvocation = new HashMap<>();
-            for (FieldSnapshot snapshot : snapshots) {
+            for (FieldSnapshot snapshot : copy) {
                 valuesByInvocation.computeIfAbsent(snapshot.invocationId, k -> new HashSet<>())
                     .add(snapshot.value);
             }

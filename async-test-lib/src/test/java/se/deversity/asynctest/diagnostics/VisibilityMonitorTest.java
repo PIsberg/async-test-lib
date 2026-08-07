@@ -37,6 +37,38 @@ public class VisibilityMonitorTest {
                 "Field with constant value across invocations should not report visibility issues");
     }
 
+    // ---- Null values: the canonical stale read a visibility monitor must accept ----
+
+    @Test
+    void nullValueRecordingDoesNotThrow() {
+        VisibilityMonitor monitor = new VisibilityMonitor();
+
+        monitor.markInvocationStart();
+        assertDoesNotThrow(() -> monitor.recordFieldAccess("Holder.ref", null),
+                "null is the canonical stale read (a field observed before another thread's "
+                        + "write became visible) — recording it must not throw");
+    }
+
+    @Test
+    void nullValueParticipatesInVariationAnalysis() {
+        VisibilityMonitor monitor = new VisibilityMonitor();
+
+        // Invocation 1: a thread observes the initialized value.
+        monitor.markInvocationStart();
+        monitor.recordFieldAccess("Holder.ref", "initialized");
+
+        // Invocation 2: a thread observes a stale null.
+        monitor.markInvocationStart();
+        monitor.recordFieldAccess("Holder.ref", null);
+
+        VisibilityMonitor.VisibilityReport report = monitor.analyzeVisibility();
+
+        assertTrue(report.hasIssues(),
+                "null vs non-null across invocations is exactly the variation this monitor exists to flag");
+        assertTrue(report.suspectedFields.contains("Holder.ref"),
+                "suspectedFields should contain the field that read back null");
+    }
+
     @Test
     void fieldWithVariationsDetected() {
         VisibilityMonitor monitor = new VisibilityMonitor();

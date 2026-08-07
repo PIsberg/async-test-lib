@@ -28,8 +28,10 @@ import java.lang.invoke.VarHandle;
  *
  * <p><strong>Capacity:</strong> must be a power of two. When the buffer fills, producers
  * apply backpressure by spin-waiting in {@link #publish} until the single consumer drains a
- * slot — events are never overwritten or dropped on overflow. For typical async-test
- * invocation sizes the buffer is never full and the spin path is never taken.
+ * slot — events are never overwritten. If the buffer stays full with no consumer progress
+ * for a sustained period (no drain thread is running any more), {@link #publish} drops the
+ * event instead of spinning forever — see {@link #droppedCount()}. For typical async-test
+ * invocation sizes the buffer is never full and neither path is taken.
  *
  * @since 1.6.0
  */
@@ -67,13 +69,27 @@ public final class TelemetryEventBuffer {
     private final int mask;
     private final AccessEvent[] ringBuffer;
 
-    // Producers claim slots via getAndIncrement; only the sequence number stored
-    // in the slot itself signals to the consumer that the slot is fully written.
+    // Producers claim slots with a compareAndSet (so a full-buffer give-up can abandon
+    // the attempt without claiming); only the sequence number stored in the slot itself
+    // signals to the consumer that the slot is fully written.
     private final java.util.concurrent.atomic.AtomicLong producerCursor =
             new java.util.concurrent.atomic.AtomicLong(-1);
 
     // Consumer cursor — only touched by the single drain thread.
     private volatile long consumerCursor = -1;
+
+    /**
+     * How long {@link #publish} keeps retrying against a full buffer with no consumer
+     * progress before dropping the event. A live drain runs every millisecond, so any
+     * healthy full-buffer episode resolves about three orders of magnitude faster than
+     * this bound; reaching it means no consumer exists any more.
+     */
+    private static final long FULL_BUFFER_GIVE_UP_NANOS = 1_000_000_000L;
+
+    // Events abandoned by publish() after FULL_BUFFER_GIVE_UP_NANOS of zero consumer
+    // progress. See droppedCount().
+    private final java.util.concurrent.atomic.AtomicLong droppedEvents =
+            new java.util.concurrent.atomic.AtomicLong();
 
     /**
      * Creates a TelemetryEventBuffer.
@@ -97,7 +113,11 @@ public final class TelemetryEventBuffer {
      * Publishes a field-access event from any producer thread.
      *
      * <p>This method is designed for the hot recordAccess path: it performs no allocation,
-     * no lock acquisition, and no blocking.
+     * no lock acquisition, and no blocking. The claim is a compare-and-set rather than an
+     * unconditional increment so that a full buffer can be abandoned without claiming a
+     * sequence: the consumer treats the first unpublished sequence as the end of the
+     * stream, so a claimed-but-never-published slot would silently truncate every later
+     * event and wedge every later producer.
      *
      * @param threadId    {@code Thread.currentThread().threadId()}
      * @param targetField field or method identifier (e.g.
@@ -106,19 +126,56 @@ public final class TelemetryEventBuffer {
      * @param isWrite     {@code true} for a write access, {@code false} for a read
      */
     public void publish(long threadId, String targetField, boolean isWrite) {
-        long seq = producerCursor.incrementAndGet();
-        // Spin-wait if the buffer is full to prevent overwriting a slot before it is drained.
-        while (seq - consumerCursor > bufferSize) {
-            Thread.onSpinWait();
+        long fullSinceNanos = 0L;
+        int spins = 0;
+        for (;;) {
+            long claimed = producerCursor.get();
+            long seq = claimed + 1;
+            if (seq - consumerCursor > bufferSize) {
+                // Buffer full. Spin briefly — a live consumer drains every millisecond, so
+                // this clears in microseconds — but give up after a bound: with no consumer
+                // left (registry stopped, drain thread dead) nothing ever advances the
+                // cursor, and an unbounded spin here turns every instrumented thread in the
+                // JVM into a busy-spinning hostage. Dropping after a sustained full-buffer
+                // period with zero progress is strictly better than hanging the caller.
+                if (fullSinceNanos == 0L) {
+                    fullSinceNanos = System.nanoTime();
+                } else if ((++spins & 255) == 0
+                        && System.nanoTime() - fullSinceNanos > FULL_BUFFER_GIVE_UP_NANOS) {
+                    droppedEvents.incrementAndGet();
+                    return;
+                }
+                Thread.onSpinWait();
+                continue;
+            }
+            fullSinceNanos = 0L; // not full — a later full episode times itself afresh
+            if (producerCursor.compareAndSet(claimed, seq)) {
+                // The full-check above used the same `claimed` this CAS validated, and
+                // consumerCursor only ever advances, so the claimed slot is free: its
+                // previous occupant (sequence seq - bufferSize) is already consumed.
+                int index = (int) (seq & mask);
+                AccessEvent event = ringBuffer[index];
+                // Write data fields before the sequence, which acts as the publication signal.
+                event.threadId = threadId;
+                event.targetField = targetField;
+                event.isWrite = isWrite;
+                // Release fence: consumer will not observe the event until this store completes.
+                SEQ_VH.setRelease(event, seq);
+                return;
+            }
         }
-        int index = (int) (seq & mask);
-        AccessEvent event = ringBuffer[index];
-        // Write data fields before the sequence, which acts as the publication signal.
-        event.threadId = threadId;
-        event.targetField = targetField;
-        event.isWrite = isWrite;
-        // Release fence: consumer will not observe the event until this store completes.
-        SEQ_VH.setRelease(event, seq);
+    }
+
+    /**
+     * Number of events {@link #publish} dropped after the full-buffer wait bound expired,
+     * i.e. after ~1s of a full buffer with no consumer progress. Zero in any healthy
+     * pipeline; nonzero means events were being published with no live drain thread.
+     *
+     * @return the number of events dropped since this buffer was created
+     * @since 1.7.3
+     */
+    public long droppedCount() {
+        return droppedEvents.get();
     }
 
     /**
