@@ -15,7 +15,7 @@ repositories {
     mavenCentral()
 }
 
-val asyncTestVersion = "1.7.1"
+val asyncTestVersion = "1.7.2"
 val junitPlatformVersion = "6.1.2"
 
 dependencies {

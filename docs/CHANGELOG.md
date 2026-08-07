@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-08-07
+
 ### Added — `FLOW_PUBLISHER_CONCURRENCY`: the first Flow API detector (detector 128)
 
 `java.util.concurrent.Flow` was the one JDK concurrency API with no detector at all.
