@@ -127,7 +127,7 @@ public class BoxedPrimitiveLockDetector {
     @SuppressFBWarnings("ES_COMPARING_STRINGS_WITH_EQ")
     // Intentional reference comparison: obj == obj.intern() is true only when obj is an interned
     // (literal) String — which is exactly what we want to detect as a dangerous lock target.
-    @SuppressWarnings("PMD.CompareObjectsWithEquals") // reference equality with intern() is intentional to detect interned strings
+    @SuppressWarnings({"PMD.CompareObjectsWithEquals", "ReferenceEquality"}) // reference equality with intern() is intentional to detect interned strings
     private static @Nullable String detectCachedPrimitive(Object obj) {
         if (obj instanceof Boolean) {
             return "Boolean cached instance (" + obj + ")";
@@ -138,7 +138,7 @@ public class BoxedPrimitiveLockDetector {
         if (obj instanceof Long v) {
             if (v >= -128 && v <= 127) return "cached Long(" + v + ")";
         }
-        if (obj instanceof String && obj == ((String) obj).intern()) {
+        if (obj instanceof String s && obj == s.intern()) {
             return "interned String(\"" + obj + "\")";
         }
         return null;
@@ -207,19 +207,24 @@ public class BoxedPrimitiveLockDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("BOXED PRIMITIVE LOCK DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
-            sb.append("  Why: Synchronizing on a boxed primitive (Integer, Long, Boolean) is dangerous because the JVM caches\n" +
-                       "       commonly-used values (Integers -128 to 127, Boolean.TRUE/FALSE). Two completely unrelated code paths\n" +
-                       "       that synchronize on 'Integer.valueOf(42)' acquire the same monitor object — causing accidental\n" +
-                       "       coupling and potential deadlocks with code that has nothing to do with your class.\n" +
-                       "  Fix: Always synchronize on a dedicated private final Object lock = new Object(); — never on a boxed\n" +
-                       "       primitive, String literal, or any other object that might be shared or interned by the JVM.");
+            sb.append("""
+  Why: Synchronizing on a boxed primitive (Integer, Long, Boolean) is dangerous because the JVM caches
+       commonly-used values (Integers -128 to 127, Boolean.TRUE/FALSE). Two completely unrelated code paths
+       that synchronize on 'Integer.valueOf(42)' acquire the same monitor object — causing accidental
+       coupling and potential deadlocks with code that has nothing to do with your class.
+  Fix: Always synchronize on a dedicated private final Object lock = new Object(); — never on a boxed
+       primitive, String literal, or any other object that might be shared or interned by the JVM.\
+""");
             if (hasValueBasedIssues) {
-                sb.append("\n  Why (value-based classes): Types such as Optional, Instant, Duration, and ProcessHandle are\n" +
-                           "       documented JEP 390 value-based classes — their instances may be cached, interned, or replaced\n" +
-                           "       entirely by identity-less value objects under a future Valhalla runtime; javac already emits a\n" +
-                           "       warning for synchronizing on them.\n" +
-                           "  Fix (value-based classes): Use a dedicated private final Object lock = new Object(); or a\n" +
-                           "       java.util.concurrent lock (ReentrantLock, etc.) instead of synchronizing on a value-based instance.");
+                sb.append("""
+
+  Why (value-based classes): Types such as Optional, Instant, Duration, and ProcessHandle are
+       documented JEP 390 value-based classes — their instances may be cached, interned, or replaced
+       entirely by identity-less value objects under a future Valhalla runtime; javac already emits a
+       warning for synchronizing on them.
+  Fix (value-based classes): Use a dedicated private final Object lock = new Object(); or a
+       java.util.concurrent lock (ReentrantLock, etc.) instead of synchronizing on a value-based instance.\
+""");
             }
             return sb.toString();
         }

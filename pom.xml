@@ -223,7 +223,7 @@
                         <arg>-Xmaxerrs</arg>
                         <arg>20000</arg>
                         <arg>--should-stop=ifError=FLOW</arg>
-                        <arg>-Xplugin:ErrorProne -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=se.deversity.asynctest</arg>
+                        <arg>-Xplugin:ErrorProne -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=se.deversity.asynctest -Xep:ReferenceEquality:ERROR -Xep:StringConcatToTextBlock:ERROR -Xep:ExposedPrivateType:ERROR -Xep:UnusedVariable:ERROR -Xep:StatementSwitchToExpressionSwitch:ERROR -Xep:InlineMeSuggester:ERROR -Xep:PatternMatchingInstanceof:ERROR -Xep:StringSplitter:ERROR</arg>
                         <arg>-XDaddTypeAnnotationsToSymbol=true</arg>
                     </compilerArgs>
                     <annotationProcessorPaths>

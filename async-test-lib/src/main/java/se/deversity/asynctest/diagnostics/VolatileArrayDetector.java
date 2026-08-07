@@ -84,7 +84,7 @@ public class VolatileArrayDetector {
         }
     }
 
-    @SuppressWarnings("PMD.CompareObjectsWithEquals") // array identity comparison is intentional
+    @SuppressWarnings({"PMD.CompareObjectsWithEquals", "ReferenceEquality"}) // array identity comparison is intentional
     private @Nullable ArrayInfo findArrayInfo(Object array, String arrayName) {
         for (ArrayInfo info : elementAccesses.keySet()) {
             if (info.array == array || info.name.equals(arrayName)) {
@@ -176,7 +176,7 @@ public class VolatileArrayDetector {
         }
 
         @Override
-        @SuppressWarnings("EqualsGetClass") // subclass-distinct equality is intended for this non-final class
+        @SuppressWarnings({"EqualsGetClass", "ReferenceEquality"}) // subclass-distinct equality is intended for this non-final class; array is tracked by identity, not value
         public boolean equals(Object o) {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;

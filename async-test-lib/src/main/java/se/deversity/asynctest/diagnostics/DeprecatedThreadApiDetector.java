@@ -91,13 +91,15 @@ public class DeprecatedThreadApiDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("DEPRECATED THREAD API USAGE DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
-            sb.append("  Why: Thread.stop(), Thread.suspend(), and Thread.resume() are permanently deprecated because they are\n" +
-                       "       fundamentally unsafe. stop() kills the thread mid-execution, leaving shared objects in a\n" +
-                       "       partially-updated, corrupt state. suspend() holds the thread's locks while suspended, causing\n" +
-                       "       deadlocks. These APIs should never appear in production or test code.\n" +
-                       "  Fix: Replace Thread.stop() with a cooperative shutdown: set a volatile boolean stop flag and have the\n" +
-                       "       thread check it regularly: while (!stopped) { doWork(); }\n" +
-                       "       Replace suspend()/resume() with wait()/notify() or Condition.await()/signalAll() for controlled pausing.");
+            sb.append("""
+  Why: Thread.stop(), Thread.suspend(), and Thread.resume() are permanently deprecated because they are
+       fundamentally unsafe. stop() kills the thread mid-execution, leaving shared objects in a
+       partially-updated, corrupt state. suspend() holds the thread's locks while suspended, causing
+       deadlocks. These APIs should never appear in production or test code.
+  Fix: Replace Thread.stop() with a cooperative shutdown: set a volatile boolean stop flag and have the
+       thread check it regularly: while (!stopped) { doWork(); }
+       Replace suspend()/resume() with wait()/notify() or Condition.await()/signalAll() for controlled pausing.\
+""");
             return sb.toString();
         }
     }

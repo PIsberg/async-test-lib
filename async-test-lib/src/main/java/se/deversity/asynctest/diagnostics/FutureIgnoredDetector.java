@@ -98,12 +98,14 @@ public class FutureIgnoredDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("IGNORED FUTURE DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
-            sb.append("  Why: A Future that is submitted but never retrieved (get()/join() never called) means the task runs\n" +
-                       "       fire-and-forget. Exceptions thrown by the task are silently swallowed — the calling thread never\n" +
-                       "       knows the task failed. The result is also discarded, hiding data-processing errors.\n" +
-                       "  Fix: Always retrieve Future results: call get() or join(), or chain with thenApply/thenAccept/exceptionally.\n" +
-                       "       If fire-and-forget is intentional, at least register an exception handler:\n" +
-                       "       future.exceptionally(ex -> { log(ex); return null; });");
+            sb.append("""
+  Why: A Future that is submitted but never retrieved (get()/join() never called) means the task runs
+       fire-and-forget. Exceptions thrown by the task are silently swallowed — the calling thread never
+       knows the task failed. The result is also discarded, hiding data-processing errors.
+  Fix: Always retrieve Future results: call get() or join(), or chain with thenApply/thenAccept/exceptionally.
+       If fire-and-forget is intentional, at least register an exception handler:
+       future.exceptionally(ex -> { log(ex); return null; });\
+""");
             return sb.toString();
         }
     }

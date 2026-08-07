@@ -99,12 +99,14 @@ public class SharedXmlParserDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("SHARED XML PARSER DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
-            sb.append("  Why: XML parsers (DocumentBuilder, SAXParser, Transformer) maintain mutable internal state during\n" +
-                       "       parsing. Concurrent use corrupts that state, producing wrong parse results, missed elements, or\n" +
-                       "       parser exceptions that vary by thread scheduling.\n" +
-                       "  Fix: Create a new parser instance per call — DocumentBuilderFactory.newDocumentBuilder() is the correct pattern:\n" +
-                       "       DocumentBuilder db = factory.newDocumentBuilder(); // factory is thread-safe; builder is not\n" +
-                       "       Or use ThreadLocal<DocumentBuilder> to amortise construction cost across repeated calls.");
+            sb.append("""
+  Why: XML parsers (DocumentBuilder, SAXParser, Transformer) maintain mutable internal state during
+       parsing. Concurrent use corrupts that state, producing wrong parse results, missed elements, or
+       parser exceptions that vary by thread scheduling.
+  Fix: Create a new parser instance per call — DocumentBuilderFactory.newDocumentBuilder() is the correct pattern:
+       DocumentBuilder db = factory.newDocumentBuilder(); // factory is thread-safe; builder is not
+       Or use ThreadLocal<DocumentBuilder> to amortise construction cost across repeated calls.\
+""");
             return sb.toString();
         }
     }

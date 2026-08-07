@@ -231,12 +231,14 @@ public class CalendarDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Why: java.util.Calendar is not thread-safe. Its internal fields (year, month, day, etc.) are stored\n" +
-                       "       in a mutable instance. Concurrent use causes corrupted date computations and non-deterministic\n" +
-                       "       results — e.g. two threads formatting dates may produce dates that mix each other's day/month fields.\n" +
-                       "  Fix:\n" +
-                       "    - Replace with java.time.LocalDate, LocalDateTime, ZonedDateTime — all immutable and thread-safe\n" +
-                       "    - If Calendar is unavoidable, create a new instance per thread or use ThreadLocal<Calendar>");
+            sb.append("""
+  Why: java.util.Calendar is not thread-safe. Its internal fields (year, month, day, etc.) are stored
+       in a mutable instance. Concurrent use causes corrupted date computations and non-deterministic
+       results — e.g. two threads formatting dates may produce dates that mix each other's day/month fields.
+  Fix:
+    - Replace with java.time.LocalDate, LocalDateTime, ZonedDateTime — all immutable and thread-safe
+    - If Calendar is unavoidable, create a new instance per thread or use ThreadLocal<Calendar>\
+""");
             return sb.toString();
         }
     }

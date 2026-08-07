@@ -272,10 +272,12 @@ public class CacheConcurrencyDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Why: Non-thread-safe caches allow concurrent reads and writes to corrupt internal state, producing stale hits,\n" +
-                       "       partially-written values, or infinite loops inside HashMap.get() under concurrent rehashing.\n" +
-                       "  Fix: replace with ConcurrentHashMap (lock-free reads, fine-grained write locks); or wrap with Collections.synchronizedMap()\n" +
-                       "       and hold the map lock for the full check-then-act sequence: synchronized(map) { if (!map.containsKey(k)) map.put(k, compute()); }");
+            sb.append("""
+  Why: Non-thread-safe caches allow concurrent reads and writes to corrupt internal state, producing stale hits,
+       partially-written values, or infinite loops inside HashMap.get() under concurrent rehashing.
+  Fix: replace with ConcurrentHashMap (lock-free reads, fine-grained write locks); or wrap with Collections.synchronizedMap()
+       and hold the map lock for the full check-then-act sequence: synchronized(map) { if (!map.containsKey(k)) map.put(k, compute()); }\
+""");
             return sb.toString();
         }
     }

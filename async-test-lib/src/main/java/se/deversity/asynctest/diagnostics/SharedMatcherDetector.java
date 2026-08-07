@@ -89,13 +89,15 @@ public class SharedMatcherDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("SHARED REGEX MATCHER DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
-            sb.append("  Why: A Matcher holds the current match position and region as mutable internal state.\n" +
-                       "       Concurrent find()/group() calls on the same Matcher corrupt that state, producing wrong\n" +
-                       "       match results, missed matches, or ArrayIndexOutOfBoundsException inside the regex engine.\n" +
-                       "  Fix:\n" +
-                       "    - Call pattern.matcher(input) inside each thread to obtain a fresh, independent Matcher\n" +
-                       "    - Pattern.compile() is safe to share — it is immutable after construction\n" +
-                       "    - For Java 11+: Pattern.asMatchPredicate() or Pattern.asPredicate() also thread-safe");
+            sb.append("""
+  Why: A Matcher holds the current match position and region as mutable internal state.
+       Concurrent find()/group() calls on the same Matcher corrupt that state, producing wrong
+       match results, missed matches, or ArrayIndexOutOfBoundsException inside the regex engine.
+  Fix:
+    - Call pattern.matcher(input) inside each thread to obtain a fresh, independent Matcher
+    - Pattern.compile() is safe to share — it is immutable after construction
+    - For Java 11+: Pattern.asMatchPredicate() or Pattern.asPredicate() also thread-safe\
+""");
             return sb.toString();
         }
     }

@@ -251,13 +251,15 @@ public class StringBuilderDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Why: StringBuilder is explicitly not thread-safe. The internal char[] and count field are updated\n"
-                    + "       without synchronization. Concurrent append() calls corrupt the buffer, producing garbled output,\n"
-                    + "       StringIndexOutOfBoundsException, or silently lost characters — bugs that vary by thread scheduling.\n"
-                    + "  Fix:\n"
-                    + "    - Build strings locally per thread and combine the results afterwards (collect into a list, then join)\n"
-                    + "    - Use ThreadLocal<StringBuilder> if you must reuse a buffer per thread (call sb.setLength(0) to reset)\n"
-                    + "    - Use StringBuffer instead if sharing across threads is unavoidable (synchronized, but slower)");
+            sb.append("""
+  Why: StringBuilder is explicitly not thread-safe. The internal char[] and count field are updated
+       without synchronization. Concurrent append() calls corrupt the buffer, producing garbled output,
+       StringIndexOutOfBoundsException, or silently lost characters — bugs that vary by thread scheduling.
+  Fix:
+    - Build strings locally per thread and combine the results afterwards (collect into a list, then join)
+    - Use ThreadLocal<StringBuilder> if you must reuse a buffer per thread (call sb.setLength(0) to reset)
+    - Use StringBuffer instead if sharing across threads is unavoidable (synchronized, but slower)\
+""");
             return sb.toString();
         }
     }

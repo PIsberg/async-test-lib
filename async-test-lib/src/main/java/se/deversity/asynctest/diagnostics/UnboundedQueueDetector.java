@@ -292,13 +292,16 @@ public class UnboundedQueueDetector {
                         }
                     }
                 }
-                sb.append("\nWhy: Queues without a capacity bound grow without limit under sustained load, eventually exhausting heap\n" +
-                          "     memory (OutOfMemoryError), hiding producer/consumer imbalances, and masking backpressure that should\n" +
-                          "     signal the producer to slow down.\n" +
-                          "Fix:\n" +
-                          "  - Use a bounded queue: new ArrayBlockingQueue<>(capacity) or new LinkedBlockingQueue<>(capacity)\n" +
-                          "  - Choose capacity deliberately: too small starves the consumer; too large hides backpressure\n" +
-                          "  - On a full queue, use offer(item, timeout, unit) and handle rejection explicitly (log, shed load, or block)");
+                sb.append("""
+
+Why: Queues without a capacity bound grow without limit under sustained load, eventually exhausting heap
+     memory (OutOfMemoryError), hiding producer/consumer imbalances, and masking backpressure that should
+     signal the producer to slow down.
+Fix:
+  - Use a bounded queue: new ArrayBlockingQueue<>(capacity) or new LinkedBlockingQueue<>(capacity)
+  - Choose capacity deliberately: too small starves the consumer; too large hides backpressure
+  - On a full queue, use offer(item, timeout, unit) and handle rejection explicitly (log, shed load, or block)\
+""");
             }
             return sb.toString();
         }

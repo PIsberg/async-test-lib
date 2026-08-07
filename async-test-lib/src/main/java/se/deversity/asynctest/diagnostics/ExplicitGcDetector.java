@@ -78,13 +78,15 @@ public class ExplicitGcDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("EXPLICIT GC INVOCATION DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
-            sb.append("  Why: System.gc() is a hint to the JVM to run a full GC cycle. In a concurrent test, it pauses all\n" +
-                       "       application threads (stop-the-world), distorting timing measurements and causing spurious failures\n" +
-                       "       in latency-sensitive tests. It also interferes with WeakReference-based caches, potentially\n" +
-                       "       evicting entries that should still be live.\n" +
-                       "  Fix: Remove System.gc() calls from production and test code. If you need to trigger GC for a\n" +
-                       "       WeakReference test, use a dedicated test helper that allocates memory until a GC is forced\n" +
-                       "       rather than calling System.gc() directly.");
+            sb.append("""
+  Why: System.gc() is a hint to the JVM to run a full GC cycle. In a concurrent test, it pauses all
+       application threads (stop-the-world), distorting timing measurements and causing spurious failures
+       in latency-sensitive tests. It also interferes with WeakReference-based caches, potentially
+       evicting entries that should still be live.
+  Fix: Remove System.gc() calls from production and test code. If you need to trigger GC for a
+       WeakReference test, use a dedicated test helper that allocates memory until a GC is forced
+       rather than calling System.gc() directly.\
+""");
             return sb.toString();
         }
     }

@@ -237,13 +237,15 @@ public class LockLeakDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Why: An unreleased lock blocks every other thread that tries to acquire it — they wait indefinitely,\n" +
-"       causing the test or application to hang. Even a single missed unlock in an exception path is enough\n" +
-"       to starve all contenders for that lock.\n" +
-"  Fix:\n" +
-"    - Always wrap lock usage in try/finally: lock.lock(); try { ... } finally { lock.unlock(); }\n" +
-"    - For scoped locking, use a helper: try (var l = new AutoUnlock(lock)) { ... }\n" +
-"    - Prefer synchronized blocks for simple cases — the JVM guarantees unlock on exit");
+            sb.append("""
+  Why: An unreleased lock blocks every other thread that tries to acquire it — they wait indefinitely,
+       causing the test or application to hang. Even a single missed unlock in an exception path is enough
+       to starve all contenders for that lock.
+  Fix:
+    - Always wrap lock usage in try/finally: lock.lock(); try { ... } finally { lock.unlock(); }
+    - For scoped locking, use a helper: try (var l = new AutoUnlock(lock)) { ... }
+    - Prefer synchronized blocks for simple cases — the JVM guarantees unlock on exit\
+""");
             return sb.toString();
         }
     }

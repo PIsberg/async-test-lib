@@ -182,6 +182,7 @@ public class LazyConstantMisuseDetector {
      * @param result the value the supplier produced (may be {@code null}, which is
      *               itself reported: JDK 26 {@code LazyConstant} rejects null)
      */
+    @SuppressWarnings("ReferenceEquality") // NO_RESULT is a unique sentinel; identity is the point, not value equality
     public void recordComputeEnd(String name, Thread thread, Object result) {
         if (name == null || thread == null) return;
         totalComputes.incrementAndGet();

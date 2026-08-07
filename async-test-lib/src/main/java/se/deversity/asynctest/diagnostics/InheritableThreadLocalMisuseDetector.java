@@ -158,14 +158,16 @@ public class InheritableThreadLocalMisuseDetector {
             for (String issue : pooledGetIssues)   sb.append("  - ").append(issue).append("\n");
             for (String issue : pooledSetIssues)   sb.append("  - ").append(issue).append("\n");
             for (String issue : multiThreadAccess) sb.append("  - ").append(issue).append("\n");
-            sb.append("  Why: InheritableThreadLocal copies values at thread-creation time, not at task-submission time.\n" +
-                    "       In a thread pool the threads are created once at pool startup, so every task inherits the\n" +
-                    "       creator's context from that point — not the submitter's current context. This causes stale or\n" +
-                    "       cross-task context contamination that is extremely hard to reproduce.\n" +
-                    "  Fix:\n" +
-                    "    - Pass context explicitly as a method parameter or embed it in the task object\n" +
-                    "    - Use ScopedValue (Java 21+) with ScopedValue.where(KEY, value).run(task) — inherits correctly per call\n" +
-                    "    - If InheritableThreadLocal is unavoidable, wrap submissions to copy the value into the task closure");
+            sb.append("""
+  Why: InheritableThreadLocal copies values at thread-creation time, not at task-submission time.
+       In a thread pool the threads are created once at pool startup, so every task inherits the
+       creator's context from that point — not the submitter's current context. This causes stale or
+       cross-task context contamination that is extremely hard to reproduce.
+  Fix:
+    - Pass context explicitly as a method parameter or embed it in the task object
+    - Use ScopedValue (Java 21+) with ScopedValue.where(KEY, value).run(task) — inherits correctly per call
+    - If InheritableThreadLocal is unavoidable, wrap submissions to copy the value into the task closure\
+""");
             return sb.toString();
         }
     }

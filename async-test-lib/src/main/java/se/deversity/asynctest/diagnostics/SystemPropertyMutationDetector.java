@@ -133,14 +133,16 @@ public class SystemPropertyMutationDetector {
                 sb.append("  Warnings (single-thread mutations):\n");
                 for (String w : singleThreadMutations) sb.append("    - ").append(w).append("\n");
             }
-            sb.append("  Why: System.setProperty() modifies a global JVM-wide map. Concurrent mutations from multiple threads\n" +
-                       "       race without synchronization. More critically, tests that mutate system properties and do not\n" +
-                       "       restore them contaminate every subsequent test in the same JVM — a notoriously hard-to-diagnose\n" +
-                       "       source of flaky tests.\n" +
-                       "  Fix: Use try/finally to always restore the original value:\n" +
-                       "       String old = System.getProperty(key); try { System.setProperty(key, value); doWork(); }\n" +
-                       "       finally { if (old == null) System.clearProperty(key); else System.setProperty(key, old); }\n" +
-                       "       For test isolation, prefer mocking the consumer of the property rather than mutating the global state.");
+            sb.append("""
+  Why: System.setProperty() modifies a global JVM-wide map. Concurrent mutations from multiple threads
+       race without synchronization. More critically, tests that mutate system properties and do not
+       restore them contaminate every subsequent test in the same JVM — a notoriously hard-to-diagnose
+       source of flaky tests.
+  Fix: Use try/finally to always restore the original value:
+       String old = System.getProperty(key); try { System.setProperty(key, value); doWork(); }
+       finally { if (old == null) System.clearProperty(key); else System.setProperty(key, old); }
+       For test isolation, prefer mocking the consumer of the property rather than mutating the global state.\
+""");
             return sb.toString();
         }
     }

@@ -126,14 +126,16 @@ public class LatchMisuseDetector {
             for (String issue : extraCountDowns) {
                 sb.append("  - ").append(issue).append('\n');
             }
-            sb.append("  Why: If countDown() is called fewer times than await() needs, the latch count never reaches zero\n" +
-"       and await() blocks indefinitely — the test or downstream logic hangs silently.\n" +
-"       Calling countDown() more times than the initial count is a no-op after zero but indicates\n" +
-"       a logic error in how threads are coordinated.\n" +
-"  Fix:\n" +
-"    - Ensure every thread that participates in the latch calls countDown() exactly once, even on exception paths\n" +
-"    - Use try/finally to guarantee countDown() is called: try { doWork(); } finally { latch.countDown(); }\n" +
-"    - Prefer CompletableFuture or CyclicBarrier when the one-shot guarantee of CountDownLatch is not needed");
+            sb.append("""
+  Why: If countDown() is called fewer times than await() needs, the latch count never reaches zero
+       and await() blocks indefinitely — the test or downstream logic hangs silently.
+       Calling countDown() more times than the initial count is a no-op after zero but indicates
+       a logic error in how threads are coordinated.
+  Fix:
+    - Ensure every thread that participates in the latch calls countDown() exactly once, even on exception paths
+    - Use try/finally to guarantee countDown() is called: try { doWork(); } finally { latch.countDown(); }
+    - Prefer CompletableFuture or CyclicBarrier when the one-shot guarantee of CountDownLatch is not needed\
+""");
             return sb.toString();
         }
     }

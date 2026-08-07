@@ -71,13 +71,12 @@ public enum IssueSeverity {
      * {@return ANSI color code for terminal output}
      */
     public String getAnsiColor() {
-        switch (this) {
-            case CRITICAL: return "\u001B[31m"; // Red
-            case HIGH:     return "\u001B[33m"; // Yellow
-            case MEDIUM:   return "\u001B[36m"; // Cyan
-            case LOW:      return "\u001B[34m"; // Blue
-            default:       return "\u001B[0m";  // Reset
-        }
+        return switch (this) {
+            case CRITICAL -> "\033[31m"; // Red
+            case HIGH     -> "\033[33m"; // Yellow
+            case MEDIUM   -> "\033[36m"; // Cyan
+            case LOW      -> "\033[34m"; // Blue
+        };
     }
 
     /**

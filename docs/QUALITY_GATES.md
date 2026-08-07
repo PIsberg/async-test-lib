@@ -90,7 +90,9 @@ thresholds and japicmp — all of which fail the build.
   `UnusedPrivateField`.
 - **SpotBugs** runs at Max effort / Low threshold and flags repeated `path.getParent()` null paths.
 - **find-sec-bugs** adds 121 security detectors inside the SpotBugs run (see below).
-- **Error Prone** covers main sources only.
+- **Error Prone** covers main sources only; nine checks are promoted from advisory warning to
+  build-failing `ERROR` (see below) — everything else Error Prone finds still prints as a warning
+  but does not fail the build.
 - **NullAway** gates nullness on main sources, as an Error Prone check (see below).
 - **JaCoCo** requires line ≥ 70% and branch ≥ 65%.
 - **japicmp** breaks the build on binary-incompatible API changes against the last release.
@@ -139,8 +141,11 @@ convention.
 NullAway runs as an Error Prone check on main sources, configured in the parent POM:
 
 ```xml
-<arg>-Xplugin:ErrorProne -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=se.deversity.asynctest</arg>
+<arg>-Xplugin:ErrorProne -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=se.deversity.asynctest ...</arg>
 ```
+
+The same `<arg>` carries the other eight promoted checks (below) — trimmed here since NullAway is the one
+with a migration story worth telling; the full line is in the parent POM.
 
 `build.gradle.kts` sets the same two options through `options.errorprone`. `@Nullable` comes from
 JSpecify (`org.jspecify:jspecify`), `provided` scope: the annotation has CLASS retention, so it
@@ -178,6 +183,40 @@ one. Two shapes recur here, and both are cheap to state explicitly rather than s
 
 Neither `@SuppressWarnings("NullAway")` nor a widened `AnnotatedPackages` exclusion appears in the
 tree, and adding one should be argued for rather than assumed.
+
+### The other eight promoted checks
+
+The README's Error Prone badge used to describe a single check (NullAway), while the other ~500
+checks Error Prone ships with ran at their default severity — mostly `WARNING`, which javac prints
+but does not fail the build on. A 2026-08 sweep found 65 live warnings across eight checks that had
+never been promoted, fixed each, and promoted the checks so the badge's "passing" claim covers them
+too:
+
+- **`ReferenceEquality`** (7 sites) — every one was an already-intentional identity comparison
+  (a sentinel object, an identity-keyed cache entry) that already carried a `PMD.CompareObjectsWithEquals`
+  or `SpotBugs` suppression with a justification comment; Error Prone's own name for the same thing
+  just wasn't in the list. Added `"ReferenceEquality"` alongside the existing suppression at each site.
+- **`StringConcatToTextBlock`** (52 sites) — cosmetic: multi-line `"a\n" + "b\n" + "c"` concatenations
+  in detector `toString()` reports, converted to Java 21 text blocks. Every conversion was verified
+  byte-identical to the original via `String.equals()` before landing, since these strings are
+  diagnostic report text some tests check with `.contains(...)`.
+- **`ExposedPrivateType`** (1) — `ThreadPoolDeadlockDetector.PoolDeadlockRisk`'s constructor took a
+  `List<NestedSubmissionEvent>`, and `NestedSubmissionEvent` is `private`. Left package-private and
+  suppressed rather than narrowed to `private`: narrowing broke `japicmp` with
+  `CLASS_NOW_NOT_EXTENDABLE` (package-private constructors are visible to same-package code,
+  `private` isn't), for no real reduction in reachable API surface — `NestedSubmissionEvent` was
+  already unnameable outside this file regardless of the constructor's own visibility.
+- **`UnusedVariable`** (1) — `LockOrderValidator.LockSequence.threadId` was written in the
+  constructor and never read; the outer `Map<Long, LockSequence>` already keys by thread id. Removed
+  the field; the constructor reference `LockSequence::new` became a lambda since the field's removal
+  left no constructor parameter for it to bind to.
+- **`StatementSwitchToExpressionSwitch`**, **`InlineMeSuggester`**, **`PatternMatchingInstanceof`**,
+  **`StringSplitter`** (1 each) — mechanical modernizations or suppressions with the same "already
+  intentional, just not annotated for this specific tool" shape as `ReferenceEquality` above.
+
+Everything Error Prone finds outside these nine checks (NullAway plus the eight above) still prints
+as a warning during `mvn compile` and does not fail the build — the badge measures the promoted set,
+not the tool's full catalog.
 
 ## What the E2E check actually covers
 

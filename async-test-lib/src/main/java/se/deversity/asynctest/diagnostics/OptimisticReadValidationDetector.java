@@ -151,13 +151,15 @@ public class OptimisticReadValidationDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("OPTIMISTIC READ VALIDATION ISSUE DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
-            sb.append("  Why: StampedLock's optimistic read acquires no lock, so a concurrent writer may update shared fields\n" +
-                       "       between the read and the validate() call. The read values are then a torn snapshot — some fields\n" +
-                       "       from before the write and some from after — producing silently wrong computation results.\n" +
-                       "  Fix: always call lock.validate(stamp) before using optimistically-read data;\n" +
-                       "       if validation fails, re-read under a full read lock:\n" +
-                       "       long stamp = lock.tryOptimisticRead(); int v = field;\n" +
-                       "       if (!lock.validate(stamp)) { stamp = lock.readLock(); try { v = field; } finally { lock.unlockRead(stamp); } }");
+            sb.append("""
+  Why: StampedLock's optimistic read acquires no lock, so a concurrent writer may update shared fields
+       between the read and the validate() call. The read values are then a torn snapshot — some fields
+       from before the write and some from after — producing silently wrong computation results.
+  Fix: always call lock.validate(stamp) before using optimistically-read data;
+       if validation fails, re-read under a full read lock:
+       long stamp = lock.tryOptimisticRead(); int v = field;
+       if (!lock.validate(stamp)) { stamp = lock.readLock(); try { v = field; } finally { lock.unlockRead(stamp); } }\
+""");
             return sb.toString();
         }
     }

@@ -261,13 +261,15 @@ public class HttpClientConcurrencyDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Why: An HTTP request that is sent but never completed (response not read/closed) holds an open\n" +
-                       "       connection in the connection pool. Under sustained leaking, the pool exhausts its connection\n" +
-                       "       limit and all subsequent requests block indefinitely waiting for a free connection.\n" +
-                       "  Fix:\n" +
-                       "    - Always close the response body: use try-with-resources on HttpResponse.body() or call close()\n" +
-                       "    - For async requests: always call join() or thenAccept() to consume the response\n" +
-                       "    - Set a connection pool limit and a response timeout so hung requests time out rather than block forever");
+            sb.append("""
+  Why: An HTTP request that is sent but never completed (response not read/closed) holds an open
+       connection in the connection pool. Under sustained leaking, the pool exhausts its connection
+       limit and all subsequent requests block indefinitely waiting for a free connection.
+  Fix:
+    - Always close the response body: use try-with-resources on HttpResponse.body() or call close()
+    - For async requests: always call join() or thenAccept() to consume the response
+    - Set a connection pool limit and a response timeout so hung requests time out rather than block forever\
+""");
             return sb.toString();
         }
     }

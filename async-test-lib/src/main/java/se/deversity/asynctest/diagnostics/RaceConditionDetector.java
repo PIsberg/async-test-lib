@@ -52,6 +52,7 @@ public class RaceConditionDetector {
         }
 
         @Override
+        @SuppressWarnings("ReferenceEquality") // referent identity is the point — see the class javadoc
         public boolean equals(Object other) {
             return other instanceof TrackedObject that && that.referent == this.referent;
         }

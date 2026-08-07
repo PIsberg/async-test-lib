@@ -327,6 +327,8 @@ public class ThreadPoolDeadlockDetector {
         private final int peakActiveTasks;
         private final List<NestedSubmissionSnapshot> nestedSubmissions;
 
+        @SuppressWarnings("ExposedPrivateType") // NestedSubmissionEvent is unnameable outside this file regardless;
+        // narrowing to `private` breaks japicmp (CLASS_NOW_NOT_EXTENDABLE) for no real API-surface gain
         PoolDeadlockRisk(String poolName, int poolSize, int nestedSubmissionCount,
                          int peakActiveTasks, List<NestedSubmissionEvent> events) {
             this.poolName = poolName;
