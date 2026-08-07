@@ -450,7 +450,7 @@ keys. Prices are per year, excluding VAT or sales tax:
 
 Checkout is handled by Paddle, our merchant of record, which shows prices in your local currency
 and handles VAT and sales tax. OEM and redistribution are negotiated —
-[email us](mailto:isberg.peter@gmail.com).
+[email us](mailto:peter.isberg@deversity.se).
 
 Your license key is sent by email after purchase; it is issued by hand, so allow one business day.
 The license is bound to **one email address** that you nominate — set it once in your shared build
