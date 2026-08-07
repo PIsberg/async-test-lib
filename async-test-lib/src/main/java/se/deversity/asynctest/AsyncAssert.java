@@ -17,6 +17,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * Utility class providing asynchronous assertions and polling mechanisms.
+ * 
+ * <p>These methods allow test code to wait for asynchronous conditions to be met
+ * without hardcoding thread sleep times, which makes tests less flaky and faster.
+ * 
+ * @since 1.0.0
+ */
 @AIContract(reason = "Public assertion utility API for AsyncTest consumers. awaitUntil() and capture() are used directly in user test code — method signatures and semantics must not change without a major version bump.")
 @AIPublicAPI
 @API(status = Status.STABLE)

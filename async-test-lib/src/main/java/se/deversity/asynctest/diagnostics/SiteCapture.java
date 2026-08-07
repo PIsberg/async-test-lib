@@ -106,6 +106,11 @@ public final class SiteCapture {
     @AIImmutable(note = "Java record — fields are final by language; types are all primitives or String.")
     public record Site(String className, String methodName, String fileName, int lineNumber) {
 
+        /**
+         * Compact constructor.
+         *
+         * @throws NullPointerException if className or methodName is null
+         */
         public Site {
             Objects.requireNonNull(className);
             Objects.requireNonNull(methodName);

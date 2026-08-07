@@ -14,6 +14,14 @@ import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 
 import java.lang.reflect.Method;
 
+/**
+ * Intercepts the execution of the test method and delegates it to the {@link ConcurrencyRunner}.
+ * 
+ * <p>This interceptor skips the default JUnit invocation and instead runs the test body
+ * concurrently across multiple threads to maximize the chance of detecting race conditions.
+ * 
+ * @since 1.0.0
+ */
 @AICore(
     sensitivity = "Critical",
     note = "invocation.skip() is intentional — ConcurrencyRunner owns the full N×M execution and must never call invocation.proceed(). Restoring proceed() would run the test body once outside the CyclicBarrier, bypassing all detectors."

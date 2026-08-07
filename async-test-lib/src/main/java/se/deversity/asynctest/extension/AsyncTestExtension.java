@@ -17,6 +17,15 @@ import java.util.Optional;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+/**
+ * JUnit 5 extension that executes methods annotated with {@link AsyncTest}.
+ * 
+ * <p>This extension acts as a {@link TestTemplateInvocationContextProvider}, 
+ * transforming a single test template method into multiple concurrent invocations
+ * managed by the {@code async-test} engine.
+ * 
+ * @since 1.0.0
+ */
 @AIContract(reason = "JUnit 5 TestTemplateInvocationContextProvider SPI. The two overridden methods (supportsTestTemplate, provideTestTemplateInvocationContexts) must preserve their exact signatures as mandated by JUnit.")
 @AIPublicAPI
 @API(status = Status.STABLE)
