@@ -54,6 +54,54 @@ public class RaceConditionDetectorTest {
         }
     }
 
+    // ---- Harness-derived happens-before: rounds are ordered, cross-round pairs cannot race ----
+    //
+    // ConcurrencyRunner ends a round by awaiting the workers' latch and starts the next by
+    // submitting fresh tasks: everything recorded in round N happens-before everything
+    // recorded in round N+1, through the runner thread. The runner bumps the detector's
+    // invocation epoch at each round start; only same-epoch accesses may be reported.
+
+    @Test
+    void crossRoundAccessesOrderedByTheHarnessAreNotFlagged() throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Object shared = new Object();
+
+        // Round 1: one thread writes.
+        detector.markInvocationStart();
+        Thread first = new Thread(() -> detector.recordFieldWrite(shared, "handoff"));
+        first.start();
+        first.join();
+
+        // Round 2: a different thread writes.
+        detector.markInvocationStart();
+        Thread second = new Thread(() -> detector.recordFieldWrite(shared, "handoff"));
+        second.start();
+        second.join();
+
+        RaceConditionDetector.RaceConditionReport report = detector.analyzeRaceConditions();
+
+        assertFalse(report.hasIssues(),
+                "writes in different invocation rounds are ordered by the harness's own "
+                        + "latch/submit happens-before edges and must not be reported as a race");
+    }
+
+    @Test
+    void sameRoundCrossThreadWritesStillFlaggedAfterEpochScoping() throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Object shared = new Object();
+
+        detector.markInvocationStart();
+        Thread t1 = new Thread(() -> detector.recordFieldWrite(shared, "value"));
+        Thread t2 = new Thread(() -> detector.recordFieldWrite(shared, "value"));
+        t1.start();
+        t2.start();
+        t1.join();
+        t2.join();
+
+        assertTrue(detector.analyzeRaceConditions().hasIssues(),
+                "cross-thread writes within one round have no ordering and must still be flagged");
+    }
+
     @Test
     void noRecordingsReturnNoIssues() {
         RaceConditionDetector detector = new RaceConditionDetector();

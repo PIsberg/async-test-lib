@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -9,6 +10,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Detects potential race conditions by tracking cross-thread field accesses.
@@ -19,11 +21,44 @@ public class RaceConditionDetector {
         final long threadId;
         final long timestamp;
         final boolean write;
+        /** Invocation round this access belongs to — see {@link #markInvocationStart()}. */
+        final long epoch;
 
-        FieldAccess(long threadId, boolean write) {
+        FieldAccess(long threadId, boolean write, long epoch) {
             this.threadId = threadId;
             this.timestamp = System.nanoTime();
             this.write = write;
+            this.epoch = epoch;
+        }
+    }
+
+    /**
+     * Identity key for tracked objects. Keying by bare {@code System.identityHashCode}
+     * merged two distinct objects whenever their hashes collided (about a 50% chance once
+     * ~54k recorded objects are live, by the birthday bound), silently attributing one
+     * object's accesses to another. This key caches the identity hash but compares
+     * referents by {@code ==}, so a collision only costs a hash-bucket neighbor, never a
+     * merge. The reference is strong on purpose: detector state is scoped to a single test
+     * run, {@link #reset()} releases it, and the per-access records already dwarf the
+     * object references themselves.
+     */
+    private static final class TrackedObject {
+        final Object referent;
+        final int identityHash;
+
+        TrackedObject(Object referent) {
+            this.referent = referent;
+            this.identityHash = System.identityHashCode(referent);
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof TrackedObject that && that.referent == this.referent;
+        }
+
+        @Override
+        public int hashCode() {
+            return identityHash;
         }
     }
 
@@ -38,9 +73,32 @@ public class RaceConditionDetector {
         }
     }
 
-    private final Map<Integer, ObjectFieldState> objects = new ConcurrentHashMap<>();
+    private final Map<TrackedObject, ObjectFieldState> objects = new ConcurrentHashMap<>();
     private final IssueDeduplicator<RaceConditionEvent> deduplicator = new IssueDeduplicator<>();
+
+    /**
+     * Current invocation round, bumped by {@link #markInvocationStart()}. Accesses from
+     * different rounds are ordered by the runner's own happens-before edges (the round's
+     * worker latch, then the next round's task submissions), so analysis only ever pairs
+     * same-epoch accesses. Standalone use without round marks leaves every access in
+     * epoch 0, which preserves the single-pool behavior.
+     */
+    private final AtomicLong invocationEpoch = new AtomicLong();
     private volatile boolean enabled = true;
+
+    /**
+     * Marks the start of a new invocation round.
+     *
+     * <p>Called by {@code ConcurrencyRunner} before each round. Accesses recorded after
+     * this call belong to the new round and are never paired with earlier rounds'
+     * accesses: the harness itself orders rounds (worker latch, then fresh submissions),
+     * so a cross-round pair has a happens-before edge and cannot race.
+     *
+     * @since 1.7.3
+     */
+    public void markInvocationStart() {
+        invocationEpoch.incrementAndGet();
+    }
     /**
      * Records field read so it can be analysed at the end of the run.
      *
@@ -67,10 +125,11 @@ public class RaceConditionDetector {
     }
 
     private void recordAccess(Object object, String fieldName, boolean write) {
-        int objectId = System.identityHashCode(object);
+        // TrackedObject compares referents by identity — see its Javadoc for why bare
+        // identityHashCode keying merged distinct objects on hash collision.
         ObjectFieldState state = objects.computeIfAbsent(
-            objectId,
-            ignored -> new ObjectFieldState(object.getClass().getSimpleName(), objectId)
+            new TrackedObject(object),
+            key -> new ObjectFieldState(object.getClass().getSimpleName(), key.identityHash)
         );
 
         // ConcurrentLinkedQueue, deliberately not a synchronizedList: this method runs on
@@ -80,7 +139,7 @@ public class RaceConditionDetector {
         // this detector exists to find. A lock-free CAS enqueue keeps the cross-thread
         // rendezvous to a single cache line and never parks a recording thread.
         state.fieldAccesses.computeIfAbsent(fieldName, ignored -> new ConcurrentLinkedQueue<>())
-            .add(new FieldAccess(Thread.currentThread().threadId(), write));
+            .add(new FieldAccess(Thread.currentThread().threadId(), write, invocationEpoch.get()));
     }
     /**
      * Analyses what has been recorded about race conditions and builds the report for it.
@@ -102,63 +161,87 @@ public class RaceConditionDetector {
                     continue;
                 }
 
-                Set<Long> threads = new HashSet<>();
-                boolean hasWrite = false;
-                int writeCount = 0;
-                for (FieldAccess access : snapshot) {
-                    threads.add(access.threadId);
-                    if (access.write) {
-                        hasWrite = true;
-                        writeCount++;
-                    }
-                }
-
-                if (threads.size() < 2 || !hasWrite) {
-                    continue;
-                }
-
                 String fieldRef = String.format("%s@%x.%s", state.className, state.objectId, fieldName);
 
-                // Record events for deduplication
+                // Pair accesses only within their invocation round: the runner ends a round
+                // by awaiting the worker latch and starts the next by submitting fresh
+                // tasks, so every round-N access happens-before every round-N+1 access.
+                // A cross-round pair is ordered by the harness itself and cannot race.
+                Map<Long, List<FieldAccess>> byEpoch = new HashMap<>();
                 for (FieldAccess access : snapshot) {
-                    if (access.write) {
-                        deduplicator.record(new RaceConditionEvent(
-                            "RaceCondition",
-                            fieldRef,
-                            -1, // Line number unknown in this detector
-                            access.threadId
-                        ));
-                    }
+                    byEpoch.computeIfAbsent(access.epoch, ignored -> new ArrayList<>()).add(access);
                 }
-
-                if (writeCount > 1) {
-                    report.potentialRaces.add(String.format(
-                        "%s: %d writes observed across %d threads",
-                        fieldRef, writeCount, threads.size()
-                    ));
-                }
-
-                snapshot.sort((left, right) -> Long.compare(left.timestamp, right.timestamp));
-
-                for (int i = 1; i < snapshot.size(); i++) {
-                    FieldAccess previous = snapshot.get(i - 1);
-                    FieldAccess current = snapshot.get(i);
-                    if (previous.threadId != current.threadId && (previous.write || current.write)) {
-                        report.unsafeAccesses.add(String.format(
-                            "%s: thread %d %s followed by thread %d %s",
-                            fieldRef,
-                            previous.threadId,
-                            previous.write ? "write" : "read",
-                            current.threadId,
-                            current.write ? "write" : "read"
-                        ));
-                        break;
-                    }
+                for (List<FieldAccess> roundAccesses : byEpoch.values()) {
+                    analyzeRound(report, fieldRef, roundAccesses);
                 }
             }
         }
 
         return report;
+    }
+
+    /**
+     * Race analysis for one field within one invocation round. Inside a round the harness
+     * provides no ordering between worker threads, so cross-thread pairs here are genuine
+     * suspects (user-level synchronization is still invisible — see the class Javadoc).
+     */
+    private void analyzeRound(RaceConditionReport report, String fieldRef, List<FieldAccess> accesses) {
+        if (accesses.size() < 2) {
+            return;
+        }
+
+        Set<Long> threads = new HashSet<>();
+        boolean hasWrite = false;
+        int writeCount = 0;
+        for (FieldAccess access : accesses) {
+            threads.add(access.threadId);
+            if (access.write) {
+                hasWrite = true;
+                writeCount++;
+            }
+        }
+
+        if (threads.size() < 2 || !hasWrite) {
+            return;
+        }
+
+        // Record events for deduplication
+        for (FieldAccess access : accesses) {
+            if (access.write) {
+                deduplicator.record(new RaceConditionEvent(
+                    "RaceCondition",
+                    fieldRef,
+                    -1, // Line number unknown in this detector
+                    access.threadId
+                ));
+            }
+        }
+
+        if (writeCount > 1) {
+            report.potentialRaces.add(String.format(
+                "%s: %d writes observed across %d threads",
+                fieldRef, writeCount, threads.size()
+            ));
+        }
+
+        List<FieldAccess> ordered = new ArrayList<>(accesses);
+        ordered.sort((left, right) -> Long.compare(left.timestamp, right.timestamp));
+
+        for (int i = 1; i < ordered.size(); i++) {
+            FieldAccess previous = ordered.get(i - 1);
+            FieldAccess current = ordered.get(i);
+            if (previous.threadId != current.threadId && (previous.write || current.write)) {
+                report.unsafeAccesses.add(String.format(
+                    "%s: thread %d %s followed by thread %d %s",
+                    fieldRef,
+                    previous.threadId,
+                    previous.write ? "write" : "read",
+                    current.threadId,
+                    current.write ? "write" : "read"
+                ));
+                break;
+            }
+        }
     }
 
     /**
@@ -175,6 +258,7 @@ public class RaceConditionDetector {
     public void reset() {
         objects.clear();
         deduplicator.clear();
+        invocationEpoch.set(0);
     }
     /**
      * Disable.

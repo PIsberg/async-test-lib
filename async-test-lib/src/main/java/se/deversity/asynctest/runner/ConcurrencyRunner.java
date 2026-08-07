@@ -88,6 +88,15 @@ public class ConcurrencyRunner {
     /** See {@link #resolveTimeoutMultiplier()}. */
     private static final String TIMEOUT_MULTIPLIER_ENV_VAR = "ASYNC_TEST_TIMEOUT_MULTIPLIER";
 
+    /** See {@link #resolveQuiesceGraceMillis()}. */
+    private static final String QUIESCE_GRACE_PROPERTY = "async-test.quiesce.grace.ms";
+
+    /** Default for {@link #resolveQuiesceGraceMillis()}. */
+    private static final long DEFAULT_QUIESCE_GRACE_MS = 2_000L;
+
+    /** Name prefix for worker threads — see the executor construction in {@link #execute}. */
+    private static final String WORKER_THREAD_PREFIX = "async-test-worker-";
+
     /**
      * Runs {@code testMethod} N×M times (see the class Javadoc), scaling
      * {@link AsyncTestConfig#timeoutMs} by {@link #resolveTimeoutMultiplier()} before it
@@ -205,9 +214,13 @@ public class ConcurrencyRunner {
             log.debug("runner.jmm ok=true");
         }
 
+        // Workers carry the async-test-worker- prefix so thread dumps, deadlock reports
+        // and the quiesce stack dump read as the harness's own workers instead of
+        // anonymous pool-N-thread-M entries.
         ExecutorService executor = config.useVirtualThreads
-            ? Executors.newVirtualThreadPerTaskExecutor()
-            : Executors.newFixedThreadPool(actualThreads);
+            ? Executors.newThreadPerTaskExecutor(
+                Thread.ofVirtual().name(WORKER_THREAD_PREFIX, 0).factory())
+            : Executors.newFixedThreadPool(actualThreads, namedWorkerFactory());
 
         // setAccessible once per test, not once per invocation round
         Method testMethod = invocationContext.getExecutable();
@@ -278,8 +291,22 @@ public class ConcurrencyRunner {
                     benchmarkStart = benchmarkRecorder.recordInvocationStart();
                 }
 
+                // Round-epoch happens-before: the previous round's workers all finished
+                // before latch.await returned, and this thread's submissions start the
+                // next round, so rounds are totally ordered through the runner thread.
+                // Flushing telemetry first attributes agent-captured accesses still in
+                // the ring to the round that produced them (no-op without the agent);
+                // the epoch bumps then let the record-based detectors refuse to pair
+                // accesses from different rounds — those pairs cannot race.
+                TelemetryRegistry.flush();
                 if (phase1.visibility != null) {
                     phase1.visibility.markInvocationStart();
+                }
+                if (phase1.race != null) {
+                    phase1.race.markInvocationStart();
+                }
+                if (phase1.atomicity != null) {
+                    phase1.atomicity.markInvocationStart();
                 }
                 AsyncTestListenerRegistry.fireInvocationStarted(i, actualThreads);
                 long roundStartNanos = System.nanoTime();
@@ -803,24 +830,85 @@ public class ConcurrencyRunner {
      * {@code finally} block in {@link #execute} calls it again harmlessly), and the
      * bounded wait gives cancelled workers time to unwind out of the test body, the
      * {@code AsyncTestContext.uninstall()} call and the livelock snapshot before
-     * analysis reads the detectors they were writing to. A worker stuck in
-     * uninterruptible user code can outlive the grace period — threads cannot be
-     * killed — in which case analysis proceeds anyway (the detectors' own snapshotting
-     * plus {@code ifIssue} containment degrade that to a partial report rather than a
-     * crash), and the WARN below says so instead of letting the report silently lie.
+     * analysis reads the detectors they were writing to. The bound defaults to 2s and is
+     * tunable via {@code -Dasync-test.quiesce.grace.ms} for suites whose code unwinds
+     * slowly after cancellation. A worker stuck in uninterruptible user code can outlive
+     * any grace period — threads cannot be killed — in which case analysis proceeds
+     * anyway (the detectors' own snapshotting plus {@code ifIssue} containment degrade
+     * that to a partial report rather than a crash), and the WARNs below say so, with
+     * the surviving workers' stacks, instead of letting the report silently lie.
      */
     private static void quiesceWorkers(ExecutorService executor, Method testMethod) {
         executor.shutdownNow();
+        long graceMs = resolveQuiesceGraceMillis();
         try {
-            if (!executor.awaitTermination(2, TimeUnit.SECONDS)) {
+            if (!executor.awaitTermination(graceMs, TimeUnit.MILLISECONDS)) {
                 log.warn("runner.quiesce.incomplete test={} graceMs={} "
                         + "hint=\"a worker is still running (likely uninterruptible user "
-                        + "code); detector reports below may be missing its last accesses\"",
-                    testMethod.getName(), 2000);
+                        + "code); detector reports below may be missing its last accesses; "
+                        + "raise -D{} if the code just unwinds slowly\"",
+                    testMethod.getName(), graceMs, QUIESCE_GRACE_PROPERTY);
+                logSurvivingWorkerStacks();
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /**
+     * Resolves the quiesce grace from {@code -Dasync-test.quiesce.grace.ms}, defaulting to
+     * {@value #DEFAULT_QUIESCE_GRACE_MS}ms. Parsing is defensive — a missing, blank,
+     * non-numeric or negative value falls back to the default rather than throwing.
+     */
+    private static long resolveQuiesceGraceMillis() {
+        String raw = System.getProperty(QUIESCE_GRACE_PROPERTY);
+        if (raw == null || raw.isBlank()) {
+            return DEFAULT_QUIESCE_GRACE_MS;
+        }
+        try {
+            long parsed = Long.parseLong(raw.trim());
+            return parsed >= 0 ? parsed : DEFAULT_QUIESCE_GRACE_MS;
+        } catch (NumberFormatException e) {
+            return DEFAULT_QUIESCE_GRACE_MS;
+        }
+    }
+
+    /**
+     * WARN-logs the stack of every still-live worker thread (named
+     * {@value #WORKER_THREAD_PREFIX}…) so the user sees <em>where</em> the stuck worker
+     * is, not just that one exists. Only platform workers appear in
+     * {@link Thread#getAllStackTraces()}; a stuck virtual worker is invisible here, and
+     * the {@code runner.quiesce.incomplete} event still reports the situation.
+     */
+    private static void logSurvivingWorkerStacks() {
+        for (Map.Entry<Thread, StackTraceElement[]> entry : Thread.getAllStackTraces().entrySet()) {
+            Thread thread = entry.getKey();
+            if (!thread.isAlive() || !thread.getName().startsWith(WORKER_THREAD_PREFIX)) {
+                continue;
+            }
+            StackTraceElement[] stack = entry.getValue();
+            StringBuilder frames = new StringBuilder();
+            for (int i = 0; i < Math.min(stack.length, 12); i++) {
+                frames.append("\n    at ").append(stack[i]);
+            }
+            log.warn("runner.quiesce.stuck-worker thread={} state={}{}",
+                thread.getName(), thread.getState(), frames);
+        }
+    }
+
+    /**
+     * Names platform worker threads {@code async-test-worker-N}. A fresh factory (and
+     * counter) per {@link #execute} call keeps numbering stable within a run without any
+     * cross-run shared state.
+     */
+    private static java.util.concurrent.ThreadFactory namedWorkerFactory() {
+        java.util.concurrent.ThreadFactory defaults = Executors.defaultThreadFactory();
+        java.util.concurrent.atomic.AtomicInteger seq = new java.util.concurrent.atomic.AtomicInteger();
+        return runnable -> {
+            Thread thread = defaults.newThread(runnable);
+            thread.setName(WORKER_THREAD_PREFIX + seq.getAndIncrement());
+            return thread;
+        };
     }
 
     private static void printPhase2Reports(Phase2Analysis phase2Analysis) {

@@ -321,6 +321,84 @@ class ConcurrencyRunnerTest {
         }
     }
 
+    @Test
+    void quiesceGracePropertyBoundsTheWaitForStuckWorkers() throws Exception {
+        String previousLicense = System.getProperty("license.mock.mode");
+        String previousMultiplier = System.getProperty("async-test.timeout.multiplier");
+        String previousGrace = System.getProperty("async-test.quiesce.grace.ms");
+        System.setProperty("license.mock.mode", "true");
+        System.setProperty("async-test.timeout.multiplier", "1");
+        // 50ms grace against a worker that shrugs off interrupts for ~400ms: reporting
+        // must proceed once the bound expires instead of waiting the full unwind out.
+        System.setProperty("async-test.quiesce.grace.ms", "50");
+        STUBBORN_WORKER_EXITED.set(false);
+        java.util.concurrent.atomic.AtomicBoolean workerHadExitedWhenTimeoutFired =
+                new java.util.concurrent.atomic.AtomicBoolean(true);
+        try (AsyncTestListenerRegistry.Registration ignored = AsyncTestListenerRegistry.registerScoped(
+                new AsyncTestListener() {
+                    @Override public void onTimeout(long timeoutMs) {
+                        workerHadExitedWhenTimeoutFired.set(STUBBORN_WORKER_EXITED.get());
+                    }
+                })) {
+            AsyncTestConfig config = AsyncTestConfig.builder()
+                    .threads(1).invocations(1).useVirtualThreads(false)
+                    .timeoutMs(100).detectAll(false).detectDeadlocks(false)
+                    .build();
+            StubbornFixture fixture = new StubbornFixture();
+            Method method = StubbornFixture.class.getDeclaredMethod("ignoresInterruptsBriefly");
+            assertThrows(AssertionError.class, () -> se.deversity.asynctest.runner.ConcurrencyRunner
+                    .execute(new FakeInvocationContext(fixture, method, List.of()), config));
+
+            assertFalse(workerHadExitedWhenTimeoutFired.get(),
+                    "with a 50ms grace the runner must proceed to reporting while the stubborn "
+                            + "worker is still unwinding — the property bounds the wait");
+        } finally {
+            restoreProperty("async-test.quiesce.grace.ms", previousGrace);
+            restoreProperty("async-test.timeout.multiplier", previousMultiplier);
+            restoreProperty("license.mock.mode", previousLicense);
+        }
+    }
+
+    // ---- Worker threads carry the harness name prefix ----
+
+    /** Set by {@link NameCaptureFixture}; reset per test iteration. */
+    private static final java.util.concurrent.atomic.AtomicReference<String> CAPTURED_WORKER_NAME =
+            new java.util.concurrent.atomic.AtomicReference<>();
+
+    static final class NameCaptureFixture {
+        private void captureWorkerName() {
+            CAPTURED_WORKER_NAME.set(Thread.currentThread().getName());
+        }
+    }
+
+    @Test
+    void workerThreadsCarryTheHarnessNamePrefix() throws Throwable {
+        String previousLicense = System.getProperty("license.mock.mode");
+        System.setProperty("license.mock.mode", "true");
+        try {
+            for (boolean virtualThreads : new boolean[] {false, true}) {
+                CAPTURED_WORKER_NAME.set(null);
+                AsyncTestConfig config = AsyncTestConfig.builder()
+                        .threads(1).invocations(1).useVirtualThreads(virtualThreads)
+                        .timeoutMs(10_000).detectAll(false).detectDeadlocks(false)
+                        .build();
+                NameCaptureFixture fixture = new NameCaptureFixture();
+                Method method = NameCaptureFixture.class.getDeclaredMethod("captureWorkerName");
+                se.deversity.asynctest.runner.ConcurrencyRunner.execute(
+                        new FakeInvocationContext(fixture, method, List.of()), config);
+
+                String name = CAPTURED_WORKER_NAME.get();
+                assertNotNull(name, "the worker must have run (virtualThreads=" + virtualThreads + ")");
+                assertTrue(name.startsWith("async-test-worker-"),
+                        "worker threads must carry the harness prefix so thread dumps and the "
+                                + "quiesce stack dump identify them (virtualThreads=" + virtualThreads
+                                + ", name=" + name + ")");
+            }
+        } finally {
+            restoreProperty("license.mock.mode", previousLicense);
+        }
+    }
+
     private static void restoreProperty(String key, String previousValue) {
         if (previousValue == null) {
             System.clearProperty(key);
