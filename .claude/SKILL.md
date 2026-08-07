@@ -15,14 +15,14 @@
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>1.7.2</version>
+    <version>1.7.3</version>
     <scope>test</scope>
 </dependency>
 ```
 
 **Gradle (Kotlin DSL)**
 ```kotlin
-testImplementation("se.deversity.async-test-lib:async-test-lib:1.7.2")
+testImplementation("se.deversity.async-test-lib:async-test-lib:1.7.3")
 ```
 
 ---

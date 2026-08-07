@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.3] - 2026-08-07
+
+### Fixed — six soundness holes in the detection engine
+
+An audit of the core detection mechanics under JMM edge cases found six mechanical defects
+that made the library miss, misreport, or mask the bugs it exists to catch:
+
+1. The runner analyzed detector state while cancelled workers still ran. On a round timeout, a
+   `ConcurrentModificationException` inside one detector was silently swallowed as an empty
+   report, on exactly the timeout runs that need the diagnosis. `execute()` now quiesces the
+   executor (`shutdownNow` plus a bounded 2s wait, tunable via `-Dasync-test.quiesce.grace.ms`)
+   before any analysis, and logs each surviving worker's stack (`runner.quiesce.stuck-worker`)
+   if quiescing doesn't finish in time.
+2. `isTimeoutLike()` sniffed failure messages for "timed out", so a user assertion mentioning
+   those words was rewrapped as a harness timeout and the replay-seed line was never printed.
+   Runner timeouts now carry a `RoundTimeoutError` marker type and routing is instanceof-based.
+3. `SpinContentionBarrier` livelocked under virtual threads: neither `onSpinWait()` nor
+   `interrupted()` is a virtual-thread scheduling point, so with more participants than
+   carriers the spinners held every carrier and the round burned its full timeout reporting
+   zero detections. Virtual-thread runs now ignore the spin property.
+4. `VisibilityMonitor` threw a `NullPointerException` into the user's test body on a recorded
+   null — the canonical stale-read value. Nulls now map to a sentinel and participate in
+   variation analysis normally. Its semantics were also inverted: it flagged any value change
+   across rounds (a false-positive machine on ordinary counters) and could not flag two threads
+   seeing different values within one round (the actual stale-read signature). It now reports a
+   field only when two threads observed two distinct values within a single round.
+5. `RaceConditionDetector` merged distinct objects on identity-hash collision (about 50% odds
+   near ~54k live recorded objects); keys are now referent-identity (`==`) with the hash cached.
+   Its record path also serialized racing threads on a shared lock, a probe effect that can mask
+   the very race being hunted; per-field storage is now a `ConcurrentLinkedQueue`.
+6. Telemetry `publish()` into a full ring with no consumer spun forever, hanging every woven
+   thread and, once the shutdown hook had stopped the drain, JVM shutdown itself. Producers now
+   claim slots with a compare-and-set and drop after 1s of zero consumer progress
+   (`droppedCount()` exposes it); the periodic drain also survives a callback
+   `StackOverflowError` instead of being cancelled.
+
+Both `RaceConditionDetector` and `AtomicityValidator` also paired accesses *across* rounds and
+reported them as races, even though the runner totally orders rounds through the runner thread
+- the common case under virtual threads, where every round brings fresh thread ids. Both
+detectors now stamp each record with a per-round invocation epoch and only pair same-epoch
+accesses; same-round pairs still flag correctly.
+
 ### Removed — `UNCOMMITTED_CHANGES`: the git-status environment check leaves the detector set
 
 **Breaking.** `UncommittedChangesDetector` inspected the working tree (`git status

@@ -19,7 +19,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>5.10.2</junit.version>
         <!-- MUST match the parent project's <version>. -->
-        <async-test-lib.version>1.7.2</async-test-lib.version>
+        <async-test-lib.version>1.7.3</async-test-lib.version>
     </properties>
 
     <dependencies>
