@@ -22,7 +22,7 @@ public class LockOrderValidator {
     /** One lock acquired while another was already held: {@code from} nests {@code to}. */
     private record LockEdge(String from, String to) { }
 
-    private static class LockSequence {
+    private static final class LockSequence {
         /** Locks this thread holds right now. The only sound basis for a nesting edge. */
         final Set<String> acquiredLocks = ConcurrentHashMap.newKeySet();
         /**
