@@ -8,8 +8,17 @@ Two audiences, kept apart on purpose:
 - **[Part 1 — for you](#part-1--issuing-a-licence)**: the operator runbook.
 - **[Part 2 — for the customer](#part-2--what-to-send-the-customer)**: copy-paste and send.
 
-Store ids, variant UUIDs and API keys are **not** in this repository. They live in
-`~/.config/deversity/lemonsqueezy.env`. Placeholders below in `<ANGLE_BRACKETS>` come from there.
+There are **two ways a licence can be sold**, and they behave differently. Pick the section that
+matches how the customer paid:
+
+| Sold through | Keys minted by | Customer sets | Covered by |
+|---|---|---|---|
+| **Paddle** (deversity.se) | Keygen | `-Dlicense.provider=keygen` | [Part 1a](#part-1a--paddle--keygen) |
+| **Lemon Squeezy** | Lemon Squeezy | `-Dlicense.provider=lemonsqueezy` | [Part 1b](#part-1b--lemon-squeezy) |
+
+Ids, tokens and API keys are **not** in this repository. They live in
+`~/.config/deversity/paddle.env`, `keygen.env` and `lemonsqueezy.env`. Placeholders below in
+`<ANGLE_BRACKETS>` come from there.
 
 ---
 
@@ -28,11 +37,94 @@ in `common-license-lib`, which says enforcement here is legal, not technical.
 classified as a non-commercial user and passes without a key. Only commercial email domains are
 asked for one. So the addressable customer is a company using its own domain.
 
-**3. A licence covers an email domain, not a person.** See below.
+**3. The two providers scope a licence differently, and this is the thing most likely to bite
+you.** Lemon Squeezy binds to the *domain* of the buying address, so everyone at `acme-corp.com`
+is covered. Keygen binds to the *exact owner address* on the licence. Measured against the live
+Keygen API on 2026-08-07 with a real key issued to `e2e-test@example-corp.com`:
+
+| `-Dlicense.user.email` | Result |
+|---|---|
+| `e2e-test@example-corp.com` (the owner) | `LICENSE GRANTED` |
+| `someone-else@example-corp.com` (same company!) | `DENIED — USER_SCOPE_MISMATCH` |
+| `mallory@evil-corp.com` | `DENIED — USER_SCOPE_MISMATCH` |
+
+So on the Paddle/Keygen path a team still buys **one key**, but every developer's build must
+present the **same licensed address**, set once in the shared build config — not each developer's
+own address. Tell customers this explicitly; it is not what "covers your whole team" usually
+implies.
 
 ---
 
-# Part 1 — issuing a licence
+# Part 1a — Paddle + Keygen
+
+This is the path for anyone who buys from **deversity.se/pricing.html**. Paddle takes the money;
+it has no licence engine at all, so Keygen mints and validates the key. Fulfilment is a person:
+Paddle emails you, you issue the key.
+
+## Step 1 — the customer buys
+
+They pick a tier on <https://deversity.se/pricing.html> and pay. Paddle.js opens the checkout with
+the live price id for that tier. Nothing reaches them automatically except Paddle's own receipt
+and subscription emails — **neither contains a licence key**.
+
+## Step 2 — you get the notification
+
+Paddle's notification destination emails `transaction.completed` to the operator address. That
+email is the trigger for everything below. Nothing polls, and nothing retries: if you miss it, the
+customer waits.
+
+## Step 3 — agree the licensed address before issuing
+
+Because Keygen binds to one exact address (see above), ask the customer which address their builds
+will present. A shared, durable address is best — `licence@acme-corp.com`, or the team lead. Avoid
+a personal address that leaves when the person does.
+
+## Step 4 — issue the key
+
+```bash
+set -a; . ~/.config/deversity/keygen.env; set +a
+```
+
+The `/newcustomerlicense` skill does this. By hand it is `KeygenIssuer` from `common-license-lib`:
+ensure a Keygen user for the licensed address, then create a licence under
+`$KEYGEN_POLICY_ID` owned by that user. The policy is 365 days, expiring keys deny, and renewal
+extends from expiry.
+
+## Step 5 — verify before you send
+
+Validate the key exactly as the customer's build will, using the licensed address:
+
+```bash
+set -a; . ~/.config/deversity/keygen.env; set +a
+curl -sS -X POST   "https://api.keygen.sh/v1/accounts/$KEYGEN_ACCOUNT_ID/licenses/actions/validate-key"   -H "Content-Type: application/vnd.api+json" -H "Accept: application/vnd.api+json"   -d "{\"meta\":{\"key\":\"<their-key>\",\"scope\":{\"user\":\"<licensed-address>\",\"product\":\"$KEYGEN_PRODUCT_ID\"}}}"
+```
+
+`meta.valid` must be `true` and `meta.code` must be `VALID`. Two traps worth knowing, both found
+the hard way:
+
+- The scope key is `user`, **not** `email`. Keygen rejects `scope.email` with HTTP 400
+  `unpermitted parameter`.
+- `validate-key` is a public endpoint, but a *made-up* bearer token is rejected with 401 before the
+  licence is evaluated. Send a real token or none at all.
+
+## Step 6 — send them their flags
+
+Use the Keygen block in [Part 2](#part-2--what-to-send-the-customer).
+
+## Step 7 — log it
+
+```bash
+echo "$(date -I)  <company>  <licensed-address>  paddle  <transaction-id>  renews:<date>"   >> ~/.config/deversity/customers.tsv
+```
+
+Renewal is Paddle's job — the subscription rebills yearly. The Keygen licence does **not** extend
+itself when Paddle rebills: nothing connects the two today. Watch for the renewal notification and
+extend the licence's expiry in Keygen, or the customer's build starts failing a year after they
+bought.
+
+---
+
+# Part 1b — Lemon Squeezy
 
 The `/newcustomerlicense` skill automates these steps. This section is the same process written
 out, and the reference when something does not match.
@@ -160,8 +252,28 @@ Everything below is written for them. Fill in the three `<...>` values and send.
 
 **Your async-test-lib commercial licence**
 
-Your licence covers everyone with an `@<your-domain>` email address. You do not need one key per
-developer.
+You have one key for the whole team. You do not need one key per developer.
+
+### If you bought through deversity.se (Keygen key)
+
+**Add these flags to your test runs:**
+
+```
+-Dkeygen.account.id=<KEYGEN_ACCOUNT_ID>
+-Dkeygen.product.id=<KEYGEN_PRODUCT_ID>
+-Dlicense.key=<your-license-key>
+-Dlicense.user.email=<the licensed address>
+```
+
+`license.provider` defaults to `keygen`, so you can leave it out.
+
+> **`license.user.email` must be the exact address the licence was issued to** — the one we agreed
+> when you bought. It is not "each developer's own address": a colleague at the same company
+> domain is rejected with `LICENSE_INVALID`. Set it once in your shared build config, not
+> per-machine. Tell us if you need it moved to a different address; we can re-point the licence
+> without issuing a new key.
+
+### If you bought through Lemon Squeezy
 
 **Add these four flags to your test runs:**
 
@@ -172,9 +284,11 @@ developer.
 -Dlicense.user.email=<your work email>
 ```
 
-`license.user.email` can be any address on your company domain — the person running the build.
+Here `license.user.email` can be **any** address on your company domain — the person running the
+build — because this licence is bound to the domain rather than to one address.
 
-**Maven** — in your `pom.xml`, so nobody has to remember the flags:
+**Maven** — in your `pom.xml`, so nobody has to remember the flags (Keygen shown; for Lemon
+Squeezy swap the three provider lines for `license.provider=lemonsqueezy` and `ls.store.id`):
 
 ```xml
 <plugin>
@@ -182,8 +296,8 @@ developer.
   <artifactId>maven-surefire-plugin</artifactId>
   <configuration>
     <systemPropertyVariables>
-      <license.provider>lemonsqueezy</license.provider>
-      <ls.store.id>${env.ATL_STORE_ID}</ls.store.id>
+      <keygen.account.id>${env.ATL_KEYGEN_ACCOUNT}</keygen.account.id>
+      <keygen.product.id>${env.ATL_KEYGEN_PRODUCT}</keygen.product.id>
       <license.key>${env.ATL_LICENSE_KEY}</license.key>
       <license.user.email>${env.ATL_LICENSE_EMAIL}</license.user.email>
     </systemPropertyVariables>
@@ -195,8 +309,8 @@ developer.
 
 ```kotlin
 tasks.test {
-    systemProperty("license.provider", "lemonsqueezy")
-    systemProperty("ls.store.id", System.getenv("ATL_STORE_ID") ?: "")
+    systemProperty("keygen.account.id", System.getenv("ATL_KEYGEN_ACCOUNT") ?: "")
+    systemProperty("keygen.product.id", System.getenv("ATL_KEYGEN_PRODUCT") ?: "")
     systemProperty("license.key", System.getenv("ATL_LICENSE_KEY") ?: "")
     systemProperty("license.user.email", System.getenv("ATL_LICENSE_EMAIL") ?: "")
 }
@@ -208,8 +322,10 @@ password — it identifies your subscription, not an account — but treat it li
 **Checking it worked.** On a licensed run the log contains:
 
 ```
-LICENSE GRANTED: LICENSE_VALID provider=LEMONSQUEEZY
+LICENSE GRANTED: LICENSE_VALID provider=KEYGEN
 ```
+
+(`provider=LEMONSQUEEZY` if you bought that way.)
 
 If licensing is misconfigured the build fails with `SecurityException: LICENSE DENIED: <reason>`,
 and the message lists the flags. Common reasons:
@@ -218,9 +334,9 @@ and the message lists the flags. Common reasons:
 |---|---|
 | `LICENSE_REQUIRED` | No key supplied, on a commercial email domain |
 | `LICENSE_NOT_FOUND` | Key does not exist — check for a copy-paste truncation |
-| `LICENSE_INVALID` | Key is real but not for this product, store, or email domain |
+| `LICENSE_INVALID` | Key is real but not for this product/store, or `license.user.email` is not the licensed address (Keygen reports `USER_SCOPE_MISMATCH`) |
 | `LICENSE_EXPIRED` | Subscription lapsed — see below |
-| `NETWORK_ERROR` | Could not reach `api.lemonsqueezy.com` |
+| `NETWORK_ERROR` | Could not reach `api.keygen.sh` / `api.lemonsqueezy.com` |
 
 If your build agents cannot reach the internet, `NETWORK_ERROR` fails the build by default. Ask
 us about the fail-open option rather than disabling the gate.
@@ -255,19 +371,28 @@ licence stays valid until the end of the paid term and then goes `expired`.
 
 ## For maintainers: what is actually wired up
 
-`LicenseGuard` resolves these system properties. Everything except `license.provider` is
-LemonSqueezy-specific and ignored on the Keygen path.
+`LicenseGuard` resolves these system properties. The `ls.*` ones are ignored on the Keygen path
+and the `keygen.*` ones on the LemonSqueezy path.
 
 | Property | Meaning | Default |
 |---|---|---|
 | `license.provider` | `keygen` or `lemonsqueezy` | `keygen` |
+| `keygen.account.id` | Keygen account UUID; **required** for Keygen | `dummy-account` |
+| `keygen.product.id` | Keygen product UUID; scopes the check to our product | `dummy-prod` |
+| `keygen.api.key` | Optional Keygen token. **Customers leave this unset** — `validate-key` is public, and a placeholder token makes Keygen answer 401 before it looks at the licence | unset |
 | `ls.store.id` | Numeric store id; **required** for LemonSqueezy | — |
 | `ls.product.id` | Optional narrower product scope | unset |
 | `ls.email.binding` | `domain` or `exact` | `domain` |
 | `ls.api.base.uri` | Override the API host; for tests | LemonSqueezy |
 | `license.key` | The customer's key | — |
-| `license.user.email` | Address the run is attributed to | `""` |
+| `license.user.email` | Address the run is attributed to. Keygen matches it against the licence **owner**; LemonSqueezy against the buying **domain** | `""` |
 | `license.mock.mode` | Bypasses the gate entirely | `false` |
+
+**Mock mode auto-activates in CI when no credentials are present** (`GITHUB_ACTIONS` or `CI` set,
+and no `keygen.api.key` / no LemonSqueezy store+key). That is deliberate — it keeps our own CI and
+contributors unblocked — but it also means a test that asserts a *real* denial cannot be written
+in this repo: it would pass by mocking rather than by exercising the gate. Regression coverage for
+the validators lives in `common-license-lib` instead.
 
 `license.provider`, `ls.store.id`, `ls.product.id`, `ls.email.binding` and `license.key` are all
 part of `LicenseGuard`'s cache fingerprint, so changing any of them within a JVM recomputes the

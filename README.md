@@ -435,22 +435,27 @@ See [intellij-plugin/README.md](intellij-plugin/README.md) for full instructions
 
 ### Commercial licensing — pricing
 
-Commercial use requires an annual license, billed per email domain: every developer on your
-company domain is covered, no per-seat keys. Buy directly:
+Commercial use requires an annual license. One key covers your whole team — there are no per-seat
+keys. Prices are per year, excluding VAT or sales tax:
 
-| Developers | Price (EUR/year) | Checkout |
-|---|---|---|
-| 1–9 | €250 | [Buy — 1–9 developers](https://deversityse-sas.lemonsqueezy.com/checkout/buy/cac1ef33-d4db-4dad-b718-e45e2ff83742?enabled=1989284) |
-| 10–49 | €900 | [Buy — 10–49 developers](https://deversityse-sas.lemonsqueezy.com/checkout/buy/cac1ef33-d4db-4dad-b718-e45e2ff83742?enabled=1986116) |
-| 50–199 | €2,500 | [Buy — 50–199 developers](https://deversityse-sas.lemonsqueezy.com/checkout/buy/cac1ef33-d4db-4dad-b718-e45e2ff83742?enabled=1989263) |
-| 200+ | €4,300 | [Buy — 200+ developers](https://deversityse-sas.lemonsqueezy.com/checkout/buy/cac1ef33-d4db-4dad-b718-e45e2ff83742?enabled=1989350) |
-| OEM / redistribution | from €10,000, negotiated | [email us](mailto:isberg.peter@gmail.com) |
+| Developers | Price (EUR/year) |
+|---|---|
+| 1–9 | €250 |
+| 10–49 | €900 |
+| 50–199 | €2,500 |
+| 200+ | €6,000 |
+| OEM / redistribution | from €10,000, negotiated |
 
-All tiers on [one checkout page](https://deversityse-sas.lemonsqueezy.com/checkout/buy/cac1ef33-d4db-4dad-b718-e45e2ff83742)
-if you prefer to pick there. Checkout is handled by Lemon Squeezy (card or PayPal), the license
-key arrives by email after payment, and the subscription renews yearly. Buy under your company
-email address — the license binds to that domain. Operator runbook and what to send customers:
-[docs/LICENSING.md](docs/LICENSING.md).
+**[Buy a license at deversity.se/pricing.html →](https://deversity.se/pricing.html)**
+
+Checkout is handled by Paddle, our merchant of record, which shows prices in your local currency
+and handles VAT and sales tax. OEM and redistribution are negotiated —
+[email us](mailto:peter.isberg@deversity.se).
+
+Your license key is sent by email after purchase; it is issued by hand, so allow one business day.
+The license is bound to **one email address** that you nominate — set it once in your shared build
+config as `-Dlicense.user.email` and every developer and CI job uses that same value. Operator
+runbook and what to send customers: [docs/LICENSING.md](docs/LICENSING.md).
 
 ### Running without a license key
 

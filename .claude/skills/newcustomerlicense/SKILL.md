@@ -7,13 +7,141 @@ description: Issue a commercial async-test-lib license to a customer company —
 
 Takes a **company name** and produces everything needed to get that company licensed and running.
 
-> **Read this first, because it is not what you would guess:** Lemon Squeezy has **no API to
-> create a license key**. The License Keys API exposes retrieve, update and list — no create.
-> Keys are minted by *orders*. So "create a license for Acme" really means "create Acme's
-> checkout, let them pay, then read back the key the order generated". Every step below follows
-> from that.
+## First: which provider did they buy through?
 
-## 0. Load the store details
+| They paid via | Keys come from | Follow |
+|---|---|---|
+| **Paddle** (deversity.se/pricing.html) | Keygen — we mint the key ourselves | [Path A](#path-a--paddle--keygen) |
+| **Lemon Squeezy** | Lemon Squeezy — the order mints the key | [Path B](#path-b--lemon-squeezy) |
+
+If the user does not say, ask. The two produce different flags and bind differently, so guessing
+gets the customer denied on their first build.
+
+> **Two facts that shape everything below.** Lemon Squeezy has **no API to create a license key** —
+> keys are minted by *orders*, so its flow is "send checkout, wait for payment, read the key back".
+> Paddle has **no license engine at all**, so on that path we mint the key ourselves through
+> Keygen the moment we see the payment email.
+
+---
+
+## Path A — Paddle + Keygen
+
+### A0. Load the details
+
+```bash
+set -a; . ~/.config/deversity/keygen.env; set +a
+set -a; . ~/.config/deversity/paddle.env; set +a
+echo "keygen account=$KEYGEN_ACCOUNT_ID product=$KEYGEN_PRODUCT_ID policy=$KEYGEN_POLICY_ID"
+if [ -n "$KEYGEN_ADMIN_TOKEN" ]; then echo "admin token=set"; else echo "admin token=MISSING — stop"; fi
+```
+
+`KEYGEN_ADMIN_TOKEN` is an admin credential: operator machine only, never sent to the customer,
+never committed, never echoed in full.
+
+### A1. Confirm the payment
+
+Check the Paddle transaction is **Complete** (`vendors.paddle.com` → Transactions), or work from
+the `transaction.completed` notification email. Do not issue a key on the strength of a customer
+saying they paid.
+
+### A2. Agree the licensed address — do not skip this
+
+Keygen binds the licence to **one exact address**, not a domain. Measured live 2026-08-07: a
+colleague at the same company domain is denied `USER_SCOPE_MISMATCH`.
+
+So ask: *which single address will your builds present?* Push for something durable and shared —
+`licence@acme-corp.com`, a team alias, or the tech lead — never a personal address that leaves
+with the person. That address goes in their build config once; individual developers do not use
+their own.
+
+### A3. Issue and verify, in one command
+
+```bash
+.claude/skills/newcustomerlicense/issue-license.sh "Acme Corp" licence@acme-corp.com
+```
+
+That script does the whole mechanical part and refuses to produce a key it has not proved:
+
+1. loads `keygen.env` and stops if any of the four values is missing;
+2. refuses free-provider addresses, which the gate already lets through without a key;
+3. resolves the newest `common-license-lib` jar (`sort -V`, so 0.10.0 beats 0.5.0) — override
+   with `ATL_LICENSE_LIB_JAR=/path/to.jar`;
+4. mints the licence with `KeygenIssuer.issueLicense`, which creates the Keygen user if needed
+   then a licence owned by them under the annual policy;
+5. **validates twice**: the licensed address must come back `"valid":true`, and a decoy address
+   at the same domain must come back `"valid":false`. Both calls go out with no `Authorization`
+   header, exactly as the customer's build does;
+6. prints the flag block ready to paste, and the log line for step A5.
+
+If either validation goes the wrong way it exits non-zero and tells you not to send the key. A
+licence that validates for everybody is indistinguishable from one that validates for nobody
+until a customer complains.
+
+Two things it deliberately does not do: it does not append to the customer log, and it does not
+send anything. Both are yours to confirm.
+
+Re-running it for an address that already has a licence mints a **second** one rather than
+returning the first. Check `app.keygen.sh` → Licenses before re-running.
+
+### A4. Prove it in a real build — local only
+
+```bash
+.claude/skills/newcustomerlicense/verify-license.sh "<their key>" "<the licensed address>"
+```
+
+This is the deepest check available, and the one to reach for whenever a customer says
+"it stopped working". It runs the real `@AsyncTest` suite against the live Keygen account
+**twice**:
+
+| run | address | required outcome |
+|---|---|---|
+| 1 | the licensed address | passes |
+| 2 | a decoy at the same domain | **fails** |
+
+Run 2 is the part that carries the weight. A positive-only check goes green just as
+happily when the gate never engaged at all — `license.mock.mode` defaults to `true` in
+`pom.xml`, and mock mode auto-activates in CI — so a single green run cannot tell a
+working licence from a licence that was never consulted. Only a run that goes red on a
+bad address proves enforcement is live. If run 2 passes, the script fails loudly and
+tells you the gate is not enforcing.
+
+Measured on this machine against the live account: a good key gives
+`run 1 PASS tests="12" errors="0"` then `run 2 denied`; a bogus key stops at run 1 with
+`LICENSE DENIED: LICENSE_NOT_FOUND` and exit 1.
+
+**It only works locally, by design.** CI has no Keygen credentials and self-mocks, so
+there is nowhere else this can run — which is exactly why `license.mock.mode` being
+`true` by default is safe for everyone else and why this script exists for you.
+
+### A5. Send their flags, then log it
+
+The script prints the block. `license.provider` defaults to `keygen`, so it can be omitted.
+
+Say plainly in the email that `license.user.email` must be that exact address for every developer
+and in CI — it is not a per-person field, and a colleague's own address is denied. The fuller
+customer-facing block is in `docs/LICENSING.md` §"What to send the customer".
+
+```bash
+echo "$(date -I)  <company>  <licensed-address>  paddle  <transaction-id>  renews:<date>" \
+  >> ~/.config/deversity/customers.tsv
+```
+
+**Renewal is not automatic on this path.** Paddle rebills the subscription, but nothing extends
+the Keygen licence — the two systems are not connected. When the renewal notification arrives,
+extend the licence's expiry in Keygen, or their build fails a year after they bought.
+
+### A6. If the address turns out to be wrong
+
+Do not issue a second licence. Keygen validates against the owner user's **current** email, so
+editing that user in `app.keygen.sh` → Users re-points the existing key and the customer keeps
+the string you already sent them. Treat it as a licensing change, not an administrative one: it
+moves who the licence covers.
+
+---
+
+## Path B — Lemon Squeezy
+
+### 0. Load the store details
 
 They are deliberately outside every repo:
 
