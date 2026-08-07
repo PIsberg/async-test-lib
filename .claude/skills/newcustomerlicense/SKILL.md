@@ -7,13 +7,109 @@ description: Issue a commercial async-test-lib license to a customer company —
 
 Takes a **company name** and produces everything needed to get that company licensed and running.
 
-> **Read this first, because it is not what you would guess:** Lemon Squeezy has **no API to
-> create a license key**. The License Keys API exposes retrieve, update and list — no create.
-> Keys are minted by *orders*. So "create a license for Acme" really means "create Acme's
-> checkout, let them pay, then read back the key the order generated". Every step below follows
-> from that.
+## First: which provider did they buy through?
 
-## 0. Load the store details
+| They paid via | Keys come from | Follow |
+|---|---|---|
+| **Paddle** (deversity.se/pricing.html) | Keygen — we mint the key ourselves | [Path A](#path-a--paddle--keygen) |
+| **Lemon Squeezy** | Lemon Squeezy — the order mints the key | [Path B](#path-b--lemon-squeezy) |
+
+If the user does not say, ask. The two produce different flags and bind differently, so guessing
+gets the customer denied on their first build.
+
+> **Two facts that shape everything below.** Lemon Squeezy has **no API to create a license key** —
+> keys are minted by *orders*, so its flow is "send checkout, wait for payment, read the key back".
+> Paddle has **no license engine at all**, so on that path we mint the key ourselves through
+> Keygen the moment we see the payment email.
+
+---
+
+## Path A — Paddle + Keygen
+
+### A0. Load the details
+
+```bash
+set -a; . ~/.config/deversity/keygen.env; set +a
+set -a; . ~/.config/deversity/paddle.env; set +a
+echo "keygen account=$KEYGEN_ACCOUNT_ID product=$KEYGEN_PRODUCT_ID policy=$KEYGEN_POLICY_ID"
+if [ -n "$KEYGEN_ADMIN_TOKEN" ]; then echo "admin token=set"; else echo "admin token=MISSING — stop"; fi
+```
+
+`KEYGEN_ADMIN_TOKEN` is an admin credential: operator machine only, never sent to the customer,
+never committed, never echoed in full.
+
+### A1. Confirm the payment
+
+Check the Paddle transaction is **Complete** (`vendors.paddle.com` → Transactions), or work from
+the `transaction.completed` notification email. Do not issue a key on the strength of a customer
+saying they paid.
+
+### A2. Agree the licensed address — do not skip this
+
+Keygen binds the licence to **one exact address**, not a domain. Measured live 2026-08-07: a
+colleague at the same company domain is denied `USER_SCOPE_MISMATCH`.
+
+So ask: *which single address will your builds present?* Push for something durable and shared —
+`licence@acme-corp.com`, a team alias, or the tech lead — never a personal address that leaves
+with the person. That address goes in their build config once; individual developers do not use
+their own.
+
+### A3. Issue the licence
+
+```bash
+export ATL_OWNER_EMAIL="licence@acme-corp.com"
+
+jshell --class-path "$(ls ~/.m2/repository/se/deversity/common/common-license-lib/*/common-license-lib-*.jar | grep -v sources | grep -v javadoc | tail -1)" - <<'JSHELL'
+import se.deversity.common.license.keygen.KeygenIssuer;
+import java.net.URI; import java.net.http.HttpClient; import java.time.Duration;
+var issuer = new KeygenIssuer(HttpClient.newHttpClient(), System.getenv("KEYGEN_ACCOUNT_ID"),
+    System.getenv("KEYGEN_ADMIN_TOKEN"), URI.create("https://api.keygen.sh"), Duration.ofSeconds(20));
+System.out.println("KEY=" + issuer.issueLicense(System.getenv("KEYGEN_POLICY_ID"),
+    System.getenv("ATL_OWNER_EMAIL")));
+JSHELL
+```
+
+`issueLicense` creates the Keygen user if it does not exist, then a licence owned by them under
+the annual policy (365 days, expiring keys deny).
+
+### A4. Verify the way the customer's build will
+
+```bash
+curl -sS -X POST   "https://api.keygen.sh/v1/accounts/$KEYGEN_ACCOUNT_ID/licenses/actions/validate-key"   -H "Content-Type: application/vnd.api+json" -H "Accept: application/vnd.api+json"   -d "{\"meta\":{\"key\":\"<their-key>\",\"scope\":{\"user\":\"$ATL_OWNER_EMAIL\",\"product\":\"$KEYGEN_PRODUCT_ID\"}}}"
+```
+
+`meta.valid` must be `true` and `meta.code` `VALID`. The scope key is `user` — Keygen rejects
+`scope.email` with HTTP 400. Send no `Authorization` header here (as the customer's build does) or
+a real token; a made-up one 401s before the licence is read.
+
+### A5. Send their flags
+
+```
+-Dkeygen.account.id=<KEYGEN_ACCOUNT_ID>
+-Dkeygen.product.id=<KEYGEN_PRODUCT_ID>
+-Dlicense.key=<their key>
+-Dlicense.user.email=<the licensed address>
+```
+
+`license.provider` defaults to `keygen`, so it can be omitted. Say plainly in the email that
+`license.user.email` must be that exact address for every developer and in CI. The fuller block is
+in `docs/LICENSING.md` §"What to send the customer".
+
+### A6. Log it
+
+```bash
+echo "$(date -I)  <company>  <licensed-address>  paddle  <transaction-id>  renews:<date>"   >> ~/.config/deversity/customers.tsv
+```
+
+**Renewal is not automatic on this path.** Paddle rebills the subscription, but nothing extends
+the Keygen licence — the two systems are not connected. When the renewal notification arrives,
+extend the licence's expiry in Keygen, or their build fails a year after they bought.
+
+---
+
+## Path B — Lemon Squeezy
+
+### 0. Load the store details
 
 They are deliberately outside every repo:
 
