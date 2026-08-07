@@ -1,6 +1,6 @@
 <div align="center">
 
-# async-test-lib
+# Asynchronous Testing Library for Java
 
 **JUnit 5 concurrency stress testing — one annotation, 128 detectors**
 
@@ -14,6 +14,9 @@
 [![Checkstyle](https://img.shields.io/badge/Checkstyle-passing-brightgreen)](checkstyle.xml)
 [![PMD](https://img.shields.io/badge/PMD-passing-brightgreen)](pmd-ruleset.xml)
 [![SpotBugs](https://img.shields.io/badge/SpotBugs-passing-brightgreen)](spotbugs-exclude.xml)
+[![find-sec-bugs](https://img.shields.io/badge/find--sec--bugs-passing-brightgreen)](https://find-sec-bugs.github.io/)
+[![NullAway](https://img.shields.io/badge/NullAway-passing-brightgreen)](https://github.com/uber/NullAway)
+[![ArchUnit](https://img.shields.io/badge/ArchUnit-20_rules_passing-brightgreen)](async-test-lib/src/test/java/se/deversity/asynctest/architecture/ArchitectureTest.java)
 [![Analyzed with codekoll](https://img.shields.io/badge/analyzed%20with-codekoll-brightgreen?logo=java&logoColor=white)](https://github.com/PIsberg/codekoll)
 [![Error Prone](https://img.shields.io/badge/Error_Prone-passing-brightgreen)](https://errorprone.info)
 [![PIT Mutation Testing](https://img.shields.io/badge/PIT_mutation_testing-passing_·_75%25_killed-brightgreen)](https://pitest.org)
@@ -31,15 +34,20 @@
 - **JUnit 5 native** — zero required configuration. Works anywhere JUnit 5 runs with no special JVM flags. An optional Java agent, shipped as a separate `async-test-agent` artifact (`-javaagent:async-test-agent.jar`), weaves JavaBean accessors with Byte Buddy so detectors observe reads and writes without hand-written hooks; a field touched only inside a method body is not observed. Default usage needs no agent, and the core artifact does not carry Byte Buddy.
 - **CI-ready out of the box** — ship JUnit XML reports, machine-readable JSON, or `AssertionError` fail-gates directly to GitHub Actions, Jenkins, and GitLab CI.
 
+<div align="center">
+
 [![Watch the async-test-lib walkthrough on YouTube](https://img.youtube.com/vi/5LBavovcHEg/hqdefault.jpg)](https://www.youtube.com/watch?v=5LBavovcHEg)
 
 ▶ **[Watch the walkthrough on YouTube](https://www.youtube.com/watch?v=5LBavovcHEg)**
+
+</div>
 
 ---
 
 ## ⚡ Quick Start
 
-### Maven Quick Start
+<details open>
+<summary><b>Maven</b></summary>
 
 1. **Add the dependency** to `pom.xml`:
    ```xml
@@ -70,7 +78,10 @@
    mvn test
    ```
 
-### Gradle Quick Start
+</details>
+
+<details>
+<summary><b>Gradle</b></summary>
 
 1. **Add the dependency** to `build.gradle.kts`:
    ```kotlin
@@ -95,6 +106,8 @@
    ```bash
    ./gradlew test
    ```
+
+</details>
 
 ---
 
