@@ -43,8 +43,10 @@ public final class TelemetryEventBuffer {
         /**
          * Invoked for a drained event.
          *
-         * @param threadId    the thread ID
-         * @param targetField the target field
+         * @param threadId    {@code Thread.currentThread().threadId()} of the producer that recorded
+         *                    the access
+         * @param targetField field or method identifier (e.g. {@code "com.example.OrderService.setCount"})
+         *                    as produced by the agent's {@code @Advice.Origin("#t.#m")} pattern
          * @param isWrite     true if it was a write access, false otherwise
          */
         void onEvent(long threadId, @Nullable String targetField, boolean isWrite);
