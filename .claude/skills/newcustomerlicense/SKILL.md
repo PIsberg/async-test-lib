@@ -83,24 +83,35 @@ send anything. Both are yours to confirm.
 Re-running it for an address that already has a licence mints a **second** one rather than
 returning the first. Check `app.keygen.sh` → Licenses before re-running.
 
-### A4. Optional: prove it in a real build
-
-The strongest check available, and worth doing the first time you sell to anyone. Run an actual
-`@AsyncTest` with the customer's flags and mock mode explicitly off:
+### A4. Prove it in a real build — local only
 
 ```bash
-mvn -q -pl async-test-lib test -Dtest=AsyncTestContextTest \
-  -Dlicense.mock.mode=false \
-  -Dkeygen.account.id="$KEYGEN_ACCOUNT_ID" \
-  -Dkeygen.product.id="$KEYGEN_PRODUCT_ID" \
-  -Dlicense.key="<their key>" \
-  -Dlicense.user.email="<the licensed address>" \
-  -Dsurefire.failIfNoSpecifiedTests=false
+.claude/skills/newcustomerlicense/verify-license.sh "<their key>" "<the licensed address>"
 ```
 
-`license.mock.mode` defaults to `true` in `pom.xml` so the ordinary test run needs no key. That
-also means CI never exercises the real gate, so this is the only place the whole chain gets
-tested against a live key.
+This is the deepest check available, and the one to reach for whenever a customer says
+"it stopped working". It runs the real `@AsyncTest` suite against the live Keygen account
+**twice**:
+
+| run | address | required outcome |
+|---|---|---|
+| 1 | the licensed address | passes |
+| 2 | a decoy at the same domain | **fails** |
+
+Run 2 is the part that carries the weight. A positive-only check goes green just as
+happily when the gate never engaged at all — `license.mock.mode` defaults to `true` in
+`pom.xml`, and mock mode auto-activates in CI — so a single green run cannot tell a
+working licence from a licence that was never consulted. Only a run that goes red on a
+bad address proves enforcement is live. If run 2 passes, the script fails loudly and
+tells you the gate is not enforcing.
+
+Measured on this machine against the live account: a good key gives
+`run 1 PASS tests="12" errors="0"` then `run 2 denied`; a bogus key stops at run 1 with
+`LICENSE DENIED: LICENSE_NOT_FOUND` and exit 1.
+
+**It only works locally, by design.** CI has no Keygen credentials and self-mocks, so
+there is nowhere else this can run — which is exactly why `license.mock.mode` being
+`true` by default is safe for everyone else and why this script exists for you.
 
 ### A5. Send their flags, then log it
 
