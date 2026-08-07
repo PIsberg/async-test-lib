@@ -39,7 +39,6 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 06 | [Deadlock](06-deadlock/) | `DeadlockDetector` | Two threads acquire the same pair of locks in opposite order — circular wait, neither can proceed | 🔴 Critical |
 | 07 | [Livelock](07-livelock/) | `LivelockDetector` | Two nodes back off and retry without delay — threads stay active but make no progress | 🔴 Critical |
 | 08 | [Race Condition](08-race-condition/) | `RaceConditionDetector` | Non-atomic check-then-update lets multiple threads pass the stock threshold, driving count negative | 🔴 Critical |
-| 09 | [Uncommitted Changes Detection](09-uncommitted-changes-detection/) | `UncommittedChangesDetector` | Untracked Git files break test reproducibility | 🟢 Low |
 | 10 | [Shared Non-Thread-Safe Types](10-shared-non-thread-safe-types/) | `SharedMatcherDetector`, `SharedDecimalFormatDetector`, `SharedMessageDigestDetector` | Shared `Matcher`, `DecimalFormat`, and `MessageDigest` fields silently produce wrong results under concurrent load | 🔴 Critical |
 | 11 | [Interrupt Swallowing](11-interrupt-swallowing/) | `InterruptSwallowingDetector` | `catch(InterruptedException)` without restoring the flag permanently suppresses cooperative cancellation | 🔴 Critical |
 | 12 | [MDC Context Leak](12-mdc-context-leak/) | `MdcContextLeakDetector` | MDC entries not cleared at task end contaminate the next request on the reused thread | 🟡 High |
@@ -351,17 +350,6 @@ examples/
 - `RaceConditionDetector` - Unsynchronized compound read-modify-write in `merge()`
 
 **Fix**: Use `ConcurrentHashMap`, `CopyOnWriteArrayList`, or `Collections.synchronizedList()`
-
-### 9. Uncommitted Git Changes (Example 09)
-**What**: Detects untracked or modified files in the Git repository that weren't committed.
-
-**Impact**: Polluted classpath, non-reproducible test results, and environmental drift between local and CI.
-
-**Primary Detector**: `UncommittedChangesDetector`
-- Flags: "Git repository has uncommitted or untracked changes"
-- Detects: `git status --porcelain` output showing M, A, D, R, C, or ?? files.
-
----
 
 ## Phase 11: Thread-Safety of Additional Types & Patterns (New in 0.10.0)
 

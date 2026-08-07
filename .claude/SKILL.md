@@ -395,11 +395,6 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 | `detectLockDowngrade` | `LOCK_DOWNGRADE` | Illegal read-to-write upgrade on `ReentrantReadWriteLock` |
 | `detectInheritableThreadLocalMisuse` | `INHERITABLE_THREAD_LOCAL` | `InheritableThreadLocal` used in pooled threads (inheritance happens at thread creation, not submission) |
 
-### Phase 9 — Repository & environment state
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `detectUncommittedChanges` | `UNCOMMITTED_CHANGES` | Untracked or uncommitted Git files when the test completes |
-
 ### Phase 10 — API traps & subtle concurrency bugs
 | Annotation field | DetectorType | What it catches |
 |-----------------|-------------|-----------------|

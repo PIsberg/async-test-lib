@@ -16,10 +16,10 @@ class SharedListTest {
     // shared across all concurrent threads — ArrayList is NOT thread-safe
     private final List<String> requestLog = new ArrayList<>();
 
-    // includes = exactly this detector and nothing else: the recording workflow dirties
-    // tools/demo/pom.xml before it records, and with detectAll (the default) the
-    // UncommittedChangesDetector turned that into "uncommitted files" findings in the demo
-    // GIF — an environment check upstaging the concurrency story the demo exists to tell.
+    // includes = exactly this detector and nothing else: keeps the recorded demo
+    // focused on the one finding it is about. (Historically also load-bearing: the
+    // recording workflow dirties pom.xml before recording, and the since-removed
+    // UncommittedChangesDetector printed "uncommitted files" findings into the GIF.)
     @AsyncTest(threads = 6, invocations = 3, includes = DetectorType.SHARED_COLLECTIONS)
     void requestLog_mustBeThreadSafe() {
         AsyncTestContext.sharedCollectionMonitor()

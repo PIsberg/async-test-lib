@@ -58,10 +58,6 @@ class Jdk2526DetectorWiringTest {
 
     @Test
     void analyzeAll_isCleanWhenNoEventsRecorded() {
-        // UNCOMMITTED_CHANGES is excluded because its report embeds the names of
-        // dirty working-tree files — on a developer machine mid-change those names
-        // can legitimately contain "StableValue"/"StructuredTaskScope"/etc. and
-        // would fail the noneMatch below for reasons unrelated to this wiring.
         AsyncTestConfig cfg = AsyncTestConfig.builder()
                 .detectAll(true)
                 .build();

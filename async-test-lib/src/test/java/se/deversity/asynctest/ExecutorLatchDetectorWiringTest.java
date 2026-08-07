@@ -56,8 +56,6 @@ class ExecutorLatchDetectorWiringTest {
 
     @Test
     void analyzeAll_isCleanWhenNoEventsRecorded() {
-        // UNCOMMITTED_CHANGES is excluded because its report embeds working-tree file names,
-        // which mid-change can contain the very words asserted against below.
         AsyncTestConfig cfg = AsyncTestConfig.builder()
                 .detectAll(true)
                 .build();
