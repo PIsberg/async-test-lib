@@ -95,7 +95,7 @@ for f in "${ALLOWLIST[@]}"; do
 done
 
 echo
-remaining="$(grep -c -F "$CURRENT" "${ALLOWLIST[@]}" 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')"
+remaining="$(grep -c -F "$CURRENT" "${ALLOWLIST[@]}" 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')" || true
 pins=$((changed - remaining))
 echo "Rewrote $pins pin(s) across ${#ALLOWLIST[@]} allowlisted file(s)."
 
