@@ -79,7 +79,10 @@ public final class LicenseGuard {
                        || Boolean.getBoolean("license.mock.mode")
                        || (isCi && !hasCredentials);
         String licenseIdentity   = fp.licenseUserEmail;
-        String keygenKeyForCheck = (fp.keygenApiKey == null) ? "dummy-key" : fp.keygenApiKey;
+        // Customers are never given an API token: Keygen's validate-key is a public endpoint,
+        // but a placeholder bearer is rejected with 401 before the key is even evaluated, which
+        // denied every legitimate commercial run. null means "send no Authorization header".
+        String keygenKeyForCheck = fp.keygenApiKey;
 
         LicenseConfig.Builder cfg = LicenseConfig.builder()
             .licenseProvider(fp.licenseProvider)
