@@ -54,56 +54,77 @@ So ask: *which single address will your builds present?* Push for something dura
 with the person. That address goes in their build config once; individual developers do not use
 their own.
 
-### A3. Issue the licence
+### A3. Issue and verify, in one command
 
 ```bash
-export ATL_OWNER_EMAIL="licence@acme-corp.com"
-
-jshell --class-path "$(ls ~/.m2/repository/se/deversity/common/common-license-lib/*/common-license-lib-*.jar | grep -v sources | grep -v javadoc | tail -1)" - <<'JSHELL'
-import se.deversity.common.license.keygen.KeygenIssuer;
-import java.net.URI; import java.net.http.HttpClient; import java.time.Duration;
-var issuer = new KeygenIssuer(HttpClient.newHttpClient(), System.getenv("KEYGEN_ACCOUNT_ID"),
-    System.getenv("KEYGEN_ADMIN_TOKEN"), URI.create("https://api.keygen.sh"), Duration.ofSeconds(20));
-System.out.println("KEY=" + issuer.issueLicense(System.getenv("KEYGEN_POLICY_ID"),
-    System.getenv("ATL_OWNER_EMAIL")));
-JSHELL
+.claude/skills/newcustomerlicense/issue-license.sh "Acme Corp" licence@acme-corp.com
 ```
 
-`issueLicense` creates the Keygen user if it does not exist, then a licence owned by them under
-the annual policy (365 days, expiring keys deny).
+That script does the whole mechanical part and refuses to produce a key it has not proved:
 
-### A4. Verify the way the customer's build will
+1. loads `keygen.env` and stops if any of the four values is missing;
+2. refuses free-provider addresses, which the gate already lets through without a key;
+3. resolves the newest `common-license-lib` jar (`sort -V`, so 0.10.0 beats 0.5.0) — override
+   with `ATL_LICENSE_LIB_JAR=/path/to.jar`;
+4. mints the licence with `KeygenIssuer.issueLicense`, which creates the Keygen user if needed
+   then a licence owned by them under the annual policy;
+5. **validates twice**: the licensed address must come back `"valid":true`, and a decoy address
+   at the same domain must come back `"valid":false`. Both calls go out with no `Authorization`
+   header, exactly as the customer's build does;
+6. prints the flag block ready to paste, and the log line for step A5.
+
+If either validation goes the wrong way it exits non-zero and tells you not to send the key. A
+licence that validates for everybody is indistinguishable from one that validates for nobody
+until a customer complains.
+
+Two things it deliberately does not do: it does not append to the customer log, and it does not
+send anything. Both are yours to confirm.
+
+Re-running it for an address that already has a licence mints a **second** one rather than
+returning the first. Check `app.keygen.sh` → Licenses before re-running.
+
+### A4. Optional: prove it in a real build
+
+The strongest check available, and worth doing the first time you sell to anyone. Run an actual
+`@AsyncTest` with the customer's flags and mock mode explicitly off:
 
 ```bash
-curl -sS -X POST   "https://api.keygen.sh/v1/accounts/$KEYGEN_ACCOUNT_ID/licenses/actions/validate-key"   -H "Content-Type: application/vnd.api+json" -H "Accept: application/vnd.api+json"   -d "{\"meta\":{\"key\":\"<their-key>\",\"scope\":{\"user\":\"$ATL_OWNER_EMAIL\",\"product\":\"$KEYGEN_PRODUCT_ID\"}}}"
+mvn -q -pl async-test-lib test -Dtest=AsyncTestContextTest \
+  -Dlicense.mock.mode=false \
+  -Dkeygen.account.id="$KEYGEN_ACCOUNT_ID" \
+  -Dkeygen.product.id="$KEYGEN_PRODUCT_ID" \
+  -Dlicense.key="<their key>" \
+  -Dlicense.user.email="<the licensed address>" \
+  -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-`meta.valid` must be `true` and `meta.code` `VALID`. The scope key is `user` — Keygen rejects
-`scope.email` with HTTP 400. Send no `Authorization` header here (as the customer's build does) or
-a real token; a made-up one 401s before the licence is read.
+`license.mock.mode` defaults to `true` in `pom.xml` so the ordinary test run needs no key. That
+also means CI never exercises the real gate, so this is the only place the whole chain gets
+tested against a live key.
 
-### A5. Send their flags
+### A5. Send their flags, then log it
 
-```
--Dkeygen.account.id=<KEYGEN_ACCOUNT_ID>
--Dkeygen.product.id=<KEYGEN_PRODUCT_ID>
--Dlicense.key=<their key>
--Dlicense.user.email=<the licensed address>
-```
+The script prints the block. `license.provider` defaults to `keygen`, so it can be omitted.
 
-`license.provider` defaults to `keygen`, so it can be omitted. Say plainly in the email that
-`license.user.email` must be that exact address for every developer and in CI. The fuller block is
-in `docs/LICENSING.md` §"What to send the customer".
-
-### A6. Log it
+Say plainly in the email that `license.user.email` must be that exact address for every developer
+and in CI — it is not a per-person field, and a colleague's own address is denied. The fuller
+customer-facing block is in `docs/LICENSING.md` §"What to send the customer".
 
 ```bash
-echo "$(date -I)  <company>  <licensed-address>  paddle  <transaction-id>  renews:<date>"   >> ~/.config/deversity/customers.tsv
+echo "$(date -I)  <company>  <licensed-address>  paddle  <transaction-id>  renews:<date>" \
+  >> ~/.config/deversity/customers.tsv
 ```
 
 **Renewal is not automatic on this path.** Paddle rebills the subscription, but nothing extends
 the Keygen licence — the two systems are not connected. When the renewal notification arrives,
 extend the licence's expiry in Keygen, or their build fails a year after they bought.
+
+### A6. If the address turns out to be wrong
+
+Do not issue a second licence. Keygen validates against the owner user's **current** email, so
+editing that user in `app.keygen.sh` → Users re-points the existing key and the customer keeps
+the string you already sent them. Treat it as a licensing change, not an administrative one: it
+moves who the licence covers.
 
 ---
 
