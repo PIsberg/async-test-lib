@@ -41,6 +41,11 @@ public record Violation(
         Map<String, Object> attributes,
         Instant when
 ) {
+    /**
+     * Compact constructor validating the inputs.
+     *
+     * @throws IllegalArgumentException if detector, severity, or message is invalid
+     */
     public Violation {
         if (detector == null || detector.isBlank())
             throw new IllegalArgumentException("detector must be non-blank");

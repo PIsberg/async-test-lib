@@ -61,12 +61,24 @@ import java.util.concurrent.TimeoutException;
  *
  * <p>This class is intentionally stateless — all state lives in the per-call
  * local variables of {@link #execute}.
+ *
+ * Core execution engine for {@code @AsyncTest} methods.
+ * 
+ * <p>This runner executes the test method multiple times concurrently, using a 
+ * {@link java.util.concurrent.CyclicBarrier} to maximize thread contention and 
+ * expose race conditions. It also integrates with the detector ecosystem to monitor 
+ * for deadlocks, livelocks, visibility issues, and more.
+ * 
+ * @since 1.0.0
  */
+@AIAudit(
+    vulnerabilities = {"Thread Safety issues", "Resource Leaks"}
+)
 @AICore(
     sensitivity = "Critical",
     note = "Core stress-test execution engine. The CyclicBarrier pattern forces maximum thread contention. Timeout logic and AsyncTestContext install/uninstall are carefully calibrated — subtle changes introduce flaky tests or missed detector activations."
 )
-@AIAudit(checkFor = {"Thread Safety issues", "Resource Leaks"})
+@AILoadBearing(reason = "The heartbeat of the entire library. A regression here breaks the core value proposition of maximizing data races.")
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Coordinates concurrency using CyclicBarrier to maximize thread contention.")
 public class ConcurrencyRunner {
 

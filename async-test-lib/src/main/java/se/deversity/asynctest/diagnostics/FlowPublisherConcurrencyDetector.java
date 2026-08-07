@@ -235,6 +235,11 @@ public final class FlowPublisherConcurrencyDetector {
         public final List<String> violations = new ArrayList<>();
         public final List<Violation> structuredViolations = new ArrayList<>();
 
+        /**
+         * Checks if any issues were detected.
+         * 
+         * @return true if there are violations, false otherwise
+         */
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         @Override

@@ -40,6 +40,13 @@ public final class TelemetryEventBuffer {
     /** Callback invoked by the consumer for each drained event. */
     @FunctionalInterface
     public interface DrainCallback {
+        /**
+         * Invoked for a drained event.
+         *
+         * @param threadId    the thread ID
+         * @param targetField the target field
+         * @param isWrite     true if it was a write access, false otherwise
+         */
         void onEvent(long threadId, @Nullable String targetField, boolean isWrite);
     }
 
