@@ -140,10 +140,13 @@ public final class TelemetryEventBuffer {
                 // period with zero progress is strictly better than hanging the caller.
                 if (fullSinceNanos == 0L) {
                     fullSinceNanos = System.nanoTime();
-                } else if ((++spins & 255) == 0
-                        && System.nanoTime() - fullSinceNanos > FULL_BUFFER_GIVE_UP_NANOS) {
-                    droppedEvents.incrementAndGet();
-                    return;
+                } else {
+                    spins++;
+                    if ((spins & 255) == 0
+                            && System.nanoTime() - fullSinceNanos > FULL_BUFFER_GIVE_UP_NANOS) {
+                        droppedEvents.incrementAndGet();
+                        return;
+                    }
                 }
                 Thread.onSpinWait();
                 continue;

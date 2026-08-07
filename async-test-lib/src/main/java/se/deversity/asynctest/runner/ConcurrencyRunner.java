@@ -753,6 +753,11 @@ public class ConcurrencyRunner {
      * user-facing behavior ({@code assertThrows(AssertionError.class, …)}, JUnit
      * reporting) is unchanged.
      */
+    // The PMD suppression is deliberate: this type MUST be an AssertionError so JUnit
+    // reports it as a test failure and existing assertThrows(AssertionError.class, ...)
+    // callers keep passing — the runner threw bare AssertionError for timeouts before this
+    // type existed. It is a marker for routing, not a new error category.
+    @SuppressWarnings("PMD.DoNotExtendJavaLangError")
     static final class RoundTimeoutError extends AssertionError {
         private static final long serialVersionUID = 1L;
         RoundTimeoutError(String message) {
