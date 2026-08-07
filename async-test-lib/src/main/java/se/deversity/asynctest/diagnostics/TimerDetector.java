@@ -233,8 +233,10 @@ public class TimerDetector {
             sb.append("TIMER ISSUES DETECTED:\n");
 
             if (!timerThreadFailures.isEmpty()) {
-                sb.append("  Why: An uncaught exception in a TimerTask cancels ALL future tasks on that Timer silently.\n" +
-                           "       The timer continues to exist but never fires another task.\n");
+                sb.append("""
+  Why: An uncaught exception in a TimerTask cancels ALL future tasks on that Timer silently.
+       The timer continues to exist but never fires another task.
+""");
                 sb.append("  Timer Thread Failures (tasks silently cancelled):\n");
                 for (String issue : timerThreadFailures) {
                     sb.append("    - ").append(issue).append("\n");
@@ -266,10 +268,12 @@ public class TimerDetector {
                 sb.append("  No critical issues detected.\n");
             }
 
-            sb.append("  Why: A Timer that is never cancelled keeps its TimerThread alive forever, preventing JVM exit\n" +
-                       "       and consuming an OS thread. Scheduled tasks continue firing even after the test ends,\n" +
-                       "       interfering with subsequent tests.\n" +
-                       "  Fix: replace java.util.Timer with ScheduledExecutorService");
+            sb.append("""
+  Why: A Timer that is never cancelled keeps its TimerThread alive forever, preventing JVM exit
+       and consuming an OS thread. Scheduled tasks continue firing even after the test ends,
+       interfering with subsequent tests.
+  Fix: replace java.util.Timer with ScheduledExecutorService\
+""");
             return sb.toString();
         }
     }

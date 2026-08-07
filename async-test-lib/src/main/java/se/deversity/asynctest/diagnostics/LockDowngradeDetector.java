@@ -183,13 +183,15 @@ public class LockDowngradeDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("LOCK UPGRADE/DOWNGRADE ISSUES DETECTED:\n");
             for (String issue : upgradeAttempts) sb.append("  - ").append(issue).append("\n");
-            sb.append("  Why: ReentrantReadWriteLock does not support upgrade (read→write). A thread holding a read lock that\n" +
-"       tries to acquire the write lock will deadlock against itself, since the write lock requires all\n" +
-"       read locks to be released first — including its own.\n" +
-"  Fix:\n" +
-"    - To upgrade: release the read lock, then acquire the write lock (re-validate the condition after)\n" +
-"    - For safe downgrade: acquire the read lock while still holding the write lock, THEN release the write lock\n" +
-"    - Consider StampedLock.tryConvertToWriteLock(stamp) if upgrade is a frequent pattern");
+            sb.append("""
+  Why: ReentrantReadWriteLock does not support upgrade (read→write). A thread holding a read lock that
+       tries to acquire the write lock will deadlock against itself, since the write lock requires all
+       read locks to be released first — including its own.
+  Fix:
+    - To upgrade: release the read lock, then acquire the write lock (re-validate the condition after)
+    - For safe downgrade: acquire the read lock while still holding the write lock, THEN release the write lock
+    - Consider StampedLock.tryConvertToWriteLock(stamp) if upgrade is a frequent pattern\
+""");
             return sb.toString();
         }
     }

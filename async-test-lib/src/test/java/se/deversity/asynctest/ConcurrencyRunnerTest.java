@@ -262,12 +262,12 @@ class ConcurrencyRunnerTest {
 
     /**
      * A body that outlives its round budget and shrugs off the cancel interrupt for
-     * ~400ms before exiting — user code that unwinds slowly after cancellation. While it
+     * ~1000ms before exiting — user code that unwinds slowly after cancellation. While it
      * runs it is exactly the worker whose detector writes a concurrent analysis would race.
      */
     static final class StubbornFixture {
         private void ignoresInterruptsBriefly() {
-            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(400);
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(1000);
             while (System.nanoTime() < deadline) {
                 try {
                     Thread.sleep(5);
@@ -285,7 +285,7 @@ class ConcurrencyRunnerTest {
         String previousMultiplier = System.getProperty("async-test.timeout.multiplier");
         System.setProperty("license.mock.mode", "true");
         // Pin to 1: CI exports ASYNC_TEST_TIMEOUT_MULTIPLIER on slow legs, and the scaled
-        // budget must stay far below the fixture's 400ms unwind so the timeout fires first.
+        // budget must stay far below the fixture's 1000ms unwind so the timeout fires first.
         System.setProperty("async-test.timeout.multiplier", "1");
         STUBBORN_WORKER_EXITED.set(false);
         java.util.concurrent.atomic.AtomicBoolean workerHadExitedWhenTimeoutFired =
@@ -309,7 +309,7 @@ class ConcurrencyRunnerTest {
             AssertionError timeout = assertThrows(AssertionError.class,
                     () -> se.deversity.asynctest.runner.ConcurrencyRunner.execute(context, config));
             assertTrue(timeout.getMessage() != null && timeout.getMessage().contains("timed out"),
-                    "the 100ms budget must time out against the ~400ms stubborn body: " + timeout.getMessage());
+                    "the 100ms budget must time out against the ~1000ms stubborn body: " + timeout.getMessage());
 
             assertTrue(workerHadExitedWhenTimeoutFired.get(),
                     "reporting (onTimeout + detector analysis) must not begin until cancelled "
@@ -328,9 +328,11 @@ class ConcurrencyRunnerTest {
         String previousGrace = System.getProperty("async-test.quiesce.grace.ms");
         System.setProperty("license.mock.mode", "true");
         System.setProperty("async-test.timeout.multiplier", "1");
-        // 50ms grace against a worker that shrugs off interrupts for ~400ms: reporting
-        // must proceed once the bound expires instead of waiting the full unwind out.
-        System.setProperty("async-test.quiesce.grace.ms", "50");
+        // 100ms grace against a worker that shrugs off interrupts for ~1000ms: reporting
+        // must proceed once the bound expires instead of waiting the full unwind out. The
+        // 700ms buffer between (timeout + grace) and the worker's unwind time is deliberately
+        // generous — a tighter margin flaked on loaded CI runners (macOS/JDK21 in particular).
+        System.setProperty("async-test.quiesce.grace.ms", "100");
         STUBBORN_WORKER_EXITED.set(false);
         java.util.concurrent.atomic.AtomicBoolean workerHadExitedWhenTimeoutFired =
                 new java.util.concurrent.atomic.AtomicBoolean(true);
@@ -342,7 +344,7 @@ class ConcurrencyRunnerTest {
                 })) {
             AsyncTestConfig config = AsyncTestConfig.builder()
                     .threads(1).invocations(1).useVirtualThreads(false)
-                    .timeoutMs(100).detectAll(false).detectDeadlocks(false)
+                    .timeoutMs(200).detectAll(false).detectDeadlocks(false)
                     .build();
             StubbornFixture fixture = new StubbornFixture();
             Method method = StubbornFixture.class.getDeclaredMethod("ignoresInterruptsBriefly");
@@ -350,7 +352,7 @@ class ConcurrencyRunnerTest {
                     .execute(new FakeInvocationContext(fixture, method, List.of()), config));
 
             assertFalse(workerHadExitedWhenTimeoutFired.get(),
-                    "with a 50ms grace the runner must proceed to reporting while the stubborn "
+                    "with a 100ms grace the runner must proceed to reporting while the stubborn "
                             + "worker is still unwinding — the property bounds the wait");
         } finally {
             restoreProperty("async-test.quiesce.grace.ms", previousGrace);

@@ -134,12 +134,14 @@ public class MutableMapKeyDetector {
                 sb.append("  Mutation details:\n");
                 for (String detail : mutationDetails) sb.append("    * ").append(detail).append("\n");
             }
-            sb.append("  Why: HashMap/HashSet locate an entry by computing hashCode() and comparing equals() on the key.\n" +
-                       "       If the key object is mutated after insertion its hashCode changes, so the map looks in the wrong bucket\n" +
-                       "       and cannot find the entry — lookups silently return null, and remove() silently does nothing.\n" +
-                       "  Fix:\n" +
-                       "    - Use only immutable types as keys (String, Integer, UUID, value records)\n" +
-                       "    - If a mutable key is unavoidable, base hashCode/equals solely on final fields that never change after construction");
+            sb.append("""
+  Why: HashMap/HashSet locate an entry by computing hashCode() and comparing equals() on the key.
+       If the key object is mutated after insertion its hashCode changes, so the map looks in the wrong bucket
+       and cannot find the entry — lookups silently return null, and remove() silently does nothing.
+  Fix:
+    - Use only immutable types as keys (String, Integer, UUID, value records)
+    - If a mutable key is unavoidable, base hashCode/equals solely on final fields that never change after construction\
+""");
             return sb.toString();
         }
     }

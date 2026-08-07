@@ -237,14 +237,16 @@ public class CompletableFutureExceptionDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Why: An unhandled exception in a CompletableFuture stage causes the future to complete exceptionally.\n" +
-                    "       Without .exceptionally() or .handle(), calling get()/join() will throw a wrapping ExecutionException,\n" +
-                    "       and any downstream thenApply/thenCompose stages are silently skipped, leaving the chain in an\n" +
-                    "       incomplete state with no visible error.\n" +
-                    "  Fix:\n" +
-                    "    - Add .exceptionally(ex -> fallbackValue) to recover from errors in the chain\n" +
-                    "    - Use .handle((result, ex) -> ...) when you need to inspect both success and failure in one place\n" +
-                    "    - Call get() inside a try/catch ExecutionException so failures surface immediately");
+            sb.append("""
+  Why: An unhandled exception in a CompletableFuture stage causes the future to complete exceptionally.
+       Without .exceptionally() or .handle(), calling get()/join() will throw a wrapping ExecutionException,
+       and any downstream thenApply/thenCompose stages are silently skipped, leaving the chain in an
+       incomplete state with no visible error.
+  Fix:
+    - Add .exceptionally(ex -> fallbackValue) to recover from errors in the chain
+    - Use .handle((result, ex) -> ...) when you need to inspect both success and failure in one place
+    - Call get() inside a try/catch ExecutionException so failures surface immediately\
+""");
             return sb.toString();
         }
     }

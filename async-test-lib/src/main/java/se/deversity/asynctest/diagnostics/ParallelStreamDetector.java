@@ -272,15 +272,17 @@ public class ParallelStreamDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Why: Parallel stream operations distribute work across multiple threads on the common ForkJoinPool.\n"
-                    + "       Stateful lambdas, mutable shared state, and side effects inside stream operations are interleaved\n"
-                    + "       without ordering guarantees, producing non-deterministic results, silent data corruption, and\n"
-                    + "       interference with other parallel streams running in the same JVM.\n"
-                    + "  Fix:\n"
-                    + "    - Write stateless lambdas that depend only on their input and produce a return value\n"
-                    + "    - Use thread-safe collectors: Collectors.toConcurrentMap(), Collectors.groupingByConcurrent()\n"
-                    + "    - Avoid side effects (writing to external lists/maps/files) inside stream operations\n"
-                    + "    - If side effects are unavoidable, use a sequential stream or synchronize the shared target");
+            sb.append("""
+  Why: Parallel stream operations distribute work across multiple threads on the common ForkJoinPool.
+       Stateful lambdas, mutable shared state, and side effects inside stream operations are interleaved
+       without ordering guarantees, producing non-deterministic results, silent data corruption, and
+       interference with other parallel streams running in the same JVM.
+  Fix:
+    - Write stateless lambdas that depend only on their input and produce a return value
+    - Use thread-safe collectors: Collectors.toConcurrentMap(), Collectors.groupingByConcurrent()
+    - Avoid side effects (writing to external lists/maps/files) inside stream operations
+    - If side effects are unavoidable, use a sequential stream or synchronize the shared target\
+""");
             return sb.toString();
         }
     }

@@ -216,13 +216,15 @@ public class SharedCollectionDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Why: ArrayList, HashMap, and similar collections are explicitly not thread-safe. Concurrent writes corrupt\n" +
-                       "       internal array pointers and size counters, causing ArrayIndexOutOfBoundsException, infinite loops inside\n" +
-                       "       HashMap.get(), or silently lost entries — bugs that appear non-deterministically and are hard to reproduce.\n" +
-                       "  Fix:\n" +
-                       "    - Drop-in concurrent replacements: ConcurrentHashMap, ConcurrentLinkedQueue, CopyOnWriteArrayList\n" +
-                       "    - Wrapper (coarse-grained): Collections.synchronizedList/Map/Set — remember to lock the collection during iteration\n" +
-                       "    - Thread-confined: only access the collection from one thread; pass results between threads via a queue");
+            sb.append("""
+  Why: ArrayList, HashMap, and similar collections are explicitly not thread-safe. Concurrent writes corrupt
+       internal array pointers and size counters, causing ArrayIndexOutOfBoundsException, infinite loops inside
+       HashMap.get(), or silently lost entries — bugs that appear non-deterministically and are hard to reproduce.
+  Fix:
+    - Drop-in concurrent replacements: ConcurrentHashMap, ConcurrentLinkedQueue, CopyOnWriteArrayList
+    - Wrapper (coarse-grained): Collections.synchronizedList/Map/Set — remember to lock the collection during iteration
+    - Thread-confined: only access the collection from one thread; pass results between threads via a queue\
+""");
             return sb.toString();
         }
     }

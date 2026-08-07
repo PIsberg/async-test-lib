@@ -22,8 +22,7 @@ public class LockOrderValidator {
     /** One lock acquired while another was already held: {@code from} nests {@code to}. */
     private record LockEdge(String from, String to) { }
 
-    private static class LockSequence {
-        final long threadId;
+    private static final class LockSequence {
         /** Locks this thread holds right now. The only sound basis for a nesting edge. */
         final Set<String> acquiredLocks = ConcurrentHashMap.newKeySet();
         /**
@@ -32,9 +31,6 @@ public class LockOrderValidator {
          * consecutive entries are not necessarily nested, and a released lock leaves no trace.
          */
         final Set<LockEdge> nestingEdges = ConcurrentHashMap.newKeySet();
-        LockSequence(long tid) {
-            this.threadId = tid;
-        }
     }
     
     private final Map<Long, LockSequence> threadLockOrders = new ConcurrentHashMap<>();
@@ -51,7 +47,7 @@ public class LockOrderValidator {
         long threadId = Thread.currentThread().threadId();
         String lockId = lock.getClass().getSimpleName() + "@" + System.identityHashCode(lock);
         
-        LockSequence sequence = threadLockOrders.computeIfAbsent(threadId, LockSequence::new);
+        LockSequence sequence = threadLockOrders.computeIfAbsent(threadId, id -> new LockSequence());
         
         synchronized (sequence) {
             // Every lock still held by this thread is being nested by the one we are taking

@@ -93,11 +93,13 @@ public class SharedTimeZoneDetector {
         public String toString() {
             StringBuilder sb = new StringBuilder("SHARED TIMEZONE MUTATION DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
-            sb.append("  Why: java.util.TimeZone is mutable. A call to setID() or setRawOffset() on a shared TimeZone instance\n" +
-                       "       changes the global timezone state, affecting every thread that uses that instance — including date\n" +
-                       "       formatting in unrelated parts of the application, producing silently wrong times.\n" +
-                       "  Fix: Use java.time.ZoneId (immutable) instead of java.util.TimeZone. If TimeZone is unavoidable,\n" +
-                       "       never mutate a shared instance — call TimeZone.getTimeZone(id) to get a fresh copy and treat it as read-only.");
+            sb.append("""
+  Why: java.util.TimeZone is mutable. A call to setID() or setRawOffset() on a shared TimeZone instance
+       changes the global timezone state, affecting every thread that uses that instance — including date
+       formatting in unrelated parts of the application, producing silently wrong times.
+  Fix: Use java.time.ZoneId (immutable) instead of java.util.TimeZone. If TimeZone is unavoidable,
+       never mutate a shared instance — call TimeZone.getTimeZone(id) to get a fresh copy and treat it as read-only.\
+""");
             return sb.toString();
         }
     }

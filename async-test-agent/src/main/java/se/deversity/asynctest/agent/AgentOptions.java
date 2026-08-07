@@ -77,6 +77,7 @@ final class AgentOptions {
      * @return the parsed options; empty lists when {@code agentArgs} is {@code null} or
      *         carries no recognised values
      */
+    @SuppressWarnings("StringSplitter") // trailing-empty-removal is harmless: every entry is trim()+isEmpty()-filtered below
     static AgentOptions parse(@Nullable String agentArgs) {
         List<String> includes = new ArrayList<>();
         List<String> excludes = new ArrayList<>();

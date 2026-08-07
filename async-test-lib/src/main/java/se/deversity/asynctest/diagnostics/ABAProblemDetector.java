@@ -51,7 +51,7 @@ public class ABAProblemDetector {
             this.newValue = neu;
         }
         
-        @SuppressWarnings("PMD.CompareObjectsWithEquals") // identity equality intentional for atomic value tracking
+        @SuppressWarnings({"PMD.CompareObjectsWithEquals", "ReferenceEquality"}) // identity equality intentional for atomic value tracking
         boolean isSameValue(Object v1, Object v2) {
             if (v1 == null && v2 == null) return true;
             if (v1 == null || v2 == null) return false;

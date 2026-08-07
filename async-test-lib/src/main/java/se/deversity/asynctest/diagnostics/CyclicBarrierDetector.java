@@ -152,6 +152,7 @@ public class CyclicBarrierDetector {
          * @param brokenBarriers the barriers left in a broken state
          */
         @Deprecated(since = "1.7.0")
+        @SuppressWarnings("InlineMeSuggester") // binary-compat shim for 1.6.0 callers, not an active migration target
         public CyclicBarrierReport(
             Map<CyclicBarrier, BarrierInfo> barrierRegistry,
             Set<CyclicBarrier> timedOutBarriers,

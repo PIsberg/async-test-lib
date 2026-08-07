@@ -227,13 +227,15 @@ public class StreamClosingDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Why: An unclosed Stream that wraps I/O resources (Files.lines(), Files.walk()) holds an open file descriptor.\n" +
-                       "       Leaving it open leaks the descriptor for the lifetime of the process. Under load, leaked descriptors\n" +
-                       "       exhaust the OS file descriptor limit, causing 'Too many open files' on subsequent opens.\n" +
-                       "  Fix: Always close streams that wrap I/O: use try-with-resources:\n" +
-                       "       try (Stream<String> lines = Files.lines(path)) { ... }\n" +
-                       "       or call stream.close() in a finally block.\n" +
-                       "       Streams returned by collection methods (list.stream()) do not hold resources and do not need closing.");
+            sb.append("""
+  Why: An unclosed Stream that wraps I/O resources (Files.lines(), Files.walk()) holds an open file descriptor.
+       Leaving it open leaks the descriptor for the lifetime of the process. Under load, leaked descriptors
+       exhaust the OS file descriptor limit, causing 'Too many open files' on subsequent opens.
+  Fix: Always close streams that wrap I/O: use try-with-resources:
+       try (Stream<String> lines = Files.lines(path)) { ... }
+       or call stream.close() in a finally block.
+       Streams returned by collection methods (list.stream()) do not hold resources and do not need closing.\
+""");
             return sb.toString();
         }
     }

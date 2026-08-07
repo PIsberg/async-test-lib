@@ -209,14 +209,16 @@ public class ResourceLeakDetector {
                 sb.append("  No issues detected.\n");
             }
 
-            sb.append("  Why: Resources such as streams, connections, and file handles consume OS-level file descriptors.\n" +
-"       An unclosed resource leaks the descriptor for the lifetime of the process. Under sustained load,\n" +
-"       leaked descriptors exhaust the OS limit (typically 1024–65535 per process) and all subsequent\n" +
-"       open() calls fail with \"Too many open files\".\n" +
-"  Fix:\n" +
-"    - Use try-with-resources for any AutoCloseable: try (InputStream in = ...) { ... }\n" +
-"    - If try-with-resources is not possible, call close() in a finally block\n" +
-"    - Verify every code path (including exception paths) closes the resource");
+            sb.append("""
+  Why: Resources such as streams, connections, and file handles consume OS-level file descriptors.
+       An unclosed resource leaks the descriptor for the lifetime of the process. Under sustained load,
+       leaked descriptors exhaust the OS limit (typically 1024–65535 per process) and all subsequent
+       open() calls fail with "Too many open files".
+  Fix:
+    - Use try-with-resources for any AutoCloseable: try (InputStream in = ...) { ... }
+    - If try-with-resources is not possible, call close() in a finally block
+    - Verify every code path (including exception paths) closes the resource\
+""");
             return sb.toString();
         }
     }
