@@ -218,8 +218,6 @@ public final class AsyncTestConfig {
     public final boolean detectLockDowngrade;
     /** Resolved value of {@link AsyncTest#detectInheritableThreadLocalMisuse()} for this run. */
     public final boolean detectInheritableThreadLocalMisuse;
-    /** Resolved value of {@link AsyncTest#detectUncommittedChanges()} for this run. */
-    public final boolean detectUncommittedChanges;
 
     // ---- Phase 10: API Traps & Subtle Concurrency Bugs ----
     /** Resolved value of {@link AsyncTest#detectThreadLocalContamination()} for this run. */
@@ -456,7 +454,6 @@ public final class AsyncTestConfig {
         detectNestedMonitorLockout       = b.detectNestedMonitorLockout;
         detectLockDowngrade              = b.detectLockDowngrade;
         detectInheritableThreadLocalMisuse = b.detectInheritableThreadLocalMisuse;
-        detectUncommittedChanges           = b.detectUncommittedChanges;
         detectThreadLocalContamination     = b.detectThreadLocalContamination;
         detectAtomicNonAtomicUpdates       = b.detectAtomicNonAtomicUpdates;
         detectSynchronizedCollectionIteration = b.detectSynchronizedCollectionIteration;
@@ -667,7 +664,6 @@ public final class AsyncTestConfig {
             .detectNestedMonitorLockout(ann.detectNestedMonitorLockout())
             .detectLockDowngrade(ann.detectLockDowngrade())
             .detectInheritableThreadLocalMisuse(ann.detectInheritableThreadLocalMisuse())
-            .detectUncommittedChanges(ann.detectUncommittedChanges())
             .detectThreadLocalContamination(ann.detectThreadLocalContamination())
             .detectAtomicNonAtomicUpdates(ann.detectAtomicNonAtomicUpdates())
             .detectSynchronizedCollectionIteration(ann.detectSynchronizedCollectionIteration())
@@ -824,7 +820,6 @@ public final class AsyncTestConfig {
         private boolean detectNestedMonitorLockout = false;
         private boolean detectLockDowngrade = false;
         private boolean detectInheritableThreadLocalMisuse = false;
-        private boolean detectUncommittedChanges           = false;
         private boolean detectThreadLocalContamination     = false;
         private boolean detectAtomicNonAtomicUpdates       = false;
         private boolean detectSynchronizedCollectionIteration = false;
@@ -1369,12 +1364,6 @@ public final class AsyncTestConfig {
          */
         public Builder detectInheritableThreadLocalMisuse(boolean v)   { detectInheritableThreadLocalMisuse = v; return this; }
         /**
-         * Sets {@link AsyncTestConfig#detectUncommittedChanges}.
-         * @param v the value to use
-         * @return this builder
-         */
-        public Builder detectUncommittedChanges(boolean v)             { detectUncommittedChanges = v; return this; }
-        /**
          * Sets {@link AsyncTestConfig#detectThreadLocalContamination}.
          * @param v the value to use
          * @return this builder
@@ -1910,7 +1899,6 @@ public final class AsyncTestConfig {
             detectNestedMonitorLockout = (detectAll || detectNestedMonitorLockout) && !excludes.contains(DetectorType.NESTED_MONITOR_LOCKOUT);
             detectLockDowngrade = (detectAll || detectLockDowngrade) && !excludes.contains(DetectorType.LOCK_DOWNGRADE);
             detectInheritableThreadLocalMisuse = (detectAll || detectInheritableThreadLocalMisuse) && !excludes.contains(DetectorType.INHERITABLE_THREAD_LOCAL);
-            detectUncommittedChanges = (detectAll || detectUncommittedChanges) && !excludes.contains(DetectorType.UNCOMMITTED_CHANGES);
             detectThreadLocalContamination = (detectAll || detectThreadLocalContamination) && !excludes.contains(DetectorType.THREAD_LOCAL_CONTAMINATION);
             detectAtomicNonAtomicUpdates = (detectAll || detectAtomicNonAtomicUpdates) && !excludes.contains(DetectorType.ATOMIC_NON_ATOMIC_UPDATE);
             detectSynchronizedCollectionIteration = (detectAll || detectSynchronizedCollectionIteration) && !excludes.contains(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION);

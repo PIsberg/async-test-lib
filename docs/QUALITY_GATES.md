@@ -235,12 +235,6 @@ excludes thread ids already deadlocked when the detector was created — otherwi
 threads from earlier tests in a shared JVM cause false positives. Found by mutation testing. Its
 static `hasDeadlock()` stays JVM-wide by design.
 
-The same section of the map holds one deliberate piece of JVM-global state going the other way:
-`UncommittedChangesDetector` caches its `git status` result statically, because forking a process
-per test method cost 99% of the analysis sweep. Any test that changes the working tree and then
-expects the detector to notice must call the package-private `invalidateCache()` first, the way
-`UncommittedChangesDetectorTest` does in its `@BeforeEach`.
-
 ## License guard
 
 `runner/LicenseGuard.check(config)` runs once per config fingerprint per JVM and throws

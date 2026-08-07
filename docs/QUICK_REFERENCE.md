@@ -12,7 +12,6 @@ Making your library available for others to install and use via Maven/Gradle wit
 ✅ GitHub Packages hosting
 ✅ Javadoc generation
 ✅ Source code publication
-- **Uncommitted Changes** — Detects untracked or uncommitted Git files that may affect test reproducibility
 - 114 specialized detectors for common concurrency pitfalls
 ```
 

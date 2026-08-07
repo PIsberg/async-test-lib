@@ -190,9 +190,8 @@ public enum DetectorType {
     /** Detects misuse of InheritableThreadLocal in thread-pool environments. */
     INHERITABLE_THREAD_LOCAL,
 
-    // Phase 9: Repository & Environment State
-    /** Detects untracked or uncommitted changes in the Git repository. */
-    UNCOMMITTED_CHANGES,
+    // Phase 9 (Repository & Environment State) held UNCOMMITTED_CHANGES until it was
+    // removed after 1.7.2: a git-status environment check, not a concurrency property.
 
     // Phase 10: API Traps & Subtle Concurrency Bugs
     /** Detects ThreadLocal values that bleed from one task into the next task executing on the same pooled thread — cross-task state contamination. */

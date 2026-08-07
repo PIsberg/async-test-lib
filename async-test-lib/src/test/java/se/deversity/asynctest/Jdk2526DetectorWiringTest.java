@@ -64,7 +64,6 @@ class Jdk2526DetectorWiringTest {
         // would fail the noneMatch below for reasons unrelated to this wiring.
         AsyncTestConfig cfg = AsyncTestConfig.builder()
                 .detectAll(true)
-                .excludes(new DetectorType[]{DetectorType.UNCOMMITTED_CHANGES})
                 .build();
         DetectorRegistry reg = new DetectorRegistry(cfg);
         // No record* calls made → the JDK 25/26 detectors must contribute no findings.

@@ -79,7 +79,6 @@ se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$MutableMapKey
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$NestedMonitorLockout
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$LockDowngrade
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$InheritableThreadLocal_
-se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$UncommittedChanges
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ThreadLocalContamination
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$AtomicNonAtomicUpdate
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SynchronizedCollectionIteration

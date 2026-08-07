@@ -99,7 +99,6 @@ import se.deversity.asynctest.diagnostics.ThreadStarvationDetector;
 import se.deversity.asynctest.diagnostics.TimerDetector;
 import se.deversity.asynctest.diagnostics.UnboundedQueueDetector;
 import se.deversity.asynctest.diagnostics.UncaughtExceptionHandlerDetector;
-import se.deversity.asynctest.diagnostics.UncommittedChangesDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadCarrierExhaustionDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadContextLeakDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadCpuBoundTaskDetector;
@@ -737,14 +736,6 @@ public final class LegacyDetectorFactories {
     }
 
     // ---------- Phase 9 — Repository & environment state ----------
-
-    public static final class UncommittedChanges implements DetectorFactory {
-        @Override public DetectorType type() { return DetectorType.UNCOMMITTED_CHANGES; }
-        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectUncommittedChanges; }
-        @Override public Detector create(AsyncTestConfig c) {
-            return new LegacyDetectorAdapter<>(new UncommittedChangesDetector(), DetectorType.UNCOMMITTED_CHANGES, "UncommittedChanges");
-        }
-    }
 
     // ---------- Phase 10 — API traps & subtle concurrency bugs ----------
 

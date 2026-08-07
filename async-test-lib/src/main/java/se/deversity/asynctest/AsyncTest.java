@@ -1113,20 +1113,8 @@ public @interface AsyncTest {
     @Deprecated
     boolean detectInheritableThreadLocalMisuse() default true;
 
-    // ============= Phase 9: Repository & Environment State =============
-
-    /**
-     * Enable uncommitted changes detection.
-     * Detects untracked or uncommitted files in the Git repository when the test completes.
-     * Helps ensure tests are run against a clean and reproducible repository state.
-     * @since 1.4.0
-     *
-     * @return {@code true} to enable this detector, {@code false} to skip it
-     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
-     *     with {@link DetectorType#UNCOMMITTED_CHANGES} instead of this per-detector boolean flag.
-     */
-    @Deprecated
-    boolean detectUncommittedChanges() default true;
+    // Phase 9 (Repository & Environment State) held detectUncommittedChanges until its
+    // removal after 1.7.2 — a git-status environment check, not a concurrency property.
 
     // ============= Phase 10: API Traps & Subtle Concurrency Bugs =============
 

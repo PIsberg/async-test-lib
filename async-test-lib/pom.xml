@@ -15,7 +15,7 @@
     <packaging>jar</packaging>
 
     <name>Async Test Library</name>
-    <description>Enterprise-grade JUnit 5 concurrency testing library with 128 problem detectors for detecting deadlocks, visibility issues, false sharing, livelocks, and other subtle concurrency bugs.</description>
+    <description>Enterprise-grade JUnit 5 concurrency testing library with 127 problem detectors for detecting deadlocks, visibility issues, false sharing, livelocks, and other subtle concurrency bugs.</description>
 
     <licenses>
         <license>
@@ -104,6 +104,20 @@
                         <excludes>
                             <exclude>se.deversity.asynctest.agent</exclude>
                             <exclude>se.deversity.asynctest.analysis</exclude>
+                            <!-- Intentional, enumerated break #2: UNCOMMITTED_CHANGES left the
+                                 detector set after 1.7.2. It was a git-status environment check,
+                                 not a concurrency property, and its subprocess once cost 99% of
+                                 the analysis sweep (see the CHANGELOG "Removed" entry). Element
+                                 by element under the same rule as above: the gate must keep
+                                 failing on any break that is NOT on this list. -->
+                            <exclude>se.deversity.asynctest.diagnostics.UncommittedChangesDetector</exclude>
+                            <exclude>se.deversity.asynctest.diagnostics.UncommittedChangesDetector$UncommittedChangesReport</exclude>
+                            <exclude>se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$UncommittedChanges</exclude>
+                            <exclude>se.deversity.asynctest.AsyncTest#detectUncommittedChanges()</exclude>
+                            <exclude>se.deversity.asynctest.AsyncTestConfig#detectUncommittedChanges</exclude>
+                            <exclude>se.deversity.asynctest.AsyncTestConfig$Builder#detectUncommittedChanges(boolean)</exclude>
+                            <exclude>se.deversity.asynctest.AsyncTestContext#uncommittedChangesMonitor()</exclude>
+                            <exclude>se.deversity.asynctest.DetectorType#UNCOMMITTED_CHANGES</exclude>
                         </excludes>
                     </parameter>
                 </configuration>

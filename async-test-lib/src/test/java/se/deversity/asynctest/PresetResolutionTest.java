@@ -204,7 +204,6 @@ class PresetResolutionTest {
         @Override public boolean detectNestedMonitorLockout() { return def("detectNestedMonitorLockout"); }
         @Override public boolean detectLockDowngrade() { return def("detectLockDowngrade"); }
         @Override public boolean detectInheritableThreadLocalMisuse() { return def("detectInheritableThreadLocalMisuse"); }
-        @Override public boolean detectUncommittedChanges() { return def("detectUncommittedChanges"); }
         @Override public boolean detectThreadLocalContamination() { return def("detectThreadLocalContamination"); }
         @Override public boolean detectAtomicNonAtomicUpdates() { return def("detectAtomicNonAtomicUpdates"); }
         @Override public boolean detectSynchronizedCollectionIteration() { return def("detectSynchronizedCollectionIteration"); }
