@@ -126,6 +126,7 @@ you are editing here.
     <element path="se.deversity.asynctest.report.JsonFormatter" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.report.JsonReportListener" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.report.MarkdownFormatter" rules=".claude/rules/async-test-public-api.md"/>
+    <element path="se.deversity.asynctest.report.SarifFormatter" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.report.Violation" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.runner.ConcurrencyRunner" rules=".claude/rules/async-test-runtime-core.md"/>
     <element path="se.deversity.asynctest.runner.LicenseGuard" rules=".claude/rules/async-test-runtime-core.md"/>

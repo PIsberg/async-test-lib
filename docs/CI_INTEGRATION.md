@@ -199,6 +199,73 @@ class-initialization deadlock, confinement violations. `failOn = HIGH` includes 
 detectors raise on correct-but-shared code, which is why it is the second step rather than the
 first.
 
+---
+
+## SARIF: findings in GitHub code scanning
+
+`SarifFormatter` renders findings as SARIF 2.1.0, which GitHub code scanning, Azure DevOps, GitLab
+and SonarQube all ingest. A finding in a build log is read once, by whoever broke the build. A
+finding in the code-scanning UI is annotated on the pull request diff, visible to the whole team,
+and carries the triage and dismissal workflow they already use for CodeQL.
+
+```java
+class SarifCollector implements AsyncTestListener {
+    private final List<Violation> found = new CopyOnWriteArrayList<>();
+
+    @Override
+    public void onStructuredReport(String detector, IssueSeverity severity, String report) {
+        found.add(new Violation(detector, severity, report, List.of(), Map.of(), Instant.now()));
+    }
+
+    void writeSarif() throws IOException {
+        Files.writeString(Path.of("target/async-test.sarif"), new SarifFormatter().format(found));
+    }
+}
+```
+
+Register it with `AsyncTestListenerRegistry.register(...)` and call `writeSarif()` once the suite
+has finished — a JUnit Platform `TestExecutionListener` or a Maven `@AfterSuite`-equivalent hook is
+the usual place.
+
+> **Locations via this route are empty.** `onStructuredReport` hands you the detector name,
+> severity and rendered report, not the captured sites. Findings collected this way become
+> run-level results rather than file annotations. If you want the annotations, build the
+> `Violation` list from a detector's own `structuredViolations` field, which does carry the sites.
+
+```yaml
+- name: Upload async-test findings
+  if: always()
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: target/async-test.sarif
+    category: async-test
+```
+
+`if: always()` matters: the run that produced findings is usually the run that failed, and without
+it the upload is skipped exactly when there is something to upload.
+
+### Severity mapping
+
+| `IssueSeverity` | SARIF level | `security-severity` |
+|---|---|---|
+| CRITICAL | `error` | 9.0 |
+| HIGH | `error` | 7.0 |
+| MEDIUM | `warning` | 5.0 |
+| LOW | `note` | 3.0 |
+
+MEDIUM maps to `warning` rather than `error` deliberately. That is the tier the access-pattern
+detectors use for correct-but-shared code, and a tool that blocks a merge over something it cannot
+prove gets uninstalled. If your organisation gates on `error` only, this mapping means the
+verdict-tier findings gate and the prompt-tier ones inform.
+
+### Locations
+
+A concurrency bug's location is genuinely ambiguous — the interleaving involves at least two
+sites. The first captured site becomes the SARIF location and the rest are attached as related
+locations. A finding with no captured site is emitted with an empty `locations` array rather than
+being pinned to an arbitrary file, so you get a run-level finding instead of an annotation on a
+line that is not the problem.
+
 ## Choosing a strategy
 
 | Scenario | Recommended |

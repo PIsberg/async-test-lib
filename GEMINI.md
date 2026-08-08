@@ -137,6 +137,7 @@ Detailed per-element guardrails live in scoped rule files that load automaticall
 - `se.deversity.asynctest.report.JsonFormatter` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.report.JsonReportListener` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.report.MarkdownFormatter` → `.gemini/rules/async-test-public-api.md`
+- `se.deversity.asynctest.report.SarifFormatter` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.report.Violation` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.runner.ConcurrencyRunner` → `.gemini/rules/async-test-runtime-core.md`
 - `se.deversity.asynctest.runner.LicenseGuard` → `.gemini/rules/async-test-runtime-core.md`
