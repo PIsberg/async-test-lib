@@ -128,6 +128,11 @@ import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 import se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector;
 import se.deversity.asynctest.diagnostics.FlowPublisherConcurrencyDetector;
 import se.deversity.asynctest.diagnostics.FutureBlockingDetector;
+import se.deversity.asynctest.diagnostics.ConfinedArenaThreadEscapeDetector;
+import se.deversity.asynctest.diagnostics.SharedMemorySegmentRaceDetector;
+import se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector;
+import se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector;
+import se.deversity.asynctest.diagnostics.StaticInitDeadlockDetector;
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
@@ -327,6 +332,11 @@ final class DetectorRegistry {
     final @Nullable ExecutorDeadlockDetector              executorDeadlockDetector;
     final @Nullable FutureBlockingDetector                futureBlockingDetector;
     final @Nullable FlowPublisherConcurrencyDetector      flowPublisherConcurrencyDetector;
+    final @Nullable ConfinedArenaThreadEscapeDetector     confinedArenaThreadEscapeDetector;
+    final @Nullable SharedMemorySegmentRaceDetector       sharedMemorySegmentRaceDetector;
+    final @Nullable VarHandleNonAtomicUpdateDetector      varHandleNonAtomicUpdateDetector;
+    final @Nullable RecordMutableComponentLeakDetector    recordMutableComponentLeakDetector;
+    final @Nullable StaticInitDeadlockDetector            staticInitDeadlockDetector;
 
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
@@ -509,6 +519,11 @@ final class DetectorRegistry {
         executorDeadlockDetector         = cfg.detectExecutorDeadlock         ? new ExecutorDeadlockDetector()         : null;
         futureBlockingDetector           = cfg.detectFutureBlocking           ? new FutureBlockingDetector()           : null;
         flowPublisherConcurrencyDetector = cfg.detectFlowPublisherConcurrency ? new FlowPublisherConcurrencyDetector() : null;
+        confinedArenaThreadEscapeDetector  = cfg.detectConfinedArenaThreadEscape  ? new ConfinedArenaThreadEscapeDetector()  : null;
+        sharedMemorySegmentRaceDetector    = cfg.detectSharedMemorySegmentRace    ? new SharedMemorySegmentRaceDetector()    : null;
+        varHandleNonAtomicUpdateDetector   = cfg.detectVarHandleNonAtomicUpdate   ? new VarHandleNonAtomicUpdateDetector()   : null;
+        recordMutableComponentLeakDetector = cfg.detectRecordMutableComponentLeak ? new RecordMutableComponentLeakDetector() : null;
+        staticInitDeadlockDetector         = cfg.detectStaticInitDeadlock         ? new StaticInitDeadlockDetector()         : null;
     }
 
     /**
@@ -956,6 +971,27 @@ final class DetectorRegistry {
         ifIssue(flowPublisherConcurrencyDetector,
                 FlowPublisherConcurrencyDetector::analyze,
                 FlowPublisherConcurrencyDetector.Report::hasIssues, out);
+
+        // Phase 20: FFM, VarHandle, record and class-initialization hazards
+        ifIssue(confinedArenaThreadEscapeDetector,
+                ConfinedArenaThreadEscapeDetector::analyze,
+                ConfinedArenaThreadEscapeDetector.Report::hasIssues, out);
+
+        ifIssue(sharedMemorySegmentRaceDetector,
+                SharedMemorySegmentRaceDetector::analyze,
+                SharedMemorySegmentRaceDetector.Report::hasIssues, out);
+
+        ifIssue(varHandleNonAtomicUpdateDetector,
+                VarHandleNonAtomicUpdateDetector::analyze,
+                VarHandleNonAtomicUpdateDetector.Report::hasIssues, out);
+
+        ifIssue(recordMutableComponentLeakDetector,
+                RecordMutableComponentLeakDetector::analyze,
+                RecordMutableComponentLeakDetector.Report::hasIssues, out);
+
+        ifIssue(staticInitDeadlockDetector,
+                StaticInitDeadlockDetector::analyze,
+                StaticInitDeadlockDetector.Report::hasIssues, out);
 
         return out;
     }

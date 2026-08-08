@@ -98,6 +98,7 @@ Detailed per-element guardrails live in scoped rule files that load automaticall
 - `se.deversity.asynctest.benchmark.BenchmarkRecorder` → `.gemini/rules/async-test-instrumentation.md`
 - `se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.CompletableFutureObtrudeDetector` → `.gemini/rules/async-test-detectors.md`
+- `se.deversity.asynctest.diagnostics.ConfinedArenaThreadEscapeDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.FinalFieldMutationDetector` → `.gemini/rules/async-test-detectors.md`
@@ -108,6 +109,7 @@ Detailed per-element guardrails live in scoped rule files that load automaticall
 - `se.deversity.asynctest.diagnostics.LockUpgradeDeadlockDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.NonAtomicConcurrentMapUpdateDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector` → `.gemini/rules/async-test-detectors.md`
+- `se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.SharedByteBufferDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.SharedCharsetCoderDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.SharedChecksumDetector` → `.gemini/rules/async-test-detectors.md`
@@ -115,15 +117,18 @@ Detailed per-element guardrails live in scoped rule files that load automaticall
 - `se.deversity.asynctest.diagnostics.SharedIteratorDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.SharedKdfDetector` → `.gemini/rules/async-test-detectors.md`
+- `se.deversity.asynctest.diagnostics.SharedMemorySegmentRaceDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.SharedMessageDigestDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.SharedSecureRandomDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.SharedStatefulCryptoDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.SiteCapture` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.SiteCapture.Site` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.SpuriousWakeupDetector` → `.gemini/rules/async-test-detectors.md`
+- `se.deversity.asynctest.diagnostics.StaticInitDeadlockDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.ThisEscapeDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.ThreadLocalRandomMisuseDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.TryLockMisuseDetector` → `.gemini/rules/async-test-detectors.md`
+- `se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.extension.AsyncTestExtension` → `.gemini/rules/async-test-runtime-core.md`
 - `se.deversity.asynctest.extension.AsyncTestInvocationInterceptor` → `.gemini/rules/async-test-runtime-core.md`

@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Phase 20: five detectors for FFM, VarHandle, record and class-init hazards (127 → 132)
+
+- **`CONFINED_ARENA_THREAD_ESCAPE`** — a `MemorySegment` from `Arena.ofConfined()` (FFM API,
+  final in JDK 22) touched by a thread that does not own the arena, or used after the arena
+  closed. Confinement is asked of the JVM via `MemorySegment.isAccessibleBy` rather than inferred
+  from the observed thread set, so the finding is a verdict at CRITICAL; where that method is
+  unavailable the detector falls back to the recorded owner and reports at MEDIUM with wording
+  that says what is unverified.
+- **`SHARED_MEMORY_SEGMENT_RACE`** — overlapping byte ranges of a shared `MemorySegment` touched
+  concurrently with at least one write. Carries an optional lock model: pass a `guard` label to
+  `recordAccess` and overlapping accesses that agree on a monitor stay silent, so disagreeing
+  locks report at HIGH while unguarded overlap reports at MEDIUM. Use after close is CRITICAL.
+- **`VAR_HANDLE_NON_ATOMIC_UPDATE`** — the `VarHandle` counterpart of
+  `ATOMIC_NON_ATOMIC_UPDATE`: a `get` followed by a `set` where `compareAndExchange` was needed.
+  The access mode does not excuse it, and the detector says so — `getVolatile` then
+  `setVolatile` loses updates as readily as the plain pair. A second rule reports plain-mode
+  access to a location several threads share, which has no ordering even on a `volatile` field.
+- **`RECORD_MUTABLE_COMPONENT_LEAK`** — records shared across threads whose components hold
+  mutable state. Components are fingerprinted on first sight and re-read at analysis time, so a
+  component that actually changed is reported at HIGH as an observed fact while an unexercised
+  `ArrayList` component is reported at MEDIUM as a structural hole. `java.util.concurrent`
+  components are deliberately not reported.
+- **`STATIC_INIT_DEADLOCK`** — deadlocks between class initializers, which
+  `ThreadMXBean.findDeadlockedThreads()` cannot see because a class initialization lock is
+  neither a monitor nor an ownable synchronizer. A recorded wait-for cycle reports at CRITICAL;
+  with no instrumentation the detector samples live threads for `<clinit>` frames and reports
+  the shape at HIGH.
+
+All five are wired into `detectAll`, the `DetectorType` enum, `@AsyncTest` flags,
+`AsyncTestConfig`, the registry, the SPI factory list and `AsyncTestContext` accessors, and
+carry both-direction tests: each fires on the buggy shape and stays silent on the correct twin
+of that same code.
+
 ## [1.7.3] - 2026-08-07
 
 ### Fixed — six soundness holes in the detection engine

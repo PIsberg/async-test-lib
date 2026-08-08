@@ -2,7 +2,7 @@
 
 # @AsyncTest - Asynchronous Testing Library for Java
 
-**JUnit 5 concurrency stress testing — one annotation, 127 detectors**
+**JUnit 5 concurrency stress testing — one annotation, 132 detectors**
 
 [![Maven Central](https://img.shields.io/maven-central/v/se.deversity.async-test-lib/async-test-lib)](https://central.sonatype.com/artifact/se.deversity.async-test-lib/async-test-lib)
 [![Javadoc](https://img.shields.io/badge/javadoc-latest-blue)](https://pisberg.github.io/async-test-lib/api/latest/)
@@ -31,7 +31,7 @@
 ## Why async-test?
 
 - **One annotation** — `@AsyncTest` hammers your code with N threads × M invocations using a `CyclicBarrier` to force maximum contention. No executor boilerplate, no manual `CountDownLatch`, no `Thread.join` loops.
-- **127 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types, JDBC sharing, MessageDigest/SecureRandom/Cipher integrity, and more — all on by default (`detectAll = true`), or pick a `Preset` for a curated subset. Deadlock detection needs zero configuration; most other detectors observe what the test body records explicitly or what the optional agent weaves, and the runner says so at INFO the first time agent-backed detection is inactive. Measured firing behavior, including where detectors flag correct-but-shared code, is published in [the detector-accuracy eval](docs/analysis/detector-accuracy-eval.md).
+- **132 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types, JDBC sharing, MessageDigest/SecureRandom/Cipher integrity, and more — all on by default (`detectAll = true`), or pick a `Preset` for a curated subset. Deadlock detection needs zero configuration; most other detectors observe what the test body records explicitly or what the optional agent weaves, and the runner says so at INFO the first time agent-backed detection is inactive. Measured firing behavior, including where detectors flag correct-but-shared code, is published in [the detector-accuracy eval](docs/analysis/detector-accuracy-eval.md).
 - **JUnit 5 native** — zero required configuration. Works anywhere JUnit 5 runs with no special JVM flags. An optional Java agent, shipped as a separate `async-test-agent` artifact (`-javaagent:async-test-agent.jar`), weaves JavaBean accessors with Byte Buddy so detectors observe reads and writes without hand-written hooks; a field touched only inside a method body is not observed. Default usage needs no agent, and the core artifact does not carry Byte Buddy.
 - **CI-ready out of the box** — ship JUnit XML reports, machine-readable JSON, or `AssertionError` fail-gates directly to GitHub Actions, Jenkins, and GitLab CI.
 
@@ -143,7 +143,7 @@ After the run, the **detector registry** analyses what was observed and reports 
 
 ## Detectors
 
-127 detectors enabled by default with a single flag, or cherry-pick:
+132 detectors enabled by default with a single flag, or cherry-pick:
 
 ```java
 // Everything on (default for bare @AsyncTest)

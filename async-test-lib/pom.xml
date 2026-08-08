@@ -15,7 +15,7 @@
     <packaging>jar</packaging>
 
     <name>Async Test Library</name>
-    <description>Enterprise-grade JUnit 5 concurrency testing library with 127 problem detectors for detecting deadlocks, visibility issues, false sharing, livelocks, and other subtle concurrency bugs.</description>
+    <description>Enterprise-grade JUnit 5 concurrency testing library with 132 problem detectors for detecting deadlocks, visibility issues, false sharing, livelocks, and other subtle concurrency bugs.</description>
 
     <licenses>
         <license>

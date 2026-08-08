@@ -261,6 +261,11 @@ class PresetResolutionTest {
         @Override public boolean detectExecutorDeadlock() { return def("detectExecutorDeadlock"); }
         @Override public boolean detectFutureBlocking() { return def("detectFutureBlocking"); }
         @Override public boolean detectFlowPublisherConcurrency() { return def("detectFlowPublisherConcurrency"); }
+        @Override public boolean detectConfinedArenaThreadEscape() { return def("detectConfinedArenaThreadEscape"); }
+        @Override public boolean detectSharedMemorySegmentRace() { return def("detectSharedMemorySegmentRace"); }
+        @Override public boolean detectVarHandleNonAtomicUpdate() { return def("detectVarHandleNonAtomicUpdate"); }
+        @Override public boolean detectRecordMutableComponentLeak() { return def("detectRecordMutableComponentLeak"); }
+        @Override public boolean detectStaticInitDeadlock() { return def("detectStaticInitDeadlock"); }
         @Override public boolean enableBenchmarking() { return def("enableBenchmarking"); }
         @Override public double benchmarkRegressionThreshold() { return def("benchmarkRegressionThreshold"); }
         @Override public boolean failOnBenchmarkRegression() { return def("failOnBenchmarkRegression"); }
