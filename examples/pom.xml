@@ -136,5 +136,6 @@
         <module>126-shared-json-mapper-reconfig</module>
         <module>127-shared-secure-random</module>
         <module>04-virtual-thread-context-leak</module>
+        <module>128-kotlin-lost-update</module>
     </modules>
 </project>

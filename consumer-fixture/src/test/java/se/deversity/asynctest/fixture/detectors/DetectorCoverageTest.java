@@ -56,7 +56,8 @@ class DetectorCoverageTest {
         Phase17SharedStatefulJdkDetectorsFixtureTest.class,
         Phase18GaEraDetectorsFixtureTest.class,
         UnwiredExecutorDetectorsFixtureTest.class,
-        Phase19ReactiveStreamsDetectorsFixtureTest.class);
+        Phase19ReactiveStreamsDetectorsFixtureTest.class,
+        Phase20FfmAndLanguageHazardDetectorsFixtureTest.class);
 
     /** detector -> the fixture methods that enable it, as {@code Class#method}. */
     private static Map<DetectorType, List<String>> collectCoverage() {
