@@ -1,6 +1,6 @@
 <div align="center">
 
-# Asynchronous Testing Library for Java
+# @AsyncTest - Asynchronous Testing Library for Java
 
 **JUnit 5 concurrency stress testing — one annotation, 127 detectors**
 
@@ -22,7 +22,7 @@
 [![Error Prone](https://img.shields.io/badge/Error_Prone-passing-brightgreen)](https://errorprone.info)
 [![PIT Mutation Testing](https://img.shields.io/badge/PIT_mutation_testing-passing_·_75%25_killed-brightgreen)](https://pitest.org)
 
-![async-test demo](docs/diagrams/demo.gif)
+![@AsyncTest catching a lost update: six threads read, increment and write back a shared counter, and the race detector names the field, the thread count and the interleavings it observed](docs/diagrams/demo.gif)
 
 </div>
 

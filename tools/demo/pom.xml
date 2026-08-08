@@ -12,8 +12,10 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <!-- Updated automatically by the demo workflow -->
-        <asynctest.version>1.4.0</asynctest.version>
+        <!-- Overwritten with the reactor's version by the demo workflow before recording.
+             The committed value only matters when running the demo by hand, so it tracks the
+             latest release rather than sitting three releases behind as 1.4.0 did. -->
+        <asynctest.version>1.7.3</asynctest.version>
     </properties>
 
     <dependencies>

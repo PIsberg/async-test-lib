@@ -17,14 +17,18 @@ cmd()  {
 }
 
 clear
-echo -e "${BOLD}async-test${RESET} — catch concurrency bugs before they reach production"
+echo -e "${BOLD}@AsyncTest${RESET} — catch concurrency bugs before they reach production"
 echo ""
 sleep 1.0
 
-step "1. A shared ArrayList accessed from 6 concurrent threads"
-cmd "cat tools/demo/src/test/java/se/deversity/asynctest/demo/SharedListTest.java"
+step "1. A counter incremented by 6 concurrent threads — read, add one, write back"
+cmd "cat tools/demo/src/test/java/se/deversity/asynctest/demo/CounterTest.java"
 
-step "2. Run the stress test — async-test hammers it with 6 threads × 3 rounds"
-cmd "mvn test -f tools/demo/pom.xml -q 2>&1 || true"
+step "2. Run the stress test — @AsyncTest hammers it with 6 threads × 3 rounds"
+# The `| head` is deliberately visible in the recording rather than hidden: the finding is
+# followed by ~70 lines of LEARNING and AUTO-FIX guidance, which is genuinely useful at a
+# terminal and would scroll the actual result off a 26-row GIF. Showing the pipe means the
+# viewer knows the output was cut, instead of being told this is all the tool prints.
+cmd "mvn test -f tools/demo/pom.xml -q 2>&1 | head -n 20 || true"
 
 exit 0
