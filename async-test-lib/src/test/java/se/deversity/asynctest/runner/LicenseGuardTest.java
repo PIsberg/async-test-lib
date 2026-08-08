@@ -185,14 +185,21 @@ class LicenseGuardTest {
     }
 
     /**
-     * The no-key path, pinned as documented rather than as assumed. A local run with no key and
-     * no mock flag is refused with {@code LICENSE_REQUIRED} — the library is commercial and the
-     * README's "the gate runs and can refuse" table says exactly this. Measured, not inferred:
-     * an earlier reading of this path as permissive came from an example that uses plain
-     * {@code @Test} and therefore never reaches the gate at all.
+     * The no-key path, pinned as documented rather than as assumed, for both environments the
+     * README's "Running without a license key" table describes: refused outside CI, auto-mocked
+     * inside it.
+     *
+     * <p>The environment is read rather than assumed. An earlier version of this test asserted the
+     * local outcome unconditionally and went red on every CI runner, which is the same mistake in
+     * miniature that this class's other tests exist to prevent: the licence gate's behaviour turns
+     * on {@code GITHUB_ACTIONS} / {@code CI}, and a test that ignores that is testing one
+     * environment while claiming to test the behaviour.
+     *
+     * <p>Also measured, not inferred: an earlier reading of the local path as permissive came from
+     * an example that uses plain {@code @Test} and therefore never reaches the gate at all.
      */
     @Test
-    void noLicenseKeyLocally_isRefusedAsDocumented() {
+    void noLicenseKey_followsTheDocumentedPathForThisEnvironment() {
         String prevMockMode = System.getProperty("license.mock.mode");
         String prevKey = System.getProperty("license.key");
         System.setProperty("license.mock.mode", "false");
@@ -204,13 +211,21 @@ class LicenseGuardTest {
                     .keygenProductId("prod-not-a-placeholder")
                     .build();
 
-            SecurityException ex = assertThrows(SecurityException.class,
-                    () -> LicenseGuard.check(cfg),
-                    "An unlicensed run outside CI must be refused, as README documents");
-            assertTrue(ex.getMessage().contains("LICENSE DENIED"),
-                    "The refusal must be the licence denial, not a config error: " + ex.getMessage());
-            assertTrue(ex.getMessage().contains("-Dlicense.mock.mode=true"),
-                    "The message must tell an evaluator how to proceed: " + ex.getMessage());
+            boolean isCi = System.getenv("GITHUB_ACTIONS") != null || System.getenv("CI") != null;
+
+            if (isCi) {
+                assertDoesNotThrow(() -> LicenseGuard.check(cfg),
+                        "In CI with no key, zero-config mock mode activates and the run proceeds — "
+                        + "row 1 of the README table");
+            } else {
+                SecurityException ex = assertThrows(SecurityException.class,
+                        () -> LicenseGuard.check(cfg),
+                        "Outside CI an unlicensed run is refused — row 3 of the README table");
+                assertTrue(ex.getMessage().contains("LICENSE DENIED"),
+                        "The refusal must be the licence denial, not a config error: " + ex.getMessage());
+                assertTrue(ex.getMessage().contains("-Dlicense.mock.mode=true"),
+                        "The message must tell an evaluator how to proceed: " + ex.getMessage());
+            }
         } finally {
             restore("license.mock.mode", prevMockMode);
             restore("license.key", prevKey);
