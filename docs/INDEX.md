@@ -11,6 +11,7 @@ guardrails live.
 | Document | Purpose |
 |----------|---------|
 | [../README.md](../README.md) | Project overview and quick start |
+| [API reference](https://pisberg.github.io/async-test-lib/api/latest/) | Generated javadoc, one directory per release. Built by `javadoc.yml`, not committed |
 | [USAGE.md](USAGE.md) | Full `@AsyncTest` parameter reference, detectors, examples |
 | [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | One-page cheatsheet |
 | [CONFIGURATION.md](CONFIGURATION.md) | Configuration options in depth |

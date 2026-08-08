@@ -28,6 +28,16 @@ Required repository secrets: `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`,
 There is no `<distributionManagement>` in `pom.xml` — the Central plugin handles publication.
 The library is **not** published to GitHub Packages.
 
+The same tag push independently triggers
+[`.github/workflows/javadoc.yml`](../.github/workflows/javadoc.yml), which rebuilds the API
+reference at <https://pisberg.github.io/async-test-lib/> and deploys it to GitHub Pages. It does
+not wait for `publish.yml`: the version being released is built from the tagged source, and every
+earlier release is restored by unpacking its published `-javadoc.jar` from Central. Nothing
+generated is committed, so a failed javadoc deploy leaves the repository untouched and can be
+re-run from the Actions tab. The site grows by roughly 20 MB per release; `OLDEST_KEPT` in
+`.github/scripts/build-javadoc-site.sh` is the knob for dropping old versions if it ever
+approaches the 1 GB Pages limit.
+
 ## Versioning
 
 Semantic versioning, with `-RCn` for release candidates:
