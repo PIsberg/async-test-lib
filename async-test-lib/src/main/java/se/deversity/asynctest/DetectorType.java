@@ -327,5 +327,17 @@ public enum DetectorType {
 
     // Phase 19: reactive-streams (java.util.concurrent.Flow) detectors
     /** Detects reactive-streams contract violations on Flow subscribers: overlapping onNext delivery, signals after a terminal signal, and deliveries exceeding recorded demand. */
-    FLOW_PUBLISHER_CONCURRENCY
+    FLOW_PUBLISHER_CONCURRENCY,
+
+    // Phase 20: FFM, VarHandle, record and class-initialization hazards (1.8.0+)
+    /** Detects memory segments from a confined Arena (FFM, JDK 22+) escaping to a non-owner thread, and access to segments whose arena has been closed. */
+    CONFINED_ARENA_THREAD_ESCAPE,
+    /** Detects unsynchronized concurrent access to overlapping byte ranges of a shared MemorySegment, and use of a segment after its arena closed. */
+    SHARED_MEMORY_SEGMENT_RACE,
+    /** Detects non-atomic get-then-set read-modify-write sequences through a VarHandle, and plain-mode access to a location several threads share. */
+    VAR_HANDLE_NON_ATOMIC_UPDATE,
+    /** Detects records shared across threads whose components hold mutable state, and record components observed to change contents while shared. */
+    RECORD_MUTABLE_COMPONENT_LEAK,
+    /** Detects deadlocks between class initializers, which ThreadMXBean.findDeadlockedThreads() cannot see because a class init lock is not a monitor. */
+    STATIC_INIT_DEADLOCK
 }

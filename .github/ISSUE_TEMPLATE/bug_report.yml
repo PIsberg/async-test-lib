@@ -1,0 +1,93 @@
+name: Bug report
+description: Something in the library behaves differently from what it documents.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: a detector firing on code you believe is correct may not be a bug.
+        [docs/analysis/detector-accuracy-eval.md](../blob/main/docs/analysis/detector-accuracy-eval.md)
+        lists which detectors are verdicts and which are prompts to verify. If yours is a prompt,
+        the finding is telling you to check your synchronization, not asserting your code is wrong.
+        File it anyway if the wording misled you — that is a real defect in its own right.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The behaviour you observed, and the behaviour the docs led you to expect.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproducer
+    attributes:
+      label: Reproducer
+      description: >
+        The smallest `@AsyncTest` that shows it. If a run failed, paste the
+        `[AsyncTest] Failure with replaySeed=...` line — it makes the interleaving reproducible.
+      render: java
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: The failure or report, verbatim. Not a summary of it.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: async-test-lib version
+      placeholder: "1.7.3"
+    validations:
+      required: true
+
+  - type: input
+    id: jdk
+    attributes:
+      label: JDK
+      description: Output of `java -version`.
+      placeholder: "21.0.5, Temurin"
+    validations:
+      required: true
+
+  - type: input
+    id: junit
+    attributes:
+      label: JUnit version
+      placeholder: "5.11.4"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Is the Java agent attached?
+      description: "`-javaagent:async-test-agent.jar`. Several detectors observe nothing without it."
+      options:
+        - "No"
+        - "Yes"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Where does it happen?
+      options:
+        - Both locally and in CI
+        - Locally only
+        - In CI only
+    validations:
+      required: true
+
+  - type: textarea
+    id: anything-else
+    attributes:
+      label: Anything else
+      description: Build tool, OS, core count, whether it reproduces every run or intermittently.

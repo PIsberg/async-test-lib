@@ -1904,6 +1904,77 @@ public @interface AsyncTest {
 
     boolean detectFlowPublisherConcurrency() default true;
 
+    /**
+     * Enable detection of memory segments from a confined {@code Arena} (FFM API, JDK 22+)
+     * escaping to a thread that does not own the arena, and of access to segments whose arena
+     * has already been closed. See
+     * {@link se.deversity.asynctest.diagnostics.ConfinedArenaThreadEscapeDetector}.
+     * @since 1.8.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#CONFINED_ARENA_THREAD_ESCAPE} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectConfinedArenaThreadEscape() default true;
+
+    /**
+     * Enable detection of unsynchronized concurrent access to overlapping byte ranges of a
+     * shared {@code MemorySegment}, and of use after the segment's arena closed. See
+     * {@link se.deversity.asynctest.diagnostics.SharedMemorySegmentRaceDetector}.
+     * @since 1.8.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#SHARED_MEMORY_SEGMENT_RACE} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectSharedMemorySegmentRace() default true;
+
+    /**
+     * Enable detection of non-atomic get-then-set read-modify-write sequences through a
+     * {@code VarHandle}, and of plain-mode access to a location several threads share. See
+     * {@link se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector}.
+     * @since 1.8.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#VAR_HANDLE_NON_ATOMIC_UPDATE} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectVarHandleNonAtomicUpdate() default true;
+
+    /**
+     * Enable detection of records shared across threads whose components hold mutable state,
+     * and of record components observed to change contents while shared. See
+     * {@link se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector}.
+     * @since 1.8.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#RECORD_MUTABLE_COMPONENT_LEAK} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectRecordMutableComponentLeak() default true;
+
+    /**
+     * Enable detection of deadlocks between class initializers, which the platform's own
+     * {@code ThreadMXBean.findDeadlockedThreads()} cannot see. See
+     * {@link se.deversity.asynctest.diagnostics.StaticInitDeadlockDetector}.
+     * @since 1.8.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#STATIC_INIT_DEADLOCK} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectStaticInitDeadlock() default true;
+
     // ============= License Gating (Integration) =============
 
     /**

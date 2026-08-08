@@ -128,6 +128,11 @@ import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 import se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector;
 import se.deversity.asynctest.diagnostics.FlowPublisherConcurrencyDetector;
 import se.deversity.asynctest.diagnostics.FutureBlockingDetector;
+import se.deversity.asynctest.diagnostics.ConfinedArenaThreadEscapeDetector;
+import se.deversity.asynctest.diagnostics.SharedMemorySegmentRaceDetector;
+import se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector;
+import se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector;
+import se.deversity.asynctest.diagnostics.StaticInitDeadlockDetector;
 import se.deversity.asynctest.spi.Detector;
 import se.deversity.asynctest.spi.DetectorFactory;
 
@@ -1201,6 +1206,46 @@ public final class LegacyDetectorFactories {
         @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectFlowPublisherConcurrency; }
         @Override public Detector create(AsyncTestConfig c) {
             return new LegacyDetectorAdapter<>(new FlowPublisherConcurrencyDetector(), DetectorType.FLOW_PUBLISHER_CONCURRENCY, "FlowPublisherConcurrency");
+        }
+    }
+
+    public static final class ConfinedArenaThreadEscape implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.CONFINED_ARENA_THREAD_ESCAPE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectConfinedArenaThreadEscape; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new ConfinedArenaThreadEscapeDetector(), DetectorType.CONFINED_ARENA_THREAD_ESCAPE, "ConfinedArenaThreadEscape");
+        }
+    }
+
+    public static final class SharedMemorySegmentRace implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.SHARED_MEMORY_SEGMENT_RACE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectSharedMemorySegmentRace; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new SharedMemorySegmentRaceDetector(), DetectorType.SHARED_MEMORY_SEGMENT_RACE, "SharedMemorySegmentRace");
+        }
+    }
+
+    public static final class VarHandleNonAtomicUpdate implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.VAR_HANDLE_NON_ATOMIC_UPDATE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectVarHandleNonAtomicUpdate; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new VarHandleNonAtomicUpdateDetector(), DetectorType.VAR_HANDLE_NON_ATOMIC_UPDATE, "VarHandleNonAtomicUpdate");
+        }
+    }
+
+    public static final class RecordMutableComponentLeak implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.RECORD_MUTABLE_COMPONENT_LEAK; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectRecordMutableComponentLeak; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new RecordMutableComponentLeakDetector(), DetectorType.RECORD_MUTABLE_COMPONENT_LEAK, "RecordMutableComponentLeak");
+        }
+    }
+
+    public static final class StaticInitDeadlock implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.STATIC_INIT_DEADLOCK; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectStaticInitDeadlock; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new StaticInitDeadlockDetector(), DetectorType.STATIC_INIT_DEADLOCK, "StaticInitDeadlock");
         }
     }
 }

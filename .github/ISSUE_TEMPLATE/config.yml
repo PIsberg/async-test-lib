@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/PIsberg/async-test-lib/security/advisories/new
+    about: Report privately. Do not open a public issue for a vulnerability.
+  - name: Commercial licensing
+    url: mailto:peter.isberg@deversity.se
+    about: Buying a licence, licence keys, invoicing.
+  - name: Question about usage
+    url: https://github.com/PIsberg/async-test-lib/discussions
+    about: How to configure something, which detector applies, whether the agent is needed.

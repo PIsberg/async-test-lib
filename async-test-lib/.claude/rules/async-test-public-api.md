@@ -44,7 +44,7 @@ This element is strictly excluded from AI context. Do not reference it.
 
 ## Public API Surface Protection
 - **Rule**: Exposes public API. Preserve signature, Javadoc, and behavior without breaking backwards or source compatibility.
-- **Applies to**: `se.deversity.asynctest.AsyncAssert`, `se.deversity.asynctest.AsyncTestListener`, `se.deversity.asynctest.AsyncTestListenerRegistry`, `se.deversity.asynctest.report.Formatter`, `se.deversity.asynctest.report.JsonFormatter`, `se.deversity.asynctest.report.MarkdownFormatter`, `se.deversity.asynctest.report.Violation`, `se.deversity.asynctest.spi.Detector`, `se.deversity.asynctest.spi.DetectorFactory`, `se.deversity.asynctest.spi.DetectorRegistry`
+- **Applies to**: `se.deversity.asynctest.AsyncAssert`, `se.deversity.asynctest.AsyncTestListener`, `se.deversity.asynctest.AsyncTestListenerRegistry`, `se.deversity.asynctest.report.Formatter`, `se.deversity.asynctest.report.JsonFormatter`, `se.deversity.asynctest.report.MarkdownFormatter`, `se.deversity.asynctest.report.SarifFormatter`, `se.deversity.asynctest.report.Violation`, `se.deversity.asynctest.spi.Detector`, `se.deversity.asynctest.spi.DetectorFactory`, `se.deversity.asynctest.spi.DetectorRegistry`
 
 ## Idempotency Guarantee
 - **Rule**: These operations are idempotent. Calling them multiple times must produce the same result as calling them once.

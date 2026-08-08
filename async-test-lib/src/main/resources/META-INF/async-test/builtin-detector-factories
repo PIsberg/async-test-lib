@@ -135,3 +135,8 @@ se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$LatchMisuse
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ExecutorDeadlock
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$FutureBlocking
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$FlowPublisherConcurrency
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ConfinedArenaThreadEscape
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedMemorySegmentRace
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$VarHandleNonAtomicUpdate
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$RecordMutableComponentLeak
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$StaticInitDeadlock

@@ -131,6 +131,11 @@ import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 import se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector;
 import se.deversity.asynctest.diagnostics.FlowPublisherConcurrencyDetector;
 import se.deversity.asynctest.diagnostics.FutureBlockingDetector;
+import se.deversity.asynctest.diagnostics.ConfinedArenaThreadEscapeDetector;
+import se.deversity.asynctest.diagnostics.SharedMemorySegmentRaceDetector;
+import se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector;
+import se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector;
+import se.deversity.asynctest.diagnostics.StaticInitDeadlockDetector;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICallersOnly;
 import se.deversity.vibetags.annotations.AICore;
@@ -348,6 +353,11 @@ public final class AsyncTestContext {
     final @Nullable ExecutorDeadlockDetector              executorDeadlockDetector;
     final @Nullable FutureBlockingDetector                futureBlockingDetector;
     final @Nullable FlowPublisherConcurrencyDetector      flowPublisherConcurrencyDetector;
+    final @Nullable ConfinedArenaThreadEscapeDetector     confinedArenaThreadEscapeDetector;
+    final @Nullable SharedMemorySegmentRaceDetector       sharedMemorySegmentRaceDetector;
+    final @Nullable VarHandleNonAtomicUpdateDetector      varHandleNonAtomicUpdateDetector;
+    final @Nullable RecordMutableComponentLeakDetector    recordMutableComponentLeakDetector;
+    final @Nullable StaticInitDeadlockDetector            staticInitDeadlockDetector;
 
     // ---- Agent-telemetry bridge target (1.7.0+) ----
     // Exposed via atomicityValidator() so se.deversity.asynctest.telemetry.TelemetryBridge
@@ -489,6 +499,11 @@ public final class AsyncTestContext {
         executorDeadlockDetector               = registry.executorDeadlockDetector;
         futureBlockingDetector                 = registry.futureBlockingDetector;
         flowPublisherConcurrencyDetector       = registry.flowPublisherConcurrencyDetector;
+        confinedArenaThreadEscapeDetector      = registry.confinedArenaThreadEscapeDetector;
+        sharedMemorySegmentRaceDetector        = registry.sharedMemorySegmentRaceDetector;
+        varHandleNonAtomicUpdateDetector       = registry.varHandleNonAtomicUpdateDetector;
+        recordMutableComponentLeakDetector     = registry.recordMutableComponentLeakDetector;
+        staticInitDeadlockDetector             = registry.staticInitDeadlockDetector;
         // Agent-telemetry bridge target
         atomicityValidator                     = registry.atomicityValidator;
 
@@ -2563,6 +2578,86 @@ public final class AsyncTestContext {
      */
     public static FlowPublisherConcurrencyDetector flowPublisherConcurrencyDetector() {
         return require("detectFlowPublisherConcurrency", c -> c.flowPublisherConcurrencyDetector);
+    }
+
+    /**
+     * Returns the {@link ConfinedArenaThreadEscapeDetector} for the current test.
+     *
+     * <p>Register the arena with {@code recordArena}, each allocation with
+     * {@code recordAllocation}, and every touch with {@code recordAccess}; the detector asks the
+     * JVM whether the accessing thread is allowed to touch the segment.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectConfinedArenaThreadEscape = false}
+     * @since 1.8.0
+     *
+     * @return the {@link ConfinedArenaThreadEscapeDetector} for the active {@code @AsyncTest} context
+     */
+    public static ConfinedArenaThreadEscapeDetector confinedArenaThreadEscapeDetector() {
+        return require("detectConfinedArenaThreadEscape", c -> c.confinedArenaThreadEscapeDetector);
+    }
+
+    /**
+     * Returns the {@link SharedMemorySegmentRaceDetector} for the current test.
+     *
+     * <p>Record each access with its byte offset and length. Pass the optional {@code guard}
+     * label naming the monitor held during the access, and overlapping accesses that agree on a
+     * guard are treated as synchronized rather than reported.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedMemorySegmentRace = false}
+     * @since 1.8.0
+     *
+     * @return the {@link SharedMemorySegmentRaceDetector} for the active {@code @AsyncTest} context
+     */
+    public static SharedMemorySegmentRaceDetector sharedMemorySegmentRaceDetector() {
+        return require("detectSharedMemorySegmentRace", c -> c.sharedMemorySegmentRaceDetector);
+    }
+
+    /**
+     * Returns the {@link VarHandleNonAtomicUpdateDetector} for the current test.
+     *
+     * <p>Record reads with {@code recordGet}, writes with {@code recordSet}, and the CAS family
+     * with {@code recordAtomicUpdate}. A get followed by a set with no atomic update between
+     * them is a lost update.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVarHandleNonAtomicUpdate = false}
+     * @since 1.8.0
+     *
+     * @return the {@link VarHandleNonAtomicUpdateDetector} for the active {@code @AsyncTest} context
+     */
+    public static VarHandleNonAtomicUpdateDetector varHandleNonAtomicUpdateDetector() {
+        return require("detectVarHandleNonAtomicUpdate", c -> c.varHandleNonAtomicUpdateDetector);
+    }
+
+    /**
+     * Returns the {@link RecordMutableComponentLeakDetector} for the current test.
+     *
+     * <p>Call {@code recordShared} from every thread that touches the record. The first call
+     * fingerprints each component, so a component whose contents change during the run is
+     * reported as an observed mutation rather than a structural risk.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectRecordMutableComponentLeak = false}
+     * @since 1.8.0
+     *
+     * @return the {@link RecordMutableComponentLeakDetector} for the active {@code @AsyncTest} context
+     */
+    public static RecordMutableComponentLeakDetector recordMutableComponentLeakDetector() {
+        return require("detectRecordMutableComponentLeak", c -> c.recordMutableComponentLeakDetector);
+    }
+
+    /**
+     * Returns the {@link StaticInitDeadlockDetector} for the current test.
+     *
+     * <p>Bracket a static initializer with {@code recordInitStart} / {@code recordInitEnd} and
+     * announce each class it touches with {@code recordInitRequest}. Without any instrumentation
+     * the detector still samples live threads for {@code <clinit>} frames.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectStaticInitDeadlock = false}
+     * @since 1.8.0
+     *
+     * @return the {@link StaticInitDeadlockDetector} for the active {@code @AsyncTest} context
+     */
+    public static StaticInitDeadlockDetector staticInitDeadlockDetector() {
+        return require("detectStaticInitDeadlock", c -> c.staticInitDeadlockDetector);
     }
 
     // ---- Phase 1 / Phase 3 detector accessors ----

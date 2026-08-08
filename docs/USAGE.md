@@ -430,6 +430,40 @@ public class VirtualThreadStressTest {
 
 ## Analyzing Results
 
+### First, know what kind of finding you are reading
+
+Not every detector makes the same kind of claim. Some can tell broken code from the correctly
+synchronized version of that same code and are safe to fail a build on. Others only observe that an
+object was touched by two threads, which correct code does too — those are a prompt to check your
+synchronization, not a verdict. Which is which is measured, not asserted:
+[DETECTOR_CATALOG.md § Trust tiers](DETECTOR_CATALOG.md#trust-tiers).
+
+Start with `failOn = CRITICAL`, which gates on the trustworthy end of the scale.
+
+### Adopting into an existing suite
+
+An established codebase will produce findings the first time `detectAll` runs, and a gate that is
+red from the first commit gets switched off. Record what you already have, gate on what is new:
+
+```bash
+mvn test -Dasync-test.baseline=async-test-baseline.txt -Dasync-test.baseline.update=true  # once
+mvn test -Dasync-test.baseline=async-test-baseline.txt                                    # thereafter
+```
+
+Commit the file and review its diff. Full mechanics, including what a baseline does not suppress:
+[CI_INTEGRATION.md](CI_INTEGRATION.md#adopting-into-a-codebase-that-already-has-findings).
+
+### Reproducing a failure
+
+Every failing run prints the seed that produced the interleaving:
+
+```
+[AsyncTest] Failure with replaySeed=8134729471193L — paste into @AsyncTest(replaySeed=...) to reproduce.
+```
+
+Paste it into the annotation and the same schedule is replayed, which is the difference between a
+flaky failure and one you can debug.
+
 When a test fails, the library provides detailed diagnostics:
 
 ```

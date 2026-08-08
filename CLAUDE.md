@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 `@AsyncTest` is a JUnit 5 `@TestTemplate` that runs a test body on N threads for M rounds, forcing
-them to collide on a `CyclicBarrier`, and reports what 127 detectors saw. This file is the map. It
+them to collide on a `CyclicBarrier`, and reports what 132 detectors saw. This file is the map. It
 is deliberately short — it loads on every session, so anything needed only sometimes lives behind a
 link.
 

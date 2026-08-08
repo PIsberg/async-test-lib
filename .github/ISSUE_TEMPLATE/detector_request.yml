@@ -1,0 +1,51 @@
+name: Detector request
+description: A concurrency bug class the library does not currently catch.
+labels: ["detector", "enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [docs/DETECTOR_CATALOG.md](../blob/main/docs/DETECTOR_CATALOG.md) first — there are
+        132 of these and the names are not always obvious.
+
+  - type: textarea
+    id: buggy
+    attributes:
+      label: The buggy code
+      description: Concurrent code that is genuinely wrong and that the library does not flag today.
+      render: java
+    validations:
+      required: true
+
+  - type: textarea
+    id: correct
+    attributes:
+      label: The correct twin
+      description: >
+        The same code, correctly synchronized. This matters as much as the buggy version: a
+        detector that cannot stay silent on this is a detector that will be turned off. If you
+        cannot write one — if the pattern is simply always wrong — say so, and that becomes the
+        strongest possible argument for the detector.
+      render: java
+    validations:
+      required: true
+
+  - type: textarea
+    id: observable
+    attributes:
+      label: What could the library observe?
+      description: >
+        Detectors see what the test body records, what the agent weaves, or what the JVM exposes
+        (thread dumps, MXBeans, reflective state). Which of those would separate the buggy version
+        from the correct twin? "It would have to read the source" means the static analysis module
+        rather than a detector.
+    validations:
+      required: true
+
+  - type: textarea
+    id: damage
+    attributes:
+      label: What goes wrong in production
+      description: Data corruption, a hang, silently wrong results, a leak. Be concrete.
+    validations:
+      required: true

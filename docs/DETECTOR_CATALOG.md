@@ -1,6 +1,48 @@
 # Detector Catalog
 
-`async-test-lib` includes **127 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
+`async-test-lib` includes **132 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
+
+---
+
+## Trust tiers
+
+Before using any of these as a merge gate, know which kind of statement it makes. Detectors here
+fall into two tiers, and the difference decides whether a finding means "your code is wrong" or
+"go and check something".
+
+| Tier | What a finding means | Use it to |
+|---|---|---|
+| **Verdict** | The detector can distinguish broken code from the correctly synchronized version of that same code. Silence is informative too. | Fail a build |
+| **Prompt** | The detector saw an object touched by more than one thread. It has no model of your locks, so correct code that shares an object produces the same signal as a race. | Open a ticket, not fail a build |
+
+This is measured rather than asserted. `DetectorAccuracyEvalTest` runs each evaluated detector
+against a buggy variant *and* against a synchronized twin that records the identical event stream
+while holding a real lock, and the results are published in
+[analysis/detector-accuracy-eval.md](analysis/detector-accuracy-eval.md). Of the pairs measured
+there, 6 of 6 buggy variants fire and 3 of 6 twins stay silent; the three that fire on correct code
+share one cause, which is that their input is `(thread, access)` tuples with no representation of
+synchronization.
+
+**Verdict tier, confirmed by that eval or by construction:** `DEADLOCKS`, `LOCK_ORDER`,
+`ATOMIC_NON_ATOMIC_UPDATE`, `VAR_HANDLE_NON_ATOMIC_UPDATE`, `STATIC_INIT_DEADLOCK`,
+`CONFINED_ARENA_THREAD_ESCAPE` (where the JDK supplies `MemorySegment.isAccessibleBy`),
+`RECORD_MUTABLE_COMPONENT_LEAK` for its observed-mutation finding, and
+`SHARED_MEMORY_SEGMENT_RACE` where the overlapping accesses disagree about which monitor guards
+them.
+
+**Prompt tier:** `RACE_CONDITIONS`, `ATOMICITY_VIOLATIONS`, and the `SHARED_*` family. Their reports
+say so in their own wording — they ask you to verify external synchronization rather than declaring
+a defect.
+
+**Not yet classified:** most of the remaining detectors. The eval covers 8 of 132, chosen to cover
+each mechanism class, and extending it is mechanical rather than hard. Where an entry below carries
+no explicit **Trust tier** line, treat it as unclassified and read its report wording, which is
+written to be honest about what it observed. Claiming a tier for all 132 without measuring would be
+exactly the kind of unfounded number this catalog is meant not to contain.
+
+**Practical consequence.** `failOn = CRITICAL` gates on the trustworthy end of the scale.
+`failOn = HIGH` will fail builds over correct-but-shared code unless those findings are baselined
+first — see [CI_INTEGRATION.md](CI_INTEGRATION.md#adopting-into-a-codebase-that-already-has-findings).
 
 ---
 
@@ -2917,5 +2959,138 @@ JDK 24/25/26.
   d.recordNextStart(subscriber, threadB);   // 2 threads inside onNext at once → flagged
   d.recordNextEnd(subscriber);
   d.recordNextEnd(subscriber);
+  assertTrue(d.analyze().hasIssues());
+  ```
+
+---
+
+## Phase 20: FFM, VarHandle, Record & Class-Initialization Hazards (1.8.0+)
+
+### 128. Confined Arena Thread Escape
+* **Severity**: `CRITICAL` (JVM-confirmed) / `MEDIUM` (fallback)
+* **Trust tier**: **verdict** when the JDK supplies `MemorySegment.isAccessibleBy`
+* **Description**: Detects a `MemorySegment` allocated from `Arena.ofConfined()` (FFM API, final in JDK 22) being touched by a thread that does not own the arena, and access to a segment whose arena has already been closed. Confinement is a hard JVM rule rather than a synchronization question: the detector asks the JVM directly instead of inferring from the observed thread set, so a finding is a defect no lock can fix.
+* **Buggy Code**:
+  ```java
+  MemorySegment shared;
+  try (Arena arena = Arena.ofConfined()) {
+      shared = arena.allocate(1024);          // bound to this thread
+      executor.submit(() -> shared.get(JAVA_INT, 0));   // BUG: WrongThreadException
+  }
+  ```
+* **Fixed Code**:
+  ```java
+  try (Arena arena = Arena.ofShared()) {      // or give each thread its own confined arena
+      MemorySegment seg = arena.allocate(1024);
+      executor.submit(() -> seg.get(JAVA_INT, 0));      // legal; now synchronize the accesses
+  }
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.confinedArenaThreadEscapeDetector();
+  d.recordArena(arena, "parseBuffer", Thread.currentThread());
+  d.recordAllocation(seg, arena, "parseBuffer", 1024);
+  d.recordAccess(seg, "parseBuffer", Thread.currentThread(), true);   // from the wrong thread → flagged
+  assertTrue(d.analyze().hasIssues());
+  ```
+
+### 129. Shared Memory Segment Race
+* **Severity**: `HIGH` (conflicting locks) / `MEDIUM` (no lock recorded) / `CRITICAL` (use after close)
+* **Trust tier**: **verdict** when guards are recorded, **prompt** when they are not
+* **Description**: Detects overlapping byte ranges of a shared `MemorySegment` touched concurrently by different threads with at least one write. `Arena.ofShared()` removes the confinement check but not the data race: plain segment `get`/`set` carries no memory-model guarantee. Pass a `guard` label naming the monitor held during an access and overlapping accesses that agree on it are treated as synchronized, which is what separates this detector's HIGH findings from a bare "two threads touched it".
+* **Buggy Code**:
+  ```java
+  MemorySegment buf = arena.allocate(4096);
+  // two threads, same bytes, no ordering
+  buf.set(JAVA_INT, 0, compute());
+  int seen = buf.get(JAVA_INT, 0);
+  ```
+* **Fixed Code**:
+  ```java
+  VarHandle INT = JAVA_INT.varHandle();       // atomic access mode
+  INT.compareAndSet(buf, 0L, expected, next);
+  // or partition: each thread owns buf.asSlice(offset, len)
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.sharedMemorySegmentRaceDetector();
+  d.recordAccess(buf, "ringBuffer", 0, 8, true,  threadA);            // unguarded write
+  d.recordAccess(buf, "ringBuffer", 4, 8, false, threadB);            // overlapping read → flagged
+  d.recordAccess(buf, "ringBuffer", 0, 8, true,  threadA, "bufLock"); // guarded on both sides → silent
+  assertTrue(d.analyze().hasIssues());
+  ```
+
+### 130. VarHandle Non-Atomic Update
+* **Severity**: `HIGH` (lost update) / `MEDIUM` (plain-mode sharing)
+* **Trust tier**: **verdict** for the lost update, **prompt** for plain-mode sharing
+* **Description**: The `VarHandle` counterpart of `ATOMIC_NON_ATOMIC_UPDATE`. Detects a `get` followed by a `set` where `compareAndExchange` was needed, and separately, plain-mode access to a location several threads share. The access mode never rescues the compound operation: `getVolatile` then `setVolatile` loses updates exactly as readily as the plain pair, because volatile buys ordering, not atomicity across two calls. The plain-mode rule catches the mistake unique to `VarHandle` — `vh.get(o)` has no ordering even when the field is declared `volatile`.
+* **Buggy Code**:
+  ```java
+  int v = (int) COUNT.getVolatile(holder);
+  COUNT.setVolatile(holder, v + 1);           // BUG: another thread's write is overwritten
+  ```
+* **Fixed Code**:
+  ```java
+  COUNT.getAndAdd(holder, 1);                 // indivisible
+  // or a CAS loop:
+  int old; do { old = (int) COUNT.getVolatile(holder); }
+  while ((int) COUNT.compareAndExchange(holder, old, old + 1) != old);
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.varHandleNonAtomicUpdateDetector();
+  d.recordGet(COUNT, holder, "count", Mode.VOLATILE, Thread.currentThread());
+  d.recordSet(COUNT, holder, "count", Mode.VOLATILE, Thread.currentThread());   // → flagged
+  assertTrue(d.analyze().hasIssues());
+  ```
+
+### 131. Record Mutable Component Leak
+* **Severity**: `HIGH` (observed mutation) / `MEDIUM` (structural risk)
+* **Trust tier**: **verdict** for the observed mutation, **prompt** for the structural risk
+* **Description**: Detects records shared across threads whose components hold mutable state. A record is only shallowly immutable: the language freezes the reference, not the `ArrayList` behind it. The detector fingerprints every component on first sight and re-reads it at analysis time, so a component whose contents changed during the run is reported as a fact rather than an inference. Components holding `java.util.concurrent` types are deliberately not reported.
+* **Buggy Code**:
+  ```java
+  record Order(String id, List<Item> items) { }
+  List<Item> items = new ArrayList<>();
+  Order order = new Order("o-1", items);      // caller keeps a live handle
+  items.add(extra);                           // mutates what every reader sees
+  ```
+* **Fixed Code**:
+  ```java
+  record Order(String id, List<Item> items) {
+      Order { items = List.copyOf(items); }   // copies AND freezes
+  }
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.recordMutableComponentLeakDetector();
+  d.recordShared(order, "order", threadA);
+  d.recordShared(order, "order", threadB);
+  assertTrue(d.analyze().hasIssues());
+  ```
+
+### 132. Static Init Deadlock
+* **Severity**: `CRITICAL` (recorded cycle) / `HIGH` (live-thread sample)
+* **Trust tier**: **verdict** for the recorded cycle, **corroborating** for the sample
+* **Description**: Detects deadlocks between class initializers, where the lock each thread waits on is the JVM's per-class initialization lock. `ThreadMXBean.findDeadlockedThreads()` walks monitors and ownable synchronizers; a class init lock is neither, so the platform's own deadlock finder returns `null` while the JVM is fully wedged. That blind spot is why this detector exists separately from `DEADLOCKS`. With no instrumentation it still samples live threads for `<clinit>` frames.
+* **Buggy Code**:
+  ```java
+  class Config   { static final Object A = Registry.defaults(); }   // thread 1 enters here
+  class Registry { static final Object B = Config.A; }              // thread 2 enters here
+  ```
+* **Fixed Code**:
+  ```java
+  class Config {
+      private static final class Holder { static final Object A = Registry.defaults(); }
+      static Object a() { return Holder.A; }   // initialization on first use, no cycle on class load
+  }
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.staticInitDeadlockDetector();
+  d.recordInitStart(Config.class, threadA);
+  d.recordInitStart(Registry.class, threadB);
+  d.recordInitRequest(Registry.class, threadA);
+  d.recordInitRequest(Config.class, threadB);    // cycle → flagged
   assertTrue(d.analyze().hasIssues());
   ```

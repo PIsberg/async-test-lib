@@ -132,6 +132,10 @@ class LicenseGuardTest {
             AsyncTestConfig cfg = AsyncTestConfig.builder()
                     .licenseMockMode(false)
                     .keygenApiKey("dummy-api-key") // prevent auto-mocking in CI
+                    // Real-shaped coordinates, so the run reaches the provider instead of being
+                    // rejected up front by the placeholder guard below.
+                    .keygenAccountId("acc-not-a-placeholder")
+                    .keygenProductId("prod-not-a-placeholder")
                     .licenseKey("expired-or-invalid-key")
                     .build();
 
@@ -147,6 +151,142 @@ class LicenseGuardTest {
             } else {
                 System.clearProperty("license.mock.mode");
             }
+        }
+    }
+
+    /**
+     * Regression test for a silent grant measured against the published 1.7.3 artifact: with
+     * {@code -Dlicense.mock.mode=false} and an obviously fabricated key, {@code mvn test}
+     * produced BUILD SUCCESS. The key was checked against the {@code dummy-account} placeholder,
+     * so a valid key, a typo and a fabricated key were indistinguishable and all granted. The
+     * gate must now refuse to answer a question it cannot ask.
+     */
+    @Test
+    void licenseKeyWithPlaceholderAccountId_failsClosedInsteadOfGranting() {
+        String prevMockMode = System.getProperty("license.mock.mode");
+        System.setProperty("license.mock.mode", "false");
+        try {
+            AsyncTestConfig cfg = AsyncTestConfig.builder()
+                    .licenseMockMode(false)
+                    .licenseKey("INVALID-TEST-KEY-0000")   // no account/product id supplied
+                    .build();
+
+            SecurityException ex = assertThrows(SecurityException.class,
+                    () -> LicenseGuard.check(cfg),
+                    "A key that cannot be validated against anything must not be granted");
+            assertTrue(ex.getMessage().contains("LICENSE MISCONFIGURED"),
+                    "The failure must say the run is misconfigured, not that the key is bad: "
+                    + ex.getMessage());
+            assertTrue(ex.getMessage().contains("-Dkeygen.account.id"),
+                    "The message must name the missing property: " + ex.getMessage());
+        } finally {
+            restore("license.mock.mode", prevMockMode);
+        }
+    }
+
+    /**
+     * The no-key path, pinned as documented rather than as assumed, for both environments the
+     * README's "Running without a license key" table describes: refused outside CI, auto-mocked
+     * inside it.
+     *
+     * <p>The environment is read rather than assumed. An earlier version of this test asserted the
+     * local outcome unconditionally and went red on every CI runner, which is the same mistake in
+     * miniature that this class's other tests exist to prevent: the licence gate's behaviour turns
+     * on {@code GITHUB_ACTIONS} / {@code CI}, and a test that ignores that is testing one
+     * environment while claiming to test the behaviour.
+     *
+     * <p>Also measured, not inferred: an earlier reading of the local path as permissive came from
+     * an example that uses plain {@code @Test} and therefore never reaches the gate at all.
+     */
+    @Test
+    void noLicenseKey_followsTheDocumentedPathForThisEnvironment() {
+        String prevMockMode = System.getProperty("license.mock.mode");
+        String prevKey = System.getProperty("license.key");
+        System.setProperty("license.mock.mode", "false");
+        System.clearProperty("license.key");
+        try {
+            AsyncTestConfig cfg = AsyncTestConfig.builder()
+                    .licenseMockMode(false)
+                    .keygenAccountId("acc-not-a-placeholder")
+                    .keygenProductId("prod-not-a-placeholder")
+                    .build();
+
+            boolean isCi = System.getenv("GITHUB_ACTIONS") != null || System.getenv("CI") != null;
+
+            if (isCi) {
+                assertDoesNotThrow(() -> LicenseGuard.check(cfg),
+                        "In CI with no key, zero-config mock mode activates and the run proceeds — "
+                        + "row 1 of the README table");
+            } else {
+                SecurityException ex = assertThrows(SecurityException.class,
+                        () -> LicenseGuard.check(cfg),
+                        "Outside CI an unlicensed run is refused — row 3 of the README table");
+                assertTrue(ex.getMessage().contains("LICENSE DENIED"),
+                        "The refusal must be the licence denial, not a config error: " + ex.getMessage());
+                assertTrue(ex.getMessage().contains("-Dlicense.mock.mode=true"),
+                        "The message must tell an evaluator how to proceed: " + ex.getMessage());
+            }
+        } finally {
+            restore("license.mock.mode", prevMockMode);
+            restore("license.key", prevKey);
+        }
+    }
+
+    /**
+     * Regression test for the defect that made paid licences unenforceable in CI.
+     *
+     * <p>The auto-mock branch is {@code isCi && !hasCredentials}, and {@code hasCredentials} used
+     * to mean "a Keygen API token is set". Customers are never issued an API token, so every
+     * customer CI run took the auto-mock branch: the key was never sent anywhere and the run was
+     * announced as GRANTED. Measured on this branch with {@code CI=true} and an invalid key, the
+     * old condition returned GRANTED and the fixed condition returns
+     * {@code LICENSE DENIED: LICENSE_NOT_FOUND}.
+     *
+     * <p>Asserted against the decision function rather than {@code check()}, because a test
+     * cannot set an environment variable for its own JVM.
+     */
+    @Test
+    void licenseKeyAloneMakesTheRunCredentialled_soCiCannotAutoMockIt() {
+        assertTrue(LicenseGuard.assertsCommercialLicence(false, "a-customer-key", null, null),
+                "A Keygen customer has a key and no API token; that run must still be validated");
+        assertTrue(LicenseGuard.assertsCommercialLicence(false, null, "an-operator-token", null),
+                "An operator token still counts, which is what the project's own tooling uses");
+        assertFalse(LicenseGuard.assertsCommercialLicence(false, null, null, null),
+                "A run asserting no licence at all is what CI auto-mock exists for");
+        assertFalse(LicenseGuard.assertsCommercialLicence(false, "   ", null, null),
+                "A blank key asserts nothing");
+    }
+
+    /** LemonSqueezy needs the store id as well as the key before a check can mean anything. */
+    @Test
+    void lemonSqueezyNeedsBothKeyAndStoreIdToCount() {
+        assertTrue(LicenseGuard.assertsCommercialLicence(true, "a-key", null, 42L));
+        assertFalse(LicenseGuard.assertsCommercialLicence(true, "a-key", null, null),
+                "A key with no store id cannot be scoped, so it is not a commercial assertion");
+        assertFalse(LicenseGuard.assertsCommercialLicence(true, null, null, 42L),
+                "A store id with no key asserts nothing");
+    }
+
+    /**
+     * Mock mode is the documented escape hatch and outranks the guard: a misconfigured run that
+     * has explicitly opted out of validation is not asserting a licence.
+     */
+    @Test
+    void mockMode_outranksThePlaceholderGuard() {
+        AsyncTestConfig cfg = AsyncTestConfig.builder()
+                .licenseMockMode(true)
+                .licenseKey("INVALID-TEST-KEY-0000")
+                .build();
+
+        assertDoesNotThrow(() -> LicenseGuard.check(cfg),
+                "-Dlicense.mock.mode=true must keep working regardless of provider config");
+    }
+
+    private static void restore(String key, String previous) {
+        if (previous != null) {
+            System.setProperty(key, previous);
+        } else {
+            System.clearProperty(key);
         }
     }
 

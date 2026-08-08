@@ -18,6 +18,9 @@
 ### se.deversity.asynctest.diagnostics.CompletableFutureObtrudeDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureObtrudeDetectorTest.java
 
+### se.deversity.asynctest.diagnostics.ConfinedArenaThreadEscapeDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/ConfinedArenaThreadEscapeDetectorTest.java
+
 ### se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/DaemonThreadHygieneDetectorTest.java
 
@@ -48,6 +51,9 @@
 ### se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/NotifyWithoutMonitorDetectorTest.java
 
+### se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/RecordMutableComponentLeakDetectorTest.java
+
 ### se.deversity.asynctest.diagnostics.SharedByteBufferDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/SharedByteBufferDetectorTest.java
 
@@ -69,6 +75,9 @@
 ### se.deversity.asynctest.diagnostics.SharedKdfDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/SharedKdfDetectorTest.java
 
+### se.deversity.asynctest.diagnostics.SharedMemorySegmentRaceDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/SharedMemorySegmentRaceDetectorTest.java
+
 ### se.deversity.asynctest.diagnostics.SharedMessageDigestDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/SharedMessageDigestDetectorTest.java
 
@@ -81,6 +90,9 @@
 ### se.deversity.asynctest.diagnostics.SpuriousWakeupDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/SpuriousWakeupDetectorTest.java
 
+### se.deversity.asynctest.diagnostics.StaticInitDeadlockDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/StaticInitDeadlockDetectorTest.java
+
 ### se.deversity.asynctest.diagnostics.ThisEscapeDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/ThisEscapeDetectorTest.java
 
@@ -89,6 +101,9 @@
 
 ### se.deversity.asynctest.diagnostics.TryLockMisuseDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/TryLockMisuseDetectorTest.java
+
+### se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/VarHandleNonAtomicUpdateDetectorTest.java
 
 ### se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/WeakHashMapSharedDetectorTest.java
@@ -102,6 +117,10 @@
 ### se.deversity.asynctest.diagnostics.CompletableFutureObtrudeDetector
 - **Strategy**: OTHER
 - **Note**: ConcurrentHashMap stores state per CF instance.
+
+### se.deversity.asynctest.diagnostics.ConfinedArenaThreadEscapeDetector
+- **Strategy**: OTHER
+- **Note**: Per-segment and per-arena state in ConcurrentHashMap; thread sets are ConcurrentHashMap.newKeySet(); counters are LongAdder. The reflective Method handles are resolved once into immutable statics and are themselves thread-safe.
 
 ### se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector
 - **Strategy**: OTHER
@@ -143,6 +162,10 @@
 - **Strategy**: SYNCHRONIZED
 - **Note**: Attempts list mutated under a single intrinsic monitor on the list itself; sampling Thread.holdsLock requires no locking.
 
+### se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector
+- **Strategy**: OTHER
+- **Note**: Per-instance state in ConcurrentHashMap keyed on identity hash; the first-sight fingerprint map is populated once under computeIfAbsent and read-only afterwards; thread sets are ConcurrentHashMap.newKeySet(); tracking is capped by MAX_INSTANCES with a LongAdder drop counter.
+
 ### se.deversity.asynctest.diagnostics.SharedByteBufferDetector
 - **Strategy**: OTHER
 - **Note**: Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name and operation sets are ConcurrentHashMap.newKeySet().
@@ -171,6 +194,10 @@
 - **Strategy**: OTHER
 - **Note**: Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().
 
+### se.deversity.asynctest.diagnostics.SharedMemorySegmentRaceDetector
+- **Strategy**: OTHER
+- **Note**: Per-segment state in ConcurrentHashMap; the access log is a CopyOnWriteArrayList bounded by MAX_TRACKED_ACCESSES with a LongAdder drop counter, so an unbounded test cannot exhaust the heap and the report states how many samples were dropped.
+
 ### se.deversity.asynctest.diagnostics.SharedMessageDigestDetector
 - **Strategy**: OTHER
 - **Note**: Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().
@@ -187,6 +214,10 @@
 - **Strategy**: OTHER
 - **Note**: ConcurrentHashMap stores state per monitor instance.
 
+### se.deversity.asynctest.diagnostics.StaticInitDeadlockDetector
+- **Strategy**: OTHER
+- **Note**: Holder and wait maps are ConcurrentHashMap keyed on class name / thread id. The live-thread sample is taken at most once and cached in an AtomicReference so analyze() stays idempotent even though the threads it observes are not.
+
 ### se.deversity.asynctest.diagnostics.ThisEscapeDetector
 - **Strategy**: OTHER
 - **Note**: Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; escape descriptions and observer-thread sets are ConcurrentHashMap.newKeySet(); the completed flag is volatile.
@@ -198,6 +229,10 @@
 ### se.deversity.asynctest.diagnostics.TryLockMisuseDetector
 - **Strategy**: OTHER
 - **Note**: ConcurrentHashMap tracks tryLock attempts, results, and unlock violations.
+
+### se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector
+- **Strategy**: OTHER
+- **Note**: Per-location state in ConcurrentHashMap keyed on a (handle, receiver) identity record; pending reads are a per-thread ConcurrentHashMap entry; counters are LongAdder and detail lists are CopyOnWriteArrayList bounded by MAX_DETAILS.
 
 ### se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector
 - **Strategy**: OTHER

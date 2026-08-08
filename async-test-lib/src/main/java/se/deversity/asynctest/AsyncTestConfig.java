@@ -350,6 +350,16 @@ public final class AsyncTestConfig {
     public final boolean detectFutureBlocking;
     /** Resolved value of {@link AsyncTest#detectFlowPublisherConcurrency()} for this run. */
     public final boolean detectFlowPublisherConcurrency;
+    /** Resolved value of {@link AsyncTest#detectConfinedArenaThreadEscape()} for this run. */
+    public final boolean detectConfinedArenaThreadEscape;
+    /** Resolved value of {@link AsyncTest#detectSharedMemorySegmentRace()} for this run. */
+    public final boolean detectSharedMemorySegmentRace;
+    /** Resolved value of {@link AsyncTest#detectVarHandleNonAtomicUpdate()} for this run. */
+    public final boolean detectVarHandleNonAtomicUpdate;
+    /** Resolved value of {@link AsyncTest#detectRecordMutableComponentLeak()} for this run. */
+    public final boolean detectRecordMutableComponentLeak;
+    /** Resolved value of {@link AsyncTest#detectStaticInitDeadlock()} for this run. */
+    public final boolean detectStaticInitDeadlock;
 
     // ---- Benchmarking ----
     /** Resolved value of {@link AsyncTest#enableBenchmarking()} for this run. */
@@ -517,6 +527,11 @@ public final class AsyncTestConfig {
         detectExecutorDeadlock          = b.detectExecutorDeadlock;
         detectFutureBlocking            = b.detectFutureBlocking;
         detectFlowPublisherConcurrency  = b.detectFlowPublisherConcurrency;
+        detectConfinedArenaThreadEscape  = b.detectConfinedArenaThreadEscape;
+        detectSharedMemorySegmentRace    = b.detectSharedMemorySegmentRace;
+        detectVarHandleNonAtomicUpdate   = b.detectVarHandleNonAtomicUpdate;
+        detectRecordMutableComponentLeak = b.detectRecordMutableComponentLeak;
+        detectStaticInitDeadlock         = b.detectStaticInitDeadlock;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -721,6 +736,11 @@ public final class AsyncTestConfig {
             .detectExecutorDeadlock(ann.detectExecutorDeadlock())
             .detectFutureBlocking(ann.detectFutureBlocking())
             .detectFlowPublisherConcurrency(ann.detectFlowPublisherConcurrency())
+            .detectConfinedArenaThreadEscape(ann.detectConfinedArenaThreadEscape())
+            .detectSharedMemorySegmentRace(ann.detectSharedMemorySegmentRace())
+            .detectVarHandleNonAtomicUpdate(ann.detectVarHandleNonAtomicUpdate())
+            .detectRecordMutableComponentLeak(ann.detectRecordMutableComponentLeak())
+            .detectStaticInitDeadlock(ann.detectStaticInitDeadlock())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -883,6 +903,11 @@ public final class AsyncTestConfig {
         private boolean detectExecutorDeadlock          = false;
         private boolean detectFutureBlocking            = false;
         private boolean detectFlowPublisherConcurrency  = false;
+        private boolean detectConfinedArenaThreadEscape  = false;
+        private boolean detectSharedMemorySegmentRace    = false;
+        private boolean detectVarHandleNonAtomicUpdate   = false;
+        private boolean detectRecordMutableComponentLeak = false;
+        private boolean detectStaticInitDeadlock         = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -1706,6 +1731,36 @@ public final class AsyncTestConfig {
          */
         public Builder detectFlowPublisherConcurrency(boolean v)       { detectFlowPublisherConcurrency = v; return this; }
         /**
+         * Sets {@link AsyncTestConfig#detectConfinedArenaThreadEscape}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectConfinedArenaThreadEscape(boolean v)      { detectConfinedArenaThreadEscape = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedMemorySegmentRace}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectSharedMemorySegmentRace(boolean v)        { detectSharedMemorySegmentRace = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectVarHandleNonAtomicUpdate}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectVarHandleNonAtomicUpdate(boolean v)       { detectVarHandleNonAtomicUpdate = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectRecordMutableComponentLeak}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectRecordMutableComponentLeak(boolean v)     { detectRecordMutableComponentLeak = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectStaticInitDeadlock}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectStaticInitDeadlock(boolean v)             { detectStaticInitDeadlock = v; return this; }
+        /**
          * Sets {@link AsyncTestConfig#enableBenchmarking}.
          * @param v the value to use
          * @return this builder
@@ -1956,6 +2011,11 @@ public final class AsyncTestConfig {
             detectExecutorDeadlock = (detectAll || detectExecutorDeadlock) && !excludes.contains(DetectorType.EXECUTOR_DEADLOCK);
             detectFutureBlocking = (detectAll || detectFutureBlocking) && !excludes.contains(DetectorType.FUTURE_BLOCKING);
             detectFlowPublisherConcurrency = (detectAll || detectFlowPublisherConcurrency) && !excludes.contains(DetectorType.FLOW_PUBLISHER_CONCURRENCY);
+            detectConfinedArenaThreadEscape = (detectAll || detectConfinedArenaThreadEscape) && !excludes.contains(DetectorType.CONFINED_ARENA_THREAD_ESCAPE);
+            detectSharedMemorySegmentRace = (detectAll || detectSharedMemorySegmentRace) && !excludes.contains(DetectorType.SHARED_MEMORY_SEGMENT_RACE);
+            detectVarHandleNonAtomicUpdate = (detectAll || detectVarHandleNonAtomicUpdate) && !excludes.contains(DetectorType.VAR_HANDLE_NON_ATOMIC_UPDATE);
+            detectRecordMutableComponentLeak = (detectAll || detectRecordMutableComponentLeak) && !excludes.contains(DetectorType.RECORD_MUTABLE_COMPONENT_LEAK);
+            detectStaticInitDeadlock = (detectAll || detectStaticInitDeadlock) && !excludes.contains(DetectorType.STATIC_INIT_DEADLOCK);
             return new AsyncTestConfig(this);
         }
     }

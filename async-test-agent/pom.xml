@@ -63,6 +63,10 @@
                 <configuration>
                     <archive>
                         <manifestEntries>
+                            <!-- Stable JPMS name. Without it the module system derives one from
+                                 the file name, so a modular consumer's requires clause breaks the
+                                 first time the artifact is renamed. -->
+                            <Automatic-Module-Name>se.deversity.asynctest.agent</Automatic-Module-Name>
                             <Premain-Class>se.deversity.asynctest.agent.AsyncTestAgent</Premain-Class>
                             <Agent-Class>se.deversity.asynctest.agent.AsyncTestAgent</Agent-Class>
                             <Can-Retransform-Classes>true</Can-Retransform-Classes>
