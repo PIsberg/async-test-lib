@@ -1,6 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -75,6 +77,8 @@ import java.util.concurrent.atomic.AtomicReference;
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/StaticInitDeadlockDetectorTest.java"
 )
 public final class StaticInitDeadlockDetector {
+
+    private static final Logger log = LoggerFactory.getLogger(StaticInitDeadlockDetector.class);
 
     /** The JVM's own name for a static initializer frame. */
     private static final String CLINIT = "<clinit>";
@@ -240,7 +244,11 @@ public final class StaticInitDeadlockDetector {
                 }
             }
         } catch (RuntimeException ex) {
-            // A security manager or a thread dying mid-walk must not fail the test run.
+            // A security manager, or a thread dying mid-walk, must not fail the test run: this
+            // sample is corroborating evidence, and losing it is strictly better than turning a
+            // detector into the reason the suite went red. Recorded rather than swallowed so a
+            // permanently empty sample is diagnosable.
+            log.debug("staticinit.sample.failed reason={}", ex.toString());
         }
         sample.compareAndSet(null, List.copyOf(found));
         return sample.get() == null ? List.of() : sample.get();
