@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-08-08
+
 ### Added — Phase 20: five detectors for FFM, VarHandle, record and class-init hazards (127 → 132)
 
 - **`CONFINED_ARENA_THREAD_ESCAPE`** — a `MemorySegment` from `Arena.ofConfined()` (FFM API,
@@ -39,6 +41,58 @@ All five are wired into `detectAll`, the `DetectorType` enum, `@AsyncTest` flags
 `AsyncTestConfig`, the registry, the SPI factory list and `AsyncTestContext` accessors, and
 carry both-direction tests: each fires on the buggy shape and stays silent on the correct twin
 of that same code.
+
+### Added — `SarifFormatter`: findings as SARIF 2.1.0 for code scanning
+
+`new SarifFormatter().format(violations)` renders a report GitHub code scanning accepts, so a
+concurrency finding lands as an annotation on the pull request rather than as text buried in a
+job log. Severity maps to both `level` and `security-severity`, and each detector becomes a
+distinct SARIF rule so findings can be triaged per detector.
+
+A concurrency bug has no single location — the interleaving involves at least two sites — so the
+first captured site becomes the SARIF location and the rest are attached as related locations. A
+finding whose detector captured no site is emitted without a location rather than being pinned to
+an arbitrary line that is not the problem. Marked `@API(status = EXPERIMENTAL)`: the output shape
+may change while the mapping settles.
+
+### Added — stable JPMS module names for the three published artifacts
+
+`async-test-lib`, `async-test-agent` and `async-test-analysis` now declare
+`Automatic-Module-Name` (`se.deversity.asynctest`, `se.deversity.asynctest.agent`,
+`se.deversity.asynctest.analysis`). Without it the module name is derived from the jar file name,
+which makes every consumer's `requires` clause hostage to an artifact rename.
+
+### Added — a JUnit compatibility matrix, governance files and a Kotlin example
+
+- `e2e-tests.yml` runs the suite against JUnit 5.9.3, 5.10.5, 5.11.4, 5.12.2, 5.13.4, 6.0.3 and
+  6.1.2. The supported floor is 5.9.3 because that matrix passes on it, not because a release
+  note says so. The job also asserts the resolved `junit-jupiter-api` version matches the
+  declared one, so the matrix cannot quietly test a single version seven times.
+- `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `docs/SUPPORT_POLICY.md`, issue templates and a pull
+  request template.
+- `examples/128-kotlin-lost-update` — a lost update in Kotlin, so the examples cover a second JVM
+  language.
+- `docs/CI_INTEGRATION.md` plus trust tiers and baselines in `docs/DETECTOR_CATALOG.md`,
+  `docs/USAGE.md` and `docs/BUILDING.md`.
+
+### Fixed — a supplied licence key is now validated in CI instead of auto-mocked past
+
+`LicenseGuard` decided "this run has no credentials, mock it" from the presence of a Keygen
+operator token. Customers are never issued one, so every paying customer's CI run took the mock
+path and announced GRANTED without the key they had paid for ever being checked — an expired,
+revoked or fabricated key passed identically, in the environment where builds actually run. The
+decision is now keyed off the licence key itself, with an operator token still counting when
+present.
+
+A key supplied against the placeholder provider coordinates the library ships with is also no
+longer granted. That state cannot be validated by anyone, and granting it is the worst of the
+three outcomes: the customer believes they are licensed, the check never ran, and an invalid key
+is indistinguishable from a valid one. The run now fails closed and names the missing property.
+
+### Changed — VibeTags 1.0.0 → 1.0.3
+
+Picks up the reactor fixes in the annotation processor that generates this repository's AI
+context files. Build-time only; nothing in the published artifacts changes.
 
 ## [1.7.3] - 2026-08-07
 
