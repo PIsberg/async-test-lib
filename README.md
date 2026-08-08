@@ -2,7 +2,7 @@
 
 # @AsyncTest - Asynchronous Testing Library for Java
 
-**JUnit 5 concurrency stress testing — one annotation, 132 detectors**
+**JUnit 5 & 6 concurrency stress testing — one annotation, 132 detectors**
 
 [![Maven Central](https://img.shields.io/maven-central/v/se.deversity.async-test-lib/async-test-lib)](https://central.sonatype.com/artifact/se.deversity.async-test-lib/async-test-lib)
 [![Javadoc](https://img.shields.io/badge/javadoc-latest-blue)](https://pisberg.github.io/async-test-lib/api/latest/)
@@ -32,7 +32,7 @@
 
 - **One annotation** — `@AsyncTest` hammers your code with N threads × M invocations using a `CyclicBarrier` to force maximum contention. No executor boilerplate, no manual `CountDownLatch`, no `Thread.join` loops.
 - **132 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types, JDBC sharing, MessageDigest/SecureRandom/Cipher integrity, and more — all on by default (`detectAll = true`), or pick a `Preset` for a curated subset. Deadlock detection needs zero configuration; most other detectors observe what the test body records explicitly or what the optional agent weaves, and the runner says so at INFO the first time agent-backed detection is inactive. Measured firing behavior, including where detectors flag correct-but-shared code, is published in [the detector-accuracy eval](docs/analysis/detector-accuracy-eval.md).
-- **JUnit 5 native** — zero required configuration. Works anywhere JUnit 5 runs with no special JVM flags. An optional Java agent, shipped as a separate `async-test-agent` artifact (`-javaagent:async-test-agent.jar`), weaves JavaBean accessors with Byte Buddy so detectors observe reads and writes without hand-written hooks; a field touched only inside a method body is not observed. Default usage needs no agent, and the core artifact does not carry Byte Buddy.
+- **JUnit native, 5 and 6** — zero required configuration, no special JVM flags. `@AsyncTest` is a JUnit `@TestTemplate`, so it works from Kotlin and Groovy too. Supported range: **Jupiter 5.9.3 through 6.1.2**, verified per release by a [CI matrix](.github/workflows/e2e-tests.yml) that runs the consumer fixture against every version in it — see [the compatibility table](docs/BUILDING.md#junit-compatibility). Keep whichever Jupiter your project already declares; yours wins over the library's transitive one. An optional Java agent, shipped as a separate `async-test-agent` artifact (`-javaagent:async-test-agent.jar`), weaves JavaBean accessors with Byte Buddy so detectors observe reads and writes without hand-written hooks; a field touched only inside a method body is not observed. Default usage needs no agent, and the core artifact does not carry Byte Buddy.
 - **CI-ready out of the box** — ship JUnit XML reports, machine-readable JSON, or `AssertionError` fail-gates directly to GitHub Actions, Jenkins, and GitLab CI.
 
 <div align="center">

@@ -90,6 +90,84 @@ jobs:
           path: consumer-fixture/target/surefire-reports/
           retention-days: 7
 
+  junit-compatibility:
+    name: JUnit ${{ matrix.junit-version }} (Java 21)
+    runs-on: ubuntu-latest
+
+    # The library compiles against Jupiter 6.x, but almost every codebase that would adopt it is
+    # on the 5.x line. "Which JUnit versions do you support?" is the first question a platform
+    # team asks, and before this job the repository had no answer: tests.yml matrixes the JDK and
+    # never the Jupiter version. The consumer-fixture is the right subject because it resolves
+    # async-test-lib as a downstream consumer does and exercises only the published surface.
+    #
+    # The floor is 5.9.3, verified by running this matrix rather than by reading release notes.
+    # Publish any change to it in docs/BUILDING.md and docs/SUPPORT_POLICY.md.
+    strategy:
+      fail-fast: false
+      matrix:
+        junit-version: [ '5.9.3', '5.10.5', '5.11.4', '5.12.2', '5.13.4', '6.0.3', '6.1.2' ]
+
+    env:
+      ASYNC_TEST_TIMEOUT_MULTIPLIER: '1'
+
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Prepare local Maven repository
+        shell: bash
+        run: mkdir -p .m2/repository
+
+      - name: Install library to local Maven repository
+        run: mvn "-Dmaven.repo.local=.m2/repository" -DskipTests clean install
+
+      # Guards against the matrix quietly testing one version seven times: Maven resolves the
+      # nearest declaration, and a mistake in the property plumbing would leave the transitive
+      # 6.x in place while every cell still reported green.
+      - name: Verify the declared Jupiter version is the resolved one
+        run: |
+          set -euo pipefail
+          resolved=$(mvn "-Dmaven.repo.local=.m2/repository" \
+                         "-Djunit.jupiter.version=${{ matrix.junit-version }}" \
+                         -f consumer-fixture/pom.xml dependency:tree \
+                     | grep -oE 'junit-jupiter-api:jar:[0-9.]+' | head -1 | cut -d: -f3)
+          echo "declared=${{ matrix.junit-version }} resolved=${resolved}"
+          test "${resolved}" = "${{ matrix.junit-version }}"
+
+      - name: Run consumer fixture against JUnit ${{ matrix.junit-version }}
+        run: |
+          mvn "-Dmaven.repo.local=.m2/repository" \
+              "-Djunit.jupiter.version=${{ matrix.junit-version }}" \
+              -f consumer-fixture/pom.xml test
+
+      - name: Upload reports
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: e2e-junit-compat-${{ matrix.junit-version }}
+          path: consumer-fixture/target/surefire-reports/
+          retention-days: 7
+
   examples-detect:
     name: Detect changed examples (PR)
     runs-on: ubuntu-latest
@@ -297,7 +375,7 @@ jobs:
   e2e-summary:
     name: E2E Tests
     runs-on: ubuntu-latest
-    needs: [ consumer-fixture, examples-detect, examples-changed, examples-all ]
+    needs: [ consumer-fixture, junit-compatibility, examples-detect, examples-changed, examples-all ]
     # Runs even when a leg was skipped (examples-changed on push, examples-all on PR) so
     # there is one stable required check for the whole suite.
     if: always()
@@ -307,6 +385,7 @@ jobs:
           set -euo pipefail
           for result in \
             "consumer-fixture=${{ needs.consumer-fixture.result }}" \
+            "junit-compatibility=${{ needs.junit-compatibility.result }}" \
             "examples-detect=${{ needs.examples-detect.result }}" \
             "examples-changed=${{ needs.examples-changed.result }}" \
             "examples-all=${{ needs.examples-all.result }}"; do

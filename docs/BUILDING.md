@@ -12,6 +12,37 @@
 - **Java 21+**
 - **Maven 3.6+** or **Gradle 8.13+** (Gradle wrapper included)
 
+### JUnit compatibility
+
+`async-test-lib` is built against JUnit Jupiter 6.x and runs on the 5.x line as well. The
+supported range is **Jupiter 5.9.3 through 6.1.2**.
+
+| Jupiter | Status |
+|---|---|
+| 5.9.3 | supported — the floor |
+| 5.10.5, 5.11.4, 5.12.2, 5.13.4 | supported |
+| 6.0.3, 6.1.2 | supported |
+| earlier than 5.9.3 | untested; assume unsupported |
+
+This is measured, not asserted. The `junit-compatibility` job in
+[`.github/workflows/e2e-tests.yml`](../.github/workflows/e2e-tests.yml) runs the
+`consumer-fixture` module — which resolves the library the way a downstream project does and
+exercises only the published surface — once per version in that table, 256 tests each. The job
+also asserts that the declared Jupiter version is the one Maven actually resolved, because a
+matrix that silently tests one version seven times reports green just as convincingly as one that
+works.
+
+You do not need to match the library's own Jupiter version. Declare whichever Jupiter your project
+already uses; Maven and Gradle both resolve your direct declaration ahead of the library's
+transitive one. To reproduce a single cell locally:
+
+```bash
+mvn -f consumer-fixture/pom.xml test -Djunit.jupiter.version=5.10.5 -Dlicense.mock.mode=true
+```
+
+Raising the floor is a minor-version change and is announced in the changelog. See
+[SUPPORT_POLICY.md](SUPPORT_POLICY.md) for what else is covered.
+
 ### Clone the repository
 
 ```bash

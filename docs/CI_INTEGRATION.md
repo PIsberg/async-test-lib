@@ -127,6 +127,78 @@ static void setup() {
 
 ---
 
+## Adopting into a codebase that already has findings
+
+Turning `detectAll` on across an existing suite produces findings on day one. Some are real, some
+are the access-pattern detectors telling you that an object was touched by two threads and that you
+should check the synchronization yourself — see
+[the trust tiers](DETECTOR_CATALOG.md#trust-tiers). Either way, a team cannot fix all of them in the
+sprint they adopt the library, and a gate that is red from the first commit gets switched off.
+
+The baseline mechanism exists for that. It records the findings you already have so the build gates
+only on new ones.
+
+### Recording the baseline
+
+Run once in update mode. Instead of failing, every finding that *would* have failed is written to
+the file:
+
+```bash
+mvn test -Dasync-test.baseline=async-test-baseline.txt \
+         -Dasync-test.baseline.update=true
+```
+
+The file is plain text, one `testId | DetectorName` pair per line, sorted and de-duplicated:
+
+```
+com.example.OrderServiceTest#concurrentCheckout | RaceConditionDetector
+com.example.OrderServiceTest#concurrentCheckout | AtomicityValidator
+com.example.CacheTest#parallelWarmup | SharedCollectionDetector
+```
+
+Commit it. Reviewing it in the pull request is the point: each line is a known problem the team has
+decided not to fix yet, and a diff that adds lines is visible rather than silent.
+
+### Gating on it
+
+Drop the update flag. Findings listed in the file are suppressed; anything new fails as normal.
+
+```bash
+mvn test -Dasync-test.baseline=async-test-baseline.txt -Dasync-test.failOn=HIGH
+```
+
+Suppressed findings are announced at `INFO` (`N baselined finding(s) suppressed for <testId>`), so a
+baseline that has quietly grown to cover the whole suite is visible in the build log rather than
+invisible.
+
+### Shrinking it
+
+The file is the backlog. Delete a line, run the test, fix what it reports. A line that no longer
+reproduces can simply be removed — nothing checks that every entry is still needed, so a periodic
+`--baseline.update` regeneration into a fresh file and a diff against the committed one is the way
+to find entries that have become stale.
+
+### What a baseline does not do
+
+- It suppresses findings, not failures from your own assertions.
+- It is keyed on test id plus detector name, not on the specific object or line, so a second
+  instance of the same detector firing in the same test is also suppressed.
+- A missing baseline file is a warning, not an error, and suppresses nothing. A typo in the path
+  therefore makes the build stricter rather than looser, which is the safe direction.
+
+### Recommended starting point
+
+| Stage | Configuration |
+|---|---|
+| First run, see what you have | `failOn = NONE`, read the reports |
+| Adopt | record a baseline, then `failOn = CRITICAL` |
+| Tighten once the baseline stops growing | `failOn = HIGH` |
+
+`failOn = CRITICAL` gates on the verdict-tier detectors — deadlock, lock-order inversion,
+class-initialization deadlock, confinement violations. `failOn = HIGH` includes findings that some
+detectors raise on correct-but-shared code, which is why it is the second step rather than the
+first.
+
 ## Choosing a strategy
 
 | Scenario | Recommended |
