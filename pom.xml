@@ -66,6 +66,19 @@
              a skipped gate is logged by jacoco, and CI always runs it. -->
         <surefire.excludedGroups>e2e</surefire.excludedGroups>
         <jacoco.check.skip>true</jacoco.check.skip>
+        <!-- Concurrent test JVMs. reuseForks=false already gives every class its own JVM, so
+             raising this changes wall-clock only: concurrent forks share no static state
+             (ThreadLocal contexts, static registries, per-JVM license and benchmark state), and
+             isolation stays identical to a serial run. Mirrors build.gradle.kts's
+             maxParallelForks, which has always defaulted to half the available processors. The
+             Maven side sat at 1 with no way to override it: <forkCount> was a literal, and a
+             literal beats -DforkCount, so the flag was accepted and ignored (under -X Surefire
+             logs "(f) forkCount = 1" while still passing forkCount through as an inert system
+             property). Left at 1 by default so CI is unchanged: CI runners have 2 to 4 cores and
+             run the e2e tier, whose timing margins were last widened in 938b4c4a precisely to
+             survive a loaded runner, and adding fork contention there is a change worth its own
+             soak. -P fast raises it locally; override anywhere with -Dsurefire.forkCount=N. -->
+        <surefire.forkCount>1</surefire.forkCount>
         <!-- Plugin versions -->
         <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
@@ -269,7 +282,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${maven-surefire-plugin.version}</version>
                 <configuration>
-                    <forkCount>1</forkCount>
+                    <forkCount>${surefire.forkCount}</forkCount>
                     <reuseForks>false</reuseForks>
                     <!-- Local default skips the @Tag("e2e") engine tier; the e2e profile
                          (auto-active in CI) clears this. E2eTagGuardTest pins the tag set. -->
@@ -549,6 +562,29 @@
             <properties>
                 <surefire.excludedGroups></surefire.excludedGroups>
                 <jacoco.check.skip>false</jacoco.check.skip>
+            </properties>
+        </profile>
+        <!-- Fast local loop: same 190 test classes, no coverage instrumentation.
+             JaCoCo costs more than everything else in `mvn test` combined, because the agent
+             instruments afresh in each of the ~190 short-lived per-class JVMs and they all
+             append to one exec file, which also throttles the parallel forks. Measured on a
+             16-core Windows box, full local tier, all 190 classes green in every cell:
+
+                 forkCount=1     jacoco on   504s     off   258s
+                 forkCount=0.5C  jacoco on   426s     off   164s
+
+             Nothing is gated on the coverage this run produces: jacoco-check binds to verify,
+             which `mvn test` never reaches, and jacoco.check.skip is true outside -P e2e. Use
+             -P e2e (or plain `mvn verify`) when the coverage numbers are the point. -->
+        <profile>
+            <id>fast</id>
+            <properties>
+                <jacoco.skip>true</jacoco.skip>
+                <surefire.forkCount>0.5C</surefire.forkCount>
+                <!-- Surefire's argLine interpolates @{argLine}, which jacoco:prepare-agent
+                     normally defines. With the agent skipped nothing defines it and Surefire
+                     would hand the forked JVM the literal string, so define it empty here. -->
+                <argLine></argLine>
             </properties>
         </profile>
     </profiles>

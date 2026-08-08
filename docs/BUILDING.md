@@ -25,6 +25,9 @@ cd async-test-lib
 # Run the local tier (plain JUnit; @Tag("e2e") engine tests excluded)
 mvn test
 
+# Same 190 test classes, ~3x faster: no coverage agent, forks across half the cores
+mvn test -P fast
+
 # Run the full suite including the e2e tier (what CI runs automatically)
 mvn test -P e2e
 
@@ -44,6 +47,35 @@ mvn clean package -DskipTests
 # Generate Javadoc
 mvn javadoc:javadoc
 ```
+
+#### Local test runtime
+
+`forkEvery`-style isolation is not free. `reuseForks=false` gives every test class its own JVM,
+so the local tier launches about 190 of them, and the JaCoCo agent re-instruments in each one
+while all of them append to a single `jacoco.exec`. Coverage, not the tests, is the bulk of the
+wall clock: the 190 classes only spend 78s inside test methods.
+
+Measured on a 16-core Windows box, full local tier, all 190 classes green in every cell:
+
+| `surefire.forkCount` | JaCoCo on | JaCoCo off |
+|---|---|---|
+| `1` (default) | 504s | 258s |
+| `0.5C` (`-P fast`) | 426s | **164s** |
+| `1C` | 438s | — |
+
+`-P fast` takes the bottom-right cell. It changes no test semantics: `reuseForks=false` still
+gives each class its own JVM, so concurrent forks share no static state and isolation is
+identical to a serial run. Past `0.5C` it gets slower again, which is why `-P fast` stops at
+half the cores — the same default `build.gradle.kts` has always used for `maxParallelForks`.
+
+Nothing is gated on the coverage a local `mvn test` produces: `jacoco-check` binds to `verify`,
+which `mvn test` never reaches, and `jacoco.check.skip` is true outside `-P e2e`. Run `-P e2e`
+or `mvn verify` when the coverage numbers are the point.
+
+The default stays at `forkCount=1` so CI is unchanged — CI runners have 2 to 4 cores and run the
+timing-sensitive e2e tier. Tune any run with `-Dsurefire.forkCount=N`. Note that `-DforkCount=N`
+does **not** work: Surefire's own parameter is set from a literal in the POM, and a literal beats
+a user property, so the flag is silently accepted and ignored.
 
 ### Gradle
 
