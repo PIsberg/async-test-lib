@@ -50,6 +50,19 @@ Semantic versioning, with `-RCn` for release candidates:
 - **RC** (`1.8.0-RC1`) — pre-release for validation. RCs go to Central like any other version
   and cannot be re-cut once uploaded.
 
+`DetectorType` deserves a specific warning, because it does not look like public API and is.
+Removing a constant is **source-breaking for every consumer naming it** in an `excludes`
+attribute, and the break lands at compile time in their test sources, not at runtime in ours.
+1.7.3 removed `UNCOMMITTED_CHANGES` this way. It was deliberate, documented in the changelog as
+`Removed — … Breaking`, and enumerated in the japicmp excludes — but it shipped as a **PATCH**,
+which the rule above says is for bug fixes. The 2026-08-08 downstream sweep found the casualty:
+`skill3` failed to compile at eight sites, and only a source change let it move off 1.7.0-RC8.
+
+The rule going forward: a public-API removal is MINOR at the very least, and the changelog entry
+must show the compile error a consumer will see, not only the rationale for the removal. The
+downstream sweep (`.claude/skills/regression-test/`) is what turns this from a guess into a
+measurement — run it before calling a release safe to upgrade to.
+
 ## Where the version lives
 
 `pom.xml` is **canonical**. The Gradle build reads the version out of it at configuration
@@ -173,6 +186,23 @@ cosign verify-blob --bundle async-test-lib-1.7.0.jar.bundle \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   async-test-lib-1.7.0.jar
 ```
+
+### 7. Sweep the downstream repos
+
+Publishing proves the library builds. It does not prove the release can be *upgraded to*, which
+is a different claim and the one that has actually failed. Once Central has the artifact, run
+the downstream sweep — the `regression-test` skill in Claude Code, or by hand:
+
+```bash
+bash .claude/skills/regression-test/check-published-artifact.sh 1.7.0 --fix   # do this first
+bash .claude/skills/regression-test/find-consumers.sh
+```
+
+The preflight is not optional. Because `pom.xml` stays on the version it just released, any
+`mvn install` in this working tree leaves a jar in `~/.m2` wearing the release's coordinates,
+and every consumer on the machine then resolves uncommitted code while appearing to test the
+release. `.claude/skills/regression-test/SKILL.md` has the per-repo commands and the test tiers
+that matter.
 
 ## When a release fails
 
