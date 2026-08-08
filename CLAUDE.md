@@ -46,6 +46,7 @@ ecosystem.
 
 ```bash
 mvn test                                   # local tier (@Tag("e2e") engine tests excluded)
+mvn test -P fast                           # same 190 classes, ~3x faster (no jacoco, 0.5C forks)
 mvn test -P e2e                            # full suite: what CI runs (auto via env.CI)
 mvn -pl async-test-lib test                # one module
 mvn -Dtest=AsyncTestContextTest test       # one class
