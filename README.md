@@ -5,6 +5,7 @@
 **JUnit 5 concurrency stress testing — one annotation, 127 detectors**
 
 [![Maven Central](https://img.shields.io/maven-central/v/se.deversity.async-test-lib/async-test-lib)](https://central.sonatype.com/artifact/se.deversity.async-test-lib/async-test-lib)
+[![Javadoc](https://img.shields.io/badge/javadoc-latest-blue)](https://pisberg.github.io/async-test-lib/api/latest/)
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm_Noncommercial-blue.svg)](LICENSE)
 [![Build](https://github.com/PIsberg/async-test-lib/actions/workflows/tests.yml/badge.svg)](https://github.com/PIsberg/async-test-lib/actions/workflows/tests.yml)
 [![codecov](https://codecov.io/gh/PIsberg/async-test-lib/graph/badge.svg)](https://codecov.io/gh/PIsberg/async-test-lib)
@@ -430,6 +431,7 @@ See [intellij-plugin/README.md](intellij-plugin/README.md) for full instructions
 
 | Resource | Description |
 |----------|-------------|
+| [API reference](https://pisberg.github.io/async-test-lib/api/latest/) | Javadoc for every public type, one directory per release. [All versions](https://pisberg.github.io/async-test-lib/api/) |
 | [docs/USAGE.md](docs/USAGE.md) | Full `@AsyncTest` parameter reference, all detectors, examples |
 | [docs/CI_INTEGRATION.md](docs/CI_INTEGRATION.md) | GitHub Actions, Jenkins, GitLab CI setup |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Execution flow, detector phases, extension points |

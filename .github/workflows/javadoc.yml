@@ -1,0 +1,159 @@
+name: Publish Javadoc
+
+# Publishes the API reference to GitHub Pages, one directory per released version.
+#
+# Nothing generated is committed. One version of the javadoc is 19 MB across 982 files
+# and every release rewrites nearly all of them, so tracking it would add that much to
+# git history per release and put ~950 files of churn into every release diff.
+#
+# The site is rebuilt from scratch on every run and is reproducible from Maven Central:
+#   - the version being released is built from the checked-out source, because at tag
+#     time publish.yml has not finished syncing the new jars to Central yet
+#   - every earlier release is restored by unpacking its published -javadoc.jar, the
+#     same artifact consumers already download
+#
+# That is what lets history survive even though a Pages deploy replaces the whole site,
+# and it is why no gh-pages branch is needed.
+#
+# On a pull request that touches this workflow or its script, the site is assembled and
+# checked but not deployed — otherwise the first chance to find a mistake would be a tag.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    paths:
+      - '.github/workflows/javadoc.yml'
+      - '.github/scripts/build-javadoc-site.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# GitHub allows one Pages deployment at a time. Do not cancel a running deploy: a
+# half-applied site is worse than a queued one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build javadoc site
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: block
+          # repo1.maven.org is not optional here: it is where the javadoc of every
+          # earlier release comes from. The *.blob.core.windows.net and
+          # results-receiver endpoints are the artifact upload path used by
+          # upload-pages-artifact; blocking them fails the upload with ECONNREFUSED.
+          allowed-endpoints: >
+            *.blob.core.windows.net:443
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+            results-receiver.actions.githubusercontent.com:443
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Resolve project version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building javadoc for $version"
+
+      # Tests, coverage and the static-analysis gates are tests.yml's job. This one only
+      # needs compiled classes and sources, so everything else is switched off.
+      - name: Generate javadoc for this version
+        run: >
+          mvn -B -DskipTests
+          -Dpmd.skip=true -Dspotbugs.skip=true -Djacoco.skip=true -Dcyclonedx.skip=true
+          -Dlicense.mock.mode=true
+          package javadoc:javadoc
+
+      - name: Assemble the site
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: .github/scripts/build-javadoc-site.sh "$VERSION" site
+
+      # An empty or half-assembled site uploads and deploys perfectly happily, so check
+      # the entry points a README link actually depends on before handing it to Pages.
+      - name: Verify the assembled site
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          for page in \
+              site/index.html \
+              site/api/index.html \
+              site/api/latest/index.html \
+              "site/api/${VERSION}/index.html" \
+              "site/api/${VERSION}/async-test-lib/index.html" \
+              "site/api/${VERSION}/async-test-lib/se/deversity/asynctest/AsyncTest.html"; do
+              if [ ! -s "$page" ]; then
+                  echo "FATAL: expected page missing or empty: $page" >&2
+                  exit 1
+              fi
+          done
+          echo "Verified $(find site -name index.html | wc -l) index pages across \
+          $(find site/api -mindepth 1 -maxdepth 1 -type d | wc -l) version directories."
+
+      - name: Configure Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Upload the site artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.github.com:443
+            github.com:443
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

@@ -1,4 +1,9 @@
 target/
+# maven-javadoc-plugin drops an empty <module>/reports/apidocs next to target/ when it
+# resolves cross-module links outside a site build ("Creating fake javadoc directory").
+*/reports/
+# Local output of .github/scripts/build-javadoc-site.sh
+/site/
 .m2/
 .claude/settings.local.json
 .qwen/
