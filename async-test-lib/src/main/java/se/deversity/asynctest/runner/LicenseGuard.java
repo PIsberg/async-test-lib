@@ -41,6 +41,15 @@ public final class LicenseGuard {
 
     private static final Logger log = LoggerFactory.getLogger(LicenseGuard.class);
     private static final ConcurrentMap<Fingerprint, Boolean> CACHE = new ConcurrentHashMap<>();
+
+    /**
+     * Placeholder provider coordinates. They are the defaults on purpose — the account and
+     * product ids belong to the buyer's configuration, not to this artifact, so the library
+     * ships without them. What they must never do is combine with a supplied licence key to
+     * produce a silent grant, which is what {@link #requireProviderCoordinates} prevents.
+     */
+    private static final String DUMMY_KEYGEN_ACCOUNT = "dummy-account";
+    private static final String DUMMY_KEYGEN_PRODUCT = "dummy-prod";
     private static volatile boolean announcedCiMock = false;
     private static volatile boolean announcedGranted = false;
 
@@ -66,18 +75,18 @@ public final class LicenseGuard {
         boolean isCi = System.getenv("GITHUB_ACTIONS") != null || System.getenv("CI") != null;
         boolean lemonSqueezy = fp.licenseProvider == LicenseConfig.Provider.LEMONSQUEEZY;
 
-        // "Configured to validate for real" means something different per provider: Keygen
-        // authenticates the caller with an API key, LemonSqueezy has no caller credential at all
-        // and is scoped by store id plus the key under test. Reusing the Keygen test here would
-        // auto-mock a correctly configured LemonSqueezy run in CI and announce GRANTED without
-        // having validated anything.
-        boolean hasCredentials = lemonSqueezy
-            ? fp.lemonSqueezyStoreId != null && fp.licenseKey != null && !fp.licenseKey.isBlank()
-            : fp.keygenApiKey != null && !fp.keygenApiKey.isBlank();
+        boolean hasCredentials = assertsCommercialLicence(
+                lemonSqueezy, fp.licenseKey, fp.keygenApiKey, fp.lemonSqueezyStoreId);
 
         boolean mock   = fp.licenseMockMode
                        || Boolean.getBoolean("license.mock.mode")
                        || (isCi && !hasCredentials);
+
+        // A key supplied against placeholder provider coordinates cannot be validated by anyone.
+        // Granting in that state is the worst of the three outcomes: the customer believes they
+        // are licensed, the check never ran, and an invalid key is indistinguishable from a valid
+        // one. Fail closed and name the missing property.
+        if (!mock) requireProviderCoordinates(fp, lemonSqueezy);
         String licenseIdentity   = fp.licenseUserEmail;
         // Customers are never given an API token: Keygen's validate-key is a public endpoint,
         // but a placeholder bearer is rejected with 401 before the key is even evaluated, which
@@ -130,6 +139,84 @@ public final class LicenseGuard {
         }
     }
 
+    /**
+     * Whether this run is asserting a commercial licence, and therefore must be validated for
+     * real rather than auto-mocked in CI.
+     *
+     * <p>For both providers the answer is the licence key, not a caller credential. Keying this
+     * off {@code keygen.api.key} was wrong in the one case that matters most: customers are never
+     * issued an API token (see {@code keygenKeyForCheck} in {@link #performCheck}), so every
+     * paying customer's CI run reported "no credentials", auto-mocked, and announced GRANTED
+     * without the key they had just paid for ever being checked. An expired key, a revoked key
+     * and a fabricated key all passed, in the environment where builds actually run. An operator
+     * token still counts when one is present, which is what the library's own tooling uses.
+     *
+     * <p>Package-private so the decision can be tested directly. The surrounding path depends on
+     * environment variables that a unit test cannot set for its own JVM.
+     *
+     * @param lemonSqueezy       whether the LemonSqueezy provider is selected
+     * @param licenseKey         the resolved licence key, if any
+     * @param keygenApiKey       the resolved Keygen operator token, if any
+     * @param lemonSqueezyStoreId the resolved LemonSqueezy store id, if any
+     * @return {@code true} when the run must be validated against the provider
+     */
+    static boolean assertsCommercialLicence(boolean lemonSqueezy,
+                                            @Nullable String licenseKey,
+                                            @Nullable String keygenApiKey,
+                                            @Nullable Long lemonSqueezyStoreId) {
+        return lemonSqueezy
+            ? lemonSqueezyStoreId != null && notBlank(licenseKey)
+            : notBlank(licenseKey) || notBlank(keygenApiKey);
+    }
+
+    /**
+     * Rejects a run that supplies a licence key without the provider coordinates needed to check
+     * it, and says which property is missing.
+     *
+     * <p>This is a diagnosis fix rather than a security fix: measured against the provider, a key
+     * sent to the {@code dummy-account} placeholder is already refused, with
+     * {@code LICENSE DENIED: LICENSE_NOT_FOUND}. That message is actively misleading — it reads
+     * as "your key is invalid" when the truth is "you never told the library which account to ask",
+     * and it sends a paying customer to support about a key that is fine. Failing earlier, with
+     * the missing property named, costs nothing: every run rejected here would have been rejected
+     * a moment later anyway.
+     *
+     * <p>Runs with no key at all are untouched and still follow the documented no-key path.
+     *
+     * @param fp           the resolved licensing inputs for this run
+     * @param lemonSqueezy whether the LemonSqueezy provider is selected
+     * @throws SecurityException if a key is present but the provider is not fully configured
+     */
+    private static void requireProviderCoordinates(Fingerprint fp, boolean lemonSqueezy) {
+        if (!notBlank(fp.licenseKey)) return;   // no commercial claim to verify
+
+        String missing = null;
+        if (lemonSqueezy) {
+            if (fp.lemonSqueezyStoreId == null) missing = "-Dls.store.id=<storeId>";
+        } else if (DUMMY_KEYGEN_ACCOUNT.equals(fp.keygenAccountId)) {
+            missing = "-Dkeygen.account.id=<accountId>";
+        } else if (DUMMY_KEYGEN_PRODUCT.equals(fp.keygenProductId)) {
+            missing = "-Dkeygen.product.id=<productId>";
+        }
+        if (missing == null) return;
+
+        String msg = "LICENSE MISCONFIGURED: a license key was supplied but " + missing
+            + " was not, so the key cannot be validated against anything."
+            + "\n  The account and product ids come with your license; see docs/LICENSING.md."
+            + "\n  To run without a key while evaluating: -Dlicense.mock.mode=true";
+        log.error("{}", msg);
+        throw new SecurityException(msg);
+    }
+
+    /**
+     * {@return whether {@code s} is a non-null, non-blank string}
+     *
+     * @param s the value to test
+     */
+    private static boolean notBlank(@Nullable String s) {
+        return s != null && !s.isBlank();
+    }
+
     /** Test-only: reset the JVM-wide cache so a test can re-exercise check(). */
     static void resetForTesting() {
         CACHE.clear();
@@ -159,9 +246,9 @@ public final class LicenseGuard {
         static Fingerprint from(AsyncTestConfig c) {
             return new Fingerprint(
                 resolveProvider(),
-                resolve(c.keygenAccountId,   "keygen.account.id", "dummy-account"),
+                resolve(c.keygenAccountId,   "keygen.account.id", DUMMY_KEYGEN_ACCOUNT),
                 resolveOptional(c.keygenApiKey,      "keygen.api.key"),
-                resolve(c.keygenProductId,   "keygen.product.id", "dummy-prod"),
+                resolve(c.keygenProductId,   "keygen.product.id", DUMMY_KEYGEN_PRODUCT),
                 resolveOptional(c.lemonSqueezyStore, "ls.store.subdomain"),
                 resolveLong("ls.store.id"),
                 resolveLong("ls.product.id"),
