@@ -68,6 +68,22 @@
 
     <build>
         <plugins>
+            <!-- Stable JPMS name. Without it the module system derives one from the file name,
+                 so a modular consumer's requires clause breaks the first time the artifact is
+                 renamed. A full module-info would be stronger, but the baseline is JDK 21 and
+                 this artifact is test-scoped, so the automatic name is the useful floor. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>${maven-jar-plugin.version}</version>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Automatic-Module-Name>se.deversity.asynctest</Automatic-Module-Name>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
             <!-- The binary-compatibility gate applies to this module only: it is the artifact
                  with a published 1.6.0 predecessor. -->
             <plugin>
