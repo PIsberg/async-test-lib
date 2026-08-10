@@ -71,7 +71,7 @@ class AsyncAssertCoverageTest {
         CompletableFuture<String> never = new CompletableFuture<>();
         AsyncAssert.FutureCapture<String> cap = AsyncAssert.capture(never);
         AssertionError err = assertThrows(AssertionError.class, () -> cap.awaitDone(SHORT));
-        assertTrue(err.getMessage().contains("not met"));
+        assertTrue(err.getMessage().contains("Future did not complete within"), err.getMessage());
         assertFalse(cap.isComplete());
     }
 

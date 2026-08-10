@@ -64,6 +64,33 @@ class ConcurrencyRunnerTest {
         assertSame(e2, suppressed[0]);
     }
 
+    @Test
+    void buildMultiFailureError_identicalFailures_areGroupedWithACount() throws Exception {
+        // The same assertion failing on 3 of 4 threads is one defect, not three. Listing it
+        // three times buries the fourth, distinct failure — the one worth reading.
+        AssertionError a1 = new AssertionError("expected 400 but was 399");
+        AssertionError a2 = new AssertionError("expected 400 but was 399");
+        AssertionError a3 = new AssertionError("expected 400 but was 399");
+        AssertionError other = new AssertionError("lock still held");
+
+        AssertionError result = invokeBuildMultiFailure(List.of(a1, a2, a3, other));
+
+        String message = result.getMessage();
+        assertTrue(message.contains("4 concurrent thread(s) failed"),
+                "The thread count must stay the real one: " + message);
+        assertTrue(message.contains("x3"), "Repeats must be counted, not repeated: " + message);
+        assertEquals(2, message.lines().filter(line -> line.strip().startsWith("[")).count(),
+                "One line per distinct failure: " + message);
+        assertTrue(message.contains("lock still held"),
+                "The distinct failure must survive the grouping: " + message);
+        assertSame(a1, result.getCause());
+
+        Throwable[] suppressed = result.getSuppressed();
+        assertEquals(1, suppressed.length,
+                "One representative per distinct failure, so N identical traces do not drown the report");
+        assertSame(other, suppressed[0]);
+    }
+
     // ---- unwrap ----
 
     @Test

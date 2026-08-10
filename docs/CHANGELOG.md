@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — an assertion surface for detector findings
+
+- **`AsyncFindings`** — collects the structured `Violation` behind every finding and turns the
+  common checks into one call: `assertReported(name)`, `assertReported(name, severity)`,
+  `assertNotReported(name)`, `assertNone()`, plus `violations()` / `violationsFrom(name)` for
+  anything else. Until now the only programmatic hook was `onDetectorReport(String, String)`, so
+  a test asserting "this run reported a race" had to substring-match a report written for
+  humans. Collect around the run and assert after it, with `failOn = FailOn.NONE` so the
+  findings are assertable rather than fatal. See
+  [docs/ASYNC_ASSERT.md](ASYNC_ASSERT.md#asserting-on-detector-findings-asyncfindings-190).
+- **`AsyncTestListener.onViolation(Violation)`** — the structured callback the collector is
+  built on, fired for every finding alongside the two string callbacks. `Violation.attributes()`
+  keeps the full report text under the key `"report"`. Default no-op, so existing listeners are
+  unaffected. `AsyncTestListenerRegistry.fireViolation(violation)` publishes one directly.
+- **`AsyncAssert.awaitUntil(condition, timeout, description)`** and the four-argument overload:
+  the timeout message names the wait, counts the evaluations and reports the last exception the
+  condition threw, which is now attached as the `AssertionError`'s cause instead of discarded.
+- **`AsyncAssert.capture(CompletionStage)`**, and `FutureCapture.isSuccess()`, `isFailed()`,
+  `requireResult()`. `getResult()` returns `null` for "still running", "failed" and "completed
+  with null" alike; `requireResult()` separates the three.
+
+### Fixed
+
+- **`awaitUntil` no longer reports a timeout for a condition that was true inside the window.**
+  The condition is now evaluated after the last sleep rather than only before it, and a poll
+  interval longer than the remaining budget is clamped to it instead of slept through. It is
+  therefore always evaluated at least once, including at `Duration.ZERO`, where the old loop
+  could fail without ever calling it.
+- **Repeated worker failures are grouped in the aggregate message.** N threads hitting one
+  defect produced N identical lines and N identical suppressed stack traces, burying the
+  failures that differed. Identical failures now collapse to one line with a count (`x3`), and
+  one representative per distinct failure is attached. The thread count in the header is
+  unchanged.
+- `FutureCapture.awaitDone` timing out now says "Future did not complete within N ms" instead of
+  "Condition not met within N ms".
+
 ## [1.8.0] - 2026-08-08
 
 ### Added — Phase 20: five detectors for FFM, VarHandle, record and class-init hazards (127 → 132)
