@@ -104,8 +104,10 @@ public final class AsyncFindings implements AsyncTestListener, AutoCloseable {
      *
      * @param detectorName the detector's simple class name, or any substring of it
      * @return the matching findings, oldest first, as an immutable snapshot
+     * @throws IllegalArgumentException if {@code detectorName} is null or blank
      */
     public List<Violation> violationsFrom(String detectorName) {
+        requireDetectorName(detectorName);
         List<Violation> matches = new ArrayList<>();
         for (Violation v : violations) {
             if (matches(v, detectorName)) {
@@ -119,6 +121,7 @@ public final class AsyncFindings implements AsyncTestListener, AutoCloseable {
      * Asserts that the given detector reported at least one finding.
      *
      * @param detectorName the detector's simple class name, or any substring of it
+     * @throws IllegalArgumentException if {@code detectorName} is null or blank
      * @throws AssertionError if it reported nothing; the message lists what was reported instead
      */
     public void assertReported(String detectorName) {
@@ -133,9 +136,13 @@ public final class AsyncFindings implements AsyncTestListener, AutoCloseable {
      *
      * @param detectorName the detector's simple class name, or any substring of it
      * @param severity     the severity the finding must carry
+     * @throws IllegalArgumentException if {@code detectorName} is null or blank, or
+     *                                  {@code severity} is null
      * @throws AssertionError if no such finding was reported
      */
     public void assertReported(String detectorName, IssueSeverity severity) {
+        requireDetectorName(detectorName);
+        if (severity == null) throw new IllegalArgumentException("severity must not be null");
         for (Violation v : violations) {
             if (matches(v, detectorName) && v.severity() == severity) {
                 return;
@@ -149,6 +156,10 @@ public final class AsyncFindings implements AsyncTestListener, AutoCloseable {
      * Asserts that the given detector reported nothing.
      *
      * @param detectorName the detector's simple class name, or any substring of it
+     * @throws IllegalArgumentException if {@code detectorName} is null or blank. A name that
+     *                                  matches nothing must fail loudly here: silently passing
+     *                                  would turn a typo in the test into a green assertion that
+     *                                  can never fail.
      * @throws AssertionError if it reported anything; the message carries the first such finding
      */
     public void assertNotReported(String detectorName) {
@@ -190,8 +201,17 @@ public final class AsyncFindings implements AsyncTestListener, AutoCloseable {
         AsyncTestListenerRegistry.unregister(this);
     }
 
+    /**
+     * A blank name would match nothing, which reads as "that detector stayed silent" in
+     * {@link #assertNotReported(String)} — an assertion that can never fail is worse than none.
+     */
+    private static void requireDetectorName(String detectorName) {
+        if (detectorName == null || detectorName.isBlank()) {
+            throw new IllegalArgumentException("detectorName must not be null or blank");
+        }
+    }
+
     private static boolean matches(Violation violation, String detectorName) {
-        if (detectorName == null || detectorName.isBlank()) return false;
         String recorded = violation.detector().toLowerCase(Locale.ROOT);
         String wanted = detectorName.toLowerCase(Locale.ROOT);
         return recorded.contains(wanted);

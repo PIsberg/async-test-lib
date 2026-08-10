@@ -554,6 +554,7 @@ class CounterTest {
     static AsyncFindings findings;
 
     @BeforeAll static void collect() { findings = AsyncFindings.collect(); }
+    @AfterAll  static void release() { findings.close(); }   // its own method: runs even if the assertions below fail
 
     @AsyncTest(threads = 4, invocations = 50, failOn = FailOn.NONE)
     void increments() {
@@ -564,7 +565,6 @@ class CounterTest {
     static void theRaceIsReported() {
         findings.assertReported("RaceConditionDetector");
         findings.assertNotReported("DeadlockDetector");
-        findings.close();
     }
 }
 ```
@@ -581,9 +581,9 @@ Three rules make it work:
 
 - **`failOn = FailOn.NONE`** — at the default threshold the run fails before the assertion is reached.
 - **`@BeforeAll` / `@AfterAll`** — detectors analyse after the last round, so a finding cannot be observed from inside the test body, and JUnit does not order `@Test` against `@AsyncTest` methods.
-- **`close()`** — the listener registry is JVM-wide; an unclosed collector keeps recording findings from every later test in the same JVM. `clear()` resets one between tests.
+- **`close()` in its own `@AfterAll`** — the listener registry is JVM-wide; an unclosed collector keeps recording findings from every later test in the same JVM. Closing in the same method as the assertions leaks it whenever one of them fails, which is exactly when they exist to fail. `clear()` resets one between tests.
 
-Names are detector simple class names (`RaceConditionDetector`), matched case-insensitively by substring. A failed assertion lists what was reported instead. The same records reach any listener via `onViolation(Violation)`; the full report text stays under the `"report"` attribute.
+Names are detector simple class names (`RaceConditionDetector`), matched case-insensitively by substring; a null or blank name is rejected with `IllegalArgumentException` rather than matching nothing, so a typo cannot turn `assertNotReported` into an assertion that always passes. A failed assertion lists what was reported instead. The same records reach any listener via `onViolation(Violation)`; the full report text stays under the `"report"` attribute.
 
 `AsyncAssert` gained matching ergonomics: `awaitUntil(condition, timeout, "queue drained")` names the wait and reports the last exception the condition threw, and `FutureCapture.requireResult()` / `isSuccess()` / `isFailed()` separate "still running", "failed" and "completed with null", which `getResult() == null` conflated.
 

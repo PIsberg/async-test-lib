@@ -158,7 +158,13 @@ public final class AsyncTestListenerRegistry {
      * @param report the report content
      */
     public static void fireDetectorReport(String detectorName, String report) {
+        // One pass over the listener snapshot, and no Violation built when nobody is listening:
+        // with no listeners registered this method has no observable effect anyway.
+        if (LISTENERS.isEmpty()) {
+            return;
+        }
         IssueSeverity severity = parseSeverity(report);
+        Violation violation = toViolation(detectorName, severity, report);
         for (AsyncTestListener listener : LISTENERS) {
             try {
                 listener.onDetectorReport(detectorName, report);
@@ -170,8 +176,10 @@ public final class AsyncTestListenerRegistry {
             } catch (RuntimeException e) {
                 log.warn("AsyncTestListener.onStructuredReport threw: {}", e.toString(), e);
             }
+            if (violation != null) {
+                notifyViolation(listener, violation);
+            }
         }
-        fireViolation(toViolation(detectorName, severity, report));
     }
 
     /**
@@ -187,11 +195,16 @@ public final class AsyncTestListenerRegistry {
     public static void fireViolation(@Nullable Violation violation) {
         if (violation == null) return;
         for (AsyncTestListener listener : LISTENERS) {
-            try {
-                listener.onViolation(violation);
-            } catch (RuntimeException e) {
-                log.warn("AsyncTestListener.onViolation threw: {}", e.toString(), e);
-            }
+            notifyViolation(listener, violation);
+        }
+    }
+
+    /** One listener's {@code onViolation}, contained: a thrower must not silence its peers. */
+    private static void notifyViolation(AsyncTestListener listener, Violation violation) {
+        try {
+            listener.onViolation(violation);
+        } catch (RuntimeException e) {
+            log.warn("AsyncTestListener.onViolation threw: {}", e.toString(), e);
         }
     }
 

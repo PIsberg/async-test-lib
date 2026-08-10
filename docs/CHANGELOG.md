@@ -15,7 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   anything else. Until now the only programmatic hook was `onDetectorReport(String, String)`, so
   a test asserting "this run reported a race" had to substring-match a report written for
   humans. Collect around the run and assert after it, with `failOn = FailOn.NONE` so the
-  findings are assertable rather than fatal. See
+  findings are assertable rather than fatal. A null or blank detector name is rejected with
+  `IllegalArgumentException` rather than matching nothing, which would make `assertNotReported`
+  pass forever on a typo. See
   [docs/ASYNC_ASSERT.md](ASYNC_ASSERT.md#asserting-on-detector-findings-asyncfindings-190).
 - **`AsyncTestListener.onViolation(Violation)`** — the structured callback the collector is
   built on, fired for every finding alongside the two string callbacks. `Violation.attributes()`

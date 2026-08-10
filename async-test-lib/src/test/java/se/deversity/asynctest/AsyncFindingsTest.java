@@ -114,6 +114,26 @@ class AsyncFindingsTest {
     }
 
     @Test
+    void aBlankDetectorName_isRejectedRatherThanMatchingNothing() {
+        try (AsyncFindings findings = AsyncFindings.collect()) {
+            AsyncTestListenerRegistry.fireDetectorReport("RaceConditionDetector", RACE_REPORT);
+
+            // assertNotReported is the dangerous direction: a name that matches nothing looks
+            // exactly like "that detector stayed silent", so a typo would pass forever.
+            assertThrows(IllegalArgumentException.class, () -> findings.assertNotReported(null));
+            assertThrows(IllegalArgumentException.class, () -> findings.assertNotReported(""));
+            assertThrows(IllegalArgumentException.class, () -> findings.assertNotReported("   "));
+
+            assertThrows(IllegalArgumentException.class, () -> findings.assertReported(null));
+            assertThrows(IllegalArgumentException.class, () -> findings.violationsFrom(null));
+            assertThrows(IllegalArgumentException.class,
+                    () -> findings.assertReported(null, IssueSeverity.CRITICAL));
+            assertThrows(IllegalArgumentException.class,
+                    () -> findings.assertReported("RaceConditionDetector", null));
+        }
+    }
+
+    @Test
     void violations_isAnImmutableSnapshot() {
         try (AsyncFindings findings = AsyncFindings.collect()) {
             AsyncTestListenerRegistry.fireDetectorReport("RaceConditionDetector", RACE_REPORT);

@@ -105,7 +105,9 @@ threshold the run fails before the assertion is reached.
 
 Detector names are simple class names, as the runner keys its reports (`RaceConditionDetector`,
 `BusyWaitDetector`). Matching is case-insensitive and accepts any substring, so `"RaceCondition"`
-matches. A failed assertion lists what was reported instead.
+matches. A null or blank name is rejected with `IllegalArgumentException` rather than matching
+nothing: silently matching nothing would make `assertNotReported` pass forever on a typo. A failed
+assertion lists what was reported instead.
 
 Because the registry is JVM-wide, close the collector (try-with-resources or `@AfterAll`) or it
 keeps recording findings from every later test in the same JVM. `clear()` resets one collector
