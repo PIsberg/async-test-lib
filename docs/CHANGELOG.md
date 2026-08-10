@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-08-10
+
 ### Added — three virtual-thread-era detectors (Phase 21)
 
 - **`VIRTUAL_THREAD_POOLING`** (`VirtualThreadPoolingDetector`) — flags virtual threads being
