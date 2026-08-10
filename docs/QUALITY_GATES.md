@@ -303,13 +303,20 @@ never rename or remove them without flagging the dashboard change. Full guide:
 
 `async-test-lib/src/fuzz/java/se/deversity/asynctest/fuzz/` holds standalone Jazzer harnesses,
 excluded from pitest. They exercise parsing and config surfaces rather than the concurrency engine.
-`fuzzing.yml` runs them weekly against the Jazzer CLI.
+`fuzzing.yml` runs them every Monday against the Jazzer CLI.
+
+That schedule only started doing real work on 2026-08-10. Every scheduled run from at least
+2026-06-29 onwards failed at the "Download Jazzer CLI" step with `curl: (7) Failed to connect to
+release-assets.githubusercontent.com`, because harden-runner's egress allowlist did not include the
+host GitHub serves release assets from. The fuzz step is `continue-on-error`, but the download step
+is not, so the job went red every week and nothing was fuzzed. If a Jazzer version bump ever makes
+this workflow red again, check the allowlist before the code.
 
 They sit in `src/fuzz/java` rather than `src/test/java` for one reason: OpenSSF Scorecard's fuzzing
 check discards every path containing `/src/test/` before it scans for the
 `com.code_intelligence.jazzer.api.FuzzedDataProvider` import, so a harness kept under the test root
-is invisible to it and the repo scores 0 on Fuzzing while being fuzzed every Monday. The filter is
-in Scorecard's `checks/fileparser/listing.go`, in `isTestdataFile`.
+is invisible to it and the repo scores 0 on Fuzzing however much fuzzing actually happens. The
+filter is in Scorecard's `checks/fileparser/listing.go`, in `isTestdataFile`.
 
 The directory is wired in as an extra test-source root twice, once per build, and the two must stay
 in agreement: `build-helper-maven-plugin`'s `add-fuzz-test-source` execution in

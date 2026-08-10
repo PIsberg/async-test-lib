@@ -28,6 +28,11 @@ jobs:
             github.com:443
             github-releases.githubusercontent.com:443
             objects.githubusercontent.com:443
+            # GitHub serves release assets from release-assets.githubusercontent.com. Without
+            # it the Jazzer CLI download dies on "curl: (7) Failed to connect", the fuzz step
+            # is skipped, and the job fails. Every scheduled run from at least 2026-06-29 to
+            # 2026-08-10 died here, so nothing was fuzzed in that window.
+            release-assets.githubusercontent.com:443
             repo.maven.apache.org:443
             repo1.maven.org:443
 
