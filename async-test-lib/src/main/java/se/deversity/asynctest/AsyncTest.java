@@ -1975,6 +1975,48 @@ public @interface AsyncTest {
 
     boolean detectStaticInitDeadlock() default true;
 
+    /**
+     * Enable detection of virtual threads being pooled or reused across tasks — JEP 444's
+     * central anti-pattern. See
+     * {@link se.deversity.asynctest.diagnostics.VirtualThreadPoolingDetector}.
+     * @since 1.8.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#VIRTUAL_THREAD_POOLING} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectVirtualThreadPooling() default true;
+
+    /**
+     * Enable detection of thread-per-task execution on platform threads — unbounded OS-thread
+     * creation where virtual threads (or a bounded pool) belong. See
+     * {@link se.deversity.asynctest.diagnostics.PlatformThreadPerTaskDetector}.
+     * @since 1.8.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#PLATFORM_THREAD_PER_TASK} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectPlatformThreadPerTask() default true;
+
+    /**
+     * Enable detection of SplittableRandom and JEP 356 RandomGenerator instances shared across
+     * threads. See
+     * {@link se.deversity.asynctest.diagnostics.SharedSplittableRandomDetector}.
+     * @since 1.8.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#SHARED_SPLITTABLE_RANDOM} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectSharedSplittableRandom() default true;
+
     // ============= License Gating (Integration) =============
 
     /**

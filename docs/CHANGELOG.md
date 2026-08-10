@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — three virtual-thread-era detectors (Phase 21)
+
+- **`VIRTUAL_THREAD_POOLING`** (`VirtualThreadPoolingDetector`) — flags virtual threads being
+  pooled or reused across tasks, the anti-pattern JEP 444 calls out directly. A registered
+  `ThreadPoolExecutor` whose factory manufactures virtual threads is identified by probing the
+  factory with one unstarted, discarded thread; a virtual thread observed executing more than
+  one recorded task is flagged as reuse. Pooling virtual threads caps concurrency at the pool
+  size and carries `ThreadLocal` state across tasks.
+- **`PLATFORM_THREAD_PER_TASK`** (`PlatformThreadPerTaskDetector`) — flags thread-per-task
+  execution on platform threads: a registered `newThreadPerTaskExecutor` backed by a platform
+  factory (learned from one no-op probe task), and recorded platform-thread churn of 16+
+  creations with at least half already terminated. Long-lived pool workers stay silent; the
+  fix is virtual threads or a bounded pool.
+- **`SHARED_SPLITTABLE_RANDOM`** (`SharedSplittableRandomDetector`) — flags `SplittableRandom`
+  and JEP 356 `RandomGenerator` instances accessed from more than one thread. Unlike
+  `java.util.Random` (thread-safe but contended), these corrupt silently: the state update is
+  a plain read-modify-write. `Random` subclasses are excluded — they belong to
+  `SHARED_RANDOM`, `SHARED_SECURE_RANDOM`, and `THREAD_LOCAL_RANDOM_MISUSE`.
+
+All three follow the record-and-analyze SPI shape, ship with `AsyncTestContext` accessors
+(`virtualThreadPoolingDetector()`, `platformThreadPerTaskDetector()`,
+`sharedSplittableRandomDetector()`), and are on by default under `detectAll`. The detector
+count moves from 132 to 135.
+
 ### Added — an assertion surface for detector findings
 
 - **`AsyncFindings`** — collects the structured `Violation` behind every finding and turns the

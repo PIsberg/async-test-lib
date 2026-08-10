@@ -266,6 +266,9 @@ class PresetResolutionTest {
         @Override public boolean detectVarHandleNonAtomicUpdate() { return def("detectVarHandleNonAtomicUpdate"); }
         @Override public boolean detectRecordMutableComponentLeak() { return def("detectRecordMutableComponentLeak"); }
         @Override public boolean detectStaticInitDeadlock() { return def("detectStaticInitDeadlock"); }
+        @Override public boolean detectVirtualThreadPooling() { return def("detectVirtualThreadPooling"); }
+        @Override public boolean detectPlatformThreadPerTask() { return def("detectPlatformThreadPerTask"); }
+        @Override public boolean detectSharedSplittableRandom() { return def("detectSharedSplittableRandom"); }
         @Override public boolean enableBenchmarking() { return def("enableBenchmarking"); }
         @Override public double benchmarkRegressionThreshold() { return def("benchmarkRegressionThreshold"); }
         @Override public boolean failOnBenchmarkRegression() { return def("failOnBenchmarkRegression"); }

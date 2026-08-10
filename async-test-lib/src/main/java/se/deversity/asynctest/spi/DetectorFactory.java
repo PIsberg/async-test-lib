@@ -37,7 +37,7 @@ public interface DetectorFactory {
      * Whether this detector is active for the given test configuration.
      *
      * <p>{@code AsyncTestConfig} carries one boolean field per legacy detector
-     * (132 fields) — each factory's adapter consults its own flag here. There is
+     * (135 fields) — each factory's adapter consults its own flag here. There is
      * no automatic mapping from {@link DetectorType} to a boolean field, so this
      * method must be implemented by every concrete factory. Returning {@code true}
      * unconditionally is acceptable for detectors that should always run.

@@ -72,6 +72,9 @@ a performance budget) are annotated individually and appear below.
 ### se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/NotifyWithoutMonitorDetectorTest.java
 
+### se.deversity.asynctest.diagnostics.PlatformThreadPerTaskDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/PlatformThreadPerTaskDetectorTest.java
+
 ### se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/RecordMutableComponentLeakDetectorTest.java
 
@@ -105,6 +108,9 @@ a performance budget) are annotated individually and appear below.
 ### se.deversity.asynctest.diagnostics.SharedSecureRandomDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/SharedSecureRandomDetectorTest.java
 
+### se.deversity.asynctest.diagnostics.SharedSplittableRandomDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/SharedSplittableRandomDetectorTest.java
+
 ### se.deversity.asynctest.diagnostics.SharedStatefulCryptoDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/SharedStatefulCryptoDetectorTest.java
 
@@ -125,6 +131,9 @@ a performance budget) are annotated individually and appear below.
 
 ### se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/VarHandleNonAtomicUpdateDetectorTest.java
+
+### se.deversity.asynctest.diagnostics.VirtualThreadPoolingDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/VirtualThreadPoolingDetectorTest.java
 
 ### se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/WeakHashMapSharedDetectorTest.java
@@ -183,6 +192,10 @@ a performance budget) are annotated individually and appear below.
 - **Strategy**: SYNCHRONIZED
 - **Note**: Attempts list mutated under a single intrinsic monitor on the list itself; sampling Thread.holdsLock requires no locking.
 
+### se.deversity.asynctest.diagnostics.PlatformThreadPerTaskDetector
+- **Strategy**: OTHER
+- **Note**: Created threads accumulate in a ConcurrentLinkedQueue; probe bookkeeping in ConcurrentHashMap; counters are AtomicInteger. analyze() reads a moment-in-time snapshot and is safe to call concurrently with recording.
+
 ### se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector
 - **Strategy**: OTHER
 - **Note**: Per-instance state in ConcurrentHashMap keyed on identity hash; the first-sight fingerprint map is populated once under computeIfAbsent and read-only afterwards; thread sets are ConcurrentHashMap.newKeySet(); tracking is capped by MAX_INSTANCES with a LongAdder drop counter.
@@ -227,6 +240,10 @@ a performance budget) are annotated individually and appear below.
 - **Strategy**: OTHER
 - **Note**: Per-instance state in ConcurrentHashMap with double-check (get-then-computeIfAbsent) hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().
 
+### se.deversity.asynctest.diagnostics.SharedSplittableRandomDetector
+- **Strategy**: OTHER
+- **Note**: Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().
+
 ### se.deversity.asynctest.diagnostics.SharedStatefulCryptoDetector
 - **Strategy**: OTHER
 - **Note**: Per-instance state in ConcurrentHashMap with double-check (get-then-computeIfAbsent) hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().
@@ -254,6 +271,10 @@ a performance budget) are annotated individually and appear below.
 ### se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector
 - **Strategy**: OTHER
 - **Note**: Per-location state in ConcurrentHashMap keyed on a (handle, receiver) identity record; pending reads are a per-thread ConcurrentHashMap entry; counters are LongAdder and detail lists are CopyOnWriteArrayList bounded by MAX_DETAILS.
+
+### se.deversity.asynctest.diagnostics.VirtualThreadPoolingDetector
+- **Strategy**: OTHER
+- **Note**: Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id map values use AtomicInteger counters and ConcurrentHashMap.newKeySet().
 
 ### se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector
 - **Strategy**: OTHER

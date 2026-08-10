@@ -136,6 +136,9 @@ import se.deversity.asynctest.diagnostics.SharedMemorySegmentRaceDetector;
 import se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector;
 import se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector;
 import se.deversity.asynctest.diagnostics.StaticInitDeadlockDetector;
+import se.deversity.asynctest.diagnostics.VirtualThreadPoolingDetector;
+import se.deversity.asynctest.diagnostics.PlatformThreadPerTaskDetector;
+import se.deversity.asynctest.diagnostics.SharedSplittableRandomDetector;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICallersOnly;
 import se.deversity.vibetags.annotations.AICore;
@@ -358,6 +361,9 @@ public final class AsyncTestContext {
     final @Nullable VarHandleNonAtomicUpdateDetector      varHandleNonAtomicUpdateDetector;
     final @Nullable RecordMutableComponentLeakDetector    recordMutableComponentLeakDetector;
     final @Nullable StaticInitDeadlockDetector            staticInitDeadlockDetector;
+    final @Nullable VirtualThreadPoolingDetector          virtualThreadPoolingDetector;
+    final @Nullable PlatformThreadPerTaskDetector         platformThreadPerTaskDetector;
+    final @Nullable SharedSplittableRandomDetector        sharedSplittableRandomDetector;
 
     // ---- Agent-telemetry bridge target (1.7.0+) ----
     // Exposed via atomicityValidator() so se.deversity.asynctest.telemetry.TelemetryBridge
@@ -504,6 +510,9 @@ public final class AsyncTestContext {
         varHandleNonAtomicUpdateDetector       = registry.varHandleNonAtomicUpdateDetector;
         recordMutableComponentLeakDetector     = registry.recordMutableComponentLeakDetector;
         staticInitDeadlockDetector             = registry.staticInitDeadlockDetector;
+        virtualThreadPoolingDetector           = registry.virtualThreadPoolingDetector;
+        platformThreadPerTaskDetector          = registry.platformThreadPerTaskDetector;
+        sharedSplittableRandomDetector         = registry.sharedSplittableRandomDetector;
         // Agent-telemetry bridge target
         atomicityValidator                     = registry.atomicityValidator;
 
@@ -2658,6 +2667,54 @@ public final class AsyncTestContext {
      */
     public static StaticInitDeadlockDetector staticInitDeadlockDetector() {
         return require("detectStaticInitDeadlock", c -> c.staticInitDeadlockDetector);
+    }
+
+    /**
+     * Returns the {@link VirtualThreadPoolingDetector} for the current test.
+     *
+     * <p>Register executors with {@code registerExecutor} and call {@code recordTaskExecution}
+     * once from inside each task; the detector flags pooled executors that manufacture virtual
+     * threads and virtual threads observed running more than one task.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVirtualThreadPooling = false}
+     * @since 1.8.0
+     *
+     * @return the {@link VirtualThreadPoolingDetector} for the active {@code @AsyncTest} context
+     */
+    public static VirtualThreadPoolingDetector virtualThreadPoolingDetector() {
+        return require("detectVirtualThreadPooling", c -> c.virtualThreadPoolingDetector);
+    }
+
+    /**
+     * Returns the {@link PlatformThreadPerTaskDetector} for the current test.
+     *
+     * <p>Record each thread the test creates with {@code recordThreadCreated}, and register
+     * executors with {@code registerExecutor}; the detector flags platform-thread churn and
+     * thread-per-task executors backed by platform threads.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectPlatformThreadPerTask = false}
+     * @since 1.8.0
+     *
+     * @return the {@link PlatformThreadPerTaskDetector} for the active {@code @AsyncTest} context
+     */
+    public static PlatformThreadPerTaskDetector platformThreadPerTaskDetector() {
+        return require("detectPlatformThreadPerTask", c -> c.platformThreadPerTaskDetector);
+    }
+
+    /**
+     * Returns the {@link SharedSplittableRandomDetector} for the current test.
+     *
+     * <p>Register generators with {@code registerGenerator} and record each use with
+     * {@code recordAccess}; the detector flags SplittableRandom and JEP 356 generators
+     * accessed from more than one thread.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectSharedSplittableRandom = false}
+     * @since 1.8.0
+     *
+     * @return the {@link SharedSplittableRandomDetector} for the active {@code @AsyncTest} context
+     */
+    public static SharedSplittableRandomDetector sharedSplittableRandomDetector() {
+        return require("detectSharedSplittableRandom", c -> c.sharedSplittableRandomDetector);
     }
 
     // ---- Phase 1 / Phase 3 detector accessors ----

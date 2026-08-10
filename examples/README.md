@@ -172,6 +172,9 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 133 | [Flow Publisher Concurrency](133-flow-publisher-concurrency/) | `FlowPublisherConcurrencyDetector` | Reactive Streams rule 1.3 requires serial signals; a publisher fanning `onNext` out to a pool corrupts every lock-free subscriber written against it | 🔴 Critical |
 | 134 | [Record Mutable Component Leak](134-record-mutable-component-leak/) | `RecordMutableComponentLeakDetector` | Records are *shallowly* immutable — a `List` component shared across threads is a live view, not the snapshot the record appears to be | 🟡 High |
 | 135 | [Asserting on Findings](135-asserting-on-findings/) | *(tour, not a bug)* | `AsyncFindings` collects the structured `Violation` behind every finding, so a test can assert that a detector fired instead of substring-matching its report; also the described `awaitUntil` and `FutureCapture.requireResult` | 🟢 Low |
+| 136 | [Virtual Thread Pooling](136-virtual-thread-pooling/) | `VirtualThreadPoolingDetector` | `newFixedThreadPool(4, Thread.ofVirtual().factory())` keeps the cap, the queue and the recycled workers — JEP 444's "never pool virtual threads", verbatim | 🟡 High |
+| 137 | [Platform Thread-Per-Task](137-platform-thread-per-task/) | `PlatformThreadPerTaskDetector` | `new Thread(task).start()` per webhook costs an OS thread and ~1 MB of stack each — survives the unit test, collapses at the production burst | 🟡 High |
+| 138 | [Shared SplittableRandom](138-shared-splittable-random/) | `SharedSplittableRandomDetector` | `SplittableRandom` shared across workers interleaves a plain read-modify-write — duplicated values and broken statistics with no exception to notice | 🟡 High |
 
 > Examples 114–119 target JDK 24–26 concurrency features. The detectors work off recorded
 > `String`-key + `Thread` events, so they compile and run on the Java 21 baseline while

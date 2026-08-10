@@ -133,6 +133,9 @@ import se.deversity.asynctest.diagnostics.SharedMemorySegmentRaceDetector;
 import se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector;
 import se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector;
 import se.deversity.asynctest.diagnostics.StaticInitDeadlockDetector;
+import se.deversity.asynctest.diagnostics.VirtualThreadPoolingDetector;
+import se.deversity.asynctest.diagnostics.PlatformThreadPerTaskDetector;
+import se.deversity.asynctest.diagnostics.SharedSplittableRandomDetector;
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
@@ -337,6 +340,9 @@ final class DetectorRegistry {
     final @Nullable VarHandleNonAtomicUpdateDetector      varHandleNonAtomicUpdateDetector;
     final @Nullable RecordMutableComponentLeakDetector    recordMutableComponentLeakDetector;
     final @Nullable StaticInitDeadlockDetector            staticInitDeadlockDetector;
+    final @Nullable VirtualThreadPoolingDetector          virtualThreadPoolingDetector;
+    final @Nullable PlatformThreadPerTaskDetector         platformThreadPerTaskDetector;
+    final @Nullable SharedSplittableRandomDetector        sharedSplittableRandomDetector;
 
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
@@ -524,6 +530,9 @@ final class DetectorRegistry {
         varHandleNonAtomicUpdateDetector   = cfg.detectVarHandleNonAtomicUpdate   ? new VarHandleNonAtomicUpdateDetector()   : null;
         recordMutableComponentLeakDetector = cfg.detectRecordMutableComponentLeak ? new RecordMutableComponentLeakDetector() : null;
         staticInitDeadlockDetector         = cfg.detectStaticInitDeadlock         ? new StaticInitDeadlockDetector()         : null;
+        virtualThreadPoolingDetector       = cfg.detectVirtualThreadPooling       ? new VirtualThreadPoolingDetector()       : null;
+        platformThreadPerTaskDetector      = cfg.detectPlatformThreadPerTask      ? new PlatformThreadPerTaskDetector()      : null;
+        sharedSplittableRandomDetector     = cfg.detectSharedSplittableRandom     ? new SharedSplittableRandomDetector()     : null;
     }
 
     /**
@@ -992,6 +1001,18 @@ final class DetectorRegistry {
         ifIssue(staticInitDeadlockDetector,
                 StaticInitDeadlockDetector::analyze,
                 StaticInitDeadlockDetector.Report::hasIssues, out);
+
+        ifIssue(virtualThreadPoolingDetector,
+                VirtualThreadPoolingDetector::analyze,
+                VirtualThreadPoolingDetector.Report::hasIssues, out);
+
+        ifIssue(platformThreadPerTaskDetector,
+                PlatformThreadPerTaskDetector::analyze,
+                PlatformThreadPerTaskDetector.Report::hasIssues, out);
+
+        ifIssue(sharedSplittableRandomDetector,
+                SharedSplittableRandomDetector::analyze,
+                SharedSplittableRandomDetector.Report::hasIssues, out);
 
         return out;
     }

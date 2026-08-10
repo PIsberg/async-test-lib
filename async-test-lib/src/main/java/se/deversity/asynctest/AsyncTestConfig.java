@@ -360,6 +360,12 @@ public final class AsyncTestConfig {
     public final boolean detectRecordMutableComponentLeak;
     /** Resolved value of {@link AsyncTest#detectStaticInitDeadlock()} for this run. */
     public final boolean detectStaticInitDeadlock;
+    /** Resolved value of {@link AsyncTest#detectVirtualThreadPooling()} for this run. */
+    public final boolean detectVirtualThreadPooling;
+    /** Resolved value of {@link AsyncTest#detectPlatformThreadPerTask()} for this run. */
+    public final boolean detectPlatformThreadPerTask;
+    /** Resolved value of {@link AsyncTest#detectSharedSplittableRandom()} for this run. */
+    public final boolean detectSharedSplittableRandom;
 
     // ---- Benchmarking ----
     /** Resolved value of {@link AsyncTest#enableBenchmarking()} for this run. */
@@ -532,6 +538,9 @@ public final class AsyncTestConfig {
         detectVarHandleNonAtomicUpdate   = b.detectVarHandleNonAtomicUpdate;
         detectRecordMutableComponentLeak = b.detectRecordMutableComponentLeak;
         detectStaticInitDeadlock         = b.detectStaticInitDeadlock;
+        detectVirtualThreadPooling       = b.detectVirtualThreadPooling;
+        detectPlatformThreadPerTask      = b.detectPlatformThreadPerTask;
+        detectSharedSplittableRandom     = b.detectSharedSplittableRandom;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -741,6 +750,9 @@ public final class AsyncTestConfig {
             .detectVarHandleNonAtomicUpdate(ann.detectVarHandleNonAtomicUpdate())
             .detectRecordMutableComponentLeak(ann.detectRecordMutableComponentLeak())
             .detectStaticInitDeadlock(ann.detectStaticInitDeadlock())
+            .detectVirtualThreadPooling(ann.detectVirtualThreadPooling())
+            .detectPlatformThreadPerTask(ann.detectPlatformThreadPerTask())
+            .detectSharedSplittableRandom(ann.detectSharedSplittableRandom())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -908,6 +920,9 @@ public final class AsyncTestConfig {
         private boolean detectVarHandleNonAtomicUpdate   = false;
         private boolean detectRecordMutableComponentLeak = false;
         private boolean detectStaticInitDeadlock         = false;
+        private boolean detectVirtualThreadPooling       = false;
+        private boolean detectPlatformThreadPerTask      = false;
+        private boolean detectSharedSplittableRandom     = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -1761,6 +1776,24 @@ public final class AsyncTestConfig {
          */
         public Builder detectStaticInitDeadlock(boolean v)             { detectStaticInitDeadlock = v; return this; }
         /**
+         * Sets {@link AsyncTestConfig#detectVirtualThreadPooling}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectVirtualThreadPooling(boolean v)           { detectVirtualThreadPooling = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectPlatformThreadPerTask}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectPlatformThreadPerTask(boolean v)          { detectPlatformThreadPerTask = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectSharedSplittableRandom}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectSharedSplittableRandom(boolean v)         { detectSharedSplittableRandom = v; return this; }
+        /**
          * Sets {@link AsyncTestConfig#enableBenchmarking}.
          * @param v the value to use
          * @return this builder
@@ -2016,6 +2049,9 @@ public final class AsyncTestConfig {
             detectVarHandleNonAtomicUpdate = (detectAll || detectVarHandleNonAtomicUpdate) && !excludes.contains(DetectorType.VAR_HANDLE_NON_ATOMIC_UPDATE);
             detectRecordMutableComponentLeak = (detectAll || detectRecordMutableComponentLeak) && !excludes.contains(DetectorType.RECORD_MUTABLE_COMPONENT_LEAK);
             detectStaticInitDeadlock = (detectAll || detectStaticInitDeadlock) && !excludes.contains(DetectorType.STATIC_INIT_DEADLOCK);
+            detectVirtualThreadPooling = (detectAll || detectVirtualThreadPooling) && !excludes.contains(DetectorType.VIRTUAL_THREAD_POOLING);
+            detectPlatformThreadPerTask = (detectAll || detectPlatformThreadPerTask) && !excludes.contains(DetectorType.PLATFORM_THREAD_PER_TASK);
+            detectSharedSplittableRandom = (detectAll || detectSharedSplittableRandom) && !excludes.contains(DetectorType.SHARED_SPLITTABLE_RANDOM);
             return new AsyncTestConfig(this);
         }
     }

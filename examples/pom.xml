@@ -144,5 +144,8 @@
         <module>133-flow-publisher-concurrency</module>
         <module>134-record-mutable-component-leak</module>
         <module>135-asserting-on-findings</module>
+        <module>136-virtual-thread-pooling</module>
+        <module>137-platform-thread-per-task</module>
+        <module>138-shared-splittable-random</module>
     </modules>
 </project>
