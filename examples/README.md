@@ -4,17 +4,24 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 
 ## What these prove, and what they do not
 
-Each example ships the buggy service, a sequential `@Test` that passes on it, and an `@AsyncTest`
-that exposes the bug. **The `@AsyncTest` demonstrations are `@Disabled`**: 98 of the 127 examples
-have one. That is deliberate: they demonstrate code that fails, so enabling them would make the
-examples pipeline permanently red. Each carries a reason saying so, and removing the annotation is
-the intended way to watch the bug surface.
+Most examples ship the buggy service, a sequential `@Test` that passes on it, and an
+`@AsyncTest` that exposes the bug. **Those `@AsyncTest` demonstrations are `@Disabled`**: 99 of
+the 133 examples have one. That is deliberate: they demonstrate code that fails, so enabling
+them would make the examples pipeline permanently red. Each carries a reason saying so, and
+removing the annotation is the intended way to watch the bug surface.
 
-The consequence is worth stating plainly rather than leaving to inference. The examples pipeline
-builds all 127 and runs their enabled tests, so it proves the examples **compile and keep working
-against the current library**. It does not prove that any detector fires. The check that does that
-is `DetectionCoverageTest` in `async-test-lib`, which runs real buggy code through a real
-`@AsyncTest` and asserts on the detector reporting channel itself.
+The newer examples take a different shape, and it is the better one. Rather than a disabled
+demonstration, they drive the detector's own recording API from ordinary `@Test` methods and
+assert on the report: clean usage stays silent, the buggy pattern is flagged, and the severity
+is pinned. Those tests **run in CI**, so they prove the detector still behaves as documented
+rather than only that the example compiles. Examples 129–134 are written this way.
+
+The distinction matters when reading the pipeline's green tick. For the disabled majority, the
+examples pipeline builds all 133 and runs their enabled tests, so it proves those examples
+**compile and keep working against the current library** — it does not prove any detector
+fires. The check that does that for the library itself is `DetectionCoverageTest` in
+`async-test-lib`, which runs real buggy code through a real `@AsyncTest` and asserts on the
+detector reporting channel.
 
 The other thing these examples make concrete is how a detector gets its data. Only a few, such as
 `DeadlockDetector`, observe the JVM directly and need nothing from you. Most need the test body to
@@ -157,6 +164,13 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 125 | [High-Contention Atomic](125-high-contention-atomic/) | `HighContentionAtomicDetector` | One hot `AtomicLong` — correct, but CAS-retry bound; advisory pointing at `LongAdder` for counters that are only ever totalled | 🟢 Low |
 | 126 | [Shared JSON Mapper Reconfig](126-shared-json-mapper-reconfig/) | `SharedJsonMapperReconfigDetector` | Sharing the mapper is recommended; *reconfiguring* it after other threads are serializing through it drops caches mid-flight | 🔴 Critical |
 | 127 | [Shared SecureRandom](127-shared-secure-random/) | `SharedSecureRandomDetector` | One `SecureRandom` behind every token — thread safety is provider-dependent, and a provider that does not synchronize can issue duplicate session tokens | 🔴 Critical |
+| 128 | [Kotlin Lost Update](128-kotlin-lost-update/) | `RaceConditionDetector` | Kotlin's `var` compiles to the same non-atomic read-modify-write Java's does — `count++` in a coroutine loses updates exactly as it would on a JVM thread | 🔴 Critical |
+| 129 | [Confined Arena Thread Escape](129-confined-arena-thread-escape/) | `ConfinedArenaThreadEscapeDetector` | A segment from `Arena.ofConfined()` is handed to a pool thread — `WrongThreadException` if you are lucky, a read of freed memory after the arena closes if you are not | 🔴 Critical |
+| 130 | [Shared MemorySegment Race](130-shared-memory-segment-race/) | `SharedMemorySegmentRaceDetector` | `Arena.ofShared()` permits every thread to access the segment; it does not stop two of them tearing the same bytes | 🔴 Critical |
+| 131 | [VarHandle Non-Atomic Update](131-var-handle-non-atomic-update/) | `VarHandleNonAtomicUpdateDetector` | `getVolatile` then `setVolatile` reads as atomic and is two operations — volatile buys visibility, never atomicity of a read-modify-write | 🔴 Critical |
+| 132 | [Static Initializer Deadlock](132-static-init-deadlock/) | `StaticInitDeadlockDetector` | Two `<clinit>` blocks referencing each other deadlock on class-init locks, which are not monitors and so are invisible to `ThreadMXBean` | 🔴 Critical |
+| 133 | [Flow Publisher Concurrency](133-flow-publisher-concurrency/) | `FlowPublisherConcurrencyDetector` | Reactive Streams rule 1.3 requires serial signals; a publisher fanning `onNext` out to a pool corrupts every lock-free subscriber written against it | 🔴 Critical |
+| 134 | [Record Mutable Component Leak](134-record-mutable-component-leak/) | `RecordMutableComponentLeakDetector` | Records are *shallowly* immutable — a `List` component shared across threads is a live view, not the snapshot the record appears to be | 🟡 High |
 
 > Examples 114–119 target JDK 24–26 concurrency features. The detectors work off recorded
 > `String`-key + `Thread` events, so they compile and run on the Java 21 baseline while
