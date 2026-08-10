@@ -27,6 +27,7 @@ import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -734,18 +735,41 @@ public class ConcurrencyRunner {
             ae.initCause(single);
             return ae;
         }
-        StringBuilder sb = new StringBuilder();
-        sb.append(failures.size()).append(" concurrent thread(s) failed:\n");
-        for (int i = 0; i < failures.size(); i++) {
-            Throwable t = failures.get(i);
-            sb.append("  [").append(i + 1).append("] ")
-              .append(t.getClass().getSimpleName()).append(": ")
-              .append(t.getMessage()).append('\n');
+        // N threads hitting one defect produce N identical failures. Listing each one buries
+        // the failures that differ — and those are the ones worth reading — so identical
+        // failures are collapsed to one line with a count, in first-seen order.
+        Map<String, List<Throwable>> distinct = new LinkedHashMap<>();
+        for (Throwable t : failures) {
+            distinct.computeIfAbsent(t.getClass().getName() + ": " + t.getMessage(),
+                    k -> new ArrayList<>()).add(t);
         }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(failures.size()).append(" concurrent thread(s) failed");
+        if (distinct.size() < failures.size()) {
+            sb.append(" (").append(distinct.size()).append(" distinct)");
+        }
+        sb.append(":\n");
+        int index = 0;
+        for (List<Throwable> group : distinct.values()) {
+            Throwable t = group.get(0);
+            index++;
+            sb.append("  [").append(index).append("] ")
+              .append(t.getClass().getSimpleName()).append(": ")
+              .append(t.getMessage());
+            if (group.size() > 1) {
+                sb.append(" (x").append(group.size()).append(')');
+            }
+            sb.append('\n');
+        }
+
         AssertionError combined = new AssertionError(sb.toString().trim());
-        combined.initCause(failures.get(0));
-        for (int i = 1; i < failures.size(); i++) {
-            combined.addSuppressed(failures.get(i));
+        // One representative per distinct failure: the first is the cause, the rest are
+        // suppressed. Attaching all N would repeat the same stack trace N times.
+        Iterator<List<Throwable>> groups = distinct.values().iterator();
+        combined.initCause(groups.next().get(0));
+        while (groups.hasNext()) {
+            combined.addSuppressed(groups.next().get(0));
         }
         return combined;
     }

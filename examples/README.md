@@ -6,7 +6,7 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 
 Most examples ship the buggy service, a sequential `@Test` that passes on it, and an
 `@AsyncTest` that exposes the bug. **Those `@AsyncTest` demonstrations are `@Disabled`**: 99 of
-the 133 examples have one. That is deliberate: they demonstrate code that fails, so enabling
+the 134 examples have one. That is deliberate: they demonstrate code that fails, so enabling
 them would make the examples pipeline permanently red. Each carries a reason saying so, and
 removing the annotation is the intended way to watch the bug surface.
 
@@ -14,10 +14,10 @@ The newer examples take a different shape, and it is the better one. Rather than
 demonstration, they drive the detector's own recording API from ordinary `@Test` methods and
 assert on the report: clean usage stays silent, the buggy pattern is flagged, and the severity
 is pinned. Those tests **run in CI**, so they prove the detector still behaves as documented
-rather than only that the example compiles. Examples 129–134 are written this way.
+rather than only that the example compiles. Examples 129–135 are written this way.
 
 The distinction matters when reading the pipeline's green tick. For the disabled majority, the
-examples pipeline builds all 133 and runs their enabled tests, so it proves those examples
+examples pipeline builds all 134 and runs their enabled tests, so it proves those examples
 **compile and keep working against the current library** — it does not prove any detector
 fires. The check that does that for the library itself is `DetectionCoverageTest` in
 `async-test-lib`, which runs real buggy code through a real `@AsyncTest` and asserts on the
@@ -171,6 +171,7 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 132 | [Static Initializer Deadlock](132-static-init-deadlock/) | `StaticInitDeadlockDetector` | Two `<clinit>` blocks referencing each other deadlock on class-init locks, which are not monitors and so are invisible to `ThreadMXBean` | 🔴 Critical |
 | 133 | [Flow Publisher Concurrency](133-flow-publisher-concurrency/) | `FlowPublisherConcurrencyDetector` | Reactive Streams rule 1.3 requires serial signals; a publisher fanning `onNext` out to a pool corrupts every lock-free subscriber written against it | 🔴 Critical |
 | 134 | [Record Mutable Component Leak](134-record-mutable-component-leak/) | `RecordMutableComponentLeakDetector` | Records are *shallowly* immutable — a `List` component shared across threads is a live view, not the snapshot the record appears to be | 🟡 High |
+| 135 | [Asserting on Findings](135-asserting-on-findings/) | *(tour, not a bug)* | `AsyncFindings` collects the structured `Violation` behind every finding, so a test can assert that a detector fired instead of substring-matching its report; also the described `awaitUntil` and `FutureCapture.requireResult` | 🟢 Low |
 
 > Examples 114–119 target JDK 24–26 concurrency features. The detectors work off recorded
 > `String`-key + `Thread` events, so they compile and run on the Java 21 baseline while

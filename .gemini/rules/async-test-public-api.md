@@ -23,6 +23,9 @@ This element is strictly excluded from AI context. Do not reference it.
 ### se.deversity.asynctest.AsyncAssert
 - **Reason**: Public assertion utility API for AsyncTest consumers. awaitUntil() and capture() are used directly in user test code — method signatures and semantics must not change without a major version bump.
 
+### se.deversity.asynctest.AsyncFindings
+- **Reason**: Public assertion API for detector findings. collect(), violations() and the assertXxx methods are called directly from user test code — signatures and matching semantics must not change without a major version bump.
+
 ### se.deversity.asynctest.AsyncTestListener
 - **Reason**: Public SPI interface for observing async-test lifecycle events. Method signatures are part of the stable API — implementors bind to these exact names and parameter types.
 
@@ -40,7 +43,7 @@ This element is strictly excluded from AI context. Do not reference it.
 
 ## Public API Surface Protection
 - **Rule**: Exposes public API. Preserve signature, Javadoc, and behavior without breaking backwards or source compatibility.
-- **Applies to**: `se.deversity.asynctest.AsyncAssert`, `se.deversity.asynctest.AsyncTestListener`, `se.deversity.asynctest.AsyncTestListenerRegistry`, `se.deversity.asynctest.report.Formatter`, `se.deversity.asynctest.report.JsonFormatter`, `se.deversity.asynctest.report.MarkdownFormatter`, `se.deversity.asynctest.report.SarifFormatter`, `se.deversity.asynctest.report.Violation`, `se.deversity.asynctest.spi.Detector`, `se.deversity.asynctest.spi.DetectorFactory`, `se.deversity.asynctest.spi.DetectorRegistry`
+- **Applies to**: `se.deversity.asynctest.AsyncAssert`, `se.deversity.asynctest.AsyncFindings`, `se.deversity.asynctest.AsyncTestListener`, `se.deversity.asynctest.AsyncTestListenerRegistry`, `se.deversity.asynctest.report.Formatter`, `se.deversity.asynctest.report.JsonFormatter`, `se.deversity.asynctest.report.MarkdownFormatter`, `se.deversity.asynctest.report.SarifFormatter`, `se.deversity.asynctest.report.Violation`, `se.deversity.asynctest.spi.Detector`, `se.deversity.asynctest.spi.DetectorFactory`, `se.deversity.asynctest.spi.DetectorRegistry`
 
 ## Idempotency Guarantee
 - **Rule**: These operations are idempotent. Calling them multiple times must produce the same result as calling them once.

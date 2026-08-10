@@ -4,6 +4,7 @@ import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 
 import se.deversity.asynctest.diagnostics.IssueSeverity;
+import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AIContract;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
@@ -81,4 +82,24 @@ public interface AsyncTestListener {
      * @since 1.6.0
      */
     default void onStructuredReport(String detectorName, IssueSeverity severity, String report) { /* no-op default */ }
+
+    /**
+     * Called when a detector reports an issue, as a structured {@link Violation}.
+     *
+     * <p>The record is what a test can assert on: {@link #onDetectorReport} and
+     * {@link #onStructuredReport} both hand over the report as prose, so asserting that a
+     * particular detector fired meant substring-matching text written for humans. Fired for
+     * every finding, alongside the two string callbacks.
+     *
+     * <p>{@link Violation#attributes()} carries the full report text under the key
+     * {@code "report"}, so nothing the string callbacks offered is lost.
+     *
+     * <p>The default implementation is a no-op, preserving backwards compatibility with
+     * existing {@link AsyncTestListener} implementations.
+     *
+     * @param violation the finding, with the reporting detector, its severity and its message
+     * @see AsyncFindings
+     * @since 1.9.0
+     */
+    default void onViolation(Violation violation) { /* no-op default */ }
 }

@@ -115,5 +115,28 @@ public void onStructuredReport(String detectorName, IssueSeverity severity, Stri
 
 Both `onDetectorReport` and `onStructuredReport` are fired for every finding. Existing listeners that don't override `onStructuredReport` receive a no-op default — no migration needed.
 
+### Structured Violation: `onViolation` (v1.9.0+)
+
+Both string callbacks hand over the report as prose, which makes a listener parse text to route
+on anything but severity. `onViolation` delivers the same finding as a `Violation` record:
+
+```java
+@Override
+public void onViolation(Violation violation) {
+    metrics.counter("async_test_finding",
+            "detector", violation.detector(),
+            "severity", violation.severity().name()).increment();
+}
+```
+
+`Violation.attributes()` keeps the full report text under the key `"report"`, so nothing the
+string callbacks offered is lost. Fired for every finding, alongside `onDetectorReport` and
+`onStructuredReport`; the default implementation is a no-op.
+
+To assert on findings from a test rather than route them, use
+[`AsyncFindings`](ASYNC_ASSERT.md#asserting-on-detector-findings-asyncfindings-190), which is a
+collector built on this callback. Detectors and SPI adapters that already hold a `Violation` can
+publish it directly with `AsyncTestListenerRegistry.fireViolation(violation)`.
+
 ---
 

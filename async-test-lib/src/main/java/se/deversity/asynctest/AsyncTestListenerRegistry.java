@@ -3,15 +3,20 @@ package se.deversity.asynctest;
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 
+import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
+import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AIContract;
 import se.deversity.vibetags.annotations.AIIdempotent;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.regex.Pattern;
 
 /**
  * Thread-safe registry for {@link AsyncTestListener} instances.
@@ -63,6 +68,9 @@ public final class AsyncTestListenerRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(AsyncTestListenerRegistry.class);
     private static final List<AsyncTestListener> LISTENERS = new CopyOnWriteArrayList<>();
+
+    /** ANSI SGR sequences, as {@link IssueSeverity#format()} renders severity markers. */
+    private static final Pattern ANSI = Pattern.compile("\\e\\[[;\\d]*m");
 
     // Prevent instantiation
     private AsyncTestListenerRegistry() {}
@@ -140,8 +148,8 @@ public final class AsyncTestListenerRegistry {
     }
 
     /**
-     * Fires the {@code onDetectorReport} and {@code onStructuredReport} events to all
-     * registered listeners.
+     * Fires the {@code onDetectorReport}, {@code onStructuredReport} and {@code onViolation}
+     * events to all registered listeners.
      *
      * <p>Severity is parsed from the report text using {@link IssueSeverity} markers
      * (emoji or keyword). Reports with no recognisable marker default to {@link IssueSeverity#HIGH}.
@@ -150,7 +158,13 @@ public final class AsyncTestListenerRegistry {
      * @param report the report content
      */
     public static void fireDetectorReport(String detectorName, String report) {
+        // One pass over the listener snapshot, and no Violation built when nobody is listening:
+        // with no listeners registered this method has no observable effect anyway.
+        if (LISTENERS.isEmpty()) {
+            return;
+        }
         IssueSeverity severity = parseSeverity(report);
+        Violation violation = toViolation(detectorName, severity, report);
         for (AsyncTestListener listener : LISTENERS) {
             try {
                 listener.onDetectorReport(detectorName, report);
@@ -162,7 +176,74 @@ public final class AsyncTestListenerRegistry {
             } catch (RuntimeException e) {
                 log.warn("AsyncTestListener.onStructuredReport threw: {}", e.toString(), e);
             }
+            if (violation != null) {
+                notifyViolation(listener, violation);
+            }
         }
+    }
+
+    /**
+     * Fires the {@code onViolation} event to all registered listeners.
+     *
+     * <p>Called by {@link #fireDetectorReport(String, String)} for every finding; exposed for
+     * detectors and SPI adapters that already hold a structured {@link Violation} and would
+     * otherwise have to render it to text and let the registry parse it back.
+     *
+     * @param violation the finding to publish; ignored when null
+     * @since 1.9.0
+     */
+    public static void fireViolation(@Nullable Violation violation) {
+        if (violation == null) return;
+        for (AsyncTestListener listener : LISTENERS) {
+            notifyViolation(listener, violation);
+        }
+    }
+
+    /** One listener's {@code onViolation}, contained: a thrower must not silence its peers. */
+    private static void notifyViolation(AsyncTestListener listener, Violation violation) {
+        try {
+            listener.onViolation(violation);
+        } catch (RuntimeException e) {
+            log.warn("AsyncTestListener.onViolation threw: {}", e.toString(), e);
+        }
+    }
+
+    /**
+     * Builds the structured form of a text report: the detector as reported, the parsed
+     * severity, the report's first non-blank line as the message (severity markers are
+     * rendered with ANSI colour, which is stripped), and the whole report kept under the
+     * {@code "report"} attribute so nothing is lost in the conversion.
+     *
+     * @return the violation, or {@code null} if one could not be built — a listener callback
+     *         is not worth failing a test run over
+     */
+    private static @Nullable Violation toViolation(String detectorName, IssueSeverity severity, String report) {
+        try {
+            String detector = (detectorName == null || detectorName.isBlank())
+                    ? "UnknownDetector" : detectorName;
+            String text = (report == null) ? "" : report;
+            String message = firstMeaningfulLine(text);
+            return new Violation(
+                    detector,
+                    severity,
+                    message.isEmpty() ? detector + " reported a finding" : message,
+                    List.of(),
+                    Map.of("report", text),
+                    Instant.now());
+        } catch (RuntimeException e) {
+            log.warn("Could not build a Violation for detector {}: {}", detectorName, e.toString(), e);
+            return null;
+        }
+    }
+
+    private static String firstMeaningfulLine(String report) {
+        for (String line : report.split("\n", -1)) {
+            String stripped = ANSI.matcher(line).replaceAll("").trim();
+            if (!stripped.isEmpty()) {
+                return stripped;
+            }
+        }
+        return "";
     }
 
     private static IssueSeverity parseSeverity(String report) {
