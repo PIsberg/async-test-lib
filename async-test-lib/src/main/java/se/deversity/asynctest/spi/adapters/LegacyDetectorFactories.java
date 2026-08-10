@@ -133,6 +133,9 @@ import se.deversity.asynctest.diagnostics.SharedMemorySegmentRaceDetector;
 import se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector;
 import se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector;
 import se.deversity.asynctest.diagnostics.StaticInitDeadlockDetector;
+import se.deversity.asynctest.diagnostics.VirtualThreadPoolingDetector;
+import se.deversity.asynctest.diagnostics.PlatformThreadPerTaskDetector;
+import se.deversity.asynctest.diagnostics.SharedSplittableRandomDetector;
 import se.deversity.asynctest.spi.Detector;
 import se.deversity.asynctest.spi.DetectorFactory;
 
@@ -1246,6 +1249,30 @@ public final class LegacyDetectorFactories {
         @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectStaticInitDeadlock; }
         @Override public Detector create(AsyncTestConfig c) {
             return new LegacyDetectorAdapter<>(new StaticInitDeadlockDetector(), DetectorType.STATIC_INIT_DEADLOCK, "StaticInitDeadlock");
+        }
+    }
+
+    public static final class VirtualThreadPooling implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.VIRTUAL_THREAD_POOLING; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectVirtualThreadPooling; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new VirtualThreadPoolingDetector(), DetectorType.VIRTUAL_THREAD_POOLING, "VirtualThreadPooling");
+        }
+    }
+
+    public static final class PlatformThreadPerTask implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.PLATFORM_THREAD_PER_TASK; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectPlatformThreadPerTask; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new PlatformThreadPerTaskDetector(), DetectorType.PLATFORM_THREAD_PER_TASK, "PlatformThreadPerTask");
+        }
+    }
+
+    public static final class SharedSplittableRandom implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.SHARED_SPLITTABLE_RANDOM; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectSharedSplittableRandom; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new SharedSplittableRandomDetector(), DetectorType.SHARED_SPLITTABLE_RANDOM, "SharedSplittableRandom");
         }
     }
 }

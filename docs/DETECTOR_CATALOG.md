@@ -1,6 +1,6 @@
 # Detector Catalog
 
-`async-test-lib` includes **132 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
+`async-test-lib` includes **135 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
 
 ---
 
@@ -34,10 +34,10 @@ them.
 say so in their own wording — they ask you to verify external synchronization rather than declaring
 a defect.
 
-**Not yet classified:** most of the remaining detectors. The eval covers 8 of 132, chosen to cover
+**Not yet classified:** most of the remaining detectors. The eval covers 8 of 135, chosen to cover
 each mechanism class, and extending it is mechanical rather than hard. Where an entry below carries
 no explicit **Trust tier** line, treat it as unclassified and read its report wording, which is
-written to be honest about what it observed. Claiming a tier for all 132 without measuring would be
+written to be honest about what it observed. Claiming a tier for all 135 without measuring would be
 exactly the kind of unfounded number this catalog is meant not to contain.
 
 **Practical consequence.** `failOn = CRITICAL` gates on the trustworthy end of the scale.
@@ -3093,4 +3093,71 @@ JDK 24/25/26.
   d.recordInitRequest(Registry.class, threadA);
   d.recordInitRequest(Config.class, threadB);    // cycle → flagged
   assertTrue(d.analyze().hasIssues());
+  ```
+
+### 133. Virtual Thread Pooling
+* **Severity**: `HIGH`
+* **Trust tier**: **verdict** for the pooled-executor finding — the factory probe distinguishes a virtual-thread factory from a platform one by construction, and a per-task or platform-pooled executor stays silent. The reuse finding is as good as its instrumentation contract: call `recordTaskExecution` once per task.
+* **Description**: Detects virtual threads being pooled or reused across tasks — the central anti-pattern JEP 444 warns about. A `ThreadPoolExecutor` (including `ScheduledThreadPoolExecutor` and the `Executors.newFixedThreadPool` family) built over `Thread.ofVirtual().factory()` caps concurrency at the pool size and keeps every pooled worker and its `ThreadLocal`s alive indefinitely. Registering an executor probes its factory with one unstarted, discarded thread; separately, a virtual thread observed executing more than one recorded task is flagged as reuse.
+* **Buggy Code**:
+  ```java
+  ExecutorService pool =
+      Executors.newFixedThreadPool(8, Thread.ofVirtual().factory());   // pooled virtual threads
+  ```
+* **Fixed Code**:
+  ```java
+  try (ExecutorService perTask = Executors.newVirtualThreadPerTaskExecutor()) {
+      // one fresh virtual thread per task; bound concurrency with a Semaphore, not a pool
+  }
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.virtualThreadPoolingDetector();
+  d.registerExecutor(pool, "request-pool");
+  assertTrue(d.analyze().hasIssues());
+  ```
+
+### 134. Platform Thread-Per-Task
+* **Severity**: `HIGH` (per-task executor on platform threads) / `MEDIUM` (churn advisory)
+* **Trust tier**: **verdict** for the executor finding — the probe task reports the actual thread kind. The churn finding is an advisory threshold (16 platform-thread creations with at least half already terminated) and reads as a prompt.
+* **Description**: Detects thread-per-task execution on platform threads — one OS thread per task, the workload virtual threads exist for. Each platform thread reserves an OS thread and ~1 MB of stack; the pattern survives a unit test and collapses under production load. Registering a `newThreadPerTaskExecutor` runs one no-op probe task on it (bounded 200 ms wait) to learn the thread kind; independently, recorded short-lived platform-thread creation above the threshold is reported as churn while long-lived pool workers stay silent.
+* **Buggy Code**:
+  ```java
+  for (Request r : requests) {
+      new Thread(() -> handle(r)).start();   // one OS thread per request
+  }
+  ```
+* **Fixed Code**:
+  ```java
+  for (Request r : requests) {
+      Thread.startVirtualThread(() -> handle(r));
+  }
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.platformThreadPerTaskDetector();
+  Thread worker = new Thread(task);
+  d.recordThreadCreated(worker);
+  worker.start();
+  ```
+
+### 135. Shared Splittable Random
+* **Severity**: `HIGH`
+* **Trust tier**: **prompt** — like the rest of the `SHARED_*` family it observes sharing, not locks, and its report says so.
+* **Description**: Detects `SplittableRandom` and JEP 356 `RandomGenerator` instances (`L64X128MixRandom`, `Xoshiro256PlusPlus`, …) accessed from more than one thread. These generators are documented not thread-safe: the state transition is a plain non-atomic read-modify-write, so concurrent `nextLong()` calls interleave it — duplicated values and broken statistical guarantees with no exception. `java.util.Random` subclasses are excluded: `Random` belongs to `SHARED_RANDOM`, `SecureRandom` to `SHARED_SECURE_RANDOM`, `ThreadLocalRandom` to `THREAD_LOCAL_RANDOM_MISUSE`.
+* **Buggy Code**:
+  ```java
+  static final SplittableRandom RNG = new SplittableRandom();   // shared by worker threads
+  long id() { return RNG.nextLong(); }
+  ```
+* **Fixed Code**:
+  ```java
+  SplittableRandom perThread = parent.split();   // each thread gets its own generator
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.sharedSplittableRandomDetector();
+  d.registerGenerator(rng, "ids");
+  long v = rng.nextLong();
+  d.recordAccess(rng, "ids", "nextLong");
   ```

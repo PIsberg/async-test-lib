@@ -339,5 +339,13 @@ public enum DetectorType {
     /** Detects records shared across threads whose components hold mutable state, and record components observed to change contents while shared. */
     RECORD_MUTABLE_COMPONENT_LEAK,
     /** Detects deadlocks between class initializers, which ThreadMXBean.findDeadlockedThreads() cannot see because a class init lock is not a monitor. */
-    STATIC_INIT_DEADLOCK
+    STATIC_INIT_DEADLOCK,
+
+    // Phase 21: Virtual-thread-era executor hazards & shared generators (1.8.0+)
+    /** Detects virtual threads being pooled or reused across tasks — JEP 444's central anti-pattern: a virtual thread is per-task and must never be pooled. */
+    VIRTUAL_THREAD_POOLING,
+    /** Detects thread-per-task execution on platform threads — unbounded OS-thread creation where virtual threads (or a bounded pool) belong. */
+    PLATFORM_THREAD_PER_TASK,
+    /** Detects SplittableRandom and JEP 356 RandomGenerator instances shared across threads — not thread-safe; concurrent use silently corrupts the sequence. */
+    SHARED_SPLITTABLE_RANDOM
 }
