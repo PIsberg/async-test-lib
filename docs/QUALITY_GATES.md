@@ -301,5 +301,18 @@ never rename or remove them without flagging the dashboard change. Full guide:
 
 ## Fuzzing
 
-`async-test-lib/src/test/java/se/deversity/asynctest/fuzz/` holds standalone Jazzer harnesses,
+`async-test-lib/src/fuzz/java/se/deversity/asynctest/fuzz/` holds standalone Jazzer harnesses,
 excluded from pitest. They exercise parsing and config surfaces rather than the concurrency engine.
+`fuzzing.yml` runs them weekly against the Jazzer CLI.
+
+They sit in `src/fuzz/java` rather than `src/test/java` for one reason: OpenSSF Scorecard's fuzzing
+check discards every path containing `/src/test/` before it scans for the
+`com.code_intelligence.jazzer.api.FuzzedDataProvider` import, so a harness kept under the test root
+is invisible to it and the repo scores 0 on Fuzzing while being fuzzed every Monday. The filter is
+in Scorecard's `checks/fileparser/listing.go`, in `isTestdataFile`.
+
+The directory is wired in as an extra test-source root twice, once per build, and the two must stay
+in agreement: `build-helper-maven-plugin`'s `add-fuzz-test-source` execution in
+`async-test-lib/pom.xml`, and the `sourceSets` block in the root `build.gradle.kts`. Both compile
+the harnesses into the ordinary test output, so the Jazzer classpath stays
+`async-test-lib/target/test-classes`.

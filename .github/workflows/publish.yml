@@ -84,8 +84,12 @@ jobs:
             async-test-lib/target/async-test-lib-${VERSION}-sources.jar \
             async-test-lib/target/async-test-lib-${VERSION}-javadoc.jar; do
             if [ -f "$artifact" ]; then
+              # The bundle must end in .sigstore.json. Scorecard's releasesAreSigned probe
+              # matches only .asc, .minisig, .sig, .sign, .sigstore and .sigstore.json, so
+              # the ".bundle" suffix used through v1.7.3 was a signature it could not see —
+              # Signed-Releases scored 0 on releases that were in fact all signed.
               cosign sign-blob --yes \
-                --bundle "${artifact}.bundle" \
+                --bundle "${artifact}.sigstore.json" \
                 "${artifact}"
             fi
           done
@@ -95,13 +99,19 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=${{ steps.version.outputs.VERSION }}
+          # The .asc files are the detached GPG signatures maven-gpg-plugin already produced
+          # for Maven Central. Publishing them here as well costs nothing and gives consumers
+          # the more widely verified of the two formats.
           gh release create "${{ github.ref_name }}" \
             async-test-lib/target/async-test-lib-${VERSION}.jar \
-            async-test-lib/target/async-test-lib-${VERSION}.jar.bundle \
+            async-test-lib/target/async-test-lib-${VERSION}.jar.asc \
+            async-test-lib/target/async-test-lib-${VERSION}.jar.sigstore.json \
             async-test-lib/target/async-test-lib-${VERSION}-sources.jar \
-            async-test-lib/target/async-test-lib-${VERSION}-sources.jar.bundle \
+            async-test-lib/target/async-test-lib-${VERSION}-sources.jar.asc \
+            async-test-lib/target/async-test-lib-${VERSION}-sources.jar.sigstore.json \
             async-test-lib/target/async-test-lib-${VERSION}-javadoc.jar \
-            async-test-lib/target/async-test-lib-${VERSION}-javadoc.jar.bundle \
+            async-test-lib/target/async-test-lib-${VERSION}-javadoc.jar.asc \
+            async-test-lib/target/async-test-lib-${VERSION}-javadoc.jar.sigstore.json \
             --title "Release ${{ github.ref_name }}" \
             --notes "## Async Test Library ${{ github.ref_name }}
 
@@ -124,8 +134,13 @@ jobs:
 
           ### Verify a cosign signature
           \`\`\`bash
-          cosign verify-blob --bundle async-test-lib-${VERSION}.jar.bundle \\
+          cosign verify-blob --bundle async-test-lib-${VERSION}.jar.sigstore.json \\
             --certificate-identity-regexp 'https://github.com/PIsberg/async-test-lib' \\
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \\
             async-test-lib-${VERSION}.jar
+          \`\`\`
+
+          ### Verify the GPG signature
+          \`\`\`bash
+          gpg --verify async-test-lib-${VERSION}.jar.asc async-test-lib-${VERSION}.jar
           \`\`\`"
