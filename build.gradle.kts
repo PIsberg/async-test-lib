@@ -93,6 +93,19 @@ subprojects {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
+    // Mirrors build-helper-maven-plugin's add-fuzz-test-source execution in async-test-lib/pom.xml.
+    // Jazzer fuzz targets compile as test classes but cannot live under src/test/java: OpenSSF
+    // Scorecard's fuzzing check drops every path containing "/src/test/" before scanning for the
+    // Jazzer import, so a target kept there leaves the repo scoring 0 on Fuzzing while it is in
+    // fact fuzzed weekly. Only async-test-lib has the directory; the check keeps this a no-op
+    // for the other modules.
+    val fuzzSrc = layout.projectDirectory.dir("src/fuzz/java")
+    if (fuzzSrc.asFile.isDirectory) {
+        extensions.configure<SourceSetContainer> {
+            named("test") { java.srcDir(fuzzSrc) }
+        }
+    }
+
     repositories {
         mavenLocal()
         mavenCentral()

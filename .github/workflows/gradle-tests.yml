@@ -47,6 +47,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Both gradle-wrapper.jar files in this repo are checked-in binaries, which Scorecard's
+      # Binary-Artifacts check counts against the project unless a workflow validates them
+      # against Gradle's published checksums. It only accepts gradle/wrapper-validation-action
+      # or gradle/actions/wrapper-validation, and only once that workflow has a successful run.
+      - name: Validate Gradle wrapper checksums
+        uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
       - name: Set up Java
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:

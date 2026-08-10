@@ -68,6 +68,32 @@
 
     <build>
         <plugins>
+            <!-- Jazzer fuzz targets compile as test classes but must not live under
+                 src/test/java. OpenSSF Scorecard's fuzzing check discards every path
+                 containing "/src/test/" before it scans for the Jazzer import, so a
+                 target kept there is invisible to it and the repo scores 0 on Fuzzing
+                 while genuinely being fuzzed. Keeping them in src/fuzz/java and adding
+                 the root here leaves the Jazzer classpath (target/test-classes) unchanged.
+                 See docs/QUALITY_GATES.md#fuzzing. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>${build-helper-maven-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>add-fuzz-test-source</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>add-test-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>src/fuzz/java</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <!-- Stable JPMS name. Without it the module system derives one from the file name,
                  so a modular consumer's requires clause breaks the first time the artifact is
                  renamed. A full module-info would be stronger, but the baseline is JDK 21 and
