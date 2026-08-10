@@ -525,6 +525,11 @@ public class MyListener implements AsyncTestListener {
     }
 
     @Override
+    public void onViolation(Violation violation) {   // 1.9.0+
+        metrics.count(violation.detector(), violation.severity());
+    }
+
+    @Override
     public void onTimeout(long timeoutMs) { }
 }
 
@@ -533,6 +538,56 @@ AsyncTestListenerRegistry.register(new MyListener());
 ```
 
 Listeners may be called from multiple threads concurrently — implementations must be thread-safe.
+
+---
+
+## Asserting on detector findings (1.9.0+)
+
+`AsyncFindings` records the structured `Violation` behind every finding, so a test can assert that a detector fired instead of substring-matching a report written for humans:
+
+```java
+import se.deversity.asynctest.AsyncFindings;
+import se.deversity.asynctest.FailOn;
+
+class CounterTest {
+
+    static AsyncFindings findings;
+
+    @BeforeAll static void collect() { findings = AsyncFindings.collect(); }
+
+    @AsyncTest(threads = 4, invocations = 50, failOn = FailOn.NONE)
+    void increments() {
+        counter.increment();
+    }
+
+    @AfterAll
+    static void theRaceIsReported() {
+        findings.assertReported("RaceConditionDetector");
+        findings.assertNotReported("DeadlockDetector");
+        findings.close();
+    }
+}
+```
+
+| Call | Asserts |
+|------|---------|
+| `assertReported(name)` | that detector reported at least one finding |
+| `assertReported(name, severity)` | that it reported one at that `IssueSeverity` |
+| `assertNotReported(name)` | that it reported nothing |
+| `assertNone()` | that no detector reported anything |
+| `violations()` / `violationsFrom(name)` | the `Violation` records, for anything else |
+
+Three rules make it work:
+
+- **`failOn = FailOn.NONE`** — at the default threshold the run fails before the assertion is reached.
+- **`@BeforeAll` / `@AfterAll`** — detectors analyse after the last round, so a finding cannot be observed from inside the test body, and JUnit does not order `@Test` against `@AsyncTest` methods.
+- **`close()`** — the listener registry is JVM-wide; an unclosed collector keeps recording findings from every later test in the same JVM. `clear()` resets one between tests.
+
+Names are detector simple class names (`RaceConditionDetector`), matched case-insensitively by substring. A failed assertion lists what was reported instead. The same records reach any listener via `onViolation(Violation)`; the full report text stays under the `"report"` attribute.
+
+`AsyncAssert` gained matching ergonomics: `awaitUntil(condition, timeout, "queue drained")` names the wait and reports the last exception the condition threw, and `FutureCapture.requireResult()` / `isSuccess()` / `isFailed()` separate "still running", "failed" and "completed with null", which `getResult() == null` conflated.
+
+Runnable example: [examples/135-asserting-on-findings](../examples/135-asserting-on-findings/).
 
 ---
 

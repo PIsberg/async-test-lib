@@ -22,7 +22,12 @@ import se.deversity.asynctest.diagnostics.IssueSeverity;
 @API(status = Status.STABLE)
 public enum FailOn {
 
-    /** Never fail on detector findings (report-only mode, legacy default). */
+    /**
+     * Never fail on detector findings (report-only mode, legacy default).
+     *
+     * <p>Also what makes findings assertable rather than fatal: at any other threshold the run
+     * fails before a test can inspect them. See {@link AsyncFindings}.
+     */
     NONE,
 
     /** Fail on any finding ({@code LOW} and above). */

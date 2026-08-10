@@ -143,5 +143,6 @@
         <module>132-static-init-deadlock</module>
         <module>133-flow-publisher-concurrency</module>
         <module>134-record-mutable-component-leak</module>
+        <module>135-asserting-on-findings</module>
     </modules>
 </project>

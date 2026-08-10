@@ -23,6 +23,10 @@ import java.util.concurrent.atomic.AtomicReference;
  * <p>These methods allow test code to wait for asynchronous conditions to be met
  * without hardcoding thread sleep times, which makes tests less flaky and faster.
  *
+ * <p>These wait for the code under test. To assert on what the detectors reported about it, see
+ * {@link AsyncFindings}.
+ *
+ * @see AsyncFindings
  * @since 1.0.0
  */
 @AIContract(reason = "Public assertion utility API for AsyncTest consumers. awaitUntil() and capture() are used directly in user test code — method signatures and semantics must not change without a major version bump.")
