@@ -137,5 +137,11 @@
         <module>127-shared-secure-random</module>
         <module>04-virtual-thread-context-leak</module>
         <module>128-kotlin-lost-update</module>
+        <module>129-confined-arena-thread-escape</module>
+        <module>130-shared-memory-segment-race</module>
+        <module>131-var-handle-non-atomic-update</module>
+        <module>132-static-init-deadlock</module>
+        <module>133-flow-publisher-concurrency</module>
+        <module>134-record-mutable-component-leak</module>
     </modules>
 </project>
