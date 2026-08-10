@@ -69,6 +69,10 @@ jobs:
           # libFuzzer prints "#<n> INITED" only once the target class has loaded and the
           # initial corpus has executed, so that line is the evidence the harness really ran.
           set -o pipefail
+          # -artifact_prefix only accepts a directory that already exists; libFuzzer refuses
+          # to create it and aborts before INITED with "The required directory ... does not
+          # exist". This was the third failure hiding behind continue-on-error.
+          mkdir -p fuzzing-findings
           ./jazzer \
             --target_class=se.deversity.asynctest.fuzz.AsyncTestConfigFuzzTarget \
             --cp=async-test-lib/target/test-classes:async-test-lib/target/classes \
