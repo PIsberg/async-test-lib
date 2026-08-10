@@ -53,18 +53,33 @@ jobs:
         run: |
           curl -fsSL -o jazzer_linux.tar.gz \
             https://github.com/CodeIntelligenceTesting/jazzer/releases/download/v0.22.1/jazzer-linux.tar.gz
-          tar -xzf jazzer_linux.tar.gz jazzer
+          # Extract the whole archive, not just the launcher. The `jazzer` binary is a thin
+          # driver that loads jazzer_standalone.jar from its own directory; pulling out only
+          # the binary made every run die with "Could not find jazzer_standalone.jar".
+          tar -xzf jazzer_linux.tar.gz
           chmod +x jazzer
+          test -f jazzer_standalone.jar
 
       - name: Fuzz AsyncTestConfig builder
         run: |
+          # A finding is an artifact, not a build failure, so Jazzer's own exit code is
+          # tolerated. Jazzer failing to *start* is a different thing and must be loud: this
+          # step reported success for months while fuzzing nothing, first because the egress
+          # allowlist blocked the download and then because the archive was half-extracted.
+          # libFuzzer prints "#<n> INITED" only once the target class has loaded and the
+          # initial corpus has executed, so that line is the evidence the harness really ran.
+          set -o pipefail
           ./jazzer \
             --target_class=se.deversity.asynctest.fuzz.AsyncTestConfigFuzzTarget \
             --cp=async-test-lib/target/test-classes:async-test-lib/target/classes \
             -max_total_time=120 \
             -print_final_stats=1 \
-            -artifact_prefix=fuzzing-findings/
-        continue-on-error: true  # findings are artifacts, not hard failures in CI
+            -artifact_prefix=fuzzing-findings/ 2>&1 | tee jazzer.log || true
+          if ! grep -qE "INITED|stat::number_of_executed_units" jazzer.log; then
+            echo "::error::Jazzer never reached INITED — the harness did not run. This is a"
+            echo "::error::toolchain or classpath failure, not a fuzzing finding."
+            exit 1
+          fi
 
       - name: Upload fuzzing findings
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
