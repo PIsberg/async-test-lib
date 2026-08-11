@@ -378,6 +378,10 @@ Since 1.10 the gate separates "the provider said no" from "the provider could no
 first always fails the build. The second is an availability problem, and enterprise CI is where it
 actually happens: egress-blocked runners, proxies, provider outages.
 
+Both flows are drawn as sequence diagrams in
+[architecture/diagrams.md](architecture/diagrams.md): one for online validation, caching and
+outage grace, one for offline files end to end (issuance through validation).
+
 ## What happens when, exactly
 
 | Situation | Outcome |

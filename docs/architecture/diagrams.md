@@ -8,7 +8,7 @@ Shows the high-level system architecture and external dependencies.
 
 **Key Components:**
 - **JUnit 5 Platform**: Discovers and executes @AsyncTest methods
-- **Async Test Library**: Core testing framework with 127 detectors
+- **Async Test Library**: Core testing framework with 135 detectors
 - **User Test Code**: Tests annotated with @AsyncTest
 - **Benchmark Storage**: Persistent baseline data for performance comparison
 
@@ -29,7 +29,7 @@ Shows the main containers/components within the async-test library JAR.
 - **Configuration**: `AsyncTest` annotation, `AsyncTestConfig` (immutable), `Preset` enum
 - **Runner Core**: `ConcurrencyRunner`, `AsyncTestContext`, `VirtualThreadStressConfig`,
   `LicenseGuard` (extracted in 1.6.0 — see [License Guard](#license-guard-100))
-- **Detector Modules** (127 detectors across 18 phases):
+- **Detector Modules** (135 detectors; the phase-by-phase catalog is [DETECTOR_CATALOG.md](../DETECTOR_CATALOG.md)):
   - Phase 1: Core (3 detectors) — grouped via `Phase1DetectorSet`
   - Phases 2–14: managed by `DetectorRegistry`
 - **Reporting** (NEW in 1.6.0 — `se.deversity.asynctest.report`):
@@ -151,6 +151,56 @@ Shows how benchmarking integrates with test execution.
 
 ---
 
+## Sequence Diagram - Licensing (online)
+
+How `LicenseGuard` decides whether an `@AsyncTest` run is licensed, and why a licensing-provider
+outage does not fail a licensed build while a rejected key always does.
+
+**Key steps:**
+1. Every invocation calls `LicenseGuard.check(config)`; the outcome is memoized per
+   (fingerprint x JVM), so the gate does real work at most once per configuration per JVM
+2. Decision order, first match wins: mock mode, offline file, fresh disk cache, online
+   validation, outage grace
+3. A successful online validation is recorded on disk as a SHA-256 of the configuration plus an
+   epoch (never the key), so with `forkEvery = 1` a suite makes one licensing call per
+   `license.cache.ttl.hours` window instead of one per test-class JVM
+4. Definitive rejections (not found, expired, suspended, wrong scope) fail the build in every
+   mode
+5. `NETWORK_ERROR` under the default grace mode is forgiven only when this configuration has a
+   recorded prior success or the provider host is connection-level unreachable; an answering
+   host that errors keeps the build failing, because it could have rejected the credentials
+
+![License Online Sequence Diagram](../diagrams/LicenseOnlineSequence.png)
+
+**Source:** [`license-online-sequence.puml`](../diagrams/license-online-sequence.puml)
+
+---
+
+## Sequence Diagram - Licensing (offline files)
+
+The `-Dlicense.file` path for air-gapped and egress-blocked CI: issuance on the operator
+machine, validation inside the customer's JVM, and no network anywhere on the customer's side.
+
+**Key steps:**
+1. The operator signs a small Properties payload (product, licensee, email, binding, expiry)
+   with the Ed25519 private key that exists only in
+   `~/.config/deversity/offline-license-signing/`; the file is one line,
+   `ATL1.<base64url payload>.<base64url signature>`
+2. The customer points `-Dlicense.file` at the file; its presence disables CI auto-mock, and
+   only the explicit `-Dlicense.mock.mode=true` outranks it
+3. `OfflineLicense` verifies the signature against the vendor public key embedded in the
+   library, then product, expiry (UTC, inclusive) and the email binding
+   (`domain` / `exact` / `none`, ASCII-only case fold)
+4. Every anomaly fails closed with a named `OFFLINE_*` reason and never falls back to online
+   validation
+5. Renewal is a replacement file; nothing else in the customer's configuration changes
+
+![License Offline Sequence Diagram](../diagrams/LicenseOfflineSequence.png)
+
+**Source:** [`license-offline-sequence.puml`](../diagrams/license-offline-sequence.puml)
+
+---
+
 ## Activity Diagram
 
 Shows the decision flow during test execution.
@@ -226,6 +276,8 @@ All PlantUML source files are located in [`docs/diagrams/`](../diagrams/):
 | Sequence Execution | `sequence-execution.puml` | `SequenceExecution.png` |
 | Class Diagram | `class-diagram.puml` | `ClassDiagram.png` |
 | Benchmark Sequence | `benchmark-sequence.puml` | `BenchmarkSequence.png` |
+| Licensing (online) | `license-online-sequence.puml` | `LicenseOnlineSequence.png` |
+| Licensing (offline files) | `license-offline-sequence.puml` | `LicenseOfflineSequence.png` |
 | Activity | `activity-diagram.puml` | `ActivityDiagram.png` |
 | Deployment | `deployment-diagram.puml` | `DeploymentDiagram.png` |
 | Detector Architecture | `detector-architecture.puml` | `DetectorArchitecture.png` |

@@ -1,0 +1,57 @@
+@startuml LicenseOfflineSequence
+title Licensing - Offline License Files (air-gapped and egress-blocked CI, since 1.10)
+
+actor "Operator" as Op
+participant "IssueOfflineLicense\n(tools/, operator machine)" as Tool
+participant "Signing keypair\n~/.config/deversity/\noffline-license-signing/" as Keys
+actor "Customer" as Cust
+participant "Concurrency\nRunner" as Runner
+participant "License\nGuard" as Guard
+participant "Offline\nLicense" as Off
+
+== Issuance - operator machine, once per customer, no provider account ==
+
+Op -> Tool : issue --licensee "Acme Corp AB"\n--email licence@acme-corp.com\n--binding domain --expires 2027-08-11
+Tool -> Tool : payload = Properties text\n(product, licensee, email,\nbinding, issued, expires)
+Tool -> Keys : Ed25519 sign(payload bytes)\nwith private.pem
+Keys --> Tool : signature
+Tool --> Op : one line:\nATL1.<b64url payload>.<b64url signature>
+Op -> Tool : verify --pub public.pem --file ...\n(re-runs the library's checks)
+Op -> Cust : send the .atl-license file\n(renewal = a replacement file)
+
+== Validation - every JVM, inside the customer's build, no network ==
+
+Runner -> Guard : check(config)\nwith -Dlicense.file=<path>
+activate Guard
+note over Guard
+  A present file is a commercial assertion:
+  CI auto-mock is disabled by it. Only the
+  explicit -Dlicense.mock.mode=true outranks it.
+  The file never falls back to online validation.
+end note
+Guard -> Off : verify(path, license.user.email)
+activate Off
+Off -> Off : read file, split ATL1.<payload>.<sig>
+Off -> Off : Ed25519 verify against the vendor\npublic key embedded in the library
+Off -> Off : product == async-test-lib?
+Off -> Off : expires >= today (UTC)?
+Off -> Off : email binding:\ndomain - every address on the licensed domain\nexact - the one licensed address\nnone - negotiated site licence\n(ASCII-only case fold, no Unicode tricks)
+
+alt every check passes
+  Off --> Guard : Grant(licensee, expires)
+  Guard --> Runner : LICENSE GRANTED: OFFLINE_LICENSE\n(once per JVM)
+else any anomaly
+  Off --> Guard : SecurityException, named reason:\nOFFLINE_FILE_MALFORMED (truncated in transit)\nOFFLINE_FILE_SIGNATURE_INVALID (altered / not ours)\nOFFLINE_FILE_WRONG_PRODUCT\nOFFLINE_LICENSE_EXPIRED (renewal due)\nOFFLINE_LICENSE_SCOPE_MISMATCH (wrong address/domain)
+  Guard --> Runner : build fails closed
+end
+deactivate Off
+deactivate Guard
+
+note over Keys
+  The private key exists only on the operator
+  machine. Rotating it invalidates every file
+  already issued against released library
+  versions, so the keygen mode refuses to
+  overwrite an existing private.pem.
+end note
+@enduml

@@ -1,0 +1,83 @@
+@startuml LicenseOnlineSequence
+title Licensing - Online Validation, Caching and Outage Grace (since 1.10)
+
+participant "Concurrency\nRunner" as Runner
+participant "License\nGuard" as Guard
+participant "LicenseValidation\nCache (disk)" as Cache
+participant "LicenseGate\n(common-license-lib)" as Gate
+participant "Provider API\n(Keygen / LemonSqueezy)" as Provider
+
+Runner -> Guard : check(config)\n(every @AsyncTest invocation)
+activate Guard
+Guard -> Guard : Fingerprint.from(config)\n(provider ids, key, email,\nfile, network mode)
+
+alt fingerprint already decided in this JVM
+  Guard --> Runner : return (memoized;\ndenials rethrow consistently)
+end
+
+note over Guard
+  Decision order, first match wins:
+  1. mock  2. offline file  3. disk cache
+  4. online validation  5. outage grace
+end note
+
+alt license.mock.mode, or CI with no credentials asserted
+  Guard -> Gate : check() with mockMode
+  Gate --> Guard : Allowed(MOCKED_ALLOWED)
+  Guard --> Runner : granted
+else -Dlicense.file set
+  ref over Guard : Offline path - see\nLicenseOfflineSequence
+else online path
+  Guard -> Guard : requireProviderCoordinates\n(key without account/store id\n= LICENSE MISCONFIGURED)
+
+  Guard -> Cache : isFresh(sha256(fingerprint))?
+  alt validated within license.cache.ttl.hours (default 24)
+    Cache --> Guard : fresh
+    Guard --> Runner : granted: CACHED_VALIDATION\n(no network; forkEvery=1 suites\nstop calling once per test class)
+  else revalidate online
+    Guard -> Gate : check(license.user.email, license.key)
+    Gate -> Gate : classify email
+    alt free-provider address
+      Gate --> Guard : Allowed(FREE_PROVIDER_EMAIL)\n(non-commercial, no key needed)
+      Guard --> Runner : granted
+    else commercial domain
+      Gate -> Provider : POST validate-key\n(scope: user + product / store)
+      alt provider says valid
+        Provider --> Gate : valid
+        Gate --> Guard : Allowed(LICENSE_VALID)
+        Guard -> Cache : record(sha256(fingerprint))\n(hash + epoch only, never the key)
+        Guard --> Runner : granted
+      else definitive rejection
+        Provider --> Gate : NOT_FOUND / EXPIRED /\nSUSPENDED / wrong scope
+        Gate --> Guard : Denied(reason)
+        Guard --> Runner : SecurityException LICENSE DENIED\n(always, in every mode)
+      else NETWORK_ERROR (transport failure,\nor provider answered 401/429/5xx)
+        Gate --> Guard : Denied(NETWORK_ERROR)
+        alt -Dlicense.network.mode=strict
+          Guard --> Runner : SecurityException\n(pre-1.10 behaviour)
+        else grace (default)
+          Guard -> Cache : hasRecord(fingerprint)?\n(any age)
+          alt this configuration validated\nsuccessfully before
+            Guard --> Runner : WARN "validator unavailable"\n+ proceed (outage, not rejection)
+          else no record: probe the host
+            Guard -> Provider : HEAD / (3s timeout)
+            alt connection-level unreachable
+              Guard --> Runner : WARN + proceed\n(outage / egress-blocked runner)
+            else host answered (any status)
+              Guard --> Runner : SecurityException\n(an answering host could have\nrejected these credentials)
+            end
+          end
+        end
+      end
+    end
+  end
+end
+deactivate Guard
+
+note over Guard, Provider
+  Grace never forgives a rejection: only NETWORK_ERROR qualifies, and only
+  with prior-success evidence or a connection-level failure. Blanket
+  fail-open would grant fabricated credentials wherever the provider
+  answers with an error status.
+end note
+@enduml
