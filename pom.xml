@@ -401,7 +401,15 @@
                     <publishingServerId>central</publishingServerId>
                     <!-- Automatically release after validation (no manual portal action needed) -->
                     <autoPublish>true</autoPublish>
-                    <waitUntil>published</waitUntil>
+                    <!-- uploaded, not published: with autoPublish the publication proceeds
+                         server-side once the bundle is uploaded and validated, but waiting for
+                         the "published" state blocks mvn deploy on Central's pipeline for an
+                         unbounded time. Both v1.7.0 and v1.9.1 had the publish job killed
+                         mid-poll around the hour mark; both publications completed on Central
+                         anyway, and every post-upload step (cosign, SBOM, GitHub release) was
+                         lost and had to be reconstructed by hand. Waiting only for the upload
+                         lets those steps run; Central availability is verified separately. -->
+                    <waitUntil>uploaded</waitUntil>
                 </configuration>
             </plugin>
             <!-- PMD static analysis — main sources only -->
