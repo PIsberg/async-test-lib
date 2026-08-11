@@ -41,7 +41,7 @@ class SharedStatefulCryptoDetectorTest {
         assertTrue(msg.contains("payload-cipher"));
         assertTrue(msg.contains("2 threads"));
         assertTrue(msg.contains("Cipher"));
-        assertTrue(msg.contains("observes sharing, not locks"));
+        assertTrue(msg.contains("other locks are not observed"));
         assertEquals(1, report.structuredViolations.size());
         assertEquals("SharedStatefulCrypto", report.structuredViolations.get(0).detector());
         assertEquals("Cipher", report.structuredViolations.get(0).attributes().get("kind"));
