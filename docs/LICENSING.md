@@ -338,7 +338,7 @@ and the message lists the flags. Common reasons:
 | `LICENSE_EXPIRED` | Subscription lapsed — see below |
 | `NETWORK_ERROR` | Could not reach `api.keygen.sh` / `api.lemonsqueezy.com` |
 
-`NETWORK_ERROR` no longer fails a licensed build by default: since 1.10 an unreachable validator
+`NETWORK_ERROR` no longer fails a licensed build by default: since 1.9.1 an unreachable validator
 is treated as an outage and the run proceeds with a warning (grace mode). A validator that answers
 and rejects your key still fails the build. If your build agents can never reach the internet, ask
 us for an offline license file instead; the full semantics are in
@@ -374,7 +374,7 @@ licence stays valid until the end of the paid term and then goes `expired`.
 
 # Part 3 — Offline licensing, outages and air-gapped CI
 
-Since 1.10 the gate separates "the provider said no" from "the provider could not be asked". The
+Since 1.9.1 the gate separates "the provider said no" from "the provider could not be asked". The
 first always fails the build. The second is an availability problem, and enterprise CI is where it
 actually happens: egress-blocked runners, proxies, provider outages.
 
@@ -390,7 +390,7 @@ outage grace, one for offline files end to end (issuance through validation).
 | Validator host unreachable: outage, DNS blackhole, egress-blocked runner | Build proceeds; one `LICENSE: validator unavailable` WARN per JVM. |
 | Validator reachable but erroring (401/429/5xx), no successful validation of this configuration on record | **Build fails.** An erroring host could have rejected the credentials, so grace does not apply. |
 | Validator erroring, but this configuration validated successfully before on this machine | Build proceeds with the WARN: for this customer it is an outage, not a rejection. |
-| `-Dlicense.network.mode=strict` | Any validation failure fails the build (the pre-1.10 behaviour). |
+| `-Dlicense.network.mode=strict` | Any validation failure fails the build (the pre-1.9.1 behaviour). |
 | Offline file valid (`-Dlicense.file`) | Build proceeds. No network is attempted at all. |
 | Offline file missing, tampered, expired, wrong product or wrong email scope | **Build fails** with a named `OFFLINE_*` reason. A bad file never falls back to online validation or CI auto-mock. |
 
@@ -490,7 +490,7 @@ contributors unblocked — but it also means a test that asserts a *real* denial
 in this repo: it would pass by mocking rather than by exercising the gate. Regression coverage for
 the validators lives in `common-license-lib` instead.
 
-The operator machine closes that gap since 1.10. `RealKeygenLicenseE2eTest` and
+The operator machine closes that gap since 1.9.1. `RealKeygenLicenseE2eTest` and
 `RealOfflineLicenseE2eTest` (both `@E2E`) run the standing internal Deversity AB licence -
 issued 2026-08-11, licensed address `peter.isberg@deversity.se`, renewal due 2027-08-11 -
 against the live Keygen account and the real offline file. They pin `license.network.mode=strict`

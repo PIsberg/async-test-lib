@@ -445,7 +445,7 @@ public final class LicenseGuard {
          * How a {@code NETWORK_ERROR} is treated, from {@code -Dlicense.network.mode}. The
          * default is {@code grace}: an unreachable validator must not fail a licensed build (see
          * the class javadoc for exactly when grace applies and why it cannot grant rejected
-         * credentials). {@code strict} is the pre-1.10 behaviour: any validation failure fails
+         * credentials). {@code strict} is the pre-1.9.1 behaviour: any validation failure fails
          * the build. An unrecognised value is rejected for the same reason a provider typo is.
          */
         private static NetworkMode resolveNetworkMode() {

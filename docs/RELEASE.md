@@ -76,6 +76,7 @@ together:
 | `consumer-fixture/pom.xml` | own `<version>` + `<async-test.version>` |
 | `consumer-fixture/build.gradle.kts` | `asyncTestVersion` |
 | `README.md` | Maven + Gradle install snippets |
+| `docs/USAGE.md`, `docs/QUICK_REFERENCE.md`, `docs/DISTRIBUTION.md` | The same install snippets; allowlisted since 1.9.1 after all three drifted to 1.6.0 |
 | `.claude/SKILL.md` | Maven + Gradle install snippets |
 | `examples/*/pom.xml` | `<async-test-lib.version>` (115 files) |
 | `examples/*/build.gradle.kts` | `val asyncTestVersion` (85 files) |

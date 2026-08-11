@@ -1,5 +1,5 @@
 @startuml LicenseOfflineSequence
-title Licensing - Offline License Files (air-gapped and egress-blocked CI, since 1.10)
+title Licensing - Offline License Files (air-gapped and egress-blocked CI, since 1.9.1)
 
 actor "Operator" as Op
 participant "IssueOfflineLicense\n(tools/, operator machine)" as Tool

@@ -1,5 +1,5 @@
 @startuml LicenseOnlineSequence
-title Licensing - Online Validation, Caching and Outage Grace (since 1.10)
+title Licensing - Online Validation, Caching and Outage Grace (since 1.9.1)
 
 participant "Concurrency\nRunner" as Runner
 participant "License\nGuard" as Guard
@@ -54,7 +54,7 @@ else online path
       else NETWORK_ERROR (transport failure,\nor provider answered 401/429/5xx)
         Gate --> Guard : Denied(NETWORK_ERROR)
         alt -Dlicense.network.mode=strict
-          Guard --> Runner : SecurityException\n(pre-1.10 behaviour)
+          Guard --> Runner : SecurityException\n(pre-1.9.1 behaviour)
         else grace (default)
           Guard -> Cache : hasRecord(fingerprint)?\n(any age)
           alt this configuration validated\nsuccessfully before

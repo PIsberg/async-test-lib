@@ -21,7 +21,7 @@ This document explains how the Async Test Library is packaged and distributed fo
 
 For the main library, each release produces three files:
 
-### 1. **async-test-lib-1.6.0.jar** (Main Library)
+### 1. **async-test-lib-1.9.1.jar** (Main Library)
 - **Contents**: Compiled Java classes + metadata
 - **Size**: ~150-200 KB
 - **What it includes**:
@@ -31,7 +31,7 @@ For the main library, each release produces three files:
   - Thread utilities
 - **Used for**: Runtime dependency in tests
 
-### 2. **async-test-lib-1.6.0-sources.jar** (Source Code)
+### 2. **async-test-lib-1.9.1-sources.jar** (Source Code)
 - **Contents**: Complete Java source code + JavaDoc comments
 - **Size**: ~300-400 KB
 - **What it includes**:
@@ -40,7 +40,7 @@ For the main library, each release produces three files:
   - No compiled classes
 - **Used for**: IDE integration, reading source in debugger, understanding implementation
 
-### 3. **async-test-lib-1.6.0-javadoc.jar** (API Documentation)
+### 3. **async-test-lib-1.9.1-javadoc.jar** (API Documentation)
 - **Contents**: Generated HTML API documentation
 - **Size**: ~400-500 KB
 - **What it includes**:
@@ -69,7 +69,7 @@ For the main library, each release produces three files:
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>1.6.0</version>
+    <version>1.9.1</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -91,7 +91,7 @@ For the main library, each release produces three files:
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>1.6.0</version>
+    <version>1.9.1</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -111,7 +111,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation 'se.deversity.async-test-lib:async-test-lib:1.6.0'
+    testImplementation 'se.deversity.async-test-lib:async-test-lib:1.9.1'
 }
 ```
 
@@ -121,10 +121,10 @@ Each version produces:
 
 ```
 GitHub Releases Page (PIsberg/async-test-lib/releases)
-├── v1.6.0 (Release)
-│   ├── async-test-lib-1.6.0.jar (Primary artifact)
-│   ├── async-test-lib-1.6.0-sources.jar (Source code)
-│   ├── async-test-lib-1.6.0-javadoc.jar (Documentation)
+├── v1.9.1 (Release)
+│   ├── async-test-lib-1.9.1.jar (Primary artifact)
+│   ├── async-test-lib-1.9.1-sources.jar (Source code)
+│   ├── async-test-lib-1.9.1-javadoc.jar (Documentation)
 │   └── Release notes with installation instructions
 │
 └── Maven Repository (GitHub Packages)
@@ -145,7 +145,7 @@ the root `pom.xml` properties block, so none are repeated here.
 ## File Structure in Distribution
 
 ```
-async-test-lib-1.6.0.jar
+async-test-lib-1.9.1.jar
 ├── se/deversity/asynctest/
 │   ├── AsyncTest.class
 │   ├── AsyncTestExtension.class
@@ -163,13 +163,13 @@ async-test-lib-1.6.0.jar
 │           (Contains: se.deversity.asynctest.AsyncTestExtension)
 └── ... (resources)
 
-async-test-lib-1.6.0-sources.jar
+async-test-lib-1.9.1-sources.jar
 └── se/deversity/asynctest/
     ├── AsyncTest.java
     ├── AsyncTestExtension.java
     └── ... (all .java files)
 
-async-test-lib-1.6.0-javadoc.jar
+async-test-lib-1.9.1-javadoc.jar
 ├── index.html
 ├── com/
 │   └── github/
@@ -211,24 +211,24 @@ async-test-lib-1.6.0-javadoc.jar
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>1.6.0</version>
+    <version>1.9.1</version>
     <scope>test</scope>
 </dependency>
 ```
 
 ### Method 2: Gradle
 ```gradle
-testImplementation 'se.deversity.async-test-lib:async-test-lib:1.6.0'
+testImplementation 'se.deversity.async-test-lib:async-test-lib:1.9.1'
 ```
 
 ### Method 3: Gradle Kotlin DSL
 ```kotlin
-testImplementation("se.deversity.async-test-lib:async-test-lib:1.6.0")
+testImplementation("se.deversity.async-test-lib:async-test-lib:1.9.1")
 ```
 
 ### Method 4: Manual JAR Download
 1. Visit: https://github.com/PIsberg/async-test-lib/releases
-2. Download: async-test-lib-1.6.0.jar
+2. Download: async-test-lib-1.9.1.jar
 3. Add to classpath manually
 4. (Not recommended - use Maven/Gradle instead)
 
@@ -242,7 +242,7 @@ Each artifact includes:
 
 Users can verify:
 ```bash
-sha256sum async-test-lib-1.6.0.jar
+sha256sum async-test-lib-1.9.1.jar
 # Verify against published checksum
 ```
 
@@ -306,7 +306,7 @@ export GITHUB_TOKEN=ghp_xxxxxxxxxxxx
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>1.6.0</version>
+    <version>1.9.1</version>
     <exclusions>
         <exclusion>
             <groupId>org.junit.jupiter</groupId>

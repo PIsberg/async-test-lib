@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-08-11
+
+> Versioning note: by the SUPPORT_POLICY.md table the new licensing configuration options
+> (`license.file`, `license.network.mode`, `license.cache.*`, `keygen.base.uri`) would make this
+> a minor release (1.10.0). It ships as patch 1.9.1 by explicit owner decision; docs and javadoc
+> that said "since 1.10" while this work was unreleased now say 1.9.1. No public Java API
+> changed (japicmp green against 1.9.0).
+
+
 ### Added — enterprise licensing: offline files, outage grace, validation caching
 
 - **Offline license files** (`-Dlicense.file=<path>`): Ed25519-signed, verified inside the JVM

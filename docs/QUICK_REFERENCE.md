@@ -25,7 +25,7 @@ Making your library available for others to install and use via Maven/Gradle wit
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>1.6.0</version>
+    <version>1.9.1</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -36,15 +36,15 @@ repositories {
     maven { url = uri("https://repo1.maven.org/maven2") }
 }
 dependencies {
-    testImplementation 'se.deversity.async-test-lib:async-test-lib:1.6.0'
+    testImplementation 'se.deversity.async-test-lib:async-test-lib:1.9.1'
 }
 ```
 
 ### Artifacts Created Per Release
 ```
-async-test-lib-1.6.0.jar          (150 KB)  → Main library
-async-test-lib-1.6.0-sources.jar  (350 KB)  → Source code
-async-test-lib-1.6.0-javadoc.jar  (450 KB)  → API docs
+async-test-lib-1.9.1.jar          (150 KB)  → Main library
+async-test-lib-1.9.1-sources.jar  (350 KB)  → Source code
+async-test-lib-1.9.1-javadoc.jar  (450 KB)  → API docs
 ```
 
 ### Release Process (4 Steps)
@@ -96,7 +96,7 @@ Key docs:
 ### Before First Release: 3 Tasks
 1. Replace `PIsberg` with your GitHub username in pom.xml and .github/workflows/
 2. Run `mvn clean package` to verify build works locally
-3. Create tag: `git tag -a v1.6.0 -m "Initial release"`
+3. Create tag: `git tag -a v1.9.1 -m "Initial release"`
 
 ### Verify Release Succeeded
 ```
@@ -106,11 +106,11 @@ Check 1: GitHub Actions
 
 Check 2: GitHub Packages
   https://github.com/PIsberg/async-test-lib/packages
-  Look for: async-test v1.6.0
+  Look for: async-test v1.9.1
 
 Check 3: GitHub Releases
   https://github.com/PIsberg/async-test-lib/releases
-  Look for: v1.6.0 with download links
+  Look for: v1.9.1 with download links
 ```
 
 ### Maven Configuration Summary
@@ -126,8 +126,8 @@ Repository:   https://repo1.maven.org/maven2
 
 ### Dependency Coordinates
 ```
-Maven:   se.deversity.async-test-lib:async-test-lib:1.6.0
-Gradle:  'se.deversity.async-test-lib:async-test-lib:1.6.0'
+Maven:   se.deversity.async-test-lib:async-test-lib:1.9.1
+Gradle:  'se.deversity.async-test-lib:async-test-lib:1.9.1'
 ```
 
 ### pom.xml Key Sections
@@ -155,8 +155,8 @@ Gradle:  'se.deversity.async-test-lib:async-test-lib:1.6.0'
 ```yaml
 # publish.yml triggers on ANY tag matching v*
 # Examples that trigger:
-git tag -a v1.6.0 -m "..."     ✅ Triggers
-git tag -a v1.6.0 -m "..."     ✅ Triggers
+git tag -a v1.9.1 -m "..."     ✅ Triggers
+git tag -a v1.9.1 -m "..."     ✅ Triggers
 git tag -a v2.0.0 -m "..."     ✅ Triggers
 git tag -a myversion -m "..."  ❌ Does NOT trigger
 ```
@@ -249,8 +249,8 @@ mvn clean
 mvn deploy
 
 # Release tag
-git tag -a v1.6.0 -m "Description"
-git push origin v1.6.0
+git tag -a v1.9.1 -m "Description"
+git push origin v1.9.1
 ```
 
 ### Verify Everything
@@ -273,19 +273,19 @@ ls -lah target/async-test-*.jar
 
 Expected results:
 ```
-async-test-lib-1.6.0.jar                 ~150 KB ✅
-async-test-lib-1.6.0-sources.jar         ~350 KB ✅
-async-test-lib-1.6.0-javadoc.jar         ~450 KB ✅
+async-test-lib-1.9.1.jar                 ~150 KB ✅
+async-test-lib-1.9.1-sources.jar         ~350 KB ✅
+async-test-lib-1.9.1-javadoc.jar         ~450 KB ✅
 BUILD SUCCESS                             ✅
 ```
 
 ### What Users See
 ```
 GitHub Releases page:
-  v1.6.0 release
-  ├── async-test-lib-1.6.0.jar (download)
-  ├── async-test-lib-1.6.0-sources.jar (download)
-  ├── async-test-lib-1.6.0-javadoc.jar (download)
+  v1.9.1 release
+  ├── async-test-lib-1.9.1.jar (download)
+  ├── async-test-lib-1.9.1-sources.jar (download)
+  ├── async-test-lib-1.9.1-javadoc.jar (download)
   └── Release notes
 
 GitHub Packages:
@@ -293,7 +293,7 @@ GitHub Packages:
   └── 1.1.0 version
 
 Maven Central (in future):
-  se.deversity.async-test-lib:async-test-lib:1.6.0
+  se.deversity.async-test-lib:async-test-lib:1.9.1
   └── Available with no special configuration
 ```
 

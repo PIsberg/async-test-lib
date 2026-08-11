@@ -1950,7 +1950,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 86. Shared MessageDigest Detector
 * **Severity**: `HIGH`
-* **Description**: Detects a single `java.security.MessageDigest` instance shared across threads. Its internal digest state (running hash buffer, byte count, padding) is mutated by every `update()`/`digest()` call, so unsynchronized concurrent access corrupts the resulting hash without throwing any exception (accesses holding the instance's own monitor count as guarded since 1.10; a guard on any other lock object is not observed and is still flagged).
+* **Description**: Detects a single `java.security.MessageDigest` instance shared across threads. Its internal digest state (running hash buffer, byte count, padding) is mutated by every `update()`/`digest()` call, so unsynchronized concurrent access corrupts the resulting hash without throwing any exception (accesses holding the instance's own monitor count as guarded since 1.9.1; a guard on any other lock object is not observed and is still flagged).
 * **Buggy Code**:
   ```java
   private static final MessageDigest SHA256 = MessageDigest.getInstance("SHA-256");

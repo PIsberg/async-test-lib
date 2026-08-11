@@ -66,6 +66,11 @@ ALLOWLIST=(
   consumer-fixture/pom.xml
   consumer-fixture/build.gradle.kts
   README.md
+  # These docs carry install snippets like README.md; they sat outside the
+  # allowlist until 1.9.1 and drifted three releases (pins said 1.6.0).
+  docs/USAGE.md
+  docs/QUICK_REFERENCE.md
+  docs/DISTRIBUTION.md
   .claude/SKILL.md
 )
 
