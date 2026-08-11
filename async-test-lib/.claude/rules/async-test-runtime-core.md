@@ -37,7 +37,11 @@ When modifying these elements, audit for:
 
 ### se.deversity.asynctest.runner.LicenseGuard
 - **Strategy**: OTHER
-- **Note**: ConcurrentHashMap.computeIfAbsent guarantees at-most-once gate execution per fingerprint under contention; volatile announce flags collapse the GRANTED/CI banner to once-per-JVM.
+- **Note**: ConcurrentHashMap.computeIfAbsent guarantees at-most-once gate execution per fingerprint under contention; volatile announce flags collapse the GRANTED/CI/grace banners to once-per-JVM.
+
+### se.deversity.asynctest.runner.LicenseValidationCache
+- **Strategy**: OTHER
+- **Note**: Stateless static methods over the filesystem. Concurrent writers race on an atomic temp-file move where the losing write is equivalent to the winning one; readers see either the old complete file or the new complete file, never a partial write.
 
 ## Public API Surface Protection
 - **Rule**: Exposes public API. Preserve signature, Javadoc, and behavior without breaking backwards or source compatibility.
@@ -75,8 +79,7 @@ When modifying these elements, audit for:
 - **Reason**: JUnit 5 TestTemplateInvocationContextProvider SPI. The two overridden methods (supportsTestTemplate, provideTestTemplateInvocationContexts) must preserve their exact signatures as mandated by JUnit.
 
 ## Security-Critical Code
-
-### se.deversity.asynctest.runner.LicenseGuard
 - **Rule**: This code is security-critical. Do not weaken security properties. Every change must be explicitly reviewed for security impact.
 - **Aspect**: authorization
+- **Applies to**: `se.deversity.asynctest.runner.LicenseGuard`, `se.deversity.asynctest.runner.OfflineLicense`
 <!-- VIBETAGS-END -->

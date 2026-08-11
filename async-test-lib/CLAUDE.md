@@ -67,6 +67,9 @@ you are editing here.
     <element path="se.deversity.asynctest.runner.LicenseGuard">
       <aspect>authorization</aspect>
     </element>
+    <element path="se.deversity.asynctest.runner.OfflineLicense">
+      <aspect>authorization</aspect>
+    </element>
   </security_elements>
 
 <rule>Elements listed in <security_elements> are security-critical. Never weaken their security properties. Every proposed change must be explicitly reviewed for security impact.</rule>
@@ -134,6 +137,8 @@ you are editing here.
     <element path="se.deversity.asynctest.report.Violation" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.runner.ConcurrencyRunner" rules=".claude/rules/async-test-runtime-core.md"/>
     <element path="se.deversity.asynctest.runner.LicenseGuard" rules=".claude/rules/async-test-runtime-core.md"/>
+    <element path="se.deversity.asynctest.runner.LicenseValidationCache" rules=".claude/rules/async-test-runtime-core.md"/>
+    <element path="se.deversity.asynctest.runner.OfflineLicense" rules=".claude/rules/async-test-runtime-core.md"/>
     <element path="se.deversity.asynctest.spi.Detector" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.spi.DetectorFactory" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.spi.DetectorRegistry" rules=".claude/rules/async-test-public-api.md"/>

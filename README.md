@@ -479,6 +479,7 @@ runbook and what to send customers: [docs/LICENSING.md](docs/LICENSING.md).
 | Local, no key, `-Dlicense.mock.mode=true` | Mock mode active — tests run freely |
 | Local, no key, no mock flag | **The gate runs and can refuse.** See below |
 | Real key via `-Dlicense.key=<key>` | Full validation against the licensing backend |
+| Offline file via `-Dlicense.file=<path>` | Signature-verified locally, no network attempted (air-gapped CI) |
 
 > **First run on a new machine.** With no key configured and no mock flag, the gate consults the
 > licensing backend and a denial throws, before any test body runs:
@@ -502,3 +503,24 @@ JUnit configuration is the usual fix, so it applies to every run rather than bei
 per-test.
 
 Set your email identity when using a real key: `-Dlicense.user.email=you@example.com`
+
+### Enterprise CI: outages, proxies and air-gapped runners
+
+Licensed builds do not depend on the licensing provider being up or reachable:
+
+- **Provider outage or blocked egress.** If the validator host cannot be reached, the build
+  proceeds and logs one `LICENSE: validator unavailable` warning per JVM instead of failing. A
+  validator that answers and rejects the key still fails the build. Restore unconditional
+  fail-closed with `-Dlicense.network.mode=strict`.
+- **Validation caching.** A successful validation is recorded (a SHA-256 hash of the
+  configuration, never the key) and reused for `license.cache.ttl.hours` (default 24), so a
+  fork-per-class suite makes one licensing call per day rather than one per test class.
+- **Air-gapped CI.** Ask for an offline license file and point `-Dlicense.file` at it: the file is
+  Ed25519-signed and verified inside the JVM, with no network and no provider account. An invalid
+  file fails closed; it never falls back to online validation.
+- **Proxies.** Validation uses Java's standard HTTP client, so the usual
+  `-Dhttps.proxyHost=<host> -Dhttps.proxyPort=<port>` flags apply. Set them on the forked test
+  JVM (Surefire `argLine` or `systemPropertyVariables`), not only on the Maven process.
+
+Exact failure semantics, the operator runbook and the offline-file format:
+[docs/LICENSING.md](docs/LICENSING.md).

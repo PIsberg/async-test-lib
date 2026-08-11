@@ -105,3 +105,31 @@ With a real key, pass `-Dlicense.key=<key>` and set `-Dlicense.user.email=you@ex
 The library is [PolyForm Noncommercial](../LICENSE); the gate is the mechanism behind that, not an
 accident. It is deliberately loud rather than silently degrading, so that a run which was not
 licensed never looks like a run that found no bugs.
+
+## 7. `LICENSE: validator unavailable` warning, or `OFFLINE_*` denials
+
+### `LICENSE: validator unavailable (...); proceeding under the grace policy`
+
+Not an error. The licensing provider could not be consulted (outage, egress-blocked runner), and
+this configuration is treated as licensed for this run. Definitive rejections (expired, revoked,
+not found, wrong scope) still fail the build. If you want the build to fail on outages too, set
+`-Dlicense.network.mode=strict`. If your runners can never reach the internet, use an offline
+license file (`-Dlicense.file`) instead of relying on grace: see docs/LICENSING.md Part 3.
+
+### `LICENSE DENIED: NETWORK_ERROR` with a reachable provider
+
+The provider answered but with an error status (401/429/5xx), and this configuration has no
+recorded successful validation, so grace does not apply (an erroring host could have rejected the
+credentials). Check the provider's status page and your coordinates
+(`keygen.account.id` / `ls.store.id`). One successful validation on the machine unlocks grace for
+later outages.
+
+### `LICENSE DENIED: OFFLINE_FILE_...` / `OFFLINE_LICENSE_...`
+
+The offline file failed verification; the code names the reason. `OFFLINE_FILE_MALFORMED` usually
+means the file was truncated or re-encoded in transit (send it as an attachment, not pasted).
+`OFFLINE_FILE_SIGNATURE_INVALID` means the content does not match the signature: re-download it.
+`OFFLINE_LICENSE_EXPIRED` means renewal is due; a replacement file is the whole fix.
+`OFFLINE_LICENSE_SCOPE_MISMATCH` means `-Dlicense.user.email` is not on the licensed domain (or,
+for `binding=exact`, is not the licensed address). A bad file never falls back to online
+validation, so fixing the file is the only path.
