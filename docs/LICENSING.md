@@ -490,6 +490,25 @@ contributors unblocked — but it also means a test that asserts a *real* denial
 in this repo: it would pass by mocking rather than by exercising the gate. Regression coverage for
 the validators lives in `common-license-lib` instead.
 
+The operator machine closes that gap since 1.10. `RealKeygenLicenseE2eTest` and
+`RealOfflineLicenseE2eTest` (both `@E2E`) run the standing internal Deversity AB licence -
+issued 2026-08-11, licensed address `peter.isberg@deversity.se`, renewal due 2027-08-11 -
+against the live Keygen account and the real offline file. They pin `license.network.mode=strict`
+and `license.cache.ttl.hours=-1` so neither outage grace nor a cached validation can fake the
+grant, and each carries the denial direction (a same-domain decoy for Keygen's exact binding; a
+foreign domain and a tampered copy for the offline file), so a green run proves enforcement
+rather than the absence of errors. They skip cleanly anywhere the credentials are absent; to run
+them:
+
+```bash
+set -a; . ~/.config/deversity/e2e-license.env; set +a
+mvn -pl async-test-lib test -Dtest='RealKeygenLicenseE2eTest,RealOfflineLicenseE2eTest' \
+  -DfailIfNoTests=false -P e2e
+```
+
+When the licence or the file expires, both tests start failing with the corresponding expiry
+reason - that is the renewal reminder working, not a defect.
+
 `license.provider`, `ls.store.id`, `ls.product.id`, `ls.email.binding` and `license.key` are all
 part of `LicenseGuard`'s cache fingerprint, so changing any of them within a JVM recomputes the
 decision instead of reusing a cached grant.
