@@ -28,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `keygen.base.uri` system property to point the Keygen validator at a stand-in host in tests,
   matching the existing `ls.api.base.uri`.
 
+### Added — real-licensing end-to-end tests (operator machine)
+
+- `RealKeygenLicenseE2eTest` and `RealOfflineLicenseE2eTest` exercise the real Deversity AB
+  licence against the live Keygen account and the real Ed25519-signed offline file - the only
+  tests that prove a genuine grant end to end (everything else is hermetic by design). Both run
+  in strict network mode with the validation cache disabled, so neither CI auto-mock, outage
+  grace nor a cached validation can produce the green; each pins the denial direction too
+  (same-domain decoy, foreign domain, tampered file). They assume the `ATL_E2E_*` environment
+  from `~/.config/deversity/e2e-license.env` and skip cleanly everywhere else, including CI.
+
 ### Changed — guard-on-self synchronization awareness for three flagship detectors
 
 - `RaceConditionDetector`, `SharedMessageDigestDetector` and `SharedStatefulCryptoDetector`
