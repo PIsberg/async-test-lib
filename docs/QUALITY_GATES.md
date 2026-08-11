@@ -133,7 +133,7 @@ scoping works.
 ### NullAway
 
 Nullness is the one defect class the other analysers do not check, and this codebase is built out
-of nullable references: every one of the 127 detectors is `cfg.detectX ? new XDetector() : null`, so
+of nullable references: every one of the 135 detectors is `cfg.detectX ? new XDetector() : null`, so
 a `Phase1DetectorSet` field, a `DetectorRegistry` field and every accessor that reaches one is null
 whenever its flag is off. Whether each read site guards for that was, until now, enforced by
 convention.

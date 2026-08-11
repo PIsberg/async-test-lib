@@ -71,7 +71,7 @@ public class MyAsyncTests {
         detectAll = true
     )
     void testConcurrentAccess() {
-        // All 127 detectors are enabled!
+        // All 135 detectors are enabled!
     }
 }
 ```

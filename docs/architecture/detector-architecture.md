@@ -2,8 +2,8 @@
 
 > Part of the [architecture documentation](../ARCHITECTURE.md).
 
-Detectors live in `async-test-lib/src/main/java/se/deversity/asynctest/diagnostics/`. **127 are
-wired into the `@AsyncTest` pipeline**, one `DetectorType` enum constant each, spanning 18 phases.
+Detectors live in `async-test-lib/src/main/java/se/deversity/asynctest/diagnostics/`. **135 are
+wired into the `@AsyncTest` pipeline**, one `DetectorType` enum constant each.
 `AllDetectorsSpiCoverageTest` pins the count — the built-in factory count must equal
 `DetectorType.values().length` — so that number cannot drift silently.
 

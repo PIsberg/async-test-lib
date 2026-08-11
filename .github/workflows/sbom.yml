@@ -11,8 +11,6 @@ on:
     paths:
       - 'pom.xml'
       - '**/pom.xml'
-  release:
-    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -22,7 +20,7 @@ jobs:
   generate-sbom:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     steps:
       - name: Harden the runner (Block unexpected outbound calls)
         uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
@@ -50,9 +48,9 @@ jobs:
 
       - name: Generate SBOM with CycloneDX
         # skipNotDeployed=false is required because cyclonedx-maven-plugin 2.9+
-        # otherwise skips the goal whenever maven.deploy.skip is effectively true
-        # (which is the case for this single-module library), leaving no
-        # target/bom.xml for the release-upload step.
+        # otherwise skips the goal whenever maven.deploy.skip is effectively true,
+        # leaving no target/bom.xml for the artifact upload below. The bom attached
+        # to GitHub releases is produced and cosign-signed by publish.yml at tag time.
         run: mvn -B org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom -Dcyclonedx.skipNotDeployed=false
 
       - name: Upload SBOM artifact
@@ -63,14 +61,3 @@ jobs:
             target/bom.xml
             target/bom.json
           retention-days: 30
-
-      - name: Upload SBOM to Release
-        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        if: github.event_name == 'release'
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: target/bom.xml
-          asset_name: bom.xml
-          asset_content_type: application/xml
