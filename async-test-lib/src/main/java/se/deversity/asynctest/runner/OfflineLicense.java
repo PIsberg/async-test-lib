@@ -81,7 +81,7 @@ final class OfflineLicense {
             throw new SecurityException("LICENSE MISCONFIGURED: license.file=" + path
                 + " cannot be read (" + e.getClass().getSimpleName() + ": " + e.getMessage() + ")."
                 + "\n  Check the path and that the file was copied intact."
-                + "\n  To run without a licence while sorting it out: -Dlicense.mock.mode=true");
+                + "\n  To run without a licence while sorting it out: -Dlicense.mock.mode=true", e);
         }
 
         int firstDot = content.indexOf('.');
@@ -102,7 +102,7 @@ final class OfflineLicense {
         } catch (IllegalArgumentException e) {
             throw deny("OFFLINE_FILE_MALFORMED",
                 "payload or signature is not valid base64url. "
-                + "The file may have been altered in transit; ask for it to be re-sent.");
+                + "The file may have been altered in transit; ask for it to be re-sent.", e);
         }
 
         try {
@@ -117,14 +117,14 @@ final class OfflineLicense {
         } catch (GeneralSecurityException e) {
             throw deny("OFFLINE_FILE_SIGNATURE_INVALID",
                 "signature verification failed (" + e.getClass().getSimpleName() + "). Ask for the "
-                + "file to be re-issued.");
+                + "file to be re-issued.", e);
         }
 
         Properties payload = new Properties();
         try {
             payload.load(new StringReader(new String(payloadBytes, StandardCharsets.UTF_8)));
         } catch (IOException e) {
-            throw deny("OFFLINE_FILE_MALFORMED", "signed payload is unreadable: " + e.getMessage());
+            throw deny("OFFLINE_FILE_MALFORMED", "signed payload is unreadable: " + e.getMessage(), e);
         }
 
         if (!PRODUCT.equals(payload.getProperty("product"))) {
@@ -141,7 +141,7 @@ final class OfflineLicense {
         try {
             expires = LocalDate.parse(expiresRaw);
         } catch (DateTimeParseException e) {
-            throw deny("OFFLINE_FILE_MALFORMED", "expires is not an ISO date: " + expiresRaw);
+            throw deny("OFFLINE_FILE_MALFORMED", "expires is not an ISO date: " + expiresRaw, e);
         }
         if (LocalDate.now(ZoneOffset.UTC).isAfter(expires)) {
             throw deny("OFFLINE_LICENSE_EXPIRED",
@@ -170,24 +170,53 @@ final class OfflineLicense {
         }
         if (userEmail == null || userEmail.isBlank()) {
             throw deny("OFFLINE_LICENSE_SCOPE_MISMATCH",
-                "the file is bound to " + (binding.equals("exact") ? licensed : "the " + domainOf(licensed) + " domain")
+                "the file is bound to " + ("exact".equals(binding) ? licensed : "the " + domainOf(licensed) + " domain")
                 + " but -Dlicense.user.email is not set. Set it to the address your builds run as.");
         }
         boolean covered = switch (binding) {
-            case "exact" -> licensed.equalsIgnoreCase(userEmail.trim());
+            case "exact" -> asciiEqualsIgnoreCase(licensed, userEmail.trim());
             case "domain" -> {
                 String licensedDomain = domainOf(licensed);
                 String userDomain = domainOf(userEmail.trim());
-                yield licensedDomain != null && licensedDomain.equalsIgnoreCase(userDomain);
+                yield licensedDomain != null && userDomain != null
+                    && asciiEqualsIgnoreCase(licensedDomain, userDomain);
             }
             default -> throw deny("OFFLINE_FILE_MALFORMED", "unknown binding '" + binding + "'.");
         };
         if (!covered) {
             throw deny("OFFLINE_LICENSE_SCOPE_MISMATCH",
                 "license.user.email=" + userEmail + " is not covered: the file is bound to "
-                + (binding.equals("exact") ? "exactly " + licensed : "the " + domainOf(licensed) + " domain")
+                + ("exact".equals(binding) ? "exactly " + licensed : "the " + domainOf(licensed) + " domain")
                 + ". Ask for the licence to be re-scoped if this address should be covered.");
         }
+    }
+
+    /**
+     * ASCII-only case-insensitive equality, for the same reason {@code LicenseGuard}'s keyword
+     * matching folds ASCII only: full Unicode case mapping folds characters outside ASCII onto
+     * ASCII ones (the Kelvin sign onto {@code k}, dotted-I forms onto {@code i}), which would let
+     * an address that is not the licensed text compare equal to it. Restricting the fold to
+     * {@code A-Z} makes the comparison exactly "the same ASCII text, any case"; anything outside
+     * ASCII must match verbatim.
+     */
+    private static boolean asciiEqualsIgnoreCase(String a, String b) {
+        if (a.length() != b.length()) {
+            return false;
+        }
+        for (int i = 0; i < a.length(); i++) {
+            char ca = a.charAt(i);
+            char cb = b.charAt(i);
+            if (ca >= 'A' && ca <= 'Z') {
+                ca = (char) (ca - 'A' + 'a');
+            }
+            if (cb >= 'A' && cb <= 'Z') {
+                cb = (char) (cb - 'A' + 'a');
+            }
+            if (ca != cb) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static @Nullable String domainOf(@Nullable String email) {
@@ -203,6 +232,17 @@ final class OfflineLicense {
      */
     private static SecurityException deny(String code, String detail) {
         return new SecurityException("LICENSE DENIED: " + code + " - " + detail);
+    }
+
+    /**
+     * {@return the denial with its triggering cause attached, for PreserveStackTrace paths}
+     *
+     * @param code   stable machine-greppable reason code
+     * @param detail human explanation with the next step
+     * @param cause  the parse or crypto failure behind the denial
+     */
+    private static SecurityException deny(String code, String detail, Throwable cause) {
+        return new SecurityException("LICENSE DENIED: " + code + " - " + detail, cause);
     }
 
     private static PublicKey verifyKey() throws GeneralSecurityException {

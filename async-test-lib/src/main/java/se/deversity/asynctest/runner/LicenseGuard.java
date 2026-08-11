@@ -316,9 +316,12 @@ public final class LicenseGuard {
      * {@code NETWORK_ERROR} denial, so the happy path never pays for it.
      */
     private static boolean validatorUnreachable(Fingerprint fp, boolean lemonSqueezy) {
-        String base = lemonSqueezy
-            ? (fp.lemonSqueezyBaseUri != null ? fp.lemonSqueezyBaseUri : "https://api.lemonsqueezy.com")
-            : (fp.keygenBaseUri != null ? fp.keygenBaseUri : "https://api.keygen.sh");
+        String base;
+        if (lemonSqueezy) {
+            base = fp.lemonSqueezyBaseUri != null ? fp.lemonSqueezyBaseUri : "https://api.lemonsqueezy.com";
+        } else {
+            base = fp.keygenBaseUri != null ? fp.keygenBaseUri : "https://api.keygen.sh";
+        }
         try {
             HttpClient probeClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(3))

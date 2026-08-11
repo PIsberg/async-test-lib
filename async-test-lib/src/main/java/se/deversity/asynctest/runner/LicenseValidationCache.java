@@ -93,7 +93,10 @@ final class LicenseValidationCache {
         }
         try {
             Path file = fileFor(hash);
-            Files.createDirectories(file.getParent());
+            Path parent = file.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp-" + Thread.currentThread().threadId());
             Files.writeString(tmp, Long.toString(System.currentTimeMillis()), StandardCharsets.UTF_8);
             try {
@@ -101,7 +104,7 @@ final class LicenseValidationCache {
             } catch (AtomicMoveNotSupportedException e) {
                 Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
             }
-        } catch (IOException | RuntimeException e) {
+        } catch (IOException | RuntimeException ignored) {
             // Best effort by design: the next JVM validates online instead.
         }
     }
