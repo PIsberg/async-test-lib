@@ -79,6 +79,7 @@ The following elements are security-critical. AI must not weaken security proper
 - `se.deversity.asynctest.diagnostics.SharedSecureRandomDetector`: Security-critical code [cryptography (RNG quality)]. Do not weaken security properties. Flag any change for security review.
 - `se.deversity.asynctest.diagnostics.SharedStatefulCryptoDetector`: Security-critical code [cryptography (confidentiality / integrity / authenticity state)]. Do not weaken security properties. Flag any change for security review.
 - `se.deversity.asynctest.runner.LicenseGuard`: Security-critical code [authorization]. Do not weaken security properties. Flag any change for security review.
+- `se.deversity.asynctest.runner.OfflineLicense`: Security-critical code [authorization]. Do not weaken security properties. Flag any change for security review.
 
 ## Scoped Rules Index
 Detailed per-element guardrails live in scoped rule files that load automatically when you open the matching source file. Consult the referenced file before modifying an element:
@@ -145,6 +146,8 @@ Detailed per-element guardrails live in scoped rule files that load automaticall
 - `se.deversity.asynctest.report.Violation` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.runner.ConcurrencyRunner` → `.gemini/rules/async-test-runtime-core.md`
 - `se.deversity.asynctest.runner.LicenseGuard` → `.gemini/rules/async-test-runtime-core.md`
+- `se.deversity.asynctest.runner.LicenseValidationCache` → `.gemini/rules/async-test-runtime-core.md`
+- `se.deversity.asynctest.runner.OfflineLicense` → `.gemini/rules/async-test-runtime-core.md`
 - `se.deversity.asynctest.spi.Detector` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.spi.DetectorFactory` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.spi.DetectorRegistry` → `.gemini/rules/async-test-public-api.md`

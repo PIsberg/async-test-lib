@@ -338,8 +338,11 @@ and the message lists the flags. Common reasons:
 | `LICENSE_EXPIRED` | Subscription lapsed — see below |
 | `NETWORK_ERROR` | Could not reach `api.keygen.sh` / `api.lemonsqueezy.com` |
 
-If your build agents cannot reach the internet, `NETWORK_ERROR` fails the build by default. Ask
-us about the fail-open option rather than disabling the gate.
+`NETWORK_ERROR` no longer fails a licensed build by default: since 1.10 an unreachable validator
+is treated as an outage and the run proceeds with a warning (grace mode). A validator that answers
+and rejects your key still fails the build. If your build agents can never reach the internet, ask
+us for an offline license file instead; the full semantics are in
+[Part 3](#part-3--offline-licensing-outages-and-air-gapped-ci).
 
 **When the licence expires.** The subscription rebills yearly. When it lapses, the key's status
 becomes `expired` and runs fail with:
@@ -369,6 +372,90 @@ licence stays valid until the end of the paid term and then goes `expired`.
 
 ---
 
+# Part 3 — Offline licensing, outages and air-gapped CI
+
+Since 1.10 the gate separates "the provider said no" from "the provider could not be asked". The
+first always fails the build. The second is an availability problem, and enterprise CI is where it
+actually happens: egress-blocked runners, proxies, provider outages.
+
+## What happens when, exactly
+
+| Situation | Outcome |
+|---|---|
+| Validator answered: key not found / expired / suspended / wrong scope | **Build fails.** Always, in every mode. |
+| Validator host unreachable: outage, DNS blackhole, egress-blocked runner | Build proceeds; one `LICENSE: validator unavailable` WARN per JVM. |
+| Validator reachable but erroring (401/429/5xx), no successful validation of this configuration on record | **Build fails.** An erroring host could have rejected the credentials, so grace does not apply. |
+| Validator erroring, but this configuration validated successfully before on this machine | Build proceeds with the WARN: for this customer it is an outage, not a rejection. |
+| `-Dlicense.network.mode=strict` | Any validation failure fails the build (the pre-1.10 behaviour). |
+| Offline file valid (`-Dlicense.file`) | Build proceeds. No network is attempted at all. |
+| Offline file missing, tampered, expired, wrong product or wrong email scope | **Build fails** with a named `OFFLINE_*` reason. A bad file never falls back to online validation or CI auto-mock. |
+
+Successful online validations are also recorded on disk (a SHA-256 hash of the configuration and
+the epoch, never the key itself) and reused for `license.cache.ttl.hours` (default 24). With
+`forkEvery = 1` style suites this is the difference between one licensing API call per day and one
+per test class. The record doubles as the grace evidence in the table above.
+
+The security reasoning, in one paragraph: the validators map both transport failures and provider
+error statuses to the single reason `NETWORK_ERROR`, so granting on that reason unconditionally
+would let a fabricated key pass wherever the provider answers with an error. Grace therefore
+requires either a connection-level failure (probed directly) or a recorded prior success. A
+customer who deliberately blackholes the provider host can run unlicensed, and that is accepted:
+`-Dlicense.mock.mode=true` is already printed in the denial message, and enforcement is legal, not
+technical (see "Read this before you sell anything").
+
+## Issuing an offline license file (operator)
+
+The signing keypair lives in `~/.config/deversity/offline-license-signing/` (generated once with
+the `keygen` mode; the tool refuses to overwrite an existing private key, because rotating it
+invalidates every file already issued against released library versions). The library embeds the
+matching public key in `OfflineLicense.java`.
+
+```bash
+java tools/IssueOfflineLicense.java issue \
+  --key ~/.config/deversity/offline-license-signing/private.pem \
+  --licensee "Acme Corp AB" \
+  --email licence@acme-corp.com \
+  --binding domain \
+  --expires 2027-08-11 \
+  --plan 50-199 \
+  --out acme-corp.atl-license
+```
+
+`--binding domain` (the default) covers everyone on the licensed address's domain, matching the
+Lemon Squeezy semantics; `exact` narrows to the one address; `none` skips the email check for
+negotiated site licences. Verify before sending, exactly as the customer's build will read it:
+
+```bash
+java tools/IssueOfflineLicense.java verify \
+  --pub ~/.config/deversity/offline-license-signing/public.pem \
+  --file acme-corp.atl-license --email adeveloper@acme-corp.com
+```
+
+Log it in `customers.tsv` like any other licence, with `offline-file` in the channel column.
+Renewal is a new file with a later `--expires`; nothing else in the customer's configuration
+changes. Price offline files like the matching online tier; they remove the provider dependency,
+not the licence.
+
+## What to send the customer (offline file)
+
+**Your async-test-lib offline licence**
+
+Save the attached `.atl-license` file somewhere your builds can read (checking it into your build
+repo is fine; it only works for your email domain) and add two flags to your test runs:
+
+```
+-Dlicense.file=/path/to/acme-corp.atl-license
+-Dlicense.user.email=<any address on your licensed domain>
+```
+
+No network access is needed or attempted: the file is signature-verified inside the JVM. If the
+file is rejected the build fails with a `LICENSE DENIED: OFFLINE_...` reason naming what is wrong
+(truncated in transit, expired, wrong domain). The file expires on the date in our email; renewal
+is a replacement file and nothing else changes.
+
+
+---
+
 ## For maintainers: what is actually wired up
 
 `LicenseGuard` resolves these system properties. The `ls.*` ones are ignored on the Keygen path
@@ -386,6 +473,11 @@ and the `keygen.*` ones on the LemonSqueezy path.
 | `ls.api.base.uri` | Override the API host; for tests | LemonSqueezy |
 | `license.key` | The customer's key | — |
 | `license.user.email` | Address the run is attributed to. Keygen matches it against the licence **owner**; LemonSqueezy against the buying **domain** | `""` |
+| `license.file` | Path to an Ed25519-signed offline license file. When set, it is the entire decision: no provider coordinates, no network, and a bad file fails closed rather than falling back | unset |
+| `license.network.mode` | `grace` (outages proceed with a WARN; see Part 3 for the exact conditions) or `strict` (any validation failure fails the build) | `grace` |
+| `license.cache.ttl.hours` | How long a recorded successful validation suppresses revalidation. `0` records but never skips; negative disables the cache including the grace record | `24` |
+| `license.cache.dir` | Where validation records live | `~/.asynctest` |
+| `keygen.base.uri` | Override the Keygen API host; for tests, matching `ls.api.base.uri` | Keygen |
 | `license.mock.mode` | Bypasses the gate entirely | `false` |
 
 **Mock mode auto-activates in CI when no credentials are present** (`GITHUB_ACTIONS` or `CI` set,

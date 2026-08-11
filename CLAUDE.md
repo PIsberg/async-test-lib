@@ -172,6 +172,9 @@ Guardrails for module `async-test-analysis` are maintained in that module's own 
     <element path="se.deversity.asynctest.runner.LicenseGuard">
       <aspect>authorization</aspect>
     </element>
+    <element path="se.deversity.asynctest.runner.OfflineLicense">
+      <aspect>authorization</aspect>
+    </element>
   </security_elements>
 
 <rule>Elements listed in <security_elements> are security-critical. Never weaken their security properties. Every proposed change must be explicitly reviewed for security impact.</rule>

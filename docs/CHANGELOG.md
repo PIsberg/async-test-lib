@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — enterprise licensing: offline files, outage grace, validation caching
+
+- **Offline license files** (`-Dlicense.file=<path>`): Ed25519-signed, verified inside the JVM
+  against the vendor key embedded in `OfflineLicense`, with no network and no provider account.
+  The sanctioned path for air-gapped and egress-blocked CI. Product, expiry and email binding
+  (`domain` / `exact` / `none`) are enforced; every anomaly fails closed with a named
+  `OFFLINE_*` reason and never falls back to online validation or CI auto-mock. Files are issued
+  with `tools/IssueOfflineLicense.java`; operator flow in docs/LICENSING.md Part 3.
+- **Outage grace** (`-Dlicense.network.mode`, default `grace`): a `NETWORK_ERROR` fails a
+  licensed build only when the provider is reachable and no prior successful validation of the
+  same configuration is on record. A licensing-provider outage or an egress-blocked runner no
+  longer fails paying customers' builds; fabricated or rejected credentials still do. `strict`
+  restores unconditional fail-closed. Pinned by `LicenseGuardNetworkModeTest`, written failing
+  first against the old behaviour.
+- **Validation caching** (`license.cache.ttl.hours`, default 24; `license.cache.dir`, default
+  `~/.asynctest`): successful online validations are recorded as a SHA-256 hash of the
+  configuration (never the key) and honoured across JVMs, so `forkEvery = 1` suites stop making
+  one licensing API call per test-class JVM.
+- `keygen.base.uri` system property to point the Keygen validator at a stand-in host in tests,
+  matching the existing `ls.api.base.uri`.
+
 ## [1.9.0] - 2026-08-10
 
 ### Added — three virtual-thread-era detectors (Phase 21)
