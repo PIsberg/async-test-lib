@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import javax.crypto.Mac;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -94,10 +95,31 @@ class DetectorAccuracyEvalTest {
 
         assertTrue(detector.analyze().hasIssues(),
                 "PINNED FALSE POSITIVE: the increments are fully lock-protected and the "
-                        + "code is correct, but the detector only sees (thread, read/write) "
-                        + "events and has no representation of the lock. If this went "
-                        + "silent, the detector gained happens-before awareness - flip this "
-                        + "assertion and update detector-accuracy-eval.md");
+                        + "code is correct, but the guard is a lock object other than the "
+                        + "shared instance itself, which the holdsLock probe cannot see "
+                        + "(the guard-on-self twin below is the recognized case). If this "
+                        + "went silent, the detector gained general lock awareness - flip "
+                        + "this assertion and update detector-accuracy-eval.md");
+    }
+
+    @Test
+    @DisplayName("race: the synchronized(shared) twin stays silent (true negative since guard-on-self)")
+    void raceDetectorStaysSilentWhenGuardedByTheSharedObjectsOwnMonitor() throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Counter shared = new Counter();
+        Runnable increment = () -> {
+            synchronized (shared) {
+                detector.recordFieldRead(shared, "value");
+                shared.value++;
+                detector.recordFieldWrite(shared, "value");
+            }
+        };
+        onTwoThreads(increment, increment);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "Every access held the shared object's own monitor, so the accesses are "
+                        + "mutually excluded and ordered by it; firing here would flag the "
+                        + "most common correct guarding idiom in Java");
     }
 
     // ---- AtomicityValidator ----
@@ -162,8 +184,8 @@ class DetectorAccuracyEvalTest {
     }
 
     @Test
-    @DisplayName("digest: the synchronized twin fires identically (pinned false positive)")
-    void digestDetectorFiresOnTheSynchronizedTwinToo() throws InterruptedException {
+    @DisplayName("digest: the synchronized(digest) twin stays silent (true negative since guard-on-self)")
+    void digestDetectorStaysSilentOnTheSynchronizedSelfTwin() throws InterruptedException {
         SharedMessageDigestDetector detector = new SharedMessageDigestDetector();
         MessageDigest digest = sha256();
         Runnable update = () -> {
@@ -174,12 +196,65 @@ class DetectorAccuracyEvalTest {
         };
         onTwoThreads(update, update);
 
+        assertFalse(detector.analyze().hasIssues(),
+                "TRUE NEGATIVE since guard-on-self awareness: every access held the "
+                        + "digest's own monitor, which is exactly the synchronized(digest) "
+                        + "idiom, so the sharing is recognized as guarded. Firing here "
+                        + "means the holdsLock probe regressed");
+    }
+
+    @Test
+    @DisplayName("digest: an external-lock twin still fires (pinned false positive)")
+    void digestDetectorStillFiresWhenGuardedByAnExternalLock() throws InterruptedException {
+        SharedMessageDigestDetector detector = new SharedMessageDigestDetector();
+        MessageDigest digest = sha256();
+        Object lock = new Object();
+        Runnable update = () -> {
+            synchronized (lock) {
+                digest.update((byte) 1);
+                detector.recordAccess(digest, "shared-digest", Thread.currentThread());
+            }
+        };
+        onTwoThreads(update, update);
+
         assertTrue(detector.analyze().hasIssues(),
-                "PINNED FALSE POSITIVE: synchronized(digest) makes this sharing correct, "
-                        + "but the detector tracks only which threads touched the instance. "
-                        + "This is why the report wording says 'verify external "
-                        + "synchronization' rather than asserting corruption. If this went "
-                        + "silent, flip the assertion and update detector-accuracy-eval.md");
+                "PINNED FALSE POSITIVE: the guard is a separate lock object, which the "
+                        + "holdsLock probe on the instance cannot see. If this went silent "
+                        + "the detector gained general lock awareness - flip this assertion "
+                        + "and update detector-accuracy-eval.md");
+    }
+
+    // ---- SharedStatefulCryptoDetector ----
+
+    @Test
+    @DisplayName("stateful crypto: unsynchronized shared Mac fires (true positive)")
+    void statefulCryptoFiresOnUnsynchronizedSharing() throws Exception {
+        SharedStatefulCryptoDetector detector = new SharedStatefulCryptoDetector();
+        Mac mac = Mac.getInstance("HmacSHA256");
+        Runnable use = () -> detector.recordAccess(mac, "shared-mac", Thread.currentThread());
+        onTwoThreads(use, use);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "Mac folds bytes from both callers into one running digest; "
+                        + "unsynchronized sharing breaks integrity silently");
+    }
+
+    @Test
+    @DisplayName("stateful crypto: the synchronized(mac) twin stays silent (true negative since guard-on-self)")
+    void statefulCryptoStaysSilentOnTheSynchronizedSelfTwin() throws Exception {
+        SharedStatefulCryptoDetector detector = new SharedStatefulCryptoDetector();
+        Mac mac = Mac.getInstance("HmacSHA256");
+        Runnable use = () -> {
+            synchronized (mac) {
+                detector.recordAccess(mac, "shared-mac", Thread.currentThread());
+            }
+        };
+        onTwoThreads(use, use);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "Every access held the Mac's own monitor, so the init/update/doFinal "
+                        + "sequences are mutually excluded; the guard-on-self idiom must "
+                        + "not be flagged");
     }
 
     // ---- SharedSecureRandomDetector ----

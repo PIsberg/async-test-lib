@@ -14,6 +14,13 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Detects potential race conditions by tracking cross-thread field accesses.
+ *
+ * <p>Synchronization awareness is partial and deliberate: at record time the detector probes
+ * {@link Thread#holdsLock(Object)} on the tracked object itself, so accesses serialized by the
+ * object's own monitor — {@code synchronized (shared)} blocks and synchronized methods of the
+ * shared object — count as guarded, and a round whose every access was guarded produces no
+ * finding. A guard on any <em>other</em> lock object is invisible and still fires; the report
+ * wording and {@code DetectorAccuracyEvalTest} pin that asymmetry in both directions.
  */
 public class RaceConditionDetector {
 
@@ -23,12 +30,15 @@ public class RaceConditionDetector {
         final boolean write;
         /** Invocation round this access belongs to — see {@link #markInvocationStart()}. */
         final long epoch;
+        /** Whether the accessing thread held the tracked object's own monitor at record time. */
+        final boolean guarded;
 
-        FieldAccess(long threadId, boolean write, long epoch) {
+        FieldAccess(long threadId, boolean write, long epoch, boolean guarded) {
             this.threadId = threadId;
             this.timestamp = System.nanoTime();
             this.write = write;
             this.epoch = epoch;
+            this.guarded = guarded;
         }
     }
 
@@ -139,8 +149,12 @@ public class RaceConditionDetector {
         // (and pins virtual threads to their carrier on JDK < 24), which can mask the race
         // this detector exists to find. A lock-free CAS enqueue keeps the cross-thread
         // rendezvous to a single cache line and never parks a recording thread.
+        // Guard-on-self probe, evaluated on the accessing thread at access time. holdsLock is
+        // an intrinsic over the current thread's own lock records: no monitor is taken, so the
+        // probe cannot serialize the racing threads (the same reason the queue below is lock-free).
+        boolean guarded = Thread.holdsLock(object);
         state.fieldAccesses.computeIfAbsent(fieldName, ignored -> new ConcurrentLinkedQueue<>())
-            .add(new FieldAccess(Thread.currentThread().threadId(), write, invocationEpoch.get()));
+            .add(new FieldAccess(Thread.currentThread().threadId(), write, invocationEpoch.get(), guarded));
     }
     /**
      * Analyses what has been recorded about race conditions and builds the report for it.
@@ -194,15 +208,26 @@ public class RaceConditionDetector {
         Set<Long> threads = new HashSet<>();
         boolean hasWrite = false;
         int writeCount = 0;
+        boolean allGuarded = true;
+        boolean allWritesGuarded = true;
         for (FieldAccess access : accesses) {
             threads.add(access.threadId);
+            allGuarded &= access.guarded;
             if (access.write) {
                 hasWrite = true;
                 writeCount++;
+                allWritesGuarded &= access.guarded;
             }
         }
 
         if (threads.size() < 2 || !hasWrite) {
+            return;
+        }
+
+        // Every access in the round held the tracked object's own monitor: they are mutually
+        // excluded and ordered by that monitor, which is the synchronized(shared) idiom working
+        // correctly. Guards on other lock objects remain invisible — see the class javadoc.
+        if (allGuarded) {
             return;
         }
 
@@ -218,7 +243,7 @@ public class RaceConditionDetector {
             }
         }
 
-        if (writeCount > 1) {
+        if (writeCount > 1 && !allWritesGuarded) {
             report.potentialRaces.add(String.format(
                 "%s: %d writes observed across %d threads",
                 fieldRef, writeCount, threads.size()
@@ -231,7 +256,8 @@ public class RaceConditionDetector {
         for (int i = 1; i < ordered.size(); i++) {
             FieldAccess previous = ordered.get(i - 1);
             FieldAccess current = ordered.get(i);
-            if (previous.threadId != current.threadId && (previous.write || current.write)) {
+            if (previous.threadId != current.threadId && (previous.write || current.write)
+                    && !(previous.guarded && current.guarded)) {
                 report.unsafeAccesses.add(String.format(
                     "%s: thread %d %s followed by thread %d %s",
                     fieldRef,

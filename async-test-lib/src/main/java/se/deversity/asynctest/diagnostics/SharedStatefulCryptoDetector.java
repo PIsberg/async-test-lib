@@ -41,10 +41,11 @@ import javax.crypto.Mac;
  * test, regardless of provider. It is the stateful-primitive sibling of
  * {@link SharedMessageDigestDetector} and {@link SharedSecureRandomDetector}.
  *
- * <p>The detector observes sharing — which threads touched the instance — not
- * locks: a shared primitive guarded by correct external synchronization is
- * flagged all the same. Treat a finding as a prompt to verify that
- * synchronization exists, or to move to a per-thread instance.
+ * <p>Synchronization awareness is partial: an access recorded while the accessing thread holds
+ * the instance's <em>own</em> monitor counts as guarded, and an instance whose every access was
+ * guarded produces no finding. A guard on any other lock object is invisible and still fires;
+ * treat such a finding as a prompt to verify the synchronization, or to move to a per-thread
+ * instance.
  *
  * <p>Usage:
  * <pre>{@code
@@ -71,6 +72,8 @@ public final class SharedStatefulCryptoDetector {
         final String algorithm;
         final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
+        /** One-way flag: some access happened without the instance's own monitor held. */
+        volatile boolean sawUnguardedAccess;
 
         State(String label, String kind, String algorithm) {
             this.label = label;
@@ -90,7 +93,7 @@ public final class SharedStatefulCryptoDetector {
      */
     public void recordAccess(Cipher cipher, String name, Thread thread) {
         if (cipher == null) return;
-        record(System.identityHashCode(cipher), name, "Cipher",
+        record(System.identityHashCode(cipher), Thread.holdsLock(cipher), name, "Cipher",
                 cipher.getClass(), safeString(cipher::getAlgorithm), thread);
     }
 
@@ -103,7 +106,7 @@ public final class SharedStatefulCryptoDetector {
      */
     public void recordAccess(Mac mac, String name, Thread thread) {
         if (mac == null) return;
-        record(System.identityHashCode(mac), name, "Mac",
+        record(System.identityHashCode(mac), Thread.holdsLock(mac), name, "Mac",
                 mac.getClass(), safeString(mac::getAlgorithm), thread);
     }
 
@@ -116,17 +119,21 @@ public final class SharedStatefulCryptoDetector {
      */
     public void recordAccess(Signature signature, String name, Thread thread) {
         if (signature == null) return;
-        record(System.identityHashCode(signature), name, "Signature",
+        record(System.identityHashCode(signature), Thread.holdsLock(signature), name, "Signature",
                 signature.getClass(), safeString(signature::getAlgorithm), thread);
     }
 
-    private void record(int id, String name, String kind, Class<?> type, String algorithm, Thread thread) {
+    private void record(int id, boolean guarded, String name, String kind, Class<?> type,
+                        String algorithm, Thread thread) {
         if (thread == null) return;
         State s = instances.get(id);
         if (s == null) {
             // Cold path — first observation of this instance.
             final String label = (name != null) ? name : type.getSimpleName() + "@" + id;
             s = instances.computeIfAbsent(id, k -> new State(label, kind, algorithm));
+        }
+        if (!guarded) {
+            s.sawUnguardedAccess = true;
         }
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
@@ -139,12 +146,12 @@ public final class SharedStatefulCryptoDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1) continue;
+            if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess) continue;
             String msg = String.format(
                     "%s '%s' (algorithm=%s) accessed from %d threads (%s) — %s is stateful "
                             + "and not thread-safe; unsynchronized concurrent init/update/doFinal interleaving "
                             + "corrupts output or breaks integrity"
-                            + " (the detector observes sharing, not locks — verify external"
+                            + " (accesses under the instance's own monitor count as guarded; other locks are not observed — verify external"
                             + " synchronization or use a per-thread instance).",
                     s.kind,
                     s.label,

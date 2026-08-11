@@ -20,10 +20,11 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
  * the hash, producing wrong digests without any exception — one of the harder bugs to
  * diagnose in production.
  *
- * <p>The detector observes sharing — which threads touched the instance — not
- * locks: a shared digest guarded by correct external synchronization is flagged
- * all the same. Treat a finding as a prompt to verify that synchronization
- * exists, or to move to a per-thread instance.
+ * <p>Synchronization awareness is partial: an access recorded while the accessing thread holds
+ * the instance's <em>own</em> monitor — the {@code synchronized (digest)} idiom — counts as
+ * guarded, and an instance whose every access was guarded produces no finding. A guard on any
+ * other lock object is invisible and still fires; treat such a finding as a prompt to verify
+ * the synchronization, or to move to a per-thread instance.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -49,6 +50,8 @@ public class SharedMessageDigestDetector {
         final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
         final Set<SiteCapture.Site> accessSites = ConcurrentHashMap.newKeySet();
+        /** One-way flag: some access happened without the instance's own monitor held. */
+        volatile boolean sawUnguardedAccess;
 
         DigestState(String name, String type) {
             this.name = name;
@@ -67,6 +70,11 @@ public class SharedMessageDigestDetector {
      */
     public void recordAccess(Object digest, String name, Thread thread) {
         if (digest == null || thread == null) return;
+
+        // Guard-on-self probe, evaluated on the accessing thread at access time. holdsLock is
+        // an intrinsic over the current thread's own lock records: no monitor is taken, so the
+        // probe cannot serialize the threads it is observing.
+        boolean guarded = Thread.holdsLock(digest);
 
         // Hot path: lookup-only. The vast majority of calls hit an instance the
         // detector has already seen at least once, so we avoid all classification
@@ -94,6 +102,9 @@ public class SharedMessageDigestDetector {
                 return new DigestState(label, type);
             });
         }
+        if (!guarded) {
+            s.sawUnguardedAccess = true;
+        }
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
         // Capture the user-code site once per distinct call site. The Set's hashing
@@ -107,14 +118,14 @@ public class SharedMessageDigestDetector {
     public SharedMessageDigestReport analyze() {
         SharedMessageDigestReport r = new SharedMessageDigestReport();
         for (DigestState s : digests.values()) {
-            if (s.accessingThreadIds.size() > 1) {
+            if (s.accessingThreadIds.size() > 1 && s.sawUnguardedAccess) {
                 r.violatedTypes.add(s.type);
                 String msg;
                 if ("Cipher".equals(s.type)) {
                     msg = String.format(
                             "'%s' accessed from %d threads (%s) — Cipher is not thread-safe; "
                                     + "unsynchronized concurrent encrypt/decrypt updates corrupt the block cipher states (e.g. IV, chaining blocks)"
-                                    + " (the detector observes sharing, not locks — verify external"
+                                    + " (accesses under the instance's own monitor count as guarded; other locks are not observed — verify external"
                                     + " synchronization or use a per-thread instance)",
                             s.name, s.accessingThreadIds.size(),
                             String.join(", ", s.accessingThreadNames));
@@ -122,7 +133,7 @@ public class SharedMessageDigestDetector {
                     msg = String.format(
                             "'%s' accessed from %d threads (%s) — Mac is not thread-safe; "
                                     + "unsynchronized concurrent update()/doFinal() calls corrupt the running MAC byte calculations"
-                                    + " (the detector observes sharing, not locks — verify external"
+                                    + " (accesses under the instance's own monitor count as guarded; other locks are not observed — verify external"
                                     + " synchronization or use a per-thread instance)",
                             s.name, s.accessingThreadIds.size(),
                             String.join(", ", s.accessingThreadNames));
@@ -130,7 +141,7 @@ public class SharedMessageDigestDetector {
                     msg = String.format(
                             "'%s' accessed from %d threads (%s) — Signature is not thread-safe; "
                                     + "unsynchronized concurrent update()/sign()/verify() calls corrupt stateful signing or verification operations"
-                                    + " (the detector observes sharing, not locks — verify external"
+                                    + " (accesses under the instance's own monitor count as guarded; other locks are not observed — verify external"
                                     + " synchronization or use a per-thread instance)",
                             s.name, s.accessingThreadIds.size(),
                             String.join(", ", s.accessingThreadNames));
@@ -138,7 +149,7 @@ public class SharedMessageDigestDetector {
                     msg = String.format(
                             "'%s' accessed from %d threads (%s) — MessageDigest is not thread-safe; "
                                     + "unsynchronized concurrent update()/digest() calls corrupt the hash state"
-                                    + " (the detector observes sharing, not locks — verify external"
+                                    + " (accesses under the instance's own monitor count as guarded; other locks are not observed — verify external"
                                     + " synchronization or use a per-thread instance)",
                             s.name, s.accessingThreadIds.size(),
                             String.join(", ", s.accessingThreadNames));

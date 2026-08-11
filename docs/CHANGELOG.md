@@ -28,6 +28,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `keygen.base.uri` system property to point the Keygen validator at a stand-in host in tests,
   matching the existing `ls.api.base.uri`.
 
+### Changed — guard-on-self synchronization awareness for three flagship detectors
+
+- `RaceConditionDetector`, `SharedMessageDigestDetector` and `SharedStatefulCryptoDetector`
+  now probe `Thread.holdsLock(<tracked instance>)` on the accessing thread at record time.
+  Accesses serialized by the shared object's own monitor — the `synchronized (theInstance)`
+  idiom and synchronized methods of the instance — count as guarded: a fully guarded
+  instance or round produces no finding, a partially guarded one still fires. Three pinned
+  false positives in `DetectorAccuracyEvalTest` flipped to true negatives (the eval now
+  measures 9 synchronized twins, 6 silent); guards on any other lock object remain
+  invisible and are pinned as the remaining false-positive class in
+  docs/analysis/detector-accuracy-eval.md. `AtomicityValidator` is unchanged because its
+  recording API carries no object reference to probe; extending the probe across the rest
+  of the Shared* family is the documented follow-up. The probe is a JVM intrinsic over the
+  current thread's own lock records, so it adds no synchronization to the racing threads
+  it observes.
+
 ## [1.9.0] - 2026-08-10
 
 ### Added — three virtual-thread-era detectors (Phase 21)
