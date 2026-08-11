@@ -69,6 +69,12 @@ jobs:
           MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
 
+      - name: Generate SBOM with CycloneDX
+        # Same invocation as sbom.yml. skipNotDeployed=false is required because
+        # cyclonedx-maven-plugin 2.9+ otherwise skips the goal whenever maven.deploy.skip
+        # is effectively true, which would leave no target/bom.xml to sign and attach below.
+        run: mvn -B org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom -Dcyclonedx.skipNotDeployed=false
+
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
@@ -82,7 +88,15 @@ jobs:
           for artifact in \
             async-test-lib/target/async-test-lib-${VERSION}.jar \
             async-test-lib/target/async-test-lib-${VERSION}-sources.jar \
-            async-test-lib/target/async-test-lib-${VERSION}-javadoc.jar; do
+            async-test-lib/target/async-test-lib-${VERSION}-javadoc.jar \
+            async-test-agent/target/async-test-agent-${VERSION}.jar \
+            async-test-agent/target/async-test-agent-${VERSION}-sources.jar \
+            async-test-agent/target/async-test-agent-${VERSION}-javadoc.jar \
+            async-test-analysis/target/async-test-analysis-${VERSION}.jar \
+            async-test-analysis/target/async-test-analysis-${VERSION}-sources.jar \
+            async-test-analysis/target/async-test-analysis-${VERSION}-javadoc.jar \
+            target/bom.xml \
+            target/bom.json; do
             if [ -f "$artifact" ]; then
               # The bundle must end in .sigstore.json. Scorecard's releasesAreSigned probe
               # matches only .asc, .minisig, .sig, .sign, .sigstore and .sigstore.json, so
@@ -99,19 +113,34 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=${{ steps.version.outputs.VERSION }}
+          # The primary artifact must exist; the unconditional file list used to fail the
+          # job when it was missing, and a release without it would be a broken release.
+          test -f "async-test-lib/target/async-test-lib-${VERSION}.jar"
           # The .asc files are the detached GPG signatures maven-gpg-plugin already produced
           # for Maven Central. Publishing them here as well costs nothing and gives consumers
           # the more widely verified of the two formats.
-          gh release create "${{ github.ref_name }}" \
+          # Candidate files are guarded with -f, matching the signing loop above, so an
+          # artifact a future profile stops producing drops out of the release instead of
+          # failing the job.
+          files=()
+          for f in \
             async-test-lib/target/async-test-lib-${VERSION}.jar \
-            async-test-lib/target/async-test-lib-${VERSION}.jar.asc \
-            async-test-lib/target/async-test-lib-${VERSION}.jar.sigstore.json \
             async-test-lib/target/async-test-lib-${VERSION}-sources.jar \
-            async-test-lib/target/async-test-lib-${VERSION}-sources.jar.asc \
-            async-test-lib/target/async-test-lib-${VERSION}-sources.jar.sigstore.json \
             async-test-lib/target/async-test-lib-${VERSION}-javadoc.jar \
-            async-test-lib/target/async-test-lib-${VERSION}-javadoc.jar.asc \
-            async-test-lib/target/async-test-lib-${VERSION}-javadoc.jar.sigstore.json \
+            async-test-agent/target/async-test-agent-${VERSION}.jar \
+            async-test-agent/target/async-test-agent-${VERSION}-sources.jar \
+            async-test-agent/target/async-test-agent-${VERSION}-javadoc.jar \
+            async-test-analysis/target/async-test-analysis-${VERSION}.jar \
+            async-test-analysis/target/async-test-analysis-${VERSION}-sources.jar \
+            async-test-analysis/target/async-test-analysis-${VERSION}-javadoc.jar \
+            target/bom.xml \
+            target/bom.json; do
+            for candidate in "$f" "$f.asc" "$f.sigstore.json"; do
+              if [ -f "$candidate" ]; then files+=("$candidate"); fi
+            done
+          done
+          gh release create "${{ github.ref_name }}" \
+            "${files[@]}" \
             --title "Release ${{ github.ref_name }}" \
             --notes "## Async Test Library ${{ github.ref_name }}
 
@@ -133,6 +162,9 @@ jobs:
           \`\`\`
 
           ### Verify a cosign signature
+          All attached jars (async-test-lib, async-test-agent, async-test-analysis) and the
+          CycloneDX SBOM (\`bom.xml\`) carry matching \`.sigstore.json\` bundles. Verify any
+          file by substituting its name:
           \`\`\`bash
           cosign verify-blob --bundle async-test-lib-${VERSION}.jar.sigstore.json \\
             --certificate-identity-regexp 'https://github.com/PIsberg/async-test-lib' \\
