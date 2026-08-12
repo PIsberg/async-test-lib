@@ -8,6 +8,7 @@ import org.junit.platform.testkit.engine.Events;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
 
 /**
@@ -130,5 +131,64 @@ class PerInvocationLifecycleTest {
 
         // Exactly 1 test ran (the @AsyncTest), and it failed
         assertEquals(1, events.failed().count());
+    }
+
+    // ---- a throwing @AfterEachInvocation must not swallow the round's failure ----
+
+    static class BothRoundAndAfterHookFail {
+
+        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 5_000,
+                   useVirtualThreads = false, detectDeadlocks = false)
+        void alwaysFails() {
+            throw new AssertionError("the failure the user needs to see");
+        }
+
+        @AfterEachInvocation
+        void teardownAlsoFails() {
+            throw new IllegalStateException("teardown blew up too");
+        }
+    }
+
+    /**
+     * Pins which exception survives when the round and its teardown both fail.
+     *
+     * <p>The sibling test above pins that after-hooks <em>run</em> on a failing round. It cannot
+     * see this defect, because it only counts failures — and the count is 1 either way. Running
+     * the hooks in a bare {@code finally} meant a throwing hook replaced the in-flight round
+     * failure outright (Java discards it; auto-suppression happens only in try-with-resources),
+     * so the user was told a teardown method threw and never saw the assertion, the timeout, or
+     * the per-worker causes attached to it.
+     *
+     * <p>The correlation is what makes it worth a test: after-hooks typically reset state the
+     * failing round corrupted, so "round failed" and "hook then failed" arrive together far more
+     * often than chance, and the diagnosis is destroyed exactly when it is most needed.
+     */
+    @Test
+    void aThrowingAfterHookIsSuppressedRatherThanReplacingTheRoundFailure() {
+        Events events = EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(BothRoundAndAfterHookFail.class))
+            .execute()
+            .testEvents();
+
+        assertEquals(1, events.failed().count(), "the @AsyncTest must still report as failed");
+
+        Throwable surfaced = events.failed().stream()
+            .findFirst()
+            .orElseThrow()
+            .getRequiredPayload(org.junit.platform.engine.TestExecutionResult.class)
+            .getThrowable()
+            .orElseThrow();
+
+        String rendered = surfaced + java.util.Arrays.toString(surfaced.getSuppressed());
+
+        assertTrue(rendered.contains("the failure the user needs to see"),
+            "The round's own failure must be what surfaces. It was replaced by the teardown "
+                + "failure, which is what a bare finally does to an in-flight exception. What "
+                + "surfaced instead: " + rendered);
+
+        assertTrue(rendered.contains("teardown blew up too"),
+            "The teardown failure must still be visible, attached as a suppressed exception "
+                + "rather than discarded — losing it would just invert the original bug. What "
+                + "surfaced: " + rendered);
     }
 }

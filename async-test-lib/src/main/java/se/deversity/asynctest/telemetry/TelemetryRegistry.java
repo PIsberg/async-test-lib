@@ -165,6 +165,40 @@ public final class TelemetryRegistry {
     }
 
     /**
+     * Clears the callback only if it is still {@code expected}, and reports whether it was.
+     *
+     * <p><strong>Why a conditional clear.</strong> The registry holds one callback, so two
+     * {@code @AsyncTest} runs sharing a JVM take it from each other. That much is a documented,
+     * accepted trade-off: the per-run thread filter means the run that loses the slot
+     * under-reports rather than mis-attributing another run's threads. The unacceptable part was
+     * the teardown. An unconditional {@code setCallback(null)} let the run that lost the slot
+     * clear the callback belonging to the run that won it, whenever the loser happened to finish
+     * first — so the <em>winner</em> went blind for the rest of its execution, its detectors saw
+     * nothing, and its test passed green with no warning. The absence hint could not fire either,
+     * because the drain thread was still running.
+     *
+     * <p>Comparing by identity before clearing makes teardown affect only the registration the
+     * caller actually made, which turns that silent failure into the documented under-report.
+     *
+     * @param expected the callback the caller believes it registered
+     * @return {@code true} if the callback was cleared, {@code false} if another caller had
+     *         already replaced it — in which case the current holder is left untouched
+     * @since 1.9.2
+     */
+    // Identity, not equals: the question is "is this the exact registration I made", and a
+    // callback that merely compares equal to ours is a different registration whose slot we have
+    // no business clearing. Value equality here would reintroduce the bug this method fixes.
+    @SuppressWarnings("ReferenceEquality")
+    public static synchronized boolean clearCallbackIf(
+            TelemetryEventBuffer.@Nullable DrainCallback expected) {
+        if (drainCallback == expected) {
+            drainCallback = null;
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * {@return whether the drain thread is running} True between {@link #start()} and
      * {@link #stop()}, which in practice means "the agent is attached", since
      * {@code AsyncTestAgent.premain} is what starts the registry. Callers that only want to
