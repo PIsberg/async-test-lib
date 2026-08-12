@@ -85,7 +85,13 @@ public class Phase2DetectorsTest {
         
         WakeupDetector.WakeupReport report = detector.analyzeWakeups();
         assertNotNull(report);
-        assertTrue(report.monitorsWithSpuriousWakeups.size() >= 0, "Should detect spurious wakeup");
+        // recordWaitExit(monitor, false) is a spurious wake by definition, so exactly one
+        // monitor must be reported. This read `size() >= 0`, which a size can never fail,
+        // under a message claiming detection — the test would have passed just as happily
+        // with the detector deleted.
+        assertFalse(report.monitorsWithSpuriousWakeups.isEmpty(),
+                "A wait that exited without a matching notify is a spurious wakeup and must be "
+                        + "reported. Report was: " + report);
     }
 
     @Test
@@ -97,7 +103,11 @@ public class Phase2DetectorsTest {
         detector.recordNotify(monitor, false);
         
         WakeupDetector.WakeupReport report = detector.analyzeWakeups();
-        assertTrue(report.monitorsWithLostNotifications.size() >= 0, "Should detect lost notification");
+        // A notify() with nobody waiting is a lost notification, which is the whole point of
+        // this fixture. Previously asserted `size() >= 0`.
+        assertFalse(report.monitorsWithLostNotifications.isEmpty(),
+                "notify() was called with no thread waiting, so the notification was lost and "
+                        + "must be reported. Report was: " + report);
     }
 
     // ============= Constructor Safety Tests =============
@@ -216,7 +226,11 @@ public class Phase2DetectorsTest {
         monitor.recordTaskRejected(executor, "Queue full");
         
         ThreadPoolMonitor.ThreadPoolReport report = monitor.analyzePoolHealth();
-        assertTrue(report.poolsWithRejections.size() >= 0, "Should track rejections");
+        // One task was explicitly recorded as rejected, so the pool must appear. Previously
+        // asserted `size() >= 0`.
+        assertFalse(report.poolsWithRejections.isEmpty(),
+                "A task was recorded as rejected, so the pool must be reported as having "
+                        + "rejections. Report was: " + report);
     }
 
     // ============= Memory Ordering Monitoring Tests =============
@@ -260,7 +274,11 @@ public class Phase2DetectorsTest {
         // event2 is lost
         
         PipelineMonitor.PipelineReport report = monitor.analyzePipeline();
-        assertTrue(report.missingEvents.size() >= 0, "Should detect missing events");
+        // Two events published, one processed: event2 is the lost one, by construction.
+        // Previously asserted `size() >= 0`.
+        assertFalse(report.missingEvents.isEmpty(),
+                "event2 was published and never processed, so it must be reported missing. "
+                        + "Report was: " + report);
     }
 
     // ============= Read-Write Lock Fairness Tests =============
@@ -294,8 +312,15 @@ public class Phase2DetectorsTest {
         
         ReadWriteLockMonitor.ReadWriteLockReport report = monitor.analyzeFairness();
         assertNotNull(report);
-        assertTrue(report.hasFairnessIssues() || !report.starvedWriters.isEmpty() || true,
-            "Should track fairness");
+        // Ten readers at 1ms against one writer that waited 200ms is writer starvation, which is
+        // the entire point of this fixture. The assertion here ended in `|| true`, so it could
+        // not fail — and DetectorFiringContractTest, which requires every detector to have a test
+        // that makes it report, found ReadWriteLockMonitor unproven precisely because of it.
+        assertTrue(report.hasFairnessIssues(),
+            "A writer that waited 200ms behind ten 1ms readers is starved, so the monitor must "
+                + "report a fairness issue. Report was: " + report);
+        assertFalse(report.starvedWriters.isEmpty(),
+            "The starved writer must be named, not just counted. Report was: " + report);
     }
 
     // ============= Composite Tests =============

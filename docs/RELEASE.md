@@ -115,6 +115,23 @@ commit it.
 bash .claude/skills/release/bump-version.sh 1.7.0
 ```
 
+Then re-pin the japicmp baseline in `async-test-lib/pom.xml` to the version you are releasing
+*from* — i.e. the previous release, the one users are upgrading off:
+
+```xml
+<oldVersion>
+    <dependency>
+        ...
+        <version>1.9.1</version>   <!-- the release before the one being cut -->
+```
+
+**This step is not optional, and skipping it is silent.** The baseline sat at 1.6.0 while 1.7.0
+through 1.9.1 shipped, so for six releases the gate compared against an artifact that predated
+every API those releases added — it could not have failed on breaking any of them, and the 1.9.1
+changelog's claim that japicmp was "green against 1.9.0" described a comparison that never ran.
+A stale baseline does not report anything; it just stops protecting the API your customers pin
+against.
+
 ### 3. Update the changelog
 
 In `docs/CHANGELOG.md`, turn `## [Unreleased]` into `## [<version>] - <YYYY-MM-DD>` and add a

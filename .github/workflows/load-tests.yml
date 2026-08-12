@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       asyncTestVersion:
-        description: "Library version to test against (default: current build)"
+        description: "Library version to test against. Leave empty to test the current build."
         required: false
-        default: "1.6.0"
+        default: ""
 
 permissions:
   contents: read
@@ -54,10 +54,20 @@ jobs:
       - name: Build and publish library to local Maven repository
         run: ./gradlew publishToMavenLocal -x test
 
+      # No version is passed on push/pull_request, so load-tests/build.gradle.kts resolves it
+      # from the reactor pom.xml — i.e. the build publishToMavenLocal just installed above.
+      #
+      # This used to read `-PasyncTestVersion=${{ inputs.asyncTestVersion || '1.6.0' }}`. The
+      # inputs context is empty on automatic triggers, so every run pinned 1.6.0 and pulled it
+      # from Maven Central, which made the publish step above dead weight and meant the load
+      # tests had never measured HEAD since 1.6.0 — a throughput regression in the current build
+      # was structurally invisible. Passing the input through only when it is set keeps the
+      # workflow_dispatch escape hatch for benchmarking a published release.
       - name: Run load tests (fast subset — capped for CI)
         run: |
+          set -euo pipefail
           ./gradlew -p load-tests test \
-            -PasyncTestVersion=${{ inputs.asyncTestVersion || '1.6.0' }} \
+            ${{ inputs.asyncTestVersion && format('-PasyncTestVersion={0}', inputs.asyncTestVersion) || '' }} \
             -PloadTestFast=true
 
       - name: Upload throughput results

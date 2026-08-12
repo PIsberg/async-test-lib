@@ -215,6 +215,20 @@ public class ReadWriteLockMonitor {
         /**
          * {@return whether there are fairness issues}
          */
+        /**
+         * {@return whether this report should surface as a finding}
+         *
+         * <p>The canonical predicate {@code LegacyDetectorAdapter} binds to. Without it the
+         * adapter resolved the report method, found no {@code hasIssues()} on the returned type,
+         * and emitted an empty violation list on every call — leaving this detector registered,
+         * addressable and structurally silent. Pinned by {@code DetectorFiringContractTest}.
+         *
+         * @since 1.9.2
+         */
+        public boolean hasIssues() {
+            return hasFairnessIssues();
+        }
+
         public boolean hasFairnessIssues() {
             return !readerDominatedLocks.isEmpty() || !starvedWriters.isEmpty();
         }

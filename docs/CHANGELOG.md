@@ -13,7 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > (`license.file`, `license.network.mode`, `license.cache.*`, `keygen.base.uri`) would make this
 > a minor release (1.10.0). It ships as patch 1.9.1 by explicit owner decision; docs and javadoc
 > that said "since 1.10" while this work was unreleased now say 1.9.1. No public Java API
-> changed (japicmp green against 1.9.0).
+> changed. (This originally read "japicmp green against 1.9.0". It was not: `<oldVersion>` was
+> pinned to 1.6.0 at the time, so the comparison against 1.9.0 never ran. Corrected in 1.9.2,
+> which re-pins the baseline and adds the re-pin to the release checklist.)
 
 
 ### Added — enterprise licensing: offline files, outage grace, validation caching

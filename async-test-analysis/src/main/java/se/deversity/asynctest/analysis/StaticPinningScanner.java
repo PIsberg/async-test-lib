@@ -163,8 +163,8 @@ public final class StaticPinningScanner {
                         results.addAll(scanClass(bytes));
                     } catch (RuntimeException e) {
                         // Unparseable by this ASM: newer class-file version, or corrupt bytes.
-                        // One unreadable file must not cost the caller every finding in the tree.
-                        continue;
+                        // One unreadable file must not cost the caller every finding in the tree,
+                        // so it is skipped and the walk continues.
                     }
                 }
             }

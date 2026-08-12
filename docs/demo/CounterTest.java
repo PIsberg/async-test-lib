@@ -8,7 +8,7 @@ class CounterTest {
     @AsyncTest(
         threads     = 8,            // 8 threads race at the barrier
         invocations = 50,           // 50 rounds of maximum contention
-        detectAll   = true          // all 111 detectors enabled
+        detectAll   = true          // all 135 detectors enabled
     )
     void counter_mustBeThreadSafe() {
         AsyncTestContext.raceConditionMonitor()

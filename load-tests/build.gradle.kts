@@ -16,7 +16,31 @@ repositories {
     mavenCentral()
 }
 
-val asyncTestVersion: String = project.findProperty("asyncTestVersion") as String? ?: "1.3.0"
+// Default to the version in the reactor's pom.xml -- the build sitting next to this one --
+// rather than a literal. A hard-coded fallback is how this drifted: the workflow passed '1.6.0'
+// and this file fell back to '1.3.0', so the load tests resolved an old jar from Maven Central
+// and the publishToMavenLocal step that precedes them was dead weight. Every automatic run
+// measured a release that was five versions stale, which makes a throughput regression in the
+// current build impossible to see. Reading the pom means a release bump moves one file and this
+// follows, exactly as the root build.gradle.kts already does for the reactor version.
+val asyncTestVersion: String = (project.findProperty("asyncTestVersion") as String?)
+    ?.takeIf { it.isNotBlank() }
+    ?: run {
+        val pom = rootProject.file("../pom.xml")
+        require(pom.isFile) {
+            "Cannot resolve the version under test: ${pom.absolutePath} does not exist. Pass " +
+                "-PasyncTestVersion=<version> to load-test a published release instead."
+        }
+        val text = pom.readText()
+        requireNotNull(
+            Regex("""<artifactId>async-test-parent</artifactId>\s*<version>([^<]+)</version>""")
+                .find(text)?.groupValues?.get(1)?.trim()
+        ) {
+            "Could not read the reactor version out of ${pom.absolutePath}. If the parent " +
+                "artifactId changed, update this regex and the matching one in the root " +
+                "build.gradle.kts together."
+        }
+    }
 val junitVersion = "6.1.2"
 
 // Publish library to local Maven before running load tests:

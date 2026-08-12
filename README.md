@@ -63,21 +63,43 @@
 2. **Write your first stress test**:
    ```java
    import se.deversity.asynctest.AsyncTest;
+   import se.deversity.asynctest.FailOn;
 
    class CounterTest {
        private int counter = 0;
 
-       @AsyncTest(threads = 10, invocations = 100, detectAll = true)
+       @AsyncTest(threads = 10, invocations = 100, detectAll = true,
+                  failOn = FailOn.CRITICAL)
        void counter_mustBeThreadSafe() {
-           counter++;  // Race condition — async-test will catch it
+           counter++;  // compound read-modify-write: not atomic
        }
    }
    ```
 
+   `failOn = FailOn.CRITICAL` makes a finding fail the test. The default is
+   `FailOn.NONE`, which prints findings and lets the test pass — useful when adding
+   `@AsyncTest` to an existing suite, surprising as a first experience.
+
 3. **Run your tests**:
    ```bash
-   mvn test
+   mvn test -Dlicense.mock.mode=true -Dasynctest.agent=fields=true
    ```
+
+   Two flags, both worth understanding before you drop them:
+
+   - **`-Dlicense.mock.mode=true`** — without a licence key the run stops with
+     `LICENSE DENIED`. CI sets mock mode automatically (`CI` or `GITHUB_ACTIONS` in the
+     environment); a local run needs the flag. See [Licensing](#licensing).
+   - **`-Dasynctest.agent=fields=true`** — attaches the instrumentation agent so a bare
+     `counter++` is observed. **Without it this example passes and reports nothing.**
+     `counter++` compiles to a field read and a field write with no method call, so
+     nothing can see it unless the bytecode is instrumented. Add
+     `async-test-agent` as a test dependency for this flag to find anything; the runner
+     logs `runner.agent.attach.failed` if the artifact is missing.
+
+   Detection that needs neither flag: deadlocks, which are read from the JVM's own
+   thread state. If you want to see the library find something with zero setup, make two
+   threads take two locks in opposite orders.
 
 </details>
 
@@ -92,21 +114,34 @@
 2. **Write your first stress test**:
    ```java
    import se.deversity.asynctest.AsyncTest;
+   import se.deversity.asynctest.FailOn;
 
    class CounterTest {
        private int counter = 0;
 
-       @AsyncTest(threads = 10, invocations = 100, detectAll = true)
+       @AsyncTest(threads = 10, invocations = 100, detectAll = true,
+                  failOn = FailOn.CRITICAL)
        void counter_mustBeThreadSafe() {
-           counter++;  // Race condition — async-test will catch it
+           counter++;  // compound read-modify-write: not atomic
        }
    }
    ```
 
+   `failOn = FailOn.CRITICAL` makes a finding fail the test; the default `FailOn.NONE`
+   prints findings and passes.
+
 3. **Run your tests**:
    ```bash
-   ./gradlew test
+   ./gradlew test -Dlicense.mock.mode=true -Dasynctest.agent=fields=true
    ```
+
+   `-Dlicense.mock.mode=true` is what a local run without a licence key needs (CI
+   activates mock mode by itself). `-Dasynctest.agent=fields=true` attaches the
+   instrumentation agent — **without it this example passes and reports nothing**,
+   because `counter++` is a field read and write with no method call for the weaver to
+   bind to. Add `async-test-agent` as a test dependency for the flag to do anything.
+
+   Deadlock detection needs neither flag; it reads the JVM's own thread state.
 
 </details>
 

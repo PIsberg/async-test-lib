@@ -2,7 +2,7 @@
 
 Investigated 2026-08-06 on `investigate/detectors-and-test-profiles`. Two questions: can the
 suite be split into a fast local default and a CI-only end-to-end tier, and which concurrency
-bug classes do the 127 detectors not yet cover. Timing numbers come from the surefire XML
+bug classes do the 135 detectors not yet cover. Timing numbers come from the surefire XML
 reports of a local run on 2026-08-05 (JDK as configured, in-test time, excluding fork
 startup); everything else was read from the sources cited inline. Update 2026-08-06: the
 Part 1 profile split and Part 2's top candidate (`FLOW_PUBLISHER_CONCURRENCY`) have been

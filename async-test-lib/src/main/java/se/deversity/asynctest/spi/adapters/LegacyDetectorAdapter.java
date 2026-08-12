@@ -65,12 +65,51 @@ public final class LegacyDetectorAdapter<D> implements Detector {
             resolvedAnalyze = delegate.getClass().getMethod("analyze");
             resolvedFailure = null;
         } catch (NoSuchMethodException e) {
-            resolvedAnalyze = null;
-            resolvedFailure = e;
+            // Not every detector names its report method "analyze". The set uses
+            // analyzeAtomicity(), analyzeWakeups(), analyzeFairness(), validateLockOrder(),
+            // validateConstructorSafety() and more. Before this fallback, a detector whose
+            // method was named anything else resolved to nothing and analyze() returned an
+            // empty list forever — registered, addressable, unit-tested, and permanently unable
+            // to emit a Violation. LOCK_ORDER and CONSTRUCTOR_SAFETY were both in that state.
+            // The failure was invisible because every path out of analyze() returns List.of().
+            resolvedAnalyze = findReportMethod(delegate.getClass());
+            resolvedFailure = resolvedAnalyze == null ? e : null;
         }
         this.analyzeMethod = resolvedAnalyze;
         this.analyzeMethodLookupFailure = resolvedFailure;
         this.hasIssuesMethod = (resolvedAnalyze == null) ? null : findHasIssues(resolvedAnalyze.getReturnType());
+    }
+
+    /**
+     * Finds a detector's report method when it is not called {@code analyze}.
+     *
+     * <p>A report method is public, takes no arguments, and returns something carrying a
+     * {@code boolean hasIssues()} — that last part is the real test, and it is what keeps this
+     * from binding to an unrelated getter. Candidates are considered in name order so the choice
+     * is deterministic across JVMs, since {@link Class#getMethods()} has no defined order and a
+     * detector with two report methods must not bind to a different one on different runs.
+     *
+     * @param detectorClass the legacy detector's class
+     * @return the report method, or {@code null} if the detector has no canonical shape
+     */
+    private static @Nullable Method findReportMethod(Class<?> detectorClass) {
+        Method best = null;
+        for (Method m : detectorClass.getMethods()) {
+            if (m.getParameterCount() != 0 || m.getReturnType() == void.class) {
+                continue;
+            }
+            String name = m.getName();
+            if (!name.startsWith("analyze") && !name.startsWith("validate")) {
+                continue;
+            }
+            if (findHasIssues(m.getReturnType()) == null) {
+                continue;
+            }
+            if (best == null || name.compareTo(best.getName()) < 0) {
+                best = m;
+            }
+        }
+        return best;
     }
 
     @Override
