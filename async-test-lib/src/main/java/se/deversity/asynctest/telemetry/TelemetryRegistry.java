@@ -51,6 +51,13 @@ public final class TelemetryRegistry {
     private static final AtomicBoolean STOPPED = new AtomicBoolean(false);
 
     private static volatile TelemetryEventBuffer.@Nullable DrainCallback drainCallback = null;
+
+    /**
+     * Guards the compare-and-clear in {@link #clearCallbackIf}. Private so no other code can hold
+     * it — a {@code static synchronized} method would lock the class object instead, which any
+     * caller can also lock.
+     */
+    private static final Object CALLBACK_LOCK = new Object();
     private static @Nullable ScheduledExecutorService drainExecutor = null;
     private static @Nullable Thread shutdownHook = null;
 
@@ -189,13 +196,19 @@ public final class TelemetryRegistry {
     // callback that merely compares equal to ours is a different registration whose slot we have
     // no business clearing. Value equality here would reintroduce the bug this method fixes.
     @SuppressWarnings("ReferenceEquality")
-    public static synchronized boolean clearCallbackIf(
+    public static boolean clearCallbackIf(
             TelemetryEventBuffer.@Nullable DrainCallback expected) {
-        if (drainCallback == expected) {
-            drainCallback = null;
-            return true;
+        // A private lock rather than `static synchronized`. The latter takes the monitor of the
+        // class object, which any code holding TelemetryRegistry.class can also take, so an
+        // unrelated caller could stall this compare-and-clear. It runs during test teardown,
+        // where a stall is a hang in somebody's suite rather than a slow method.
+        synchronized (CALLBACK_LOCK) {
+            if (drainCallback == expected) { // NOPMD CompareObjectsWithEquals - identity is the point
+                drainCallback = null;
+                return true;
+            }
+            return false;
         }
-        return false;
     }
 
     /**

@@ -213,9 +213,6 @@ public class ReadWriteLockMonitor {
         public final Set<String> currentReadHolders = new HashSet<>();
         
         /**
-         * {@return whether there are fairness issues}
-         */
-        /**
          * {@return whether this report should surface as a finding}
          *
          * <p>The canonical predicate {@code LegacyDetectorAdapter} binds to. Without it the
@@ -229,6 +226,9 @@ public class ReadWriteLockMonitor {
             return hasFairnessIssues();
         }
 
+        /**
+         * {@return whether there are fairness issues}
+         */
         public boolean hasFairnessIssues() {
             return !readerDominatedLocks.isEmpty() || !starvedWriters.isEmpty();
         }

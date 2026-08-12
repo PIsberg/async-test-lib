@@ -262,11 +262,6 @@ public class ThreadPoolDeadlockDetector {
         }
 
         /**
-         * Indicates whether at least one pool exhibited deadlock risk behavior.
-         *
-         * @return true if any deadlock risks were detected
-         */
-        /**
          * {@return whether this report should surface as a finding}
          *
          * <p>The canonical predicate {@code LegacyDetectorAdapter} binds to. Without it the
@@ -279,6 +274,12 @@ public class ThreadPoolDeadlockDetector {
         public boolean hasIssues() {
             return hasDeadlockRisk();
         }
+
+        /**
+         * Indicates whether at least one pool exhibited deadlock risk behavior.
+         *
+         * @return true if any deadlock risks were detected
+         */
 
         public boolean hasDeadlockRisk() {
             return !risks.isEmpty();

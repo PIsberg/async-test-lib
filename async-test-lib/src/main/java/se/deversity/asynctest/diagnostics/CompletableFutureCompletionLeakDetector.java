@@ -223,11 +223,6 @@ public class CompletableFutureCompletionLeakDetector {
         }
 
         /**
-         * Indicates whether any uncompleted futures were detected.
-         *
-         * @return true if any leaks were detected
-         */
-        /**
          * {@return whether this report should surface as a finding}
          *
          * <p>The canonical predicate {@code LegacyDetectorAdapter} binds to. Without it the
@@ -241,6 +236,11 @@ public class CompletableFutureCompletionLeakDetector {
             return hasLeaks();
         }
 
+        /**
+         * Indicates whether any uncompleted futures were detected.
+         *
+         * @return true if any leaks were detected
+         */
         public boolean hasLeaks() {
             return !leakedFutures.isEmpty();
         }
