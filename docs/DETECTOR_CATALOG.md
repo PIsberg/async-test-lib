@@ -2719,7 +2719,7 @@ against `String` keys + `Thread` / plain `Object` instances (no preview-API impo
 it compiles and runs on the Java 21 baseline while modeling APIs that only exist on
 JDK 24/25/26.
 
-### A. StableValue Misuse Detector
+### 121. StableValue Misuse Detector
 * **Class**: `StableValueMisuseDetector` · **JDK feature**: `StableValue` (JEP 502, preview JDK 25 → 26)
 * **Severity**: `CRITICAL` (read-before-set / reentrant) · `HIGH` (double-set) · `LOW` (contention)
 * **Description**: `StableValue<T>` is a deferred-immutable holder set at most once, then
@@ -2754,7 +2754,7 @@ JDK 24/25/26.
   assertTrue(d.analyze().hasIssues());
   ```
 
-### B. StructuredTaskScope Misuse Detector
+### 122. StructuredTaskScope Misuse Detector
 * **Class**: `StructuredTaskScopeMisuseDetector` · **JDK feature**: `StructuredTaskScope` (JEP 505, preview JDK 25 → final JDK 26)
 * **Severity**: `CRITICAL` (lifecycle violations) · `HIGH` (close-without-join)
 * **Description**: The JDK 25 API (`StructuredTaskScope.open(Joiner)`) enforces a strict
@@ -2789,7 +2789,7 @@ JDK 24/25/26.
   assertTrue(d.analyze().hasIssues());
   ```
 
-### C. Gatherer Concurrency Misuse Detector
+### 123. Gatherer Concurrency Misuse Detector
 * **Class**: `GathererConcurrencyMisuseDetector` · **JDK feature**: Stream Gatherers (JEP 485, final JDK 24)
 * **Severity**: `HIGH` (missing combiner) · `MEDIUM` (concurrent integrator)
 * **Description**: On a parallel stream the runtime splits the input, runs the integrator on
@@ -2816,7 +2816,7 @@ JDK 24/25/26.
   assertTrue(d.analyze().hasIssues());   // fires once seen on >1 thread without a combiner
   ```
 
-### D. LazyConstant Misuse Detector (Phase 18, 1.7.0+)
+### 124. LazyConstant Misuse Detector (Phase 18, 1.7.0+)
 * **Class**: `LazyConstantMisuseDetector` · **JDK feature**: `LazyConstant` (Lazy Constants, second preview JDK 26 — renamed, simplified successor of `StableValue`)
 * **Severity**: `CRITICAL` (reentrant supplier) · `HIGH` (null value / repeat computation / non-determinism) · `LOW` (compute convoy)
 * **Description**: `LazyConstant.of(supplier)` computes at most once on first `get()`,
@@ -2847,7 +2847,7 @@ JDK 24/25/26.
   assertTrue(d.analyze().hasIssues());
   ```
 
-### E. Final Field Mutation Detector (Phase 18, 1.7.0+)
+### 125. Final Field Mutation Detector (Phase 18, 1.7.0+)
 * **Class**: `FinalFieldMutationDetector` · **JDK feature**: JEP 500 — Warnings About Uses of Deep Reflection to Mutate Final Fields (JDK 26)
 * **Severity**: `HIGH` (any reflective final-field write) · `CRITICAL` (racing readers / concurrent mutators)
 * **Description**: JDK 26 warns on `Field.set(...)` of `final` fields
@@ -2874,7 +2874,7 @@ JDK 24/25/26.
   assertTrue(d.analyze().hasIssues());
   ```
 
-### F. Shared KDF Detector (Phase 18, 1.7.0+)
+### 126. Shared KDF Detector (Phase 18, 1.7.0+)
 * **Class**: `SharedKdfDetector` · **JDK feature**: `javax.crypto.KDF` (JEP 510 — Key Derivation Function API, final JDK 25)
 * **Severity**: `HIGH`
 * **Description**: The `KDF` javadoc documents the type as **not thread-safe** unless the
@@ -2922,7 +2922,7 @@ JDK 24/25/26.
 
 ## Phase 19: Reactive Streams — Flow API (1.7.1+)
 
-### Flow Publisher Concurrency Detector
+### 127. Flow Publisher Concurrency Detector
 * **Class**: `FlowPublisherConcurrencyDetector` · **JDK feature**: `java.util.concurrent.Flow` (JDK 9+)
 * **Severity**: `HIGH` (overlapping `onNext`, signals after a terminal signal), `MEDIUM` (delivery beyond recorded demand — conditional wording, since only recorded `request()` calls are visible)
 * **Description**: The Flow API inherits the reactive-streams specification: signals to a

@@ -244,14 +244,14 @@ Shows the decision flow during test execution.
 Shows how the library is deployed and used.
 
 **Artifacts:**
-- **async-test-lib-1.6.0.jar**: Main library (~150 KB)
+- **async-test-lib-&lt;version&gt;.jar**: Main library
   - Extension layer classes
   - Runner classes
-  - 35 detector classes
+  - 135 detector classes
   - 5 benchmark classes
   - META-INF/services (JUnit extension registration)
-- **async-test-lib-1.6.0-sources.jar**: Source code (~350 KB)
-- **async-test-lib-1.6.0-javadoc.jar**: API documentation (~450 KB)
+- **async-test-lib-&lt;version&gt;-sources.jar**: Source code
+- **async-test-lib-&lt;version&gt;-javadoc.jar**: API documentation
 
 **Deployment:**
 - Published to Maven repository (GitHub Packages)

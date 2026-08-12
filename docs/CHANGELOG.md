@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Direct field weaving in the agent (`fields=true`).** The agent bound `Advice` to
+  `isGetter()` / `isSetter()`, so a bare `counter++` inside a method — the shape of most real
+  races, and the README's own headline example — produced no events under any configuration.
+  `FieldAccessWeaver` now instruments the field instructions themselves. Opt-in, because it
+  weaves every field access in every matched class; pair it with `includes=`. See
+  [AGENT.md](AGENT.md#32-launch-flag-with-arguments).
+- **`-Dasynctest.agent=<agentArgs>`** attaches the agent from inside the run, so field weaving is
+  reachable without resolving a `-javaagent` jar path that differs per machine and changes every
+  release. Degrades to a single `runner.agent.attach.failed` warning when the artifact is absent
+  or the JVM forbids self-attachment.
+- **`-Dasynctest.validate.jmm`** gates the JVM memory-model self-check, which previously ran on
+  every test method.
+- **`TelemetryRegistry.clearCallbackIf(expected)`** — a compare-and-clear so a finishing bridge
+  releases only its own registration.
+
+### Fixed
+
+- **Six detectors could not emit a `Violation` under any input.** `LOCK_ORDER` and
+  `CONSTRUCTOR_SAFETY` name their report methods `validateLockOrder()` /
+  `validateConstructorSafety()` while the adapter looked up a method named exactly `analyze`;
+  `VIRTUAL_THREAD_PINNING`, `THREAD_POOL_DEADLOCK`, `READ_WRITE_LOCK_FAIRNESS` and
+  `COMPLETABLE_FUTURE_COMPLETION_LEAKS` had no `hasIssues()` on their reports. Every failure path
+  in `LegacyDetectorAdapter.analyze()` returns an empty list, so all six looked healthy while
+  being silently inert. New `DetectorFiringContractTest` fails on that shape.
+- **A throwing `@AfterEachInvocation` destroyed the round's failure.** Hooks ran in a bare
+  `finally`, and Java discards the in-flight exception when a `finally` throws, so a
+  `RoundTimeoutError` with its thread dump and per-worker causes was replaced by "teardown method
+  threw". The hook failure is now attached as suppressed. Workers are also quiesced before
+  teardown on the failure path.
+- **A finishing test could blind a concurrently running one.** `TelemetryBridge.close()` cleared
+  the registry callback unconditionally, so the run that lost the single callback slot could, on
+  finishing first, silence the run that legitimately held it — which then detected nothing and
+  passed green.
+- **Class-level `@AsyncTest` with plain `@Test` methods** ran single-threaded with no barrier, no
+  detectors and no licence check, and passed. Now warns once per class, naming the method and the
+  spelling that would have worked. It warns rather than fails because mixing async templates with
+  ordinary unit tests is legitimate and indistinguishable at runtime.
+- **False positives on correct code.** `BlockingQueueDetector` treated a rejected `offer()` and a
+  null `poll()` as findings — both are what a bounded queue returns when working, and the
+  canonical backpressure and drain-loop idioms produce them by construction; they are now counts,
+  with saturation the only finding. `VisibilityMonitor` no longer asserts "Missing 'volatile'",
+  a cause its value-only recording API cannot establish. `StaticPinningScanner` no longer reports
+  `Selector.selectNow` or `Socket.get*Stream`, which the JDK documents as non-blocking.
+- **`StaticPinningScanner` aborted the whole scan on one unparseable `.class` file**, failing the
+  consumer's build over a stray artefact. Unreadable files are skipped.
+- **`premain` could abort JVM startup.** `install()` had no exception handling and calls a class
+  deliberately not shaded into the agent jar; a throw there kills the JVM before `main`. It also
+  claimed the at-most-once gate before the fallible work, so a failure wedged the JVM with no
+  transformer and every later `selfAttach()` silently no-opping.
+- **Racy counters** in `ExchangerDetector`, `ForkJoinPoolDetector`,
+  `DoubleCheckedLockingDetector` and `BlockingQueueDetector` are now atomics.
+- **japicmp compared against 1.6.0** across six releases, leaving every API added in 1.7.0–1.9.1
+  unguarded. Re-pinned to 1.9.1 with the obsolete excludes removed, and re-pinning is now a step
+  in [RELEASE.md](RELEASE.md#2-bump-the-version).
+- **Load tests had never measured the current build.** The workflow pinned `1.6.0` on every
+  automatic trigger and resolved it from Maven Central, making the preceding `publishToMavenLocal`
+  dead weight; the Gradle-side fallback was `1.3.0`. Both literals are gone — the version comes
+  from `pom.xml`.
+- **A Jazzer crash could not turn anything red**, surfacing only as a 30-day artifact on a green
+  weekly job. Findings now fail the run.
+- **Documentation counts.** Documents variously claimed 35, 100, 111, 114, 127, 128 or 135 detectors;
+  `DETECTOR_CATALOG.md` numbered only 128 of its 135 entries, leaving an apparent gap at 121–127
+  that read as seven missing detectors when they were merely lettered A–F. All entries are now
+  numbered 1–135, and `DetectorCatalogCoverageTest` pins both the catalog and the prose against
+  `DetectorType`.
+
 ## [1.9.1] - 2026-08-11
 
 > Versioning note: by the SUPPORT_POLICY.md table the new licensing configuration options
