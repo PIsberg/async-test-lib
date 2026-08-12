@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Exchanger;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Detects Exchanger misuse patterns:
@@ -20,7 +21,10 @@ public class ExchangerDetector {
     private final Map<Exchanger<?>, ExchangerInfo> exchangerRegistry = new ConcurrentHashMap<>();
     private final Set<Exchanger<?>> timedOutExchangers = ConcurrentHashMap.newKeySet();
     private final Set<Exchanger<?>> interruptedExchangers = ConcurrentHashMap.newKeySet();
-    private int nullValueExchanges = 0;
+    // Both parties of an exchange call recordExchangeComplete concurrently by construction, so
+    // this counter is written from two threads at once. A plain int made it a lost-update race
+    // in a library whose own SharedCollectionDetector exists to flag exactly that shape.
+    private final AtomicInteger nullValueExchanges = new AtomicInteger();
 
     /**
      * Register an Exchanger for monitoring.
@@ -57,7 +61,7 @@ public class ExchangerDetector {
         if (info != null) {
             info.completeExchange();
             if (value == null) {
-                nullValueExchanges++;
+                nullValueExchanges.incrementAndGet();
             }
         }
     }
@@ -90,7 +94,7 @@ public class ExchangerDetector {
             exchangerRegistry,
             timedOutExchangers,
             interruptedExchangers,
-            nullValueExchanges
+            nullValueExchanges.get()
         );
     }
 

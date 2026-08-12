@@ -196,7 +196,17 @@ public class VisibilityMonitor {
                     }
                 }
             }
-            sb.append("\nSuspect: Missing 'volatile' keyword or insufficient synchronization.\n");
+            // Deliberately phrased as an observation, not a diagnosis. recordFieldAccess takes
+            // only a name and a value: no object reference to probe holdsLock on, and no
+            // read/write flag, so this detector cannot tell a field guarded by a lock from one
+            // that is not. "Missing 'volatile'" asserted a cause it has no way to establish, and
+            // a shared field that legitimately changes during a round — an AtomicInteger being
+            // incremented, say — produces exactly this signature while being perfectly correct.
+            sb.append("\nWhat this means: two threads recorded different values for the field "
+                    + "within one round. That is expected if the field is meant to change and is "
+                    + "correctly synchronised; it is a visibility bug only if the writes were "
+                    + "supposed to be ordered or atomic. This detector sees values, not locks, so "
+                    + "it cannot tell the two apart — check how the field is published.\n");
             return sb.toString();
         }
     }

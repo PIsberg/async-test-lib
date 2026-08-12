@@ -51,6 +51,13 @@ public final class TelemetryRegistry {
     private static final AtomicBoolean STOPPED = new AtomicBoolean(false);
 
     private static volatile TelemetryEventBuffer.@Nullable DrainCallback drainCallback = null;
+
+    /**
+     * Guards the compare-and-clear in {@link #clearCallbackIf}. Private so no other code can hold
+     * it — a {@code static synchronized} method would lock the class object instead, which any
+     * caller can also lock.
+     */
+    private static final Object CALLBACK_LOCK = new Object();
     private static @Nullable ScheduledExecutorService drainExecutor = null;
     private static @Nullable Thread shutdownHook = null;
 
@@ -162,6 +169,46 @@ public final class TelemetryRegistry {
      */
     public static void setCallback(TelemetryEventBuffer.@Nullable DrainCallback callback) {
         drainCallback = callback;
+    }
+
+    /**
+     * Clears the callback only if it is still {@code expected}, and reports whether it was.
+     *
+     * <p><strong>Why a conditional clear.</strong> The registry holds one callback, so two
+     * {@code @AsyncTest} runs sharing a JVM take it from each other. That much is a documented,
+     * accepted trade-off: the per-run thread filter means the run that loses the slot
+     * under-reports rather than mis-attributing another run's threads. The unacceptable part was
+     * the teardown. An unconditional {@code setCallback(null)} let the run that lost the slot
+     * clear the callback belonging to the run that won it, whenever the loser happened to finish
+     * first — so the <em>winner</em> went blind for the rest of its execution, its detectors saw
+     * nothing, and its test passed green with no warning. The absence hint could not fire either,
+     * because the drain thread was still running.
+     *
+     * <p>Comparing by identity before clearing makes teardown affect only the registration the
+     * caller actually made, which turns that silent failure into the documented under-report.
+     *
+     * @param expected the callback the caller believes it registered
+     * @return {@code true} if the callback was cleared, {@code false} if another caller had
+     *         already replaced it — in which case the current holder is left untouched
+     * @since 1.9.2
+     */
+    // Identity, not equals: the question is "is this the exact registration I made", and a
+    // callback that merely compares equal to ours is a different registration whose slot we have
+    // no business clearing. Value equality here would reintroduce the bug this method fixes.
+    @SuppressWarnings("ReferenceEquality")
+    public static boolean clearCallbackIf(
+            TelemetryEventBuffer.@Nullable DrainCallback expected) {
+        // A private lock rather than `static synchronized`. The latter takes the monitor of the
+        // class object, which any code holding TelemetryRegistry.class can also take, so an
+        // unrelated caller could stall this compare-and-clear. It runs during test teardown,
+        // where a stall is a hang in somebody's suite rather than a slow method.
+        synchronized (CALLBACK_LOCK) {
+            if (drainCallback == expected) { // NOPMD CompareObjectsWithEquals - identity is the point
+                drainCallback = null;
+                return true;
+            }
+            return false;
+        }
     }
 
     /**

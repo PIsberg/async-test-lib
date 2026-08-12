@@ -122,6 +122,41 @@ class TelemetryBridgeTest {
                 () -> TelemetryBridge.activate(new AtomicityValidator(), null));
     }
 
+    /**
+     * Pins that a bridge closing does not silence the bridge that currently holds the slot.
+     *
+     * <p>The registry holds one callback, so two {@code @AsyncTest} runs in one JVM take it from
+     * each other. That trade-off is documented and accepted — the loser under-reports. What was
+     * not acceptable was the teardown: closing cleared the callback unconditionally, so when the
+     * loser finished first it wiped the <em>winner's</em> registration. The winner then received
+     * no further events for the rest of its run, its detectors saw nothing, and its test passed
+     * green with nothing logged, because the drain thread was still running and so the
+     * agent-absent hint could not fire either.
+     *
+     * <p>The assertion is deliberately about the second bridge still being live after the first
+     * one closes, because that is the user-visible property: a test that was observing keeps
+     * observing.
+     */
+    @Test
+    void closingASupersededBridgeLeavesTheCurrentHoldersCallbackInPlace() {
+        AtomicityValidator first = new AtomicityValidator();
+        AtomicityValidator second = new AtomicityValidator();
+
+        TelemetryBridge superseded = TelemetryBridge.activate(first, Set.of(WORKER_A));
+        TelemetryBridge current = TelemetryBridge.activate(second, Set.of(WORKER_A));
+
+        // The second activation took the slot; closing the first must not touch it.
+        superseded.close();
+
+        assertFalse(TelemetryRegistry.clearCallbackIf(superseded),
+                "The superseded bridge must not have been holding the callback after the second "
+                        + "activation replaced it.");
+        assertTrue(TelemetryRegistry.clearCallbackIf(current),
+                "The current holder's callback must survive an earlier bridge closing. It did "
+                        + "not, which means close() cleared the slot unconditionally and the run "
+                        + "that legitimately owned it has gone blind while still passing green.");
+    }
+
     private static boolean awaitIssues(AtomicityValidator av, long timeout, TimeUnit unit)
             throws InterruptedException {
         long deadline = System.nanoTime() + unit.toNanos(timeout);

@@ -53,8 +53,13 @@ public class BlockingQueueDetector {
         final AtomicInteger takeCount = new AtomicInteger(0);
         final Set<Long> producerThreads = ConcurrentHashMap.newKeySet();
         final Set<Long> consumerThreads = ConcurrentHashMap.newKeySet();
-        volatile int maxObservedSize = 0;
-        volatile int minObservedSize = Integer.MAX_VALUE;
+        // Atomic accumulate, not a volatile read-modify-write. Worker threads record sizes
+        // concurrently, and `v = Math.max(v, size)` over a volatile is a lost-update race: two
+        // threads read the same high-water mark and the larger write loses to the smaller. That
+        // under-reports the peak, which is the single number saturation gates on — so the race
+        // could suppress the one finding this detector still treats as an issue.
+        final AtomicInteger maxObservedSize = new AtomicInteger(0);
+        final AtomicInteger minObservedSize = new AtomicInteger(Integer.MAX_VALUE);
 
         QueueState(BlockingQueue<?> queue, String name, int capacity) {
             this.queue = queue;
@@ -166,8 +171,8 @@ public class BlockingQueueDetector {
 
     private void updateSizeState(QueueState state) {
         int size = state.queue.size();
-        state.maxObservedSize = Math.max(state.maxObservedSize, size);
-        state.minObservedSize = Math.min(state.minObservedSize, size);
+        state.maxObservedSize.accumulateAndGet(size, Math::max);
+        state.minObservedSize.accumulateAndGet(size, Math::min);
     }
 
     /**
@@ -180,25 +185,34 @@ public class BlockingQueueDetector {
         report.enabled = enabled;
 
         for (QueueState state : queues.values()) {
-            // Check for silent failures (offer returning false but ignored)
+            // A failed offer() is recorded because the caller read the return value and told us
+            // so, which is exactly what correct backpressure looks like:
+            //     if (!q.offer(x)) { retryLater(x); }
+            // The old text called this "items silently dropped", asserting the caller ignored
+            // the very value they must have inspected to report it. Counted and shown, not
+            // treated as a finding — see hasIssues().
             if (state.offerFailureCount.get() > 0) {
                 report.silentFailures.add(String.format(
-                    "%s: offer() failed %d times (queue full, items silently dropped)",
+                    "%s: offer() returned false %d times (queue full; check the caller handles "
+                        + "the rejected item)",
                     state.name, state.offerFailureCount.get()));
             }
 
-            // Check for poll returning null (potential signal loss)
+            // Likewise a null poll(): the canonical correct drain loop
+            //     while ((x = q.poll()) != null) { ... }
+            // ends with exactly one null per drain. Calling that "signal loss" flagged the
+            // textbook implementation.
             if (state.pollFailureCount.get() > 0) {
                 report.emptyPolls.add(String.format(
-                    "%s: poll() returned null %d times (potential signal loss)",
+                    "%s: poll() returned null %d times (queue empty; normal for a drain loop)",
                     state.name, state.pollFailureCount.get()));
             }
 
             // Check for queue saturation (high water mark near capacity)
-            if (state.capacity > 0 && state.maxObservedSize >= state.capacity * 0.9) {
+            if (state.capacity > 0 && state.maxObservedSize.get() >= state.capacity * 0.9) {
                 report.saturation.add(String.format(
                     "%s: queue reached %d/%d capacity (saturation risk)",
-                    state.name, state.maxObservedSize, state.capacity));
+                    state.name, state.maxObservedSize.get(), state.capacity));
             }
 
             // Check for producer/consumer imbalance
@@ -222,7 +236,7 @@ public class BlockingQueueDetector {
                 "offers: %d (success: %d, failed: %d), polls: %d (success: %d, empty: %d), puts: %d, takes: %d, max size: %d",
                 state.offerCount.get(), state.offerSuccessCount.get(), state.offerFailureCount.get(),
                 state.pollCount.get(), state.pollSuccessCount.get(), state.pollFailureCount.get(),
-                state.putCount.get(), state.takeCount.get(), state.maxObservedSize));
+                state.putCount.get(), state.takeCount.get(), state.maxObservedSize.get()));
         }
 
         return report;
@@ -242,11 +256,19 @@ public class BlockingQueueDetector {
         /**
          * Check if any issues were detected.
          *
-         * @return {@code true} when this detector recorded something worth reporting
+         * <p>Only saturation counts. A rejected {@code offer()}, a null {@code poll()} and a
+         * lopsided producer/consumer ratio are all normal in correct code — the first two are
+         * what the API returns when a bounded queue is doing its job, and the third is what any
+         * bursty workload looks like. Gating on them meant a correct bounded-queue implementation
+         * printed "BLOCKING QUEUE ISSUES DETECTED" in the consumer's CI, and with
+         * {@code failOn = HIGH} it would fail their build. They remain in the report as counts,
+         * which is where activity belongs; saturation is the one signal that says something is
+         * actually wrong with the sizing.
+         *
+         * @return {@code true} when this detector recorded something worth acting on
          */
         public boolean hasIssues() {
-            return !silentFailures.isEmpty() || !emptyPolls.isEmpty() || 
-                   !saturation.isEmpty() || !producerConsumerImbalance.isEmpty();
+            return !saturation.isEmpty();
         }
 
         @Override
@@ -298,7 +320,7 @@ public class BlockingQueueDetector {
             }
 
             sb.append("""
-  Why: A silent offer() failure means an item was silently dropped — the producer believes it sent data but the consumer never receives it.
+  Why: offer() returns false when a bounded queue is full. That is the API working, not a defect — but the rejected item has to go somewhere. Check the caller handles the false return rather than discarding it.
        An empty poll() returning null instead of blocking causes downstream logic to proceed with missing data, producing wrong results.
        Queue saturation stalls producers and can cascade into a deadlock if producers are also consumers.
   Fix: always check offer() return value; use put() to block on full queues; use take() or poll(timeout) instead of poll()\

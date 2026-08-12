@@ -91,7 +91,7 @@ import org.jspecify.annotations.Nullable;
  */
 @AICore(
     sensitivity = "Critical",
-    note = "The INSTALLED gate must stay at-most-once per JVM: every entry point (premain, agentmain, selfAttach) races on the same compareAndSet, and a second transformer would double-weave field accessors and double-count every access. premain installs without retransformation because classes are woven as they load; agentmain must keep RETRANSFORMATION + disableClassFormatChanges(), which is only safe while the Advice stays a method-entry prologue that adds no fields, methods or interfaces. Nothing may throw out of premain — an exception there aborts JVM startup. The Premain-Class / Agent-Class manifest entries live in this module's jar, which is why attaching uses -javaagent:async-test-agent.jar."
+    note = "The INSTALLED gate must stay at-most-once per JVM: every entry point (premain, agentmain, selfAttach) races on the same compareAndSet, and a second transformer would double-weave accesses and double-count every one. premain installs without retransformation because classes are woven as they load; agentmain must keep RETRANSFORMATION + disableClassFormatChanges(), which is only safe while neither weaver adds members — the Advice is a method-entry prologue, and FieldAccessWeaver inserts a stack-neutral, branch-free call before each field instruction, so frames stay valid and only maxStack grows (COMPUTE_MAXS, never COMPUTE_FRAMES, which would load classes from inside the agent). Nothing may throw out of premain — an exception there aborts JVM startup, which is why install() catches Throwable and releases the gate rather than propagating. The Premain-Class / Agent-Class manifest entries live in this module's jar, which is why attaching uses -javaagent:async-test-agent.jar."
 )
 public final class AsyncTestAgent {
 
@@ -267,6 +267,40 @@ public final class AsyncTestAgent {
             // Another entry point already installed the transformer for this JVM.
             return;
         }
+        // Everything below is fallible, and this method runs from premain, where a propagating
+        // exception aborts JVM startup before main() — the consumer's whole build dies, with a
+        // stack trace pointing at an agent they added for diagnostics. The realistic trigger is
+        // NoClassDefFoundError from TelemetryRegistry.start(): TelemetryRegistry lives in
+        // async-test-lib, which is deliberately NOT shaded into this jar (relocating it would
+        // make the advice feed a different registry than TelemetryBridge drains, silently
+        // breaking the pipeline), so attaching to a JVM without the library on the system
+        // classloader lands here. Degrading to "agent does nothing" is strictly better than
+        // killing the JVM: the runner already logs runner.agent.absent when no events arrive.
+        //
+        // The gate is released on failure. It is claimed before the fallible work so that
+        // concurrent callers cannot both install, but leaving it set after a failed install
+        // would wedge the JVM in a state where a transformer was never installed and every
+        // later selfAttach() takes the fast path and silently no-ops forever.
+        try {
+            installUnguarded(agentArgs, inst, retransform);
+        } catch (Throwable t) { // NOPMD - broad by design: premain must never propagate
+            INSTALLED.set(false);
+            System.err.println("[ASYNC-TEST-AGENT] Agent installation failed; continuing without "
+                    + "instrumentation. Detectors that rely on woven accesses will report "
+                    + "nothing. Cause: " + t);
+        }
+    }
+
+    /**
+     * Performs the actual install. Separated from {@link #install} so the at-most-once gate and
+     * its failure handling stay readable, and so every throwing path has exactly one catch.
+     *
+     * @param agentArgs   the raw agent argument string, or {@code null}
+     * @param inst        the instrumentation handle to install on
+     * @param retransform whether to re-weave already-loaded classes
+     */
+    private static void installUnguarded(@Nullable String agentArgs, Instrumentation inst,
+                                         boolean retransform) {
         TelemetryRegistry.start();
 
         AgentOptions options = AgentOptions.parse(agentArgs);
@@ -284,21 +318,29 @@ public final class AsyncTestAgent {
         AgentBuilder builder = new AgentBuilder.Default()
                 .with(new DiagnosticListener(options.debug()));
         if (retransform) {
-            // Dynamic attach: re-weave already-loaded classes. Advice inlining adds no
-            // new members, so disableClassFormatChanges() keeps retransformation schema-safe.
+            // Dynamic attach: re-weave already-loaded classes. Neither Advice inlining nor the
+            // field weaver adds new members, so disableClassFormatChanges() keeps
+            // retransformation schema-safe.
             builder = builder
                     .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                     .disableClassFormatChanges();
         }
+        boolean weaveFields = options.fields();
         builder
                 .ignore((typeDescription, classLoader, module, classBeingRedefined, protectionDomain) ->
                         typeIgnore.matches(typeDescription) || bootstrapIgnore.matches(classLoader))
                 .type(typeMatcher(options.includes()))
-                .transform((b, typeDescription, classLoader, module, protectionDomain) ->
-                        b.visit(Advice.to(ReadAccessAdvice.class)
-                                       .on(ElementMatchers.isGetter()))
-                         .visit(Advice.to(WriteAccessAdvice.class)
-                                       .on(ElementMatchers.isSetter())))
+                .transform((b, typeDescription, classLoader, module, protectionDomain) -> {
+                    DynamicType.Builder<?> woven =
+                            b.visit(Advice.to(ReadAccessAdvice.class)
+                                           .on(ElementMatchers.isGetter()))
+                             .visit(Advice.to(WriteAccessAdvice.class)
+                                           .on(ElementMatchers.isSetter()));
+                    // Direct field instructions are opt-in: they make a bare count++ observable,
+                    // which accessor weaving structurally cannot do, at the cost of instrumenting
+                    // every field access in every matched class.
+                    return weaveFields ? woven.visit(FieldAccessWeaver.visitor()) : woven;
+                })
                 .installOn(inst);
     }
 

@@ -135,6 +135,7 @@ Everything after the `=` is the `agentArgs` string, parsed by `AgentOptions`. Th
 | `includes` | one or more name prefixes | Instrument **only** types whose fully-qualified name starts with one of the prefixes (narrows the positive match). |
 | `excludes` | one or more name prefixes | **Never** instrument types whose name starts with one of the prefixes (appended to the built-in ignore matcher). |
 | `debug` | `true` / `false` | `debug=true` turns on verbose diagnostics (see [Diagnostics](#6-diagnostics)). Any other value, or absence, keeps the default errors-only logging. Case-insensitive. |
+| `fields` | `true` / `false` | `fields=true` also weaves **direct field instructions**, so a field touched only inside a method body — the `count++` in an `increment()` — produces events. Off by default; see below. Case-insensitive. |
 
 **Separators and multi-values.** Entries are separated by `,` **or** `;`. A bare token (no
 `=`) is appended to the **most recently named key**, so a single key can carry several
@@ -144,6 +145,33 @@ values:
 includes=com.myapp;com.other        # two include roots
 includes=com.myapp,debug=true        # include + a flag
 ```
+
+**`fields=true`: what it buys and what it costs.** Accessor weaving binds `Advice` to method
+entry, so it can only see a field reached *through* a getter or setter. A bare `count++` inside a
+method compiles to `GETFIELD` / `PUTFIELD` with no method call to bind to, and that is the most
+common shape of a real race — it is why the README's own counter example reported nothing before
+this option existed. `fields=true` instruments the instruction stream instead, inserting a
+stack-neutral, branch-free observation call before each field instruction.
+
+It is off by default because the cost scales with the instrumented surface, not with the number of
+accessors: every field read and write in every matched class emits an event. Pair it with
+`includes=` so the weaving lands on the code under test rather than on the whole classpath:
+
+```
+-javaagent:async-test-agent-<version>.jar=includes=com.myapp,fields=true
+```
+
+Fields owned by the JDK, Byte Buddy or this library are never woven, whatever the includes say —
+without that, a `System.out` reference in user code would emit on every call, and a field access
+inside the telemetry sink would recurse. Static initialisers are skipped too, because emitting
+from `<clinit>` can force the telemetry classes to initialise inside another class's
+initialisation, and circular class initialisation deadlocks rather than failing.
+
+**Reaching it without a `-javaagent` path.** `-Dasynctest.agent=fields=true` makes the runner
+attach the agent itself at the start of the run, so you do not have to resolve the jar's path in
+your build. It needs the `async-test-agent` artifact on the test classpath; if it is missing, or
+the JVM forbids self-attachment, the runner logs `runner.agent.attach.failed` once and continues
+without instrumentation rather than failing the suite.
 
 **Robustness.** Parsing never throws (an exception in `premain` would abort JVM startup).
 Whitespace is trimmed, empty entries are skipped, keys are matched **case-insensitively**,
@@ -383,12 +411,16 @@ at the cause.
   It has **no field value** — so any analysis that needs values (e.g. `VisibilityMonitor`'s
   value-divergence check) cannot be driven by agent data. This is why the bridge routes to
   `AtomicityValidator` only.
-- **Only getters/setters are intercepted.** Matching is `ElementMatchers.isGetter()` /
-  `isSetter()`. A **direct field access** — `this.x = 1` or `return x` *inside the class* that
-  bypasses an accessor method — is **not** intercepted. Only accessor-method calls are seen.
-  `AgentFeedsDetectorEndToEndTest` pins both halves of this against the real weaver: a field a
-  woven getter reads and a woven setter writes *is* reported, and a field only mutated inside a
-  method is *not*, with a control in the same run proving the pipeline was live while that held.
+- **Only getters/setters are intercepted, unless `fields=true`.** By default matching is
+  `ElementMatchers.isGetter()` / `isSetter()`, so a **direct field access** — `this.x = 1` or
+  `return x` inside the class, bypassing an accessor — is not intercepted. Supplying
+  [`fields=true`](#32-launch-flag-with-arguments) removes that limitation by weaving the field
+  instructions themselves, at the cost of instrumenting every field access in every matched class.
+  Both halves are pinned against the real weaver, on the same fixture, so the boundary is
+  specified rather than assumed: `AgentFeedsDetectorEndToEndTest` attaches without the flag and
+  requires the directly-mutated field to produce nothing (with a control in the same run proving
+  the pipeline was live while that held), and `FieldWeavingEndToEndTest` attaches with it and
+  requires the opposite.
 - **JDK and framework classes are never instrumented.** Anything under `java.`/`jdk.`/`sun.`/
   `com.sun.`, Byte Buddy, this library, synthetic types, and bootstrap-loaded types are
   excluded by design.

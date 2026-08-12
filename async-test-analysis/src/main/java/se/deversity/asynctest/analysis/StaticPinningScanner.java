@@ -83,18 +83,25 @@ public final class StaticPinningScanner {
             "java/lang/Thread/join",
             // Object monitor wait
             "java/lang/Object/wait",
-            // I/O — socket
+            // I/O — socket.
+            //
+            // getInputStream/getOutputStream are deliberately absent: they return the stream
+            // object and do not block, so flagging them reported a pinning site that cannot
+            // exist. This scanner never executes the code it inspects, which is why its
+            // contract is asymmetric — a false negative is acceptable, a false positive is not,
+            // because the user has no way to confirm the site from the report.
             "java/net/Socket/connect",
-            "java/net/Socket/getInputStream",
-            "java/net/Socket/getOutputStream",
             "java/io/InputStream/read",
             "java/io/OutputStream/write",
             // I/O — file (pre-NIO blocking)
             "java/io/FileInputStream/read",
             "java/io/FileOutputStream/write",
-            // Selector / channel
+            // Selector / channel.
+            //
+            // selectNow() is deliberately absent: the JDK documents it as "a non-blocking
+            // selection operation", so it can never pin a carrier thread. select() and
+            // select(long) do block and stay.
             "java/nio/channels/Selector/select",
-            "java/nio/channels/Selector/selectNow",
             // Process
             "java/lang/Process/waitFor",
             // Condition.await (ReentrantLock inside synchronized = nested monitor)
@@ -135,16 +142,30 @@ public final class StaticPinningScanner {
      * }
      * }</pre>
      *
+     * <p>A {@code .class} file that cannot be parsed is skipped rather than allowed to abort the
+     * scan. ASM rejects a class whose major version it does not know, and truncated or otherwise
+     * corrupt bytes surface as unchecked exceptions from deep inside the reader — neither is
+     * declared, and both used to propagate out of the {@code @BeforeAll} above and fail the
+     * consumer's build over a file that has nothing to do with their code. Skipping costs a false
+     * negative on that one file, which is the direction this scanner is allowed to be wrong in.
+     *
      * @param root directory containing compiled {@code .class} files
      * @return unmodifiable list of all pinning sites found under {@code root}
-     * @throws IOException if any {@code .class} file cannot be read
+     * @throws IOException if the directory tree cannot be walked, or a file cannot be read
      */
     public static List<PinningSite> scanDirectory(Path root) throws IOException {
         List<PinningSite> results = new ArrayList<>();
         try (Stream<Path> paths = Files.walk(root)) {
             for (Path p : (Iterable<Path>) paths::iterator) {
                 if (p.toString().endsWith(".class")) {
-                    results.addAll(scanClass(Files.readAllBytes(p)));
+                    byte[] bytes = Files.readAllBytes(p);
+                    try {
+                        results.addAll(scanClass(bytes));
+                    } catch (RuntimeException ignored) {
+                        // Unparseable by this ASM: newer class-file version, or corrupt bytes.
+                        // One unreadable file must not cost the caller every finding in the tree,
+                        // so it is skipped and the walk continues.
+                    }
                 }
             }
         }

@@ -191,6 +191,12 @@ public class ConcurrencyRunner {
         // registry holds one callback, so two @AsyncTest runs executing concurrently in one
         // JVM would take it from each other; the per-run filter means the loser under-reports
         // rather than mis-attributing another run's threads.
+        //
+        // Attach before isRunning() is consulted below, so a user who asked for the agent with
+        // -Dasynctest.agent=... gets the pipeline running for this very run rather than the next
+        // one. Self-attach retransforms already-loaded classes, so test classes loaded before
+        // this point are still woven.
+        AgentAutoAttach.attachIfRequested();
         AtomicityValidator telemetryTarget = phase2Context.sharedAtomicityValidator();
         @Nullable Set<Long> workerThreadIds =
                 (telemetryTarget != null && TelemetryRegistry.isRunning())
@@ -209,19 +215,31 @@ public class ConcurrencyRunner {
         if (telemetryTarget != null && !TelemetryRegistry.isRunning()
                 && AGENT_ABSENCE_LOGGED.compareAndSet(false, true)) {
             log.info("runner.agent.absent test={} detector=AtomicityValidator "
-                    + "hint=\"field accesses are not auto-recorded; attach "
-                    + "-javaagent:async-test-agent-<version>.jar or record accesses "
-                    + "explicitly via AsyncTestContext\"",
+                    + "hint=\"field accesses are not auto-recorded; run with "
+                    + "-Dasynctest.agent=fields=true (needs the async-test-agent artifact on the "
+                    + "test classpath), attach -javaagent:async-test-agent-<version>.jar, or "
+                    + "record accesses explicitly via AsyncTestContext\"",
                 invocationContext.getExecutable().getName());
         }
 
-        // Validate JMM on the test framework itself
-        MemoryModelValidator jmmValidator = new MemoryModelValidator();
-        MemoryModelValidator.ValidationResult jmmResult = jmmValidator.validate();
-        if (!jmmResult.isValid()) {
-            log.warn("JMM validation of test framework failed: {}", jmmResult);
-        } else {
-            log.debug("runner.jmm ok=true");
+        // Validating the JVM's own memory model is opt-in, and off by default.
+        //
+        // It cost every test method ~70ms of sleeps and seven platform threads to check axioms
+        // the JLS already guarantees, so on a working JVM it cannot find anything true. What it
+        // could find was something false: the checks below wait a fixed interval instead of
+        // joining, so a loaded CI runner that does not schedule the writer in time produced
+        // "JMM validation of test framework failed" at WARN — which this project's logging
+        // contract reserves for "a human must act" — on precisely the machines where somebody is
+        // already hunting a flaky concurrency failure. Kept behind a flag because it is genuinely
+        // useful when bringing the library up on an unfamiliar JVM or an emulated architecture.
+        if (Boolean.getBoolean("asynctest.validate.jmm")) {
+            MemoryModelValidator jmmValidator = new MemoryModelValidator();
+            MemoryModelValidator.ValidationResult jmmResult = jmmValidator.validate();
+            if (!jmmResult.isValid()) {
+                log.warn("JMM validation of test framework failed: {}", jmmResult);
+            } else {
+                log.debug("runner.jmm ok=true");
+            }
         }
 
         // Workers carry the async-test-worker- prefix so thread dumps, deadlock reports
@@ -323,12 +341,48 @@ public class ConcurrencyRunner {
                 log.debug("runner.round.start test={} round={} seed={} remainingMs={}",
                     testMethod.getName(), i, currentSeed, remainingMs);
                 invokeLifecycleMethods(testInstance, beforeInvocationMethods);
+                // The after-hooks deliberately do NOT run in a bare finally.
+                //
+                // Java only auto-suppresses in try-with-resources: when a finally block throws,
+                // the in-flight exception is discarded outright. So a teardown hook that failed
+                // used to replace the round's RoundTimeoutError — taking its thread dump and its
+                // suppressed per-worker causes with it, and leaving the user a message about a
+                // teardown method instead. That fired precisely when the diagnosis mattered most,
+                // because after-hooks typically reset the state a timed-out round corrupted, so a
+                // corrupt round and a throwing hook are correlated, not independent.
+                //
+                // Recording the hook failure as suppressed on the original keeps both: the
+                // caller still sees the round failure it needs to act on, with the teardown
+                // failure attached underneath.
+                Throwable roundFailure = null;
                 try {
                     runSingleInvocationRound(invocationContext, actualThreads,
                         executor, phase1, phase2Context, remainingMs,
                         config.useVirtualThreads, workerThreadIds, testMethod);
+                } catch (Throwable t) { // NOPMD - rethrown below; caught only to order teardown
+                    roundFailure = t;
                 } finally {
-                    invokeLifecycleMethods(testInstance, afterInvocationMethods);
+                    // Quiesce before teardown when the round failed. runSingleInvocationRound
+                    // throws right after future.cancel(true), and cancellation only requests
+                    // interruption: workers can still be unwinding inside the test body. Running
+                    // after-hooks then would tear down state a live worker is still touching, and
+                    // a hook that blocks on worker-held state would hang the runner thread with
+                    // the deadline loop already exited and nothing left to bound it.
+                    if (roundFailure != null) {
+                        quiesceWorkers(executor, testMethod);
+                    }
+                    try {
+                        invokeLifecycleMethods(testInstance, afterInvocationMethods);
+                    } catch (Throwable hookFailure) { // NOPMD - broad: any hook failure, same policy
+                        if (roundFailure == null) {
+                            roundFailure = hookFailure;
+                        } else {
+                            roundFailure.addSuppressed(hookFailure);
+                        }
+                    }
+                }
+                if (roundFailure != null) {
+                    throw roundFailure;
                 }
                 long roundDurationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - roundStartNanos);
                 log.debug("runner.round.done test={} round={} seed={} durationMs={}",

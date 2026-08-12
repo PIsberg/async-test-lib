@@ -346,6 +346,27 @@ public class VirtualThreadPinningDetector {
         }
 
         /**
+         * {@return whether this report should surface as a finding}
+         *
+         * <p>The canonical predicate {@code LegacyDetectorAdapter} binds to. Without it the
+         * adapter resolved {@code analyze()}, failed to find {@code hasIssues()} on the returned
+         * report, and returned an empty violation list on every call — so this detector was
+         * registered, addressable, named in the README, and structurally unable to emit a
+         * {@code Violation}. {@code DetectorFiringContractTest} now fails on that shape.
+         *
+         * <p>Delegates to {@link #hasEffectivePinningIssues()} rather than
+         * {@link #hasPinningIssues()} deliberately: an event whose cause no longer pins on the
+         * running JDK (JEP 491 made {@code synchronized} non-pinning from 24) is real history but
+         * not something the user can act on, so reporting it would be a false positive on any
+         * current runtime.
+         *
+         * @since 1.9.2
+         */
+        public boolean hasIssues() {
+            return hasEffectivePinningIssues();
+        }
+
+        /**
          * Indicates whether pinning that still applies on the running JDK was observed.
          * Events whose cause no longer pins ({@code synchronized} on JDK 24+ per JEP 491,
          * class-init waits on JDK 26+) are excluded.

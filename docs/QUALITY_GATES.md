@@ -95,7 +95,11 @@ thresholds and japicmp — all of which fail the build.
   but does not fail the build.
 - **NullAway** gates nullness on main sources, as an Error Prone check (see below).
 - **JaCoCo** requires line ≥ 70% and branch ≥ 65%.
-- **japicmp** breaks the build on binary-incompatible API changes against the last release.
+- **japicmp** breaks the build on binary-incompatible API changes against the baseline pinned in
+  `async-test-lib/pom.xml` (`<oldVersion>`, currently **1.9.1**). That baseline is only as good as
+  the last person who bumped it: it sat at 1.6.0 while 1.7.0 through 1.9.1 shipped, so for six
+  releases everything added after 1.6.0 was outside the comparison and could have been broken
+  without the gate noticing. Re-pinning it is a step in [RELEASE.md](RELEASE.md#2-bump-the-version).
 - **ArchUnit** tests enforce package structure and the module boundaries from within the suite.
 
 ### find-sec-bugs

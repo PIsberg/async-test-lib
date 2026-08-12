@@ -84,6 +84,18 @@ jobs:
             echo "::error::toolchain or classpath failure, not a fuzzing finding."
             exit 1
           fi
+          # A crash must reach a human. Jazzer's own exit code is tolerated above so that a
+          # finding still uploads its artifact, but that left the only record of a real defect
+          # as a green job and an artifact that expires in 30 days — nobody is watching a
+          # passing weekly workflow. Failing here means the crash shows up as a red run and a
+          # notification. The reproducer is in the artifact either way.
+          if [ -n "$(ls -A fuzzing-findings 2>/dev/null)" ]; then
+            echo "::error::Jazzer found a crash. Reproducers are in the fuzzing-findings"
+            echo "::error::artifact on this run. Download it and run the input against"
+            echo "::error::AsyncTestConfigFuzzTarget to reproduce locally."
+            ls -l fuzzing-findings
+            exit 1
+          fi
 
       - name: Upload fuzzing findings
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

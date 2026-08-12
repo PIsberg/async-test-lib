@@ -50,6 +50,15 @@ mvn test -P fast                           # same 190 classes, ~3x faster (no ja
 mvn test -P e2e                            # full suite: what CI runs (auto via env.CI)
 mvn -pl async-test-lib test                # one module
 mvn -Dtest=AsyncTestContextTest test       # one class
+mvn -pl async-test-lib -am test -Dtest=X -Dsurefire.failIfNoSpecifiedTests=false
+                                           # one class in a multi-module run: without that flag
+                                           # surefire aborts the *sibling* module with
+                                           # "No tests matching pattern". -DfailIfNoTests is a
+                                           # different, silently-ignored property.
+mvn install -DskipTests -Djacoco.skip=true # the static gate chain CI runs first (~3 min):
+                                           # PMD, SpotBugs, Checkstyle, japicmp, javadoc.
+                                           # `-P fast` skips all of these — a branch green
+                                           # under it can still fail every CI job.
 mvn clean install
 ./gradlew test                             # secondary build (same split; -Pe2e for full)
 ./gradlew test --tests "se.deversity.asynctest.diagnostics.*"
@@ -88,7 +97,7 @@ Why the config files exist, and why `build.gradle.kts` has to pin `-Avibetags.ro
   <core_elements>
     <element path="se.deversity.asynctest.agent.AsyncTestAgent">
       <sensitivity>Critical</sensitivity>
-      <note>The INSTALLED gate must stay at-most-once per JVM: every entry point (premain, agentmain, selfAttach) races on the same compareAndSet, and a second transformer would double-weave field accessors and double-count every access. premain installs without retransformation because classes are woven as they load; agentmain must keep RETRANSFORMATION + disableClassFormatChanges(), which is only safe while the Advice stays a method-entry prologue that adds no fields, methods or interfaces. Nothing may throw out of premain — an exception there aborts JVM startup. The Premain-Class / Agent-Class manifest entries live in this module&#39;s jar, which is why attaching uses -javaagent:async-test-agent.jar.</note>
+      <note>The INSTALLED gate must stay at-most-once per JVM: every entry point (premain, agentmain, selfAttach) races on the same compareAndSet, and a second transformer would double-weave accesses and double-count every one. premain installs without retransformation because classes are woven as they load; agentmain must keep RETRANSFORMATION + disableClassFormatChanges(), which is only safe while neither weaver adds members — the Advice is a method-entry prologue, and FieldAccessWeaver inserts a stack-neutral, branch-free call before each field instruction, so frames stay valid and only maxStack grows (COMPUTE_MAXS, never COMPUTE_FRAMES, which would load classes from inside the agent). Nothing may throw out of premain — an exception there aborts JVM startup, which is why install() catches Throwable and releases the gate rather than propagating. The Premain-Class / Agent-Class manifest entries live in this module&#39;s jar, which is why attaching uses -javaagent:async-test-agent.jar.</note>
     </element>
   </core_elements>
 

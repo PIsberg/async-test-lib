@@ -60,11 +60,14 @@ final class AgentOptions {
     private final List<String> includes;
     private final List<String> excludes;
     private final boolean debug;
+    private final boolean fields;
 
-    private AgentOptions(List<String> includes, List<String> excludes, boolean debug) {
+    private AgentOptions(List<String> includes, List<String> excludes, boolean debug,
+                         boolean fields) {
         this.includes = List.copyOf(includes);
         this.excludes = List.copyOf(excludes);
         this.debug = debug;
+        this.fields = fields;
     }
 
     /**
@@ -82,6 +85,7 @@ final class AgentOptions {
         List<String> includes = new ArrayList<>();
         List<String> excludes = new ArrayList<>();
         boolean debug = false;
+        boolean fields = false;
         if (agentArgs != null) {
             String currentKey = null;
             for (String token : agentArgs.split("[,;]")) {
@@ -104,11 +108,13 @@ final class AgentOptions {
                     excludes.add(value);
                 } else if ("debug".equals(currentKey)) {
                     debug = Boolean.parseBoolean(value);
+                } else if ("fields".equals(currentKey)) {
+                    fields = Boolean.parseBoolean(value);
                 }
                 // Unknown keys (and bare values before any key) are ignored on purpose.
             }
         }
-        return new AgentOptions(includes, excludes, debug);
+        return new AgentOptions(includes, excludes, debug, fields);
     }
 
     /**
@@ -143,5 +149,21 @@ final class AgentOptions {
      */
     boolean debug() {
         return debug;
+    }
+
+    /**
+     * Whether direct field instructions are woven in addition to JavaBean accessors.
+     *
+     * <p>Off by default, and deliberately so. Accessor weaving touches two well-known method
+     * shapes; field weaving instruments <em>every</em> {@code GETFIELD} / {@code PUTFIELD} in
+     * every non-ignored class, which is what makes a bare {@code count++} observable but also
+     * what makes the instrumented surface large. Pair {@code fields=true} with {@code includes=}
+     * so the weaving lands on the code under test rather than on the whole classpath.
+     *
+     * @return {@code true} if {@code fields=true} was supplied, {@code false} otherwise
+     * @since 1.9.2
+     */
+    boolean fields() {
+        return fields;
     }
 }

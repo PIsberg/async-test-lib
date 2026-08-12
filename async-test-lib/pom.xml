@@ -117,11 +117,24 @@
                 <artifactId>japicmp-maven-plugin</artifactId>
                 <version>0.26.1</version>
                 <configuration>
+                    <!-- Baseline: the most recent release.
+
+                         This was pinned to 1.6.0 while six releases shipped past it (1.7.0
+                         through 1.9.1), so every API added since 1.6.0 - the offline-licensing
+                         surface, DetectorFailurePolicy, the lock-awareness API, the listener and
+                         telemetry additions - did not exist in the baseline and could have been
+                         broken or deleted without the gate noticing. docs/CHANGELOG.md for 1.9.1
+                         claimed "japicmp green against 1.9.0"; the gate was comparing 1.6.0, so
+                         that published compatibility statement had never been machine-checked.
+
+                         Re-pin this on every release. docs/RELEASE.md carries the step; without
+                         it the baseline drifts again by 1.10.0, which is exactly how it got five
+                         releases stale the first time. -->
                     <oldVersion>
                         <dependency>
                             <groupId>se.deversity.async-test-lib</groupId>
                             <artifactId>async-test-lib</artifactId>
-                            <version>1.6.0</version>
+                            <version>1.9.1</version>
                             <type>jar</type>
                         </dependency>
                     </oldVersion>
@@ -134,33 +147,15 @@
                         <onlyBinaryIncompatible>true</onlyBinaryIncompatible>
                         <breakBuildOnBinaryIncompatibleModifications>true</breakBuildOnBinaryIncompatibleModifications>
                         <ignoreMissingClasses>true</ignoreMissingClasses>
-                        <!-- Intentional, enumerated break: these two packages left this artifact
-                             when the reactor was split. They are not deleted — they ship in
-                             async-test-agent and async-test-analysis, unchanged, at the same
-                             version. Anyone who referenced them from async-test-lib adds the
-                             matching dependency; see docs/analysis/modularization.md and docs/AGENT.md.
+                        <!-- No excludes.
 
-                             Listed rather than waived wholesale so the gate keeps failing on any
-                             break that is NOT one of these. Remove both lines once <oldVersion>
-                             is re-pinned to a release that already had the split. -->
-                        <excludes>
-                            <exclude>se.deversity.asynctest.agent</exclude>
-                            <exclude>se.deversity.asynctest.analysis</exclude>
-                            <!-- Intentional, enumerated break #2: UNCOMMITTED_CHANGES left the
-                                 detector set after 1.7.2. It was a git-status environment check,
-                                 not a concurrency property, and its subprocess once cost 99% of
-                                 the analysis sweep (see the CHANGELOG "Removed" entry). Element
-                                 by element under the same rule as above: the gate must keep
-                                 failing on any break that is NOT on this list. -->
-                            <exclude>se.deversity.asynctest.diagnostics.UncommittedChangesDetector</exclude>
-                            <exclude>se.deversity.asynctest.diagnostics.UncommittedChangesDetector$UncommittedChangesReport</exclude>
-                            <exclude>se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$UncommittedChanges</exclude>
-                            <exclude>se.deversity.asynctest.AsyncTest#detectUncommittedChanges()</exclude>
-                            <exclude>se.deversity.asynctest.AsyncTestConfig#detectUncommittedChanges</exclude>
-                            <exclude>se.deversity.asynctest.AsyncTestConfig$Builder#detectUncommittedChanges(boolean)</exclude>
-                            <exclude>se.deversity.asynctest.AsyncTestContext#uncommittedChangesMonitor()</exclude>
-                            <exclude>se.deversity.asynctest.DetectorType#UNCOMMITTED_CHANGES</exclude>
-                        </excludes>
+                             The previous list waived two whole packages (se.deversity.asynctest.agent
+                             and .analysis, which left this artifact when the reactor was split) and
+                             the UNCOMMITTED_CHANGES elements removed after 1.7.2. Every one of those
+                             breaks predates 1.9.1, so against this baseline they are not breaks at
+                             all and the waivers only widened the hole. The pom's own comment said to
+                             remove them "once <oldVersion> is re-pinned to a release that already had
+                             the split" - this is that. -->
                     </parameter>
                 </configuration>
                 <executions>

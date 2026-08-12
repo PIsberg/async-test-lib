@@ -69,7 +69,7 @@ reference to probe at all.
 - Recording-level: it measures the analyzers, not end-to-end reachability under a bare
   `@AsyncTest` (that is `DetectionCoverageTest`'s job) and not the agent's weaving
   (that is `AgentFeedsDetectorEndToEndTest`'s job).
-- 7 of 127 detectors. The evaluated set was chosen to cover each mechanism class:
+- 7 of 135 detectors. The evaluated set was chosen to cover each mechanism class:
   access-pattern analyzers, per-thread state machines, graph analysis, and JVM
   introspection. Extending the pair harness to more detectors is mechanical; the
   helper (`onTwoThreads`) and the pinning convention are in place.

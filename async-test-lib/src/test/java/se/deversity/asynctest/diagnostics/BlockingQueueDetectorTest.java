@@ -69,8 +69,13 @@ public class BlockingQueueDetectorTest {
         BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
         
         assertNotNull(report);
-        assertTrue(report.hasIssues(), "Should detect empty poll");
         assertFalse(report.emptyPolls.isEmpty(), "Should report empty polls");
+        // Recorded, but not a finding. Polling an empty queue is what poll() is for, and the
+        // standard drain loop `while ((x = q.poll()) != null)` produces exactly one of these
+        // per drain — so gating on it flagged the textbook implementation. This assertion
+        // used to be assertTrue(hasIssues()), which pinned that false positive in place.
+        assertFalse(report.hasIssues(),
+            "A null poll() on an empty queue is normal and must not count as an issue");
     }
 
     @Test
@@ -115,8 +120,12 @@ public class BlockingQueueDetectorTest {
         BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
         
         assertNotNull(report);
-        assertTrue(report.hasIssues(), "Should detect producer/consumer imbalance");
         assertFalse(report.producerConsumerImbalance.isEmpty(), "Should report imbalance");
+        // Recorded, but not a finding. Any bursty-but-correct workload crosses the 0.5/2.0
+        // ratio thresholds, so gating on it turned a description of the traffic into an
+        // accusation. This assertion used to be assertTrue(hasIssues()).
+        assertFalse(report.hasIssues(),
+            "A lopsided producer/consumer ratio describes the workload, not a defect");
     }
 
     @Test
@@ -419,5 +428,52 @@ public class BlockingQueueDetectorTest {
         assertTrue(reportStr.contains("Queue Activity"), "must print Queue Activity section when non-empty");
         assertFalse(reportStr.contains("No issues detected"),
             "must not print 'No issues detected' when issues are actually present");
+    }
+
+    /**
+     * Correct bounded-queue code must not be reported as having issues.
+     *
+     * <p>Both patterns below are textbook. {@code if (!q.offer(x)) retryLater(x)} is how you
+     * apply backpressure to a bounded queue, and {@code while ((x = q.poll()) != null)} is how
+     * you drain one — it ends with exactly one null per drain, every time, by construction.
+     *
+     * <p>Both used to make {@code hasIssues()} true, so a correct implementation printed
+     * "BLOCKING QUEUE ISSUES DETECTED" in the consumer's CI on every run, and under
+     * {@code failOn = HIGH} would have failed their build. The recording API is what gives the
+     * game away: the {@code success} flag can only have come from the caller reading the return
+     * value, which is precisely the thing the old report text accused them of ignoring.
+     */
+    @Test
+    void correctBackpressureAndDrainLoopsAreNotReportedAsIssues() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+
+
+        BlockingQueue<String> queue = new ArrayBlockingQueue<>(2);
+        detector.registerQueue(queue, "orders", 2);
+
+        // Backpressure: the queue fills, offer() reports it, the caller handles the rejection.
+        detector.recordOffer(queue, "orders", true);
+        detector.recordOffer(queue, "orders", true);
+        detector.recordOffer(queue, "orders", false);
+
+        // Drain loop: two items come out, then the terminating null.
+        detector.recordPoll(queue, "orders", true);
+        detector.recordPoll(queue, "orders", true);
+        detector.recordPoll(queue, "orders", false);
+
+        BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+
+        assertFalse(report.hasIssues(),
+            "A rejected offer() and a null poll() are what a bounded queue returns when it is "
+                + "working. Gating on them means every correct producer/consumer implementation "
+                + "reports an issue on every run, which trains users to ignore this detector and "
+                + "breaks builds that set failOn. Only saturation should count. Report was:\n"
+                + report);
+
+        // The counts must survive: they are useful, they are just not findings.
+        String rendered = report.toString();
+        assertTrue(rendered.contains("orders"),
+            "The activity counts must still be reported — the fix is to stop calling them "
+                + "issues, not to stop recording them. Report was:\n" + rendered);
     }
 }

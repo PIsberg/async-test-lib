@@ -216,9 +216,17 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
     /**
      * Detaches the bridge from the telemetry pipeline. Idempotent: the first call clears the
      * {@code volatile} enabled flag (so an in-flight {@link #onEvent} on the drain thread
-     * stops forwarding) and restores the registry's no-op callback; subsequent calls return
-     * immediately. Mirrors the idempotency pattern of
+     * stops forwarding) and releases the registry's callback slot <em>if this bridge is still
+     * holding it</em>; subsequent calls return immediately. Mirrors the idempotency pattern of
      * {@code AsyncTestListenerRegistry.Registration.close()}.
+     *
+     * <p><strong>Why the release is conditional.</strong> The registry holds one callback, so
+     * two {@code @AsyncTest} runs in one JVM take the slot from each other and the loser
+     * under-reports — a documented trade-off. Clearing unconditionally turned that into
+     * something worse: when the loser finished first it wiped the winner's callback, and the
+     * run that legitimately held the slot received no further events, detected nothing, and
+     * passed green. Releasing only our own registration keeps the damage on the bridge that is
+     * actually shutting down.
      *
      * <p>Does not stop the registry drain thread; that lifecycle stays with
      * {@link TelemetryRegistry#stop()}.
@@ -229,7 +237,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
             return;
         }
         active = false;
-        TelemetryRegistry.setCallback(null);
+        TelemetryRegistry.clearCallbackIf(this);
     }
 
     /**

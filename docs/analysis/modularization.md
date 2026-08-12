@@ -37,7 +37,7 @@ below is not aspiration, it is enforced.
 
 | Cycle | Forward edge | Back edge | Cost to break |
 |-------|--------------|-----------|---------------|
-| `~` ↔ `~.diagnostics` | 128 detector classes, imported by `DetectorRegistry` / `AsyncTestContext` | **one file** — `Phase1DetectorSet` imports `AsyncTestConfig`, `AsyncTestContext`, `AsyncTestListenerRegistry` | move `Phase1DetectorSet` to the core side; it is a composite that wires detectors, not a detector |
+| `~` ↔ `~.diagnostics` | 135 detector classes, imported by `DetectorRegistry` / `AsyncTestContext` | **one file** — `Phase1DetectorSet` imports `AsyncTestConfig`, `AsyncTestContext`, `AsyncTestListenerRegistry` | move `Phase1DetectorSet` to the core side; it is a composite that wires detectors, not a detector |
 | `~` ↔ `~.report` | `Violation` | `AsyncTestListener`, used by `JUnitXmlReportListener`, `JsonReportListener`, `StrictModeListener` | move `Violation` + `Formatter` + `AsyncTestListener` into a leaf API module |
 | `~.diagnostics` ↔ `~.report` | `Violation` | `IssueSeverity`, `SiteCapture` | same move — these three types are vocabulary, not behavior |
 
@@ -108,7 +108,7 @@ their `<artifactId>`.
 ## What blocks the valuable part
 
 The 65% of the codebase that is detectors (138 files, 26,561 LOC of 40k) cannot leave the core
-module while `DetectorRegistry` and `AsyncTestContext` import all 128 detector classes by name.
+module while `DetectorRegistry` and `AsyncTestContext` import all 135 detector classes by name.
 The `spi.adapters` package imports the same 128 — that is the ServiceLoader path which
 [roadmap-v2.md](roadmap-v2.md) records as **built but never invoked at runtime**.
 

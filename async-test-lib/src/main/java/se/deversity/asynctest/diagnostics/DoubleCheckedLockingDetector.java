@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Detects broken double-checked locking patterns.
@@ -60,8 +61,8 @@ public class DoubleCheckedLockingDetector {
     public void recordAccess(String fieldName, boolean isRead, boolean isWrite) {
         DCLInfo info = dclRegistry.get(fieldName);
         if (info != null) {
-            if (isRead) info.readCount++;
-            if (isWrite) info.writeCount++;
+            if (isRead) info.readCount.incrementAndGet();
+            if (isWrite) info.writeCount.incrementAndGet();
         }
     }
 
@@ -147,8 +148,10 @@ public class DoubleCheckedLockingDetector {
         final boolean hasFirstCheck;
         final boolean hasSecondCheck;
         final boolean insideSynchronized;
-        int readCount = 0;
-        int writeCount = 0;
+        // A double-checked-locking test races threads through the field by design, so these
+        // counters were being incremented concurrently in every run this detector exists for.
+        final AtomicInteger readCount = new AtomicInteger();
+        final AtomicInteger writeCount = new AtomicInteger();
 
         DCLInfo(String fieldName, boolean isVolatile, boolean hasFirstCheck,
                 boolean hasSecondCheck, boolean insideSynchronized) {

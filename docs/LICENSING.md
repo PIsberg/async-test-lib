@@ -503,7 +503,7 @@ them:
 ```bash
 set -a; . ~/.config/deversity/e2e-license.env; set +a
 mvn -pl async-test-lib test -Dtest='RealKeygenLicenseE2eTest,RealOfflineLicenseE2eTest' \
-  -DfailIfNoTests=false -P e2e
+  -Dsurefire.failIfNoSpecifiedTests=false -P e2e
 ```
 
 When the licence or the file expires, both tests start failing with the corresponding expiry

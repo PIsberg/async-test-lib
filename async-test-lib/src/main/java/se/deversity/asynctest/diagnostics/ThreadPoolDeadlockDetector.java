@@ -262,10 +262,25 @@ public class ThreadPoolDeadlockDetector {
         }
 
         /**
+         * {@return whether this report should surface as a finding}
+         *
+         * <p>The canonical predicate {@code LegacyDetectorAdapter} binds to. Without it the
+         * adapter resolved {@code analyze()}, found no {@code hasIssues()} on the returned report,
+         * and emitted an empty violation list on every call — leaving this detector registered,
+         * addressable and structurally silent. Pinned by {@code DetectorFiringContractTest}.
+         *
+         * @since 1.9.2
+         */
+        public boolean hasIssues() {
+            return hasDeadlockRisk();
+        }
+
+        /**
          * Indicates whether at least one pool exhibited deadlock risk behavior.
          *
          * @return true if any deadlock risks were detected
          */
+
         public boolean hasDeadlockRisk() {
             return !risks.isEmpty();
         }
