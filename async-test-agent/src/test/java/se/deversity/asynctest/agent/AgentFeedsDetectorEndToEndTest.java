@@ -169,14 +169,18 @@ class AgentFeedsDetectorEndToEndTest {
 
         assertFalse(report.unsafeFieldAccesses.stream()
                         .anyMatch(f -> f.contains("DirectFieldMutationBean")),
-                "This pins a limitation rather than a capability, and the control above shows the "
-                        + "pipeline was live while it held. increment() is neither a getter nor a "
-                        + "setter, so the weaver does not touch it and the count++ inside it "
-                        + "produces no event however racy it is. That is the most common shape of a "
-                        + "real race, and it is why the agent is not a substitute for the recording "
-                        + "hooks. If this now finds something the observation surface widened: make "
-                        + "it a positive assertion and update AGENT.md and the AsyncTestAgent class "
-                        + "javadoc, both of which currently tell users this case is not covered. "
+                "This pins the boundary of accessor-only weaving, and the control above shows the "
+                        + "pipeline was live while it held. This class attaches without "
+                        + "fields=true, so only getters and setters are woven: increment() is "
+                        + "neither, and the count++ inside it produces no event however racy it "
+                        + "is. That is the most common shape of a real race, which is why "
+                        + "fields=true exists — FieldWeavingEndToEndTest runs this same fixture "
+                        + "with the flag on and asserts the opposite. If this starts finding "
+                        + "something, accessor-only weaving has silently widened: check whether "
+                        + "FieldAccessWeaver is being applied unconditionally in "
+                        + "AsyncTestAgent.installUnguarded, because that would impose the field "
+                        + "weaver's instrumentation cost on every user who attaches the agent "
+                        + "without asking for it. "
                         + "Findings were: " + report.unsafeFieldAccesses);
     }
 }
