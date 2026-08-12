@@ -6,20 +6,33 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Detects ForkJoinPool misuse patterns:
- * - Fork without join
- * - RecursiveTask not returning result
- * - Pool starvation (too few threads)
- * - Exception in forked tasks
+ * <ul>
+ *   <li><strong>Fork without join</strong> — reported when the caller says so via
+ *       {@code recordForkWithoutJoin}. It is not inferred: {@code recordFork} and
+ *       {@code recordJoin} accumulate per-pool counts that the analysis never compares.</li>
+ *   <li><strong>Exception in forked tasks</strong> — from {@code recordTaskException}.</li>
+ *   <li><strong>Work stealing</strong> — counted and shown, informational.</li>
+ * </ul>
+ *
+ * <p>This list previously also claimed "RecursiveTask not returning result" and "Pool starvation
+ * (too few threads)". Neither has a code path — nothing in the analysis reads anything that could
+ * produce them — so a user who instrumented for those got silent green with no way to tell "not
+ * detected" from "not implemented". Documenting only what is actually derived is the honest
+ * surface. Deriving the fork/join imbalance from the counts already collected is the obvious
+ * next step and is deliberately not done here: a test that ends mid-computation would show an
+ * imbalance without a defect, and this library cannot afford that kind of finding.
  */
 public class ForkJoinPoolDetector {
 
     private final Map<ForkJoinPool, PoolInfo> poolRegistry = new ConcurrentHashMap<>();
     private final Set<String> forkedWithoutJoin = ConcurrentHashMap.newKeySet();
     private final Set<String> exceptionsInTasks = ConcurrentHashMap.newKeySet();
-    private int taskStealCount = 0;
+    // Incremented from pool worker threads, so a plain int was a lost-update race.
+    private final AtomicInteger taskStealCount = new AtomicInteger();
 
     /**
      * Register a ForkJoinPool for monitoring.
@@ -87,7 +100,7 @@ public class ForkJoinPoolDetector {
      * @param pool the pool being recorded, tracked by identity
      */
     public void recordWorkSteal(ForkJoinPool pool) {
-        taskStealCount++;
+        taskStealCount.incrementAndGet();
     }
 
     /**
@@ -113,7 +126,7 @@ public class ForkJoinPoolDetector {
         return new ForkJoinPoolReport(
             forkedWithoutJoin,
             exceptionsInTasks,
-            taskStealCount
+            taskStealCount.get()
         );
     }
 

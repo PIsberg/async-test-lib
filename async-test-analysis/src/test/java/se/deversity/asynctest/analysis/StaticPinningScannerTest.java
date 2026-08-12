@@ -122,4 +122,72 @@ class StaticPinningScannerTest {
         assertTrue(foundBlock, "Directory scan missed block fixture");
         assertTrue(foundMethod, "Directory scan missed method fixture");
     }
+
+    // --- The scanner's one hard rule: never report a site that cannot exist ---
+
+    /**
+     * Calls, inside {@code synchronized}, that the JDK documents as non-blocking.
+     *
+     * <p>{@code selectNow()} is specified as "a non-blocking selection operation" and
+     * {@code getInputStream()}/{@code getOutputStream()} return the stream object without doing
+     * I/O. None of them can pin a carrier thread, so none may be reported. The scanner never
+     * executes what it inspects, which is why its contract is asymmetric: a missed site is
+     * acceptable, an invented one is not, because the user has no way to confirm it from the
+     * report and every invented site costs them the time to disprove it.
+     */
+    static class NonBlockingCallsInsideSynchronizedFixture {
+        private final Object lock = new Object();
+
+        public void selectNowIsNotBlocking(java.nio.channels.Selector selector) throws IOException {
+            synchronized (lock) {
+                selector.selectNow();
+            }
+        }
+
+        public void gettingAStreamIsNotBlocking(java.net.Socket socket) throws IOException {
+            synchronized (lock) {
+                socket.getInputStream();
+                socket.getOutputStream();
+            }
+        }
+    }
+
+    @Test
+    void nonBlockingJdkCallsInsideSynchronizedAreNotReported() throws Exception {
+        byte[] bytes = getClassBytes(NonBlockingCallsInsideSynchronizedFixture.class);
+        List<StaticPinningScanner.PinningSite> sites = StaticPinningScanner.scanClass(bytes);
+
+        assertTrue(sites.isEmpty(),
+                "Every call in this fixture is documented by the JDK as non-blocking, so none of "
+                        + "them can pin a carrier thread and none may be reported. A finding here "
+                        + "is a false positive, which this scanner is not permitted to produce: "
+                        + "it runs without executing the code, so the user cannot confirm the "
+                        + "site and can only waste time disproving it. Reported: " + sites);
+    }
+
+    /**
+     * A file the reader cannot parse must cost one file's findings, not the whole scan.
+     *
+     * <p>ASM throws unchecked, undeclared exceptions for a class-file version it does not know
+     * and for truncated input. {@code scanDirectory} is documented for use from
+     * {@code @BeforeAll}, so letting those propagate failed the consumer's build over a stray
+     * file — and the failure named ASM, giving no hint that a single artefact was responsible.
+     */
+    @Test
+    void anUnparseableClassFileIsSkippedRatherThanFailingTheScan(@org.junit.jupiter.api.io.TempDir Path dir)
+            throws Exception {
+        java.nio.file.Files.write(dir.resolve("Corrupt.class"),
+                new byte[] {(byte) 0xCA, (byte) 0xFE, (byte) 0xBA, (byte) 0xBE, 0x00, 0x01});
+        java.nio.file.Files.write(dir.resolve("Good.class"),
+                getClassBytes(SynchronizedBlockFixture.class));
+
+        List<StaticPinningScanner.PinningSite> sites = StaticPinningScanner.scanDirectory(dir);
+
+        assertEquals(1, sites.size(),
+                "The corrupt file must be skipped and the valid one still scanned. Either an "
+                        + "exception escaped scanDirectory — which fails the consumer's build "
+                        + "over a file that is not their code — or the skip swallowed the good "
+                        + "file's finding too. Reported: " + sites);
+        assertEquals("blockSync", sites.get(0).methodName());
+    }
 }
