@@ -75,8 +75,29 @@ Two things the script leaves alone, and you must not work around:
 
 - **`docs/CHANGELOG.md` version headings** — they are history.
 - **Minimum-version prose** ("requires async-test-lib 1.7.0+") — a floor, not a pin.
+- **The japicmp `<oldVersion>` baseline** in `async-test-lib/pom.xml` — see below.
 
-It also reports any other file still mentioning the old version, for you to judge.
+It also reports any other file still mentioning the old version, for you to judge. The
+`<oldVersion>` line will be in that report — that is expected, not a missed pin.
+
+Then **check the japicmp baseline** in `async-test-lib/pom.xml`. It must name the *previous*
+release, the one users are upgrading off:
+
+```xml
+<oldVersion>
+    <dependency>
+        ...
+        <version>1.9.1</version>   <!-- the release before the one being cut -->
+```
+
+**Skipping this is silent.** The baseline sat at 1.6.0 while 1.7.0 through 1.9.1 shipped, so for
+six releases the gate compared against an artifact predating every API those releases added — it
+could not have failed on breaking any of them. A stale baseline does not report anything; it just
+stops protecting the API customers pin against. Bumping it *forward* to the version being cut is
+the other half of the same trap: the gate then compares the release against itself, and the
+coordinate cannot resolve because it is not on Central yet. `bump-version.sh` skips the
+`<oldVersion>` block for exactly that reason, so this stays a deliberate step. `docs/RELEASE.md`
+section 2 carries the same instruction.
 
 ## 4. Update the changelog
 

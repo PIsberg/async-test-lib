@@ -6,7 +6,7 @@
 
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-parent</artifactId>
-    <version>1.9.1</version>
+    <version>1.9.2</version>
     <packaging>pom</packaging>
 
     <name>Async Test Library (parent)</name>

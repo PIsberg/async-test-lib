@@ -129,6 +129,13 @@ Then re-pin the japicmp baseline in `async-test-lib/pom.xml` to the version you 
 through 1.9.1 shipped, so for six releases the gate compared against an artifact that predated
 every API those releases added — it could not have failed on breaking any of them, and the 1.9.1
 changelog's claim that japicmp was "green against 1.9.0" described a comparison that never ran.
+Bumping it *forward* to the version being cut is the other half of the same trap: the gate then
+compares the release against itself, and the coordinate cannot resolve at all because it is not on
+Central yet. `bump-version.sh` used to do exactly that — the 1.9.2 bump moved the baseline off the
+1.9.1 it had just been re-pinned to — so the script now skips everything between `<oldVersion>` and
+`</oldVersion>`, in both its rewrite and its missed-pin check. The `<oldVersion>` line therefore
+appears in the script's "prose mentions" report; that is expected, not a missed pin.
+
 A stale baseline does not report anything; it just stops protecting the API your customers pin
 against.
 

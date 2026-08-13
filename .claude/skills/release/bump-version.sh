@@ -88,13 +88,27 @@ for f in "${ALLOWLIST[@]}"; do
     echo "  · $f (no occurrence of $CURRENT)"
     continue
   fi
-  # \Q..\E quotes the dotted version so '.' can't match arbitrary characters.
-  perl -pi -e "
-    s|(<version>)\Q$CURRENT\E(</version>)|\${1}$NEW\${2}|g;
-    s|(<[A-Za-z0-9._-]+\.version>)\Q$CURRENT\E(</[A-Za-z0-9._-]+\.version>)|\${1}$NEW\${2}|g;
-    s|(async-test-lib:)\Q$CURRENT\E|\${1}$NEW|g;
-    s|(asyncTestVersion = \")\Q$CURRENT\E(\")|\${1}$NEW\${2}|g;
-  " "$f"
+  # \Q..\E quotes the dotted version so '.' can't match arbitrary characters. The version is
+  # passed through the environment rather than interpolated by the shell, so the perl source
+  # below reads as perl rather than as escaped shell.
+  #
+  # Everything between <oldVersion> and </oldVersion> is skipped. That block is the japicmp
+  # API-compatibility baseline, and it must stay pinned to the PREVIOUS release: bumping it to
+  # the version being cut makes the gate compare the release against itself, and the coordinate
+  # cannot resolve at all because that version is not on Central yet. Re-pinning the baseline is
+  # a separate, deliberate step (docs/RELEASE.md section 2), not a side effect of bumping.
+  # Without this guard the 1.9.2 bump moved the baseline off the 1.9.1 it had just been
+  # re-pinned to, silently undoing the fix that release shipped.
+  CURRENT="$CURRENT" NEW="$NEW" perl -pi -e '
+    $in_old = 1 if m{<oldVersion>};
+    unless ($in_old) {
+      s{(<version>)\Q$ENV{CURRENT}\E(</version>)}{$1$ENV{NEW}$2}g;
+      s{(<[A-Za-z0-9._-]+\.version>)\Q$ENV{CURRENT}\E(</[A-Za-z0-9._-]+\.version>)}{$1$ENV{NEW}$2}g;
+      s{(async-test-lib:)\Q$ENV{CURRENT}\E}{$1$ENV{NEW}}g;
+      s{(asyncTestVersion = ")\Q$ENV{CURRENT}\E(")}{$1$ENV{NEW}$2}g;
+    }
+    $in_old = 0 if m{</oldVersion>};
+  ' "$f"
   echo "  ✓ $f ($hits occurrence(s))"
   changed=$((changed + hits))
 done
@@ -114,8 +128,24 @@ if [[ "$remaining" -gt 0 ]]; then
 fi
 
 # A pin left behind is the dangerous case: the build would resolve the PREVIOUS release.
-missed="$(grep -nE "(<version>|\.version>|async-test-lib:|asyncTestVersion = \")$CURRENT" \
-  "${ALLOWLIST[@]}" 2>/dev/null || true)"
+# Skips the <oldVersion> block for the same reason the rewrite does: a baseline still on
+# $CURRENT is correct, not a missed pin.
+missed=""
+for f in "${ALLOWLIST[@]}"; do
+  [[ -f "$f" ]] || continue
+  hit="$(CURRENT="$CURRENT" FILE="$f" perl -ne '
+    $in_old = 1 if m{<oldVersion>};
+    print "$ENV{FILE}:$.:$_"
+      if !$in_old
+      && /(?:<version>|\.version>|async-test-lib:|asyncTestVersion = ")\Q$ENV{CURRENT}\E/;
+    $in_old = 0 if m{</oldVersion>};
+  ' "$f")"
+  # Not `[[ ... ]] && missed=...`: under `set -e` a false test as the last command in the loop
+  # body would abort the script on the common case of finding nothing.
+  if [[ -n "$hit" ]]; then
+    missed="${missed}${hit}"
+  fi
+done
 if [[ -n "$missed" ]]; then
   echo
   echo "error: pin-shaped occurrences of $CURRENT survived the rewrite:" >&2

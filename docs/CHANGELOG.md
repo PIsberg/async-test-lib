@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-08-13
+
+> Versioning note: as in 1.9.1, this ships as a patch by explicit owner decision. Strictly it is
+> additive — `TelemetryRegistry.clearCallbackIf(expected)` is new public API, and `fields=true`,
+> `-Dasynctest.agent` and `-Dasynctest.validate.jmm` are new configuration — which the
+> SUPPORT_POLICY.md table would make 1.10.0. Nothing was removed or changed incompatibly.
+> This is also the release that re-pins the japicmp baseline to 1.9.1, so it is the first one
+> whose API-compatibility gate actually compares against the preceding release.
+
 ### Added
 
 - **Direct field weaving in the agent (`fields=true`).** The agent bound `Advice` to
@@ -63,6 +72,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **japicmp compared against 1.6.0** across six releases, leaving every API added in 1.7.0–1.9.1
   unguarded. Re-pinned to 1.9.1 with the obsolete excludes removed, and re-pinning is now a step
   in [RELEASE.md](RELEASE.md#2-bump-the-version).
+- **`bump-version.sh` bumped the japicmp baseline along with everything else**, which would have
+  undone that re-pin on the very next release: `<oldVersion>` moved to the version being cut, so
+  the gate would have compared the release against itself, on a coordinate not yet on Central. The
+  rewrite and the missed-pin check now both skip the `<oldVersion>` block. Verified by running
+  the shipped script and the fixed one over the same clean checkout: the first moved the baseline
+  to 1.9.2, the second left it at 1.9.1 while still moving all 285 other pins.
 - **Load tests had never measured the current build.** The workflow pinned `1.6.0` on every
   automatic trigger and resolved it from Maven Central, making the preceding `publishToMavenLocal`
   dead weight; the Gradle-side fallback was `1.3.0`. Both literals are gone — the version comes
