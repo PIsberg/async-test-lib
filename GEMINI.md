@@ -62,7 +62,7 @@ Critical Vulnerabilities to Prevent:
 ## 🚫 IGNORED ELEMENTS (EXCLUDE FROM CONTEXT)
 Do not reference, suggest changes to, or include the following in completions or answers.
 
-- `se.deversity.asynctest.NoopAsyncTestListener`
+- `se.deversity.asynctest.NoopAsyncTestListener` - Trivial no-op implementation of AsyncTestListener. All methods are intentionally empty — no logic to review or change here.
 
 ## 🧠 CORE FUNCTIONALITY (CHANGE WITH EXTREME CAUTION)
 The following elements are well-tested core components. Make changes with extreme caution.

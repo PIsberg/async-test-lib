@@ -144,7 +144,9 @@ Guardrails for module `async-test-analysis` are maintained in that module's own 
   If you are asked to modify any file listed in <audit_requirements>, you must first silently analyze your proposed code for the listed <vulnerability_check> items. If your code introduces these vulnerabilities, you must rewrite it before displaying it to the user.
 </rule>
   <ignored_elements>
-    <file path="se.deversity.asynctest.NoopAsyncTestListener"/>
+    <file path="se.deversity.asynctest.NoopAsyncTestListener">
+      <reason>Trivial no-op implementation of AsyncTestListener. All methods are intentionally empty — no logic to review or change here.</reason>
+    </file>
   </ignored_elements>
 
 <rule>Never reference or suggest changes to any element listed in <ignored_elements>. Treat these as if they do not exist.</rule>
