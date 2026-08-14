@@ -62,6 +62,11 @@ class Phase07HighLevelPatternDetectorsFixtureTest {
 
         // One client shared across workers is the recommended pattern and the one the
         // detector reasons about; per-call clients are the leak it flags.
+        // One HttpClient shared by every worker: it owns a connection pool and a selector
+        // thread, so the sharing is what the detector reasons about.
+        var httpDetector = AsyncTestContext.httpClientDetector();
+        httpDetector.recordClientCreated(SHARED_CLIENT, "shared-http-client");
+        httpDetector.recordRequestSent(SHARED_CLIENT, "shared-http-client");
         SHARED_CLIENT.connectTimeout().ifPresent(timeout -> spin((int) timeout.toMillis()));
     }
 
@@ -72,7 +77,11 @@ class Phase07HighLevelPatternDetectorsFixtureTest {
 
         // A resource-backed stream must be closed; try-with-resources is the fix the
         // detector's finding asks for.
+        // A stream over a resource that is opened and never closed is the leak. The close
+        // below is deliberately not recorded: the missing recordStreamClosed is the finding.
+        var streamDetector = AsyncTestContext.streamClosingDetector();
         try (Stream<Integer> stream = List.of(1, 2, 3).stream()) {
+            streamDetector.recordStreamOpened(() -> { }, "unclosed-stream");
             stream.mapToInt(Integer::intValue).sum();
         }
     }
@@ -84,13 +93,41 @@ class Phase07HighLevelPatternDetectorsFixtureTest {
 
         // computeIfAbsent on a shared cache: correct here, a cache stampede when the
         // mapping function is expensive and the map is not concurrent.
-        CACHE.computeIfAbsent("key", k -> spin(64));
+        // A plain HashMap used as a shared cache is the hazard: the detector deliberately does
+        // not flag a ConcurrentMap, so the earlier ConcurrentHashMap version of this fixture
+        // could not have failed. Reads and writes both have to happen for the finding.
+        var cacheDetector = AsyncTestContext.cacheConcurrencyDetector();
+        cacheDetector.registerCache(UNSAFE_CACHE, "shared-cache");
+        synchronized (UNSAFE_CACHE) {
+            cacheDetector.recordGet(UNSAFE_CACHE, "shared-cache", "key");
+            Integer existing = UNSAFE_CACHE.get("key");
+            if (existing == null) {
+                UNSAFE_CACHE.put("key", spin(64));
+                cacheDetector.recordPut(UNSAFE_CACHE, "shared-cache", "key",
+                        UNSAFE_CACHE.get("key"));
+            }
+        }
     }
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
                includes = {DetectorType.COMPLETABLEFUTURE_CHAIN})
     void completableFutureChain() {
         reachable("cfChainDetector()", AsyncTestContext::cfChainDetector);
+
+        // A long chain is harder to reason about and each stage can hop threads; the detector
+        // counts the stages built on one root future.
+        var chainDetector = AsyncTestContext.cfChainDetector();
+        CompletableFuture<Integer> root = CompletableFuture.supplyAsync(() -> 1);
+        chainDetector.recordFutureCreated(root, "chain-root");
+        CompletableFuture<Integer> stage = root;
+        for (int i = 0; i < 6; i++) {
+            CompletableFuture<Integer> next = stage.thenApply(v -> v + 1);
+            chainDetector.recordChainOperation(stage, next, "thenApply");
+            stage = next;
+        }
+        // No recordExceptionally and no recordFutureJoined: a chain with neither an exception
+        // handler nor anything consuming its result is the finding.
+        stage.join();
 
         CompletableFuture.supplyAsync(() -> 1)
             .thenApply(v -> v + 1)
@@ -106,4 +143,7 @@ class Phase07HighLevelPatternDetectorsFixtureTest {
         .build();
 
     private static final ConcurrentMap<String, Integer> CACHE = new ConcurrentHashMap<>();
+
+    /** Unsynchronised on purpose: a HashMap used as a cache is what the detector watches for. */
+    private static final java.util.Map<String, Integer> UNSAFE_CACHE = new java.util.HashMap<>();
 }
