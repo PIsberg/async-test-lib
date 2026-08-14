@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertAllReported;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertNoneReported;
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.registerOnce;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.reachable;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.spin;
 
@@ -104,7 +105,7 @@ class Phase16PreviewEraDetectorsFixtureTest {
         // A parallel gatherer with no combiner integrated from more than one thread is the
         // misuse: without a combiner the integrator's state cannot be merged safely.
         var gatherer = AsyncTestContext.gathererConcurrencyMisuseDetector();
-        gatherer.registerGatherer("fixture-gatherer", false, true);
+        registerOnce("gatherer", () -> gatherer.registerGatherer("fixture-gatherer", false, true));
         gatherer.recordIntegrate("fixture-gatherer", Thread.currentThread());
         List<Integer> collected = List.of(1, 2, 3).stream()
             .map(value -> value * 2)

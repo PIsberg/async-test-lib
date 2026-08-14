@@ -17,6 +17,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertAllReported;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertNoneReported;
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.registerOnce;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.reachable;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.spin;
 
@@ -111,7 +112,7 @@ class Phase02AdditionalConcurrencyDetectorsFixtureTest {
         // detector reports the timeout rather than the reentrancy, which is legal.
         var reentrantDetector = AsyncTestContext.reentrantLockDetector();
         ReentrantLock lock = SHARED_REENTRANT;
-        reentrantDetector.registerLock(lock, "shared-reentrant-lock");
+        registerOnce("reentrant-lock", () -> reentrantDetector.registerLock(lock, "shared-reentrant-lock"));
         lock.lock();
         reentrantDetector.recordLockAcquired(lock, Thread.currentThread().getName());
         reentrantDetector.recordLockTimeout(lock);
@@ -135,8 +136,24 @@ class Phase02AdditionalConcurrencyDetectorsFixtureTest {
         // volatile on the reference says nothing about the elements — the trap.
         // volatile on an array reference publishes the reference, not the elements: every
         // element read and write is as unsynchronised as it would be without the keyword.
+        // Registered exactly once, by the first worker to arrive, with the others waiting for
+        // it. Registering per worker is what a consumer would naturally write, and the detector
+        // installs a fresh identity-keyed entry on every call while resolving an access to the
+        // FIRST matching entry it happens to iterate - so per-worker registration could scatter
+        // the accesses across entries that each saw a single thread. That is order- and
+        // identity-hash-dependent, which is why this fixture passed locally and on most CI legs
+        // and failed on one.
         var arrayDetector = AsyncTestContext.volatileArrayDetector();
-        arrayDetector.registerArray(VOLATILE_REF, "volatile-ref", int.class);
+        if (ARRAY_ROLE.getAndIncrement() == 0) {
+            arrayDetector.registerArray(VOLATILE_REF, "volatile-ref", int.class);
+            ARRAY_REGISTERED.countDown();
+        } else {
+            try {
+                ARRAY_REGISTERED.await(2, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
         arrayDetector.recordElementRead(VOLATILE_REF, 0, "volatile-ref");
         int next = VOLATILE_REF[0] + 1;
         VOLATILE_REF[0] = next;
@@ -151,7 +168,7 @@ class Phase02AdditionalConcurrencyDetectorsFixtureTest {
         // Double-checked locking without a volatile field: the second thread can see a
         // non-null reference to an object whose constructor has not finished publishing.
         var dclDetector = AsyncTestContext.doubleCheckedLockingDetector();
-        dclDetector.registerDCL("Holder.instance", false, true, true, true);
+        registerOnce("dcl", () -> dclDetector.registerDCL("Holder.instance", false, true, true, true));
         dclDetector.recordAccess("Holder.instance", true, false);
         Holder.instance();
         dclDetector.recordAccess("Holder.instance", false, true);
@@ -262,6 +279,14 @@ class Phase02AdditionalConcurrencyDetectorsFixtureTest {
 
     /** volatile reference, non-volatile elements. */
     private static volatile int[] VOLATILE_REF = new int[] {0};
+
+    /** Elects the single registering worker. */
+    private static final java.util.concurrent.atomic.AtomicInteger ARRAY_ROLE =
+        new java.util.concurrent.atomic.AtomicInteger();
+
+    /** Holds the other workers until the array is registered. */
+    private static final java.util.concurrent.CountDownLatch ARRAY_REGISTERED =
+        new java.util.concurrent.CountDownLatch(1);
 
     private static final ReentrantLock CONTENDED = new ReentrantLock();
 

@@ -18,6 +18,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertAllReported;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertNoneReported;
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.registerOnce;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.reachable;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.spin;
 
@@ -176,7 +177,8 @@ class Phase02CoreDetectorsFixtureTest {
         // A barrier that expects more parties than ever arrive never trips, and everyone
         // already waiting on it waits forever.
         var synchronizers = AsyncTestContext.synchronizerMonitor();
-        synchronizers.registerSynchronizer(SHARED_BARRIER_TOKEN, 4);   // more than will arrive
+        registerOnce("synchronizer",
+                () -> synchronizers.registerSynchronizer(SHARED_BARRIER_TOKEN, 4));
         synchronizers.recordBarrierArrival(SHARED_BARRIER_TOKEN);
         ReentrantLock lock = new ReentrantLock();
         lock.lock();
@@ -250,7 +252,7 @@ class Phase02CoreDetectorsFixtureTest {
         // An event published into a stage that never processes it is stuck: the pipeline
         // looks healthy from the producer's side and nothing downstream ever runs.
         var pipeline = AsyncTestContext.pipelineMonitor();
-        pipeline.registerStage("fixture-stage");
+        registerOnce("pipeline-stage", () -> pipeline.registerStage("fixture-stage"));
         pipeline.recordEventPublished("fixture-stage", "event-1");
         pipeline.recordEventFailed("fixture-stage", "event-1", "no consumer");
         CompletableFuture.completedFuture(1)
@@ -269,7 +271,7 @@ class Phase02CoreDetectorsFixtureTest {
         // indefinitely, which is what the reader-to-writer ratio below represents.
         var rwMonitor = AsyncTestContext.readWriteLockMonitor();
         ReentrantReadWriteLock rw = SHARED_RW;
-        rwMonitor.registerLock(rw, "fixture-rw-lock");
+        registerOnce("rw-lock", () -> rwMonitor.registerLock(rw, "fixture-rw-lock"));
         for (int i = 0; i < 32; i++) {
             rw.readLock().lock();
             rwMonitor.recordReadLockAcquired(rw, 0L);

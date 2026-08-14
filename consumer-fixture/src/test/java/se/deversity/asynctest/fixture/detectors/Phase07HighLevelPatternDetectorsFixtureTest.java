@@ -17,6 +17,7 @@ import java.util.stream.Stream;
 
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertAllReported;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertNoneReported;
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.registerOnce;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.reachable;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.spin;
 
@@ -97,7 +98,7 @@ class Phase07HighLevelPatternDetectorsFixtureTest {
         // not flag a ConcurrentMap, so the earlier ConcurrentHashMap version of this fixture
         // could not have failed. Reads and writes both have to happen for the finding.
         var cacheDetector = AsyncTestContext.cacheConcurrencyDetector();
-        cacheDetector.registerCache(UNSAFE_CACHE, "shared-cache");
+        registerOnce("cache", () -> cacheDetector.registerCache(UNSAFE_CACHE, "shared-cache"));
         synchronized (UNSAFE_CACHE) {
             cacheDetector.recordGet(UNSAFE_CACHE, "shared-cache", "key");
             Integer existing = UNSAFE_CACHE.get("key");

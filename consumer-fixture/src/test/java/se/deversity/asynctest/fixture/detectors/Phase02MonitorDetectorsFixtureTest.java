@@ -29,6 +29,7 @@ import java.util.stream.IntStream;
 
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertAllReported;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertNoneReported;
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.registerOnce;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.reachable;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.spin;
 
@@ -85,7 +86,7 @@ class Phase02MonitorDetectorsFixtureTest {
         // stops bounding anything at all.
         var semaphoreDetector = AsyncTestContext.semaphoreMisuseDetector();
         Semaphore permits = SHARED_PERMITS;
-        semaphoreDetector.registerSemaphore(permits, "shared-permits", 1);
+        registerOnce("semaphore", () -> semaphoreDetector.registerSemaphore(permits, "shared-permits", 1));
         semaphoreDetector.recordRelease(permits, "shared-permits");   // never acquired
         if (permits.tryAcquire()) {
             semaphoreDetector.recordAcquire(permits, "shared-permits");
@@ -197,7 +198,7 @@ class Phase02MonitorDetectorsFixtureTest {
         // ConcurrentModificationException is named for; the detector reports the overlap
         // rather than waiting for the throw, which only one of the two threads ever sees.
         var cmDetector = AsyncTestContext.concurrentModificationDetector();
-        cmDetector.registerCollection(SHARED_LIST, "shared-list");
+        registerOnce("collection", () -> cmDetector.registerCollection(SHARED_LIST, "shared-list"));
         cmDetector.recordIterationStarted(SHARED_LIST, "shared-list");
         cmDetector.recordModification(SHARED_LIST, "shared-list", "add");
         int total = 0;
@@ -220,7 +221,7 @@ class Phase02MonitorDetectorsFixtureTest {
         // other worker queues behind it forever. The fixture releases its own lock - the leak
         // is recorded against a separate one so nothing is actually left held.
         var lockLeak = AsyncTestContext.lockLeakDetector();
-        lockLeak.registerLock(LEAKED_LOCK, "leaked-lock");
+        registerOnce("leaked-lock", () -> lockLeak.registerLock(LEAKED_LOCK, "leaked-lock"));
         lockLeak.recordLockAcquired(LEAKED_LOCK, "leaked-lock");   // no matching release
         ReentrantLock lock = new ReentrantLock();
         lock.lock();
@@ -253,7 +254,7 @@ class Phase02MonitorDetectorsFixtureTest {
         // a poll that times out is a consumer that gave up on a queue that never filled.
         var queueDetector = AsyncTestContext.blockingQueueDetector();
         ArrayBlockingQueue<Integer> queue = SHARED_QUEUE;
-        queueDetector.registerQueue(queue, "shared-queue", 1);
+        registerOnce("queue", () -> queueDetector.registerQueue(queue, "shared-queue", 1));
         try {
             boolean offered = queue.offer(1, 50, TimeUnit.MILLISECONDS);
             queueDetector.recordOffer(queue, "shared-queue", offered);
