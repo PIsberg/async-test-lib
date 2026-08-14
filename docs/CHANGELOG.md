@@ -26,6 +26,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   widens access before invoking, and falls back to the previous behaviour if a module system
   refuses. Found by the consumer fixture asserting detection rather than reachability.
 
+- **License tests wrote their validation cache to the developer's home directory.**
+  `LicenseValidationCache` records each successful validation under `~/.asynctest` unless
+  `license.cache.dir` says otherwise, and only two of the four license test classes set it. Every
+  fork of the build and every previous run shared that directory - this machine had accumulated
+  162 records - so a test asserting a denial could find a record on disk, take the outage grace
+  path, and get no `SecurityException` at all. That is why
+  `LicenseGuardLemonSqueezyTest.deniedGuidanceMentionsTheLemonSqueezyProperties` and
+  `LicenseGuardNetworkModeTest.reachableButErroringValidator_failsClosedWhenNothingEverValidated`
+  failed on a CI runner while passing everywhere else. `LicenseGuardLemonSqueezyTest` and
+  `LicenseGuardTest` now use a `@TempDir` cache, and the network-mode test asserts its "nothing
+  ever validated" precondition instead of assuming it. Verified: after deleting `~/.asynctest`,
+  a full suite run leaves zero records behind.
+
 ### Added
 
 - **Five more consumer fixture files assert detection** (Phase01, Phase03, Phase19, Phase20,

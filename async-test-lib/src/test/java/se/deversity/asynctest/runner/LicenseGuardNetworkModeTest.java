@@ -14,8 +14,11 @@ import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -162,6 +165,14 @@ class LicenseGuardNetworkModeTest {
         responseStatus = 500;
         responseBody = "boom";
 
+        // The precondition is the whole premise of this test, so it is checked rather than
+        // assumed. If a validation record existed, the outage grace policy would apply, no
+        // SecurityException would be thrown, and the failure would read as a policy bug in
+        // LicenseGuard instead of a dirty cache directory.
+        assertTrue(isEmpty(cacheDir),
+            "precondition: no validation record may exist for 'nothing ever validated' to mean "
+            + "anything. Found: " + listing(cacheDir));
+
         SecurityException ex = assertThrows(SecurityException.class,
             () -> LicenseGuard.check(config()),
             "A host that answers HTTP but errors is indistinguishable from rejected fabricated "
@@ -202,6 +213,20 @@ class LicenseGuardNetworkModeTest {
         assertDoesNotThrow(() -> LicenseGuard.check(config()),
             "Within the cache TTL a new JVM must not revalidate at all: forkEvery=1 suites "
             + "would otherwise make one licensing API call per test class");
+    }
+
+    /** {@return whether {@code dir} holds no validation records} */
+    private static boolean isEmpty(Path dir) {
+        return listing(dir).isEmpty();
+    }
+
+    /** {@return the names of the files in {@code dir}, for an assertion message} */
+    private static List<String> listing(Path dir) {
+        try (Stream<Path> files = Files.list(dir)) {
+            return files.map(p -> p.getFileName().toString()).toList();
+        } catch (IOException e) {
+            return List.of("<unreadable: " + e + ">");
+        }
     }
 
     private static void resetCache() {
