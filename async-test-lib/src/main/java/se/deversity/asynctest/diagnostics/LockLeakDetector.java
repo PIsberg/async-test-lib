@@ -109,11 +109,13 @@ public class LockLeakDetector {
         if (!enabled || lock == null) {
             return;
         }
-        LockState state = locks.get(System.identityHashCode(lock));
+        int id = System.identityHashCode(lock);
+        LockState state = locks.get(id);
         if (state == null) {
-            // Auto-register
-            state = new LockState(lock, name);
-            locks.put(System.identityHashCode(lock), state);
+            // Auto-register atomically. get-then-put let two threads racing on the same lock
+            // each keep a private state whose releasingThreads held one id, so cross-thread
+            // acquire/release imbalance became invisible under contention.
+            state = locks.computeIfAbsent(id, k -> new LockState(lock, name));
         }
         state.releaseCount.incrementAndGet();
         state.releasingThreads.add(Thread.currentThread().threadId());

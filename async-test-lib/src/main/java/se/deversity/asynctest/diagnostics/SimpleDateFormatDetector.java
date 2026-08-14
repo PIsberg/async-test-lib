@@ -99,11 +99,15 @@ public class SimpleDateFormatDetector {
         if (!enabled || formatter == null) {
             return;
         }
-        FormatterState state = formatters.get(System.identityHashCode(formatter));
+        int id = System.identityHashCode(formatter);
+        FormatterState state = formatters.get(id);
         if (state == null) {
-            // Auto-register
-            state = new FormatterState(formatter, name != null ? name : "formatter@" + System.identityHashCode(formatter));
-            formatters.put(System.identityHashCode(formatter), state);
+            // Auto-register. computeIfAbsent, not get-then-put: two threads racing here both
+            // saw null, both built a state and the second put discarded the first, so each
+            // thread counted itself alone and the "> 1 thread" test in analyze() never
+            // tripped - the detector went silent under exactly the contention it looks for.
+            final String label = name != null ? name : "formatter@" + id;
+            state = formatters.computeIfAbsent(id, k -> new FormatterState(formatter, label));
         }
         state.errorCount.incrementAndGet();
         if (errorType != null) {
@@ -115,11 +119,12 @@ public class SimpleDateFormatDetector {
         if (!enabled || formatter == null) {
             return;
         }
-        FormatterState state = formatters.get(System.identityHashCode(formatter));
+        int id = System.identityHashCode(formatter);
+        FormatterState state = formatters.get(id);
         if (state == null) {
-            // Auto-register
-            state = new FormatterState(formatter, name != null ? name : "formatter@" + System.identityHashCode(formatter));
-            formatters.put(System.identityHashCode(formatter), state);
+            // Auto-register atomically - see recordError() for why get-then-put lost records.
+            final String label = name != null ? name : "formatter@" + id;
+            state = formatters.computeIfAbsent(id, k -> new FormatterState(formatter, label));
         }
 
         long now = System.currentTimeMillis();

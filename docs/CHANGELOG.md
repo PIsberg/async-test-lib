@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   report a user actually reads — bound `hasPinningIssues()` instead, which counts obsolete
   events, so the fix never reached the report. On JDK 24+ this surfaced a finding for correct
   code. Now binds `hasIssues()`.
+- **Five detectors lost records when two threads raced to register a shared instance.**
+  `SharedRandomDetector`, `SimpleDateFormatDetector`, `CacheConcurrencyDetector` (both record
+  paths) and `LockLeakDetector.recordLockReleased` auto-registered per-instance state with
+  `get`, a null check and a `put`. Two threads touching an instance for the first time both saw
+  `null`, both built a state, and the second `put` discarded the first, so each thread
+  accumulated into its own object and the surviving state recorded a single thread.
+  `SharedRandomDetector` and `SimpleDateFormatDetector` therefore went **silent** under exactly
+  the contention they exist to find; `LockLeakDetector` ran the other way and **invented a leak**
+  in correct code, because a dropped release leaves acquires above releases.
+  `LockLeakDetector.recordLockAcquired` had already been fixed, with a comment describing this
+  hazard - the release path was missed. All five now use `computeIfAbsent`.
 
 ### Added
 
@@ -26,6 +37,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and nothing made the two paths ask the same question. Three further bindings
   (`hasFairnessIssues`, `hasLeaks`, `hasDeadlockRisk`) were aliases of `hasIssues()` by
   coincidence rather than by contract, and are now bound canonically.
+- **`SharedTypeAccuracyEvalTest`**, extending the buggy-vs-synchronized-twin eval to all 19
+  detectors in the `Shared*` family, the largest cluster in the catalogue. Measured: 19 of 19
+  fire on unguarded sharing, 2 of 19 stay silent on the `synchronized(instance)` twin. The 17
+  that fire on correct code are pinned rather than hidden, and the pin can only shrink. This
+  test is what found the lost-update bug above: the true-positive column was red on first run.
+- **`DetectorRegistrationRaceTest`**, pinning the property that made those bugs findable - a
+  detector's verdict must not depend on whether two threads raced to register the instance,
+  compared by running the identical recordings barrier-released and then strictly sequenced.
+  Carries an anti-vacuity guard requiring the sequenced run to fire, so the comparison cannot
+  pass by both runs finding nothing.
+- `docs/analysis/detector-accuracy-eval.md` gains the Shared* family table and the
+  lost-update account; the evaluated set goes from 7 of 135 detectors to 26.
 
 ## [1.9.2] - 2026-08-13
 

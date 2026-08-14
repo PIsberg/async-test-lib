@@ -100,8 +100,12 @@ public class CacheConcurrencyDetector {
         if (state == null) {
             @SuppressWarnings("unchecked")
             Map<Object, Object> typedCache = (Map<Object, Object>) cache;
-            state = new CacheState(typedCache, name != null ? name : "cache-" + cacheKey);
-            caches.put(cacheKey, state);
+            final String label = name != null ? name : "cache-" + cacheKey;
+            // computeIfAbsent, not get-then-put: two threads racing on a cache's first access
+            // both saw null, both built a CacheState and the second put discarded the first, so
+            // readerThreads/writerThreads each held one id and the cross-thread contention this
+            // detector exists to measure was invisible exactly when it was real.
+            state = caches.computeIfAbsent(cacheKey, k -> new CacheState(typedCache, label));
         }
         
         state.readCount.incrementAndGet();
@@ -132,8 +136,9 @@ public class CacheConcurrencyDetector {
         if (state == null) {
             @SuppressWarnings("unchecked")
             Map<Object, Object> typedCache = (Map<Object, Object>) cache;
-            state = new CacheState(typedCache, name != null ? name : "cache-" + cacheKey);
-            caches.put(cacheKey, state);
+            final String label = name != null ? name : "cache-" + cacheKey;
+            // Atomic auto-register - see recordGet() for what get-then-put cost here.
+            state = caches.computeIfAbsent(cacheKey, k -> new CacheState(typedCache, label));
         }
         
         state.writeCount.incrementAndGet();
