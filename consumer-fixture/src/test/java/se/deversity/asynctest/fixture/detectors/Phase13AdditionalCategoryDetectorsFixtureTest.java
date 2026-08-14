@@ -13,6 +13,7 @@ import java.util.WeakHashMap;
 
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertAllReported;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertNoneReported;
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.pause;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.reachable;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.spin;
 
@@ -44,8 +45,10 @@ class Phase13AdditionalCategoryDetectorsFixtureTest {
                     "DaemonThreadHygieneDetector",
                     "NotifyWithoutMonitorDetector",
                     "SharedSecureRandomDetector",
-                    "WeakHashMapSharedDetector",
-                    "JdbcConnectionSharedDetector");
+                    "WeakHashMapSharedDetector");
+            // JdbcConnectionSharedDetector stays reachability-only: this module declares no
+            // driver, and feeding the detector a stand-in object would assert that it counts
+            // identities rather than that a shared Connection is caught.
         } finally {
             findings.close();
         }
@@ -59,14 +62,20 @@ class Phase13AdditionalCategoryDetectorsFixtureTest {
 
         // A non-daemon thread keeps the JVM alive after the suite finishes; the fixture
         // marks its own worker daemon and joins it.
-        Thread worker = new Thread(() -> spin(32), "fixture-daemon");
-        worker.setDaemon(true);
+        // The detector flags a non-daemon thread only while it is STILL ALIVE at analysis
+        // time, which is correct: a non-daemon thread that has finished holds nothing open.
+        // An earlier version of this fixture started a daemon thread and joined it, so the
+        // detector rightly said nothing and the fixture asserted nothing.
+        //
+        // This one is genuinely non-daemon and deliberately not joined, so it is still running
+        // when the round is analysed - exactly the hazard. It sleeps briefly and exits on its
+        // own, so the worst case is that this fork waits a moment longer at exit rather than
+        // hanging, which is the difference between demonstrating the hazard and causing it.
+        Thread worker = new Thread(() -> pause(3_000), "fixture-non-daemon");
+        worker.setDaemon(false);
+        AsyncTestContext.daemonThreadHygieneDetector().recordThread(worker, "fixture-non-daemon");
         worker.start();
-        try {
-            worker.join(500);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        spin(32);
     }
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
@@ -78,6 +87,8 @@ class Phase13AdditionalCategoryDetectorsFixtureTest {
         // notify() outside a synchronized block throws IllegalMonitorStateException — the
         // exact mistake this detector names, reproduced and contained.
         Object monitor = new Object();
+        AsyncTestContext.notifyWithoutMonitorDetector()
+                .recordNotifyAttempt(monitor, "fixture-monitor");
         try {
             monitor.notifyAll();
         } catch (IllegalMonitorStateException expected) {
@@ -92,6 +103,8 @@ class Phase13AdditionalCategoryDetectorsFixtureTest {
 
         // SecureRandom is thread-safe but its internal lock serialises every caller — the
         // contention a shared instance creates is the finding.
+        AsyncTestContext.sharedSecureRandomDetector()
+                .recordAccess(SHARED_SECURE_RANDOM, "shared-csprng", Thread.currentThread());
         SHARED_SECURE_RANDOM.nextInt(100);
     }
 
@@ -102,6 +115,8 @@ class Phase13AdditionalCategoryDetectorsFixtureTest {
 
         // WeakHashMap is unsynchronised and its entries vanish on GC — sharing one across
         // threads corrupts it. The throw is the finding.
+        AsyncTestContext.weakHashMapSharedDetector()
+                .recordAccess(SHARED_WEAK_MAP, "shared-weak-map", Thread.currentThread());
         try {
             synchronized (SHARED_WEAK_MAP) {
                 SHARED_WEAK_MAP.put(new Object(), "value");

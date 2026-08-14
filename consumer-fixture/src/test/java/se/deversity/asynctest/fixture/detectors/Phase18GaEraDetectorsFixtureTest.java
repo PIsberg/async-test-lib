@@ -53,7 +53,13 @@ class Phase18GaEraDetectorsFixtureTest {
 
         // A "constant" computed on first use without safe publication: every worker can
         // compute its own, and a reader can see a half-built one.
-        LazyConstant.value();
+        // Two workers each racing the null check and computing their own "constant" is the
+        // misuse; the detector reports a lazy constant computed from more than one thread.
+        var lazyDetector = AsyncTestContext.lazyConstantMisuseDetector();
+        lazyDetector.recordGet("LazyConstant.cached", Thread.currentThread());
+        lazyDetector.recordComputeStart("LazyConstant.cached", Thread.currentThread());
+        String value = LazyConstant.value();
+        lazyDetector.recordComputeEnd("LazyConstant.cached", Thread.currentThread(), value);
     }
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
@@ -65,7 +71,10 @@ class Phase18GaEraDetectorsFixtureTest {
         // final-field freeze guarantee. The fixture reads the field rather than performing
         // the write: doing it for real needs --add-opens and would break the round on a
         // stricter JDK, and the detector's subject is the field, not the mechanism.
+        var finalFieldDetector = AsyncTestContext.finalFieldMutationDetector();
         FrozenConfig config = new FrozenConfig(7);
+        finalFieldDetector.recordRead("FrozenConfig.limit", Thread.currentThread());
+        finalFieldDetector.recordMutation("FrozenConfig.limit", Thread.currentThread());
         spin(config.limit());
     }
 
@@ -76,14 +85,27 @@ class Phase18GaEraDetectorsFixtureTest {
 
         // SecretKeyFactory derives keys from mutable per-call state; sharing one instance
         // across workers is the hazard. Iterations kept low so the round stays short.
+        AsyncTestContext.sharedKdfDetector().recordAccess(
+                SHARED_KDF, "PBKDF2WithHmacSHA256", "generateSecret", Thread.currentThread());
         try {
-            SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+            SecretKeyFactory factory = SHARED_KDF;
             factory.generateSecret(
                 new PBEKeySpec("password".toCharArray(), new byte[] {1, 2, 3, 4}, 1_000, 128));
-        } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
-            throw new AssertionError("PBKDF2WithHmacSHA256 is required by every JRE", e);
+        } catch (InvalidKeySpecException e) {
+            throw new AssertionError("a PBEKeySpec with a salt and 1000 iterations must derive", e);
         } catch (RuntimeException expected) {
             // A shared key factory losing a race is the point of this fixture.
+        }
+    }
+
+    /** One key factory for the whole round: the sharing is what the detector reports. */
+    private static final SecretKeyFactory SHARED_KDF = newKdf();
+
+    private static SecretKeyFactory newKdf() {
+        try {
+            return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("PBKDF2WithHmacSHA256 is required by every JRE", e);
         }
     }
 
