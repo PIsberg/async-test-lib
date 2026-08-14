@@ -156,6 +156,7 @@
 - [CI/CD Integration](#cicd-integration)
 - [IntelliJ Plugin](#intellij-plugin)
 - [Documentation](#documentation)
+- [Publications](#publications)
 - [License](#license)
 
 ---
@@ -475,6 +476,16 @@ See [intellij-plugin/README.md](intellij-plugin/README.md) for full instructions
 | [intellij-plugin/README.md](intellij-plugin/README.md) | IntelliJ plugin setup |
 | [docs/INDEX.md](docs/INDEX.md) | Documentation index — every document mapped to what it is for |
 | [docs/QUALITY_GATES.md](docs/QUALITY_GATES.md) | What must stay green: static analysis, coverage, mutation testing, japicmp |
+
+---
+
+## Publications
+
+Books that cover `@AsyncTest` and the problem it exists to solve.
+
+**[Vibe Architecture: Designing, Scaling, and Guardrailing Large-Scale Systems in the Age of AI Orchestration](https://www.amazon.com/dp/B0HF3MLBB8)** by Peter Isberg.
+
+Chapter 17, "The Asynchronous Trap", is about the class of bug AI-generated concurrent code produces and sequential unit tests never see. It uses this library as the worked example: forced-collision testing on a `CyclicBarrier`, what the detectors turn a bare timeout into, and how to feed that named diagnosis back to the assistant that wrote the bug.
 
 ---
 
