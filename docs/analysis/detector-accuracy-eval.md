@@ -64,15 +64,54 @@ reference to probe at all.
   `failOn = HIGH` will fail builds over correct-but-shared code unless those findings
   are baselined; see the baseline mechanism in `ConcurrencyRunner`.
 
+## The Shared* family (2026-08-14, `test/shared-family-accuracy-eval`)
+
+_Enforced by `SharedTypeAccuracyEvalTest`._ The same pair harness applied to all 19
+detectors that watch a non-thread-safe JDK type, which is the largest cluster in the
+catalogue and the one carrying most of the false-positive surface above.
+
+| Direction | Result |
+|---|---|
+| Unguarded sharing (true positive) | 19 of 19 fire |
+| `synchronized(instance)` twin (true negative) | 2 of 19 stay silent |
+
+The two that recognise the guarded twin are `SharedMessageDigestDetector` and
+`SharedStatefulCryptoDetector`, the two that carry the `Thread.holdsLock` probe. The
+other 17 fire on correctly guarded code, for the reason given above: they reduce their
+input to "how many distinct threads touched this instance" and hold no representation of
+locks, so the guarded twin records an identical event stream. That number is pinned in
+`GUARD_ON_SELF_AWARE`, and it can only shrink - a detector that goes silent on the twin
+fails the test until it is moved into that set and this table is updated.
+
+### The true-positive column was not free
+
+Two detectors failed it when it was first run. `SharedRandomDetector` and
+`SimpleDateFormatDetector` auto-registered per-instance state with
+`s = map.get(id); if (s == null) { s = new State(); map.put(id, s); }`. Two threads
+touching an instance for the first time both saw `null`, both built a state, and the
+second `put` discarded the first - so each thread accumulated into its own object, the
+surviving state recorded one thread, and the "more than one thread" test never tripped.
+Both detectors went silent under exactly the contention they exist to find, while their
+single-threaded unit tests stayed green throughout.
+
+A sweep for the same shape found it in three more places: `CacheConcurrencyDetector`
+(both record paths) and `LockLeakDetector.recordLockReleased` - the latter inverted, a
+dropped release leaves acquires above releases and *invents* a leak in correct code.
+`LockLeakDetector.recordLockAcquired` had already been fixed, with a comment describing
+this exact hazard; the release path was missed. All five are now `computeIfAbsent`, and
+`DetectorRegistrationRaceTest` pins the property that made them findable: a detector's
+verdict must not change depending on whether two threads raced to register the instance.
+
 ## Known limits of this eval
 
 - Recording-level: it measures the analyzers, not end-to-end reachability under a bare
   `@AsyncTest` (that is `DetectionCoverageTest`'s job) and not the agent's weaving
   (that is `AgentFeedsDetectorEndToEndTest`'s job).
-- 7 of 135 detectors. The evaluated set was chosen to cover each mechanism class:
-  access-pattern analyzers, per-thread state machines, graph analysis, and JVM
-  introspection. Extending the pair harness to more detectors is mechanical; the
-  helper (`onTwoThreads`) and the pinning convention are in place.
+- 26 of 135 detectors: the 7 above plus the 19 of the Shared* family. The first set was
+  chosen to cover each mechanism class - access-pattern analyzers, per-thread state
+  machines, graph analysis, and JVM introspection - and the second covers one whole
+  cluster. Extending the pair harness further is mechanical; the helper
+  (`onTwoThreads`) and the pinning convention are in place.
 - The synchronization model is the tracked object's own monitor only, probed with
   `Thread.holdsLock` on the accessing thread at record time. External lock objects,
   `java.util.concurrent` locks, and locks observed by other threads are all invisible;

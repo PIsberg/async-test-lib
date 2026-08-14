@@ -80,12 +80,15 @@ public class SemaphoreMisuseDetector {
         if (!enabled || semaphore == null) {
             return;
         }
-        SemaphoreState state = semaphores.get(System.identityHashCode(semaphore));
+        int id = System.identityHashCode(semaphore);
+        SemaphoreState state = semaphores.get(id);
         if (state == null) {
-            // Auto-register with unknown permits
-            state = new SemaphoreState(semaphore, 
-                name != null ? name : "semaphore@" + System.identityHashCode(semaphore), -1);
-            semaphores.put(System.identityHashCode(semaphore), state);
+            // Auto-register with unknown permits, atomically. get-then-put let two threads
+            // racing on an unregistered semaphore each keep a private state, so acquiringThreads
+            // and currentAcquires undercounted exactly when contention made them matter.
+            final String label = name != null ? name : "semaphore@" + id;
+            state = semaphores.computeIfAbsent(id,
+                k -> new SemaphoreState(semaphore, label, -1));
         }
         state.acquireCount.incrementAndGet();
         state.acquiringThreads.add(Thread.currentThread().threadId());

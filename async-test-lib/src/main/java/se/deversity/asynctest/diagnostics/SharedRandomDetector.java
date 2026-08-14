@@ -79,11 +79,16 @@ public class SharedRandomDetector {
         if (!enabled || random == null) {
             return;
         }
-        RandomState state = randoms.get(System.identityHashCode(random));
+        int id = System.identityHashCode(random);
+        RandomState state = randoms.get(id);
         if (state == null) {
-            // Auto-register
-            state = new RandomState(random, name != null ? name : "random@" + System.identityHashCode(random));
-            randoms.put(System.identityHashCode(random), state);
+            // Auto-register. computeIfAbsent, not get-then-put: two threads racing here both
+            // saw null, both built a state and the second put discarded the first, so each
+            // thread counted itself alone and analyze()'s "> 1 thread" test never tripped. A
+            // detector whose whole job is spotting concurrent sharing went silent under
+            // exactly the contention it exists to find.
+            final String label = name != null ? name : "random@" + id;
+            state = randoms.computeIfAbsent(id, k -> new RandomState(random, label));
         }
         
         long now = System.currentTimeMillis();
