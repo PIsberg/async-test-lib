@@ -69,7 +69,7 @@ For the main library, each release produces three files:
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>1.9.2</version>
+    <version>1.9.3</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -91,7 +91,7 @@ For the main library, each release produces three files:
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>1.9.2</version>
+    <version>1.9.3</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -111,7 +111,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation 'se.deversity.async-test-lib:async-test-lib:1.9.2'
+    testImplementation 'se.deversity.async-test-lib:async-test-lib:1.9.3'
 }
 ```
 
@@ -211,19 +211,19 @@ async-test-lib-1.9.1-javadoc.jar
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>1.9.2</version>
+    <version>1.9.3</version>
     <scope>test</scope>
 </dependency>
 ```
 
 ### Method 2: Gradle
 ```gradle
-testImplementation 'se.deversity.async-test-lib:async-test-lib:1.9.2'
+testImplementation 'se.deversity.async-test-lib:async-test-lib:1.9.3'
 ```
 
 ### Method 3: Gradle Kotlin DSL
 ```kotlin
-testImplementation("se.deversity.async-test-lib:async-test-lib:1.9.2")
+testImplementation("se.deversity.async-test-lib:async-test-lib:1.9.3")
 ```
 
 ### Method 4: Manual JAR Download
@@ -306,7 +306,7 @@ export GITHUB_TOKEN=ghp_xxxxxxxxxxxx
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>1.9.2</version>
+    <version>1.9.3</version>
     <exclusions>
         <exclusion>
             <groupId>org.junit.jupiter</groupId>
