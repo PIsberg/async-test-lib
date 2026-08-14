@@ -79,10 +79,13 @@ public class BlockingQueueDetector {
      * @param capacity the queue capacity (-1 for unbounded)
      */
     public void registerQueue(BlockingQueue<?> queue, String name, int capacity) {
+        // First registration wins: re-registering a subject must not discard what has
+        // been observed about it. An @AsyncTest body runs once per thread, so a consumer
+        // registering inside it registers once per worker.
         if (!enabled || queue == null) {
             return;
         }
-        queues.put(System.identityHashCode(queue), new QueueState(queue, name, capacity));
+        queues.putIfAbsent(System.identityHashCode(queue), new QueueState(queue, name, capacity));
     }
 
     /**

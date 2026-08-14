@@ -30,7 +30,10 @@ public class ScheduledExecutorDetector {
      * @param corePoolSize the configured core pool size
      */
     public void registerExecutor(ScheduledExecutorService executor, String name, int corePoolSize) {
-        executorRegistry.put(executor, new ExecutorInfo(name, corePoolSize));
+        // First registration wins: re-registering a subject must not discard what has
+        // been observed about it. An @AsyncTest body runs once per thread, so a consumer
+        // registering inside it registers once per worker.
+        executorRegistry.putIfAbsent(executor, new ExecutorInfo(name, corePoolSize));
     }
 
     /**

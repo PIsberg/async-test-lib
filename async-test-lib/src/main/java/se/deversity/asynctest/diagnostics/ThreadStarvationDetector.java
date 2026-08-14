@@ -90,9 +90,12 @@ public class ThreadStarvationDetector {
      * @param poolSize the number of threads in the pool
      */
     public void registerExecutor(ExecutorService executor, String name, int poolSize) {
+        // First registration wins: re-registering a subject must not discard what has
+        // been observed about it. An @AsyncTest body runs once per thread, so a consumer
+        // registering inside it registers once per worker.
         if (!enabled || executor == null) return;
 
-        trackedExecutors.put(System.identityHashCode(executor),
+        trackedExecutors.putIfAbsent(System.identityHashCode(executor),
             new ExecutorState(name));
     }
 

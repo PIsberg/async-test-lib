@@ -65,10 +65,13 @@ public class ConcurrentModificationDetector {
      * @param name a descriptive name for reporting
      */
     public void registerCollection(Collection<?> collection, String name) {
+        // First registration wins: re-registering a subject must not discard what has
+        // been observed about it. An @AsyncTest body runs once per thread, so a consumer
+        // registering inside it registers once per worker.
         if (!enabled || collection == null) {
             return;
         }
-        collections.put(System.identityHashCode(collection), 
+        collections.putIfAbsent(System.identityHashCode(collection), 
             new CollectionState(collection, name));
     }
 

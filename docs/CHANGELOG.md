@@ -11,6 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Eighteen `registerX` methods discarded everything observed about their subject.** They
+  installed a fresh state object on every call, and an `@AsyncTest` body runs once per thread - so
+  a consumer registering inside it registers once per worker, and each worker's accesses ended up
+  in state that had seen a single thread. Every finding phrased as "more than one thread touched
+  this" was then unreachable for those detectors. Because it depends on interleaving and on
+  identity hash codes, it was not reliably absent either: three detectors surfaced it on one CI
+  leg each while passing everywhere else, one only under JUnit 5.9.3. `BlockingQueueDetector`,
+  `ConcurrentModificationDetector`, `ConditionVariableDetector`, `CountDownLatchDetector`,
+  `CyclicBarrierDetector`, `ExchangerDetector`, `ForkJoinPoolDetector`, `PhaserDetector`,
+  `ReentrantLockDetector`, `ScheduledExecutorDetector`, `SemaphoreMisuseDetector`,
+  `SharedRandomDetector`, `SimpleDateFormatDetector`, `StampedLockDetector`,
+  `ThreadFactoryDetector`, `ThreadPoolDeadlockDetector`, `ThreadStarvationDetector` and
+  `VolatileArrayDetector` are now first-registration-wins, and
+  `RegistrationIsIdempotentTest` fails on the nineteenth. `record*` methods that begin an episode
+  were deliberately left alone: replacing state there can be correct, and changing them without
+  evidence would be a guess.
+
 - **`GathererConcurrencyMisuseDetector.registerGatherer` discarded earlier observations.** It did
   an unconditional `put`, so a consumer registering the gatherer inside the concurrent body -
   which is what an `@AsyncTest` body is, since it runs once per thread - had each worker's

@@ -29,7 +29,10 @@ public class PhaserDetector {
      * @param parties the number of parties the barrier was created for
      */
     public void registerPhaser(Phaser phaser, String name, int parties) {
-        phaserRegistry.put(phaser, new PhaserInfo(name, parties));
+        // First registration wins: re-registering a subject must not discard what has
+        // been observed about it. An @AsyncTest body runs once per thread, so a consumer
+        // registering inside it registers once per worker.
+        phaserRegistry.putIfAbsent(phaser, new PhaserInfo(name, parties));
     }
 
     /**

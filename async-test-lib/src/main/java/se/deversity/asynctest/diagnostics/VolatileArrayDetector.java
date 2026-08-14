@@ -37,6 +37,13 @@ public class VolatileArrayDetector {
     private final Set<ArrayInfo> problematicArrays = ConcurrentHashMap.newKeySet();
 
     /**
+     * Guards registration only. The key is an identity-based wrapper and findArrayInfo
+     * scans, so check-then-put cannot be one atomic map operation. Registration happens
+     * once per array per run and is nowhere near the recording path.
+     */
+    private final Object registrationLock = new Object();
+
+    /**
      * Register a volatile array for monitoring.
      *
      * @param array the array being recorded, tracked by identity
@@ -44,8 +51,19 @@ public class VolatileArrayDetector {
      * @param componentType the component type of the array
      */
     public void registerArray(Object array, String name, Class<?> componentType) {
-        ArrayInfo info = new ArrayInfo(name, array, componentType);
-        elementAccesses.put(info, ConcurrentHashMap.newKeySet());
+        // First registration wins, like every other registerX here. This one cannot use
+        // putIfAbsent: the key is a fresh ArrayInfo with identity semantics, so a second
+        // registration adds a second entry rather than colliding with the first. findArrayInfo
+        // then resolves an access to whichever of them the key set happens to iterate first,
+        // which can differ between two accesses because registering rehashes the map - so the
+        // workers' accesses could land in different entries, each seeing a single thread.
+        synchronized (registrationLock) {
+            if (findArrayInfo(array, name) != null) {
+                return;
+            }
+            elementAccesses.put(new ArrayInfo(name, array, componentType),
+                                ConcurrentHashMap.newKeySet());
+        }
     }
 
     /**

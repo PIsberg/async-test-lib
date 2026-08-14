@@ -71,10 +71,13 @@ public class ConditionVariableDetector {
      * @param name a descriptive name for reporting
      */
     public void registerCondition(Condition condition, String name) {
+        // First registration wins: re-registering a subject must not discard what has
+        // been observed about it. An @AsyncTest body runs once per thread, so a consumer
+        // registering inside it registers once per worker.
         if (!enabled || condition == null) {
             return;
         }
-        conditions.put(System.identityHashCode(condition), new ConditionState(condition, name));
+        conditions.putIfAbsent(System.identityHashCode(condition), new ConditionState(condition, name));
     }
 
     /**

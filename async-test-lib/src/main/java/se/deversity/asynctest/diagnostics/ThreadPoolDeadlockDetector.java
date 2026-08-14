@@ -99,13 +99,16 @@ public class ThreadPoolDeadlockDetector {
      * @param name a descriptive name for reporting
      */
     public void registerPool(ExecutorService pool, String name) {
+        // First registration wins: re-registering a subject must not discard what has
+        // been observed about it. An @AsyncTest body runs once per thread, so a consumer
+        // registering inside it registers once per worker.
         if (!enabled || pool == null) {
             return;
         }
 
         int identity = System.identityHashCode(pool);
         int poolSize = estimatePoolSize(pool);
-        registeredPools.put(identity, new PoolState(name, poolSize));
+        registeredPools.putIfAbsent(identity, new PoolState(name, poolSize));
     }
 
     /**

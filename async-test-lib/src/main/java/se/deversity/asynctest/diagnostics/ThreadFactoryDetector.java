@@ -28,7 +28,10 @@ public class ThreadFactoryDetector {
      * @param name a label identifying the factory in the report
      */
     public void registerFactory(ThreadFactory factory, String name) {
-        factoryRegistry.put(factory, new FactoryInfo(name));
+        // First registration wins: re-registering a subject must not discard what has
+        // been observed about it. An @AsyncTest body runs once per thread, so a consumer
+        // registering inside it registers once per worker.
+        factoryRegistry.putIfAbsent(factory, new FactoryInfo(name));
     }
 
     /**
