@@ -218,12 +218,25 @@ class Phase02CoreDetectorsFixtureTest {
         // location FROM ANOTHER THREAD. A worker that writes and then reads the same location
         // itself only ever produces same-thread pairs, which are skipped - so the workers take
         // opposite roles: one writes, the other reads the stale value.
+        // The monitor pairs a WRITE with the READ that IMMEDIATELY FOLLOWS it on the same
+        // location from another thread, so the two have to arrive in that order. Splitting the
+        // roles is not enough on its own: when the reader won the race the log held
+        // (read, write), which is not a write-then-read pair and reports nothing. That is why
+        // this passed on JDK 26 locally and failed on Java 21 in CI.
+        //
+        // A latch orders the reader behind the writer, so the pair exists on every schedule.
         var ordering = AsyncTestContext.memoryOrderingMonitor();
         Pair pair = SHARED_PAIR;
         if (ORDERING_ROLE.getAndIncrement() % 2 == 0) {
             pair.first = 1;
             ordering.recordWrite("Pair.first", 1);
+            WRITE_RECORDED.countDown();
         } else {
+            try {
+                WRITE_RECORDED.await(2, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             ordering.recordRead("Pair.first", 0);    // the stale value the reordering allows
         }
         spin(pair.first + pair.second);
@@ -307,6 +320,10 @@ class Phase02CoreDetectorsFixtureTest {
     /** Splits the writer and reader roles so the cross-thread pair always exists. */
     private static final java.util.concurrent.atomic.AtomicInteger ORDERING_ROLE =
         new java.util.concurrent.atomic.AtomicInteger();
+
+    /** Orders the reader behind the writer, so the write-then-read pair always exists. */
+    private static final java.util.concurrent.CountDownLatch WRITE_RECORDED =
+        new java.util.concurrent.CountDownLatch(1);
 
     private static final Config SHARED_CONFIG = new Config(7);
 
