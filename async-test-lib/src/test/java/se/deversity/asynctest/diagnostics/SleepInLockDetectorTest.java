@@ -142,4 +142,37 @@ class SleepInLockDetectorTest {
         assertTrue(report.hasIssues(), "a real user monitor held inside a pool task must be detected");
         assertEquals("synchronized", report.getEvents().get(0).lockType);
     }
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("KNOWN BLIND SPOT: a virtual thread holding a monitor is not seen")
+    void sleepingInsideSynchronizedOnAVirtualThreadIsNotDetected() throws Exception {
+        SleepInLockDetector virtualDetector = new SleepInLockDetector();
+        virtualDetector.startMonitoring();
+        Object monitor = new Object();
+
+        Thread vt = Thread.ofVirtual().unstarted(() -> {
+            synchronized (monitor) {
+                virtualDetector.recordSleep(100);
+            }
+        });
+        vt.start();
+        vt.join();
+
+        // Pinned as a limitation rather than assumed away, in the DetectionCoverageTest
+        // tradition. recordSleep establishes whether a lock is held by asking ThreadMXBean,
+        // and ThreadMXBean.getThreadInfo(long[]) returns null for a virtual thread - so the
+        // monitor is invisible and no finding is produced.
+        //
+        // This matters more than it looks: @AsyncTest runs on virtual threads by default, so
+        // in the library's own default configuration this detector cannot fire at all. The
+        // consumer fixture therefore pins its firing direction with useVirtualThreads = false
+        // and says why.
+        //
+        // If this ever starts reporting, the blind spot is gone: flip the assertion, drop the
+        // useVirtualThreads = false from the fixture, and say so in the changelog.
+        assertFalse(virtualDetector.analyze().hasIssues(),
+            "If a virtual thread's monitors became visible to ThreadMXBean, this detector would "
+            + "work under the library's default configuration and this limitation should be "
+            + "retired rather than left pinned.");
+    }
+
 }

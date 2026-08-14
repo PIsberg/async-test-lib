@@ -120,6 +120,51 @@ final class DetectorFixtureSupport {
                         + "the correct pattern - fix the fixture and say so.");
     }
 
+
+    /**
+     * Runs {@code registration} exactly once per round, holding the other workers until it has.
+     *
+     * <p>Registration is a setup step, not a per-thread one, but an {@code @AsyncTest} body runs
+     * once per thread - so the natural way to write a fixture calls {@code registerX} from every
+     * worker. Several detectors install a fresh state object on each registration, and resolve a
+     * later access to the first matching entry they happen to iterate. Two registrations for one
+     * shared subject can therefore scatter the workers' accesses across entries that each saw a
+     * single thread, and the "more than one thread touched this" findings never reach two.
+     *
+     * <p>Whether that happens depends on interleaving and on identity hash codes, which differ
+     * per JVM run: fixtures written this way passed locally and on most CI legs and failed on
+     * one, with a different detector each time.
+     *
+     * <p>Only needed where the registered subject is shared across the round. A subject
+     * allocated per invocation is a different object per worker and registering it per worker is
+     * correct.
+     *
+     * @param key identifies the registration; any stable string unique within the fixture class
+     * @param registration the {@code registerX} call to perform once
+     */
+    static void registerOnce(String key, Runnable registration) {
+        java.util.concurrent.CountDownLatch gate =
+            REGISTRATION_GATES.computeIfAbsent(key, k -> new java.util.concurrent.CountDownLatch(1));
+        if (REGISTERED.add(key)) {
+            registration.run();
+            gate.countDown();
+            return;
+        }
+        try {
+            gate.await(2, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /** Which registrations have been performed, by key. */
+    private static final Set<String> REGISTERED =
+        java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** One gate per registration, so late workers wait rather than racing it. */
+    private static final java.util.Map<String, java.util.concurrent.CountDownLatch>
+        REGISTRATION_GATES = new java.util.concurrent.ConcurrentHashMap<>();
+
     /**
      * Asserts that a detector accessor is reachable for the currently running round.
      *

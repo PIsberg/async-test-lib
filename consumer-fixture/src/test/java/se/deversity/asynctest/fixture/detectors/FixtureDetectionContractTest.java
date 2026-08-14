@@ -46,28 +46,21 @@ class FixtureDetectionContractTest {
     /**
      * Fixture files that still assert reachability only.
      *
-     * <p>A debt register, not a permission slip. Each entry is a file whose detectors nobody has
-     * shown can still report to a consumer. Shrink it by recording the access and calling
-     * {@code assertAllReported}; the assertion message on failure names what the class did
-     * report, which is usually enough to find the missing recording.
+     * <p>Empty, and that is the point. Every file in this package now records what its
+     * detectors watch for and asserts the finding comes back out through
+     * {@code AsyncFindings} - or, where the fixture deliberately demonstrates the correct
+     * pattern rather than the hazard, asserts the detector stays silent. Both count: a
+     * detector that fires on correct code fails a consumer just as surely as one that
+     * misses a bug.
+     *
+     * <p>Keeping the list rather than deleting it is deliberate. A new fixture file added
+     * without either assertion fails the count check below, and the author then has to
+     * either write the assertion or argue an entry back onto this list in review.
      */
     private static final Set<String> DETECTION_UNPROVEN = new TreeSet<>(Set.of(
-            "Phase02AdditionalConcurrencyDetectorsFixtureTest",
-            "Phase02AdvancedUtilityDetectorsFixtureTest",
-            "Phase02CoreDetectorsFixtureTest",
-            "Phase02MonitorDetectorsFixtureTest",
-            "Phase04InfrastructureDetectorsFixtureTest",
-            "Phase06VirtualThreadDetectorsFixtureTest",
-            "Phase07HighLevelPatternDetectorsFixtureTest",
-            "Phase08LifecycleDetectorsFixtureTest",
-            "Phase10ApiTrapDetectorsFixtureTest",
-            "Phase12OperationalHygieneDetectorsFixtureTest",
-            "Phase13AdditionalCategoryDetectorsFixtureTest",
-            "Phase14PublicationHazardDetectorsFixtureTest",
-            "Phase15AsyncFlowDetectorsFixtureTest",
-            "Phase16PreviewEraDetectorsFixtureTest",
-            "Phase18GaEraDetectorsFixtureTest",
-            "UnwiredExecutorDetectorsFixtureTest"));
+            // Empty: every fixture file asserts detection. Do not add to this without a
+            // reason that survives review.
+    ));
 
     @Test
     @DisplayName("no fixture file drops back to asserting reachability only")

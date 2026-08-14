@@ -122,4 +122,40 @@ class GathererConcurrencyMisuseDetectorTest {
         assertTrue(str.contains("combiner"), str);
         assertTrue(str.contains("HIGH"), str);
     }
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("re-registering the same gatherer keeps earlier threads' observations")
+    void reRegisteringTheSameGathererDoesNotDiscardObservations() throws Exception {
+        GathererConcurrencyMisuseDetector detector = new GathererConcurrencyMisuseDetector();
+
+        // Both workers register and then integrate, which is what a consumer writes when the
+        // gatherer is built inside the concurrent body - an @AsyncTest body runs once per
+        // thread, so registration happens per thread too. An unconditional put made the second
+        // registration discard the first thread's id, so the "integrator ran on more than one
+        // thread" test never reached two and the detector was silent under exactly the
+        // parallelism it exists to police.
+        java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(2);
+        Runnable worker = () -> {
+            try {
+                barrier.await();
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+            detector.registerGatherer("g", false /* no combiner */, true /* parallel */);
+            detector.recordIntegrate("g", Thread.currentThread());
+        };
+        Thread t1 = new Thread(worker, "gatherer-1");
+        Thread t2 = new Thread(worker, "gatherer-2");
+        t1.start();
+        t2.start();
+        t1.join();
+        t2.join();
+
+        assertTrue(detector.analyze().hasIssues(),
+            "Two threads integrated one parallel gatherer that declares no combiner - the "
+            + "per-thread states cannot be merged, which is the whole finding. Silence here "
+            + "means a later registerGatherer call reset the observations of the earlier one; "
+            + "registration must be first-wins, as it is in SharedMessageDigestDetector and "
+            + "DaemonThreadHygieneDetector.");
+    }
 }

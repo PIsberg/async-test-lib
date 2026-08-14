@@ -23,6 +23,16 @@ public class VolatileArrayDetector {
 
     private static final java.util.regex.Pattern COLON = java.util.regex.Pattern.compile(":");
 
+    /**
+     * Access keys, one per (thread, operation, index).
+     *
+     * <p>The thread part is {@code threadId()}, not {@code getName()}. A name is chosen by
+     * whoever created the thread, is not unique, and is the empty string for an unnamed
+     * virtual thread - which is what {@code @AsyncTest}'s default workers are. Keying on it
+     * collapsed distinct threads into one entry, so the "more than one thread wrote this
+     * array" test could not reach two and the detector went silent under exactly the
+     * sharing it exists to report.
+     */
     private final Map<ArrayInfo, Set<String>> elementAccesses = new ConcurrentHashMap<>();
     private final Set<ArrayInfo> problematicArrays = ConcurrentHashMap.newKeySet();
 
@@ -50,7 +60,7 @@ public class VolatileArrayDetector {
         if (info != null) {
             Set<String> accesses = elementAccesses.get(info);
             if (accesses != null) {
-                String accessKey = Thread.currentThread().getName() + ":write:" + index;
+                String accessKey = Thread.currentThread().threadId() + ":write:" + index;
                 accesses.add(accessKey);
                 
                 // If multiple threads write to same array, it's problematic
