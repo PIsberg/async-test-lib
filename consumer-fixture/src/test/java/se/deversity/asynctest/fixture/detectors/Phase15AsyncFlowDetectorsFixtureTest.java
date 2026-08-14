@@ -58,7 +58,11 @@ class Phase15AsyncFlowDetectorsFixtureTest {
 
         // obtrudeValue overwrites an already-published result, so downstream stages can
         // observe two different values for one future.
+        // obtrudeValue rewrites a result other threads may already have read. It is the one
+        // CompletableFuture API with no safe concurrent use, which is why it has a detector.
         CompletableFuture<String> future = CompletableFuture.completedFuture("first");
+        AsyncTestContext.completableFutureObtrudeDetector()
+                .recordObtrude(future, "fixture-future", Thread.currentThread());
         future.obtrudeValue("second");
         future.join();
     }
@@ -71,9 +75,15 @@ class Phase15AsyncFlowDetectorsFixtureTest {
 
         // wait() must be inside a loop re-checking the condition: a wakeup is not a
         // guarantee that the condition holds.
+        // wait() can return without any notify at all, so a wait that is not wrapped in a
+        // loop re-checking its condition is a latent bug. The fixture loops - insideLoop=false
+        // below records the hazard shape the detector reports, which is the one a consumer
+        // writes by accident.
         Object monitor = new Object();
         boolean[] ready = {false};
         synchronized (monitor) {
+            AsyncTestContext.spuriousWakeupHazardDetector()
+                    .recordWait(monitor, "fixture-monitor", false, Thread.currentThread());
             int guard = 0;
             while (!ready[0] && guard++ < 2) {
                 try {
@@ -94,14 +104,21 @@ class Phase15AsyncFlowDetectorsFixtureTest {
 
         // ReentrantReadWriteLock cannot upgrade read -> write; attempting it deadlocks.
         // tryLock reproduces the attempt and returns instead of hanging.
-        ReentrantReadWriteLock rw = new ReentrantReadWriteLock();
+        // A read lock cannot be upgraded: asking for the write lock while holding the read
+        // lock can never succeed, and with two threads doing it neither can ever let go.
+        var upgradeDetector = AsyncTestContext.lockUpgradeDeadlockDetector();
+        ReentrantReadWriteLock rw = SHARED_RW_LOCK;
         rw.readLock().lock();
+        upgradeDetector.recordReadLockAcquired(rw, "shared-rw-lock", Thread.currentThread());
         try {
+            upgradeDetector.recordWriteLockAcquisitionAttempt(rw, "shared-rw-lock",
+                    Thread.currentThread());
             if (rw.writeLock().tryLock()) {      // always false while the read lock is held
                 rw.writeLock().unlock();
             }
         } finally {
             rw.readLock().unlock();
+            upgradeDetector.recordReadLockReleased(rw, Thread.currentThread());
         }
     }
 
@@ -112,17 +129,60 @@ class Phase15AsyncFlowDetectorsFixtureTest {
 
         // The misuse is ignoring tryLock's result and unlocking anyway. Checking it is the
         // fix; the failure branch is what the detector reports on.
-        ReentrantLock lock = new ReentrantLock();
+        // The misuse is ignoring what tryLock returned and carrying on as if the lock were
+        // held - so the failed acquisition has to be recorded, not just the successful one.
+        // The misuse is ignoring what tryLock returned and carrying on as if the lock were
+        // held, so the fixture needs an acquisition that genuinely FAILS. A lock this worker
+        // could take is no use: ReentrantLock is reentrant, and an uncontended tryLock always
+        // succeeds. A helper thread therefore holds the lock for the duration, which makes the
+        // failure deterministic rather than a race the scheduler might win either way.
+        var tryLockDetector = AsyncTestContext.tryLockMisuseDetector();
+        ReentrantLock contended = new ReentrantLock();
+        java.util.concurrent.CountDownLatch held = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        Thread holder = new Thread(() -> {
+            contended.lock();
+            held.countDown();
+            try {
+                release.await(2, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                contended.unlock();
+            }
+        }, "fixture-lock-holder");
+        holder.setDaemon(true);
+        holder.start();
         try {
-            if (lock.tryLock(10, TimeUnit.MILLISECONDS)) {
+            held.await(2, TimeUnit.SECONDS);
+            boolean acquired = contended.tryLock();      // false: the holder still has it
+            tryLockDetector.recordTryLockResult(contended, "contended-lock", acquired,
+                    Thread.currentThread());
+            if (acquired) {
                 try {
                     spin(32);
                 } finally {
-                    lock.unlock();
+                    contended.unlock();
+                    tryLockDetector.recordUnlock(contended, "contended-lock",
+                            Thread.currentThread());
                 }
+            } else {
+                // The misuse itself: unlock() in a finally block that runs whether or not
+                // tryLock() succeeded. Done for real, because the IllegalMonitorStateException
+                // it throws IS the bug - a consumer writing this gets it at runtime, and
+                // catching it here is what keeps the fixture from failing the round.
+                spin(32);
+                try {
+                    contended.unlock();
+                } catch (IllegalMonitorStateException expected) {
+                    // Unlocking a lock this thread never acquired: the finding, reproduced.
+                }
+                tryLockDetector.recordUnlock(contended, "contended-lock", Thread.currentThread());
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        } finally {
+            release.countDown();
         }
     }
 
@@ -133,9 +193,21 @@ class Phase15AsyncFlowDetectorsFixtureTest {
 
         // A join() inside a thenApply callback blocks a common-pool worker. This callback
         // stays non-blocking; the detector's subject is the shape, not this call.
+        // Blocking inside a callback occupies the completing thread - on the common pool
+        // that is one of a very small number of threads shared by the whole JVM.
+        var callbackDetector = AsyncTestContext.cfBlockingCallbackDetector();
         CompletableFuture.completedFuture(1)
             .thenApply(value -> value + 1)
-            .thenAccept(value -> spin(value))
+            .thenAccept(value -> {
+                callbackDetector.recordEnterCallback("thenAccept", Thread.currentThread());
+                callbackDetector.recordBlockingCall(Thread.currentThread(), "Thread.sleep");
+                spin(value);
+                callbackDetector.recordExitCallback(Thread.currentThread());
+            })
             .join();
     }
+
+    /** One lock for the whole round: an upgrade attempt needs two contending readers. */
+    private static final ReentrantReadWriteLock SHARED_RW_LOCK = new ReentrantReadWriteLock();
+
 }
