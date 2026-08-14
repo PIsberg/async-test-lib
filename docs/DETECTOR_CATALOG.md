@@ -2916,9 +2916,13 @@ JDK 24/25/26.
   may be half-applied).
 * **`VirtualThreadPinningDetector`** — now JDK-version-aware. Events are classified as
   `MONITOR` (no longer pins on JDK 24+, JEP 491), `CLASS_INIT` (no longer pins on
-  JDK 26+), `NATIVE` (always pins), or `OTHER`. Obsolete events stay in the report but
-  are annotated; use `PinningReport.hasEffectivePinningIssues()` /
-  `getObsoleteEventCount()` to filter.
+  JDK 26+), `NATIVE` (always pins), or `OTHER`. A report whose events are *all* obsolete on
+  the running JDK no longer surfaces as a finding, because there is nothing the user could
+  act on; when at least one event still pins, the obsolete ones stay in the report text,
+  annotated. `PinningReport.hasIssues()` is that predicate and is what the report path and
+  the SPI pipeline both bind; `hasEffectivePinningIssues()` / `getObsoleteEventCount()`
+  remain available for filtering by hand, and `hasPinningIssues()` still counts every
+  recorded event regardless of JDK.
 
 ## Phase 19: Reactive Streams — Flow API (1.7.1+)
 

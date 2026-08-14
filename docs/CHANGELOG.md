@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`VirtualThreadPinningDetector` reported pinning that no longer pins on JDK 24+.**
+  `PinningReport.hasIssues()` was made to delegate to `hasEffectivePinningIssues()` in 1.9.2
+  precisely so that a `synchronized` event, non-pinning since JEP 491, is not reported as a
+  defect a user cannot act on. `DetectorRegistry.analyzeAllNamed()` — the path that builds the
+  report a user actually reads — bound `hasPinningIssues()` instead, which counts obsolete
+  events, so the fix never reached the report. On JDK 24+ this surfaced a finding for correct
+  code. Now binds `hasIssues()`.
+
+### Added
+
+- **`ReportingPathPredicateTest`**, gating the class of bug above: every `ifIssue(...)` line in
+  `analyzeAllNamed()` must bind `hasIssues()`, the predicate `LegacyDetectorAdapter` resolves
+  for the SPI `Violation` pipeline and `DetectorFiringContractTest` requires every report to
+  expose. The reporting path picked its predicate by hand, once per detector across ~135 lines,
+  and nothing made the two paths ask the same question. Three further bindings
+  (`hasFairnessIssues`, `hasLeaks`, `hasDeadlockRisk`) were aliases of `hasIssues()` by
+  coincidence rather than by contract, and are now bound canonically.
+
 ## [1.9.2] - 2026-08-13
 
 > Versioning note: as in 1.9.1, this ships as a patch by explicit owner decision. Strictly it is
