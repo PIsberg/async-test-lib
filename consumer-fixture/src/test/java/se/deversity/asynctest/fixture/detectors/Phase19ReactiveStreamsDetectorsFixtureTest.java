@@ -1,9 +1,13 @@
 package se.deversity.asynctest.fixture.detectors;
 
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import se.deversity.asynctest.AsyncFindings;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.DetectorType;
 
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertAllReported;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.reachable;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.spin;
 
@@ -14,6 +18,24 @@ import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.sp
  * {@code docs/DETECTOR_CATALOG.md} carries the buggy-vs-fixed pair.
  */
 class Phase19ReactiveStreamsDetectorsFixtureTest {
+
+    private static AsyncFindings findings;
+
+    @BeforeAll
+    static void collectFindings() {
+        findings = AsyncFindings.collect();
+    }
+
+    @AfterAll
+    static void everyFedDetectorReported() {
+        try {
+            assertAllReported(findings,
+                    "FlowPublisherConcurrencyDetector");
+        } finally {
+            findings.close();
+        }
+    }
+
 
     /** One subscriber shared by every worker — the sharing is the hazard. */
     private static final Object SHARED_SUBSCRIBER = new Object();

@@ -1,5 +1,8 @@
 package se.deversity.asynctest.fixture.detectors;
 
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import se.deversity.asynctest.AsyncFindings;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.DetectorType;
@@ -10,6 +13,7 @@ import java.lang.invoke.VarHandle;
 import java.util.ArrayList;
 import java.util.List;
 
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertAllReported;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.reachable;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.spin;
 
@@ -31,6 +35,28 @@ import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.sp
  * <p>See {@code docs/DETECTOR_CATALOG.md} for the buggy-vs-fixed pair behind each one.
  */
 class Phase20FfmAndLanguageHazardDetectorsFixtureTest {
+
+    private static AsyncFindings findings;
+
+    @BeforeAll
+    static void collectFindings() {
+        findings = AsyncFindings.collect();
+    }
+
+    @AfterAll
+    static void everyFedDetectorReported() {
+        try {
+            assertAllReported(findings,
+                    "ConfinedArenaThreadEscapeDetector",
+                    "SharedMemorySegmentRaceDetector",
+                    "VarHandleNonAtomicUpdateDetector",
+                    "RecordMutableComponentLeakDetector",
+                    "StaticInitDeadlockDetector");
+        } finally {
+            findings.close();
+        }
+    }
+
 
     /** Stand-ins shared by every worker — the sharing is the hazard in each case. */
     private static final Object SHARED_ARENA = new Object();
@@ -58,6 +84,10 @@ class Phase20FfmAndLanguageHazardDetectorsFixtureTest {
     }
 
     private static final Holder SHARED_HOLDER = new Holder();
+
+    /** Assigns the two halves of the wait-for cycle, so both are always recorded. */
+    private static final java.util.concurrent.atomic.AtomicInteger INIT_ROLE =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     /** Classes whose initialization the static-init fixture models as mutually blocking. */
     static final class ConfigLike { }
@@ -136,11 +166,24 @@ class Phase20FfmAndLanguageHazardDetectorsFixtureTest {
         // The hazard modelled, not created: a real class-initialization deadlock cannot be
         // unwedged, so the fixture records the wait-for edges such a deadlock would produce and
         // then completes them. Creating one here would hang the consumer suite forever.
+        // The hazard modelled, not created: a real class-initialization deadlock cannot be
+        // unwedged, so creating one would hang the consumer suite forever. What is modelled is
+        // the wait-for cycle itself, which is what the detector actually analyses - one worker
+        // initializing Config and waiting on Registry, the other the mirror image.
+        //
+        // The previous version recorded only one half and then completed it, so there was no
+        // cycle to find and the detector was right to stay silent. Roles are assigned rather
+        // than raced so both halves are always present.
         var detector = AsyncTestContext.staticInitDeadlockDetector();
         Thread me = Thread.currentThread();
-        detector.recordInitStart(ConfigLike.class, me);
-        detector.recordInitRequest(RegistryLike.class, me);
-        spin(8);
-        detector.recordInitEnd(ConfigLike.class, me);
+        if (INIT_ROLE.getAndIncrement() % 2 == 0) {
+            detector.recordInitStart(ConfigLike.class, me);
+            spin(8);
+            detector.recordInitRequest(RegistryLike.class, me);
+        } else {
+            detector.recordInitStart(RegistryLike.class, me);
+            spin(8);
+            detector.recordInitRequest(ConfigLike.class, me);
+        }
     }
 }

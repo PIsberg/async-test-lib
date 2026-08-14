@@ -1,11 +1,16 @@
 package se.deversity.asynctest.fixture.detectors;
 
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import se.deversity.asynctest.AsyncFindings;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.DetectorType;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertAllReported;
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertNoneReported;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.reachable;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.spin;
 
@@ -24,6 +29,31 @@ import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.sp
  * {@code examples/22-atomicity-violation}, {@code examples/24-interrupt-mishandling}.
  */
 class Phase03RuntimeAnalysisDetectorsFixtureTest {
+
+    private static AsyncFindings findings;
+
+    @BeforeAll
+    static void collectFindings() {
+        findings = AsyncFindings.collect();
+    }
+
+    @AfterAll
+    static void everyFedDetectorReported() {
+        try {
+            assertAllReported(findings,
+                    "RaceConditionDetector",
+                    "ThreadLocalMonitor",
+                    "BusyWaitDetector",
+                    "AtomicityValidator");
+            // interruptMishandling() demonstrates catch-and-restore, which is the correct
+            // handling. Silence is the finding; the swallowing form belongs to
+            // INTERRUPT_SWALLOWING and is covered by its own fixture.
+            assertNoneReported(findings, "InterruptMonitor");
+        } finally {
+            findings.close();
+        }
+    }
+
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
                includes = {DetectorType.RACE_CONDITIONS})
@@ -46,15 +76,14 @@ class Phase03RuntimeAnalysisDetectorsFixtureTest {
         // Set on a pooled/virtual carrier and removed again — the leak is forgetting
         // remove(), which is exactly what the init/access/cleanup triple makes visible.
         var monitor = AsyncTestContext.threadLocalMonitor();
+        // The leak, not the fix: set on a worker and never removed. The previous version of
+        // this fixture called remove() in a finally block, which is the correct pattern - so
+        // the monitor rightly reported nothing and the fixture asserted nothing. The workers
+        // are per-round threads that die with the round, so leaking here costs nothing.
         monitor.recordThreadLocalInit(LEAKY, "fixture-request-context");
         LEAKY.set("per-worker state");
-        try {
-            monitor.recordThreadLocalAccess(LEAKY);
-            spin(32);
-        } finally {
-            LEAKY.remove();
-            monitor.recordThreadLocalCleanup(LEAKY);
-        }
+        monitor.recordThreadLocalAccess(LEAKY);
+        spin(32);
     }
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,

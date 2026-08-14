@@ -85,6 +85,42 @@ final class DetectorFixtureSupport {
     }
 
     /**
+     * Asserts that none of the named detectors reported during this test class.
+     *
+     * <p>The other direction, and not a weaker one. Several fixtures here deliberately
+     * demonstrate the <em>correct</em> pattern - locks released, {@code remove()} called, an
+     * interrupt restored, a retry loop that makes progress - and for those the detector staying
+     * silent is the behaviour worth pinning. Asserting a finding instead would demand that
+     * correct code be flagged.
+     *
+     * <p>Use {@link #assertAllReported} where the fixture demonstrates the hazard, this where it
+     * demonstrates the fix. A fixture that does neither is asserting nothing.
+     *
+     * @param findings the collector opened in {@code @BeforeAll}
+     * @param detectorNames simple class names that must not appear in the findings
+     */
+    static void assertNoneReported(AsyncFindings findings, String... detectorNames) {
+        List<String> noisy = new ArrayList<>();
+        for (String detector : detectorNames) {
+            List<?> violations = findings.violationsFrom(detector);
+            if (!violations.isEmpty()) {
+                noisy.add(detector + " -> " + violations);
+            }
+        }
+        if (noisy.isEmpty()) {
+            return;
+        }
+        throw new AssertionError(
+                "These detectors reported against a fixture that demonstrates the correct "
+                        + "pattern, not the hazard:\n  " + String.join("\n  ", noisy)
+                        + "\n\nThat is a false positive reaching a consumer: the code above "
+                        + "releases its locks, removes its ThreadLocal, restores its interrupt "
+                        + "or otherwise does the right thing, and the detector flagged it "
+                        + "anyway. Fix the detector, or - if the fixture stopped demonstrating "
+                        + "the correct pattern - fix the fixture and say so.");
+    }
+
+    /**
      * Asserts that a detector accessor is reachable for the currently running round.
      *
      * @param accessorName the accessor as a consumer would write it, e.g. {@code "lockLeakDetector()"}

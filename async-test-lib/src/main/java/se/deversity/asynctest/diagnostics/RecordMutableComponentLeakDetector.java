@@ -157,11 +157,31 @@ public final class RecordMutableComponentLeakDetector {
         }
     }
 
+    /**
+     * {@return the value of {@code rc} on {@code instance}, or {@code null} if it cannot be read}
+     *
+     * <p>The {@code setAccessible} call is what makes this detector work on a real consumer's
+     * types. A record declared inside a test class, or anywhere else not exported to this
+     * library, has an accessor that {@code invoke} rejects - and every read then returned
+     * {@code null}, so no component looked mutable, no component looked changed, and the
+     * detector reported nothing at all for a record two threads were visibly sharing. The
+     * library's own tests could not see it, because a record declared beside the detector is
+     * accessible without this.
+     *
+     * <p>The suppression is bounded and cheap: this runs once per component per instance, and
+     * only ever widens access to a record's own generated accessor, which has no side effects.
+     * Under a module system that refuses, {@code InaccessibleObjectException} is caught below
+     * and the previous behaviour stands.
+     */
     private static @Nullable Object read(Object instance, RecordComponent rc) {
         try {
-            return rc.getAccessor().invoke(instance);
+            java.lang.reflect.Method accessor = rc.getAccessor();
+            if (!accessor.canAccess(instance)) {
+                accessor.setAccessible(true);
+            }
+            return accessor.invoke(instance);
         } catch (ReflectiveOperationException | RuntimeException e) {
-            return null;   // inaccessible component: skipped rather than guessed at
+            return null;   // genuinely inaccessible: skipped rather than guessed at
         }
     }
 

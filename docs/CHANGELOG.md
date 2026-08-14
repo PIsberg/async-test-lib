@@ -17,7 +17,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   events, so the fix never reached the report. On JDK 24+ this surfaced a finding for correct
   code. Now binds `hasIssues()`.
 
+- **`RecordMutableComponentLeakDetector` was silent for every record a consumer declares.** It
+  reads each component through `RecordComponent.getAccessor().invoke(...)`, which is rejected for
+  a record declared outside this library's packages - and `read()` returned `null` on failure, so
+  no component looked mutable, no component looked changed, and the detector reported nothing for
+  a record two threads were plainly sharing. Its own unit tests could not catch it: they declare
+  their fixture records next to the detector, where the accessor needs no widening. `read()` now
+  widens access before invoking, and falls back to the previous behaviour if a module system
+  refuses. Found by the consumer fixture asserting detection rather than reachability.
+
 ### Added
+
+- **Five more consumer fixture files assert detection** (Phase01, Phase03, Phase19, Phase20,
+  Phase21), taking the debt list from 21 files to 16. Converting them surfaced one detector bug
+  (above) and four fixtures that could never have failed: `visibility` allocated its flag per
+  invocation so no value could diverge, `threadLocalLeaks` called `remove()` in a finally block
+  and so demonstrated the fix rather than the leak, `platformThreadPerTask` created two unstarted
+  threads against a churn threshold of 16, and `staticInitDeadlock` recorded one half of a
+  wait-for cycle and then completed it.
+- `DetectorFixtureSupport.assertNoneReported(...)`, the true-negative direction. Some fixtures
+  deliberately demonstrate the correct pattern - `tryLock` released, an interrupt restored, a
+  retry loop that makes progress - and for those, silence is the behaviour worth pinning;
+  demanding a finding would demand that correct code be flagged. `DeadlockDetector`,
+  `LivelockDetector` and `InterruptMonitor` now carry that assertion instead of a false one.
 
 - **The consumer fixtures now assert detection, not only reachability.** Every file in
   `consumer-fixture/.../detectors` enables one `DetectorType` per fixture and runs a realistic

@@ -52,12 +52,10 @@ class FixtureDetectionContractTest {
      * report, which is usually enough to find the missing recording.
      */
     private static final Set<String> DETECTION_UNPROVEN = new TreeSet<>(Set.of(
-            "Phase01FoundationDetectorsFixtureTest",
             "Phase02AdditionalConcurrencyDetectorsFixtureTest",
             "Phase02AdvancedUtilityDetectorsFixtureTest",
             "Phase02CoreDetectorsFixtureTest",
             "Phase02MonitorDetectorsFixtureTest",
-            "Phase03RuntimeAnalysisDetectorsFixtureTest",
             "Phase04InfrastructureDetectorsFixtureTest",
             "Phase06VirtualThreadDetectorsFixtureTest",
             "Phase07HighLevelPatternDetectorsFixtureTest",
@@ -69,9 +67,6 @@ class FixtureDetectionContractTest {
             "Phase15AsyncFlowDetectorsFixtureTest",
             "Phase16PreviewEraDetectorsFixtureTest",
             "Phase18GaEraDetectorsFixtureTest",
-            "Phase19ReactiveStreamsDetectorsFixtureTest",
-            "Phase20FfmAndLanguageHazardDetectorsFixtureTest",
-            "Phase21VirtualThreadExecutorAndGeneratorFixtureTest",
             "UnwiredExecutorDetectorsFixtureTest"));
 
     @Test
