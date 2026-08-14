@@ -1,5 +1,11 @@
 package se.deversity.asynctest.fixture.detectors;
 
+import se.deversity.asynctest.AsyncFindings;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -37,6 +43,45 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 final class DetectorFixtureSupport {
 
     private DetectorFixtureSupport() {
+    }
+
+    /**
+     * Asserts that every named detector produced at least one finding during this test class.
+     *
+     * <p>The companion to {@link #reachable}, and the assertion that was missing. Reachability
+     * proves a consumer can obtain the detector; this proves the detector, fed by consumer code
+     * through its public recording API, produced a finding that came back out through
+     * {@link AsyncFindings} — the same channel the printed report and the {@code failOn} gate
+     * are built on. Without it a fixture passes with the detector deleted.
+     *
+     * <p>Call from {@code @AfterAll}: detectors analyse after the last round, so no finding is
+     * observable from inside a test body, and JUnit does not order {@code @Test} against
+     * {@code @AsyncTest} methods.
+     *
+     * @param findings the collector opened in {@code @BeforeAll}
+     * @param detectorNames simple class names, e.g. {@code "SharedChecksumDetector"}
+     */
+    static void assertAllReported(AsyncFindings findings, String... detectorNames) {
+        List<String> silent = new ArrayList<>();
+        for (String detector : detectorNames) {
+            if (findings.violationsFrom(detector).isEmpty()) {
+                silent.add(detector);
+            }
+        }
+        if (silent.isEmpty()) {
+            return;
+        }
+        Set<String> reported = new TreeSet<>();
+        findings.violations().forEach(v -> reported.add(v.detector()));
+        throw new AssertionError(
+                "These detectors were enabled and fed by the fixture above, and reported "
+                        + "nothing:\n  " + String.join("\n  ", silent)
+                        + "\n\nA fixture that runs the hazard but asserts only reachability "
+                        + "cannot fail if the detector stops detecting - which is what every "
+                        + "fixture in this package did before. Either the recording call is "
+                        + "missing or wrong for this detector, or the workload does not "
+                        + "actually share the instance across threads.\n\nDetectors that did "
+                        + "report in this class: " + (reported.isEmpty() ? "(none)" : reported));
     }
 
     /**

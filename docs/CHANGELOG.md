@@ -19,6 +19,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The consumer fixtures now assert detection, not only reachability.** Every file in
+  `consumer-fixture/.../detectors` enables one `DetectorType` per fixture and runs a realistic
+  workload for it, which reads like end-to-end coverage. It was not: the load-bearing assertion
+  was `reachable(...)`, which proves the accessor resolves on the published artifact and says
+  nothing about whether the detector still detects. Measured before the change: of 23 fixture
+  files, 18 called no `record*` method at all, ~100 fixtures ran their hazard past a detector
+  that observed nothing, and one test in the whole module asserted a finding. Phase05, Phase11
+  and Phase17 are converted - they record the access a consumer would record and assert through
+  `AsyncFindings` in `@AfterAll`. Detectors reporting anywhere in the fixture run went from 20
+  to 34, 15 of them now asserted rather than incidental.
+- **`FixtureDetectionContractTest`** holds the ratchet: a converted fixture file cannot drop
+  back to reachability-only, and a new one cannot be added without either asserting detection or
+  being argued onto the pinned debt list in review.
+- `DetectorFixtureSupport.assertAllReported(...)`, the companion to `reachable(...)`. Its
+  failure message names which detectors in the class did report, which is usually enough to
+  locate a missing recording call.
 - **`ReportingPathPredicateTest`**, gating the class of bug above: every `ifIssue(...)` line in
   `analyzeAllNamed()` must bind `hasIssues()`, the predicate `LegacyDetectorAdapter` resolves
   for the SPI `Violation` pipeline and `DetectorFiringContractTest` requires every report to
