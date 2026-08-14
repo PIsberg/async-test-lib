@@ -62,9 +62,16 @@ class UnwiredExecutorDetectorsFixtureTest {
 
         // The misuse is awaiting a latch nobody counts down, or counting down more times
         // than the latch was sized for. Both are contained here by a timed await.
+        // More countDowns than the latch was created with: the extra one is silently lost,
+        // which is how a latch ends up open before the work it guards has finished.
+        var latchDetector = AsyncTestContext.latchMisuseDetector();
         CountDownLatch latch = new CountDownLatch(1);
+        latchDetector.registerLatch(latch, "fixture-latch", 1);
         latch.countDown();
+        latchDetector.recordCountDown(latch);
         latch.countDown();               // extra countDown on an already-open latch
+        latchDetector.recordCountDown(latch);
+        latchDetector.recordAwait(latch);
         try {
             latch.await(100, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
@@ -79,8 +86,18 @@ class UnwiredExecutorDetectorsFixtureTest {
 
         // A task on a single-thread executor that waits for another task on the same
         // executor deadlocks. The fixture submits independent work and bounds the wait.
+        // One worker thread, and a task that waits on a sibling submitted to the same pool:
+        // the sibling can never start, which is the classic single-thread-pool deadlock. The
+        // wait is recorded rather than performed, since a fixture that really deadlocked would
+        // hang the consumer's build until the round timed out.
+        var deadlockDetector = AsyncTestContext.executorDeadlockDetector();
         ExecutorService pool = Executors.newSingleThreadExecutor();
+        deadlockDetector.registerExecutor(pool, "fixture-single-thread-pool", 1);
         try {
+            deadlockDetector.recordTaskSubmitted(pool);
+            deadlockDetector.recordTaskStarted(pool);
+            deadlockDetector.recordTaskSubmitted(pool);
+            deadlockDetector.recordWaitingOnSibling(pool);
             pool.submit(() -> { spin(32); }).get(2, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -98,9 +115,21 @@ class UnwiredExecutorDetectorsFixtureTest {
 
         // get() with no timeout blocks forever if the task never finishes; the timed form
         // is the fix, and the untimed call is what the detector reports.
+        // Blocking on a Future from inside the pool that has to run it: the blocked thread is
+        // the one the task needs. Recorded against a registered single-thread pool so the
+        // detector can see the pool is saturated by the waiter itself.
+        var blockingDetector = AsyncTestContext.futureBlockingDetector();
         ExecutorService pool = Executors.newSingleThreadExecutor();
+        blockingDetector.registerExecutor(pool, "fixture-single-thread-pool", 1);
         try {
+            // Two submitted, one started: the second is queued behind a worker that is about
+            // to block on it. The detector needs blockingTasks >= maxThreads AND something
+            // still queued, which together are what makes the wait unsatisfiable.
+            blockingDetector.recordTaskSubmitted(pool);
+            blockingDetector.recordTaskStarted(pool);
+            blockingDetector.recordTaskSubmitted(pool);
             Future<?> future = pool.submit(() -> { spin(32); });
+            blockingDetector.recordBlockingWait(pool);
             future.get(2, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

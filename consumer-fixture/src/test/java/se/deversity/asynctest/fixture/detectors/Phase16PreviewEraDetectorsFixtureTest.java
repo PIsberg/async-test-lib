@@ -60,9 +60,16 @@ class Phase16PreviewEraDetectorsFixtureTest {
 
         // Read-before-set is the misuse; an AtomicReference stands in for StableValue so
         // this compiles on JDK 21.
+        // A stable value is meant to be computed once. Here both workers run the supplier and
+        // both try to set it, which is the misuse the detector reports.
+        var stable = AsyncTestContext.stableValueMisuseDetector();
+        stable.recordRead("SET_ONCE", Thread.currentThread());
+        stable.recordSupplierStart("SET_ONCE", Thread.currentThread());
         if (SET_ONCE.get() == null) {
             SET_ONCE.compareAndSet(null, "computed");
         }
+        stable.recordSupplierEnd("SET_ONCE", Thread.currentThread());
+        stable.recordSet("SET_ONCE", Thread.currentThread());
         spin(SET_ONCE.get().length());
     }
 
@@ -74,6 +81,15 @@ class Phase16PreviewEraDetectorsFixtureTest {
 
         // The misuse is forking without joining, or joining outside the scope's owner
         // thread. Nothing is forked here — the claim is reachability, not detection.
+        // StructuredTaskScope is not on the fixture's compile path on every supported JDK, so
+        // the scope's lifecycle is recorded rather than run. The misuse is reading a subtask's
+        // result before join(), which is what the ordering below models.
+        var scope = AsyncTestContext.structuredTaskScopeMisuseDetector();
+        String scopeId = "fixture-scope-" + Thread.currentThread().threadId();
+        scope.recordScopeOpened(scopeId, Thread.currentThread());
+        scope.recordFork(scopeId, "subtask-1", Thread.currentThread());
+        scope.recordResultRead(scopeId, "subtask-1", Thread.currentThread());   // before join
+        scope.recordJoin(scopeId, Thread.currentThread());
         spin(32);
     }
 
@@ -85,6 +101,11 @@ class Phase16PreviewEraDetectorsFixtureTest {
 
         // A stateful stage in a parallel pipeline is the hazard a Gatherer makes easy to
         // write; the sequential collect below is its safe counterpart.
+        // A parallel gatherer with no combiner integrated from more than one thread is the
+        // misuse: without a combiner the integrator's state cannot be merged safely.
+        var gatherer = AsyncTestContext.gathererConcurrencyMisuseDetector();
+        gatherer.registerGatherer("fixture-gatherer", false, true);
+        gatherer.recordIntegrate("fixture-gatherer", Thread.currentThread());
         List<Integer> collected = List.of(1, 2, 3).stream()
             .map(value -> value * 2)
             .collect(Collectors.toList());

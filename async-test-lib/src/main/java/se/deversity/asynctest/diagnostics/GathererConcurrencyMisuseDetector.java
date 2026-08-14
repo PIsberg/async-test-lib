@@ -90,7 +90,12 @@ public class GathererConcurrencyMisuseDetector {
      */
     public void registerGatherer(String name, boolean hasCombiner, boolean parallel) {
         if (name == null) return;
-        gatherers.put(name, new GathererInfo(hasCombiner, parallel));
+        // First registration wins, like SharedMessageDigestDetector and
+        // DaemonThreadHygieneDetector. An unconditional put discarded the accumulated
+        // integratingThreadIds, so a consumer registering the gatherer inside the concurrent
+        // body - which is what an @AsyncTest body is - reset the evidence on every worker and
+        // the "integrator ran on more than one thread" test could never reach two.
+        gatherers.putIfAbsent(name, new GathererInfo(hasCombiner, parallel));
     }
 
     /**
