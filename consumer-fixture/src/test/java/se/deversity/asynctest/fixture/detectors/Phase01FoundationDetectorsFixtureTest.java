@@ -91,19 +91,22 @@ class Phase01FoundationDetectorsFixtureTest {
         // Shared across the round on purpose. A per-invocation instance is observed by one
         // thread only, so its value cannot diverge and the monitor has nothing to compare.
         //
-        // The two workers take different roles rather than racing for them. A non-volatile
-        // boolean genuinely raced would let both workers observe the same value on a run where
-        // the write happened to land first, and the fixture would pass or fail with the
-        // scheduler. Roles make the divergence the monitor is meant to catch - one worker
-        // seeing the pre-write value, one the post-write value - happen every time.
+        // The two workers take different roles rather than racing for them, and the reader
+        // reports a value captured before the round started rather than one it reads live.
+        //
+        // Both halves are needed. An earlier version assigned roles but still had the reader
+        // call observe() on the shared flag, so when the writer won the race the reader saw
+        // true as well, nothing diverged, and the fixture failed on Java 25 and JUnit 6.1.2
+        // while passing on Java 21. PRE_WRITE_OBSERVATION is the genuine pre-write value of
+        // that field - a stale read is exactly what this monitor exists to catch - and it
+        // cannot be moved by the scheduler.
         UnsafeFlag flag = SHARED_FLAG;
         var monitor = AsyncTestContext.visibilityMonitor();
         if (ROLE.getAndIncrement() % 2 == 0) {
-            monitor.recordFieldAccess("UnsafeFlag.raised", flag.observe());   // stale: false
-            flag.raise();
+            monitor.recordFieldAccess("UnsafeFlag.raised", PRE_WRITE_OBSERVATION);
         } else {
             flag.raise();
-            monitor.recordFieldAccess("UnsafeFlag.raised", flag.observe());   // fresh: true
+            monitor.recordFieldAccess("UnsafeFlag.raised", flag.observe());
         }
     }
 
@@ -134,6 +137,9 @@ class Phase01FoundationDetectorsFixtureTest {
 
     /** One flag for the whole round: divergence needs two workers looking at one field. */
     private static final UnsafeFlag SHARED_FLAG = new UnsafeFlag();
+
+    /** The flag's value before any worker raises it: the stale read, captured once. */
+    private static final boolean PRE_WRITE_OBSERVATION = SHARED_FLAG.observe();
 
     private static final class UnsafeFlag {
         private boolean raised;
