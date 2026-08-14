@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`GathererConcurrencyMisuseDetector.registerGatherer` discarded earlier observations.** It did
+  an unconditional `put`, so a consumer registering the gatherer inside the concurrent body -
+  which is what an `@AsyncTest` body is, since it runs once per thread - had each worker's
+  registration reset the previous one's `integratingThreadIds`. The "integrator ran on more than
+  one thread" finding could never reach two threads, so the detector was silent under exactly the
+  parallelism it polices. Now `putIfAbsent`, matching the first-registration-wins convention
+  already documented in `SharedMessageDigestDetector` and `DaemonThreadHygieneDetector`.
 - **`VirtualThreadPinningDetector` reported pinning that no longer pins on JDK 24+.**
   `PinningReport.hasIssues()` was made to delegate to `hasEffectivePinningIssues()` in 1.9.2
   precisely so that a `synchronized` event, non-pinning since JEP 491, is not reported as a
@@ -51,6 +58,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a full suite run leaves zero records behind.
 
 ### Added
+
+- **Every consumer fixture file now asserts detection.** All 27 files in
+  `consumer-fixture/.../detectors` record what their detectors watch for and assert the finding
+  comes back out through `AsyncFindings` - or, where the fixture deliberately demonstrates the
+  correct pattern, assert the detector stays silent. `FixtureDetectionContractTest`'s debt list
+  is empty, and a new fixture file cannot be added without one assertion or the other.
+  Detectors reporting across the fixture run went from 20 to the full set.
+- **`SleepInLockDetector`'s virtual-thread blind spot is pinned.** It establishes whether a lock
+  is held by asking `ThreadMXBean`, which returns nothing for a virtual thread, so on
+  `@AsyncTest`'s default virtual-thread workers it cannot fire at all.
+  `SleepInLockDetectorTest` records the limitation and its retirement condition; the fixture
+  proves the firing direction with `useVirtualThreads = false` and says why it has to.
+- Roughly thirty fixtures could never have failed and now can. The recurring causes, all worth
+  knowing when writing a new one: the subject was allocated per invocation so nothing was
+  shared; the fixture demonstrated the fix rather than the hazard; an id was invented where
+  `recordScopeOpened` / `recordTaskStart` return the one the detector knows; a threshold was
+  never crossed; or two halves of a finding were recorded against different identities.
+
 
 - **Five more consumer fixture files assert detection** (Phase01, Phase03, Phase19, Phase20,
   Phase21), taking the debt list from 21 files to 16. Converting them surfaced one detector bug

@@ -243,12 +243,21 @@ class Phase02AdditionalConcurrencyDetectorsFixtureTest {
         // Unsynchronised lazy init: both workers can build their own instance.
         // A non-volatile lazy field checked for null and then assigned: both workers can see
         // null and both can build, and a reader can see the reference before the object.
+        // The race is BOTH workers seeing null and both deciding to build. Reading the live
+        // value here instead makes that depend on the scheduler: whichever worker loses sees
+        // the winner's value and records no null at all, so the fixture reported a finding
+        // when run alone and none when run after the rest of the suite.
+        //
+        // PRE_ROUND_LAZY_WAS_NULL is the field's state captured before the round starts, so
+        // both workers record the null they would each have observed. A genuine simultaneous
+        // double-null is precisely the interleaving that cannot be forced, which is why it is
+        // arranged rather than raced.
         var lazyDetector = AsyncTestContext.lazyInitRaceDetector();
-        lazyDetector.recordNullCheck("Phase02.LAZY", LAZY.get() == null, false);
+        lazyDetector.recordNullCheck("Phase02.LAZY", PRE_ROUND_LAZY_WAS_NULL, false);
         if (LAZY.get() == null) {
             LAZY.compareAndSet(null, "built");
-            lazyDetector.recordInitialization("Phase02.LAZY");
         }
+        lazyDetector.recordInitialization("Phase02.LAZY");
     }
 
     /** volatile reference, non-volatile elements. */
@@ -261,6 +270,9 @@ class Phase02AdditionalConcurrencyDetectorsFixtureTest {
     private static final MutableMonitor SHARED_MUTABLE_MONITOR = new MutableMonitor();
 
     private static final AtomicReference<String> LAZY = new AtomicReference<>();
+
+    /** The field's state before the round: the null both workers would have seen. */
+    private static final boolean PRE_ROUND_LAZY_WAS_NULL = LAZY.get() == null;
 
     /** Textbook double-checked locking without a volatile field. */
     private static final class Holder {
