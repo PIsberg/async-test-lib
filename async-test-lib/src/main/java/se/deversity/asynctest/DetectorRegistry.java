@@ -601,11 +601,11 @@ final class DetectorRegistry {
         ifIssue(pipelineMonitor,
                 PipelineMonitor::analyzePipeline,
                 PipelineMonitor.PipelineReport::hasIssues, out);
-        // ReadWriteLock uses hasFairnessIssues() — report it as an issue when
-        // writer starvation or imbalance is detected
+        // hasIssues() delegates to hasFairnessIssues(); bind the canonical predicate so this
+        // path and the SPI Violation pipeline cannot drift apart.
         ifIssue(readWriteLockMonitor,
                 ReadWriteLockMonitor::analyzeFairness,
-                ReadWriteLockMonitor.ReadWriteLockReport::hasFairnessIssues, out);
+                ReadWriteLockMonitor.ReadWriteLockReport::hasIssues, out);
         ifIssue(semaphoreMisuseDetector,
                 SemaphoreMisuseDetector::analyze,
                 SemaphoreMisuseDetector.SemaphoreMisuseReport::hasIssues, out);
@@ -614,13 +614,17 @@ final class DetectorRegistry {
                 CompletableFutureExceptionDetector.CompletableFutureExceptionReport::hasIssues, out);
         ifIssue(completableFutureCompletionLeakDetector,
                 CompletableFutureCompletionLeakDetector::analyze,
-                CompletableFutureCompletionLeakDetector.CompletionLeakReport::hasLeaks, out);
+                CompletableFutureCompletionLeakDetector.CompletionLeakReport::hasIssues, out);
+        // hasIssues() delegates to hasEffectivePinningIssues(), which drops events whose cause
+        // no longer pins on the running JDK (synchronized since JEP 491 in 24). Binding
+        // hasPinningIssues() here reported those anyway, so that fix never reached the report
+        // the user reads - green on every other path. ReportingPathPredicateTest pins this.
         ifIssue(virtualThreadPinningDetector,
                 VirtualThreadPinningDetector::analyzePinning,
-                VirtualThreadPinningDetector.PinningReport::hasPinningIssues, out);
+                VirtualThreadPinningDetector.PinningReport::hasIssues, out);
         ifIssue(threadPoolDeadlockDetector,
                 ThreadPoolDeadlockDetector::analyze,
-                ThreadPoolDeadlockDetector.ThreadPoolDeadlockReport::hasDeadlockRisk, out);
+                ThreadPoolDeadlockDetector.ThreadPoolDeadlockReport::hasIssues, out);
         ifIssue(concurrentModificationDetector,
                 ConcurrentModificationDetector::analyze,
                 ConcurrentModificationDetector.ConcurrentModificationReport::hasIssues, out);
