@@ -4,10 +4,12 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.AsyncTestConfig;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
@@ -30,6 +32,19 @@ class LicenseGuardLemonSqueezyTest {
 
     private static final long OUR_STORE = 42L;
     private static final String BUYER = "buyer@acme-corp.com";
+
+    /**
+     * Hermetic validation-cache directory.
+     *
+     * <p>Without this the class read {@code ~/.asynctest}, which is shared by every fork of
+     * the build and survives between runs. A success recorded by any other license test - or
+     * by a previous build on the same machine - made {@code hasRecord} true here, the outage
+     * grace policy applied, and a test asserting a denial silently got no exception. That is
+     * how deniedGuidanceMentionsTheLemonSqueezyProperties failed on a CI runner while passing
+     * everywhere else.
+     */
+    @TempDir
+    Path cacheDir;
 
     private HttpServer server;
     private final Map<String, String> savedProps = new HashMap<>();
@@ -54,6 +69,10 @@ class LicenseGuardLemonSqueezyTest {
         set("license.key", "TEST-KEY");
         set("ls.product.id", null);
         set("ls.email.binding", null);   // library default is DOMAIN
+        set("license.network.mode", null);              // library default under test
+        set("license.file", null);
+        set("license.cache.dir", cacheDir.toString());  // hermetic: no cross-fork state
+        set("license.cache.ttl.hours", null);           // library default under test
     }
 
     @AfterEach

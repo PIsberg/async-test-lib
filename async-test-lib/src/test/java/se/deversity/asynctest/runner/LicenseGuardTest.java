@@ -1,10 +1,13 @@
 package se.deversity.asynctest.runner;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import se.deversity.asynctest.AsyncTestConfig;
 
 import java.lang.reflect.Method;
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -14,8 +17,34 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class LicenseGuardTest {
 
+    /**
+     * Hermetic validation-cache directory.
+     *
+     * <p>{@code LicenseValidationCache} writes a record per successful validation, and without
+     * this it writes them to {@code ~/.asynctest} - shared by every fork of the build and kept
+     * between runs. This machine had accumulated 162 of them. Any test that asks whether a
+     * configuration ever validated then reads other runs' history, and the outage grace policy
+     * turns an expected denial into a silent pass.
+     */
+    @TempDir
+    Path cacheDir;
+
+    private String previousCacheDir;
+
     @BeforeEach
     void reset() {
+        previousCacheDir = System.getProperty("license.cache.dir");
+        System.setProperty("license.cache.dir", cacheDir.toString());
+        resetCache();
+    }
+
+    @AfterEach
+    void restoreCacheDir() {
+        if (previousCacheDir == null) {
+            System.clearProperty("license.cache.dir");
+        } else {
+            System.setProperty("license.cache.dir", previousCacheDir);
+        }
         resetCache();
     }
 

@@ -28,8 +28,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `LockLeakDetector.recordLockAcquired` had already been fixed, with a comment describing this
   hazard - the release path was missed. All five now use `computeIfAbsent`.
 
+- **`RecordMutableComponentLeakDetector` was silent for every record a consumer declares.** It
+  reads each component through `RecordComponent.getAccessor().invoke(...)`, which is rejected for
+  a record declared outside this library's packages - and `read()` returned `null` on failure, so
+  no component looked mutable, no component looked changed, and the detector reported nothing for
+  a record two threads were plainly sharing. Its own unit tests could not catch it: they declare
+  their fixture records next to the detector, where the accessor needs no widening. `read()` now
+  widens access before invoking, and falls back to the previous behaviour if a module system
+  refuses. Found by the consumer fixture asserting detection rather than reachability.
+
+- **License tests wrote their validation cache to the developer's home directory.**
+  `LicenseValidationCache` records each successful validation under `~/.asynctest` unless
+  `license.cache.dir` says otherwise, and only two of the four license test classes set it. Every
+  fork of the build and every previous run shared that directory - this machine had accumulated
+  162 records - so a test asserting a denial could find a record on disk, take the outage grace
+  path, and get no `SecurityException` at all. That is why
+  `LicenseGuardLemonSqueezyTest.deniedGuidanceMentionsTheLemonSqueezyProperties` and
+  `LicenseGuardNetworkModeTest.reachableButErroringValidator_failsClosedWhenNothingEverValidated`
+  failed on a CI runner while passing everywhere else. `LicenseGuardLemonSqueezyTest` and
+  `LicenseGuardTest` now use a `@TempDir` cache, and the network-mode test asserts its "nothing
+  ever validated" precondition instead of assuming it. Verified: after deleting `~/.asynctest`,
+  a full suite run leaves zero records behind.
+
 ### Added
 
+- **Five more consumer fixture files assert detection** (Phase01, Phase03, Phase19, Phase20,
+  Phase21), taking the debt list from 21 files to 16. Converting them surfaced one detector bug
+  (above) and four fixtures that could never have failed: `visibility` allocated its flag per
+  invocation so no value could diverge, `threadLocalLeaks` called `remove()` in a finally block
+  and so demonstrated the fix rather than the leak, `platformThreadPerTask` created two unstarted
+  threads against a churn threshold of 16, and `staticInitDeadlock` recorded one half of a
+  wait-for cycle and then completed it.
+- `DetectorFixtureSupport.assertNoneReported(...)`, the true-negative direction. Some fixtures
+  deliberately demonstrate the correct pattern - `tryLock` released, an interrupt restored, a
+  retry loop that makes progress - and for those, silence is the behaviour worth pinning;
+  demanding a finding would demand that correct code be flagged. `DeadlockDetector`,
+  `LivelockDetector` and `InterruptMonitor` now carry that assertion instead of a false one.
+
+- **The consumer fixtures now assert detection, not only reachability.** Every file in
+  `consumer-fixture/.../detectors` enables one `DetectorType` per fixture and runs a realistic
+  workload for it, which reads like end-to-end coverage. It was not: the load-bearing assertion
+  was `reachable(...)`, which proves the accessor resolves on the published artifact and says
+  nothing about whether the detector still detects. Measured before the change: of 23 fixture
+  files, 18 called no `record*` method at all, ~100 fixtures ran their hazard past a detector
+  that observed nothing, and one test in the whole module asserted a finding. Phase05, Phase11
+  and Phase17 are converted - they record the access a consumer would record and assert through
+  `AsyncFindings` in `@AfterAll`. Detectors reporting anywhere in the fixture run went from 20
+  to 34, 15 of them now asserted rather than incidental.
+- **`FixtureDetectionContractTest`** holds the ratchet: a converted fixture file cannot drop
+  back to reachability-only, and a new one cannot be added without either asserting detection or
+  being argued onto the pinned debt list in review.
+- `DetectorFixtureSupport.assertAllReported(...)`, the companion to `reachable(...)`. Its
+  failure message names which detectors in the class did report, which is usually enough to
+  locate a missing recording call.
 - **`ReportingPathPredicateTest`**, gating the class of bug above: every `ifIssue(...)` line in
   `analyzeAllNamed()` must bind `hasIssues()`, the predicate `LegacyDetectorAdapter` resolves
   for the SPI `Violation` pipeline and `DetectorFiringContractTest` requires every report to

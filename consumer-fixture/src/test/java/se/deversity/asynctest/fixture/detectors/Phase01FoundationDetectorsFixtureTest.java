@@ -1,5 +1,8 @@
 package se.deversity.asynctest.fixture.detectors;
 
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import se.deversity.asynctest.AsyncFindings;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.DetectorType;
@@ -8,6 +11,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.TimeUnit;
 
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertAllReported;
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertNoneReported;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.reachable;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.pause;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.spin;
@@ -26,6 +31,29 @@ import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.sp
  * {@code examples/02-visibility-volatile-flag}, {@code examples/07-livelock}.
  */
 class Phase01FoundationDetectorsFixtureTest {
+
+    private static AsyncFindings findings;
+
+    @BeforeAll
+    static void collectFindings() {
+        findings = AsyncFindings.collect();
+    }
+
+    @AfterAll
+    static void everyFedDetectorReported() {
+        try {
+            // VisibilityMonitor is the only hazard fixture here. The other two demonstrate
+            // the correct pattern - locks taken with tryLock and released, a retry loop that
+            // makes progress - so silence is the behaviour worth pinning. DeadlockDetector's
+            // firing direction is covered by DetectionCoverageTest, which can afford a real
+            // deadlock; a consumer fixture cannot, because the round would hang to its timeout.
+            assertAllReported(findings, "VisibilityMonitor");
+            assertNoneReported(findings, "DeadlockDetector", "LivelockDetector");
+        } finally {
+            findings.close();
+        }
+    }
+
 
     /** Ordered {@code tryLock} across two locks — the shape a deadlock detector watches, minus the hang. */
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
@@ -60,11 +88,26 @@ class Phase01FoundationDetectorsFixtureTest {
     void visibility() {
         reachable("visibilityMonitor()", AsyncTestContext::visibilityMonitor);
 
-        UnsafeFlag flag = new UnsafeFlag();
-        flag.raise();
-        // Recording the access is what lets the monitor see the value diverge between
-        // workers — the accessor that makes this line possible is the point of the fixture.
-        AsyncTestContext.visibilityMonitor().recordFieldAccess("UnsafeFlag.raised", flag.observe());
+        // Shared across the round on purpose. A per-invocation instance is observed by one
+        // thread only, so its value cannot diverge and the monitor has nothing to compare.
+        //
+        // The two workers take different roles rather than racing for them, and the reader
+        // reports a value captured before the round started rather than one it reads live.
+        //
+        // Both halves are needed. An earlier version assigned roles but still had the reader
+        // call observe() on the shared flag, so when the writer won the race the reader saw
+        // true as well, nothing diverged, and the fixture failed on Java 25 and JUnit 6.1.2
+        // while passing on Java 21. PRE_WRITE_OBSERVATION is the genuine pre-write value of
+        // that field - a stale read is exactly what this monitor exists to catch - and it
+        // cannot be moved by the scheduler.
+        UnsafeFlag flag = SHARED_FLAG;
+        var monitor = AsyncTestContext.visibilityMonitor();
+        if (ROLE.getAndIncrement() % 2 == 0) {
+            monitor.recordFieldAccess("UnsafeFlag.raised", PRE_WRITE_OBSERVATION);
+        } else {
+            flag.raise();
+            monitor.recordFieldAccess("UnsafeFlag.raised", flag.observe());
+        }
     }
 
     /** Two workers backing off each other without either making progress for long. */
@@ -88,6 +131,16 @@ class Phase01FoundationDetectorsFixtureTest {
     }
 
     /** Deliberately unsynchronised: the field a VISIBILITY detector would want volatile. */
+    /** Assigns the reader and writer roles, so the divergence does not depend on timing. */
+    private static final java.util.concurrent.atomic.AtomicInteger ROLE =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    /** One flag for the whole round: divergence needs two workers looking at one field. */
+    private static final UnsafeFlag SHARED_FLAG = new UnsafeFlag();
+
+    /** The flag's value before any worker raises it: the stale read, captured once. */
+    private static final boolean PRE_WRITE_OBSERVATION = SHARED_FLAG.observe();
+
     private static final class UnsafeFlag {
         private boolean raised;
 
