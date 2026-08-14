@@ -1,5 +1,8 @@
 package se.deversity.asynctest.fixture.detectors;
 
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import se.deversity.asynctest.AsyncFindings;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.DetectorType;
@@ -8,6 +11,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertAllReported;
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertNoneReported;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.reachable;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.spin;
 
@@ -27,6 +32,26 @@ import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.sp
  * {@code examples/116-gatherer-parallel-misuse}.
  */
 class Phase16PreviewEraDetectorsFixtureTest {
+
+    private static AsyncFindings findings;
+
+    @BeforeAll
+    static void collectFindings() {
+        findings = AsyncFindings.collect();
+    }
+
+    @AfterAll
+    static void everyFedDetectorReported() {
+        try {
+            assertAllReported(findings,
+                    "StableValueMisuseDetector",
+                    "StructuredTaskScopeMisuseDetector",
+                    "GathererConcurrencyMisuseDetector");
+        } finally {
+            findings.close();
+        }
+    }
+
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
                includes = {DetectorType.STABLE_VALUE_MISUSE})

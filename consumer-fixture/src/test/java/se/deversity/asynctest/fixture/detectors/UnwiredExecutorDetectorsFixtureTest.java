@@ -1,5 +1,8 @@
 package se.deversity.asynctest.fixture.detectors;
 
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import se.deversity.asynctest.AsyncFindings;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.DetectorType;
@@ -12,6 +15,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertAllReported;
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertNoneReported;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.reachable;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.spin;
 
@@ -29,6 +34,26 @@ import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.sp
  * {@code examples/25-executor-deadlock}, {@code examples/26-future-blocking}.
  */
 class UnwiredExecutorDetectorsFixtureTest {
+
+    private static AsyncFindings findings;
+
+    @BeforeAll
+    static void collectFindings() {
+        findings = AsyncFindings.collect();
+    }
+
+    @AfterAll
+    static void everyFedDetectorReported() {
+        try {
+            assertAllReported(findings,
+                    "LatchMisuseDetector",
+                    "ExecutorDeadlockDetector",
+                    "FutureBlockingDetector");
+        } finally {
+            findings.close();
+        }
+    }
+
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
                includes = {DetectorType.LATCH_MISUSE})

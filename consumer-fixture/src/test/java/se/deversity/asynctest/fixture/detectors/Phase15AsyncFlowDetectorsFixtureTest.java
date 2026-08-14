@@ -1,5 +1,8 @@
 package se.deversity.asynctest.fixture.detectors;
 
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import se.deversity.asynctest.AsyncFindings;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.DetectorType;
@@ -9,6 +12,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertAllReported;
+import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertNoneReported;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.reachable;
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.spin;
 
@@ -22,6 +27,28 @@ import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.sp
  * {@code examples/113-completablefuture-blocking-callback}.
  */
 class Phase15AsyncFlowDetectorsFixtureTest {
+
+    private static AsyncFindings findings;
+
+    @BeforeAll
+    static void collectFindings() {
+        findings = AsyncFindings.collect();
+    }
+
+    @AfterAll
+    static void everyFedDetectorReported() {
+        try {
+            assertAllReported(findings,
+                    "CompletableFutureObtrudeDetector",
+                    "SpuriousWakeupDetector",
+                    "LockUpgradeDeadlockDetector",
+                    "TryLockMisuseDetector",
+                    "CompletableFutureBlockingCallbackDetector");
+        } finally {
+            findings.close();
+        }
+    }
+
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
                includes = {DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE})
