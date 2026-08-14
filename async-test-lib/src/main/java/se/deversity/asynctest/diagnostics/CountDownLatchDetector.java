@@ -29,7 +29,10 @@ public class CountDownLatchDetector {
      * @param initialCount the count the latch was created with
      */
     public void registerLatch(CountDownLatch latch, String name, int initialCount) {
-        latchRegistry.put(latch, new LatchInfo(name, initialCount));
+        // First registration wins: re-registering a subject must not discard what has
+        // been observed about it. An @AsyncTest body runs once per thread, so a consumer
+        // registering inside it registers once per worker.
+        latchRegistry.putIfAbsent(latch, new LatchInfo(name, initialCount));
     }
 
     /**

@@ -33,7 +33,10 @@ public class ExchangerDetector {
      * @param name a label identifying the exchanger in the report
      */
     public void registerExchanger(Exchanger<?> exchanger, String name) {
-        exchangerRegistry.put(exchanger, new ExchangerInfo(name));
+        // First registration wins: re-registering a subject must not discard what has
+        // been observed about it. An @AsyncTest body runs once per thread, so a consumer
+        // registering inside it registers once per worker.
+        exchangerRegistry.putIfAbsent(exchanger, new ExchangerInfo(name));
     }
 
     /**

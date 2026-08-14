@@ -63,10 +63,13 @@ public class SemaphoreMisuseDetector {
      * @param initialPermits the initial permit count
      */
     public void registerSemaphore(Semaphore semaphore, String name, int initialPermits) {
+        // First registration wins: re-registering a subject must not discard what has
+        // been observed about it. An @AsyncTest body runs once per thread, so a consumer
+        // registering inside it registers once per worker.
         if (!enabled || semaphore == null) {
             return;
         }
-        semaphores.put(System.identityHashCode(semaphore), 
+        semaphores.putIfAbsent(System.identityHashCode(semaphore), 
             new SemaphoreState(semaphore, name, initialPermits));
     }
 

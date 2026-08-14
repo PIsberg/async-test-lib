@@ -42,7 +42,10 @@ public class ForkJoinPoolDetector {
      * @param parallelism the configured parallelism of the pool
      */
     public void registerPool(ForkJoinPool pool, String name, int parallelism) {
-        poolRegistry.put(pool, new PoolInfo(name, parallelism));
+        // First registration wins: re-registering a subject must not discard what has
+        // been observed about it. An @AsyncTest body runs once per thread, so a consumer
+        // registering inside it registers once per worker.
+        poolRegistry.putIfAbsent(pool, new PoolInfo(name, parallelism));
     }
 
     /**

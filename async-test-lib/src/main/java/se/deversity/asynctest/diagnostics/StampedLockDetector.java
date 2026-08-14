@@ -27,7 +27,10 @@ public class StampedLockDetector {
      * @param name a label identifying the lock in the report
      */
     public void registerLock(StampedLock lock, String name) {
-        lockRegistry.put(lock, new LockInfo(name));
+        // First registration wins: re-registering a subject must not discard what has
+        // been observed about it. An @AsyncTest body runs once per thread, so a consumer
+        // registering inside it registers once per worker.
+        lockRegistry.putIfAbsent(lock, new LockInfo(name));
     }
 
     /**
