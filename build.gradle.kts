@@ -75,7 +75,7 @@ extra["pmdVersion"] = pomVersion("pmd.version")
 // Gradle-only, with no Maven twin: Maven's test run has no SLF4J binding, so this backend exists
 // only for `./gradlew test`. Kept current by the gradle Dependabot ecosystem, along with the
 // plugin versions above.
-extra["logbackVersion"] = "1.6.1"     // test-only SLF4J backend, built against slf4j 2.0.18
+extra["logbackVersion"] = "1.6.2"     // test-only SLF4J backend, built against slf4j 2.0.18
 
 subprojects {
     apply(plugin = "java-library")
