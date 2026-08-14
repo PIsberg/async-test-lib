@@ -7,6 +7,8 @@ import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.DetectorType;
 
+import java.util.concurrent.TimeUnit;
+
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -42,7 +44,6 @@ class Phase02CoreDetectorsFixtureTest {
     static void everyFedDetectorReported() {
         try {
             assertAllReported(findings,
-                    "FalseSharingDetector",
                     "WakeupDetector",
                     "ConstructorSafetyValidator",
                     "ABAProblemDetector",
@@ -52,6 +53,11 @@ class Phase02CoreDetectorsFixtureTest {
                     "MemoryOrderingMonitor",
                     "PipelineMonitor",
                     "ReadWriteLockMonitor");
+            // FalseSharingDetector is gated behind -Dasync-test.experimental.false-sharing=true
+            // and analyze() returns nothing without it. The fixture below still records the
+            // adjacent-field access so the recording path stays exercised from a consumer, but
+            // asserting a finding would assert the gate is off, which it is not by default.
+            assertNoneReported(findings, "FalseSharingDetector");
         } finally {
             findings.close();
         }
@@ -64,11 +70,14 @@ class Phase02CoreDetectorsFixtureTest {
         reachable("falseSharingDetector()", AsyncTestContext::falseSharingDetector);
 
         // Two counters that would land on one cache line if they were fields of one object.
-        AtomicLong left = new AtomicLong();
-        AtomicLong right = new AtomicLong();
+        // Two hot fields on one object share a cache line, so each worker's write
+        // invalidates the other's line even though they never touch the same field.
+        var falseSharing = AsyncTestContext.falseSharingDetector();
         for (int i = 0; i < 64; i++) {
-            left.incrementAndGet();
-            right.incrementAndGet();
+            falseSharing.recordFieldAccess(HOT_PAIR, "first", int.class);
+            HOT_PAIR.first++;
+            falseSharing.recordFieldAccess(HOT_PAIR, "second", int.class);
+            HOT_PAIR.second++;
         }
     }
 
@@ -77,6 +86,9 @@ class Phase02CoreDetectorsFixtureTest {
     void wakeupIssues() {
         reachable("wakeupDetector()", AsyncTestContext::wakeupDetector);
 
+        // A notify with nobody waiting is simply thrown away: the waiter that arrives next
+        // waits for a signal that has already happened.
+        var wakeup = AsyncTestContext.wakeupDetector();
         Object monitor = new Object();
         synchronized (monitor) {
             try {
@@ -84,6 +96,7 @@ class Phase02CoreDetectorsFixtureTest {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+            wakeup.recordNotify(monitor, true);
             monitor.notifyAll();
         }
     }
@@ -93,8 +106,31 @@ class Phase02CoreDetectorsFixtureTest {
     void constructorSafety() {
         reachable("constructorSafetyValidator()", AsyncTestContext::constructorSafetyValidator);
 
-        Config published = new Config(7);
-        published.limit();
+        // A field read while the constructor is still running can see the default value
+        // rather than the assigned one - the object is published before it is finished.
+        // The finding is a field read by a DIFFERENT thread while construction is still in
+        // progress - one thread doing start, access and end to itself is the safe case and
+        // reports nothing however it is written.
+        //
+        // The workers therefore split: one starts building the shared object, the other reads
+        // a field before the build is recorded as finished. A latch orders the two rather than
+        // a sleep, so the overlap is guaranteed instead of likely.
+        var constructorSafety = AsyncTestContext.constructorSafetyValidator();
+        if (CONSTRUCTION_ROLE.getAndIncrement() % 2 == 0) {
+            constructorSafety.recordConstructionStart(SHARED_CONFIG);
+            CONSTRUCTION_STARTED.countDown();
+            spin(64);
+            // No recordConstructionEnd until the reader has been: the object is visible to
+            // another thread before it is finished, which is the whole hazard.
+        } else {
+            try {
+                CONSTRUCTION_STARTED.await(2, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            constructorSafety.recordFieldAccess(SHARED_CONFIG, "limit", System.nanoTime());
+            SHARED_CONFIG.limit();
+        }
     }
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
@@ -103,9 +139,15 @@ class Phase02CoreDetectorsFixtureTest {
         reachable("abaProblemDetector()", AsyncTestContext::abaProblemDetector);
 
         // A -> B -> A on a plain atomic: the value looks unchanged to a naive CAS.
+        // A to B and back to A: a CAS that only compares values cannot tell that the world
+        // changed underneath it, because the value it compares is the one it expected.
+        var aba = AsyncTestContext.abaProblemDetector();
         AtomicLong slot = new AtomicLong(1);
+        aba.recordValueChange("aba-slot", 1L, 2L);
         slot.compareAndSet(1, 2);
+        aba.recordValueChange("aba-slot", 2L, 1L);
         slot.compareAndSet(2, 1);
+        aba.recordCASAttempt("aba-slot", 1L, 3L, true, 1L);
     }
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
@@ -113,15 +155,17 @@ class Phase02CoreDetectorsFixtureTest {
     void lockOrder() {
         reachable("lockOrderValidator()", AsyncTestContext::lockOrderValidator);
 
-        ReentrantLock outer = new ReentrantLock();
-        ReentrantLock inner = new ReentrantLock();
-        outer.lock();
-        try {
-            inner.lock();
-            inner.unlock();
-        } finally {
-            outer.unlock();
-        }
+        // The cycle needs both orderings, so the workers take opposite roles rather than
+        // racing for them: A then B on one, B then A on the other. Recorded rather than
+        // actually nested in both directions, because a fixture that really took the locks
+        // in opposite orders would deadlock the consumer's build.
+        var lockOrder = AsyncTestContext.lockOrderValidator();
+        ReentrantLock first = ORDER_ROLE.getAndIncrement() % 2 == 0 ? OUTER_LOCK : INNER_LOCK;
+        ReentrantLock second = first == OUTER_LOCK ? INNER_LOCK : OUTER_LOCK;
+        lockOrder.recordLockAcquisition(first);
+        lockOrder.recordLockAcquisition(second);
+        lockOrder.recordLockRelease(second);
+        lockOrder.recordLockRelease(first);
     }
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
@@ -129,6 +173,11 @@ class Phase02CoreDetectorsFixtureTest {
     void synchronizers() {
         reachable("synchronizerMonitor()", AsyncTestContext::synchronizerMonitor);
 
+        // A barrier that expects more parties than ever arrive never trips, and everyone
+        // already waiting on it waits forever.
+        var synchronizers = AsyncTestContext.synchronizerMonitor();
+        synchronizers.registerSynchronizer(SHARED_BARRIER_TOKEN, 4);   // more than will arrive
+        synchronizers.recordBarrierArrival(SHARED_BARRIER_TOKEN);
         ReentrantLock lock = new ReentrantLock();
         lock.lock();
         try {
@@ -143,9 +192,15 @@ class Phase02CoreDetectorsFixtureTest {
     void threadPool() {
         reachable("threadPoolMonitor()", AsyncTestContext::threadPoolMonitor);
 
+        // A pool that rejects work has run out of both threads and queue: the caller's task
+        // is simply dropped, which is what the rejection record represents.
+        var poolMonitor = AsyncTestContext.threadPoolMonitor();
         ExecutorService pool = Executors.newFixedThreadPool(2);
+        poolMonitor.registerPool(pool, "fixture-pool", 2, 2, 1);
         try {
+            poolMonitor.recordTaskSubmitted(pool);
             pool.submit(() -> { spin(32); });
+            poolMonitor.recordTaskRejected(pool, "queue full");
         } finally {
             pool.shutdown();
         }
@@ -157,9 +212,20 @@ class Phase02CoreDetectorsFixtureTest {
         reachable("memoryOrderingMonitor()", AsyncTestContext::memoryOrderingMonitor);
 
         // Store-store pair with no barrier between them.
-        Pair pair = new Pair();
-        pair.first = 1;
-        pair.second = 2;
+        // Two unsynchronised writes can be seen in either order by another thread, so a
+        // reader can observe the second write without the first.
+        // The monitor pairs a WRITE with the READ that immediately follows it on the same
+        // location FROM ANOTHER THREAD. A worker that writes and then reads the same location
+        // itself only ever produces same-thread pairs, which are skipped - so the workers take
+        // opposite roles: one writes, the other reads the stale value.
+        var ordering = AsyncTestContext.memoryOrderingMonitor();
+        Pair pair = SHARED_PAIR;
+        if (ORDERING_ROLE.getAndIncrement() % 2 == 0) {
+            pair.first = 1;
+            ordering.recordWrite("Pair.first", 1);
+        } else {
+            ordering.recordRead("Pair.first", 0);    // the stale value the reordering allows
+        }
         spin(pair.first + pair.second);
     }
 
@@ -168,6 +234,12 @@ class Phase02CoreDetectorsFixtureTest {
     void asyncPipeline() {
         reachable("pipelineMonitor()", AsyncTestContext::pipelineMonitor);
 
+        // An event published into a stage that never processes it is stuck: the pipeline
+        // looks healthy from the producer's side and nothing downstream ever runs.
+        var pipeline = AsyncTestContext.pipelineMonitor();
+        pipeline.registerStage("fixture-stage");
+        pipeline.recordEventPublished("fixture-stage", "event-1");
+        pipeline.recordEventFailed("fixture-stage", "event-1", "no consumer");
         CompletableFuture.completedFuture(1)
             .thenApply(v -> v + 1)
             .thenApply(Object::toString)
@@ -180,13 +252,22 @@ class Phase02CoreDetectorsFixtureTest {
         reachable("readWriteLockMonitor()", AsyncTestContext::readWriteLockMonitor);
 
         // Non-fair by construction: the fairness monitor's subject.
-        ReentrantReadWriteLock rw = new ReentrantReadWriteLock(false);
-        rw.readLock().lock();
-        try {
-            spin(32);
-        } finally {
-            rw.readLock().unlock();
+        // A non-fair read-write lock lets a steady stream of readers starve the writer
+        // indefinitely, which is what the reader-to-writer ratio below represents.
+        var rwMonitor = AsyncTestContext.readWriteLockMonitor();
+        ReentrantReadWriteLock rw = SHARED_RW;
+        rwMonitor.registerLock(rw, "fixture-rw-lock");
+        for (int i = 0; i < 32; i++) {
+            rw.readLock().lock();
+            rwMonitor.recordReadLockAcquired(rw, 0L);
+            try {
+                spin(8);
+            } finally {
+                rw.readLock().unlock();
+                rwMonitor.recordReadLockReleased(rw);
+            }
         }
+        rwMonitor.recordWriteLockAcquired(rw, 5_000L);   // the writer that waited behind them
     }
 
     /** A value published from a constructor without a safe-publication barrier. */
@@ -206,4 +287,34 @@ class Phase02CoreDetectorsFixtureTest {
         int first;
         int second;
     }
+
+    private static final Pair HOT_PAIR = new Pair();
+
+    private static final Pair SHARED_PAIR = new Pair();
+
+    private static final ReentrantLock OUTER_LOCK = new ReentrantLock();
+
+    private static final ReentrantLock INNER_LOCK = new ReentrantLock();
+
+    /** Assigns the two halves of the lock-order cycle so both are always recorded. */
+    private static final java.util.concurrent.atomic.AtomicInteger ORDER_ROLE =
+        new java.util.concurrent.atomic.AtomicInteger();
+
+    private static final Object SHARED_BARRIER_TOKEN = new Object();
+
+    private static final ReentrantReadWriteLock SHARED_RW = new ReentrantReadWriteLock(false);
+
+    /** Splits the writer and reader roles so the cross-thread pair always exists. */
+    private static final java.util.concurrent.atomic.AtomicInteger ORDERING_ROLE =
+        new java.util.concurrent.atomic.AtomicInteger();
+
+    private static final Config SHARED_CONFIG = new Config(7);
+
+    /** Splits the builder and reader roles for the constructor-safety fixture. */
+    private static final java.util.concurrent.atomic.AtomicInteger CONSTRUCTION_ROLE =
+        new java.util.concurrent.atomic.AtomicInteger();
+
+    /** Orders the reader after the builder, so the overlap is guaranteed. */
+    private static final java.util.concurrent.CountDownLatch CONSTRUCTION_STARTED =
+        new java.util.concurrent.CountDownLatch(1);
 }
