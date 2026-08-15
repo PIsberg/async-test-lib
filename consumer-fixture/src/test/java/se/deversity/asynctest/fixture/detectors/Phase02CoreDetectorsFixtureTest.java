@@ -142,13 +142,21 @@ class Phase02CoreDetectorsFixtureTest {
         // A -> B -> A on a plain atomic: the value looks unchanged to a naive CAS.
         // A to B and back to A: a CAS that only compares values cannot tell that the world
         // changed underneath it, because the value it compares is the one it expected.
+        //
+        // One history per worker, not one shared history: the detector scans a variable's
+        // change list for the shape A, B, A before the CAS, and two workers appending the same
+        // pair into one list can interleave as 1->2, 1->2, 2->1, 2->1, which contains no such
+        // shape. That interleaving is what made this fixture report nothing on one JUnit leg
+        // in seven (2026-08-15) while passing on the rest. A per-worker slot keeps each
+        // history the sequence the fixture means to show, on every schedule.
         var aba = AsyncTestContext.abaProblemDetector();
+        String slotName = "aba-slot-" + Thread.currentThread().getName();
         AtomicLong slot = new AtomicLong(1);
-        aba.recordValueChange("aba-slot", 1L, 2L);
+        aba.recordValueChange(slotName, 1L, 2L);
         slot.compareAndSet(1, 2);
-        aba.recordValueChange("aba-slot", 2L, 1L);
+        aba.recordValueChange(slotName, 2L, 1L);
         slot.compareAndSet(2, 1);
-        aba.recordCASAttempt("aba-slot", 1L, 3L, true, 1L);
+        aba.recordCASAttempt(slotName, 1L, 3L, true, 1L);
     }
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
