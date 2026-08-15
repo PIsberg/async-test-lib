@@ -45,6 +45,10 @@ guardrails live.
 | [architecture/observability.md](architecture/observability.md) | Listener system, seen from the inside |
 | [architecture/contention-engine.md](architecture/contention-engine.md) | `SpinContentionBarrier`, telemetry ring buffer, agent, pinning scanner |
 | [architecture/diagrams.md](architecture/diagrams.md) | C4, sequence, class, activity and deployment diagrams + PlantUML sources |
+| [architecture/guardrails.md](architecture/guardrails.md) | How the `@AI*` guardrails are generated, the three vibetags config files, and why Gradle needs `-Avibetags.root` |
+| [architecture/logging.md](architecture/logging.md) | The two output channels, the `domain.event key=value` format, and which log events are pinned by tests |
+| [diagrams/README.md](diagrams/README.md) | The PlantUML sources and their rendered PNGs, one row per diagram |
+| [diagrams/GENERATE_DIAGRAMS.md](diagrams/GENERATE_DIAGRAMS.md) | Rendering the PlantUML sources locally (CLI, server or IDE plugin) |
 | [architecture/file-structure.md](architecture/file-structure.md) | Where each package and class lives |
 | [BUILDING.md](BUILDING.md) | Building from source with Maven and Gradle |
 | [QUALITY_GATES.md](QUALITY_GATES.md) | What must stay green — static analysis, coverage, mutation testing, japicmp, and the build quirks behind them |
@@ -58,6 +62,7 @@ guardrails live.
 |----------|---------|
 | [RELEASE.md](RELEASE.md) | **Canonical release process** — automated (`v*` tag → `mvn deploy -P release`) and manual steps |
 | [DISTRIBUTION.md](DISTRIBUTION.md) | Distribution/technical reference — artifacts, channels, dependencies, install methods, versioning |
+| [SUPPORT_POLICY.md](SUPPORT_POLICY.md) | Versioning, support windows and end-of-life — what an adopting team can rely on, and for how long |
 
 ## Analysis
 
@@ -74,6 +79,11 @@ read them for the reasoning, not as current reference.
 | [analysis/detector-accuracy-eval.md](analysis/detector-accuracy-eval.md) | Measured detector behavior on buggy code vs its synchronized twin, enforced by `DetectorAccuracyEvalTest` |
 | [analysis/codecov-troubleshooting.md](analysis/codecov-troubleshooting.md) | Coverage-upload troubleshooting |
 | [analysis/test-profiles-and-detector-gaps.md](analysis/test-profiles-and-detector-gaps.md) | Investigation: splitting the suite into a fast local tier and a CI-only e2e tier, and which bug classes the detectors miss |
+
+> **Routing is enforced.** `DocsIndexCoverageTest` fails the build when a document under `docs/`
+> is not linked from this index, or when any relative link in the doc set points at a file that does
+> not exist. The only document exempt from routing is `docs/README.md`, a redirect stub that points
+> back here.
 
 > **Removed docs.** `docs/CLAUDE.md` held the module layout, build commands and inlined architecture
 > notes; the orientation half moved to the repository-root [CLAUDE.md](../CLAUDE.md) and the rest
