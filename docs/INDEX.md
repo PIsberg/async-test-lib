@@ -79,6 +79,7 @@ read them for the reasoning, not as current reference.
 | [analysis/detector-accuracy-eval.md](analysis/detector-accuracy-eval.md) | Measured detector behavior on buggy code vs its synchronized twin, enforced by `DetectorAccuracyEvalTest` |
 | [analysis/codecov-troubleshooting.md](analysis/codecov-troubleshooting.md) | Coverage-upload troubleshooting |
 | [analysis/test-profiles-and-detector-gaps.md](analysis/test-profiles-and-detector-gaps.md) | Investigation: splitting the suite into a fast local tier and a CI-only e2e tier, and which bug classes the detectors miss |
+| [analysis/vibe-architecture-scorecard.md](analysis/vibe-architecture-scorecard.md) | Self-audit against the *Vibe Architecture* health scorecard (2026-08-15): 42 to 56 of 66, what each gate enforces, and the deferred decisions |
 
 > **Routing is enforced.** `DocsIndexCoverageTest` fails the build when a document under `docs/`
 > is not linked from this index, or when any relative link in the doc set points at a file that does

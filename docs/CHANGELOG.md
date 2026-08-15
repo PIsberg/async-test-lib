@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added: the guardrail layer can go red
+
+A self-audit against the *Vibe Architecture* health scorecard
+([analysis/vibe-architecture-scorecard.md](analysis/vibe-architecture-scorecard.md)) found the
+usual shape: mechanisms that existed and nothing that checked them. Each is now a gate or a lane.
+
+- **`guardrails.yml`**: `guardrail-drift` fails when a clean build regenerates any committed
+  guardrail file differently; `locked-files` fails a PR that touches an `@AILocked` element
+  (`lock-override` label for a reviewed detector wiring); `diagrams` regenerates the code-karta
+  SVGs and fails on structural drift. The committed diagrams were 27 node titles stale.
+- **`DocsIndexCoverageTest`**: every document under `docs/` is routed from `INDEX.md`, every
+  relative link resolves. Five documents were unrouted. `DetectorCatalogCoverageTest` now scans
+  the agent-facing files too, where the last stale detector counts lived.
+- **`CoreFlowsBddTest`** executes `features/core-flows.feature` (five core `@AsyncTest`
+  behaviours) against the real engine with a two-way scenario/binding match.
+- **`mutation.yml`** runs PIT weekly and on demand against the pom's 74% threshold;
+  `CONTRIBUTING.md` had claimed a schedule that did not exist.
+- **Review lanes**: `inquisitor.yml` (adversarial reviewer against `.github/INQUISITOR.md`,
+  skips loudly without a key), `copilot-review.yml` (verifies the request landed),
+  `.github/MODEL-ROSTER.md` (model per lane, pinned).
+- **`evals/`**: an instruction-eval task bank (four rules, deterministic detectors) wired to
+  PRs that edit the instruction files.
+- `CLAUDE.md` "Working in this repository": five standing rules; `consultation-loop` skill;
+  PR template asks for provenance and proposed-not-added dependencies.
+
 ## [1.9.3] - 2026-08-14
 
 ### Fixed
