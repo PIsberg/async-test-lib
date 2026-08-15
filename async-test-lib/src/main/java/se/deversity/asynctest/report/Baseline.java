@@ -49,6 +49,39 @@ public final class Baseline {
     /** System property enabling update (record) mode. */
     public static final String UPDATE_PROPERTY = "async-test.baseline.update";
 
+    /**
+     * The on-disk format version this release writes, as a {@code # format-version: N} comment
+     * line. Readers ignore every {@code #} line, so a file written by any release loads in any
+     * other; the marker exists so a future incompatible change can be recognised instead of
+     * silently misread. Changing the line shape is an expand-contract change: the reader learns
+     * the new shape one release before the writer emits it (see {@code docs/SUPPORT_POLICY.md},
+     * "Files at rest").
+     */
+    public static final int FORMAT_VERSION = 1;
+
+    private static final String FORMAT_VERSION_PREFIX = "# format-version:";
+
+    /**
+     * A file written by a release that knows a newer shape is refused loudly rather than
+     * misread: silently suppressing the wrong findings, or none, is the failure a baseline
+     * exists to prevent. Files with no marker, or an older one, load as before.
+     */
+    private static void rejectNewerFormat(Path path, String markerLine) {
+        String value = markerLine.substring(FORMAT_VERSION_PREFIX.length()).trim();
+        int declared;
+        try {
+            declared = Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return; // an unparseable marker is a comment like any other
+        }
+        if (declared > FORMAT_VERSION) {
+            throw new IllegalStateException("Baseline file " + path + " declares format-version "
+                    + declared + " but this release reads up to " + FORMAT_VERSION
+                    + ". It was written by a newer async-test-lib; upgrade, or regenerate the "
+                    + "baseline with -D" + UPDATE_PROPERTY + "=true on this release.");
+        }
+    }
+
     private static final Baseline EMPTY = new Baseline(Set.of());
 
     /** Cache keyed by path; entries invalidated by last-modified time. */
@@ -109,6 +142,10 @@ public final class Baseline {
             Set<String> entries = new TreeSet<>();
             for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
                 String trimmed = line.trim();
+                if (trimmed.startsWith(FORMAT_VERSION_PREFIX)) {
+                    rejectNewerFormat(path, trimmed);
+                    continue;
+                }
                 if (trimmed.isEmpty() || trimmed.startsWith("#")) {
                     continue;
                 }
@@ -177,6 +214,7 @@ public final class Baseline {
                     }
                     List<String> lines = new java.util.ArrayList<>();
                     lines.add("# async-test baseline — accepted findings; remove lines as they are fixed");
+                    lines.add("# format-version: " + FORMAT_VERSION);
                     lines.add("# format: <testClass>#<testMethod> | <DetectorName>");
                     lines.addAll(merged);
                     Files.write(path, lines, StandardCharsets.UTF_8);
