@@ -37,12 +37,11 @@ inside the markers, a literal added to `build.gradle.kts`).
 ## Running it
 
 ```bash
-export ANTHROPIC_API_KEY=...   # hermetic runs cannot use stored logins
-bash evals/run-instruction-evals.sh                 # all tasks, 3 trials each
-TRIALS=10 bash evals/run-instruction-evals.sh       # decision-grade run
-TASKS="interceptor-proceed" bash evals/run-instruction-evals.sh
-VARIANT=baseline bash evals/run-instruction-evals.sh  # instruction files removed
-ENGINE=copilot bash evals/run-instruction-evals.sh    # GitHub Copilot CLI, no Anthropic key
+ENGINE=copilot bash evals/run-instruction-evals.sh            # GitHub Copilot CLI (default lane here), no Anthropic key
+ENGINE=copilot TRIALS=10 bash evals/run-instruction-evals.sh  # decision-grade run
+ENGINE=copilot VARIANT=baseline bash evals/run-instruction-evals.sh   # instruction files removed
+ENGINE=copilot TASKS="interceptor-proceed" bash evals/run-instruction-evals.sh
+export ANTHROPIC_API_KEY=... && bash evals/run-instruction-evals.sh    # the claude engine, hermetic, when a key exists
 ```
 
 Binding power for a rule is the full-variant pass rate minus the baseline pass rate.
@@ -70,9 +69,29 @@ variable under measurement is the committed instruction stack of this repository
 - **Nondeterminism lives in the subject, not the harness.** The agent is stochastic; the
   detectors are not. A flaky number is information about the rule's binding power, not a
   bug to retry away.
-- **The bank has not yet been run against a model.** As of 2026-08-15 the harness and its
-  detectors are verified; adherence numbers exist only once someone runs it with a key.
-  Until then the row scores 1, not 2, on the health scorecard.
+- **Commit-proof detectors.** The runner exports `EVAL_BASE`, the worktree's SHA before the
+  trial, and every detector diffs against it. The Copilot CLI committed its edit inside the
+  trial worktree on its very first run here (`git checkout -b ... && git commit`), which a
+  plain `git diff` would have read as "no change". Verified: a committed violation is red with
+  the base SHA and a false pass without it.
+
+## First measured run (2026-08-15, Copilot CLI, `--model auto`, 3 trials per cell)
+
+| Rule | Baseline (no instruction files) | Full (repo as committed) | Binding power | Verdict |
+|---|---|---|---|---|
+| `locked-detector-type` | 0/3 | 3/3 | +100 | Load-bearing: without the lock Copilot adds the constant alone every time; with it, never. Keep, protect. |
+| `gradle-version-literal` | 1/3 | 2/3 | +33 | Binds, weakly. Rewrite candidate: the rule reads as build trivia; state it as "edit `pom.xml`, Gradle follows". `BuildMetadataSyncTest` is the gate behind it. |
+| `interceptor-proceed` | not run | 0/3 | at most 0 | Does not bind this agent: the `@AICore` note is in the file it read, and it edited anyway. Already promoted: `AsyncTestInvocationInterceptorTest` fails the build. |
+| `marker-discipline` | not run | 0/3 | at most 0 | Does not bind this agent when the prompt says "just make it in CLAUDE.md". Already promoted: the `guardrail-drift` job fails the build. |
+
+Read with the caveats above: three trials is a smoke run, and the Copilot engine measures
+Copilot, not the model that writes most of this repository's code. What it establishes on day
+one is the book's central claim about this layer: two of four rules that everyone assumed were
+binding were not, and both had already been (or now are) promoted to gates, which is why the CI
+lane is advisory. The two rules with no gate behind them are the two that bind.
+
+Cost of the run: 12 full-variant trials plus 6 baseline trials, about 1.5 minutes and 4 Copilot
+credits each.
 
 ## When a rule fails its floor
 
@@ -86,6 +105,9 @@ sentence is ballast and gets deleted.
 
 `.github/workflows/instruction-evals.yml` runs the bank on any pull request that edits the
 instruction files (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.claude/**`, `.gemini/**`, the
-module `CLAUDE.md` and rules) and on manual dispatch. It needs the `ANTHROPIC_API_KEY`
-secret; without it the run reports SKIPPED, which is not a pass. Trial logs land under
-`evals/results/` locally (gitignored) and as a workflow artifact in CI.
+module `CLAUDE.md` and rules) and on manual dispatch, on the Copilot CLI (`ENGINE=copilot`)
+authenticated with the `COPILOT_GITHUB_TOKEN` repository secret. No Anthropic key is used.
+Without the secret, or when the quota runs out, the lane reports SKIPPED / HARNESS-ERROR, which
+is not a pass. Advisory by decision: a below-floor rule is a `::warning::` and a summary table,
+never a red job, because every measured rule has an enforcing gate behind it and those block.
+Trial logs land under `evals/results/` locally (gitignored) and as a workflow artifact in CI.

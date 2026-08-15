@@ -1,15 +1,20 @@
-# Instruction evals: the merge gate for the instruction layer. When a PR edits the files
-# agents obey (CLAUDE.md, AGENTS.md, GEMINI.md, .claude/**, the module files), this runs the task bank in
-# evals/ and fails if any measured rule drops below its floor - the same idea as running
-# the test suite when a PR edits code. evals/README.md documents the method and its limits.
+# Instruction evals: the measurement lane for the instruction layer. When a PR edits the files
+# agents obey (CLAUDE.md, AGENTS.md, GEMINI.md, .claude/**, the module files), this runs the
+# task bank in evals/ and reports each rule's pass rate against its floor. evals/README.md
+# documents the method and its limits.
 #
-# Cost: a default run is 12 headless model sessions (4 tasks x 3 trials). That is why this
-# triggers on the instruction-file paths and manual dispatch, never on every commit.
+# Engine: the GitHub Copilot CLI on the maintainer's Copilot Free quota, authenticated with
+# the COPILOT_GITHUB_TOKEN repository secret (a personal token of an account that has
+# Copilot). No Anthropic key is used or required. Without the secret, or when the quota is
+# exhausted mid-run, the lane reports SKIPPED / HARNESS-ERROR trials, which are not passes.
 #
-# Requires the ANTHROPIC_API_KEY secret; without it the run reports SKIPPED, which is not
-# a pass. The claude CLI is installed at whatever version npm currently serves - a known,
-# accepted deviation from this repo's pin-everything rule, because the CLI's flag surface
-# must track the live API; the harness fails loudly (exit 2) if the flags drift.
+# Advisory by decision (2026-08-15): a below-floor result is a warning annotation and a
+# summary table, never a red job. The bank measures whether the prose binds; the rules it
+# measures each have an enforcing gate behind them (locked-files, guardrail-drift,
+# BuildMetadataSyncTest, the interceptor contract test), and those are what block.
+#
+# Cost: a default run is 12 headless Copilot sessions (4 tasks x 3 trials), so this triggers
+# on the instruction-file paths and manual dispatch, never on every commit.
 
 name: Instruction Evals
 
@@ -31,6 +36,10 @@ on:
         description: 'Trials per task (10 for decision-grade runs)'
         required: false
         default: '3'
+      variant:
+        description: 'full (repo as committed) or baseline (instruction files removed)'
+        required: false
+        default: 'full'
 
 permissions:
   contents: read
@@ -41,60 +50,70 @@ concurrency:
 
 jobs:
   evals:
-    name: Instruction Evals
+    name: Instruction Evals (Copilot)
     runs-on: ubuntu-latest
     env:
-      HAVE_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+      HAVE_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN != '' }}
     steps:
-      # The agent lane runs sandboxed: ephemeral runner, the API key as its only secret,
-      # egress BLOCKED except what the job demonstrably needs (Anthropic API, GitHub, npm
-      # for the CLI install). Extend the list in a reviewed commit if a legitimate endpoint
-      # gets blocked; never flip back to audit.
+      # Sandboxed like every agent lane: ephemeral runner, one single-purpose secret, egress
+      # BLOCKED except GitHub, the Copilot API and npm for the CLI install. Extend the list
+      # in a reviewed commit if a legitimate endpoint gets blocked; never flip back to audit.
       - name: Harden the runner (Block egress, allowlist only)
         uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: block
           allowed-endpoints: >
-            api.anthropic.com:443
-            statsig.anthropic.com:443
             api.github.com:443
+            api.githubcopilot.com:443
+            api.individual.githubcopilot.com:443
+            api.business.githubcopilot.com:443
+            api.enterprise.githubcopilot.com:443
+            copilot-proxy.githubusercontent.com:443
             github.com:443
             codeload.github.com:443
             objects.githubusercontent.com:443
             raw.githubusercontent.com:443
             registry.npmjs.org:443
 
-      - name: Note when the key is absent
-        if: env.HAVE_KEY != 'true'
+      - name: Note when the token is absent
+        if: env.HAVE_TOKEN != 'true'
         run: |
-          echo "SKIPPED: ANTHROPIC_API_KEY secret is not configured; the instruction evals did not run." >> "$GITHUB_STEP_SUMMARY"
-          echo "::notice::Instruction evals skipped: ANTHROPIC_API_KEY secret is not configured. Skipped is not passed."
+          echo "SKIPPED: COPILOT_GITHUB_TOKEN secret is not configured; the instruction evals did not run. Skipped is not passed." >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::Instruction evals skipped: COPILOT_GITHUB_TOKEN secret is not configured. Skipped is not passed."
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: env.HAVE_KEY == 'true'
+        if: env.HAVE_TOKEN == 'true'
 
-      - name: Install the claude CLI
-        if: env.HAVE_KEY == 'true'
-        run: npm install -g @anthropic-ai/claude-code
+      - name: Install the Copilot CLI
+        if: env.HAVE_TOKEN == 'true'
+        run: npm install -g @github/copilot
 
-      - name: Run the task bank
-        if: env.HAVE_KEY == 'true'
+      - name: Run the task bank (advisory)
+        if: env.HAVE_TOKEN == 'true'
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          ENGINE: copilot
           TRIALS: ${{ github.event.inputs.trials || '3' }}
+          VARIANT: ${{ github.event.inputs.variant || 'full' }}
           RESULTS_DIR: ${{ github.workspace }}/eval-results
         run: |
           bash evals/run-instruction-evals.sh && status=0 || status=$?
-          echo "## Instruction evals" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Instruction evals (Copilot, ${VARIANT}, ${TRIALS} trials/task)" >> "$GITHUB_STEP_SUMMARY"
           if [ -f "$RESULTS_DIR/summary.csv" ]; then
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             cat "$RESULTS_DIR/summary.csv" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           fi
-          exit $status
+          case "$status" in
+            0) echo "All tasks met their floors." ;;
+            1) echo "::warning::Instruction evals: at least one rule is below its floor. Advisory: read the summary, then rewrite, promote or delete the rule (evals/README.md)." ;;
+            *) echo "SKIPPED: the harness could not run (exit $status: missing CLI, exhausted quota, or auth). Skipped is not passed." >> "$GITHUB_STEP_SUMMARY"
+               echo "::notice::Instruction evals skipped: harness exit $status." ;;
+          esac
+          exit 0
 
       - name: Upload trial logs
-        if: env.HAVE_KEY == 'true' && always()
+        if: env.HAVE_TOKEN == 'true' && always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: instruction-eval-results

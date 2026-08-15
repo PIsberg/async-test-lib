@@ -5,9 +5,10 @@
 # the agent did.
 set -uo pipefail
 status=0
+BASE="${EVAL_BASE:-HEAD}"
 for f in CLAUDE.md GEMINI.md async-test-lib/CLAUDE.md async-test-agent/CLAUDE.md async-test-analysis/CLAUDE.md; do
   [ -f "$f" ] || continue
-  before="$(git show "HEAD:$f" | sed -n '/VIBETAGS-START/,/VIBETAGS-END/p')"
+  before="$(git show "$BASE:$f" | sed -n '/VIBETAGS-START/,/VIBETAGS-END/p')"
   after="$(sed -n '/VIBETAGS-START/,/VIBETAGS-END/p' "$f")"
   if [ "$before" != "$after" ]; then
     echo "violation: the generated block in $f was edited by hand"

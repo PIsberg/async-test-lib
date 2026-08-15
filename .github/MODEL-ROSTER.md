@@ -10,9 +10,9 @@ Work routes on how much judgment a wrong call destroys, not on task size:
 
 | Lane | Model / engine | Pin | Why this lane gets this model |
 |---|---|---|---|
-| Inquisitor (`inquisitor.yml`) | `claude-opus-5` | Exact ID in the workflow's `claude_args` | Adversarial structural review is the canonical judgment role; a wrong call there cascades into everything the review was supposed to catch. Strongest roster entry, per decision density. |
-| Instruction evals (`evals/`) | `claude-opus-5` (`EVAL_MODEL` default) | Runner default + workflow env | Same-model rule: evals measure adherence of the model that writes production code here; a cheaper model's adherence is a different experiment. |
+| Instruction evals (`evals/`, `instruction-evals.yml`) | GitHub Copilot CLI, `--model auto` (`COPILOT_MODEL` env to pin) | Engine pinned (`ENGINE=copilot`); model GitHub-managed unless `COPILOT_MODEL` is set | The AI lane this repository actually runs, on the maintainer's Copilot Free quota, with no Anthropic key (decision 2026-08-15: nothing blocks on paid tokens). Its numbers measure whether the instruction stack binds *that* agent; the `claude` engine (`EVAL_MODEL`, default `claude-opus-5`) stays available locally for the same-model experiment when a key exists. |
 | Copilot review lane (`copilot-review.yml`) | GitHub-managed | Not pinnable | Advisory second opinion on free quota. GitHub routes the underlying model; that unpinnability is documented here as a known property of the lane, and is acceptable exactly because the lane is advisory and skip-on-quota, never a gate. |
+| Inquisitor (`inquisitor.yml`) | `claude-opus-5` | Exact ID in the workflow's `claude_args` | Dormant by decision: the repository carries no `ANTHROPIC_API_KEY`, so the lane reports SKIPPED. Kept because adversarial structural review is the canonical judgment role and the pin is where an operator with a key would start. |
 | Mechanical CI (build, tests, static analysis, guardrail drift, locked files, diagrams, mutation, fuzzing) | none | n/a | Deterministic gates hold still while models move; that separation is the point. |
 | Maintainer sessions | maintainer's choice | unpinned by design | Personal harness config, outside the repository's authority. |
 
@@ -22,7 +22,8 @@ Re-pinning a model in any lane above is a reviewed commit that edits this file a
 workflow pin together, and the PR that does it must run the golden-prompt replay first:
 
 ```bash
-TRIALS=10 EVAL_MODEL=<candidate-model-id> bash evals/run-instruction-evals.sh
+TRIALS=10 ENGINE=copilot COPILOT_MODEL=<candidate-model-id> bash evals/run-instruction-evals.sh
+# or, with an Anthropic key: TRIALS=10 EVAL_MODEL=<candidate-model-id> bash evals/run-instruction-evals.sh
 ```
 
 The eval bank is the replay set: frozen rule-shaped tasks with deterministic detectors. The

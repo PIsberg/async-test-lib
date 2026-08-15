@@ -14,6 +14,8 @@
 # Environment knobs:
 #   TRIALS=3            trials per task (10 for decisions; 3 is a smoke run)
 #   EVAL_MODEL=...      model id; keep it the model that writes production code here
+#   COPILOT_MODEL=auto  model for the copilot engine; "auto" lets Copilot route (the CLI's
+#                       own default was rejected with "model is not supported" on 2026-08-15)
 #   ENGINE=claude       claude | copilot. The copilot engine drives the GitHub Copilot CLI
 #                       (free-tier quota, GitHub-authenticated, agentic) so the bank can run
 #                       with no Anthropic key. Missing CLI or exhausted quota exits 2 or
@@ -87,6 +89,11 @@ for taskdir in "$EVALS_DIR"/tasks/*/; do
     wt_parent="$(mktemp -d)"
     wt="$wt_parent/wt"
     git -C "$REPO_ROOT" worktree add --detach --quiet "$wt" HEAD
+    # Detectors diff against this SHA, not against HEAD or the index: an agent that commits
+    # inside the trial worktree (the Copilot CLI did, on its first trial here) would otherwise
+    # hide its edit from a plain `git diff`.
+    EVAL_BASE="$(git -C "$wt" rev-parse HEAD)"
+    export EVAL_BASE
     if [ "$VARIANT" = "baseline" ]; then
       rm -rf "$wt/CLAUDE.md" "$wt/AGENTS.md" "$wt/GEMINI.md" "$wt/.claude" "$wt/.gemini"              "$wt"/async-test-*/CLAUDE.md "$wt"/async-test-*/.claude
     fi
@@ -109,7 +116,7 @@ for taskdir in "$EVALS_DIR"/tasks/*/; do
       # MAX_TURNS do not apply; quota exhaustion or auth failure exits nonzero and the
       # trial is counted HARNESS-ERROR below - a visible skip, never a false pass.
       (
-        cd "$wt" && copilot -p "$prompt" --allow-all-tools
+        cd "$wt" && copilot -p "$prompt" --allow-all-tools --model "${COPILOT_MODEL:-auto}"
       ) >"$out" 2>"$err"
       engine_rc=$?
     fi
