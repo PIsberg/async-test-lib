@@ -61,7 +61,8 @@ that no longer exists is a defect. Counts, commands and version numbers in the d
 
 CI runs Checkstyle, PMD, SpotBugs with find-sec-bugs, Error Prone with NullAway, ArchUnit,
 JaCoCo, CodeQL, dependency review and an OpenSSF Scorecard, on JDK 21 and 25. Mutation testing
-runs on a schedule with a 75% threshold. A pull request is expected to be green before review, not
+runs weekly (`mutation.yml`, Sundays, and on demand) and fails below the 74% threshold in
+`async-test-lib/pom.xml`. A pull request is expected to be green before review, not
 after it. If a gate fails for a reason you believe is the toolchain rather than your change, say
 which gate and on which JDK — see
 [docs/QUALITY_GATES.md](docs/QUALITY_GATES.md) for the cases where that has been true before.

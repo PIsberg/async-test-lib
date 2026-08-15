@@ -253,7 +253,9 @@ all 127 build. This only moves discovery of the common failure earlier.
 ## Mutation testing
 
 PITest gates the mutation score at **≥ 74%** (measured 75.4%; the margin absorbs run-to-run
-`TIMED_OUT` jitter). Run on demand — it is never bound to `verify`.
+`TIMED_OUT` jitter). It is never bound to `verify`; `mutation.yml` runs it weekly (Sundays
+02:00 UTC) and on demand from the Actions tab, and that job fails below the threshold. Until
+2026-08-15 nothing in CI ran it at all, while `CONTRIBUTING.md` said it ran on a schedule.
 
 ```bash
 mvn org.pitest:pitest-maven:mutationCoverage                 # full run, ~1h20m
