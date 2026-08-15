@@ -345,3 +345,36 @@ in agreement: `build-helper-maven-plugin`'s `add-fuzz-test-source` execution in
 `async-test-lib/pom.xml`, and the `sourceSets` block in the root `build.gradle.kts`. Both compile
 the harnesses into the ordinary test output, so the Jazzer classpath stays
 `async-test-lib/target/test-classes`.
+
+## Guardrail and review lanes
+
+The gates that keep the agent-facing layer honest, and the review lanes that read a PR before a
+human does. All added 2026-08-15 after a self-audit against the *Vibe Architecture* health scorecard
+([analysis/vibe-architecture-scorecard.md](analysis/vibe-architecture-scorecard.md)); each one turned
+a property that held by habit into one that fails a build.
+
+| Lane | Workflow | Runs on | Fails when |
+|---|---|---|---|
+| Guardrail drift | `guardrails.yml` / `guardrail-drift` | push, PR | a clean `test-compile` regenerates any committed guardrail file (`CLAUDE.md`, `GEMINI.md`, `.claude/rules`, `.gemini/rules`, `.claudeignore`, `.vibetags-*`) differently from what is committed. Fix: build, commit the regenerated files; never edit inside the markers |
+| Locked files | `guardrails.yml` / `locked-files` | PR | the diff touches an `@AILocked` element (today `DetectorType`, lines 13–351). A maintainer who has read the wiring applies the `lock-override` label; the guard then reports instead of failing. The label is the escalation path, applied by the person merging, never by the diff |
+| Diagram drift | `guardrails.yml` / `diagrams` | push, PR | the code-karta SVGs regenerate with a different set of node titles than the committed ones (`tools/diagram-structure.sh`). Fix: `sh tools/generate-architecture-diagrams.sh`, commit; the failing run attaches the fresh SVGs |
+| Core flows (BDD) | `CoreFlowsBddTest` (`-P e2e`, so every CI leg) | every CI build | a scenario in `async-test-lib/src/test/resources/features/core-flows.feature` has no binding, a binding has no scenario, or a scenario's assertions fail against the real engine. Five scenarios: body runs N x M times, a finding fails on `failOn = HIGH`, report-only stays green, an excluded detector reports nothing, `invocations = 0` is refused |
+| Docs routing | `DocsIndexCoverageTest` (default `mvn test`) | every build | a document under `docs/` is not linked from `docs/INDEX.md`, or a relative link in the doc set does not resolve |
+| Mutation | `mutation.yml` | Sundays, dispatch | the PIT score drops below the pom's `mutationThreshold` (74) |
+| Inquisitor | `inquisitor.yml` | PR | the adversarial reviewer (`.github/INQUISITOR.md`, model pinned in `.github/MODEL-ROSTER.md`) writes a violation against the committed law. Skips loudly without `ANTHROPIC_API_KEY`; not a required check while it earns trust |
+| Copilot review | `copilot-review.yml` | PR opened | never; it requests a GitHub Copilot review, verifies the request was recorded, and reports SKIPPED otherwise. Advisory by design |
+| Instruction evals | `instruction-evals.yml` | PR touching the instruction files, dispatch | a task in `evals/` drops below its floor. Skips loudly without a key; see `evals/README.md` for how to read the numbers |
+
+**Skipped is not passed.** Every lane that can lack credit (Inquisitor, Copilot, evals) says
+SKIPPED in its step summary when it does; a green job with a SKIPPED summary is a job that did not
+run, and the required-checks list should only ever contain lanes that cannot skip.
+
+**Why "propose, do not install" for dependencies.** `dependency-review.yml` fails on high-severity
+CVEs and denied licences, Dependabot owns bumps, and `docs/DEPENDENCIES.md` explains every
+coordinate's reach into a consumer's classpath. A coordinate that appears in a build file without
+that conversation bypasses all three; the PR template asks for it, the Inquisitor reads for it.
+
+**Why untrusted context is a standing rule.** No workflow feeds issue or comment text to an agent
+today, so the exposure is zero by absence. The rule in `CLAUDE.md` exists so that stays true by
+policy when one is added: text read from outside the repository is data an agent reasons about, not
+an instruction it follows.
