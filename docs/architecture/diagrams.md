@@ -312,6 +312,15 @@ sh tools/generate-architecture-diagrams.sh
 The CLI is resolved from Maven Central, so the first run needs a network and later runs do
 not. Nothing is vendored into the repository.
 
+**They cannot go stale silently.** The `diagrams` job in `.github/workflows/guardrails.yml`
+regenerates them on every push and pull request and fails on structural drift, comparing
+`tools/diagram-structure.sh` fingerprints (the sorted set of node titles per SVG; positions
+and member labels are excluded because code-karta's directory walk follows filesystem
+order, so bytes differ between the OS that committed and the OS that checks). When it
+fails, the fresh SVGs are attached to the run as the `regenerated-diagrams` artifact. The
+gate was introduced against a tree where 27 node titles had moved since the last manual
+regeneration.
+
 **Why the module diagram needs code-karta 0.2.0.** Before it, `--modules-only` understood
 `module-info.java` and nothing else, so it answered "Graph is empty" here — this project
 declares no JPMS modules, only a Maven reactor. 0.2.0 reads the reactor, which is where the

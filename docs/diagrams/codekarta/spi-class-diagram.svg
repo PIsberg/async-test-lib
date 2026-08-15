@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="852" viewBox="0 0 960 852">
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="897" viewBox="0 0 960 897">
 <defs>
 <style>
 svg { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
@@ -55,21 +55,21 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <path d="M0,0 L8,4 L0,8" fill="none" stroke="#374151" stroke-width="1.2"/>
 </marker>
 </defs>
-<rect width="960" height="852" fill="#f9fafb"/>
-<rect width="960" height="852" fill="url(#dotGrid)"/>
+<rect width="960" height="897" fill="#f9fafb"/>
+<rect width="960" height="897" fill="url(#dotGrid)"/>
 <rect class="group-rect" x="10.0" y="10.0" width="208.0" height="310.0" rx="8" fill="#f3f4f6" fill-opacity="0.5" stroke="#9ca3af" stroke-dasharray="6,4" stroke-width="1.2"/>
 <text x="16.0" y="23.0" font-family="sans-serif" font-size="11" fill="#6b7280" font-style="italic">se.deversity.asynctest.spi.adapters</text>
-<rect class="group-rect" x="10.0" y="304.0" width="408.0" height="368.0" rx="8" fill="#f3f4f6" fill-opacity="0.5" stroke="#9ca3af" stroke-dasharray="6,4" stroke-width="1.2"/>
+<rect class="group-rect" x="10.0" y="304.0" width="408.0" height="413.0" rx="8" fill="#f3f4f6" fill-opacity="0.5" stroke="#9ca3af" stroke-dasharray="6,4" stroke-width="1.2"/>
 <text x="16.0" y="317.0" font-family="sans-serif" font-size="11" fill="#6b7280" font-style="italic">se.deversity.asynctest.spi</text>
-<path class="edge-line" data-source="LegacyDetectorAdapter" data-target="Detector" data-type="IMPLEMENTS" d="M114.0 244.0 Q197.1 346.6 314.0 408.0" fill="none" stroke="#1d4ed8" stroke-width="1.6" stroke-dasharray="8,4" marker-end="url(#marker-hollow-1d4ed8)"/>
-<text class="edge-label" data-source="LegacyDetectorAdapter" data-target="Detector" data-type="IMPLEMENTS" x="205.5" y="330.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#1d4ed8" font-style="italic">implements</text>
+<path class="edge-line" data-source="LegacyDetectorAdapter" data-target="Detector" data-type="IMPLEMENTS" d="M114.0 259.0 Q198.4 354.5 314.0 408.0" fill="none" stroke="#1d4ed8" stroke-width="1.6" stroke-dasharray="8,4" marker-end="url(#marker-hollow-1d4ed8)"/>
+<text class="edge-label" data-source="LegacyDetectorAdapter" data-target="Detector" data-type="IMPLEMENTS" x="206.2" y="338.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#1d4ed8" font-style="italic">implements</text>
 <path class="edge-line" data-source="SharedMessageDigestDetectorFactory" data-target="DetectorFactory" data-type="IMPLEMENTS" d="M114.0 306.0 Q111.8 312.0 114.0 318.0" fill="none" stroke="#1d4ed8" stroke-width="1.6" stroke-dasharray="8,4" marker-end="url(#marker-hollow-1d4ed8)"/>
 <text class="edge-label" data-source="SharedMessageDigestDetectorFactory" data-target="DetectorFactory" data-type="IMPLEMENTS" x="112.9" y="306.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#1d4ed8" font-style="italic">implements</text>
-<path class="edge-line" data-source="DetectorRegistry" data-target="Detector" data-type="HAS" d="M204.0 533.0 Q226.0 503.4 224.0 466.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="DetectorRegistry" data-target="Detector" data-type="HAS" x="220.0" y="495.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">byType</text>
+<path class="edge-line" data-source="DetectorRegistry" data-target="Detector" data-type="HAS" d="M204.0 555.5 Q230.0 514.6 224.0 466.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorRegistry" data-target="Detector" data-type="HAS" x="222.0" y="506.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">byType</text>
 <g id="LegacyDetectorAdapter">
   <title>LegacyDetectorAdapter [CLASS]</title>
-  <rect class="node-rect" x="24.0" y="24.0" width="180.0" height="220.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="24.0" y="24.0" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="114.0" y="46.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12.9" font-weight="bold" fill="#1f2937">LegacyDetectorAdapter</text>
   <line x1="24.0" y1="68.0" x2="204.0" y2="68.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="32.0" y="81.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">delegate: D</text>
@@ -79,10 +79,11 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="32.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeMethodLookupFailure…</text>
   <text x="32.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">hasIssuesMethod: Method</text>
   <line x1="24.0" y1="170.0" x2="204.0" y2="170.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="32.0" y="183.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">type(): DetectorType</text>
-  <text x="32.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): List&lt;Violation&gt;</text>
-  <text x="32.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">delegate(): D</text>
-  <text x="32.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">findHasIssues(Class&lt;?&gt;): M…</text>
+  <text x="32.0" y="183.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">findReportMethod(Class&lt;?&gt;)…</text>
+  <text x="32.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">type(): DetectorType</text>
+  <text x="32.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): List&lt;Violation&gt;</text>
+  <text x="32.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">delegate(): D</text>
+  <text x="32.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">findHasIssues(Class&lt;?&gt;): M…</text>
 </g>
 <g id="Detector">
   <title>Detector [INTERFACE]</title>
@@ -121,29 +122,32 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="DetectorRegistry">
   <title>DetectorRegistry [CLASS]</title>
-  <rect class="node-rect" x="24.0" y="408.0" width="180.0" height="250.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="24.0" y="408.0" width="180.0" height="295.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="114.0" y="430.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">DetectorRegistry</text>
   <line x1="24.0" y1="452.0" x2="204.0" y2="452.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="32.0" y="465.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">byType: Map&lt;DetectorType,D…</text>
-  <text x="32.0" y="480.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">BUILT_IN_FACTORY_PACKAGE: …</text>
+  <text x="32.0" y="480.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">BUILT_IN_FACTORY_RESOURCE:…</text>
   <line x1="24.0" y1="494.0" x2="204.0" y2="494.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="32.0" y="507.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">build(AsyncTestConfig): De…</text>
   <text x="32.0" y="522.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">buildExternal(AsyncTestCon…</text>
-  <text x="32.0" y="537.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">build(AsyncTestConfig, boo…</text>
-  <text x="32.0" y="552.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isEmpty(): boolean</text>
-  <text x="32.0" y="567.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">get(Class&lt;T&gt;): T</text>
-  <text x="32.0" y="582.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">get(DetectorType): Detector</text>
-  <text x="32.0" y="597.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">all(): List&lt;Detector&gt;</text>
-  <text x="32.0" y="612.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeAll(): List&lt;Violati…</text>
-  <text x="32.0" y="627.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fireOnTestStart(): void</text>
-  <text x="32.0" y="642.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fireOnTestEnd(): void</text>
+  <text x="32.0" y="537.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">addEnabled(List&lt;DetectorFa…</text>
+  <text x="32.0" y="552.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">externalFactories(): List&lt;…</text>
+  <text x="32.0" y="567.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">builtInFactories(): List&lt;D…</text>
+  <text x="32.0" y="582.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">instantiate(String): Detec…</text>
+  <text x="32.0" y="597.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isEmpty(): boolean</text>
+  <text x="32.0" y="612.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">get(Class&lt;T&gt;): T</text>
+  <text x="32.0" y="627.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">get(DetectorType): Detector</text>
+  <text x="32.0" y="642.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">all(): List&lt;Detector&gt;</text>
+  <text x="32.0" y="657.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeAll(): List&lt;Violati…</text>
+  <text x="32.0" y="672.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fireOnTestStart(): void</text>
+  <text x="32.0" y="687.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fireOnTestEnd(): void</text>
 </g>
-<rect x="724.0" y="718.0" width="220.0" height="100.0" rx="6" fill="#ffffff" stroke="#d1d5db" stroke-width="1" filter="url(#nodeShadow)"/>
-<text x="740.0" y="738.0" font-family="sans-serif" font-size="11" font-weight="bold" fill="#374151">Legend</text>
-<line x1="740.0" y1="762.0" x2="776.0" y2="762.0" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="8,4" marker-end="url(#marker-hollow-1d4ed8)"/>
-<text x="784.0" y="766.0" font-family="sans-serif" font-size="11" fill="#374151">implements</text>
-<line x1="740.0" y1="786.0" x2="776.0" y2="786.0" stroke="#374151" stroke-width="2" marker-end="url(#marker-open-374151)"/>
-<text x="784.0" y="790.0" font-family="sans-serif" font-size="11" fill="#374151">has</text>
+<rect x="724.0" y="763.0" width="220.0" height="100.0" rx="6" fill="#ffffff" stroke="#d1d5db" stroke-width="1" filter="url(#nodeShadow)"/>
+<text x="740.0" y="783.0" font-family="sans-serif" font-size="11" font-weight="bold" fill="#374151">Legend</text>
+<line x1="740.0" y1="807.0" x2="776.0" y2="807.0" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="8,4" marker-end="url(#marker-hollow-1d4ed8)"/>
+<text x="784.0" y="811.0" font-family="sans-serif" font-size="11" fill="#374151">implements</text>
+<line x1="740.0" y1="831.0" x2="776.0" y2="831.0" stroke="#374151" stroke-width="2" marker-end="url(#marker-open-374151)"/>
+<text x="784.0" y="835.0" font-family="sans-serif" font-size="11" fill="#374151">has</text>
 <script type="text/javascript">
 <![CDATA[
 document.addEventListener('DOMContentLoaded', () => {
@@ -209,6 +213,6 @@ document.addEventListener('DOMContentLoaded', () => {
 ]]>
 </script>
 <a class="diagram-attribution" href="https://github.com/PIsberg/codekarta" target="_blank" rel="noopener noreferrer">
-  <text x="944.0" y="836.0" text-anchor="end" font-family="sans-serif" font-size="11" fill="#6b7280" text-decoration="underline">Created with https://github.com/PIsberg/codekarta</text>
+  <text x="944.0" y="881.0" text-anchor="end" font-family="sans-serif" font-size="11" fill="#6b7280" text-decoration="underline">Created with https://github.com/PIsberg/codekarta</text>
 </a>
 </svg>

@@ -1,0 +1,187 @@
+name: Guardrail Gates
+
+# The three gates that keep the agent-facing guardrails honest. Each one turns a property
+# that used to hold by habit into a property of every pull request:
+#
+#   guardrail-drift  the committed CLAUDE.md / GEMINI.md / .claude/rules / .gemini/rules /
+#                    .claudeignore files are exactly what a clean build regenerates from the
+#                    source annotations. Both builds regenerate them (vibetags annotation
+#                    processor); until this job nothing ever checked whether the regenerated
+#                    tree matched the committed one, so a hand edit inside the markers, or an
+#                    annotation change committed without its regenerated files, was invisible.
+#   locked-files     a PR diff that touches an @AILocked element (today: DetectorType) fails,
+#                    naming the element and the lock's reason. Adding a detector legitimately
+#                    touches it, so a maintainer who has reviewed the wiring applies the
+#                    `lock-override` label and the guard drops to warn-only for that PR.
+#                    The override is a human act on the PR page, never something the diff
+#                    can grant itself.
+#   diagrams         the code-karta SVGs under docs/diagrams/codekarta/ regenerate from the
+#                    source and the job fails on structural drift. Introduced against a tree
+#                    where 27 node titles had moved since the last regeneration.
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+    types: [ opened, synchronize, reopened, labeled, unlabeled ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  guardrail-drift:
+    name: Guardrail Drift
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      # test-compile, not compile: the processor also runs over the test sources, and the
+      # generated files describe both. A gate that only compiled main would pass a tree whose
+      # test-source annotations had drifted.
+      - name: Regenerate the guardrail files from the annotations
+        run: mvn -B -q clean test-compile -Djacoco.skip=true
+
+      - name: Fail if the committed guardrail files differ from the regenerated ones
+        run: |
+          # Scoped to the generated files. Build outputs elsewhere are gitignored, but a
+          # tracked build artifact appearing here would be a real finding too.
+          paths="CLAUDE.md GEMINI.md AGENTS.md .claudeignore .vibetags-roles .vibetags-root-index .gemini
+                 async-test-lib/CLAUDE.md async-test-lib/.claudeignore async-test-lib/.vibetags-roles async-test-lib/.claude/rules
+                 async-test-agent/CLAUDE.md async-test-agent/.claude/rules
+                 async-test-analysis/CLAUDE.md async-test-analysis/.claude/rules"
+          # shellcheck disable=SC2086
+          if [ -n "$(git status --porcelain -- $paths)" ]; then
+            echo "::error::Guardrail files are out of date with the annotations. Run a clean build (mvn clean test-compile) and commit the regenerated files; never edit inside VIBETAGS-START/END by hand."
+            # shellcheck disable=SC2086
+            git status --porcelain -- $paths
+            # shellcheck disable=SC2086
+            git --no-pager diff -- $paths
+            exit 1
+          fi
+          echo "Guardrail files regenerate byte-for-byte to the committed files."
+
+  locked-files:
+    name: Locked Files Guard
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # the guard diffs against the merge base
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Note when the maintainer has approved a locked edit
+        if: contains(github.event.pull_request.labels.*.name, 'lock-override')
+        run: |
+          echo "lock-override label present: the guard reports but does not fail. A maintainer has taken responsibility for the @AILocked edit in this PR." >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::lock-override label present; Locked Files Guard is warn-only for this PR."
+
+      # Pinned to the vibetags commit that ships the guard; bump deliberately, like any
+      # other action. The action touches .vibetags-locks (the processor's opt-in signal),
+      # compiles the PR head so the report is fresh, and intersects the diff with it.
+      - name: Guard @AILocked elements against this PR's diff
+        uses: PIsberg/vibetags/action/locked-files@8be75dd90b99bfcd3ec45023a19c3b289f7bd0a1 # main 2026-08-15
+        with:
+          build-command: mvn -B -q clean compile -Djacoco.skip=true
+          warn-only: ${{ contains(github.event.pull_request.labels.*.name, 'lock-override') && 'true' || 'false' }}
+
+  diagrams:
+    name: Architecture Diagram Drift
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Snapshot the committed diagrams' structure
+        run: sh tools/diagram-structure.sh docs/diagrams/codekarta > "$RUNNER_TEMP/diagram-structure-committed.txt"
+
+      - name: Regenerate the diagrams
+        run: sh tools/generate-architecture-diagrams.sh
+
+      # Structural, not byte-level: code-karta's directory walk follows filesystem order, so
+      # node positions differ between the OS that committed and the OS that checks. The
+      # sorted set of node titles is the deterministic part, and the part a drift gate
+      # exists to pin. tools/diagram-structure.sh says what it does not cover.
+      - name: Fail on structural drift
+        run: |
+          sh tools/diagram-structure.sh docs/diagrams/codekarta > "$RUNNER_TEMP/diagram-structure-fresh.txt"
+          if ! diff -u "$RUNNER_TEMP/diagram-structure-committed.txt" "$RUNNER_TEMP/diagram-structure-fresh.txt"; then
+            echo "::error::Architecture diagrams are stale: the code's shape moved and the committed pictures did not."
+            echo "::error::Run: sh tools/generate-architecture-diagrams.sh   then commit the regenerated SVGs."
+            exit 1
+          fi
+          echo "Diagram structure matches the code."
+
+      - name: Upload regenerated diagrams
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: regenerated-diagrams
+          path: docs/diagrams/codekarta/
+          if-no-files-found: ignore

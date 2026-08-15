@@ -23,3 +23,4 @@ vibetags.log
 # AI / tooling caches
 .antigravitycli/
 .pytest_cache/
+.vibetags-locks

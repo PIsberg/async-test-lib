@@ -51,54 +51,108 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </defs>
 <rect width="960" height="594" fill="#f9fafb"/>
 <rect width="960" height="594" fill="url(#dotGrid)"/>
-<rect class="group-rect" x="10.0" y="10.0" width="208.0" height="398.0" rx="8" fill="#f3f4f6" fill-opacity="0.5" stroke="#9ca3af" stroke-dasharray="6,4" stroke-width="1.2"/>
+<rect class="group-rect" x="10.0" y="10.0" width="408.0" height="443.0" rx="8" fill="#f3f4f6" fill-opacity="0.5" stroke="#9ca3af" stroke-dasharray="6,4" stroke-width="1.2"/>
 <text x="16.0" y="23.0" font-family="sans-serif" font-size="11" fill="#6b7280" font-style="italic">se.deversity.asynctest.runner</text>
-<g id="ConcurrencyRunner">
-  <title>ConcurrencyRunner [CLASS]</title>
-  <rect class="node-rect" x="24.0" y="24.0" width="180.0" height="220.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="114.0" y="46.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">ConcurrencyRunner</text>
+<g id="AgentAutoAttach">
+  <title>AgentAutoAttach [CLASS]</title>
+  <rect class="node-rect" x="24.0" y="24.0" width="180.0" height="145.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="114.0" y="46.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">AgentAutoAttach</text>
   <line x1="24.0" y1="68.0" x2="204.0" y2="68.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="32.0" y="81.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">log: Logger</text>
-  <text x="32.0" y="96.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">TIMEOUT_MULTIPLIER_PROPERT…</text>
-  <text x="32.0" y="111.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">TIMEOUT_MULTIPLIER_ENV_VAR…</text>
-  <line x1="24.0" y1="125.0" x2="204.0" y2="125.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="32.0" y="138.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">execute(ReflectiveInvocati…</text>
-  <text x="32.0" y="153.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">resolveTimeoutMultiplier()…</text>
-  <text x="32.0" y="168.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeAndGate(AsyncTestCo…</text>
-  <text x="32.0" y="183.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">createBarrier(int, long): …</text>
-  <text x="32.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">runSingleInvocationRound(R…</text>
-  <text x="32.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">buildMultiFailureError(Lis…</text>
-  <text x="32.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+7 more)</text>
+  <text x="32.0" y="96.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">PROPERTY: String</text>
+  <text x="32.0" y="111.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">AGENT_CLASS: String</text>
+  <text x="32.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">ATTEMPTED: AtomicBoolean</text>
+  <line x1="24.0" y1="140.0" x2="204.0" y2="140.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="32.0" y="153.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">attachIfRequested(): void</text>
+</g>
+<g id="ConcurrencyRunner">
+  <title>ConcurrencyRunner [CLASS]</title>
+  <rect class="node-rect" x="224.0" y="24.0" width="180.0" height="280.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="314.0" y="46.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">ConcurrencyRunner</text>
+  <line x1="224.0" y1="68.0" x2="404.0" y2="68.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="232.0" y="81.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">log: Logger</text>
+  <text x="232.0" y="96.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">AGENT_ABSENCE_LOGGED: java…</text>
+  <text x="232.0" y="111.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">TIMEOUT_MULTIPLIER_PROPERT…</text>
+  <text x="232.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">TIMEOUT_MULTIPLIER_ENV_VAR…</text>
+  <text x="232.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">QUIESCE_GRACE_PROPERTY: St…</text>
+  <text x="232.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DEFAULT_QUIESCE_GRACE_MS: …</text>
+  <text x="232.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
+  <line x1="224.0" y1="185.0" x2="404.0" y2="185.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="232.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">execute(ReflectiveInvocati…</text>
+  <text x="232.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">resolveTimeoutMultiplier()…</text>
+  <text x="232.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeAndGate(AsyncTestCo…</text>
+  <text x="232.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">createBarrier(int, long, b…</text>
+  <text x="232.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">runSingleInvocationRound(R…</text>
+  <text x="232.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">buildMultiFailureError(Lis…</text>
+  <text x="232.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+11 more)</text>
 </g>
 <g id="LicenseGuard">
   <title>LicenseGuard [CLASS]</title>
-  <rect class="node-rect" x="24.0" y="114.0" width="180.0" height="190.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="24.0" y="114.0" width="180.0" height="280.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="114.0" y="136.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">LicenseGuard</text>
   <line x1="24.0" y1="158.0" x2="204.0" y2="158.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="32.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">log: Logger</text>
   <text x="32.0" y="186.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">CACHE: ConcurrentMap&lt;Finge…</text>
-  <text x="32.0" y="201.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">announcedCiMock: boolean</text>
-  <text x="32.0" y="216.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">announcedGranted: boolean</text>
-  <line x1="24.0" y1="230.0" x2="204.0" y2="230.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="32.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">check(AsyncTestConfig): vo…</text>
-  <text x="32.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">performCheck(Fingerprint):…</text>
-  <text x="32.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">resetForTesting(): void</text>
-  <text x="32.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">cacheSize(): int</text>
+  <text x="32.0" y="201.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DUMMY_KEYGEN_ACCOUNT: Stri…</text>
+  <text x="32.0" y="216.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DUMMY_KEYGEN_PRODUCT: Stri…</text>
+  <text x="32.0" y="231.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">announcedCiMock: boolean</text>
+  <text x="32.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">announcedGranted: boolean</text>
+  <text x="32.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
+  <line x1="24.0" y1="275.0" x2="204.0" y2="275.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="32.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">check(AsyncTestConfig): vo…</text>
+  <text x="32.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">performCheck(Fingerprint):…</text>
+  <text x="32.0" y="318.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">assertsCommercialLicence(b…</text>
+  <text x="32.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">requireProviderCoordinates…</text>
+  <text x="32.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">validatorUnreachable(Finge…</text>
+  <text x="32.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">cacheKeyMaterial(Fingerpri…</text>
+  <text x="32.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
+</g>
+<g id="LicenseValidationCache">
+  <title>LicenseValidationCache [CLASS]</title>
+  <rect class="node-rect" x="224.0" y="114.0" width="180.0" height="175.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="314.0" y="136.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12.3" font-weight="bold" fill="#1f2937">LicenseValidationCache</text>
+  <line x1="224.0" y1="158.0" x2="404.0" y2="158.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="232.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DEFAULT_TTL_HOURS: long</text>
+  <line x1="224.0" y1="185.0" x2="404.0" y2="185.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="232.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">hash(String): String</text>
+  <text x="232.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isFresh(String): boolean</text>
+  <text x="232.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">hasRecord(String): boolean</text>
+  <text x="232.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">record(String): void</text>
+  <text x="232.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fileFor(String): Path</text>
+  <text x="232.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">ttlHours(): long</text>
+</g>
+<g id="OfflineLicense">
+  <title>OfflineLicense [CLASS]</title>
+  <rect class="node-rect" x="24.0" y="204.0" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="114.0" y="226.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">OfflineLicense</text>
+  <line x1="24.0" y1="248.0" x2="204.0" y2="248.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="32.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">FORMAT_PREFIX: String</text>
+  <text x="32.0" y="276.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">PRODUCT: String</text>
+  <text x="32.0" y="291.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">VENDOR_VERIFY_KEY_B64: Str…</text>
+  <text x="32.0" y="306.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">verifyKeyOverride: PublicK…</text>
+  <line x1="24.0" y1="320.0" x2="204.0" y2="320.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="32.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">verify(String, String): Gr…</text>
+  <text x="32.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">checkBinding(Properties, S…</text>
+  <text x="32.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">asciiEqualsIgnoreCase(Stri…</text>
+  <text x="32.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">domainOf(String): String</text>
+  <text x="32.0" y="393.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">deny(String, String): Secu…</text>
+  <text x="32.0" y="408.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">deny(String, String, Throw…</text>
+  <text x="32.0" y="423.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+2 more)</text>
 </g>
 <g id="SpinContentionBarrier">
   <title>SpinContentionBarrier [CLASS]</title>
-  <rect class="node-rect" x="24.0" y="204.0" width="180.0" height="190.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="114.0" y="226.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12.9" font-weight="bold" fill="#1f2937">SpinContentionBarrier</text>
-  <line x1="24.0" y1="248.0" x2="204.0" y2="248.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="32.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">PHASE_VH: VarHandle</text>
-  <text x="32.0" y="276.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">totalThreads: int</text>
-  <text x="32.0" y="291.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">arrivalCount: AtomicInteger</text>
-  <text x="32.0" y="306.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">pad1: long</text>
-  <text x="32.0" y="321.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">pad2: long</text>
-  <text x="32.0" y="336.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">pad3: long</text>
-  <text x="32.0" y="351.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+10 more)</text>
-  <line x1="24.0" y1="365.0" x2="204.0" y2="365.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="32.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">await(): void</text>
+  <rect class="node-rect" x="224.0" y="204.0" width="180.0" height="190.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="314.0" y="226.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12.9" font-weight="bold" fill="#1f2937">SpinContentionBarrier</text>
+  <line x1="224.0" y1="248.0" x2="404.0" y2="248.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="232.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">PHASE_VH: VarHandle</text>
+  <text x="232.0" y="276.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">totalThreads: int</text>
+  <text x="232.0" y="291.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">arrivalCount: AtomicInteger</text>
+  <text x="232.0" y="306.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">pad1: long</text>
+  <text x="232.0" y="321.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">pad2: long</text>
+  <text x="232.0" y="336.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">pad3: long</text>
+  <text x="232.0" y="351.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+10 more)</text>
+  <line x1="224.0" y1="365.0" x2="404.0" y2="365.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="232.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">await(): void</text>
 </g>
 <script type="text/javascript">
 <![CDATA[
