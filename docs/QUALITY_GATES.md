@@ -360,14 +360,28 @@ a property that held by habit into one that fails a build.
 | Diagram drift | `guardrails.yml` / `diagrams` | push, PR | the code-karta SVGs regenerate with a different set of node titles than the committed ones (`tools/diagram-structure.sh`). Fix: `sh tools/generate-architecture-diagrams.sh`, commit; the failing run attaches the fresh SVGs |
 | Core flows (BDD) | `CoreFlowsBddTest` (`-P e2e`, so every CI leg) | every CI build | a scenario in `async-test-lib/src/test/resources/features/core-flows.feature` has no binding, a binding has no scenario, or a scenario's assertions fail against the real engine. Five scenarios: body runs N x M times, a finding fails on `failOn = HIGH`, report-only stays green, an excluded detector reports nothing, `invocations = 0` is refused |
 | Docs routing | `DocsIndexCoverageTest` (default `mvn test`) | every build | a document under `docs/` is not linked from `docs/INDEX.md`, or a relative link in the doc set does not resolve |
+| Workflow input hygiene | `WorkflowInputHygieneTest` (default `mvn test`) | every build | a workflow interpolates untrusted event text (issue or PR title/body, comment body, commit message, branch name) into a `run:`, `script:` or `prompt:` block. Pass it through `env:` instead |
+| Allocation budget | `RunnerAllocationBudgetTest` (`-P e2e`, every CI leg) | every CI build | one all-detector `@AsyncTest` run allocates more than 80,000 bytes per body execution (3.0x the 25,985 to 26,599 measured on 2026-08-15; re-derive the same way, red first) |
+| Keygen contract | `KeygenValidateKeyContractTest` (default `mvn test`) | every build | the request to a loopback stand-in stops matching the recorded validate-key contract (path, `POST`, `meta.key`, `meta.scope.user`, `meta.scope.product`), or a `meta.valid=false` answer, or a body without `meta.valid`, admits a run. `LicenseGuardLemonSqueezyTest` is the LemonSqueezy twin |
+| Load-test trend | `load-tests.yml` + `load-tests/tools/compare-baseline.sh` | push, PR, nightly 04:00 UTC | never; prints `::warning::` when a fresh sweep row exceeds 1.5x (median ms) or 2.0x (all-detector KB) of the newest committed baseline. A trend line, cross-machine, so warn-only by design |
 | Mutation | `mutation.yml` | Sundays, dispatch | the PIT score drops below the pom's `mutationThreshold` (74) |
-| Inquisitor | `inquisitor.yml` | PR | the adversarial reviewer (`.github/INQUISITOR.md`, model pinned in `.github/MODEL-ROSTER.md`) writes a violation against the committed law. Skips loudly without `ANTHROPIC_API_KEY`; not a required check while it earns trust |
-| Copilot review | `copilot-review.yml` | PR opened | never; it requests a GitHub Copilot review, verifies the request was recorded, and reports SKIPPED otherwise. Advisory by design |
-| Instruction evals | `instruction-evals.yml` | PR touching the instruction files, dispatch | a task in `evals/` drops below its floor. Skips loudly without a key; see `evals/README.md` for how to read the numbers |
+| Fuzzing | `fuzzing.yml` | Mondays, dispatch, and PRs touching the config surface or the harness | Jazzer finds an input that breaks `AsyncTestConfig.Builder`, or never reaches `INITED` |
+| Inquisitor | `inquisitor.yml` | PR | the adversarial reviewer (`.github/INQUISITOR.md`, model pinned in `.github/MODEL-ROSTER.md`) writes a violation against the committed law. Optional lane: skips loudly without `ANTHROPIC_API_KEY`, and the repository does not carry that secret by decision (2026-08-15: Copilot Free is the AI lane; nothing blocks on paid tokens) |
+| Copilot review | `copilot-review.yml` | PR opened | never; it requests a GitHub Copilot review, verifies the request was recorded, and reports SKIPPED otherwise (it did on PR #262: no review request was recorded, so Copilot code review is not active for this account yet). Advisory by design |
+| Instruction evals | `instruction-evals.yml` | PR touching the instruction files, dispatch | never; runs `evals/` on the Copilot CLI (`COPILOT_GITHUB_TOKEN` secret, the maintainer's Copilot Free quota) and prints the adherence table plus a `::warning::` per rule below its floor. Advisory by decision: each measured rule has an enforcing gate behind it, and those block. Skips loudly without the secret or on exhausted quota. First measured run 2026-08-15, locally: `evals/README.md` |
 
 **Skipped is not passed.** Every lane that can lack credit (Inquisitor, Copilot, evals) says
 SKIPPED in its step summary when it does; a green job with a SKIPPED summary is a job that did not
-run, and the required-checks list should only ever contain lanes that cannot skip.
+run, and the required-checks list only contains lanes that cannot skip. Since 2026-08-15 the
+required checks on `main` are: `Build Maven Project (21)`, `Build Maven Project (25)`,
+`Gradle Test Suite (21)`, `Test Suite (21, ubuntu-latest)`, `Guardrail Drift`,
+`Locked Files Guard`, `Architecture Diagram Drift`. Branch protection is repository
+configuration, not a file here; this sentence is the record of what was set and why.
+
+**AI lanes run on Copilot Free, by decision.** No Anthropic key is required or configured. The
+Inquisitor workflow stays in the repository as the law-enforcing lane for anyone who adds
+`ANTHROPIC_API_KEY`; the eval bank runs on the Copilot CLI; the Copilot review lane requests a
+review from GitHub. All three skip loudly on missing credit and none of them can block a merge.
 
 **Why "propose, do not install" for dependencies.** `dependency-review.yml` fails on high-severity
 CVEs and denied licences, Dependabot owns bumps, and `docs/DEPENDENCIES.md` explains every

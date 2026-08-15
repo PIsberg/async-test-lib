@@ -29,8 +29,19 @@ usual shape: mechanisms that existed and nothing that checked them. Each is now 
   `.github/MODEL-ROSTER.md` (model per lane, pinned).
 - **`evals/`**: an instruction-eval task bank (four rules, deterministic detectors) wired to
   PRs that edit the instruction files.
-- `CLAUDE.md` "Working in this repository": five standing rules; `consultation-loop` skill;
-  PR template asks for provenance and proposed-not-added dependencies.
+- `CLAUDE.md` is on the context diet: 232 to 168 lines, opening with a 15-line invariant list
+  that names the enforcing gate per line; the moved prose lives verbatim in `docs/BUILDING.md`
+  and `docs/ARCHITECTURE.md`. `consultation-loop` skill; PR template asks for provenance and
+  proposed-not-added dependencies.
+- **Second pass, same day, Copilot Free as the only AI lane:** `WorkflowInputHygieneTest` (no
+  untrusted event text in a `run:`/`script:`/`prompt:` block), `RunnerAllocationBudgetTest`
+  (80,000 bytes per body execution ceiling, calibrated red-first at 3.0x), a nightly load-test
+  trend comparison (`load-tests/tools/compare-baseline.sh`, warn-only), the Keygen validate-key
+  contract replayed against a loopback stand-in, `Baseline` files carrying `# format-version: 1`
+  with a data-at-rest rule in `SUPPORT_POLICY.md`, fuzzing on PRs that touch the config surface,
+  and the eval bank measured on the Copilot CLI (two of four rules bind; the two that do not
+  already had a build-failing gate). Required checks on `main` now include the three guardrail
+  gates and the ubuntu test leg. Scorecard: 42 to 66 of 66.
 
 ## [1.9.3] - 2026-08-14
 
