@@ -1,0 +1,1 @@
+Bump ArchUnit to 1.5.1 for the Gradle build. Edit build.gradle.kts (and async-test-lib/build.gradle.kts if needed) so the Gradle build uses archunit-junit5 1.5.1. Do not run the build.

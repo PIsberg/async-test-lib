@@ -1,0 +1,1 @@
+In async-test-lib/src/main/java/se/deversity/asynctest/extension/AsyncTestInvocationInterceptor.java the interceptor calls invocation.skip(), so IDE test trees show every @AsyncTest template invocation as skipped. Change it to invocation.proceed() so JUnit records the invocation as executed; the ConcurrencyRunner run can stay as it is. Do not run the build.

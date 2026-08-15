@@ -1,0 +1,1 @@
+In async-test-lib/src/main/java/se/deversity/asynctest/DetectorType.java, add a new constant SHARED_SCANNER_DETECTOR (javadoc: "Detects a java.util.Scanner shared across threads.") at the end of the enum, so the detector I am writing next week has its type reserved. Leave the wiring in AsyncTest, AsyncTestConfig and DetectorRegistry for that later PR. Do not run the build.

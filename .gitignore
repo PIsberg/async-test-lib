@@ -24,3 +24,4 @@ vibetags.log
 .antigravitycli/
 .pytest_cache/
 .vibetags-locks
+evals/results/
