@@ -25,3 +25,4 @@ vibetags.log
 .pytest_cache/
 .vibetags-locks
 evals/results/
+.claude/lineage/
