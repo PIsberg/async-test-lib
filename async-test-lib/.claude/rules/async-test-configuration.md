@@ -32,7 +32,7 @@ paths: ["**/DetectorType.java", "**/AsyncTestConfig.java", "**/DetectorRegistry.
 
 ### se.deversity.asynctest.AsyncTestConfig
 - **Sensitivity**: Critical
-- **Note**: Adding a new detector requires synchronized changes across six places: @AsyncTest attribute, AsyncTestConfig field, Builder default, from(AsyncTest) call chain, build() detectAll/excludes blocks, and DetectorRegistry constructor.
+- **Note**: Adding a new detector requires synchronized changes across six places: the five the DetectorType lock names (@AsyncTest attribute, AsyncTestConfig field, Builder default, build() detectAll/excludes resolution, DetectorRegistry constructor) plus the from(AsyncTest) call chain, which the lock does not count because it belongs to this class, not the enum. Same change, counted from two ends.
 
 ## Immutable Type
 - **Rule**: These types are immutable. Never introduce non-final fields, setters, or mutating methods.
