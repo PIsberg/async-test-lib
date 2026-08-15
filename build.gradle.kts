@@ -10,7 +10,7 @@ plugins {
     id("com.vanniktech.maven.publish") version "0.37.0" apply false
     id("net.ltgt.errorprone") version "5.1.0" apply false
     id("com.github.spotbugs") version "6.5.10" apply false
-    id("org.cyclonedx.bom") version "3.4.0"
+    id("org.cyclonedx.bom") version "3.4.1"
 }
 
 // ── Dependency versions ─────────────────────────────────────────────────────
