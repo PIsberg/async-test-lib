@@ -11,8 +11,14 @@
 #
 # Usage:  sh tools/generate-architecture-diagrams.sh
 #
-# The diagrams are committed. Regenerate them when the package structure changes, not on
-# every commit: a diff here means the architecture moved.
+# The diagrams are committed, and CI regenerates them on every push and pull request and
+# fails on structural drift (the `diagrams` job in .github/workflows/guardrails.yml,
+# comparing tools/diagram-structure.sh fingerprints). Structure, not bytes: regeneration is
+# idempotent on one machine, but code-karta's directory walk follows filesystem order, so
+# node positions differ between the OS that committed and the OS that checks. A structural
+# diff means the architecture moved, which is exactly when someone should look, and the
+# gate makes sure someone does. Regenerate locally and commit the SVGs, or let the failing
+# job hand you the fresh ones as an artifact.
 set -eu
 
 CK_VERSION="0.2.0"

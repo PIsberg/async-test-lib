@@ -77,3 +77,21 @@ Compare like for like: same machine, same JDK, back to back. `results/<version>/
 what a stored run was measured on, and a comparison against a run from different hardware is not a
 comparison. JMH's `scoreError` is part of the result — `engineHarnessOnly` above measured
 463 µs ± 673 µs, which says "small" and nothing more precise than that.
+
+## The performance contract, in two halves
+
+The book this repository follows (*Vibe Architecture*, ch17b) asks for a performance contract with
+an inner-loop half and a ring half, and the two are deliberately different instruments:
+
+- **Inner loop, asserted:** `RunnerAllocationBudgetTest` (in `async-test-lib`, e2e tier, so every
+  CI leg) fails when one all-detector `@AsyncTest` run allocates more than 80,000 bytes per body
+  execution. That ceiling is 3.0x the 25,985 to 26,599 bytes measured on 2026-08-15 by watching
+  the test fail with a 1-byte ceiling; allocation is what the runner and detectors control and it
+  is stable across machines, which is why it can gate where wall-clock cannot.
+- **Nightly ring, compared:** `load-tests.yml` runs this fast sweep every night at 04:00 UTC and
+  `tools/compare-baseline.sh` joins the fresh `throughput.csv` / `memory.csv` rows with the newest
+  committed `results/<version>/` set, printing a `::warning::` above 1.5x (median ms) or 2.0x
+  (all-detector KB). Warn-only, because the paragraph above is true: baselines are recorded on
+  whichever machine cut the release. The first comparison, 1.7.0 against 1.6.0, already sat at
+  1.6x on the small rows, which is the kind of number the ring exists to make visible and a
+  human exists to interpret.

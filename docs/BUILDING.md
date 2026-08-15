@@ -7,6 +7,56 @@
 > and builds all three. To work on one, add `-pl async-test-agent` (Maven) or use
 > `:async-test-agent:test` (Gradle). Artifacts land in `<module>/target/` rather than `target/`.
 
+### Build and test: what the maintainers know
+
+Moved here verbatim from the root `CLAUDE.md` on 2026-08-15 (context diet); the root file keeps
+the five commands and links here for the rest.
+
+**Maven is canonical, and it is the only place versions are declared.** CI (`tests.yml`) and
+releases (`publish.yml`) run `mvn`. Gradle is a secondary developer build for fast local iteration,
+and `build.gradle.kts` reads `pom.xml`'s `<properties>` block at configuration time rather than
+restating it, so a shared version is changed in one file and both builds follow. The project
+coordinates come from there too, which is why `gradle.properties` declares neither.
+
+Add a shared version to `pom.xml` and read it with `pomVersion("...")`. `BuildMetadataSyncTest`
+fails if a version literal reappears in a Gradle file, if the derivation is unwound, or if the
+published descriptions stop matching. The only Gradle-declared versions are the ones with no Maven
+twin: the `plugins` block and the test-only logback backend, both watched by the gradle Dependabot
+ecosystem.
+
+```bash
+mvn test                                   # local tier (@Tag("e2e") engine tests excluded)
+mvn test -P fast                           # same 190 classes, ~3x faster (no jacoco, 0.5C forks)
+mvn test -P e2e                            # full suite: what CI runs (auto via env.CI)
+mvn -pl async-test-lib test                # one module
+mvn -Dtest=AsyncTestContextTest test       # one class
+mvn -pl async-test-lib -am test -Dtest=X -Dsurefire.failIfNoSpecifiedTests=false
+                                           # one class in a multi-module run: without that flag
+                                           # surefire aborts the *sibling* module with
+                                           # "No tests matching pattern". -DfailIfNoTests is a
+                                           # different, silently-ignored property.
+mvn install -DskipTests -Djacoco.skip=true # the static gate chain CI runs first (~3 min):
+                                           # PMD, SpotBugs, Checkstyle, japicmp, javadoc.
+                                           # `-P fast` skips all of these — a branch green
+                                           # under it can still fail every CI job.
+mvn clean install
+./gradlew test                             # secondary build (same split; -Pe2e for full)
+./gradlew test --tests "se.deversity.asynctest.diagnostics.*"
+```
+
+Run locally without a license key with `-Dlicense.mock.mode=true`. CI activates mock mode by itself.
+
+**CI builds on JDK 21 and 25.** The JDK 26 static-analysis blocker is gone — `pmd.version` is now
+pinned to 7.26.0, which reports 0 `LooseCoupling` violations where 7.17.0 reported 243. See
+[docs/QUALITY_GATES.md](QUALITY_GATES.md#build-with-jdk-21-or-25-not-26) for what was measured.
+
+`forkEvery = 1` means each test class gets its own JVM. Nested classes matching `*$*` are excluded
+from direct discovery — they run only via JUnit's `EngineTestKit` in meta-tests such as
+`AsyncTestLibraryMetaTest`. Those meta-tests carry `@E2E` (= `@Tag("e2e")`) and are excluded from
+the default local run; the `e2e` profile (automatic in CI via the `CI` env var) runs them and
+re-enables the jacoco check gate. `E2eTagGuardTest` pins the tag set.
+
+
 ### Prerequisites
 
 - **Java 21+**

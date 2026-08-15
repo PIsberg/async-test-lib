@@ -1,0 +1,67 @@
+name: Mutation Testing (PIT)
+
+# Weekly, and on demand. A full PIT run over se.deversity.asynctest.* is the longest job in
+# the repository (about 1h20m locally, longer under CI's e2e tier), and its score moves
+# slowly, so running it on every push would buy a number nobody reads. Weekly keeps the gate
+# real: the job fails when the mutation score drops below the threshold in
+# async-test-lib/pom.xml (74%, measured 75.4% on 2026-07-17; the margin absorbs TIMED_OUT
+# jitter). Trigger it from Actions -> Mutation Testing (PIT) -> Run workflow when test
+# strength is the actual question, for instance before a release or after a detector sweep.
+#
+# The e2e profile auto-activates under CI, which matters here: pitest reads surefire's
+# excludedGroups, so without it PIT would score the fast tier only and report the meta-tests'
+# coverage as missing.
+
+on:
+  schedule:
+    - cron: '0 2 * * 0'   # Sundays 02:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mutation-testing:
+    name: Mutation Testing (PIT)
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      # test-compile first so the goal runs against this tree, not a published artifact
+      # (a bare goal in the reactor resolves siblings from the repository). Scoped to
+      # async-test-lib: it is the only module with a pitest configuration, and the only one
+      # whose tests are a mutation-killing suite.
+      - name: Run mutation coverage (fails below the pom's mutationThreshold)
+        run: mvn -B -pl async-test-lib -am test-compile org.pitest:pitest-maven:mutationCoverage -Djacoco.skip=true
+
+      - name: Upload PIT mutation report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pitest-report-${{ github.run_id }}
+          path: async-test-lib/target/pit-reports/**
+          if-no-files-found: warn
+          retention-days: 90

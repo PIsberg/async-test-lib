@@ -61,6 +61,23 @@ class DetectorCatalogCoverageTest {
     private static final Map<String, Integer> THIRD_PARTY_COUNTS =
             Map.of("QUALITY_GATES.md", 121);
 
+    /**
+     * The agent-facing files, scanned in addition to {@code docs/} and the README.
+     *
+     * <p>These are what an agent reads before it reads anything else, and until 2026-08-15 they
+     * were the only place a stale count survived: {@code docs/} said 135, the detectors rule file
+     * said 127 and {@code .claude/SKILL.md} said 124, because this gate only looked at the files a
+     * human reads. A wrong number in an instruction file is worse than one in a guide, since the
+     * reader acts on it without checking. Directories are walked for {@code *.md}; missing entries
+     * are skipped, so a module that has no rules directory does not fail the build.
+     */
+    private static final List<String> AGENT_FACING = List.of(
+            "CLAUDE.md", "AGENTS.md", "GEMINI.md", "CONTRIBUTING.md",
+            ".claude", ".gemini",
+            "async-test-lib/CLAUDE.md", "async-test-lib/.claude",
+            "async-test-agent/CLAUDE.md", "async-test-agent/.claude",
+            "async-test-analysis/CLAUDE.md", "async-test-analysis/.claude");
+
     /** A detector entry heading: {@code ### 42. Some Detector}. */
     private static final Pattern ENTRY = Pattern.compile("^### (\\d+)\\. ", Pattern.MULTILINE);
 
@@ -126,6 +143,18 @@ class DetectorCatalogCoverageTest {
         Path readme = repoRoot().resolve("README.md");
         if (Files.isRegularFile(readme)) {
             collectWrongClaims(read(readme), expected, "README.md", "README.md", wrong);
+        }
+        for (String entry : AGENT_FACING) {
+            Path path = repoRoot().resolve(entry);
+            List<Path> files = Files.isDirectory(path) ? markdownFiles(path)
+                    : Files.isRegularFile(path) ? List.of(path) : List.of();
+            for (Path file : files) {
+                if (file.toString().contains("worktrees")) {
+                    continue; // git worktrees under .claude/ are other checkouts, not this tree
+                }
+                collectWrongClaims(read(file), expected, file.getFileName().toString(),
+                        repoRoot().relativize(file).toString(), wrong);
+            }
         }
 
         assertTrue(wrong.isEmpty(),

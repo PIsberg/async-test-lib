@@ -20,7 +20,7 @@ import java.util.Set;
  */
 @AICore(
     sensitivity = "Critical",
-    note = "Adding a new detector requires synchronized changes across six places: @AsyncTest attribute, AsyncTestConfig field, Builder default, from(AsyncTest) call chain, build() detectAll/excludes blocks, and DetectorRegistry constructor."
+    note = "Adding a new detector requires synchronized changes across six places: the five the DetectorType lock names (@AsyncTest attribute, AsyncTestConfig field, Builder default, build() detectAll/excludes resolution, DetectorRegistry constructor) plus the from(AsyncTest) call chain, which the lock does not count because it belongs to this class, not the enum. Same change, counted from two ends."
 )
 @AIContext(
     focus = "Maintain strict 1:1 mapping between @AsyncTest attributes, Builder fields, from(AsyncTest), build() logic, and DetectorRegistry",

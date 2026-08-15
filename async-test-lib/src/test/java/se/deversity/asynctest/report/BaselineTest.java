@@ -84,6 +84,38 @@ class BaselineTest {
         assertTrue(reloaded.contains("com.example.FooTest#other", "RaceConditionDetector"));
     }
 
+    @Test
+    void writtenFilesCarryTheFormatVersionAndOlderFilesStillLoad() throws Exception {
+        Path file = tempDir.resolve("baseline.txt");
+        System.setProperty(Baseline.PATH_PROPERTY, file.toString());
+        Baseline.record("com.example.FooTest#bar", List.of("RaceConditionDetector"));
+
+        List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+        assertTrue(lines.contains("# format-version: " + Baseline.FORMAT_VERSION),
+                "a written baseline names its format version so a future incompatible shape can be "
+                        + "recognised instead of misread; was:\n" + String.join("\n", lines));
+
+        // A file from before the marker existed (or from another release) is the same format
+        // minus the comment, and must keep loading: the marker is a comment, never a gate.
+        Path legacy = tempDir.resolve("legacy.txt");
+        Files.writeString(legacy,
+                "# async-test baseline\ncom.example.FooTest#bar | RaceConditionDetector\n",
+                StandardCharsets.UTF_8);
+        assertTrue(Baseline.load(legacy).contains("com.example.FooTest#bar", "RaceConditionDetector"),
+                "a baseline without a format-version line must load unchanged");
+
+        // A file from a release that knows a newer shape is refused, loudly, naming the fix.
+        Path newer = tempDir.resolve("newer.txt");
+        Files.writeString(newer, "# format-version: " + (Baseline.FORMAT_VERSION + 1)
+                + System.lineSeparator() + "com.example.FooTest#bar | RaceConditionDetector"
+                + System.lineSeparator(), StandardCharsets.UTF_8);
+        IllegalStateException refused = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalStateException.class, () -> Baseline.load(newer),
+                "a baseline from a newer format must not be silently misread");
+        assertTrue(refused.getMessage().contains("format-version " + (Baseline.FORMAT_VERSION + 1)),
+                "the refusal names the version it met; was: " + refused.getMessage());
+    }
+
     // ---- Integration: baseline suppresses the failOn gate ----
 
     @Test

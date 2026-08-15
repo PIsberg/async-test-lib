@@ -39,7 +39,7 @@ you are editing here.
   <core_elements>
     <element path="se.deversity.asynctest.AsyncTestConfig">
       <sensitivity>Critical</sensitivity>
-      <note>Adding a new detector requires synchronized changes across six places: @AsyncTest attribute, AsyncTestConfig field, Builder default, from(AsyncTest) call chain, build() detectAll/excludes blocks, and DetectorRegistry constructor.</note>
+      <note>Adding a new detector requires synchronized changes across six places: the five the DetectorType lock names (@AsyncTest attribute, AsyncTestConfig field, Builder default, build() detectAll/excludes resolution, DetectorRegistry constructor) plus the from(AsyncTest) call chain, which the lock does not count because it belongs to this class, not the enum. Same change, counted from two ends.</note>
     </element>
     <element path="se.deversity.asynctest.AsyncTestContext">
       <sensitivity>Critical</sensitivity>

@@ -5,6 +5,12 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
+  # The nightly ring of the performance contract: the same fast sweep, every night, compared
+  # against the newest committed baseline under load-tests/results/ by
+  # load-tests/tools/compare-baseline.sh. Warn-only, because baselines are cross-machine;
+  # the inner-loop gate that fails a build is RunnerAllocationBudgetTest.
+  schedule:
+    - cron: '0 4 * * *'
   workflow_dispatch:
     inputs:
       asyncTestVersion:
@@ -69,6 +75,16 @@ jobs:
           ./gradlew -p load-tests test \
             ${{ inputs.asyncTestVersion && format('-PasyncTestVersion={0}', inputs.asyncTestVersion) || '' }} \
             -PloadTestFast=true
+
+      # Trend line, not gate: compares the sweep just written (the newest results dir) with the
+      # newest committed baseline and prints ::warning:: lines above the band. Exit code is
+      # always 0 by design; read the step summary on scheduled runs.
+      - name: Compare against the newest committed baseline (warn-only)
+        if: always()
+        run: |
+          fresh="$(ls -td load-tests/results/*/ | grep -v _plots | head -1 | sed 's:/$::')"
+          echo "## Load-test trend (fresh: $fresh)" >> "$GITHUB_STEP_SUMMARY"
+          sh load-tests/tools/compare-baseline.sh "$fresh" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload throughput results
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -17,6 +17,10 @@
 - [ ] Public API changes are intentional and carry the right version bump per
       [docs/SUPPORT_POLICY.md](../blob/main/docs/SUPPORT_POLICY.md) — japicmp will fail the
       build otherwise
+- [ ] Commits an agent authored carry the `Co-Authored-By` trailer, so provenance is
+      readable from `git log`
+- [ ] A new dependency was proposed with a reason and a `docs/DEPENDENCIES.md` row, not
+      just added
 - [ ] CI is green, or the failure is explained below
 
 ## Anything reviewers should push back on

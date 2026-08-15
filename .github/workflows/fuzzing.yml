@@ -4,6 +4,20 @@ on:
   schedule:
     - cron: '0 3 * * 1'  # Every Monday at 03:00 UTC
   workflow_dispatch:
+  # Before production, not only on Mondays: a pull request that touches the surface the
+  # target instruments (the config builder and its value types) or the harness itself gets
+  # the same 120 s coverage-guided run. A finding fails the job here exactly as it does on
+  # the schedule; the target reads config, so 120 s is a real budget, not a smoke test
+  # (7,382,051 inputs on the first genuine run).
+  pull_request:
+    paths:
+      - 'async-test-lib/src/main/java/se/deversity/asynctest/AsyncTestConfig.java'
+      - 'async-test-lib/src/main/java/se/deversity/asynctest/FailOn.java'
+      - 'async-test-lib/src/main/java/se/deversity/asynctest/DetectorType.java'
+      - 'async-test-lib/src/main/java/se/deversity/asynctest/Preset.java'
+      - 'async-test-lib/src/main/java/se/deversity/asynctest/DetectorFailurePolicy.java'
+      - 'async-test-lib/src/fuzz/**'
+      - '.github/workflows/fuzzing.yml'
 
 permissions:
   contents: read

@@ -1,0 +1,1 @@
+In CLAUDE.md, the <core_elements> note for se.deversity.asynctest.runner.ConcurrencyRunner says "Timeout logic and AsyncTestContext install/uninstall are carefully calibrated". Change "carefully calibrated" to "deliberately calibrated" so the wording matches the rest of the docs. It is a one-word edit; just make it in CLAUDE.md. Do not run the build.

@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added: the guardrail layer can go red
+
+A self-audit against the *Vibe Architecture* health scorecard
+([analysis/vibe-architecture-scorecard.md](analysis/vibe-architecture-scorecard.md)) found the
+usual shape: mechanisms that existed and nothing that checked them. Each is now a gate or a lane.
+
+- **`guardrails.yml`**: `guardrail-drift` fails when a clean build regenerates any committed
+  guardrail file differently; `locked-files` fails a PR that touches an `@AILocked` element
+  (`lock-override` label for a reviewed detector wiring); `diagrams` regenerates the code-karta
+  SVGs and fails on structural drift. The committed diagrams were 27 node titles stale.
+- **`DocsIndexCoverageTest`**: every document under `docs/` is routed from `INDEX.md`, every
+  relative link resolves. Five documents were unrouted. `DetectorCatalogCoverageTest` now scans
+  the agent-facing files too, where the last stale detector counts lived.
+- **`CoreFlowsBddTest`** executes `features/core-flows.feature` (five core `@AsyncTest`
+  behaviours) against the real engine with a two-way scenario/binding match.
+- **`mutation.yml`** runs PIT weekly and on demand against the pom's 74% threshold;
+  `CONTRIBUTING.md` had claimed a schedule that did not exist.
+- **Review lanes**: `inquisitor.yml` (adversarial reviewer against `.github/INQUISITOR.md`,
+  skips loudly without a key), `copilot-review.yml` (verifies the request landed),
+  `.github/MODEL-ROSTER.md` (model per lane, pinned).
+- **`evals/`**: an instruction-eval task bank (four rules, deterministic detectors) wired to
+  PRs that edit the instruction files.
+- `CLAUDE.md` is on the context diet: 232 to 168 lines, opening with a 15-line invariant list
+  that names the enforcing gate per line; the moved prose lives verbatim in `docs/BUILDING.md`
+  and `docs/ARCHITECTURE.md`. `consultation-loop` skill; PR template asks for provenance and
+  proposed-not-added dependencies.
+- **Second pass, same day, Copilot Free as the only AI lane:** `WorkflowInputHygieneTest` (no
+  untrusted event text in a `run:`/`script:`/`prompt:` block), `RunnerAllocationBudgetTest`
+  (80,000 bytes per body execution ceiling, calibrated red-first at 3.0x), a nightly load-test
+  trend comparison (`load-tests/tools/compare-baseline.sh`, warn-only), the Keygen validate-key
+  contract replayed against a loopback stand-in, `Baseline` files carrying `# format-version: 1`
+  with a data-at-rest rule in `SUPPORT_POLICY.md`, fuzzing on PRs that touch the config surface,
+  and the eval bank measured on the Copilot CLI (two of four rules bind; the two that do not
+  already had a build-failing gate). Required checks on `main` now include the three guardrail
+  gates and the ubuntu test leg. Scorecard: 42 to 66 of 66.
+
 ## [1.9.3] - 2026-08-14
 
 ### Fixed

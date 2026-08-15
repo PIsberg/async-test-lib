@@ -14,6 +14,23 @@ rather than the whole set.
 > pre-1.6.0 detector wiring; they remain accurate for the legacy registry and will be regenerated in
 > the next docs sweep.
 
+## Module layout
+
+Moved here verbatim from the root `CLAUDE.md` on 2026-08-15 (context diet).
+
+Three-module Maven reactor. The root holds the parent POM and shared config — no sources.
+
+| Module | Artifact | What it holds |
+|--------|----------|---------------|
+| `async-test-lib/` | `async-test-lib` (unchanged coordinate) | annotations, config, runner, extension, the detectors, SPI, reporting, benchmark, telemetry |
+| `async-test-agent/` | `async-test-agent` | `AsyncTestAgent` + `AgentOptions`. The only module allowed to reference `net.bytebuddy`, and the one carrying the `Premain-Class` manifest |
+| `async-test-analysis/` | `async-test-analysis` | `StaticPinningScanner`. ASM only; depends on nothing else here |
+
+`ArchitectureTest` pins these boundaries: nothing may depend on the agent or the analysis module,
+and byte-buddy / asm may not leak out of them. [docs/analysis/modularization.md](analysis/modularization.md)
+covers why the split stops where it does — the detector set cannot move until the dual-registry
+question in [docs/analysis/roadmap-v2.md](analysis/roadmap-v2.md) Train 3 is settled.
+
 ## Topics
 
 ### How a test runs
