@@ -16,7 +16,7 @@
 # The published extension surface: SPI interfaces, listeners, assertions, formatters and
 # the Violation record. Signature-stability rules dominate here. Listed first so the SPI
 # package wins over the same-named classes in the configuration role below.
-async-test-public-api = **/spi/**, **/report/**, **/AsyncAssert.java, **/AsyncFindings.java, **/AsyncTestListener.java, **/AsyncTestListenerRegistry.java, **/AsyncTestListenerRegistry/**, **/NoopAsyncTestListener.java
+async-test-public-api = **/spi/**, **/report/**, **/AsyncAssert.java, **/AsyncFindings.java, **/AsyncTestRunner.java, **/AsyncTestListener.java, **/AsyncTestListenerRegistry.java, **/AsyncTestListenerRegistry/**, **/NoopAsyncTestListener.java
 
 # The N×M execution engine and its ThreadLocal context — install/uninstall symmetry,
 # CyclicBarrier timing, invocation.skip(). The guardrails here are about not breaking

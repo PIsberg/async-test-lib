@@ -56,6 +56,13 @@
         <Bug pattern="THROWS_METHOD_THROWS_CLAUSE_THROWABLE"/>
         <Class name="se.deversity.asynctest.runner.ConcurrencyRunner"/>
     </Match>
+    <!-- AsyncTestRunner is the programmatic front of the same engine: Body.run() and
+         AsyncTestRunner.run(...) declare Throwable for the same reason, so a body's Error or a
+         worker's AssertionError reaches the caller exactly as it reaches JUnit. -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_CLAUSE_THROWABLE"/>
+        <Class name="~se\.deversity\.asynctest\.AsyncTestRunner(\$.*)?"/>
+    </Match>
 
     <!-- ================================================================
          THROWS_METHOD_THROWS_RUNTIMEEXCEPTION — intentional re-throw pattern
