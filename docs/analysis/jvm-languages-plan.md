@@ -99,7 +99,7 @@ same detector findings from Scala as from Java, the documentation line is enough
 
 Each step is a PR. Order matters only where stated. Status 2026-08-16: steps 1, 2 and 3 are done
 in one PR (`consumer-fixture-langs/`, the CI steps, [JVM_LANGUAGES.md](../JVM_LANGUAGES.md));
-steps 4 and 5 are open.
+step 4 is measured (below); step 5 is open.
 
 **1. Fixtures that prove it: `consumer-fixture-langs/`** (Kotlin, Groovy, Scala, Clojure; one
 Maven module each, plus the Gradle twin the repo convention requires, versions read from the
@@ -131,11 +131,15 @@ per language linking its fixture, and the Spock and `clojure.test` limitations s
 front. `README.md` currently says "works from Kotlin and Groovy too"; it can say all four and
 link the section. `DocsIndexCoverageTest` enforces the routing.
 
-**4. Measure the agent from Scala** (`-Dasynctest.agent=fields=true` on the Scala module's
-buggy twin, without the manual `recordFieldWrite`): does `RaceConditionDetector` report the
-`var`? If yes, document `fields=true` for Scala and close item B. If no, item B becomes a
-small agent change with `AgentFeedsDetectorEndToEndTest`-style coverage and the guardrail
-review the Critical element requires.
+**4. Measure the agent from Scala.** Done 2026-08-16, in a throwaway project against the
+published 1.9.3 with `-Dasynctest.agent=includes=spike,fields=true` and the `async-test-agent`
+artifact on the test classpath, no manual hook: an unguarded `counter += 1` on a Scala `var`
+reported `AtomicityValidator` and nothing from `RaceConditionDetector`; a Java `counter++`
+under the same agent reported exactly the same. With `fields=true`, Scala and Java are
+indistinguishable to the agent, so item B closes as the documentation line in
+[JVM_LANGUAGES.md](../JVM_LANGUAGES.md), not an agent change. (That field weaving feeds the
+atomicity detector rather than the race hook is a property of the agent, not of the language,
+and out of scope here.)
 
 **5. Decide item A** (programmatic runner) as its own design discussion. It unlocks the native
 frameworks, it is the only route to `clojure.test`, and it is an API surface that will be

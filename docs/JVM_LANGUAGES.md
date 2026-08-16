@@ -67,7 +67,11 @@ Discovered as-is (verified with Scala 3.3). `@BeforeAll` / `@AfterAll` go on the
 `var` compiles to accessors `count()` and `count_$eq(int)`, not `getCount`/`setCount`, so the
 agent's default accessor weaving does not see Scala fields. Use the explicit
 `recordFieldWrite` hook, or run the agent with `fields=true`, which weaves the field
-instructions themselves. Under sbt, Jupiter needs `sbt-jupiter-interface`; the fixture is Maven
+instructions themselves. Measured 2026-08-16 with `-Dasynctest.agent=includes=<pkg>,fields=true`
+on the published 1.9.3: an unguarded `counter += 1` on a Scala `var` and an unguarded
+`counter++` on a Java field produce the same finding (`AtomicityValidator` reports the
+read-modify-write; `RaceConditionDetector` reports neither, because field weaving feeds the
+atomicity detector, not the race hook). With `fields=true`, Scala is Java. Under sbt, Jupiter needs `sbt-jupiter-interface`; the fixture is Maven
 and Gradle. Fixture: [`consumer-fixture-langs/scala`](../consumer-fixture-langs/scala).
 
 ## Clojure
