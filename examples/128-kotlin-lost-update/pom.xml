@@ -16,7 +16,7 @@
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <async-test-lib.version>1.9.3</async-test-lib.version>
-        <junit.version>5.11.4</junit.version>
+        <junit.version>6.1.3</junit.version>
         <!-- 2.4.x or newer: the IntelliJ util bundled with Kotlin 2.1 cannot parse a JDK
              version of "26" and dies before compiling anything. -->
         <kotlin.version>2.4.10</kotlin.version>

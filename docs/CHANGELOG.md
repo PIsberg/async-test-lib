@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed: every hand-pinned dependency bumped, and a skill that repeats it
+
+Dependabot watches the reactor root and nothing else, so the satellites had drifted: the 137
+examples were on JUnit 5.10.2, `consumer-fixture` on 6.0.3, the language fixtures one to five
+toolchain releases behind. All of it now sits on the latest release: JUnit 6.1.3 everywhere,
+Groovy 5.1.0 with gmavenplus 5.1.0, Scala 3.8.4 with scala-maven-plugin 4.9.10, Clojure 1.12.5,
+Surefire 3.5.6 in the fixtures, logback 1.6.3 in the Gradle build, vibetags 1.2.2 in the reactor
+(which regenerated one guardrail rule file). Held back on purpose and reported instead:
+`intellij-plugin/` (no workflow builds it), the Gradle wrapper (already current), the japicmp
+baseline and the library's own version pins. `.claude/skills/bumpdeps/` (`bump-deps.sh`,
+`latest-version.sh`, `verify.sh`) is the repeatable pass: a rule table of every satellite pin,
+pre-releases filtered, and the verification sequence that ran here: fast suite 1844/0, Gradle
+build, both fixtures on both builds (consumer-fixture 273/0, langs 8/0 plus 2 clojure.test),
+examples 01 and 128, load-tests compile.
+
 ### Added: `@AsyncTest` from Kotlin, Groovy, Scala and Clojure, proven on every build
 
 `consumer-fixture-langs/` drives the published artifact from each of the four languages with

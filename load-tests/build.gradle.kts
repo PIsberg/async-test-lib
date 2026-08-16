@@ -41,7 +41,7 @@ val asyncTestVersion: String = (project.findProperty("asyncTestVersion") as Stri
                 "build.gradle.kts together."
         }
     }
-val junitVersion = "6.1.2"
+val junitVersion = "6.1.3"
 
 // Publish library to local Maven before running load tests:
 //   ./gradlew publishToMavenLocal          (from project root)
