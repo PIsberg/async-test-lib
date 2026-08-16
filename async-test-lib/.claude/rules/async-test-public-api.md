@@ -1,5 +1,5 @@
 ---
-paths: ["**/spi/**", "**/report/**", "**/AsyncAssert.java", "**/AsyncTestListener.java", "**/AsyncTestListenerRegistry.java", "**/AsyncTestListenerRegistry/**", "**/NoopAsyncTestListener.java"]
+paths: ["**/spi/**", "**/report/**", "**/AsyncAssert.java", "**/AsyncFindings.java", "**/AsyncTestRunner.java", "**/AsyncTestListener.java", "**/AsyncTestListenerRegistry.java", "**/AsyncTestListenerRegistry/**", "**/NoopAsyncTestListener.java"]
 ---
 
 <!-- VIBETAGS-START -->

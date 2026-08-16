@@ -3,5 +3,5 @@ plugins {
 }
 
 dependencies {
-    testImplementation("org.apache.groovy:groovy:5.0.7")
+    testImplementation("org.apache.groovy:groovy:5.1.0")
 }

@@ -3,5 +3,5 @@ plugins {
 }
 
 dependencies {
-    testImplementation("org.scala-lang:scala3-library_3:3.3.6")
+    testImplementation("org.scala-lang:scala3-library_3:3.8.4")
 }
