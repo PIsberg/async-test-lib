@@ -69,8 +69,10 @@ metadata on the method signatures. Three things that are not obvious:
   compiles to an instance method and JUnit refuses it.
 - The namespace must be AOT-compiled (`clojure-maven-plugin` `testCompile`), and Surefire must
   include `**/*Test.class`, because the class is named by `:name`, not by the file.
-`clojure.test` `deftest` cannot use `@AsyncTest`; that needs the programmatic runner discussed
-in the plan.
+`clojure.test` `deftest` cannot use `@AsyncTest`; `programmatic_runner_test.clj` runs the same
+two directions through `AsyncTestRunner.run(config, body)` from plain deftests, executed by
+`clojure-maven-plugin`'s `test` goal in a forked Clojure process (so `licenseMockMode` is set on
+the config, not through Surefire).
 
 ## Versions
 
