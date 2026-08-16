@@ -16,7 +16,7 @@
 
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>consumer-fixture-langs</artifactId>
-    <version>1.9.3</version>
+    <version>1.9.4</version>
     <packaging>pom</packaging>
 
     <name>Async Test Consumer Fixture (JVM languages)</name>
@@ -33,7 +33,7 @@
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- The pin the release skill bumps (.claude/skills/release/bump-version.sh). -->
-        <async-test.version>1.9.3</async-test.version>
+        <async-test.version>1.9.4</async-test.version>
         <junit.jupiter.version>6.1.3</junit.jupiter.version>
         <!-- Language toolchains. -->
         <kotlin.version>2.4.10</kotlin.version>

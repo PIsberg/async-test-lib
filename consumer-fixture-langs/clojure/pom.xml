@@ -6,7 +6,7 @@
     <parent>
         <groupId>se.deversity.async-test-lib</groupId>
         <artifactId>consumer-fixture-langs</artifactId>
-        <version>1.9.3</version>
+        <version>1.9.4</version>
     </parent>
     <artifactId>consumer-fixture-clojure</artifactId>
     <name>Async Test Consumer Fixture (Clojure)</name>

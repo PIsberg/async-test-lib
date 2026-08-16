@@ -63,7 +63,7 @@ import java.util.Optional;
  *
  * @see AsyncTest
  * @see AsyncFindings
- * @since 1.10.0
+ * @since 1.9.4
  */
 @AIContract(reason = "Public programmatic entry point for the N x M engine, called from non-Jupiter test frameworks in Kotlin, Scala, Groovy and Clojure. run(...) signatures and the rule that it throws exactly what the annotated path throws must not change without a major version bump.")
 @AIPublicAPI

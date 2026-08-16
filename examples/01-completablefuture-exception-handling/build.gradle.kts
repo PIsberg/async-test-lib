@@ -16,7 +16,7 @@ repositories {
     mavenLocal()
 }
 
-val asyncTestVersion = "1.9.3"
+val asyncTestVersion = "1.9.4"
 val junitVersion = "6.1.3"
 // The library brings in junit-jupiter-engine:6.1.2 as an api dependency, which wins
 // over junitVersion above. Pin the launcher to match so Gradle's bundled 5.x launcher

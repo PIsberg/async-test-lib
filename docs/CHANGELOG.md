@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.4] - 2026-08-16
+
 ### Changed: every hand-pinned dependency bumped, and a skill that repeats it
 
 Dependabot watches the reactor root and nothing else, so the satellites had drifted: the 137
@@ -46,14 +48,15 @@ rounds, one barrier per round, the detectors the config selects, the same licenc
 and `failOn` semantics, and it returns the run's `AsyncFindings`. It exists for the test
 frameworks a Jupiter `@TestTemplate` cannot run inside of: Spock, ScalaTest, MUnit, kotest and
 `clojure.test`. It is an adapter over the unchanged `ConcurrencyRunner`, so the Critical engine
-did not move. Two things a caller must know, both in [USAGE.md](USAGE.md#running-without-the-annotation-asynctestrunner-1100):
+did not move. Two things a caller must know, both in [USAGE.md](USAGE.md#running-without-the-annotation-asynctestrunner-194):
 detectors are opt-in on the builder (the annotation defaults to `detectAll = true`, the builder
 to nothing), and every programmatic run shares one identity,
 `AsyncTestRunner$BodyHolder#run`, in the log events and the finding baseline. Pinned by
 `AsyncTestRunnerTest` (N x M count on several threads, context installed, body failure as the
 engine's `AssertionError` with the body's exception as cause, findings returned, collector
 closed, `failOn` gate applies, timeout is the engine's `AssertionError`) and reachable from a
-consumer by `ConsumerProgrammaticRunnerTest`. New public API: minor bump.
+consumer by `ConsumerProgrammaticRunnerTest`. New public API; ships as patch 1.9.4 by owner
+decision (as 1.9.1 did), so `@since` and the docs say 1.9.4.
 
 ### Added: a licence notice on unlicensed runs
 

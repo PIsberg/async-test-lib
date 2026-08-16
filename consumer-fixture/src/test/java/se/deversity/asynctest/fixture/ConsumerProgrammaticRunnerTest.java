@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
- * Consumer-side coverage of the 1.10.0 programmatic entry point, {@code AsyncTestRunner}: the
+ * Consumer-side coverage of the 1.9.4 programmatic entry point, {@code AsyncTestRunner}: the
  * engine as a method call, for the test frameworks {@code @AsyncTest} cannot run inside of.
  *
  * <p>Like the other files here it compiles against the built artifact rather than the source, so

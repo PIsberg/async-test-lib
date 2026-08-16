@@ -10,7 +10,7 @@ Add to your `pom.xml`:
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>1.9.3</version>
+    <version>1.9.4</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -47,7 +47,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation 'se.deversity.async-test-lib:async-test-lib:1.9.3'
+    testImplementation 'se.deversity.async-test-lib:async-test-lib:1.9.4'
 }
 ```
 
@@ -335,7 +335,7 @@ It is strictly opt-in — if you do not attach the agent, nothing changes. See
 attachment paths with Maven and Gradle snippets, consuming events via `TelemetryBridge`, scope
 and filtering, `debug=true` diagnostics, limitations, and a troubleshooting table.
 
-## Running without the annotation: `AsyncTestRunner` (1.10.0)
+## Running without the annotation: `AsyncTestRunner` (1.9.4)
 
 `@AsyncTest` is a Jupiter `@TestTemplate`, so it only runs inside a Jupiter test class. Spock,
 ScalaTest, MUnit, kotest and `clojure.test` are engines or frameworks of their own and a Jupiter
