@@ -76,6 +76,11 @@ jobs:
       - name: Run consumer fixture tests
         run: ./gradlew -p consumer-fixture test
 
+      # Kotlin, Groovy and Scala through Gradle's own plugins (Clojure is Maven-only; see
+      # consumer-fixture-langs/README.md). Same artifact from mavenLocal as the step above.
+      - name: Run JVM language fixtures (Kotlin, Groovy, Scala)
+        run: ./gradlew -p consumer-fixture-langs test
+
       - name: Check coverage file exists
         run: |
           if [ -f ./async-test-lib/build/reports/jacoco/test/jacocoTestReport.xml ]; then
@@ -94,7 +99,9 @@ jobs:
         if: always()
         with:
           name: gradle-test-reports-java-${{ matrix.java-version }}
-          path: "*/build/reports/tests/"
+          path: |
+            */build/reports/tests/
+            consumer-fixture-langs/*/build/reports/tests/
           retention-days: 7
 
   gradle-examples-pr-detect:

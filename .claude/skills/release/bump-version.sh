@@ -65,6 +65,14 @@ ALLOWLIST=(
   # pom.xml, so there is nothing to bump there.
   consumer-fixture/pom.xml
   consumer-fixture/build.gradle.kts
+  # The language fixtures pin the same way: one parent pom (module poms pin only their
+  # parent, which perl rewrites through the <version> rule) and one root Gradle file.
+  consumer-fixture-langs/pom.xml
+  consumer-fixture-langs/kotlin/pom.xml
+  consumer-fixture-langs/groovy/pom.xml
+  consumer-fixture-langs/scala/pom.xml
+  consumer-fixture-langs/clojure/pom.xml
+  consumer-fixture-langs/build.gradle.kts
   README.md
   # These docs carry install snippets like README.md; they sat outside the
   # allowlist until 1.9.1 and drifted three releases (pins said 1.6.0).
@@ -92,6 +100,10 @@ for f in "${ALLOWLIST[@]}"; do
   # passed through the environment rather than interpolated by the shell, so the perl source
   # below reads as perl rather than as escaped shell.
   #
+  # Only <async-test.version> / <async-test-lib.version> count as property pins, not any
+  # <foo.version>: consumer-fixture-langs pins clojure-maven-plugin at 1.9.3, and a generic
+  # rule bumped that plugin to a version that does not exist the first time it ran.
+  #
   # Everything between <oldVersion> and </oldVersion> is skipped. That block is the japicmp
   # API-compatibility baseline, and it must stay pinned to the PREVIOUS release: bumping it to
   # the version being cut makes the gate compare the release against itself, and the coordinate
@@ -103,7 +115,7 @@ for f in "${ALLOWLIST[@]}"; do
     $in_old = 1 if m{<oldVersion>};
     unless ($in_old) {
       s{(<version>)\Q$ENV{CURRENT}\E(</version>)}{$1$ENV{NEW}$2}g;
-      s{(<[A-Za-z0-9._-]+\.version>)\Q$ENV{CURRENT}\E(</[A-Za-z0-9._-]+\.version>)}{$1$ENV{NEW}$2}g;
+      s{(<async-test(?:-lib)?\.version>)\Q$ENV{CURRENT}\E(</async-test(?:-lib)?\.version>)}{$1$ENV{NEW}$2}g;
       s{(async-test-lib:)\Q$ENV{CURRENT}\E}{$1$ENV{NEW}}g;
       s{(asyncTestVersion = ")\Q$ENV{CURRENT}\E(")}{$1$ENV{NEW}$2}g;
     }
@@ -137,7 +149,7 @@ for f in "${ALLOWLIST[@]}"; do
     $in_old = 1 if m{<oldVersion>};
     print "$ENV{FILE}:$.:$_"
       if !$in_old
-      && /(?:<version>|\.version>|async-test-lib:|asyncTestVersion = ")\Q$ENV{CURRENT}\E/;
+      && /(?:<version>|<async-test(?:-lib)?\.version>|async-test-lib:|asyncTestVersion = ")\Q$ENV{CURRENT}\E/;
     $in_old = 0 if m{</oldVersion>};
   ' "$f")"
   # Not `[[ ... ]] && missed=...`: under `set -e` a false test as the last command in the loop

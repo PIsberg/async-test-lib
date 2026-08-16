@@ -8,6 +8,10 @@ name: E2E Tests
 #                        Its detectors/ package holds one @AsyncTest fixture per DetectorType,
 #                        so a green run proves every detector is selectable and reachable
 #                        from consumer code.
+#   consumer-fixture-langs/ — the same idea from Kotlin, Groovy, Scala and Clojure: one module
+#                        per language, each asserting that RaceConditionDetector fires on an
+#                        unguarded write and stays silent on a guarded one. Runs as a step of
+#                        the consumer-fixture job so it shares the install and both JDKs.
 #   examples/          — ~118 standalone Maven projects, each a runnable demonstration of one
 #                        concurrency hazard, built the way a user would build them.
 #
@@ -82,12 +86,20 @@ jobs:
       - name: Run consumer fixture suite
         run: mvn "-Dmaven.repo.local=.m2/repository" -f consumer-fixture/pom.xml test
 
+      # Kotlin, Groovy, Scala and Clojure against the same installed artifact. Not part of the
+      # JUnit compatibility matrix below on purpose: four compilers times seven Jupiter versions
+      # is the wrong trade, and the language question is independent of the Jupiter version.
+      - name: Run JVM language fixtures (Kotlin, Groovy, Scala, Clojure)
+        run: mvn "-Dmaven.repo.local=.m2/repository" -f consumer-fixture-langs/pom.xml test
+
       - name: Upload consumer fixture reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: e2e-consumer-fixture-reports-java-${{ matrix.java-version }}
-          path: consumer-fixture/target/surefire-reports/
+          path: |
+            consumer-fixture/target/surefire-reports/
+            consumer-fixture-langs/*/target/surefire-reports/
           retention-days: 7
 
   junit-compatibility:

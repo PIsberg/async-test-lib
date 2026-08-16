@@ -21,6 +21,7 @@ guardrails live.
 | [BEST_PRACTICES.md](BEST_PRACTICES.md) | How to write an `@AsyncTest` that actually finds bugs |
 | [OBSERVABILITY.md](OBSERVABILITY.md) | `AsyncTestListener` — hooking test events into logging, metrics, CI |
 | [AGENT.md](AGENT.md) | Optional Byte Buddy agent — auto-record field access without manual hooks |
+| [JVM_LANGUAGES.md](JVM_LANGUAGES.md) | `@AsyncTest` from Kotlin, Groovy, Scala and Clojure: what each needs, what the agent sees, and which native test frameworks it does not run inside |
 | [CI_INTEGRATION.md](CI_INTEGRATION.md) | GitHub Actions / Jenkins / GitLab CI setup |
 | [BENCHMARKING.md](BENCHMARKING.md) | Optional throughput-regression tracking |
 | [../load-tests/README.md](../load-tests/README.md) | The JMH/stress suite — what each benchmark can and cannot measure |

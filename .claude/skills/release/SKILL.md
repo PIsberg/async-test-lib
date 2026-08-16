@@ -60,7 +60,8 @@ bash .claude/skills/release/bump-version.sh <new-version>
 The script does two passes:
 
 1. **Allowlisted files** — `pom.xml`, `gradle.properties`, `consumer-fixture/pom.xml`,
-   `consumer-fixture/build.gradle.kts`, `README.md`, `docs/USAGE.md`, `docs/QUICK_REFERENCE.md`, `docs/DISTRIBUTION.md`, `.claude/SKILL.md` — replacing the exact
+   `consumer-fixture/build.gradle.kts`, `consumer-fixture-langs/pom.xml` and its four module
+   poms, `consumer-fixture-langs/build.gradle.kts`, `README.md`, `docs/USAGE.md`, `docs/QUICK_REFERENCE.md`, `docs/DISTRIBUTION.md`, `.claude/SKILL.md` — replacing the exact
    current version string.
 2. **`examples/`** — rewriting `<async-test-lib.version>` (115 poms) and `val asyncTestVersion`
    (85 gradle files) **by pattern**, then failing loudly if any pin didn't land on the new

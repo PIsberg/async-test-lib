@@ -67,3 +67,18 @@ behind them.
 The remaining `maven-*` plugins in the properties block are standard Apache build plumbing
 (compiler, jar, source, javadoc, gpg, surefire/failsafe, shade); they are pinned for
 reproducibility and Dependabot visibility rather than listed here one by one.
+
+## 5. Language fixtures
+
+Toolchains that exist only so [`consumer-fixture-langs/`](../consumer-fixture-langs/README.md)
+can drive `@AsyncTest` from another JVM language. They live in that fixture's own
+`pom.xml` `<properties>`, not the reactor root: nothing in the published artifacts, the reactor
+build or the Gradle derivation depends on them, and a consumer meets them only by writing tests
+in that language.
+
+| Toolchain | Property (in `consumer-fixture-langs/pom.xml`) | Why it is here |
+|---|---|---|
+| Kotlin (`kotlin-stdlib`, `kotlin-maven-plugin`) | `kotlin.version` | The Kotlin fixture; same version the Kotlin example under `examples/` uses. |
+| Groovy (`org.apache.groovy:groovy`, `gmavenplus-plugin`) | `groovy.version`, `gmavenplus-plugin.version` | The Groovy fixture (plain JUnit 5, not Spock). |
+| Scala 3 (`scala3-library_3`, `scala-maven-plugin`) | `scala.version`, `scala-maven-plugin.version` | The Scala fixture. |
+| Clojure (`org.clojure:clojure`, `clojure-maven-plugin`) | `clojure.version`, `clojure-maven-plugin.version` | The Clojure fixture; `gen-class` AOT is the only way to put JUnit annotations on a Clojure class. |
