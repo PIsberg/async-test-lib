@@ -548,6 +548,12 @@ Or add to your IDE's JVM args: `-Dlicense.mock.mode=true`. Setting it once in yo
 JUnit configuration is the usual fix, so it applies to every run rather than being remembered
 per-test.
 
+Every run that proceeds without a validated commercial key (mock mode, CI auto-mock, or a free-mail
+address) prints a three-line licence notice to stderr, once per JVM, naming the licence, the pricing
+page and the contact address. It is not a warning and it does not fail anything; it goes away when
+a key is validated. It cannot be switched off by a flag, because it is the licence terms restated on
+the one path where they are easiest to forget.
+
 Set your email identity when using a real key: `-Dlicense.user.email=you@example.com`
 
 ### Enterprise CI: outages, proxies and air-gapped runners

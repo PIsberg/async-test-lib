@@ -32,6 +32,12 @@ whatever the user types. The library is a compliance aid for customers who inten
 enforceable instrument is the licence agreement, not the code. This is the normal open-core
 arrangement and matches [SELLING_THIS_LIBRARY.md](https://github.com/PIsberg/common-license-lib)
 in `common-license-lib`, which says enforcement here is legal, not technical.
+What the code does do is remind. Every grant that did not validate a commercial key (mock mode, CI
+auto-mock, free-mail address) prints a three-line notice to stderr once per JVM, naming the
+licence, <https://deversity.se/pricing.html> and peter.isberg@deversity.se. It has no off switch
+other than a validated key, so it is the one place a company running unlicensed keeps meeting the
+terms in its own build log. `LicenseGuard.NONCOMMERCIAL_NOTICE` is the text; change the address or
+the URL there and in the two tests that pin it.
 
 **2. Free-mail addresses need no licence.** A developer running as `someone@gmail.com` is
 classified as a non-commercial user and passes without a key. Only commercial email domains are

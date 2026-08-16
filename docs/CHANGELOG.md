@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added: a licence notice on unlicensed runs
+
+A run that proceeds without a validated commercial key (mock mode, CI auto-mock, or a free-mail
+address) now prints a three-line notice to stderr, once per JVM: the library is PolyForm
+Noncommercial 1.0.0, business use needs a commercial licence, prices are at
+<https://deversity.se/pricing.html> and the contact is peter.isberg@deversity.se. It goes on the
+report channel rather than SLF4J so a consumer with no logging binding still sees it, and it has no
+off switch: a validated key is the off switch. Runs granted by an offline file, a cached
+validation, the outage grace policy or `LICENSE_VALID` stay silent, so paying customers never see
+it. Pinned in both directions by `LicenseGuardTest` (mock prints once across two fingerprints) and
+`LicenseGuardLemonSqueezyTest` (a validated key does not print).
+
 ### Added: the guardrail layer can go red
 
 A self-audit against the *Vibe Architecture* health scorecard

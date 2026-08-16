@@ -91,6 +91,23 @@ public final class LicenseGuard {
     private static volatile boolean announcedCiMock = false;
     private static volatile boolean announcedGranted = false;
     private static volatile boolean announcedGraceGrant = false;
+    private static volatile boolean announcedNoncommercial = false;
+
+    /**
+     * What a run that proceeds without a validated commercial licence is told, once per JVM.
+     *
+     * <p>Printed on the report channel ({@code System.err}, where findings go) rather than
+     * through SLF4J: a consumer with no logging binding sees nothing from the logger, and this is
+     * the one message the library must not lose. The terms are the terms of the artifact's own
+     * {@code LICENSE} file; the notice does not add a restriction, it repeats one that the mock
+     * and free-mail paths would otherwise let a commercial user forget. It is deliberately not
+     * suppressible by a flag: a licence key suppresses it, which is the point.
+     */
+    static final String NONCOMMERCIAL_NOTICE = """
+        [AsyncTest] async-test-lib is free for non-commercial use under the PolyForm Noncommercial License 1.0.0.
+        [AsyncTest] Use by or for a business, including in a company's CI, requires a commercial license.
+        [AsyncTest] Pricing and purchase: https://deversity.se/pricing.html   Contact: peter.isberg@deversity.se\
+        """;
 
     private LicenseGuard() {}
 
@@ -236,6 +253,21 @@ public final class LicenseGuard {
             announcedGranted = true;
             log.info("LICENSE GRANTED: {} provider={}", allowed.reason(), fp.licenseProvider);
         }
+        if (allowed.reason() != LicenseResult.AllowedReason.LICENSE_VALID) {
+            announceNoncommercial();
+        }
+    }
+
+    /**
+     * Prints {@link #NONCOMMERCIAL_NOTICE} once per JVM. Reached only by grants that did not
+     * validate a commercial licence: mock mode (explicit or CI auto-mock) and free-mail addresses.
+     * The offline-file, cached-validation and grace paths return before this and are silent, as is
+     * a {@code LICENSE_VALID} grant, so a paying customer never sees the notice.
+     */
+    private static void announceNoncommercial() {
+        if (announcedNoncommercial) return;
+        announcedNoncommercial = true;
+        System.err.println(NONCOMMERCIAL_NOTICE);
     }
 
     /**
@@ -380,6 +412,7 @@ public final class LicenseGuard {
         announcedCiMock = false;
         announcedGranted = false;
         announcedGraceGrant = false;
+        announcedNoncommercial = false;
     }
 
     /** Test-only: number of cached fingerprints, for asserting cache-hit behaviour. */
