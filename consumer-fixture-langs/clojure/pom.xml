@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>se.deversity.async-test-lib</groupId>
+        <artifactId>consumer-fixture-langs</artifactId>
+        <version>1.9.3</version>
+    </parent>
+    <artifactId>consumer-fixture-clojure</artifactId>
+    <name>Async Test Consumer Fixture (Clojure)</name>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.clojure</groupId>
+            <artifactId>clojure</artifactId>
+            <version>${clojure.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.theoryinpractise</groupId>
+                <artifactId>clojure-maven-plugin</artifactId>
+                <version>${clojure-maven-plugin.version}</version>
+                <configuration>
+                    <testSourceDirectories>
+                        <testSourceDirectory>src/test/clojure</testSourceDirectory>
+                    </testSourceDirectories>
+                    <!-- Compile straight into target/test-classes: JUnit discovers the gen-class
+                         output there, and there is nothing else to run. -->
+                    <temporaryOutputDirectory>false</temporaryOutputDirectory>
+                </configuration>
+                <executions>
+                    <execution>
+                        <!-- AOT is not optional: gen-class only produces a class file, and with it
+                             the JUnit annotations, when the namespace is compiled ahead of time. -->
+                        <id>aot-tests</id>
+                        <phase>test-compile</phase>
+                        <goals><goal>testCompile</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- The generated class is named by :name in gen-class, not by the file, so
+                         Surefire's default *Test pattern must be told to look at class files. -->
+                    <includes>
+                        <include>**/*Test.class</include>
+                    </includes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

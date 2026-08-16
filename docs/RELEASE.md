@@ -75,6 +75,8 @@ together:
 | `async-test-lib/pom.xml`, `async-test-agent/pom.xml`, `async-test-analysis/pom.xml` | `<parent><version>` — the reactor modules |
 | `consumer-fixture/pom.xml` | own `<version>` + `<async-test.version>` |
 | `consumer-fixture/build.gradle.kts` | `asyncTestVersion` |
+| `consumer-fixture-langs/pom.xml` and `consumer-fixture-langs/{kotlin,groovy,scala,clojure}/pom.xml` | own `<version>`, `<async-test.version>`, and each module's `<parent><version>` |
+| `consumer-fixture-langs/build.gradle.kts` | `asyncTestVersion` |
 | `README.md` | Maven + Gradle install snippets |
 | `docs/USAGE.md`, `docs/QUICK_REFERENCE.md`, `docs/DISTRIBUTION.md` | The same install snippets; allowlisted since 1.9.1 after all three drifted to 1.6.0 |
 | `.claude/SKILL.md` | Maven + Gradle install snippets |

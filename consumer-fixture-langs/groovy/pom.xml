@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>se.deversity.async-test-lib</groupId>
+        <artifactId>consumer-fixture-langs</artifactId>
+        <version>1.9.3</version>
+    </parent>
+    <artifactId>consumer-fixture-groovy</artifactId>
+    <name>Async Test Consumer Fixture (Groovy)</name>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.apache.groovy</groupId>
+            <artifactId>groovy</artifactId>
+            <version>${groovy.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.gmavenplus</groupId>
+                <artifactId>gmavenplus-plugin</artifactId>
+                <version>${gmavenplus-plugin.version}</version>
+                <configuration>
+                    <!-- Groovy 5 refuses the plugin's 1.8 default: "Target bytecode 1.8 isn't
+                         accepted by Groovy 5.0.0-alpha-1 or newer". -->
+                    <targetBytecode>21</targetBytecode>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals><goal>compileTests</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

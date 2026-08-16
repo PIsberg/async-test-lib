@@ -65,6 +65,14 @@ ALLOWLIST=(
   # pom.xml, so there is nothing to bump there.
   consumer-fixture/pom.xml
   consumer-fixture/build.gradle.kts
+  # The language fixtures pin the same way: one parent pom (module poms pin only their
+  # parent, which perl rewrites through the <version> rule) and one root Gradle file.
+  consumer-fixture-langs/pom.xml
+  consumer-fixture-langs/kotlin/pom.xml
+  consumer-fixture-langs/groovy/pom.xml
+  consumer-fixture-langs/scala/pom.xml
+  consumer-fixture-langs/clojure/pom.xml
+  consumer-fixture-langs/build.gradle.kts
   README.md
   # These docs carry install snippets like README.md; they sat outside the
   # allowlist until 1.9.1 and drifted three releases (pins said 1.6.0).
