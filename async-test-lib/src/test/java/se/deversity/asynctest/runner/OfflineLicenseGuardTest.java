@@ -149,6 +149,22 @@ class OfflineLicenseGuardTest {
             + "and any configured online key is not consulted");
     }
 
+    /**
+     * An offline file is a paid licence for the air-gapped tier; the run it grants must not be told
+     * to buy one. Pins the third licensed path (after Keygen and LemonSqueezy validation) as silent.
+     */
+    @Test
+    void offlineFile_doesNotPrintTheNoncommercialNotice() throws Exception {
+        Path file = issue("async-test-lib", "Acme Corp AB", "licence@acme-corp.com", "domain",
+            LocalDate.now(ZoneOffset.UTC).plusYears(1));
+        set("license.file", file.toString());
+
+        String captured = LicenseGuardTest.captureStdErr(() -> LicenseGuard.check(config()));
+
+        assertFalse(captured.contains("PolyForm Noncommercial"),
+            "An offline-licensed run is a paying customer's run. stderr was:\n" + captured);
+    }
+
     @Test
     void bindingNone_grantsWithoutAnyUserEmail() throws Exception {
         Path file = issue("async-test-lib", "Acme Corp AB", null, "none",
