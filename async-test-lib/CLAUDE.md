@@ -85,6 +85,7 @@ you are editing here.
     <element path="se.deversity.asynctest.AsyncTestListener" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.AsyncTestListenerRegistry" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.AsyncTestListenerRegistry.Registration" rules=".claude/rules/async-test-public-api.md"/>
+    <element path="se.deversity.asynctest.AsyncTestRunner" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.DetectorRegistry" rules=".claude/rules/async-test-configuration.md"/>
     <element path="se.deversity.asynctest.DetectorType" rules=".claude/rules/async-test-configuration.md"/>
     <element path="se.deversity.asynctest.NoopAsyncTestListener" rules=".claude/rules/async-test-public-api.md"/>
