@@ -124,6 +124,23 @@ class LicenseGuardLemonSqueezyTest {
             "the run must reach LemonSqueezy, not Keygen");
     }
 
+    /**
+     * The other direction of the non-commercial notice: a run whose key the provider validated is a
+     * paying customer's run, and it must not be told to buy a licence. Without this the notice
+     * could be wired to "every grant" and the mock-mode test would still be green.
+     */
+    @Test
+    void validatedCommercialKey_doesNotPrintTheNoncommercialNotice() {
+        responseStatus = 200;
+        responseBody = validPayload(OUR_STORE, BUYER);
+
+        String captured = LicenseGuardTest.captureStdErr(() -> LicenseGuard.check(config()));
+
+        assertEquals("/v1/licenses/validate", lastPath.get(), "precondition: the key was validated");
+        assertFalse(captured.contains("PolyForm Noncommercial"),
+            "A LICENSE_VALID grant must be silent about non-commercial terms. stderr was:\n" + captured);
+    }
+
     @Test
     void keyFromAnotherStoreIsRejected() {
         responseStatus = 200;

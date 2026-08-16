@@ -311,6 +311,60 @@ class LicenseGuardTest {
                 "-Dlicense.mock.mode=true must keep working regardless of provider config");
     }
 
+    /**
+     * A run that proceeds without a validated commercial licence is told what the licence is and
+     * where to buy one, once per JVM, on the report channel.
+     *
+     * <p>Mock mode is the path every unlicensed commercial user is on (it is the flag the denial
+     * message itself hands out), so it is the path that must carry the notice. Two distinct
+     * fingerprints below prove "once per JVM" rather than "once per configuration": a suite with
+     * a thousand test classes must not print it a thousand times.
+     */
+    @Test
+    void unlicensedGrant_printsTheNoncommercialNoticeOncePerJvm() {
+        String captured = captureStdErr(() -> {
+            LicenseGuard.check(AsyncTestConfig.builder()
+                    .licenseMockMode(true).keygenAccountId("acc-A").build());
+            LicenseGuard.check(AsyncTestConfig.builder()
+                    .licenseMockMode(true).keygenAccountId("acc-B").build());
+        });
+
+        assertEquals(1, countOccurrences(captured, LicenseGuard.NONCOMMERCIAL_NOTICE),
+                "The notice must appear exactly once per JVM, not per fingerprint. stderr was:\n"
+                + captured);
+        assertTrue(captured.contains("PolyForm Noncommercial"),
+                "The notice must name the licence: " + captured);
+        assertTrue(captured.contains("peter.isberg@deversity.se"),
+                "The notice must say who to contact: " + captured);
+        assertTrue(captured.contains("https://deversity.se/pricing.html"),
+                "The notice must say where the prices are: " + captured);
+    }
+
+    /**
+     * Runs {@code body} with {@code System.err} redirected and returns what it wrote. Safe here
+     * because Surefire gives this class its own JVM and JUnit runs it single-threaded.
+     */
+    static String captureStdErr(Runnable body) {
+        java.io.PrintStream previous = System.err;
+        java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+        try (java.io.PrintStream capture = new java.io.PrintStream(
+                buffer, true, java.nio.charset.StandardCharsets.UTF_8)) {
+            System.setErr(capture);
+            body.run();
+        } finally {
+            System.setErr(previous);
+        }
+        return buffer.toString(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    static int countOccurrences(String haystack, String needle) {
+        int count = 0;
+        for (int i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + needle.length())) {
+            count++;
+        }
+        return count;
+    }
+
     private static void restore(String key, String previous) {
         if (previous != null) {
             System.setProperty(key, previous);
