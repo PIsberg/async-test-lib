@@ -42,6 +42,14 @@
                         <phase>test-compile</phase>
                         <goals><goal>testCompile</goal></goals>
                     </execution>
+                    <execution>
+                        <!-- clojure.test deftests (programmatic_runner_test.clj) run in a forked
+                             Clojure process, separately from the JUnit classes Surefire runs.
+                             A failing deftest fails the build. -->
+                        <id>clojure-test</id>
+                        <phase>test</phase>
+                        <goals><goal>test</goal></goals>
+                    </execution>
                 </executions>
             </plugin>
             <plugin>

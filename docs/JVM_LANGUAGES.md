@@ -105,13 +105,31 @@ Three things that are not obvious, each verified the hard way:
 - **AOT is required** (`clojure-maven-plugin` `testCompile`), and Surefire must include
   `**/*Test.class`, because the class is named by `:name`, not by the file.
 
-`clojure.test` `deftest` cannot use `@AsyncTest`; that needs a programmatic runner, which is a
-design decision recorded in the plan. Fixture:
-[`consumer-fixture-langs/clojure`](../consumer-fixture-langs/clojure).
+`clojure.test` `deftest` cannot use `@AsyncTest`; use `AsyncTestRunner` from a deftest instead
+(next section). Fixture: [`consumer-fixture-langs/clojure`](../consumer-fixture-langs/clojure).
 
 ## Native test frameworks
 
 Spock, ScalaTest, MUnit, kotest and `clojure.test` are not Jupiter, and `@AsyncTest` does not
-run inside them today. The route is a Jupiter class written in your language, as above. A
-programmatic entry point that runs the engine over a lambda is the item that would change
-this; see the plan.
+run inside them. Since 1.10.0 the engine is also a method call:
+[`AsyncTestRunner.run(config, body)`](USAGE.md#running-without-the-annotation-asynctestrunner-1100)
+runs the body N x M under the detectors the config selects and returns the `AsyncFindings`.
+From `clojure.test`:
+
+```clojure
+(deftest unguarded-writes-are-reported
+  (let [cfg  (-> (AsyncTestConfig/builder) (.threads 8) (.invocations 200)
+                 (.detectAll true) (.failOn FailOn/NONE) (.build))
+        body (reify AsyncTestRunner$Body (run [_] (counter/increment)))
+        findings (AsyncTestRunner/run cfg body)]
+    (is (seq (.violationsFrom findings "RaceConditionDetector")))))
+```
+
+Two things the annotation does for you that the builder does not: `detectAll(true)` (the
+builder defaults every detector to off), and a per-test identity (every programmatic run is
+`AsyncTestRunner$BodyHolder#run` in the log and the finding baseline). The body is a `reify` of
+`AsyncTestRunner$Body`, not a fn: `Body` declares `throws Throwable` and Clojure has no SAM
+conversion for fns. Fixture, both directions, run by `clojure-maven-plugin`'s `test` goal:
+[`consumer-fixture-langs/clojure/.../programmatic_runner_test.clj`](../consumer-fixture-langs/clojure/src/test/clojure/se/deversity/asynctest/fixture/programmatic_runner_test.clj).
+The same call works from a Spock `Specification`, a ScalaTest suite or a kotest spec; the
+Groovy, Scala and Kotlin fixtures use Jupiter and are not repeated in those frameworks.

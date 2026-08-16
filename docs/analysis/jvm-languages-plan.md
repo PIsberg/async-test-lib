@@ -99,7 +99,8 @@ same detector findings from Scala as from Java, the documentation line is enough
 
 Each step is a PR. Order matters only where stated. Status 2026-08-16: steps 1, 2 and 3 are done
 in one PR (`consumer-fixture-langs/`, the CI steps, [JVM_LANGUAGES.md](../JVM_LANGUAGES.md));
-step 4 is measured (below); step 5 is open.
+step 4 is measured (below); step 5 shipped as `AsyncTestRunner` (1.10.0), with a
+`clojure.test` fixture in `consumer-fixture-langs/clojure`.
 
 **1. Fixtures that prove it: `consumer-fixture-langs/`** (Kotlin, Groovy, Scala, Clojure; one
 Maven module each, plus the Gradle twin the repo convention requires, versions read from the
@@ -141,10 +142,14 @@ indistinguishable to the agent, so item B closes as the documentation line in
 atomicity detector rather than the race hook is a property of the agent, not of the language,
 and out of scope here.)
 
-**5. Decide item A** (programmatic runner) as its own design discussion. It unlocks the native
-frameworks, it is the only route to `clojure.test`, and it is an API surface that will be
-copied by every downstream repo once it exists, so it deserves the japicmp/versioning care of
-a minor release rather than being folded into a fixture PR.
+**5. Item A, decided and shipped.** `AsyncTestRunner.run(config, body)` (1.10.0,
+`@API(EXPERIMENTAL)`) is an adapter over the unchanged `ConcurrencyRunner`: the body becomes the
+`ReflectiveInvocationContext` the engine already takes, so nothing Critical moved. Two
+limitations are documented rather than solved: detectors are opt-in on the builder, and every
+programmatic run shares one identity (`AsyncTestRunner$BodyHolder#run`) in the log and the
+finding baseline; a display name threaded through the engine is the follow-up if a consumer
+needs per-run baselines. Proven from `clojure.test` by `programmatic_runner_test.clj`, both
+directions.
 
 ## Cost
 
