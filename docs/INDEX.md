@@ -80,6 +80,7 @@ read them for the reasoning, not as current reference.
 | [analysis/codecov-troubleshooting.md](analysis/codecov-troubleshooting.md) | Coverage-upload troubleshooting |
 | [analysis/test-profiles-and-detector-gaps.md](analysis/test-profiles-and-detector-gaps.md) | Investigation: splitting the suite into a fast local tier and a CI-only e2e tier, and which bug classes the detectors miss |
 | [analysis/vibe-architecture-scorecard.md](analysis/vibe-architecture-scorecard.md) | Self-audit against the *Vibe Architecture* health scorecard (2026-08-15): 42 to 56 of 66, what each gate enforces, and the deferred decisions |
+| [analysis/jvm-languages-plan.md](analysis/jvm-languages-plan.md) | Plan: `@AsyncTest` from Kotlin, Groovy, Scala and Clojure (all four verified 2026-08-16), the per-language traps, and the fixtures, CI job and two library items that make it first-class |
 
 > **Routing is enforced.** `DocsIndexCoverageTest` fails the build when a document under `docs/`
 > is not linked from this index, or when any relative link in the doc set points at a file that does
