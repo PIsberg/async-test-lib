@@ -17,7 +17,7 @@ report channel rather than SLF4J so a consumer with no logging binding still see
 off switch: a validated key is the off switch. Runs granted by an offline file, a cached
 validation, the outage grace policy or `LICENSE_VALID` stay silent, so paying customers never see
 it. Pinned in both directions by `LicenseGuardTest` (mock prints once across two fingerprints) and
-`LicenseGuardLemonSqueezyTest` (a validated key does not print).
+`KeygenValidateKeyContractTest`, `OfflineLicenseGuardTest` and `LicenseGuardLemonSqueezyTest` (a validated key or offline file does not print).
 
 ### Added: the guardrail layer can go red
 

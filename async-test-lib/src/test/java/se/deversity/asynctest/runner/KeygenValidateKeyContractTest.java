@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -121,6 +122,25 @@ class KeygenValidateKeyContractTest {
         responseBody = valid();
         assertDoesNotThrow(() -> LicenseGuard.check(config()),
                 "meta.valid=true is the only answer that admits a run");
+    }
+
+    /**
+     * A key Keygen validated is a Paddle customer's key, and that run must not be told to buy a
+     * licence. This is the path deversity.se sells (Paddle + Keygen), so the silence is pinned here
+     * and not only on the LemonSqueezy harness. Strict network mode and a negative cache TTL above
+     * mean the grant below can only be {@code LICENSE_VALID} from the loopback validator.
+     */
+    @Test
+    void metaValidTrue_doesNotPrintTheNoncommercialNotice() {
+        responseBody = valid();
+
+        String captured = LicenseGuardTest.captureStdErr(() -> LicenseGuard.check(config()));
+
+        assertEquals("/v1/accounts/" + ACCOUNT + "/licenses/actions/validate-key", seenPath.get(),
+                "precondition: the key was validated against Keygen");
+        assertFalse(captured.contains("PolyForm Noncommercial"),
+                "A Keygen-validated run is a paying customer's run and must be silent about "
+                        + "non-commercial terms. stderr was:\n" + captured);
     }
 
     @Test
