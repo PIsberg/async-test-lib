@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added: `@AsyncTest` from Kotlin, Groovy, Scala and Clojure, proven on every build
+
+`consumer-fixture-langs/` drives the published artifact from each of the four languages with
+the same two classes: an unguarded write that `RaceConditionDetector` must report and a
+guarded twin it must not, both asserted through `AsyncFindings` in `@AfterAll`. It runs on
+JDK 21 and 25 in the e2e consumer-fixture job (Maven, all four) and in the Gradle job (Kotlin,
+Groovy, Scala). [docs/JVM_LANGUAGES.md](JVM_LANGUAGES.md) records what each language needs:
+Groovy 5 refuses the plugin's 1.8 bytecode default; Scala `var` accessors are `x()`/`x_$eq()`
+and invisible to the agent's default accessor weaving; Clojure needs `#=(int N)` for `int`
+annotation elements, `^{:static true}` on the signature vector for `@AfterAll`, and AOT plus a
+Surefire include. No library code changed. The investigation and the two open items (a
+programmatic runner for Spock/ScalaTest/kotest/`clojure.test`, and Scala accessor weaving)
+are in [analysis/jvm-languages-plan.md](analysis/jvm-languages-plan.md).
+
+The release bump script now rewrites only `<async-test.version>` / `<async-test-lib.version>`
+property pins, not any `<foo.version>` that happens to equal the release: a dry run bumped
+`clojure-maven-plugin` 1.9.3 to a 1.9.4 that does not exist.
+
 ### Added: a licence notice on unlicensed runs
 
 A run that proceeds without a validated commercial key (mock mode, CI auto-mock, or a free-mail
