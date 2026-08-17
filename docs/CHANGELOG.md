@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added: three virtual-thread scale detectors (139 -> 142)
+
+The JEP 444 first-order hazards were already covered by six detectors: pinning (with the
+JDK-version awareness JEP 491 made necessary), pooling, CPU-bound tasks, carrier exhaustion,
+context leaks and thread-per-task. What was missing is the second-order category - failures that
+only appear once virtual threads make concurrency unbounded, which the older detectors cannot
+see because they were written when the thread count was the pool size. A grep for `isVirtual()`
+returns zero matches in `LockContentionDetector`, `ThreadLeakDetector` and
+`ThreadStarvationDetector`.
+
+- **`VIRTUAL_THREAD_RESOURCE_SATURATION`** - a fixed pool was admission control nobody wrote
+  down; removing it leaves the connection pool as bounded as it ever was. JEP 444 says to limit
+  the resource with a `Semaphore` instead, and `VirtualThreadPoolingDetector:235` and
+  `VirtualThreadCarrierExhaustionDetector:257` both printed that advice in their fix text while
+  nothing detected the violation. Fires when more callers were waiting than the resource can
+  serve, with at least one virtual acquirer, and separately when holders exceeded the declared
+  capacity.
+- **`VIRTUAL_THREAD_MONITOR_SERIALIZATION`** - the hazard JEP 491 left behind. Since JDK 24
+  `synchronized` no longer pins, so `VIRTUAL_THREAD_PINNING` correctly reports those events as
+  obsolete; one thread at a time is still one thread at a time, and nothing bounds the arrivals
+  any more. The report says which side of JDK 24 it is on and cross-references the pinning
+  detector. Fires on peak queue depth with at least two distinct virtual waiters.
+- **`THREAD_LOCAL_CACHE_DEGRADATION`** - `ThreadLocal<SimpleDateFormat>` is a cache only because
+  the thread count is bounded; per task it is an allocator, and the code that changed meaning did
+  not change at all. Counts distinct instances by identity, so a shared value, a pooled helper
+  and platform-only usage are all silent. Distinct from `VIRTUAL_THREAD_CONTEXT_LEAKS`, which
+  counts ThreadLocal keys per thread rather than instances per key.
+
+Each ships with its arm of `Phase23VirtualThreadScaleDetectorsFixtureTest`, which asserts the
+finding reaches `AsyncFindings`, and an example:
+[143-vthread-resource-saturation](../examples/143-vthread-resource-saturation/),
+[144-vthread-monitor-serialization](../examples/144-vthread-monitor-serialization/) and
+[145-threadlocal-cache-degradation](../examples/145-threadlocal-cache-degradation/).
+
+All three measure simultaneity, so every test and fixture holds its fan-out at a latch rather
+than hoping the threads overlap. Detection was verified rather than assumed: disabling the three
+rules turns 13 of their 38 unit tests red. Each pins its correct twin staying silent - a
+semaphore-bounded fan-out, a monitor nobody queues on, and a shared immutable instance - and
+example 145 also pins the same `ThreadLocal` staying silent on a fixed pool, which is why the
+pattern was fine for years.
+
 ### Added: four CompletableFuture and lambda detectors (135 -> 139)
 
 Six `CompletableFuture` detectors already shipped, but nothing read what `complete()` or

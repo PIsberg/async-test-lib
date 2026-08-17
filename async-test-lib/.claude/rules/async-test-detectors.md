@@ -4,7 +4,7 @@ paths: ["**/diagnostics/**"]
 
 ## Conventions for every detector in this package
 
-These hold for all 139 detectors and are therefore stated once here rather than restated as a
+These hold for all 142 detectors and are therefore stated once here rather than restated as a
 per-class `@AITestDriven` annotation — one annotation per detector cost one `<element>` line each
 in the always-loaded `<scoped_rules>` index of `CLAUDE.md`.
 

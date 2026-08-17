@@ -151,5 +151,8 @@
         <module>140-cf-cancellation-propagation</module>
         <module>141-cf-combinator-misuse</module>
         <module>142-lambda-lost-update</module>
+        <module>143-vthread-resource-saturation</module>
+        <module>144-vthread-monitor-serialization</module>
+        <module>145-threadlocal-cache-degradation</module>
     </modules>
 </project>
