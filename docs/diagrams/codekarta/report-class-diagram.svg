@@ -79,18 +79,18 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="32.0" y="81.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">log: Logger</text>
   <text x="32.0" y="96.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">PATH_PROPERTY: String</text>
   <text x="32.0" y="111.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">UPDATE_PROPERTY: String</text>
-  <text x="32.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">EMPTY: Baseline</text>
-  <text x="32.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">CACHE: ConcurrentMap&lt;Path,…</text>
-  <text x="32.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">WRITE_LOCK: Object</text>
-  <text x="32.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
+  <text x="32.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">FORMAT_VERSION: int</text>
+  <text x="32.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">FORMAT_VERSION_PREFIX: Str…</text>
+  <text x="32.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">EMPTY: Baseline</text>
+  <text x="32.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
   <line x1="24.0" y1="185.0" x2="204.0" y2="185.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="32.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fromSystemProperties(): Ba…</text>
-  <text x="32.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">updateMode(): boolean</text>
-  <text x="32.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">load(Path): Baseline</text>
-  <text x="32.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">contains(String, String): …</text>
-  <text x="32.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">size(): int</text>
-  <text x="32.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">record(String, Collection&lt;…</text>
-  <text x="32.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+2 more)</text>
+  <text x="32.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">rejectNewerFormat(Path, St…</text>
+  <text x="32.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fromSystemProperties(): Ba…</text>
+  <text x="32.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">updateMode(): boolean</text>
+  <text x="32.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">load(Path): Baseline</text>
+  <text x="32.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">contains(String, String): …</text>
+  <text x="32.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">size(): int</text>
+  <text x="32.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
 </g>
 <g id="DetectorFinding">
   <title>DetectorFinding [CLASS]</title>
