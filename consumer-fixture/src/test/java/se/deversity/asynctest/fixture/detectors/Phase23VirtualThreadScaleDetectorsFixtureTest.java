@@ -78,7 +78,6 @@ class Phase23VirtualThreadScaleDetectorsFixtureTest {
             detector.recordAcquireStart(resource, Thread.currentThread());
             gate.run();
             detector.recordAcquired(resource, Thread.currentThread());
-            detector.recordRelease(resource, Thread.currentThread());
         });
     }
 

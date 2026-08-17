@@ -166,7 +166,6 @@ class ConnectionPoolTest {
                     Thread.sleep(1);
                 } finally {
                     pool.release();
-                    detector.recordRelease("connections", Thread.currentThread());
                 }
             }
         } catch (InterruptedException e) {

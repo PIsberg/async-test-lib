@@ -29,15 +29,16 @@ import java.util.concurrent.atomic.AtomicInteger;
  * eight connections, so the pool size was an accidental admission control. Removing the pool
  * removes the admission control with it, and nothing in the code says so.
  *
- * <p>Two findings, both counts rather than inferences:
- * <ul>
- *   <li>{@link IssueSeverity#HIGH} - <em>saturation</em>: more callers were waiting for the
- *       resource at one moment than the resource can ever serve at once, with at least one of
- *       them a virtual thread. The fan-out outran the resource.</li>
- *   <li>{@link IssueSeverity#HIGH} - <em>over-subscription</em>: more callers held the resource
- *       at once than its declared capacity, so whatever is supposed to enforce the limit is not
- *       enforcing it.</li>
- * </ul>
+ * <p>One finding, and it is a count rather than an inference: {@link IssueSeverity#HIGH} when
+ * more callers were waiting for the resource at one moment than the resource can ever serve at
+ * once, with at least one of them a virtual thread. The fan-out outran the resource.
+ *
+ * <p>The detector deliberately does not report on how many callers <em>held</em> the resource at
+ * once, though it would be the obvious second finding. It cannot know: a caller returns the
+ * resource and then records having done so, and in that window the next caller can legitimately
+ * be granted it, so an observed count above the capacity is instrumentation skew as often as it
+ * is a real breach. Measuring the wait is skew-safe in the direction that matters - a thread
+ * between "about to ask" and "got it" really was waiting.
  *
  * <p>A fan-out bounded by a semaphore of the resource's own size never queues more waiters than
  * the capacity, so the corrected shape produces no finding. Neither does a workload with no
@@ -49,14 +50,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  * var d = AsyncTestContext.vthreadResourceSaturationDetector();
  * d.registerResource("connections", pool.getMaximumPoolSize());
  *
- * d.recordAcquireStart("connections", Thread.currentThread());
+ * d.recordAcquireStart("connections", Thread.currentThread());   // about to queue
  * try (Connection c = pool.getConnection()) {
- *     d.recordAcquired("connections", Thread.currentThread());
+ *     d.recordAcquired("connections", Thread.currentThread());    // got one
  *     ...
- * } finally {
- *     d.recordRelease("connections", Thread.currentThread());
  * }
  * }</pre>
+ *
+ * <p>The pair is enough: everything that started acquiring and has not yet acquired is waiting.
  *
  * @since 1.11.0
  */
@@ -75,9 +76,7 @@ public final class VirtualThreadResourceSaturationDetector {
         final String        name;
         final int           capacity;
         final AtomicInteger waiting     = new AtomicInteger();
-        final AtomicInteger holding     = new AtomicInteger();
         final AtomicInteger peakWaiting = new AtomicInteger();
-        final AtomicInteger peakHolding = new AtomicInteger();
         final Set<Long>     virtualAcquirers  = ConcurrentHashMap.newKeySet();
         final Set<Long>     platformAcquirers = ConcurrentHashMap.newKeySet();
 
@@ -131,19 +130,6 @@ public final class VirtualThreadResourceSaturationDetector {
         ResourceState s = state(name, thread);
         if (s == null) return;
         s.waiting.decrementAndGet();
-        raise(s.peakHolding, s.holding.incrementAndGet());
-    }
-
-    /**
-     * Record that a thread has given the resource back.
-     *
-     * @param name   the resource, as registered
-     * @param thread the releasing thread
-     */
-    public void recordRelease(String name, Thread thread) {
-        ResourceState s = state(name, thread);
-        if (s == null) return;
-        s.holding.decrementAndGet();
     }
 
     private @Nullable ResourceState state(String name, Thread thread) {
@@ -182,7 +168,6 @@ public final class VirtualThreadResourceSaturationDetector {
         Report r = new Report();
         for (ResourceState s : resources.values()) {
             int peakWaiting = s.peakWaiting.get();
-            int peakHolding = s.peakHolding.get();
             int virtual  = s.virtualAcquirers.size();
             int platform = s.platformAcquirers.size();
 
@@ -202,22 +187,6 @@ public final class VirtualThreadResourceSaturationDetector {
                                "peakWaiting", peakWaiting,
                                "virtualAcquirers", virtual,
                                "platformAcquirers", platform),
-                        Instant.now()));
-            }
-
-            if (peakHolding > s.capacity) {
-                String msg = String.format(
-                        "Resource '%s' was held by %d caller(s) at once but declares capacity %d. Whatever "
-                        + "is meant to bound access to it is not bounding it - either the limit is not applied "
-                        + "on every path in, or the declared capacity is wrong.",
-                        s.name, peakHolding, s.capacity);
-                r.violations.add(msg);
-                r.structuredViolations.add(new Violation(
-                        "VirtualThreadResourceSaturation",
-                        IssueSeverity.HIGH, msg, List.of(),
-                        Map.of("resource", s.name,
-                               "capacity", s.capacity,
-                               "peakHolding", peakHolding),
                         Instant.now()));
             }
         }

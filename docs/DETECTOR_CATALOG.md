@@ -3270,7 +3270,7 @@ detectors cannot see because they were written when the thread count was the poo
 ### 140. Virtual Thread Resource Saturation
 * **Severity**: `HIGH`
 * **Trust tier**: **fact** — peak waiters versus declared capacity, both counts; a fan-out bounded by a semaphore of the resource's own size is silent.
-* **Description**: Detects an unbounded virtual-thread fan-out queueing on a bounded resource. A fixed pool of eight platform threads could never ask for a ninth connection, so the pool size was admission control that nobody wrote down; removing the pool removes it, while the connection pool, the rate limiter and the downstream service stay as bounded as they were. JEP 444's own advice is to limit the resource with a `Semaphore` rather than to pool the threads. A second finding fires when concurrent holders exceeded the declared capacity, meaning whatever enforces the limit is not enforcing it. Platform-only workloads are out of scope: a bounded pool cannot produce this, and `THREAD_POOL_DEADLOCK` covers that ground.
+* **Description**: Detects an unbounded virtual-thread fan-out queueing on a bounded resource. A fixed pool of eight platform threads could never ask for a ninth connection, so the pool size was admission control that nobody wrote down; removing the pool removes it, while the connection pool, the rate limiter and the downstream service stay as bounded as they were. JEP 444's own advice is to limit the resource with a `Semaphore` rather than to pool the threads. Platform-only workloads are out of scope: a bounded pool cannot produce this, and `THREAD_POOL_DEADLOCK` covers that ground. There is deliberately no "holders exceeded the capacity" finding: a caller returns the resource and then records having done so, and in that window the next caller can legitimately be granted it, so an observed count above the capacity is instrumentation skew as often as a real breach.
 * **Buggy Code**:
   ```java
   var pool = Executors.newVirtualThreadPerTaskExecutor();
@@ -3288,7 +3288,6 @@ detectors cannot see because they were written when the thread count was the poo
   d.registerResource("connections", ds.getMaximumPoolSize());
   d.recordAcquireStart("connections", Thread.currentThread());
   d.recordAcquired("connections", Thread.currentThread());
-  d.recordRelease("connections", Thread.currentThread());
   ```
 
 ### 141. Virtual Thread Monitor Serialization

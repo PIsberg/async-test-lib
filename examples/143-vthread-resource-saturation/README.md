@@ -51,16 +51,19 @@ anti-pattern `VIRTUAL_THREAD_POOLING` reports.
 ## What the detector observes
 
 Declare the capacity with `registerResource(name, capacity)`, then bracket each acquisition with
-`recordAcquireStart` / `recordAcquired` / `recordRelease`. Two findings:
-
-- 🔴 **High** — more callers were waiting at one moment than the resource can ever serve, with at
-  least one of them a virtual thread. Peak waiters versus capacity: both counts.
-- 🔴 **High** — more callers *held* the resource at once than its declared capacity, so whatever
-  is supposed to enforce the limit is not.
+`recordAcquireStart` and `recordAcquired`. One finding: 🔴 **High** when more callers were
+waiting at one moment than the resource can ever serve, with at least one of them a virtual
+thread. Peak waiters versus capacity — both counts.
 
 A fan-out bounded by a semaphore of the resource's own size never queues past capacity and is
 silent, and so is a platform-only workload — a bounded pool cannot produce this hazard, and
 `THREAD_POOL_DEADLOCK` already owns that ground.
+
+There is deliberately **no** finding for "more callers held the resource than its capacity",
+though it looks like the obvious second one. A caller returns the resource and *then* records
+having done so, and in that window the next caller can legitimately be granted it — so a count
+above the capacity is instrumentation skew as often as a real breach. That version of the rule
+existed briefly and CI caught it reporting a correctly bounded pool.
 
 ## Run it
 

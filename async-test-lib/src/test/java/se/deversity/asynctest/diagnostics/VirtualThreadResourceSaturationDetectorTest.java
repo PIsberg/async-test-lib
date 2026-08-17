@@ -47,7 +47,6 @@ class VirtualThreadResourceSaturationDetectorTest {
             try {
                 d.recordAcquireStart("connections", Thread.currentThread());
                 d.recordAcquired("connections", Thread.currentThread());
-                d.recordRelease("connections", Thread.currentThread());
             } finally {
                 gate.release();
             }
@@ -69,7 +68,6 @@ class VirtualThreadResourceSaturationDetectorTest {
             allWaiting.countDown();
             release.await(5, TimeUnit.SECONDS);   // hold every caller in the queue at once
             d.recordAcquired("connections", Thread.currentThread());
-            d.recordRelease("connections", Thread.currentThread());
         }, allWaiting, release);
 
         var report = d.analyze();
@@ -94,7 +92,6 @@ class VirtualThreadResourceSaturationDetectorTest {
             allWaiting.countDown();
             release.await(5, TimeUnit.SECONDS);
             d.recordAcquired("connections", Thread.currentThread());
-            d.recordRelease("connections", Thread.currentThread());
         }, allWaiting, release);
 
         assertFalse(d.analyze().hasIssues(), "4 waiters against capacity 8 is not saturation");
@@ -114,7 +111,6 @@ class VirtualThreadResourceSaturationDetectorTest {
                 allWaiting.countDown();
                 awaitQuietly(release);
                 d.recordAcquired("connections", Thread.currentThread());
-                d.recordRelease("connections", Thread.currentThread());
             });
             threads.add(t);
         }
@@ -126,20 +122,30 @@ class VirtualThreadResourceSaturationDetectorTest {
                 "a bounded platform pool cannot produce this hazard; THREAD_POOL_DEADLOCK owns that ground");
     }
 
+    /**
+     * A caller returns the resource and then records having done so, and in that window the next
+     * caller can legitimately be granted it. The detector must not read that skew as the limit
+     * being breached - which it did until CI caught it on a correctly bounded pool.
+     */
     @Test
-    void holdersExceedingCapacityIsReported() {
+    void holdersAreNotCountedBecauseTheCountCannotBeTrusted() throws Exception {
         var d = new VirtualThreadResourceSaturationDetector();
-        d.registerResource("connections", 1);
+        d.registerResource("connections", 2);
+        Semaphore realLimit = new Semaphore(2);
 
-        // Two callers inside a capacity-1 resource: whatever bounds it is not bounding it.
-        d.recordAcquireStart("connections", Thread.currentThread());
-        d.recordAcquired("connections", Thread.currentThread());
-        d.recordAcquireStart("connections", Thread.currentThread());
-        d.recordAcquired("connections", Thread.currentThread());
+        // Eight callers through a genuine 2-permit gate, recording after releasing - the natural
+        // ordering, and the one that used to produce a false positive.
+        runOnVirtualThreads(8, () -> {
+            realLimit.acquire();
+            try {
+                d.recordAcquireStart("connections", Thread.currentThread());
+                d.recordAcquired("connections", Thread.currentThread());
+            } finally {
+                realLimit.release();
+            }
+        });
 
-        var report = d.analyze();
-        assertTrue(report.hasIssues());
-        assertTrue(report.toString().contains("was held by 2 caller(s) at once"), report.toString());
+        assertFalse(d.analyze().hasIssues(), "the limit was respected throughout");
     }
 
     @Test
@@ -165,15 +171,12 @@ class VirtualThreadResourceSaturationDetectorTest {
         var d = new VirtualThreadResourceSaturationDetector();
         d.disable();
         d.registerResource("connections", 1);
-        d.recordAcquireStart("connections", Thread.currentThread());
+        queueTwoVirtualWaiters(d, "connections");
         assertFalse(d.analyze().hasIssues());
 
         d.enable();
         d.registerResource("other", 1);
-        d.recordAcquireStart("other", Thread.currentThread());
-        d.recordAcquired("other", Thread.currentThread());
-        d.recordAcquireStart("other", Thread.currentThread());
-        d.recordAcquired("other", Thread.currentThread());
+        queueTwoVirtualWaiters(d, "other");
         assertTrue(d.analyze().hasIssues());
     }
 
@@ -181,10 +184,7 @@ class VirtualThreadResourceSaturationDetectorTest {
     void reportToStringCarriesTheFinding() {
         var d = new VirtualThreadResourceSaturationDetector();
         d.registerResource("connections", 1);
-        d.recordAcquireStart("connections", Thread.currentThread());
-        d.recordAcquired("connections", Thread.currentThread());
-        d.recordAcquireStart("connections", Thread.currentThread());
-        d.recordAcquired("connections", Thread.currentThread());
+        queueTwoVirtualWaiters(d, "connections");
 
         String rendered = d.analyze().toString();
         assertTrue(rendered.contains("VIRTUAL THREAD RESOURCE SATURATION DETECTED"));
@@ -193,6 +193,17 @@ class VirtualThreadResourceSaturationDetectorTest {
     }
 
     // ------------------------------------------------------------------ helpers
+
+    /**
+     * Puts two virtual waiters on {@code resource} without starting anything.
+     *
+     * <p>The detector reads only {@code threadId()} and {@code isVirtual()}, so an unstarted
+     * virtual thread is a faithful stand-in and keeps the assertion free of scheduling.
+     */
+    private static void queueTwoVirtualWaiters(VirtualThreadResourceSaturationDetector d, String resource) {
+        d.recordAcquireStart(resource, Thread.ofVirtual().unstarted(() -> { }));
+        d.recordAcquireStart(resource, Thread.ofVirtual().unstarted(() -> { }));
+    }
 
     /** A body that may throw, so the tests can await inside a virtual thread. */
     private interface Body {

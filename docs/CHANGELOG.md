@@ -22,8 +22,11 @@ returns zero matches in `LockContentionDetector`, `ThreadLeakDetector` and
   the resource with a `Semaphore` instead, and `VirtualThreadPoolingDetector:235` and
   `VirtualThreadCarrierExhaustionDetector:257` both printed that advice in their fix text while
   nothing detected the violation. Fires when more callers were waiting than the resource can
-  serve, with at least one virtual acquirer, and separately when holders exceeded the declared
-  capacity.
+  serve, with at least one virtual acquirer. It deliberately does not report on how many callers
+  *held* the resource: a caller returns it and then records having done so, and in that window the
+  next caller can legitimately be granted it, so a count above the capacity is instrumentation
+  skew as often as a real breach. That rule was in the first draft and CI caught it reporting a
+  correctly bounded pool - the false-positive direction this project does not accept.
 - **`VIRTUAL_THREAD_MONITOR_SERIALIZATION`** - the hazard JEP 491 left behind. Since JDK 24
   `synchronized` no longer pins, so `VIRTUAL_THREAD_PINNING` correctly reports those events as
   obsolete; one thread at a time is still one thread at a time, and nothing bounds the arrivals

@@ -2806,9 +2806,8 @@ public final class AsyncTestContext {
      * Returns the {@link VirtualThreadResourceSaturationDetector} for the current test.
      *
      * <p>Declare the bounded resource with {@code registerResource(name, capacity)}, then bracket
-     * each acquisition with {@code recordAcquireStart} / {@code recordAcquired} /
-     * {@code recordRelease}; the detector reports a fan-out that queued more callers than the
-     * resource can serve.
+     * each acquisition with {@code recordAcquireStart} and {@code recordAcquired}; the detector
+     * reports a fan-out that queued more callers than the resource can serve.
      *
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVirtualThreadResourceSaturation = false}
      * @since 1.11.0
