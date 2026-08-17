@@ -75,10 +75,12 @@ the duration) and the promotion. Mechanics in `se.deversity.asynctest.DetectorFa
 > completely wrong, since the flagged declarations were already the interface. The tell was that the
 > reported line did not contain the implementation type the message named.
 >
-> One consequence of the newer engine: PMD 7.26.0 widened `AvoidCatchingGenericException` to also
-> report `catch (Throwable)`, duplicating `AvoidCatchingThrowable`, which `pmd-ruleset.xml` already
-> excludes for the `ConcurrencyRunner` sites. Both rules are now excluded there, with the reasoning
-> recorded in the ruleset.
+> One consequence of the newer engine: `AvoidCatchingThrowable` is no longer a rule in PMD 7.26.0's
+> quickstart ruleset, and `AvoidCatchingGenericException` reports the `catch (Throwable)` sites
+> instead. `pmd-ruleset.xml` excluded both names for a while; excluding the retired one produced
+> only a PMD warning ("Exclude pattern 'AvoidCatchingThrowable' did not match any rule in ruleset
+> 'rulesets/java/quickstart.xml'") and it has been removed. The six sites the surviving rule covers,
+> five in `ConcurrencyRunner` and one in `AsyncTestAgent.selfAttach`, are argued in the ruleset.
 
 ## Static analysis and API gates
 
@@ -133,6 +135,12 @@ The gate was verified live rather than assumed: adding
 `new java.util.Random().nextInt()` to a class outside the exclusion scope makes both builds fail
 (Maven `PREDICTABLE_RANDOM`, Gradle `SECPR`), which confirms both that the plugin loads and that the
 scoping works.
+
+Both builds run these gates in CI, but only since `gradle-tests.yml` gained an explicit
+`./gradlew pmdMain spotbugsMain` step. Gradle attaches those tasks to `check`, and the job ran
+`test`, `publishToMavenLocal` and `assemble`, none of which reach `check`, so for as long as the
+Gradle configuration existed, no workflow had ever executed it. Maven ran the same rules over the
+same sources throughout, so this closed a duplicate-coverage hole rather than an unchecked one.
 
 ### NullAway
 

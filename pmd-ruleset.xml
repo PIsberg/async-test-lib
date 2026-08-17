@@ -30,22 +30,22 @@
         <exclude name="ClassNamingConventions"/>
 
         <!--
-            AvoidCatchingThrowable: The ConcurrencyRunner stress-test engine must catch Throwable
-            to propagate assertion failures and errors from worker threads back to the test thread.
-            Narrowing to Exception would silently swallow AssertionError and OutOfMemoryError.
-        -->
-        <exclude name="AvoidCatchingThrowable"/>
+            AvoidCatchingGenericException: six sites, all deliberate.
 
-        <!--
-            AvoidCatchingGenericException: same sites, same reason. PMD 7.26.0 widened this rule to
-            report `catch (Throwable)` as well — its message on ConcurrencyRunner:250 is literally
-            "Avoid catching Throwable in try-catch block" — so it now duplicates the rule excluded
-            just above. On PMD 7.17.0 the same sources are clean, so this exclusion tracks the
-            engine's rule change, not a new broad catch. If the two rules are ever separated again,
-            The sixth site it reports is genuinely generic — AsyncTestAgent.selfAttach catches
-            `RuntimeException | Error` around ByteBuddyAgent.install() — and is deliberate: install()
-            fails in several unchecked ways and the catch exists to rethrow all of them as the
-            IllegalStateException naming -Djdk.attach.allowAttachSelf=true.
+            Five are in ConcurrencyRunner (lines 429, 723, 726, 735 and 742), which must catch
+            Throwable to propagate assertion failures and errors from worker threads back to the
+            test thread; narrowing to Exception would silently swallow AssertionError and
+            OutOfMemoryError. PMD 7.26.0 reports these under this rule, and its message on
+            ConcurrencyRunner:429 is literally "Avoid catching Throwable in try-catch block",
+            because AvoidCatchingThrowable is no longer a separate rule in the quickstart ruleset.
+            Excluding that name as well only produced a PMD warning ("Exclude pattern
+            'AvoidCatchingThrowable' did not match any rule"), so it was removed; if a future PMD
+            reintroduces it, the sites above are the ones to re-argue.
+
+            The sixth is genuinely generic: AsyncTestAgent.selfAttach:236 catches
+            `RuntimeException | Error` around ByteBuddyAgent.install(). That is also deliberate:
+            install() fails in several unchecked ways and the catch exists to rethrow all of them as
+            the IllegalStateException naming -Djdk.attach.allowAttachSelf=true.
         -->
         <exclude name="AvoidCatchingGenericException"/>
 

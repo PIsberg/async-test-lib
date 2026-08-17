@@ -9,9 +9,6 @@
     collections. SpotBugs' intra-procedural analysis cannot follow the
     ConcurrentHashMap.values() read path back to the individual fields.
 
-    DP_DO_INSIDE_DO_PRIVILEGED: SecurityManager is deprecated and removed in
-    Java 17+; doPrivileged blocks are no-ops on Java 21.
-
     The find-sec-bugs section at the bottom was triaged once, finding by finding,
     when the plugin was added. Each exclusion says why. The narrow ones (the
     deserialization sink, the report writers) are deliberately scoped to a class
@@ -27,22 +24,19 @@
         <Bug pattern="URF_UNREAD_FIELD,URF_UNREAD_PUBLIC_OR_PROTECTED_FIELD"/>
         <Package name="se.deversity.asynctest.diagnostics"/>
     </Match>
+    <!-- SpinContentionBarrier is the only class in the runner package this fires on, and for the
+         same reason as the UUF_UNUSED_FIELD entry below: the field is cache-line padding. Scoped to
+         the class rather than the package so an unread field in any other runner class is still
+         reported. -->
     <Match>
         <Bug pattern="URF_UNREAD_FIELD"/>
-        <Package name="se.deversity.asynctest.runner"/>
+        <Class name="se.deversity.asynctest.runner.SpinContentionBarrier"/>
     </Match>
     <!-- AsyncTestConfig.detectAll is a public API config field read by DetectorRegistry -->
     <Match>
         <Bug pattern="URF_UNREAD_PUBLIC_OR_PROTECTED_FIELD"/>
         <Class name="se.deversity.asynctest.AsyncTestConfig"/>
         <Field name="detectAll"/>
-    </Match>
-
-    <!-- ================================================================
-         DP_DO_INSIDE_DO_PRIVILEGED — SecurityManager removed in Java 17+
-         ================================================================ -->
-    <Match>
-        <Bug pattern="DP_DO_INSIDE_DO_PRIVILEGED"/>
     </Match>
 
     <!-- ================================================================
@@ -116,7 +110,7 @@
          find-sec-bugs triage
          ================================================================ -->
 
-    <!-- CRLF_INJECTION_LOGS (24 findings) — the threat model does not apply.
+    <!-- CRLF_INJECTION_LOGS (36 findings) — the threat model does not apply.
          The values reaching these log calls are test method names, thread names,
          detector names and timing numbers: all supplied by the developer running
          their own suite, written to their own build log, read by them. There is no
