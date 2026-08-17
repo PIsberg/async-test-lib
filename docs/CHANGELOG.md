@@ -31,6 +31,28 @@ to 0 with the trimmed configs. Checkstyle was checked the same way, by adding a 
 source, and it failed the build as it should; its empty `checkstyle-result.xml` is the plugin's
 incremental cache, not an inert gate.
 
+### Fixed: `MemoryModelValidator` reported a scheduling delay as a happens-before violation
+
+The first CI run of this branch failed `AdvancedAsyncTestsTest.testMemoryModelValidation`, 1 test
+out of 1945 on the Gradle job, while all six Maven cells passed it on the same commit. Two of the
+validator's four checks ordered their threads with `Thread.sleep`: the synchronization check slept
+50ms and then read a value another thread was expected to have written by then, and the atomic
+check slept 10ms for the same purpose. A thread that has not been scheduled inside that window has
+not violated the Java Memory Model, but the validator recorded it as `✗ Synchronization
+happens-before failed: expected 42, got 0`, so a JMM validator was reporting the exact contention
+it exists to examine as a defect in the JVM.
+
+Both checks now wait on a `CountDownLatch` the writing thread counts down after its write, and a
+timeout is recorded as its own observation rather than as a happens-before failure, because the two
+mean different things to whoever reads the report. The volatile check's 10ms sleep is gone as well;
+its assertion always ran after `join()`, which is what orders that observation.
+
+The regression test injects the condition directly through a package-private constructor seam that
+delays the writing threads by 250ms, which is longer than either sleep ever was. Oversubscribing
+the CPU with four spinner threads per core was tried first and passed against the unfixed code, so
+it was dropped rather than shipped as a test that cannot fail. Against the unfixed validator the
+seam test fails with both original messages; after the fix the suite is 1845/0.
+
 ## [1.9.4] - 2026-08-16
 
 ### Changed: every hand-pinned dependency bumped, and a skill that repeats it

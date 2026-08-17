@@ -3,6 +3,8 @@ package se.deversity.asynctest.diagnostics;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -18,10 +20,31 @@ import java.util.concurrent.atomic.AtomicReference;
  * - Happens-Before relationships are transitive
  */
 public class MemoryModelValidator {
-    
-    
+
+    /**
+     * How long a reader waits for the writer it depends on. Deliberately shorter than the
+     * 5s join() the calling thread uses, so a stalled writer is reported as a timeout here
+     * before the join gives up and drops the observation entirely.
+     */
+    private static final long WRITER_TIMEOUT_SECONDS = 2;
     private final AtomicReference<ValidationResult> lastResult = new AtomicReference<>();
-    
+
+    /**
+     * Runs at the top of every thread whose write another thread waits for. Production is a
+     * no-op; a test injects a delay here to stand in for a runner that schedules the writer
+     * late, which is the condition a check must survive rather than report as a violation.
+     */
+    private final Runnable writerStartHook;
+
+    /** Creates a validator whose writer threads start as promptly as the scheduler allows. */
+    public MemoryModelValidator() {
+        this(() -> { });
+    }
+
+    MemoryModelValidator(Runnable writerStartHook) {
+        this.writerStartHook = writerStartHook;
+    }
+
     /**
      * Run comprehensive JMM validation on the test framework.
      * This checks that all internal state transitions are properly synchronized.
@@ -51,8 +74,10 @@ public class MemoryModelValidator {
         AtomicBoolean flag = new AtomicBoolean(false);
         AtomicInteger readCount = new AtomicInteger(0);
         
+        // No sleep here: the reader races the writer on purpose, and the check below reads the
+        // flag after joining both, so join() is what orders the observation.
         Thread writer = new Thread(() -> {
-            try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            writerStartHook.run();
             flag.set(true);
         });
         
@@ -84,15 +109,20 @@ public class MemoryModelValidator {
     private void testSynchronizationHappensBefore(ValidationResult result) {
         Object lock = new Object();
         int[] sharedValue = {0};
+        CountDownLatch released = new CountDownLatch(1);
         
         Thread t1 = new Thread(() -> {
+            writerStartHook.run();
             synchronized (lock) {
                 sharedValue[0] = 42;
             }
+            released.countDown();
         });
         
         Thread t2 = new Thread(() -> {
-            try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            if (!awaitWriter(released, result, "Sync")) {
+                return;
+            }
             synchronized (lock) {
                 if (sharedValue[0] == 42) {
                     result.observations.add("✓ Synchronization happens-before is correct");
@@ -140,13 +170,18 @@ public class MemoryModelValidator {
     private void testAtomicVisibility(ValidationResult result) {
         AtomicReference<String> atomicRef = new AtomicReference<>();
         boolean[] success = {false};
+        CountDownLatch written = new CountDownLatch(1);
         
         Thread writer = new Thread(() -> {
+            writerStartHook.run();
             atomicRef.set("SUCCESS");
+            written.countDown();
         });
         
         Thread reader = new Thread(() -> {
-            try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            if (!awaitWriter(written, result, "Atomic")) {
+                return;
+            }
             success[0] = "SUCCESS".equals(atomicRef.get());
         });
         
@@ -165,6 +200,35 @@ public class MemoryModelValidator {
             }
         } catch (InterruptedException e) {
             result.observations.add("✗ Atomic test interrupted");
+        }
+    }
+
+    /**
+     * Waits for the writing thread to signal that its write has happened. Replaces the fixed
+     * sleeps two of these checks used to take on faith: a thread that has not been scheduled
+     * within 50ms has not violated the memory model, but the old code recorded it as a
+     * happens-before failure, which is how a loaded CI runner turned this validator red.
+     *
+     * <p>A timeout is recorded as its own observation rather than as a happens-before failure,
+     * because the two mean different things to whoever reads the report.
+     *
+     * @param signal the latch the writing thread counts down after its write
+     * @param result the result to record a timeout or interruption on
+     * @param check the check's name, used in the observation text
+     * @return whether the writer signalled in time
+     */
+    private static boolean awaitWriter(CountDownLatch signal, ValidationResult result, String check) {
+        try {
+            if (signal.await(WRITER_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                return true;
+            }
+            result.observations.add("✗ " + check + " test timed out after " + WRITER_TIMEOUT_SECONDS
+                    + "s waiting for the writing thread");
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            result.observations.add("✗ " + check + " test interrupted waiting for the writing thread");
+            return false;
         }
     }
     
