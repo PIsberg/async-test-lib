@@ -136,6 +136,10 @@ import se.deversity.asynctest.diagnostics.StaticInitDeadlockDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadPoolingDetector;
 import se.deversity.asynctest.diagnostics.PlatformThreadPerTaskDetector;
 import se.deversity.asynctest.diagnostics.SharedSplittableRandomDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureCompletionRaceDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureCancellationPropagationDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureCombinatorMisuseDetector;
+import se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector;
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
@@ -343,6 +347,10 @@ final class DetectorRegistry {
     final @Nullable VirtualThreadPoolingDetector          virtualThreadPoolingDetector;
     final @Nullable PlatformThreadPerTaskDetector         platformThreadPerTaskDetector;
     final @Nullable SharedSplittableRandomDetector        sharedSplittableRandomDetector;
+    final @Nullable CompletableFutureCompletionRaceDetector          completableFutureCompletionRaceDetector;
+    final @Nullable CompletableFutureCancellationPropagationDetector completableFutureCancellationPropagationDetector;
+    final @Nullable CompletableFutureCombinatorMisuseDetector        completableFutureCombinatorMisuseDetector;
+    final @Nullable LambdaLostUpdateDetector                         lambdaLostUpdateDetector;
 
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
@@ -533,6 +541,10 @@ final class DetectorRegistry {
         virtualThreadPoolingDetector       = cfg.detectVirtualThreadPooling       ? new VirtualThreadPoolingDetector()       : null;
         platformThreadPerTaskDetector      = cfg.detectPlatformThreadPerTask      ? new PlatformThreadPerTaskDetector()      : null;
         sharedSplittableRandomDetector     = cfg.detectSharedSplittableRandom     ? new SharedSplittableRandomDetector()     : null;
+        completableFutureCompletionRaceDetector          = cfg.detectCompletableFutureCompletionRace          ? new CompletableFutureCompletionRaceDetector()          : null;
+        completableFutureCancellationPropagationDetector = cfg.detectCompletableFutureCancellationPropagation ? new CompletableFutureCancellationPropagationDetector() : null;
+        completableFutureCombinatorMisuseDetector        = cfg.detectCompletableFutureCombinatorMisuse        ? new CompletableFutureCombinatorMisuseDetector()        : null;
+        lambdaLostUpdateDetector                         = cfg.detectLambdaLostUpdate                         ? new LambdaLostUpdateDetector()                         : null;
     }
 
     /**
@@ -1017,6 +1029,22 @@ final class DetectorRegistry {
         ifIssue(sharedSplittableRandomDetector,
                 SharedSplittableRandomDetector::analyze,
                 SharedSplittableRandomDetector.Report::hasIssues, out);
+
+        ifIssue(completableFutureCompletionRaceDetector,
+                CompletableFutureCompletionRaceDetector::analyze,
+                CompletableFutureCompletionRaceDetector.Report::hasIssues, out);
+
+        ifIssue(completableFutureCancellationPropagationDetector,
+                CompletableFutureCancellationPropagationDetector::analyze,
+                CompletableFutureCancellationPropagationDetector.Report::hasIssues, out);
+
+        ifIssue(completableFutureCombinatorMisuseDetector,
+                CompletableFutureCombinatorMisuseDetector::analyze,
+                CompletableFutureCombinatorMisuseDetector.Report::hasIssues, out);
+
+        ifIssue(lambdaLostUpdateDetector,
+                LambdaLostUpdateDetector::analyze,
+                LambdaLostUpdateDetector.Report::hasIssues, out);
 
         return out;
     }

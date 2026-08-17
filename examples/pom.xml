@@ -147,5 +147,9 @@
         <module>136-virtual-thread-pooling</module>
         <module>137-platform-thread-per-task</module>
         <module>138-shared-splittable-random</module>
+        <module>139-cf-completion-race</module>
+        <module>140-cf-cancellation-propagation</module>
+        <module>141-cf-combinator-misuse</module>
+        <module>142-lambda-lost-update</module>
     </modules>
 </project>

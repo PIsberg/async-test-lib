@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added: four CompletableFuture and lambda detectors (135 -> 139)
+
+Six `CompletableFuture` detectors already shipped, but nothing read what `complete()` or
+`completeExceptionally()` returned, nothing tracked `cancel()` on a `CompletableFuture`, and
+`allOf`/`anyOf` appeared in `src/main` only inside a fix-hint string. Three bug classes were
+therefore invisible, and the lambda side had accuracy rather than coverage missing.
+
+- **`COMPLETABLE_FUTURE_COMPLETION_RACE`** — the loser of a completion race gets `false` back and
+  drops its value, or its exception, unread. Reported only for attempts observed to lose, so a
+  future completed by one thread stays silent. `HIGH` when an exception or a differing value was
+  discarded, `MEDIUM` when the loser carried the winner's value.
+- **`COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION`** — `cancel()` completes one future and stops
+  there, and the JDK documents that `mayInterruptIfRunning` has no effect on this type. Fires
+  when a stage body was recorded running after the cancel, and separately on `cancel(true)`.
+- **`COMPLETABLE_FUTURE_COMBINATOR_MISUSE`** — `allOf`/`anyOf` return a future rather than
+  waiting. Fires on a dropped combinator whose constituents were still outstanding, on a
+  `getNow`/`isDone` read taken before the group finished, and on an `anyOf` loser failing after
+  the read.
+- **`LAMBDA_LOST_UPDATE`** — `StatefulLambdaDetector` reports co-occurrence (ran on several
+  threads, mutated a capture) and so fires identically on a locked counter and a racy one. This
+  one compares values: it fires only where two threads were observed reading the same pre-value
+  before writing back, and suppresses the finding when every recorded update held one monitor.
+
+Each ships with its consumer fixture (`Phase22CompletableFutureAndLambdaCaptureFixtureTest`,
+which asserts the finding comes back out through `AsyncFindings`, not merely that the detector is
+reachable) and an example: [139-cf-completion-race](../examples/139-cf-completion-race/),
+[140-cf-cancellation-propagation](../examples/140-cf-cancellation-propagation/),
+[141-cf-combinator-misuse](../examples/141-cf-combinator-misuse/) and
+[142-lambda-lost-update](../examples/142-lambda-lost-update/).
+
+Detection was verified rather than assumed: disabling the completion-race and lost-update rules
+turns 15 of their 26 unit tests red. Each detector also pins its correctly synchronized twin
+staying silent — an elected single completer, a cooperative stage, a joined combinator, an atomic
+increment, and a consistently held monitor.
+
 ### Fixed: two dead static-analysis exclusions, and a Gradle gate CI never ran
 
 Audited every rule the build suppresses by emptying each config in turn and reading what the

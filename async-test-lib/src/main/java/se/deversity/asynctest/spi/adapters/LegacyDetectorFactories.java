@@ -136,6 +136,10 @@ import se.deversity.asynctest.diagnostics.StaticInitDeadlockDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadPoolingDetector;
 import se.deversity.asynctest.diagnostics.PlatformThreadPerTaskDetector;
 import se.deversity.asynctest.diagnostics.SharedSplittableRandomDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureCompletionRaceDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureCancellationPropagationDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureCombinatorMisuseDetector;
+import se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector;
 import se.deversity.asynctest.spi.Detector;
 import se.deversity.asynctest.spi.DetectorFactory;
 
@@ -1273,6 +1277,38 @@ public final class LegacyDetectorFactories {
         @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectSharedSplittableRandom; }
         @Override public Detector create(AsyncTestConfig c) {
             return new LegacyDetectorAdapter<>(new SharedSplittableRandomDetector(), DetectorType.SHARED_SPLITTABLE_RANDOM, "SharedSplittableRandom");
+        }
+    }
+
+    public static final class CompletableFutureCompletionRace implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.COMPLETABLE_FUTURE_COMPLETION_RACE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectCompletableFutureCompletionRace; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new CompletableFutureCompletionRaceDetector(), DetectorType.COMPLETABLE_FUTURE_COMPLETION_RACE, "CompletableFutureCompletionRace");
+        }
+    }
+
+    public static final class CompletableFutureCancellationPropagation implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectCompletableFutureCancellationPropagation; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new CompletableFutureCancellationPropagationDetector(), DetectorType.COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION, "CompletableFutureCancellationPropagation");
+        }
+    }
+
+    public static final class CompletableFutureCombinatorMisuse implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.COMPLETABLE_FUTURE_COMBINATOR_MISUSE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectCompletableFutureCombinatorMisuse; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new CompletableFutureCombinatorMisuseDetector(), DetectorType.COMPLETABLE_FUTURE_COMBINATOR_MISUSE, "CompletableFutureCombinatorMisuse");
+        }
+    }
+
+    public static final class LambdaLostUpdate implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.LAMBDA_LOST_UPDATE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectLambdaLostUpdate; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new LambdaLostUpdateDetector(), DetectorType.LAMBDA_LOST_UPDATE, "LambdaLostUpdate");
         }
     }
 }

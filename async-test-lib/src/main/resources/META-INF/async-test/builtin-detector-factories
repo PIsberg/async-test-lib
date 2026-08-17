@@ -143,3 +143,7 @@ se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$StaticInitDeadlock
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$VirtualThreadPooling
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$PlatformThreadPerTask
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$SharedSplittableRandom
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CompletableFutureCompletionRace
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CompletableFutureCancellationPropagation
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CompletableFutureCombinatorMisuse
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$LambdaLostUpdate

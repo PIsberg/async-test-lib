@@ -2017,6 +2017,62 @@ public @interface AsyncTest {
 
     boolean detectSharedSplittableRandom() default true;
 
+    /**
+     * Enable detection of threads racing to complete the same CompletableFuture, where the
+     * loser's value or exception is silently discarded. See
+     * {@link se.deversity.asynctest.diagnostics.CompletableFutureCompletionRaceDetector}.
+     * @since 1.10.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#COMPLETABLE_FUTURE_COMPLETION_RACE} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectCompletableFutureCompletionRace() default true;
+
+    /**
+     * Enable detection of stage work that outlives the cancellation of the future in front of it,
+     * and of {@code cancel(true)} on a type that never interrupts. See
+     * {@link se.deversity.asynctest.diagnostics.CompletableFutureCancellationPropagationDetector}.
+     * @since 1.10.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectCompletableFutureCancellationPropagation() default true;
+
+    /**
+     * Enable detection of allOf/anyOf results that are dropped or read without waiting, and of
+     * anyOf failures that reach no handler. See
+     * {@link se.deversity.asynctest.diagnostics.CompletableFutureCombinatorMisuseDetector}.
+     * @since 1.10.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#COMPLETABLE_FUTURE_COMBINATOR_MISUSE} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectCompletableFutureCombinatorMisuse() default true;
+
+    /**
+     * Enable detection of proven lost updates to a lambda's captured state, where two threads read
+     * the same value before writing back. See
+     * {@link se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector}.
+     * @since 1.10.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#LAMBDA_LOST_UPDATE} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectLambdaLostUpdate() default true;
+
     // ============= License Gating (Integration) =============
 
     /**

@@ -97,15 +97,15 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="32.0" y="216.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DUMMY_KEYGEN_PRODUCT: Stri…</text>
   <text x="32.0" y="231.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">announcedCiMock: boolean</text>
   <text x="32.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">announcedGranted: boolean</text>
-  <text x="32.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
+  <text x="32.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
   <line x1="24.0" y1="275.0" x2="204.0" y2="275.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="32.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">check(AsyncTestConfig): vo…</text>
   <text x="32.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">performCheck(Fingerprint):…</text>
-  <text x="32.0" y="318.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">assertsCommercialLicence(b…</text>
-  <text x="32.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">requireProviderCoordinates…</text>
-  <text x="32.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">validatorUnreachable(Finge…</text>
-  <text x="32.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">cacheKeyMaterial(Fingerpri…</text>
-  <text x="32.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
+  <text x="32.0" y="318.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">announceNoncommercial(): v…</text>
+  <text x="32.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">assertsCommercialLicence(b…</text>
+  <text x="32.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">requireProviderCoordinates…</text>
+  <text x="32.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">validatorUnreachable(Finge…</text>
+  <text x="32.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+4 more)</text>
 </g>
 <g id="LicenseValidationCache">
   <title>LicenseValidationCache [CLASS]</title>

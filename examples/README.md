@@ -175,6 +175,10 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 136 | [Virtual Thread Pooling](136-virtual-thread-pooling/) | `VirtualThreadPoolingDetector` | `newFixedThreadPool(4, Thread.ofVirtual().factory())` keeps the cap, the queue and the recycled workers — JEP 444's "never pool virtual threads", verbatim | 🟡 High |
 | 137 | [Platform Thread-Per-Task](137-platform-thread-per-task/) | `PlatformThreadPerTaskDetector` | `new Thread(task).start()` per webhook costs an OS thread and ~1 MB of stack each — survives the unit test, collapses at the production burst | 🟡 High |
 | 138 | [Shared SplittableRandom](138-shared-splittable-random/) | `SharedSplittableRandomDetector` | `SplittableRandom` shared across workers interleaves a plain read-modify-write — duplicated values and broken statistics with no exception to notice | 🟡 High |
+| 139 | [CompletableFuture Completion Race](139-cf-completion-race/) | `CompletableFutureCompletionRaceDetector` | Several threads `complete()` one future; the losers get `false` back and drop their value — or their exception, so an outage reads as a success | 🔴 High |
+| 140 | [CompletableFuture Cancellation Propagation](140-cf-cancellation-propagation/) | `CompletableFutureCancellationPropagationDetector` | `cancel()` completes one future and stops there — the upstream export writes all 50,000 rows anyway, and `cancel(true)` never interrupts this type | 🔴 High |
+| 141 | [CompletableFuture Combinator Misuse](141-cf-combinator-misuse/) | `CompletableFutureCombinatorMisuseDetector` | `allOf`/`anyOf` are constructors, not barriers — the dropped result lets the caller proceed mid-write, and `anyOf` losers fail with no handler to reach | 🔴 High |
+| 142 | [Lambda Captured-State Lost Update](142-lambda-lost-update/) | `LambdaLostUpdateDetector` | `hits[0] = hits[0] + 1` from two threads that read the same value — a proven lost update, silent under an atomic or a consistently held monitor | 🔴 High |
 
 > Examples 114–119 target JDK 24–26 concurrency features. The detectors work off recorded
 > `String`-key + `Thread` events, so they compile and run on the Java 21 baseline while

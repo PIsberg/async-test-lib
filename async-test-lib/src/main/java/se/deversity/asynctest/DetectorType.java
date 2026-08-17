@@ -347,5 +347,15 @@ public enum DetectorType {
     /** Detects thread-per-task execution on platform threads — unbounded OS-thread creation where virtual threads (or a bounded pool) belong. */
     PLATFORM_THREAD_PER_TASK,
     /** Detects SplittableRandom and JEP 356 RandomGenerator instances shared across threads — not thread-safe; concurrent use silently corrupts the sequence. */
-    SHARED_SPLITTABLE_RANDOM
+    SHARED_SPLITTABLE_RANDOM,
+
+    // Phase 22: CompletableFuture publication and lambda capture hazards (1.10.0+)
+    /** Detects threads racing to complete the same CompletableFuture, where the loser's value or exception is discarded unread. */
+    COMPLETABLE_FUTURE_COMPLETION_RACE,
+    /** Detects stage work that keeps running after the future in front of it was cancelled, and cancel(true) calls on a type that never interrupts. */
+    COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION,
+    /** Detects allOf/anyOf results dropped or read without waiting, and anyOf failures that reach no handler. */
+    COMPLETABLE_FUTURE_COMBINATOR_MISUSE,
+    /** Detects proven lost updates to a lambda's captured state: two threads read the same value before writing back. */
+    LAMBDA_LOST_UPDATE
 }
