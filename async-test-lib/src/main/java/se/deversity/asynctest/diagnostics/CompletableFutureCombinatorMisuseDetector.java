@@ -66,7 +66,26 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class CompletableFutureCombinatorMisuseDetector {
 
     /** Await styles that return immediately instead of waiting for the group. */
-    private static final Set<String> NON_BLOCKING_READS = Set.of("getnow", "isdone", "poll", "complete");
+    private static final Set<String> NON_BLOCKING_READS = Set.of("getNow", "isDone", "poll", "complete");
+
+    /**
+     * Case-insensitive equality without case folding.
+     *
+     * <p>{@code toLowerCase} would read better, but callers pass these labels as free text and
+     * the comparison is done with {@link String#CASE_INSENSITIVE_ORDER} so no locale-dependent
+     * mapping is applied to user input.
+     */
+    private static boolean sameIgnoringCase(String a, String b) {
+        return String.CASE_INSENSITIVE_ORDER.compare(a, b) == 0;
+    }
+
+    /** {@return whether {@code how} names a read that does not wait for the group} */
+    private static boolean isNonBlockingRead(String how) {
+        for (String candidate : NON_BLOCKING_READS) {
+            if (sameIgnoringCase(candidate, how)) return true;
+        }
+        return false;
+    }
 
     private static final class ConstituentEvent {
         final long    seq;
@@ -206,7 +225,7 @@ public final class CompletableFutureCombinatorMisuseDetector {
             }
 
             for (AwaitEvent a : awaits) {
-                if (!NON_BLOCKING_READS.contains(a.how.toLowerCase(java.util.Locale.ROOT))) continue;
+                if (!isNonBlockingRead(a.how)) continue;
                 int completedBefore = 0;
                 for (ConstituentEvent c : done) if (c.seq < a.seq) completedBefore++;
                 if (s.arity > 0 && completedBefore < s.arity) {
@@ -226,7 +245,7 @@ public final class CompletableFutureCombinatorMisuseDetector {
                 }
             }
 
-            if ("anyof".equals(s.kind.toLowerCase(java.util.Locale.ROOT))) {
+            if (sameIgnoringCase("anyOf", s.kind)) {
                 long lastAwaitSeq = 0;
                 for (AwaitEvent a : awaits) if (a.seq > lastAwaitSeq) lastAwaitSeq = a.seq;
                 Set<String> orphaned = new LinkedHashSet<>();

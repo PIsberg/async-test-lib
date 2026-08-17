@@ -3,7 +3,7 @@
 > Part of the [architecture documentation](../ARCHITECTURE.md).
 
 How a test declares what to stress and what to detect: `@AsyncTest` attributes snapshotted into an
-immutable config, resolved against 135 detector flags. The model is a strict 1:1 mapping maintained
+immutable config, resolved against 139 detector flags. The model is a strict 1:1 mapping maintained
 across several places at once — partial edits break detector wiring silently, so read
 [adding-a-detector.md](adding-a-detector.md) before touching any of it.
 

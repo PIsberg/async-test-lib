@@ -1,6 +1,6 @@
 # Detector Catalog
 
-`async-test-lib` includes **135 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
+`async-test-lib` includes **139 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
 
 ---
 
@@ -34,7 +34,7 @@ them.
 say so in their own wording — they ask you to verify external synchronization rather than declaring
 a defect.
 
-**Not yet classified:** most of the remaining detectors. The eval covers 8 of 135, chosen to cover
+**Not yet classified:** most of the remaining detectors. The eval covers 8 of 139, chosen to cover
 each mechanism class, and extending it is mechanical rather than hard. Where an entry below carries
 no explicit **Trust tier** line, treat it as unclassified and read its report wording, which is
 written to be honest about what it observed. Claiming a tier for all 135 without measuring would be
@@ -3164,4 +3164,96 @@ JDK 24/25/26.
   d.registerGenerator(rng, "ids");
   long v = rng.nextLong();
   d.recordAccess(rng, "ids", "nextLong");
+  ```
+
+## Phase 22: CompletableFuture Publication & Lambda Capture Hazards (1.10.0+)
+
+Four detectors whose findings rest on a value the detector observed rather than on the shape of
+the code: a `complete()` that returned `false`, a stage event recorded after a cancel, a
+combinator read while constituents were outstanding, two threads reading the same pre-value.
+Each stays silent on the correctly written twin — see [examples 139–142](../examples/README.md).
+
+### 136. CompletableFuture Completion Race
+* **Severity**: `HIGH`
+* **Trust tier**: **fact** — reports only completion attempts observed to lose, so a future completed by one thread is silent.
+* **Description**: Detects several threads racing to complete the same `CompletableFuture`. `complete()` and `completeExceptionally()` are first-writer-wins and return `false` for every later caller; that boolean is the only record that a result was discarded, and almost nothing reads it. The expensive case is a loser carrying an exception: the failure vanishes and the caller sees a success. Severity is `HIGH` when a losing attempt carried an exception or a value differing from the winner's, `MEDIUM` when every loser carried the same value.
+* **Buggy Code**:
+  ```java
+  CompletableFuture<String> quote = new CompletableFuture<>();
+  for (String p : providers) pool.execute(() -> quote.complete(quoteFrom(p)));  // losers dropped
+  ```
+* **Fixed Code**:
+  ```java
+  var slots = providers.stream().map(p -> supplyAsync(() -> quoteFrom(p), pool)).toList();
+  allOf(slots.toArray(CompletableFuture[]::new)).join();   // one future each, nothing discarded
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.cfCompletionRaceDetector();
+  d.complete(quote, "quote", value);          // the detector reads complete()'s own return value
+  ```
+
+### 137. CompletableFuture Cancellation Propagation
+* **Severity**: `HIGH`
+* **Trust tier**: **fact** — the `HIGH` finding needs a stage event recorded after a cancel on the same pipeline; a cooperative stage records nothing after it and is silent.
+* **Description**: Detects work that outlives the cancellation of the future in front of it. `cancel()` completes only the future it is called on: it does not reach the stage feeding it, cannot stop a supplier already running on a pool, and ignores `mayInterruptIfRunning` — the JDK documents that a `CompletableFuture` never interrupts anything. So the caller believes the export stopped and every row is still written. A second `MEDIUM` finding flags `cancel(true)` itself, since anything relying on that interrupt is relying on something that will not happen.
+* **Buggy Code**:
+  ```java
+  var export = supplyAsync(() -> exporter.exportAll(50_000), pool);
+  export.thenApply(this::render).cancel(true);   // stops nothing; all 50,000 rows still land
+  ```
+* **Fixed Code**:
+  ```java
+  var view = new CompletableFuture<String>();
+  runAsync(() -> exporter.exportCooperatively(50_000, view::isCancelled), pool);
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.cfCancellationPropagationDetector();
+  d.recordWorkStarted("report", "export", Thread.currentThread());
+  d.cancel(view, "report", "view", false);
+  d.recordWorkCompleted("report", "export", Thread.currentThread());   // only if it really finished
+  ```
+
+### 138. CompletableFuture Combinator Misuse
+* **Severity**: `HIGH`
+* **Trust tier**: **fact** — an unawaited combinator is reported only with constituents still outstanding, an early read only when fewer had completed than the arity given.
+* **Description**: Detects code that moves past a combinator before the group has finished. `allOf` and `anyOf` wait for nothing — they return a new future, and that future is the only thing that knows when the group is done. Dropping it, or reading it with `getNow`/`isDone`, lets the caller proceed mid-write. A third finding covers `anyOf` losers: once one constituent wins, a failure in any of the others reaches no handler. Overlaps `COMPLETABLEFUTURE_CHAIN`'s unawaited-chain finding, which tracks individual futures rather than the combinator API.
+* **Buggy Code**:
+  ```java
+  CompletableFuture.allOf(row, audit, index);   // called for a side effect it does not have
+  return "order written";
+  ```
+* **Fixed Code**:
+  ```java
+  CompletableFuture.allOf(row, audit, index).thenApply(v -> "order written");
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.cfCombinatorMisuseDetector();
+  d.recordCombinator(all, "orderWrites", "allOf", 3, Thread.currentThread());
+  d.recordConstituentCompleted(all, "row", false, Thread.currentThread());
+  d.recordAwait(all, "join", Thread.currentThread());
+  ```
+
+### 139. Lambda Captured-State Lost Update
+* **Severity**: `HIGH`
+* **Trust tier**: **fact** — fires only where two threads were observed reading the same pre-value, and stays silent when every recorded update held one monitor.
+* **Description**: Detects proven lost updates to a lambda's captured state. A lambda captures the container, not a copy, so the `int[] counter = {0}` workaround for effectively-final leaves the contents as shared as any field. Where `STATEFUL_LAMBDA` reports the shape — ran on several threads, mutated a capture — and therefore fires identically on a correctly locked counter, this one compares the values the threads observed: two threads reading the same value before writing back means one write was computed from stale state and is gone. `incrementAndGet()` gives each thread a distinct pre-value and is silent; so is a consistently held monitor, sampled with `Thread.holdsLock`. Inconsistent guarding is still reported, and the message says so.
+* **Buggy Code**:
+  ```java
+  int[] hits = {0};
+  Runnable onRequest = () -> hits[0] = hits[0] + 1;   // read, add, write - three steps
+  ```
+* **Fixed Code**:
+  ```java
+  AtomicInteger hits = new AtomicInteger();
+  Runnable onRequest = hits::incrementAndGet;         // one operation, no window
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.lambdaLostUpdateDetector();
+  int before = hits[0];
+  hits[0] = before + 1;
+  d.recordReadModifyWrite(task, "hits", before, before + 1, Thread.currentThread());
   ```
