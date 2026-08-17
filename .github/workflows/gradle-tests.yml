@@ -70,6 +70,14 @@ jobs:
       - name: Run library tests and generate coverage report
         run: ./gradlew test jacocoTestReport
 
+      # build.gradle.kts configures PMD and SpotBugs (same pmd-ruleset.xml and
+      # spotbugs-exclude.xml as the Maven build), but those tasks hang off `check`, and this job
+      # only ever ran `test`, so the Gradle side of both gates was configured and never executed.
+      # `pmdTest` / `spotbugsTest` stay disabled in the build script, matching Maven's
+      # includeTests=false.
+      - name: Run Gradle static analysis gates (PMD, SpotBugs + find-sec-bugs)
+        run: ./gradlew pmdMain spotbugsMain
+
       - name: Publish library to local Maven repository
         run: ./gradlew publishToMavenLocal
 

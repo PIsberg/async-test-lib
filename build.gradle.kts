@@ -227,7 +227,8 @@ subprojects {
         // Mirrors the <excludes> in pom.xml's maven-pmd-plugin config. Without it `./gradlew build`
         // fails on UnnecessaryConstructor / UncommentedEmptyConstructor in an intentionally empty
         // class. The two builds had drifted here because CI only ever ran `./gradlew test`, so the
-        // Gradle PMD gate was never exercised.
+        // Gradle PMD gate was never exercised; gradle-tests.yml now runs `pmdMain spotbugsMain`
+        // explicitly, because these tasks hang off `check` and `test` alone does not reach them.
         exclude("**/NoopAsyncTestListener.java")
     }
     tasks.named("pmdTest") { enabled = false }

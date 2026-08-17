@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed: two dead static-analysis exclusions, and a Gradle gate CI never ran
+
+Audited every rule the build suppresses by emptying each config in turn and reading what the
+analysers then reported. Of 12 PMD exclusions, 11 still cover live violations; `AvoidCatchingThrowable`
+covered none, because PMD 7.26.0's quickstart ruleset no longer contains that rule, and PMD had been
+printing "Exclude pattern 'AvoidCatchingThrowable' did not match any rule" on every Maven and Gradle
+run. Of 20 SpotBugs `Match` blocks, 19 are live; `DP_DO_INSIDE_DO_PRIVILEGED` matched nothing in any
+module, which its own comment predicted (SecurityManager is gone on Java 21). Both are removed. The
+`URF_UNREAD_FIELD` block covering the whole `runner` package fired on one class, `SpinContentionBarrier`,
+so it is now scoped to that class and an unread field in any other runner class is reported again.
+`CRLF_INJECTION_LOGS` said 24 findings and is now 36.
+
+`gradle-tests.yml` gained a `./gradlew pmdMain spotbugsMain` step. Gradle hangs those tasks off
+`check`, and the job ran `test`, `publishToMavenLocal` and `assemble`, so the Gradle PMD and SpotBugs
+configuration had never been executed by any workflow. Maven ran the same rules over the same sources
+throughout, so nothing was unchecked, but the comment in `build.gradle.kts` claiming the gate was
+being exercised was wrong.
+
+Verified with the analysers, not with the docs: 88 SpotBugs findings in `async-test-lib` and 2 in
+`async-test-agent` with the filter emptied, 772 PMD violations with the exclusions removed, both back
+to 0 with the trimmed configs. Checkstyle was checked the same way, by adding a star import to a main
+source, and it failed the build as it should; its empty `checkstyle-result.xml` is the plugin's
+incremental cache, not an inert gate.
+
+### Fixed: `MemoryModelValidator` reported a scheduling delay as a happens-before violation
+
+The first CI run of this branch failed `AdvancedAsyncTestsTest.testMemoryModelValidation`, 1 test
+out of 1945 on the Gradle job, while all six Maven cells passed it on the same commit. Two of the
+validator's four checks ordered their threads with `Thread.sleep`: the synchronization check slept
+50ms and then read a value another thread was expected to have written by then, and the atomic
+check slept 10ms for the same purpose. A thread that has not been scheduled inside that window has
+not violated the Java Memory Model, but the validator recorded it as `✗ Synchronization
+happens-before failed: expected 42, got 0`, so a JMM validator was reporting the exact contention
+it exists to examine as a defect in the JVM.
+
+Both checks now wait on a `CountDownLatch` the writing thread counts down after its write, and a
+timeout is recorded as its own observation rather than as a happens-before failure, because the two
+mean different things to whoever reads the report. The volatile check's 10ms sleep is gone as well;
+its assertion always ran after `join()`, which is what orders that observation.
+
+The regression test injects the condition directly through a package-private constructor seam that
+delays the writing threads by 250ms, which is longer than either sleep ever was. Oversubscribing
+the CPU with four spinner threads per core was tried first and passed against the unfixed code, so
+it was dropped rather than shipped as a test that cannot fail. Against the unfixed validator the
+seam test fails with both original messages; after the fix the suite is 1845/0.
+
 ## [1.9.4] - 2026-08-16
 
 ### Changed: every hand-pinned dependency bumped, and a skill that repeats it
