@@ -69,7 +69,7 @@ a green run that proves nothing.
 | Repo | Declares it in | Build command | Async classes |
 |---|---|---|---|
 | `blindbean` | `blindbean-tests/pom.xml` (bare `<version>`) | `./mvnw -B -pl blindbean-tests -am test` | 7 |
-| `vibetags` | `vibetags-parent/pom.xml` (property) **and** `vibetags/build.gradle` (literal) | see below | 4 |
+| `vibetags` | `vibetags-parent/pom.xml` (property) **and** `vibetags/build.gradle` (literal) | see below | 5 |
 | `skill3` | `build.gradle` (literal) | `./gradlew --no-daemon test` | 1 (8 methods) |
 
 `codekarta` is **not** a consumer — checked 2026-08-08, no dependency and no `@AsyncTest`, only
@@ -77,6 +77,12 @@ a passing mention in a `vibetags-usage` skill doc. Do not go looking again unles
 `find-consumers.sh` says otherwise.
 
 ### blindbean
+
+A fresh worktree has no `build-native/Release`, and every FHE test then errors with "Cannot
+load blindbean_fhe native library" (52 errors on 2026-08-17). Point the run at the main checkout's
+DLL if its native source is at the same commit: `-Dblindbean.native.path=C:/dev/private/blindbean/build-native/Release`.
+Run blindbean alone: `FheAsyncConcurrencyTest` needs ~78 s for 4 tests against a 60 s per-test
+budget, and it timed out once while vibetags was running beside it.
 
 Use `./mvnw`, not `mvn`. Its enforcer requires Maven `[3.9.0,)` and the `mvn` on PATH is 3.8.6,
 so a plain `mvn` fails in the parent before it ever compiles a test.
@@ -90,11 +96,13 @@ Build order, and the tier that matters:
 
 ```bash
 cd vibetags-annotations && mvn -B -q install -DskipTests   # published to ~/.m2 for both builds
-cd ../vibetags          && mvn -B test -Pe2e               # 1537 tests
+cd ../vibetags          && mvn -B test -Pe2e               # 1936 tests (2026-08-17)
 cd ../vibetags          && ./gradlew --no-daemon test -Pe2e
 ```
 
-**`-Pe2e` is not optional here.** Three of the four `@AsyncTest` classes carry `@Tag("e2e")`, so
+**`-Pe2e` is not optional here.** Most of the five `@AsyncTest` classes (GuardrailFileWriterAsyncTest,
+ModuleSidecarAsyncTest, VibeTagsLoggerAsyncTest, VibeTagsLoggerConcurrencyTest, WriteCacheAsyncTest;
+the fifth appeared between 1.9.2 and 1.9.4) carry `@Tag("e2e")`, so
 a plain `mvn test` runs only `WriteCacheAsyncTest`, reports 957 green tests, and would sign off
 on a bump having exercised a quarter of the async surface.
 
