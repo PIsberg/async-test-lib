@@ -147,3 +147,6 @@ se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CompletableFutureCom
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CompletableFutureCancellationPropagation
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$CompletableFutureCombinatorMisuse
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$LambdaLostUpdate
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$VirtualThreadResourceSaturation
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$VirtualThreadMonitorSerialization
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ThreadLocalCacheDegradation

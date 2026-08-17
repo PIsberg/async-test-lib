@@ -24,7 +24,7 @@ src/main/java/se/deversity/asynctest/
 ├── runner/
 │   ├── ConcurrencyRunner.java        # Main execution engine
 │   └── LicenseGuard.java             # NEW in 1.6.0 — process-wide license cache
-├── diagnostics/                      # 139 detector implementations
+├── diagnostics/                      # 142 detector implementations
 │   ├── Phase1DetectorSet.java        # Phase 1 detector group
 │   ├── SiteCapture.java              # NEW in 1.6.0 — source-line attribution helper
 │   ├── DeadlockDetector.java

@@ -140,6 +140,9 @@ import se.deversity.asynctest.diagnostics.CompletableFutureCompletionRaceDetecto
 import se.deversity.asynctest.diagnostics.CompletableFutureCancellationPropagationDetector;
 import se.deversity.asynctest.diagnostics.CompletableFutureCombinatorMisuseDetector;
 import se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector;
+import se.deversity.asynctest.diagnostics.VirtualThreadResourceSaturationDetector;
+import se.deversity.asynctest.diagnostics.VirtualThreadMonitorSerializationDetector;
+import se.deversity.asynctest.diagnostics.ThreadLocalCacheDegradationDetector;
 import se.deversity.asynctest.spi.Detector;
 import se.deversity.asynctest.spi.DetectorFactory;
 
@@ -1309,6 +1312,30 @@ public final class LegacyDetectorFactories {
         @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectLambdaLostUpdate; }
         @Override public Detector create(AsyncTestConfig c) {
             return new LegacyDetectorAdapter<>(new LambdaLostUpdateDetector(), DetectorType.LAMBDA_LOST_UPDATE, "LambdaLostUpdate");
+        }
+    }
+
+    public static final class VirtualThreadResourceSaturation implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.VIRTUAL_THREAD_RESOURCE_SATURATION; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectVirtualThreadResourceSaturation; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new VirtualThreadResourceSaturationDetector(), DetectorType.VIRTUAL_THREAD_RESOURCE_SATURATION, "VirtualThreadResourceSaturation");
+        }
+    }
+
+    public static final class VirtualThreadMonitorSerialization implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.VIRTUAL_THREAD_MONITOR_SERIALIZATION; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectVirtualThreadMonitorSerialization; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new VirtualThreadMonitorSerializationDetector(), DetectorType.VIRTUAL_THREAD_MONITOR_SERIALIZATION, "VirtualThreadMonitorSerialization");
+        }
+    }
+
+    public static final class ThreadLocalCacheDegradation implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.THREAD_LOCAL_CACHE_DEGRADATION; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectThreadLocalCacheDegradation; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new ThreadLocalCacheDegradationDetector(), DetectorType.THREAD_LOCAL_CACHE_DEGRADATION, "ThreadLocalCacheDegradation");
         }
     }
 }

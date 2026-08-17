@@ -179,6 +179,9 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 140 | [CompletableFuture Cancellation Propagation](140-cf-cancellation-propagation/) | `CompletableFutureCancellationPropagationDetector` | `cancel()` completes one future and stops there — the upstream export writes all 50,000 rows anyway, and `cancel(true)` never interrupts this type | 🔴 High |
 | 141 | [CompletableFuture Combinator Misuse](141-cf-combinator-misuse/) | `CompletableFutureCombinatorMisuseDetector` | `allOf`/`anyOf` are constructors, not barriers — the dropped result lets the caller proceed mid-write, and `anyOf` losers fail with no handler to reach | 🔴 High |
 | 142 | [Lambda Captured-State Lost Update](142-lambda-lost-update/) | `LambdaLostUpdateDetector` | `hits[0] = hits[0] + 1` from two threads that read the same value — a proven lost update, silent under an atomic or a consistently held monitor | 🔴 High |
+| 143 | [Virtual Thread Resource Saturation](143-vthread-resource-saturation/) | `VirtualThreadResourceSaturationDetector` | The fixed pool was accidental admission control; a thread per task removes it and ten thousand callers queue on a ten-connection pool | 🔴 High |
+| 144 | [Virtual Thread Monitor Serialization](144-vthread-monitor-serialization/) | `VirtualThreadMonitorSerializationDetector` | JEP 491 removed the pinning and left the bottleneck — `synchronized` still admits one thread at a time, and nothing bounds how many arrive | 🔴 High |
+| 145 | [ThreadLocal Cache Degradation](145-threadlocal-cache-degradation/) | `ThreadLocalCacheDegradationDetector` | `ThreadLocal<SimpleDateFormat>` was a cache because the pool bounded it; per task it allocates one formatter per request and the code never changed | 🟡 Medium |
 
 > Examples 114–119 target JDK 24–26 concurrency features. The detectors work off recorded
 > `String`-key + `Thread` events, so they compile and run on the Java 21 baseline while

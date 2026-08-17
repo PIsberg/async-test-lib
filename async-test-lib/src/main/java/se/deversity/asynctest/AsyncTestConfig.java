@@ -374,6 +374,12 @@ public final class AsyncTestConfig {
     public final boolean detectCompletableFutureCombinatorMisuse;
     /** Resolved value of {@link AsyncTest#detectLambdaLostUpdate()} for this run. */
     public final boolean detectLambdaLostUpdate;
+    /** Resolved value of {@link AsyncTest#detectVirtualThreadResourceSaturation()} for this run. */
+    public final boolean detectVirtualThreadResourceSaturation;
+    /** Resolved value of {@link AsyncTest#detectVirtualThreadMonitorSerialization()} for this run. */
+    public final boolean detectVirtualThreadMonitorSerialization;
+    /** Resolved value of {@link AsyncTest#detectThreadLocalCacheDegradation()} for this run. */
+    public final boolean detectThreadLocalCacheDegradation;
 
     // ---- Benchmarking ----
     /** Resolved value of {@link AsyncTest#enableBenchmarking()} for this run. */
@@ -553,6 +559,9 @@ public final class AsyncTestConfig {
         detectCompletableFutureCancellationPropagation = b.detectCompletableFutureCancellationPropagation;
         detectCompletableFutureCombinatorMisuse = b.detectCompletableFutureCombinatorMisuse;
         detectLambdaLostUpdate           = b.detectLambdaLostUpdate;
+        detectVirtualThreadResourceSaturation = b.detectVirtualThreadResourceSaturation;
+        detectVirtualThreadMonitorSerialization = b.detectVirtualThreadMonitorSerialization;
+        detectThreadLocalCacheDegradation = b.detectThreadLocalCacheDegradation;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -769,6 +778,9 @@ public final class AsyncTestConfig {
             .detectCompletableFutureCancellationPropagation(ann.detectCompletableFutureCancellationPropagation())
             .detectCompletableFutureCombinatorMisuse(ann.detectCompletableFutureCombinatorMisuse())
             .detectLambdaLostUpdate(ann.detectLambdaLostUpdate())
+            .detectVirtualThreadResourceSaturation(ann.detectVirtualThreadResourceSaturation())
+            .detectVirtualThreadMonitorSerialization(ann.detectVirtualThreadMonitorSerialization())
+            .detectThreadLocalCacheDegradation(ann.detectThreadLocalCacheDegradation())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -943,6 +955,9 @@ public final class AsyncTestConfig {
         private boolean detectCompletableFutureCancellationPropagation = false;
         private boolean detectCompletableFutureCombinatorMisuse = false;
         private boolean detectLambdaLostUpdate           = false;
+        private boolean detectVirtualThreadResourceSaturation = false;
+        private boolean detectVirtualThreadMonitorSerialization = false;
+        private boolean detectThreadLocalCacheDegradation = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -1838,6 +1853,24 @@ public final class AsyncTestConfig {
          */
         public Builder detectLambdaLostUpdate(boolean v)               { detectLambdaLostUpdate = v; return this; }
         /**
+         * Sets {@link AsyncTestConfig#detectVirtualThreadResourceSaturation}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectVirtualThreadResourceSaturation(boolean v) { detectVirtualThreadResourceSaturation = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectVirtualThreadMonitorSerialization}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectVirtualThreadMonitorSerialization(boolean v) { detectVirtualThreadMonitorSerialization = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectThreadLocalCacheDegradation}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectThreadLocalCacheDegradation(boolean v)     { detectThreadLocalCacheDegradation = v; return this; }
+        /**
          * Sets {@link AsyncTestConfig#enableBenchmarking}.
          * @param v the value to use
          * @return this builder
@@ -2100,6 +2133,9 @@ public final class AsyncTestConfig {
             detectCompletableFutureCancellationPropagation = (detectAll || detectCompletableFutureCancellationPropagation) && !excludes.contains(DetectorType.COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION);
             detectCompletableFutureCombinatorMisuse = (detectAll || detectCompletableFutureCombinatorMisuse) && !excludes.contains(DetectorType.COMPLETABLE_FUTURE_COMBINATOR_MISUSE);
             detectLambdaLostUpdate = (detectAll || detectLambdaLostUpdate) && !excludes.contains(DetectorType.LAMBDA_LOST_UPDATE);
+            detectVirtualThreadResourceSaturation = (detectAll || detectVirtualThreadResourceSaturation) && !excludes.contains(DetectorType.VIRTUAL_THREAD_RESOURCE_SATURATION);
+            detectVirtualThreadMonitorSerialization = (detectAll || detectVirtualThreadMonitorSerialization) && !excludes.contains(DetectorType.VIRTUAL_THREAD_MONITOR_SERIALIZATION);
+            detectThreadLocalCacheDegradation = (detectAll || detectThreadLocalCacheDegradation) && !excludes.contains(DetectorType.THREAD_LOCAL_CACHE_DEGRADATION);
             return new AsyncTestConfig(this);
         }
     }

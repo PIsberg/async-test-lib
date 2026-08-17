@@ -2073,6 +2073,46 @@ public @interface AsyncTest {
 
     boolean detectLambdaLostUpdate() default true;
 
+    /**
+     * Enable detection of an unbounded virtual-thread fan-out queueing on a bounded resource. See
+     * {@link se.deversity.asynctest.diagnostics.VirtualThreadResourceSaturationDetector}.
+     * @since 1.11.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#VIRTUAL_THREAD_RESOURCE_SATURATION} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectVirtualThreadResourceSaturation() default true;
+
+    /**
+     * Enable detection of a monitor serialising a large virtual-thread fan-out. See
+     * {@link se.deversity.asynctest.diagnostics.VirtualThreadMonitorSerializationDetector}.
+     * @since 1.11.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#VIRTUAL_THREAD_MONITOR_SERIALIZATION} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectVirtualThreadMonitorSerialization() default true;
+
+    /**
+     * Enable detection of a ThreadLocal cache that degenerates into a per-task allocator under
+     * virtual threads. See
+     * {@link se.deversity.asynctest.diagnostics.ThreadLocalCacheDegradationDetector}.
+     * @since 1.11.0
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#THREAD_LOCAL_CACHE_DEGRADATION} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectThreadLocalCacheDegradation() default true;
+
     // ============= License Gating (Integration) =============
 
     /**

@@ -1,6 +1,6 @@
 # Detector Catalog
 
-`async-test-lib` includes **139 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
+`async-test-lib` includes **142 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
 
 ---
 
@@ -34,7 +34,7 @@ them.
 say so in their own wording — they ask you to verify external synchronization rather than declaring
 a defect.
 
-**Not yet classified:** most of the remaining detectors. The eval covers 8 of 139, chosen to cover
+**Not yet classified:** most of the remaining detectors. The eval covers 8 of 142, chosen to cover
 each mechanism class, and extending it is mechanical rather than hard. Where an entry below carries
 no explicit **Trust tier** line, treat it as unclassified and read its report wording, which is
 written to be honest about what it observed. Claiming a tier for all 135 without measuring would be
@@ -3256,4 +3256,74 @@ Each stays silent on the correctly written twin — see [examples 139–142](../
   int before = hits[0];
   hits[0] = before + 1;
   d.recordReadModifyWrite(task, "hits", before, before + 1, Thread.currentThread());
+  ```
+
+## Phase 23: Virtual-Thread Scale Hazards (1.11.0+)
+
+The JEP 444 first-order hazards are covered by Phases 6 and 21 — pinning, pooling, CPU-bound
+tasks, carrier exhaustion, context leaks, thread-per-task. These three are the second-order set:
+failures that only appear once virtual threads make concurrency unbounded, and that the older
+detectors cannot see because they were written when the thread count was the pool size.
+`LOCK_CONTENTION`, `THREAD_LEAK` and `THREAD_STARVATION` contain no reference to
+`Thread.isVirtual()` at all. Examples [143–145](../examples/README.md).
+
+### 140. Virtual Thread Resource Saturation
+* **Severity**: `HIGH`
+* **Trust tier**: **fact** — peak waiters versus declared capacity, both counts; a fan-out bounded by a semaphore of the resource's own size is silent.
+* **Description**: Detects an unbounded virtual-thread fan-out queueing on a bounded resource. A fixed pool of eight platform threads could never ask for a ninth connection, so the pool size was admission control that nobody wrote down; removing the pool removes it, while the connection pool, the rate limiter and the downstream service stay as bounded as they were. JEP 444's own advice is to limit the resource with a `Semaphore` rather than to pool the threads. Platform-only workloads are out of scope: a bounded pool cannot produce this, and `THREAD_POOL_DEADLOCK` covers that ground. There is deliberately no "holders exceeded the capacity" finding: a caller returns the resource and then records having done so, and in that window the next caller can legitimately be granted it, so an observed count above the capacity is instrumentation skew as often as a real breach.
+* **Buggy Code**:
+  ```java
+  var pool = Executors.newVirtualThreadPerTaskExecutor();
+  for (Request r : requests) pool.submit(() -> { try (var c = ds.getConnection()) { handle(r, c); } });
+  ```
+* **Fixed Code**:
+  ```java
+  Semaphore admission = new Semaphore(ds.getMaximumPoolSize());   // bound the resource, not the threads
+  pool.submit(() -> { admission.acquire(); try (var c = ds.getConnection()) { handle(r, c); }
+                      finally { admission.release(); } });
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.vthreadResourceSaturationDetector();
+  d.registerResource("connections", ds.getMaximumPoolSize());
+  d.recordAcquireStart("connections", Thread.currentThread());
+  d.recordAcquired("connections", Thread.currentThread());
+  ```
+
+### 141. Virtual Thread Monitor Serialization
+* **Severity**: `HIGH`
+* **Trust tier**: **fact** — peak queue depth and the number of distinct virtual waiters, both counts; a critical section nobody queues on is silent.
+* **Description**: Detects a monitor serialising a large virtual-thread fan-out — the hazard JEP 491 left behind. Before JDK 24 a blocking `synchronized` pinned its virtual thread to a carrier and `VIRTUAL_THREAD_PINNING` reported it; that detector now correctly marks monitor events obsolete from JDK 24 on. The throughput limit did not go with the pinning: `synchronized` still admits one thread at a time, and with the pool gone nothing bounds how many arrive. It is easy to miss precisely because the fix landed, since a JDK 24 upgrade reads as "the pinning warnings went away". The report states which side of JDK 24 it is on and points at the pinning detector below it. `LOCK_CONTENTION` cannot make this call — it has no notion of a virtual thread.
+* **Buggy Code**:
+  ```java
+  synchronized (lock) { var v = cache.get(k); if (v == null) { v = load(k); cache.put(k, v); } return v; }
+  ```
+* **Fixed Code**:
+  ```java
+  return cache.computeIfAbsent(k, this::load);   // admits every thread; or shrink what is under the lock
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.vthreadMonitorSerializationDetector();
+  d.recordMonitorEnter(lock, "sessionCache", Thread.currentThread());
+  synchronized (lock) { d.recordMonitorAcquired(lock, Thread.currentThread()); ... }
+  ```
+
+### 142. ThreadLocal Cache Degradation
+* **Severity**: `MEDIUM`
+* **Trust tier**: **fact** — distinct instances counted by identity; a shared value, a pooled helper and platform-only usage are all silent.
+* **Description**: Detects a `ThreadLocal` that was a cache under a pool and became an allocator under virtual threads. `ThreadLocal<SimpleDateFormat>` is the standard answer to a helper that is not thread-safe, and on a pool it is a good one: eight workers means eight formatters for the life of the process, bounded by the pool, which is why nobody counts them. A thread per task means an instance per task, retained for that thread's life. Nothing fails — the object is still confined to one thread — so the code reads exactly as it did when it was a cache. Distinct from `VIRTUAL_THREAD_CONTEXT_LEAKS`, which counts distinct ThreadLocal *keys* per thread; here there is one key and the question is how many *instances* it produced.
+* **Buggy Code**:
+  ```java
+  static final ThreadLocal<SimpleDateFormat> FORMAT =
+          ThreadLocal.withInitial(() -> new SimpleDateFormat("yyyy-MM-dd"));   // one per task now
+  ```
+* **Fixed Code**:
+  ```java
+  static final DateTimeFormatter FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");   // immutable, shared
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.threadLocalCacheDegradationDetector();
+  d.recordCachedValue("FORMAT", FORMAT.get(), Thread.currentThread());
   ```

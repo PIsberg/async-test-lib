@@ -4,7 +4,7 @@ paths: ["**/diagnostics/**"]
 
 ## Conventions for every detector in this package
 
-These hold for all 139 detectors and are therefore stated once here rather than restated as a
+These hold for all 142 detectors and are therefore stated once here rather than restated as a
 per-class `@AITestDriven` annotation — one annotation per detector cost one `<element>` line each
 in the always-loaded `<scoped_rules>` index of `CLAUDE.md`.
 
@@ -135,6 +135,9 @@ a performance budget) are annotated individually and appear below.
 ### se.deversity.asynctest.diagnostics.ThisEscapeDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/ThisEscapeDetectorTest.java
 
+### se.deversity.asynctest.diagnostics.ThreadLocalCacheDegradationDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/ThreadLocalCacheDegradationDetectorTest.java
+
 ### se.deversity.asynctest.diagnostics.ThreadLocalRandomMisuseDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/ThreadLocalRandomMisuseDetectorTest.java
 
@@ -144,8 +147,14 @@ a performance budget) are annotated individually and appear below.
 ### se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/VarHandleNonAtomicUpdateDetectorTest.java
 
+### se.deversity.asynctest.diagnostics.VirtualThreadMonitorSerializationDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/VirtualThreadMonitorSerializationDetectorTest.java
+
 ### se.deversity.asynctest.diagnostics.VirtualThreadPoolingDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/VirtualThreadPoolingDetectorTest.java
+
+### se.deversity.asynctest.diagnostics.VirtualThreadResourceSaturationDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/VirtualThreadResourceSaturationDetectorTest.java
 
 ### se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/WeakHashMapSharedDetectorTest.java
@@ -288,6 +297,10 @@ a performance budget) are annotated individually and appear below.
 - **Strategy**: OTHER
 - **Note**: Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; escape descriptions and observer-thread sets are ConcurrentHashMap.newKeySet(); the completed flag is volatile.
 
+### se.deversity.asynctest.diagnostics.ThreadLocalCacheDegradationDetector
+- **Strategy**: OTHER
+- **Note**: One state object per ThreadLocal name in a ConcurrentHashMap; instance identities and thread ids are concurrent key-set views, so counting is idempotent under repeated recording from the same thread - a value read twice adds nothing.
+
 ### se.deversity.asynctest.diagnostics.ThreadLocalRandomMisuseDetector
 - **Strategy**: OTHER
 - **Note**: Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; misusing-thread sets are ConcurrentHashMap.newKeySet().
@@ -300,9 +313,17 @@ a performance budget) are annotated individually and appear below.
 - **Strategy**: OTHER
 - **Note**: Per-location state in ConcurrentHashMap keyed on a (handle, receiver) identity record; pending reads are a per-thread ConcurrentHashMap entry; counters are LongAdder and detail lists are CopyOnWriteArrayList bounded by MAX_DETAILS.
 
+### se.deversity.asynctest.diagnostics.VirtualThreadMonitorSerializationDetector
+- **Strategy**: OTHER
+- **Note**: One state object per monitor identity in a ConcurrentHashMap. Queue depth is an atomic counter and its peak is raised with a CAS retry loop, so a peak observed under contention is never lower than the true peak.
+
 ### se.deversity.asynctest.diagnostics.VirtualThreadPoolingDetector
 - **Strategy**: OTHER
 - **Note**: Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id map values use AtomicInteger counters and ConcurrentHashMap.newKeySet().
+
+### se.deversity.asynctest.diagnostics.VirtualThreadResourceSaturationDetector
+- **Strategy**: OTHER
+- **Note**: One state object per resource in a ConcurrentHashMap. Waiting and holding are atomic counters and the peaks are maintained with a CAS retry loop, so a peak observed under contention is never lower than the true peak.
 
 ### se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector
 - **Strategy**: OTHER

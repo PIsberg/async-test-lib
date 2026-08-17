@@ -273,6 +273,9 @@ class PresetResolutionTest {
         @Override public boolean detectCompletableFutureCancellationPropagation() { return def("detectCompletableFutureCancellationPropagation"); }
         @Override public boolean detectCompletableFutureCombinatorMisuse() { return def("detectCompletableFutureCombinatorMisuse"); }
         @Override public boolean detectLambdaLostUpdate() { return def("detectLambdaLostUpdate"); }
+        @Override public boolean detectVirtualThreadResourceSaturation() { return def("detectVirtualThreadResourceSaturation"); }
+        @Override public boolean detectVirtualThreadMonitorSerialization() { return def("detectVirtualThreadMonitorSerialization"); }
+        @Override public boolean detectThreadLocalCacheDegradation() { return def("detectThreadLocalCacheDegradation"); }
         @Override public boolean enableBenchmarking() { return def("enableBenchmarking"); }
         @Override public double benchmarkRegressionThreshold() { return def("benchmarkRegressionThreshold"); }
         @Override public boolean failOnBenchmarkRegression() { return def("failOnBenchmarkRegression"); }
