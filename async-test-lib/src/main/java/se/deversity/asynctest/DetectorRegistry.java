@@ -140,6 +140,9 @@ import se.deversity.asynctest.diagnostics.CompletableFutureCompletionRaceDetecto
 import se.deversity.asynctest.diagnostics.CompletableFutureCancellationPropagationDetector;
 import se.deversity.asynctest.diagnostics.CompletableFutureCombinatorMisuseDetector;
 import se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector;
+import se.deversity.asynctest.diagnostics.VirtualThreadResourceSaturationDetector;
+import se.deversity.asynctest.diagnostics.VirtualThreadMonitorSerializationDetector;
+import se.deversity.asynctest.diagnostics.ThreadLocalCacheDegradationDetector;
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
@@ -351,6 +354,9 @@ final class DetectorRegistry {
     final @Nullable CompletableFutureCancellationPropagationDetector completableFutureCancellationPropagationDetector;
     final @Nullable CompletableFutureCombinatorMisuseDetector        completableFutureCombinatorMisuseDetector;
     final @Nullable LambdaLostUpdateDetector                         lambdaLostUpdateDetector;
+    final @Nullable VirtualThreadResourceSaturationDetector          virtualThreadResourceSaturationDetector;
+    final @Nullable VirtualThreadMonitorSerializationDetector        virtualThreadMonitorSerializationDetector;
+    final @Nullable ThreadLocalCacheDegradationDetector              threadLocalCacheDegradationDetector;
 
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
@@ -545,6 +551,9 @@ final class DetectorRegistry {
         completableFutureCancellationPropagationDetector = cfg.detectCompletableFutureCancellationPropagation ? new CompletableFutureCancellationPropagationDetector() : null;
         completableFutureCombinatorMisuseDetector        = cfg.detectCompletableFutureCombinatorMisuse        ? new CompletableFutureCombinatorMisuseDetector()        : null;
         lambdaLostUpdateDetector                         = cfg.detectLambdaLostUpdate                         ? new LambdaLostUpdateDetector()                         : null;
+        virtualThreadResourceSaturationDetector          = cfg.detectVirtualThreadResourceSaturation          ? new VirtualThreadResourceSaturationDetector()          : null;
+        virtualThreadMonitorSerializationDetector        = cfg.detectVirtualThreadMonitorSerialization        ? new VirtualThreadMonitorSerializationDetector()        : null;
+        threadLocalCacheDegradationDetector              = cfg.detectThreadLocalCacheDegradation              ? new ThreadLocalCacheDegradationDetector()              : null;
     }
 
     /**
@@ -1045,6 +1054,18 @@ final class DetectorRegistry {
         ifIssue(lambdaLostUpdateDetector,
                 LambdaLostUpdateDetector::analyze,
                 LambdaLostUpdateDetector.Report::hasIssues, out);
+
+        ifIssue(virtualThreadResourceSaturationDetector,
+                VirtualThreadResourceSaturationDetector::analyze,
+                VirtualThreadResourceSaturationDetector.Report::hasIssues, out);
+
+        ifIssue(virtualThreadMonitorSerializationDetector,
+                VirtualThreadMonitorSerializationDetector::analyze,
+                VirtualThreadMonitorSerializationDetector.Report::hasIssues, out);
+
+        ifIssue(threadLocalCacheDegradationDetector,
+                ThreadLocalCacheDegradationDetector::analyze,
+                ThreadLocalCacheDegradationDetector.Report::hasIssues, out);
 
         return out;
     }

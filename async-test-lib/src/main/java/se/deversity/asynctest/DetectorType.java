@@ -357,5 +357,13 @@ public enum DetectorType {
     /** Detects allOf/anyOf results dropped or read without waiting, and anyOf failures that reach no handler. */
     COMPLETABLE_FUTURE_COMBINATOR_MISUSE,
     /** Detects proven lost updates to a lambda's captured state: two threads read the same value before writing back. */
-    LAMBDA_LOST_UPDATE
+    LAMBDA_LOST_UPDATE,
+
+    // Phase 23: virtual-thread scale hazards (1.11.0+)
+    /** Detects an unbounded virtual-thread fan-out queueing on a bounded resource - JEP 444's "limit the resource, not the threads". */
+    VIRTUAL_THREAD_RESOURCE_SATURATION,
+    /** Detects a monitor serialising a large virtual-thread fan-out - the throughput limit JEP 491 left behind when it removed pinning. */
+    VIRTUAL_THREAD_MONITOR_SERIALIZATION,
+    /** Detects a ThreadLocal that was a bounded cache under a pool and became a per-task allocator under virtual threads. */
+    THREAD_LOCAL_CACHE_DEGRADATION
 }

@@ -143,6 +143,9 @@ import se.deversity.asynctest.diagnostics.CompletableFutureCompletionRaceDetecto
 import se.deversity.asynctest.diagnostics.CompletableFutureCancellationPropagationDetector;
 import se.deversity.asynctest.diagnostics.CompletableFutureCombinatorMisuseDetector;
 import se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector;
+import se.deversity.asynctest.diagnostics.VirtualThreadResourceSaturationDetector;
+import se.deversity.asynctest.diagnostics.VirtualThreadMonitorSerializationDetector;
+import se.deversity.asynctest.diagnostics.ThreadLocalCacheDegradationDetector;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICallersOnly;
 import se.deversity.vibetags.annotations.AICore;
@@ -372,6 +375,9 @@ public final class AsyncTestContext {
     final @Nullable CompletableFutureCancellationPropagationDetector completableFutureCancellationPropagationDetector;
     final @Nullable CompletableFutureCombinatorMisuseDetector        completableFutureCombinatorMisuseDetector;
     final @Nullable LambdaLostUpdateDetector                         lambdaLostUpdateDetector;
+    final @Nullable VirtualThreadResourceSaturationDetector          virtualThreadResourceSaturationDetector;
+    final @Nullable VirtualThreadMonitorSerializationDetector        virtualThreadMonitorSerializationDetector;
+    final @Nullable ThreadLocalCacheDegradationDetector              threadLocalCacheDegradationDetector;
 
     // ---- Agent-telemetry bridge target (1.7.0+) ----
     // Exposed via atomicityValidator() so se.deversity.asynctest.telemetry.TelemetryBridge
@@ -525,6 +531,9 @@ public final class AsyncTestContext {
         completableFutureCancellationPropagationDetector = registry.completableFutureCancellationPropagationDetector;
         completableFutureCombinatorMisuseDetector        = registry.completableFutureCombinatorMisuseDetector;
         lambdaLostUpdateDetector                         = registry.lambdaLostUpdateDetector;
+        virtualThreadResourceSaturationDetector          = registry.virtualThreadResourceSaturationDetector;
+        virtualThreadMonitorSerializationDetector        = registry.virtualThreadMonitorSerializationDetector;
+        threadLocalCacheDegradationDetector              = registry.threadLocalCacheDegradationDetector;
         // Agent-telemetry bridge target
         atomicityValidator                     = registry.atomicityValidator;
 
@@ -2791,6 +2800,55 @@ public final class AsyncTestContext {
      */
     public static LambdaLostUpdateDetector lambdaLostUpdateDetector() {
         return require("detectLambdaLostUpdate", c -> c.lambdaLostUpdateDetector);
+    }
+
+    /**
+     * Returns the {@link VirtualThreadResourceSaturationDetector} for the current test.
+     *
+     * <p>Declare the bounded resource with {@code registerResource(name, capacity)}, then bracket
+     * each acquisition with {@code recordAcquireStart} / {@code recordAcquired} /
+     * {@code recordRelease}; the detector reports a fan-out that queued more callers than the
+     * resource can serve.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVirtualThreadResourceSaturation = false}
+     * @since 1.11.0
+     *
+     * @return the {@link VirtualThreadResourceSaturationDetector} for the active {@code @AsyncTest} context
+     */
+    public static VirtualThreadResourceSaturationDetector vthreadResourceSaturationDetector() {
+        return require("detectVirtualThreadResourceSaturation", c -> c.virtualThreadResourceSaturationDetector);
+    }
+
+    /**
+     * Returns the {@link VirtualThreadMonitorSerializationDetector} for the current test.
+     *
+     * <p>Call {@code recordMonitorEnter} immediately before the {@code synchronized} block and
+     * {@code recordMonitorAcquired} inside it; the detector reports the peak queue depth and how
+     * many of the waiters were virtual threads.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVirtualThreadMonitorSerialization = false}
+     * @since 1.11.0
+     *
+     * @return the {@link VirtualThreadMonitorSerializationDetector} for the active {@code @AsyncTest} context
+     */
+    public static VirtualThreadMonitorSerializationDetector vthreadMonitorSerializationDetector() {
+        return require("detectVirtualThreadMonitorSerialization", c -> c.virtualThreadMonitorSerializationDetector);
+    }
+
+    /**
+     * Returns the {@link ThreadLocalCacheDegradationDetector} for the current test.
+     *
+     * <p>Record the value each thread obtains with {@code recordCachedValue}; the detector counts
+     * distinct instances by identity and reports a key that produced one per virtual thread
+     * instead of one per pooled worker.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectThreadLocalCacheDegradation = false}
+     * @since 1.11.0
+     *
+     * @return the {@link ThreadLocalCacheDegradationDetector} for the active {@code @AsyncTest} context
+     */
+    public static ThreadLocalCacheDegradationDetector threadLocalCacheDegradationDetector() {
+        return require("detectThreadLocalCacheDegradation", c -> c.threadLocalCacheDegradationDetector);
     }
 
     // ---- Phase 1 / Phase 3 detector accessors ----

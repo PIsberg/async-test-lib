@@ -128,10 +128,13 @@ you are editing here.
     <element path="se.deversity.asynctest.diagnostics.SpuriousWakeupDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.StaticInitDeadlockDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.ThisEscapeDetector" rules=".claude/rules/async-test-detectors.md"/>
+    <element path="se.deversity.asynctest.diagnostics.ThreadLocalCacheDegradationDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.ThreadLocalRandomMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.TryLockMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector" rules=".claude/rules/async-test-detectors.md"/>
+    <element path="se.deversity.asynctest.diagnostics.VirtualThreadMonitorSerializationDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.VirtualThreadPoolingDetector" rules=".claude/rules/async-test-detectors.md"/>
+    <element path="se.deversity.asynctest.diagnostics.VirtualThreadResourceSaturationDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.extension.AsyncTestExtension" rules=".claude/rules/async-test-runtime-core.md"/>
     <element path="se.deversity.asynctest.extension.AsyncTestInvocationInterceptor" rules=".claude/rules/async-test-runtime-core.md"/>
