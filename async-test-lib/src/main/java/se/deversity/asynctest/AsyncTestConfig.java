@@ -366,6 +366,14 @@ public final class AsyncTestConfig {
     public final boolean detectPlatformThreadPerTask;
     /** Resolved value of {@link AsyncTest#detectSharedSplittableRandom()} for this run. */
     public final boolean detectSharedSplittableRandom;
+    /** Resolved value of {@link AsyncTest#detectCompletableFutureCompletionRace()} for this run. */
+    public final boolean detectCompletableFutureCompletionRace;
+    /** Resolved value of {@link AsyncTest#detectCompletableFutureCancellationPropagation()} for this run. */
+    public final boolean detectCompletableFutureCancellationPropagation;
+    /** Resolved value of {@link AsyncTest#detectCompletableFutureCombinatorMisuse()} for this run. */
+    public final boolean detectCompletableFutureCombinatorMisuse;
+    /** Resolved value of {@link AsyncTest#detectLambdaLostUpdate()} for this run. */
+    public final boolean detectLambdaLostUpdate;
 
     // ---- Benchmarking ----
     /** Resolved value of {@link AsyncTest#enableBenchmarking()} for this run. */
@@ -541,6 +549,10 @@ public final class AsyncTestConfig {
         detectVirtualThreadPooling       = b.detectVirtualThreadPooling;
         detectPlatformThreadPerTask      = b.detectPlatformThreadPerTask;
         detectSharedSplittableRandom     = b.detectSharedSplittableRandom;
+        detectCompletableFutureCompletionRace = b.detectCompletableFutureCompletionRace;
+        detectCompletableFutureCancellationPropagation = b.detectCompletableFutureCancellationPropagation;
+        detectCompletableFutureCombinatorMisuse = b.detectCompletableFutureCombinatorMisuse;
+        detectLambdaLostUpdate           = b.detectLambdaLostUpdate;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -753,6 +765,10 @@ public final class AsyncTestConfig {
             .detectVirtualThreadPooling(ann.detectVirtualThreadPooling())
             .detectPlatformThreadPerTask(ann.detectPlatformThreadPerTask())
             .detectSharedSplittableRandom(ann.detectSharedSplittableRandom())
+            .detectCompletableFutureCompletionRace(ann.detectCompletableFutureCompletionRace())
+            .detectCompletableFutureCancellationPropagation(ann.detectCompletableFutureCancellationPropagation())
+            .detectCompletableFutureCombinatorMisuse(ann.detectCompletableFutureCombinatorMisuse())
+            .detectLambdaLostUpdate(ann.detectLambdaLostUpdate())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -923,6 +939,10 @@ public final class AsyncTestConfig {
         private boolean detectVirtualThreadPooling       = false;
         private boolean detectPlatformThreadPerTask      = false;
         private boolean detectSharedSplittableRandom     = false;
+        private boolean detectCompletableFutureCompletionRace = false;
+        private boolean detectCompletableFutureCancellationPropagation = false;
+        private boolean detectCompletableFutureCombinatorMisuse = false;
+        private boolean detectLambdaLostUpdate           = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -1794,6 +1814,30 @@ public final class AsyncTestConfig {
          */
         public Builder detectSharedSplittableRandom(boolean v)         { detectSharedSplittableRandom = v; return this; }
         /**
+         * Sets {@link AsyncTestConfig#detectCompletableFutureCompletionRace}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectCompletableFutureCompletionRace(boolean v) { detectCompletableFutureCompletionRace = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectCompletableFutureCancellationPropagation}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectCompletableFutureCancellationPropagation(boolean v) { detectCompletableFutureCancellationPropagation = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectCompletableFutureCombinatorMisuse}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectCompletableFutureCombinatorMisuse(boolean v)  { detectCompletableFutureCombinatorMisuse = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectLambdaLostUpdate}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectLambdaLostUpdate(boolean v)               { detectLambdaLostUpdate = v; return this; }
+        /**
          * Sets {@link AsyncTestConfig#enableBenchmarking}.
          * @param v the value to use
          * @return this builder
@@ -2052,6 +2096,10 @@ public final class AsyncTestConfig {
             detectVirtualThreadPooling = (detectAll || detectVirtualThreadPooling) && !excludes.contains(DetectorType.VIRTUAL_THREAD_POOLING);
             detectPlatformThreadPerTask = (detectAll || detectPlatformThreadPerTask) && !excludes.contains(DetectorType.PLATFORM_THREAD_PER_TASK);
             detectSharedSplittableRandom = (detectAll || detectSharedSplittableRandom) && !excludes.contains(DetectorType.SHARED_SPLITTABLE_RANDOM);
+            detectCompletableFutureCompletionRace = (detectAll || detectCompletableFutureCompletionRace) && !excludes.contains(DetectorType.COMPLETABLE_FUTURE_COMPLETION_RACE);
+            detectCompletableFutureCancellationPropagation = (detectAll || detectCompletableFutureCancellationPropagation) && !excludes.contains(DetectorType.COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION);
+            detectCompletableFutureCombinatorMisuse = (detectAll || detectCompletableFutureCombinatorMisuse) && !excludes.contains(DetectorType.COMPLETABLE_FUTURE_COMBINATOR_MISUSE);
+            detectLambdaLostUpdate = (detectAll || detectLambdaLostUpdate) && !excludes.contains(DetectorType.LAMBDA_LOST_UPDATE);
             return new AsyncTestConfig(this);
         }
     }

@@ -93,6 +93,9 @@ you are editing here.
     <element path="se.deversity.asynctest.benchmark.BenchmarkComparator" rules=".claude/rules/async-test-instrumentation.md"/>
     <element path="se.deversity.asynctest.benchmark.BenchmarkRecorder" rules=".claude/rules/async-test-instrumentation.md"/>
     <element path="se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector" rules=".claude/rules/async-test-detectors.md"/>
+    <element path="se.deversity.asynctest.diagnostics.CompletableFutureCancellationPropagationDetector" rules=".claude/rules/async-test-detectors.md"/>
+    <element path="se.deversity.asynctest.diagnostics.CompletableFutureCombinatorMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
+    <element path="se.deversity.asynctest.diagnostics.CompletableFutureCompletionRaceDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.CompletableFutureObtrudeDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.ConfinedArenaThreadEscapeDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector" rules=".claude/rules/async-test-detectors.md"/>
@@ -101,6 +104,7 @@ you are editing here.
     <element path="se.deversity.asynctest.diagnostics.FlowPublisherConcurrencyDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.HighContentionAtomicDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector" rules=".claude/rules/async-test-detectors.md"/>
+    <element path="se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.LockUpgradeDeadlockDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.NonAtomicConcurrentMapUpdateDetector" rules=".claude/rules/async-test-detectors.md"/>

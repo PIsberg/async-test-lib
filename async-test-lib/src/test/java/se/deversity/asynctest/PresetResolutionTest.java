@@ -269,6 +269,10 @@ class PresetResolutionTest {
         @Override public boolean detectVirtualThreadPooling() { return def("detectVirtualThreadPooling"); }
         @Override public boolean detectPlatformThreadPerTask() { return def("detectPlatformThreadPerTask"); }
         @Override public boolean detectSharedSplittableRandom() { return def("detectSharedSplittableRandom"); }
+        @Override public boolean detectCompletableFutureCompletionRace() { return def("detectCompletableFutureCompletionRace"); }
+        @Override public boolean detectCompletableFutureCancellationPropagation() { return def("detectCompletableFutureCancellationPropagation"); }
+        @Override public boolean detectCompletableFutureCombinatorMisuse() { return def("detectCompletableFutureCombinatorMisuse"); }
+        @Override public boolean detectLambdaLostUpdate() { return def("detectLambdaLostUpdate"); }
         @Override public boolean enableBenchmarking() { return def("enableBenchmarking"); }
         @Override public double benchmarkRegressionThreshold() { return def("benchmarkRegressionThreshold"); }
         @Override public boolean failOnBenchmarkRegression() { return def("failOnBenchmarkRegression"); }

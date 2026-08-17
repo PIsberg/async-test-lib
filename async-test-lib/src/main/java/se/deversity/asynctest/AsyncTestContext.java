@@ -139,6 +139,10 @@ import se.deversity.asynctest.diagnostics.StaticInitDeadlockDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadPoolingDetector;
 import se.deversity.asynctest.diagnostics.PlatformThreadPerTaskDetector;
 import se.deversity.asynctest.diagnostics.SharedSplittableRandomDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureCompletionRaceDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureCancellationPropagationDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureCombinatorMisuseDetector;
+import se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICallersOnly;
 import se.deversity.vibetags.annotations.AICore;
@@ -364,6 +368,10 @@ public final class AsyncTestContext {
     final @Nullable VirtualThreadPoolingDetector          virtualThreadPoolingDetector;
     final @Nullable PlatformThreadPerTaskDetector         platformThreadPerTaskDetector;
     final @Nullable SharedSplittableRandomDetector        sharedSplittableRandomDetector;
+    final @Nullable CompletableFutureCompletionRaceDetector          completableFutureCompletionRaceDetector;
+    final @Nullable CompletableFutureCancellationPropagationDetector completableFutureCancellationPropagationDetector;
+    final @Nullable CompletableFutureCombinatorMisuseDetector        completableFutureCombinatorMisuseDetector;
+    final @Nullable LambdaLostUpdateDetector                         lambdaLostUpdateDetector;
 
     // ---- Agent-telemetry bridge target (1.7.0+) ----
     // Exposed via atomicityValidator() so se.deversity.asynctest.telemetry.TelemetryBridge
@@ -513,6 +521,10 @@ public final class AsyncTestContext {
         virtualThreadPoolingDetector           = registry.virtualThreadPoolingDetector;
         platformThreadPerTaskDetector          = registry.platformThreadPerTaskDetector;
         sharedSplittableRandomDetector         = registry.sharedSplittableRandomDetector;
+        completableFutureCompletionRaceDetector          = registry.completableFutureCompletionRaceDetector;
+        completableFutureCancellationPropagationDetector = registry.completableFutureCancellationPropagationDetector;
+        completableFutureCombinatorMisuseDetector        = registry.completableFutureCombinatorMisuseDetector;
+        lambdaLostUpdateDetector                         = registry.lambdaLostUpdateDetector;
         // Agent-telemetry bridge target
         atomicityValidator                     = registry.atomicityValidator;
 
@@ -2715,6 +2727,70 @@ public final class AsyncTestContext {
      */
     public static SharedSplittableRandomDetector sharedSplittableRandomDetector() {
         return require("detectSharedSplittableRandom", c -> c.sharedSplittableRandomDetector);
+    }
+
+    /**
+     * Returns the {@link CompletableFutureCompletionRaceDetector} for the current test.
+     *
+     * <p>Complete futures through {@code complete}/{@code completeExceptionally} on the detector,
+     * or record the boolean each call returned with {@code recordCompletionAttempt}; the detector
+     * reports the attempts that lost the race and had their value or exception discarded.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCompletableFutureCompletionRace = false}
+     * @since 1.10.0
+     *
+     * @return the {@link CompletableFutureCompletionRaceDetector} for the active {@code @AsyncTest} context
+     */
+    public static CompletableFutureCompletionRaceDetector cfCompletionRaceDetector() {
+        return require("detectCompletableFutureCompletionRace", c -> c.completableFutureCompletionRaceDetector);
+    }
+
+    /**
+     * Returns the {@link CompletableFutureCancellationPropagationDetector} for the current test.
+     *
+     * <p>Bracket stage bodies with {@code recordWorkStarted}/{@code recordWorkCompleted} and cancel
+     * through the detector's {@code cancel}; it reports stage work observed after the cancel, and
+     * {@code cancel(true)} calls on a type that never interrupts.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCompletableFutureCancellationPropagation = false}
+     * @since 1.10.0
+     *
+     * @return the {@link CompletableFutureCancellationPropagationDetector} for the active {@code @AsyncTest} context
+     */
+    public static CompletableFutureCancellationPropagationDetector cfCancellationPropagationDetector() {
+        return require("detectCompletableFutureCancellationPropagation", c -> c.completableFutureCancellationPropagationDetector);
+    }
+
+    /**
+     * Returns the {@link CompletableFutureCombinatorMisuseDetector} for the current test.
+     *
+     * <p>Register combinator futures with {@code recordCombinator}, their constituents with
+     * {@code recordConstituentCompleted} and each read with {@code recordAwait}; the detector
+     * reports groups the code moved past before they had finished.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCompletableFutureCombinatorMisuse = false}
+     * @since 1.10.0
+     *
+     * @return the {@link CompletableFutureCombinatorMisuseDetector} for the active {@code @AsyncTest} context
+     */
+    public static CompletableFutureCombinatorMisuseDetector cfCombinatorMisuseDetector() {
+        return require("detectCompletableFutureCombinatorMisuse", c -> c.completableFutureCombinatorMisuseDetector);
+    }
+
+    /**
+     * Returns the {@link LambdaLostUpdateDetector} for the current test.
+     *
+     * <p>Record each read-modify-write of a captured variable with {@code recordReadModifyWrite},
+     * passing the value read and the value written; the detector reports the updates it can prove
+     * were lost because two threads read the same value first.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLambdaLostUpdate = false}
+     * @since 1.10.0
+     *
+     * @return the {@link LambdaLostUpdateDetector} for the active {@code @AsyncTest} context
+     */
+    public static LambdaLostUpdateDetector lambdaLostUpdateDetector() {
+        return require("detectLambdaLostUpdate", c -> c.lambdaLostUpdateDetector);
     }
 
     // ---- Phase 1 / Phase 3 detector accessors ----

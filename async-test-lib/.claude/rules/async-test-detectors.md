@@ -36,6 +36,15 @@ a performance budget) are annotated individually and appear below.
 ### se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureBlockingCallbackDetectorTest.java
 
+### se.deversity.asynctest.diagnostics.CompletableFutureCancellationPropagationDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureCancellationPropagationDetectorTest.java
+
+### se.deversity.asynctest.diagnostics.CompletableFutureCombinatorMisuseDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureCombinatorMisuseDetectorTest.java
+
+### se.deversity.asynctest.diagnostics.CompletableFutureCompletionRaceDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureCompletionRaceDetectorTest.java
+
 ### se.deversity.asynctest.diagnostics.CompletableFutureObtrudeDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureObtrudeDetectorTest.java
 
@@ -59,6 +68,9 @@ a performance budget) are annotated individually and appear below.
 
 ### se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/JdbcConnectionSharedDetectorTest.java
+
+### se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/LambdaLostUpdateDetectorTest.java
 
 ### se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/LazyConstantMisuseDetectorTest.java
@@ -144,6 +156,18 @@ a performance budget) are annotated individually and appear below.
 - **Strategy**: OTHER
 - **Note**: ThreadLocal tracks active callbacks; ConcurrentHashMap stores violations.
 
+### se.deversity.asynctest.diagnostics.CompletableFutureCancellationPropagationDetector
+- **Strategy**: OTHER
+- **Note**: One ConcurrentHashMap entry per pipeline; events go on copy-on-write lists and carry an atomically issued sequence number, so ordering never depends on a wall clock.
+
+### se.deversity.asynctest.diagnostics.CompletableFutureCombinatorMisuseDetector
+- **Strategy**: OTHER
+- **Note**: ConcurrentHashMap keyed on the combined future's identity; constituent and await events are copy-on-write lists carrying atomically issued sequence numbers, so the before/after comparison never depends on a wall clock.
+
+### se.deversity.asynctest.diagnostics.CompletableFutureCompletionRaceDetector
+- **Strategy**: OTHER
+- **Note**: ConcurrentHashMap keyed on future identity; per-future attempt list is copy-on-write and the sequence counter is atomic, so concurrent recorders never lose an attempt.
+
 ### se.deversity.asynctest.diagnostics.CompletableFutureObtrudeDetector
 - **Strategy**: OTHER
 - **Note**: ConcurrentHashMap stores state per CF instance.
@@ -175,6 +199,10 @@ a performance budget) are annotated individually and appear below.
 ### se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector
 - **Strategy**: OTHER
 - **Note**: ConcurrentHashMap-backed JDBC-resource tracking; per-resource State holds ConcurrentHashMap.newKeySet() for accessing threads.
+
+### se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector
+- **Strategy**: OTHER
+- **Note**: ConcurrentHashMap keyed on lambda identity plus captured name; events are appended to a copy-on-write list. The rule groups by observed pre-value and needs no ordering. holdsLock is sampled on the recording thread at record time, which is the only place it means anything.
 
 ### se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector
 - **Strategy**: OTHER
