@@ -2758,8 +2758,10 @@ public final class AsyncTestContext {
      * Returns the {@link CompletableFutureCancellationPropagationDetector} for the current test.
      *
      * <p>Bracket stage bodies with {@code recordWorkStarted}/{@code recordWorkCompleted} and cancel
-     * through the detector's {@code cancel}; it reports stage work observed after the cancel, and
-     * {@code cancel(true)} calls on a type that never interrupts.
+     * through the detector's {@code cancel}; it reports stage work that ran to completion after
+     * the cancel, and {@code cancel(true)} calls on a type that never interrupts. Label each
+     * pipeline instance separately under {@code @AsyncTest}, so one worker's cancel is not matched
+     * against another worker's stages.
      *
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCompletableFutureCancellationPropagation = false}
      * @since 1.10.0
@@ -2791,7 +2793,8 @@ public final class AsyncTestContext {
      *
      * <p>Record each read-modify-write of a captured variable with {@code recordReadModifyWrite},
      * passing the value read and the value written; the detector reports the updates it can prove
-     * were lost because two threads read the same value first.
+     * were lost: two threads read the same value first, and no serial order of the recorded updates
+     * could explain that.
      *
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLambdaLostUpdate = false}
      * @since 1.10.0
@@ -2806,8 +2809,9 @@ public final class AsyncTestContext {
      * Returns the {@link VirtualThreadResourceSaturationDetector} for the current test.
      *
      * <p>Declare the bounded resource with {@code registerResource(name, capacity)}, then bracket
-     * each acquisition with {@code recordAcquireStart} and {@code recordAcquired}; the detector
-     * reports a fan-out that queued more callers than the resource can serve.
+     * each acquisition with {@code recordAcquireStart} and {@code recordAcquired}, or
+     * {@code recordAcquireAbandoned} when the wait gives up; the detector reports a fan-out that
+     * queued more callers than the resource can serve.
      *
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVirtualThreadResourceSaturation = false}
      * @since 1.11.0

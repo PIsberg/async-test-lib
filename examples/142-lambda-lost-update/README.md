@@ -34,15 +34,20 @@ separately, which leaves the same window open while looking safe.
 something it captured. That is a co-occurrence, so it fires the same way on a correctly locked
 counter as on a racy one.
 
-This detector compares the values the threads observed. It fires only where two threads were
-seen reading the **same pre-value** before writing back — that is a lost update, not the risk
-of one — and it stays silent when every recorded update held the same monitor. An
-`incrementAndGet()` gives every thread a distinct pre-value, so the atomic version is silent
-too.
+This detector compares the values the threads observed, and it needs two things before it
+speaks. First, two threads were seen reading the **same pre-value** before writing back. Second,
+the recorded updates cannot be laid end to end as one serial chain: a value read twice more
+often than it was written back was read after it had already been replaced, whichever way the
+events are ordered. Together that is a lost update, not the risk of one. The first alone is not
+proof: a flag toggled `false -> true -> false -> true` under a `ReentrantLock` shows two threads
+reading `false`, and nothing was lost, because the value came round again under a lock the
+detector cannot see. It stays silent on that, and when every recorded update held the same
+monitor. An `incrementAndGet()` gives every thread a distinct pre-value, so the atomic version
+is silent too.
 
-Where the guarding is inconsistent — some updates hold the monitor, some do not — the finding
-stands and says so. That case is worse than no lock at all, because the code reads as if the
-sequence were atomic.
+Where the guarding is inconsistent (some updates hold the monitor, some do not, or they hold
+different monitors) the finding stands and says which. That case is worse than no lock at all,
+because the code reads as if the sequence were atomic.
 
 ## What the detector observes
 

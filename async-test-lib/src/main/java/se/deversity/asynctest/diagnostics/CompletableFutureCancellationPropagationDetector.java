@@ -30,30 +30,42 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>Two findings, both grounded in something observed rather than inferred:
  * <ul>
- *   <li>{@link IssueSeverity#HIGH} - a stage body was recorded running or finishing
- *       <em>after</em> a cancel on the same pipeline. The work outlived the cancellation; the
- *       detector saw both events and their order.</li>
+ *   <li>{@link IssueSeverity#HIGH} - a stage body was recorded <em>finishing</em> after a cancel
+ *       on the same pipeline. The work ran to the end regardless of the cancellation; the
+ *       detector saw both events and their order. A stage that merely <em>started</em> after the
+ *       cancel is not a finding on its own: {@code cancel()} dequeues nothing, so a body that was
+ *       already submitted will begin whatever happens, and a cooperative one begins, looks, and
+ *       returns. Starts after the cancel are counted and named in the message when a completion
+ *       also follows.</li>
  *   <li>{@link IssueSeverity#MEDIUM} - {@code cancel(true)} was called on a
  *       {@code CompletableFuture}. The flag has no effect on this type, so any code relying on
  *       an interrupt to unblock the task is relying on something that will not happen.</li>
  * </ul>
  *
  * <p>Cooperative cancellation - the stage polling {@code isCancelled()} or a volatile flag and
- * returning early - records no work after the cancel and produces no finding.
+ * returning early - records no completion after the cancel and produces no finding, whether the
+ * cancel landed before the body was dispatched or during it.
+ *
+ * <p>The pipeline label is what ties a cancel to the stages it should have stopped, so it must
+ * name one pipeline instance. Under {@code @AsyncTest} every worker builds its own, and a shared
+ * literal would let one worker's cancel be matched against another worker's stages: derive the
+ * label per instance (a request id, or {@code Thread.currentThread().getName()}) unless the
+ * workers really do feed one shared future.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
  * var d = AsyncTestContext.cfCancellationPropagationDetector();
+ * String pipeline = "report-" + Thread.currentThread().getName();   // one label per pipeline instance
  *
  * CompletableFuture<String> upstream = CompletableFuture.supplyAsync(() -> {
- *     d.recordWorkStarted("report", "fetch", Thread.currentThread());
+ *     d.recordWorkStarted(pipeline, "fetch", Thread.currentThread());
  *     String body = slowFetch();
- *     d.recordWorkCompleted("report", "fetch", Thread.currentThread());  // never reached if cooperative
+ *     d.recordWorkCompleted(pipeline, "fetch", Thread.currentThread());  // never reached if cooperative
  *     return body;
  * });
  * CompletableFuture<String> view = upstream.thenApply(this::render);
  *
- * d.cancel(view, "report", "view", true);   // records the cancel and the ignored interrupt flag
+ * d.cancel(view, pipeline, "view", true);   // records the cancel and the ignored interrupt flag
  * }</pre>
  *
  * @since 1.10.0
@@ -68,6 +80,9 @@ import java.util.concurrent.atomic.AtomicLong;
 )
 public final class CompletableFutureCancellationPropagationDetector {
 
+    /** The two kinds of stage event; only a completion after a cancel is a finding. */
+    private static final String STARTED   = "started";
+    private static final String COMPLETED = "completed";
     private static final class CancelEvent {
         final long    seq;
         final String  futureLabel;
@@ -150,12 +165,17 @@ public final class CompletableFutureCancellationPropagationDetector {
     /**
      * Record that an upstream stage body has begun running.
      *
+     * <p>A start recorded after the cancel is counted in the report but is not a finding on its
+     * own: {@code cancel()} dequeues nothing, so a body already submitted begins regardless, and a
+     * cooperative body begins, checks, and returns. Only {@link #recordWorkCompleted} after the
+     * cancel says the work ran to the end.
+     *
      * @param pipeline   the pipeline this stage belongs to
      * @param stageLabel a label identifying the stage in the report
      * @param thread     the executing thread
      */
     public void recordWorkStarted(String pipeline, String stageLabel, Thread thread) {
-        recordWork(pipeline, stageLabel, thread, "started");
+        recordWork(pipeline, stageLabel, thread, STARTED);
     }
 
     /**
@@ -170,7 +190,7 @@ public final class CompletableFutureCancellationPropagationDetector {
      * @param thread     the executing thread
      */
     public void recordWorkCompleted(String pipeline, String stageLabel, Thread thread) {
-        recordWork(pipeline, stageLabel, thread, "completed");
+        recordWork(pipeline, stageLabel, thread, COMPLETED);
     }
 
     private void recordWork(String pipeline, String stageLabel, Thread thread, String kind) {
@@ -195,6 +215,11 @@ public final class CompletableFutureCancellationPropagationDetector {
     /**
      * Analyses the recorded cancel and stage events and builds the report.
      *
+     * <p>The {@code HIGH} finding is anchored to completions: a stage that recorded
+     * {@code completed} after the pipeline's first cancel ran to the end regardless. Stage starts
+     * after the cancel are counted alongside, but a start on its own is what a cooperative stage
+     * dispatched late also produces, so it never triggers the finding by itself.
+     *
      * @return the findings this detector collected during the run
      */
     public Report analyze() {
@@ -209,22 +234,31 @@ public final class CompletableFutureCancellationPropagationDetector {
             }
             long firstCancelSeq = firstCancel.seq;
 
-            List<WorkEvent> survivors = new ArrayList<>();
-            for (WorkEvent w : p.work) if (w.seq > firstCancelSeq) survivors.add(w);
+            List<WorkEvent> finishedAfter = new ArrayList<>();
+            int startedAfter = 0;
+            for (WorkEvent w : p.work) {
+                if (w.seq <= firstCancelSeq) continue;
+                if (COMPLETED.equals(w.kind)) finishedAfter.add(w);
+                else startedAfter++;
+            }
 
-            if (!survivors.isEmpty()) {
+            if (!finishedAfter.isEmpty()) {
                 Set<String> stages = new LinkedHashSet<>();
                 Set<String> threads = new LinkedHashSet<>();
-                for (WorkEvent w : survivors) {
+                for (WorkEvent w : finishedAfter) {
                     stages.add(w.stageLabel + " " + w.kind);
                     threads.add(w.threadName);
                 }
+                String startedNote = startedAfter == 0
+                        ? ""
+                        : String.format(", and %d stage start(s) were recorded after the cancel as well",
+                                        startedAfter);
                 String msg = String.format(
-                        "Pipeline '%s': %d stage event(s) were observed after '%s' was cancelled by thread '%s' "
-                        + "- [%s] on thread(s) %s. cancel() completes only the future it is called on; the stage "
-                        + "feeding it kept running, so its side effects still landed.",
-                        p.name, survivors.size(), firstCancel.futureLabel, firstCancel.threadName,
-                        String.join(", ", stages), String.join(", ", threads));
+                        "Pipeline '%s': %d stage(s) ran to completion after '%s' was cancelled by thread '%s' "
+                        + "- [%s] on thread(s) %s%s. cancel() completes only the future it is called on; the "
+                        + "stage feeding it kept running, so its side effects still landed.",
+                        p.name, finishedAfter.size(), firstCancel.futureLabel, firstCancel.threadName,
+                        String.join(", ", stages), String.join(", ", threads), startedNote);
                 r.violations.add(msg);
                 r.structuredViolations.add(new Violation(
                         "CompletableFutureCancellationPropagation",
@@ -235,7 +269,8 @@ public final class CompletableFutureCancellationPropagationDetector {
                                 "pipeline", p.name,
                                 "cancelledFuture", firstCancel.futureLabel,
                                 "cancelledBy", firstCancel.threadName,
-                                "eventsAfterCancel", survivors.size(),
+                                "eventsAfterCancel", finishedAfter.size(),
+                                "startedAfterCancel", startedAfter,
                                 "stages", String.join(",", stages)
                         ),
                         Instant.now()));

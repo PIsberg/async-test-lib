@@ -148,6 +148,35 @@ class VirtualThreadResourceSaturationDetectorTest {
         assertFalse(d.analyze().hasIssues(), "the limit was respected throughout");
     }
 
+    /**
+     * A caller that times out never records having acquired. Unless it records having given up,
+     * its wait is counted for the rest of the run and every later queue is reported one deeper
+     * than it was - and a timeout is exactly how this hazard surfaces. Here one caller gives up,
+     * then a fan-out of exactly {@code CAPACITY} arrives: correctly bounded, and it must be silent.
+     */
+    @Test
+    void anAbandonedAcquisitionLeavesTheQueue() throws Exception {
+        var d = new VirtualThreadResourceSaturationDetector();
+        d.registerResource("connections", CAPACITY);
+
+        Thread gaveUp = Thread.ofVirtual().unstarted(() -> { });
+        d.recordAcquireStart("connections", gaveUp);
+        d.recordAcquireAbandoned("connections", gaveUp);       // timed out, never got in
+
+        CountDownLatch allWaiting = new CountDownLatch(CAPACITY);
+        CountDownLatch release = new CountDownLatch(1);
+        runOnVirtualThreads(CAPACITY, () -> {
+            d.recordAcquireStart("connections", Thread.currentThread());
+            allWaiting.countDown();
+            release.await(5, TimeUnit.SECONDS);
+            d.recordAcquired("connections", Thread.currentThread());
+        }, allWaiting, release);
+
+        var report = d.analyze();
+        assertFalse(report.hasIssues(),
+                () -> "a queue no deeper than capacity, once the abandoned wait has left it:\n" + report);
+    }
+
     @Test
     void capacityBelowOneIsRejected() {
         var d = new VirtualThreadResourceSaturationDetector();

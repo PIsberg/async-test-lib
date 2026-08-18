@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -80,6 +81,98 @@ class LambdaLostUpdateDetectorTest {
 
         assertFalse(d.analyze().hasIssues(),
                 "under one monitor a repeated pre-value is a recurring value, not a lost write");
+    }
+
+    /**
+     * The third correct twin, and the one the pre-value rule alone gets wrong. A flag toggled
+     * under a {@link ReentrantLock}, one thread at a time: false to true, true to false, false to
+     * true. Two of the three threads read {@code false} - the same pre-value - and nothing was
+     * lost, the value simply came round again. A ReentrantLock is not a monitor, so the guard
+     * overload cannot vouch for it; the sequence of values has to: every value written was read
+     * by the next update, which is what a serial history looks like.
+     */
+    @Test
+    void aRecurringValueUnderAnotherSerialisationStaysSilent() throws Exception {
+        var d = new LambdaLostUpdateDetector();
+        var task = lambda();
+        var lock = new ReentrantLock();
+        boolean[] flag = {false};
+
+        for (int i = 0; i < 3; i++) {
+            Thread t = Thread.ofPlatform().start(() -> {
+                lock.lock();
+                try {
+                    boolean before = flag[0];
+                    flag[0] = !before;
+                    d.recordReadModifyWrite(task, "flag", before, !before, here());
+                } finally {
+                    lock.unlock();
+                }
+            });
+            t.join();     // strictly one after another: the value recurs, no update is lost
+        }
+
+        var report = d.analyze();
+        assertFalse(report.hasIssues(),
+                () -> "false->true, true->false, false->true: two threads read false, but every write "
+                    + "was picked up by the next update, so nothing was lost:\n" + report);
+    }
+
+    /**
+     * The gate that keeps the twin above silent must not swallow a real loss whose colliding value
+     * was also written once: 0->1, then two threads both read 1 and both write 2, then 2->3. Four
+     * increments, final value 3. No serial order of these four updates exists, and the finding
+     * stands with the collision named.
+     */
+    @Test
+    void aLostUpdateOnAValueThatWasAlsoWrittenOnceIsStillReported() throws Exception {
+        var d = new LambdaLostUpdateDetector();
+        var task = lambda();
+
+        d.recordReadModifyWrite(task, "counter", 0, 1, here());
+        d.recordReadModifyWrite(task, "counter", 1, 2, here());
+        Thread other = Thread.ofPlatform().start(
+                () -> d.recordReadModifyWrite(task, "counter", 1, 2, here()));   // same pre-value as above
+        other.join();
+        d.recordReadModifyWrite(task, "counter", 2, 3, here());
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(), "1 was read twice and written once: one increment is gone");
+        assertTrue(report.violations.get(0).contains("all read 1"), report.violations.get(0));
+        assertEquals(1, report.structuredViolations.get(0).attributes().get("lostWrites"));
+    }
+
+    /**
+     * Two monitors are not one guard: a lock only excludes the threads that take the same one.
+     * The finding stands, and the message must say what happened - not "some, not all, held the
+     * monitor", because every update here did hold one.
+     */
+    @Test
+    void twoDifferentMonitorsAreNotOneGuardAndTheMessageSaysSo() throws Exception {
+        var d = new LambdaLostUpdateDetector();
+        var task = lambda();
+        var guardA = new Object();
+        var guardB = new Object();
+        var done = new CountDownLatch(1);
+
+        synchronized (guardA) {
+            d.recordReadModifyWrite(task, "counter", 0, 1, guardA, here());
+        }
+        Thread other = Thread.ofPlatform().start(() -> {
+            synchronized (guardB) {
+                d.recordReadModifyWrite(task, "counter", 0, 1, guardB, here());
+            }
+            done.countDown();
+        });
+        assertTrue(done.await(5, TimeUnit.SECONDS));
+        other.join();
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(), "two monitors serialise nothing between them");
+        String msg = report.violations.get(0);
+        assertTrue(msg.contains("2 different monitors"), msg);
+        assertFalse(msg.contains("Some - not all"), msg);
+        assertEquals(2, report.structuredViolations.get(0).attributes().get("monitorsHeld"));
     }
 
     @Test

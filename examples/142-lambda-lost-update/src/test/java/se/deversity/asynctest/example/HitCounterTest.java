@@ -33,9 +33,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   several threads and mutated a capture" - which is a co-occurrence
  *   and fires identically on a correctly locked counter. This detector
  *   compares the values two threads observed. It fires only where two
- *   threads read the SAME pre-value before writing back, which is a lost
- *   update rather than the risk of one, and it stays silent when every
- *   update held the same monitor.
+ *   threads read the SAME pre-value before writing back AND no serial
+ *   order of the recorded updates could explain it - a value that merely
+ *   came round again under a lock it cannot see is a chain, not a loss.
+ *   That is a lost update rather than the risk of one, and it stays
+ *   silent when every update held the same monitor.
  *
  * THE BUG:
  *   - read, add one, write back, from N threads, with nothing between

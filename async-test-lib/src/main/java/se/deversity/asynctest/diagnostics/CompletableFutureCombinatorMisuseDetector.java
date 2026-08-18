@@ -45,12 +45,19 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * CompletableFuture<Void> all = CompletableFuture.allOf(a, b);
  * d.recordCombinator(all, "writes", "allOf", 2, Thread.currentThread());
- * a.thenRun(() -> d.recordConstituentCompleted(all, "a", false, Thread.currentThread()));
- * b.thenRun(() -> d.recordConstituentCompleted(all, "b", false, Thread.currentThread()));
+ * a.whenComplete((v, ex) -> d.recordConstituentCompleted(all, "a", ex != null, Thread.currentThread()));
+ * b.whenComplete((v, ex) -> d.recordConstituentCompleted(all, "b", ex != null, Thread.currentThread()));
  *
  * all.join();
  * d.recordAwait(all, "join", Thread.currentThread());   // both constituents already in: silent
  * }</pre>
+ *
+ * <p>Record constituents through {@code whenComplete}, not {@code thenRun}: {@code thenRun} is
+ * skipped when the constituent fails, and a failed constituent that was never recorded is
+ * indistinguishable from one still running - the group would be reported as unfinished when it
+ * finished with a failure. Attach the recording callbacks after building the combinator, as
+ * above: dependents fire last-registered first, so the record is sequenced before the combined
+ * future completes and a read that follows is compared against the right count.
  *
  * @since 1.10.0
  */
