@@ -26,7 +26,9 @@ returns zero matches in `LockContentionDetector`, `ThreadLeakDetector` and
   *held* the resource: a caller returns it and then records having done so, and in that window the
   next caller can legitimately be granted it, so a count above the capacity is instrumentation
   skew as often as a real breach. That rule was in the first draft and CI caught it reporting a
-  correctly bounded pool - the false-positive direction this project does not accept.
+  correctly bounded pool - the false-positive direction this project does not accept. A caller
+  that gives up records `recordAcquireAbandoned` and leaves the queue; without it a timed-out
+  wait - the way this hazard actually surfaces - would be counted against every later round.
 - **`VIRTUAL_THREAD_MONITOR_SERIALIZATION`** - the hazard JEP 491 left behind. Since JDK 24
   `synchronized` no longer pins, so `VIRTUAL_THREAD_PINNING` correctly reports those events as
   obsolete; one thread at a time is still one thread at a time, and nothing bounds the arrivals
@@ -64,7 +66,10 @@ therefore invisible, and the lambda side had accuracy rather than coverage missi
   discarded, `MEDIUM` when the loser carried the winner's value.
 - **`COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION`** — `cancel()` completes one future and stops
   there, and the JDK documents that `mayInterruptIfRunning` has no effect on this type. Fires
-  when a stage body was recorded running after the cancel, and separately on `cancel(true)`.
+  when a stage body was recorded finishing after the cancel, and separately on `cancel(true)`. A
+  stage that merely started after the cancel is counted, not reported: `cancel()` dequeues
+  nothing, so a cooperative body dispatched late begins, checks, and returns - and must stay
+  silent.
 - **`COMPLETABLE_FUTURE_COMBINATOR_MISUSE`** — `allOf`/`anyOf` return a future rather than
   waiting. Fires on a dropped combinator whose constituents were still outstanding, on a
   `getNow`/`isDone` read taken before the group finished, and on an `anyOf` loser failing after
@@ -72,7 +77,9 @@ therefore invisible, and the lambda side had accuracy rather than coverage missi
 - **`LAMBDA_LOST_UPDATE`** — `StatefulLambdaDetector` reports co-occurrence (ran on several
   threads, mutated a capture) and so fires identically on a locked counter and a racy one. This
   one compares values: it fires only where two threads were observed reading the same pre-value
-  before writing back, and suppresses the finding when every recorded update held one monitor.
+  before writing back *and* the recorded updates admit no serial order - a value that merely came
+  round again under a `ReentrantLock` or an `updateAndGet` is a chain, not a loss - and suppresses
+  the finding when every recorded update held one monitor.
 
 Each ships with its consumer fixture (`Phase22CompletableFutureAndLambdaCaptureFixtureTest`,
 which asserts the finding comes back out through `AsyncFindings`, not merely that the detector is

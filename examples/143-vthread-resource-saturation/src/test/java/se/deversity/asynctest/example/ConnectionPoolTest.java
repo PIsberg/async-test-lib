@@ -158,6 +158,11 @@ class ConnectionPoolTest {
         assertFalse(report.hasIssues(), () -> "platform threads are out of scope here:\n" + report);
     }
 
+    /**
+     * The acquisition, instrumented the way a real pool needs: got one, or gave up. A timeout is
+     * how saturation surfaces, and a caller that gives up without saying so would stay in the
+     * detector's queue for the rest of the run.
+     */
     private void borrowAndRelease() {
         try {
             if (pool.borrow(5_000)) {
@@ -167,8 +172,11 @@ class ConnectionPoolTest {
                 } finally {
                     pool.release();
                 }
+            } else {
+                detector.recordAcquireAbandoned("connections", Thread.currentThread());   // timed out
             }
         } catch (InterruptedException e) {
+            detector.recordAcquireAbandoned("connections", Thread.currentThread());
             Thread.currentThread().interrupt();
         }
     }

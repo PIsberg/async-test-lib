@@ -42,10 +42,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *     supplyAsync gives you no handle on the running task
  *
  * WHY THE FINDING IS A FACT:
- *   the HIGH finding fires only when a stage event was recorded AFTER a
- *   cancel on the same pipeline. The detector saw both events and their
- *   order - a cooperative stage records nothing after the cancel and is
- *   silent.
+ *   the HIGH finding fires only when a stage was recorded FINISHING after
+ *   a cancel on the same pipeline. The detector saw both events and their
+ *   order - a cooperative stage records no completion after the cancel
+ *   and is silent, whether the cancel landed during the body or before it
+ *   was dispatched. A start after the cancel is counted, not reported:
+ *   cancel() dequeues nothing, so a submitted body begins regardless.
  */
 class ReportExporterTest {
 

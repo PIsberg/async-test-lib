@@ -54,10 +54,20 @@ import java.util.concurrent.atomic.AtomicInteger;
  * try (Connection c = pool.getConnection()) {
  *     d.recordAcquired("connections", Thread.currentThread());    // got one
  *     ...
+ * } catch (SQLTimeoutException e) {
+ *     d.recordAcquireAbandoned("connections", Thread.currentThread());   // gave up: out of the queue
+ *     throw e;
  * }
  * }</pre>
  *
- * <p>The pair is enough: everything that started acquiring and has not yet acquired is waiting.
+ * <p>Everything that started acquiring and has neither acquired nor abandoned is waiting. The
+ * abandon call matters because a timeout is how this hazard surfaces: a caller that gives up and
+ * says nothing stays in the count for the rest of the run, and every later queue reads one deeper
+ * than it was.
+ *
+ * <p>Record the start immediately before the resource's own acquisition, inside any admission
+ * control you place in front of it. A caller queued on your {@code Semaphore} is not queued on the
+ * resource; recording it as such would report the fix as the bug.
  *
  * @since 1.11.0
  */
@@ -106,8 +116,11 @@ public final class VirtualThreadResourceSaturationDetector {
     /**
      * Record that a thread has begun waiting for the resource.
      *
-     * <p>Call this immediately before the blocking acquisition, so the wait is visible even when
-     * the caller never gets in.
+     * <p>Call this immediately before the resource's own blocking acquisition - inside any
+     * admission control in front of it - so the wait is visible even when the caller never gets
+     * in. Every start must be matched by {@link #recordAcquired} or
+     * {@link #recordAcquireAbandoned}; a start left open counts as a waiter for the rest of the
+     * run.
      *
      * @param name   the resource, as registered
      * @param thread the waiting thread
@@ -127,6 +140,27 @@ public final class VirtualThreadResourceSaturationDetector {
      * @param thread the acquiring thread
      */
     public void recordAcquired(String name, Thread thread) {
+        leaveQueue(name, thread);
+    }
+
+    /**
+     * Record that a thread has stopped waiting without obtaining the resource - the acquisition
+     * timed out, was interrupted, or threw.
+     *
+     * <p>The wait it recorded with {@link #recordAcquireStart} was real and stays in the peak it
+     * contributed to; this call takes the caller out of the queue from now on. Without it an
+     * abandoned wait would be counted against every later round, and a fan-out that is correctly
+     * bounded at exactly the capacity would then read as one over it. A timeout is how this
+     * hazard surfaces, so this is the path a real pool takes.
+     *
+     * @param name   the resource, as registered
+     * @param thread the thread that gave up
+     */
+    public void recordAcquireAbandoned(String name, Thread thread) {
+        leaveQueue(name, thread);
+    }
+
+    private void leaveQueue(String name, Thread thread) {
         ResourceState s = state(name, thread);
         if (s == null) return;
         s.waiting.decrementAndGet();

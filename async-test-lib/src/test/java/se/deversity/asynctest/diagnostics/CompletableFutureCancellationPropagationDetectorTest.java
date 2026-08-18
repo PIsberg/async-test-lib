@@ -46,6 +46,46 @@ class CompletableFutureCancellationPropagationDetectorTest {
         assertFalse(d.analyze().hasIssues(), "a stage that abandons its work leaves nothing to report");
     }
 
+    /**
+     * The same twin at the other timing: the cancel lands before the stage body is dispatched. The
+     * body still starts - cancel() dequeues nothing - records that it started, sees the
+     * cancellation and returns. It did no work after the cancel, so there is nothing to report;
+     * a stage that starts is not a stage that ran to the end.
+     */
+    @Test
+    void cooperativeStageDispatchedAfterTheCancelStaysSilent() {
+        var d = new CompletableFutureCancellationPropagationDetector();
+        var view = new CompletableFuture<String>();
+
+        d.cancel(view, "report", "view", false);
+        d.recordWorkStarted("report", "fetch", here());   // dispatched late, as a busy pool will
+        if (!view.isCancelled()) {                        // the stage's own cooperative check
+            d.recordWorkCompleted("report", "fetch", here());
+        }
+
+        assertFalse(d.analyze().hasIssues(),
+                "a stage that starts and immediately abandons its work did nothing after the cancel");
+    }
+
+    @Test
+    void aStageThatStartsAndFinishesAfterTheCancelIsHighAndCountsBoth() {
+        var d = new CompletableFutureCancellationPropagationDetector();
+        var view = new CompletableFuture<String>();
+
+        d.cancel(view, "report", "view", false);
+        d.recordWorkStarted("report", "fetch", here());
+        d.recordWorkCompleted("report", "fetch", here());   // ran to the end regardless
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues());
+        String msg = report.violations.get(0);
+        assertTrue(msg.contains("fetch completed"), msg);
+        assertTrue(msg.contains("1 stage start(s)"), msg);
+        assertEquals(IssueSeverity.HIGH, report.structuredViolations.get(0).severity());
+        assertEquals(1, report.structuredViolations.get(0).attributes().get("eventsAfterCancel"));
+        assertEquals(1, report.structuredViolations.get(0).attributes().get("startedAfterCancel"));
+    }
+
     @Test
     void workAfterCancelIsHigh() {
         var d = new CompletableFutureCancellationPropagationDetector();

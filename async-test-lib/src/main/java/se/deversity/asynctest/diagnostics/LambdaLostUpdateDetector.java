@@ -6,6 +6,7 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -23,24 +24,45 @@ import org.jspecify.annotations.Nullable;
  * <p>{@link StatefulLambdaDetector} reports the <em>shape</em> of the hazard: a lambda that ran on
  * several threads and mutated something it captured. That is a co-occurrence, so it fires the same
  * way on a captured counter guarded by a lock as on a racy one. This detector answers the narrower
- * question with evidence: did two threads read the <em>same</em> pre-value and both write back? If
- * they did, one of those writes was computed from state that was already stale when it was
- * written, and it is gone. That is a lost update, not a risk of one.
+ * question with evidence, and it takes two pieces of it:
+ * <ol>
+ *   <li>Two threads read the <em>same</em> pre-value and both wrote back. Both computed from that
+ *       value, so if the two updates overlapped, the second write was based on state that was
+ *       already stale.</li>
+ *   <li>The recorded updates cannot be laid end to end as one serial history. A serial history is
+ *       a chain - every update reads the value the previous one wrote - and in a chain a value can
+ *       be read only as often as it was written, plus once for the starting value. A value read
+ *       twice more than it was written back is a value that was read after it had already been
+ *       replaced, and the write built on it is gone whichever way the events are ordered.</li>
+ * </ol>
+ * The first piece alone is not proof: a value can legitimately come round again - a flag toggled
+ * back and forth, a counter that wraps - under a {@code ReentrantLock}, an {@code updateAndGet} or a
+ * single worker thread, none of which the detector can see. Two threads that read {@code false}
+ * with a {@code true} written in between were serialised, not raced. The second piece rules that
+ * out, so what is left is a lost update, not a risk of one.
  *
  * <p>Consequently:
  * <ul>
  *   <li>{@code counter[0] = counter[0] + 1} from N threads fires - two threads read the same
- *       value.</li>
+ *       value, and no serial order of the recorded updates exists.</li>
  *   <li>{@code counter.incrementAndGet()} on an {@link java.util.concurrent.atomic.AtomicInteger}
  *       stays silent - every thread observes a distinct pre-value.</li>
+ *   <li>A recurring value under any correct serialisation stays silent - every write was read by
+ *       the next update, which is a chain.</li>
  *   <li>The same read-modify-write under a consistently held monitor stays silent - see
  *       {@link #recordReadModifyWrite(Object, String, Object, Object, Object, Thread)}.</li>
  * </ul>
  *
  * <p>The lock probe uses {@link Thread#holdsLock(Object)} at record time, so a guard that is taken
  * around only the read or only the write does not suppress the finding. When guarding is
- * inconsistent - some events hold the monitor, some do not - the finding stands and says so, which
- * is the case where a lock gives the most misleading sense of safety.
+ * inconsistent - some events hold the monitor, some do not, or they hold different monitors - the
+ * finding stands and says so, which is the case where a lock gives the most misleading sense of
+ * safety.
+ *
+ * <p>The finding is anchored to the values a lambda instance's callers recorded, so under
+ * {@code @AsyncTest} record through one lambda instance that every worker runs (a field, or one
+ * built before the fan-out); a lambda built afresh inside each invocation is a fresh key with one
+ * event in it.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -169,6 +191,10 @@ public final class LambdaLostUpdateDetector {
     /**
      * Analyses the recorded updates and reports the ones proven to have lost a write.
      *
+     * <p>A capture is reported when both pieces of evidence are present: some pre-value was read
+     * by two different threads, and the recorded updates admit no serial order at all (see
+     * {@link #serialisable(List)}). Either alone is consistent with a correct program.
+     *
      * @return the findings this detector collected during the run
      */
     public Report analyze() {
@@ -180,8 +206,7 @@ public final class LambdaLostUpdateDetector {
             if (consistentlyGuarded(events)) continue;
 
             // Group by the value each thread observed before its update. Two different threads
-            // in the same group both computed from that value, so the later write overwrote the
-            // earlier one without ever having seen it.
+            // in the same group both computed from that value - the first piece of evidence.
             Map<String, List<Rmw>> byBefore = new LinkedHashMap<>();
             for (Rmw e : events) byBefore.computeIfAbsent(e.before, k -> new ArrayList<>()).add(e);
 
@@ -205,18 +230,40 @@ public final class LambdaLostUpdateDetector {
             }
             if (collisions.isEmpty()) continue;
 
-            boolean partiallyGuarded = false;
-            for (Rmw e : events) if (e.heldGuard) { partiallyGuarded = true; break; }
+            // The second piece. A value two threads read can also be a value that legitimately
+            // came round twice, serialised by something the detector cannot see - a ReentrantLock,
+            // an updateAndGet, one worker thread. Report only when no serial order of the recorded
+            // updates exists at all; a chain proves nothing, and that is the safe direction.
+            if (serialisable(events)) continue;
+
+            int guardedEvents = 0;
+            Set<Integer> monitorsHeld = new LinkedHashSet<>();
+            for (Rmw e : events) {
+                if (e.heldGuard) {
+                    guardedEvents++;
+                    monitorsHeld.add(e.guardId);
+                }
+            }
+            boolean partiallyGuarded = guardedEvents > 0;
+            String guardNote;
+            if (guardedEvents == 0) {
+                guardNote = "";
+            } else if (guardedEvents == events.size()) {
+                // Every update held a monitor, just not the same one - consistentlyGuarded()
+                // has already ruled out the single-monitor case.
+                guardNote = " These updates held " + monitorsHeld.size() + " different monitors, which "
+                          + "serialises nothing between them: a lock only excludes the threads that take "
+                          + "the same one.";
+            } else {
+                guardNote = " Some - not all - of these updates held the named monitor, which is worse "
+                          + "than none: the lock suggests the sequence is atomic when it is not.";
+            }
 
             String msg = String.format(
                     "Captured '%s' in lambda %s lost %d update(s): %s. Threads that read the same value before "
                     + "updating it computed from state that was already stale, so every write but the last in "
-                    + "each group was discarded.%s",
-                    s.capturedName, s.lambdaName, lostWrites, String.join("; ", collisions),
-                    partiallyGuarded
-                            ? " Some - not all - of these updates held the named monitor, which is worse than "
-                              + "none: the lock suggests the sequence is atomic when it is not."
-                            : "");
+                    + "each group was discarded, and no serial order of the recorded updates exists.%s",
+                    s.capturedName, s.lambdaName, lostWrites, String.join("; ", collisions), guardNote);
 
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
@@ -229,7 +276,8 @@ public final class LambdaLostUpdateDetector {
                             "lambda", s.lambdaName,
                             "lostWrites", lostWrites,
                             "threads", String.join(",", threads),
-                            "partiallyGuarded", partiallyGuarded
+                            "partiallyGuarded", partiallyGuarded,
+                            "monitorsHeld", monitorsHeld.size()
                     ),
                     Instant.now()));
         }
@@ -248,6 +296,36 @@ public final class LambdaLostUpdateDetector {
             if (!e.heldGuard || e.guardId != guardId) return false;
         }
         return true;
+    }
+
+    /**
+     * {@return whether the recorded updates could have happened one after another}
+     *
+     * <p>A serial history is a chain: every update reads the value the previous one wrote. Along
+     * a chain each value is written back as often as it is read, except for the starting value,
+     * which is read once without having been written, and the final value, which is written once
+     * without being read. So the number of reads of a value that no recorded write accounts for,
+     * summed over all values, is at most one. Two or more means some update read a value that an
+     * earlier update had already replaced, and no ordering of the events makes that a chain -
+     * which is what a lost write is. In graph terms: an update is an edge from the value read to
+     * the value written, and a history with two or more surplus out-degrees has no Eulerian trail.
+     *
+     * <p>The test is a necessary condition for a chain, not a sufficient one, and that is the
+     * direction wanted here: a history it accepts may still be two chains that an unrecorded
+     * writer joined, and staying silent on that is the safe error. Values are compared as
+     * rendered, the same way the collision groups are formed.
+     */
+    private static boolean serialisable(List<Rmw> events) {
+        Map<String, Integer> readsMinusWrites = new HashMap<>();
+        for (Rmw e : events) {
+            readsMinusWrites.merge(e.before, 1, Integer::sum);
+            readsMinusWrites.merge(e.written, -1, Integer::sum);
+        }
+        int unaccountedReads = 0;
+        for (int excess : readsMinusWrites.values()) {
+            if (excess > 0) unaccountedReads += excess;
+        }
+        return unaccountedReads <= 1;
     }
 
     /** Report produced by {@link #analyze()}. */
@@ -270,7 +348,9 @@ public final class LambdaLostUpdateDetector {
             sb.append("  Why: a lambda captures the container, not a copy. When two threads read the captured\n")
               .append("       value, compute from it and write back, the second write is based on a value that was\n")
               .append("       already replaced. Both threads succeed, and one increment simply never happened.\n")
-              .append("       This is reported only where two threads were observed reading the same pre-value.\n")
+              .append("       This is reported only where two threads were observed reading the same pre-value\n")
+              .append("       and the recorded updates cannot be put in any serial order - a value that merely\n")
+              .append("       came round again under a lock the detector cannot see is not reported.\n")
               .append("  Fix:\n")
               .append("    - Replace read-modify-write with a single atomic operation: incrementAndGet(),\n")
               .append("      updateAndGet(), accumulate into a LongAdder\n")

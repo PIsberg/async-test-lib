@@ -39,9 +39,12 @@ When a real interrupt is needed, hold the `Future` the executor returned and can
 Bracket the stage body with `recordWorkStarted` / `recordWorkCompleted` and cancel through
 `detector.cancel(...)`. Two findings:
 
-- 🔴 **High** — a stage event was recorded *after* the cancel on the same pipeline. The work
-  outlived the cancellation; the detector saw both events and their order. A cooperative stage
-  records nothing after the cancel and stays silent.
+- 🔴 **High** — a stage was recorded *finishing* after the cancel on the same pipeline. The work
+  ran to the end regardless; the detector saw both events and their order. A cooperative stage
+  records no completion after the cancel and stays silent, whether the cancel landed while it
+  was running or before it was even dispatched. A stage that merely *started* after the cancel is
+  counted in the message but is not a finding on its own: `cancel()` dequeues nothing, so a body
+  already submitted begins regardless, and a cooperative one begins, checks, and returns.
 - 🟡 **Medium** — `cancel(true)` was called. The flag has no effect on this type, so anything
   relying on an interrupt to unblock the stage is relying on something that will not happen.
 

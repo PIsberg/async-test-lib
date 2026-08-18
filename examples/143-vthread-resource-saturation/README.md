@@ -51,9 +51,18 @@ anti-pattern `VIRTUAL_THREAD_POOLING` reports.
 ## What the detector observes
 
 Declare the capacity with `registerResource(name, capacity)`, then bracket each acquisition with
-`recordAcquireStart` and `recordAcquired`. One finding: 🔴 **High** when more callers were
-waiting at one moment than the resource can ever serve, with at least one of them a virtual
-thread. Peak waiters versus capacity — both counts.
+`recordAcquireStart` and `recordAcquired`, or `recordAcquireAbandoned` when the wait gives up.
+One finding: 🔴 **High** when more callers were waiting at one moment than the resource can ever
+serve, with at least one of them a virtual thread. Peak waiters versus capacity — both counts.
+
+The abandon call is not optional bookkeeping: a timeout is how this hazard surfaces, and a caller
+that times out and says nothing stays in the count for the rest of the run, so every later queue
+reads one deeper than it was. A fan-out correctly bounded at exactly the capacity would then be
+reported as one over it.
+
+Record the start immediately before the resource's own acquisition, *inside* the semaphore. A
+caller queued on the semaphore is not queued on the resource, and recording it as such would
+report the fix as the bug.
 
 A fan-out bounded by a semaphore of the resource's own size never queues past capacity and is
 silent, and so is a platform-only workload — a bounded pool cannot produce this hazard, and
