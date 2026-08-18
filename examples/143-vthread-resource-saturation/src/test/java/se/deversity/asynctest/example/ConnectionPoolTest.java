@@ -44,9 +44,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *     borrow and released in a finally
  *
  * WHY THE FINDING IS A FACT:
- *   the detector compares the peak number of callers waiting against
- *   the capacity the caller declared. Both are counts. A fan-out that
- *   never queues more than the resource can serve is silent.
+ *   the detector compares the peak number of virtual threads waiting at
+ *   once against the capacity the caller declared. Both are counts. A
+ *   fan-out that never queues more than the resource can serve is silent,
+ *   and so is a queue that platform threads made.
  */
 class ConnectionPoolTest {
 

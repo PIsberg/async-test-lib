@@ -44,13 +44,16 @@ Call `recordMonitorEnter` immediately before the `synchronized` block and
 `recordMonitorAcquired` inside it; everything entered and not yet acquired is, by definition,
 queued.
 
-Fires when the peak queue depth reaches the threshold (default 4) and at least two of the
-waiters were virtual threads. Both numbers are counts. The report also says which side of JDK 24
-it is on: below 24 it points at `VIRTUAL_THREAD_PINNING`, which reports the same block; from 24
-it says that nothing else does.
+Fires when the peak number of virtual threads queued at once reaches the threshold (default 4)
+and at least two distinct virtual threads waited on the monitor. Both numbers are counts, and it
+is the virtual waiters that are counted against the threshold, not everyone in the queue: a queue
+that platform threads made, with a virtual thread or two passing through at other moments, is
+`LOCK_CONTENTION`'s finding and not this one. The report also says which side of JDK 24 it is on:
+below 24 it points at `VIRTUAL_THREAD_PINNING`, which reports the same block; from 24 it says
+that nothing else does.
 
-`LOCK_CONTENTION` cannot make this call — it has no notion of a virtual thread, so it scores
-four platform workers and four thousand virtual ones identically.
+`LOCK_CONTENTION` cannot make this call the other way — it has no notion of a virtual thread, so
+it scores four platform workers and four thousand virtual ones identically.
 
 A critical section short enough that nobody piles up behind it produces no finding, which is
 what stops this from simply reporting every `synchronized` block in the codebase.

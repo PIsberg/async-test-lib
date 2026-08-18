@@ -143,6 +143,57 @@ class LambdaLostUpdateDetectorTest {
     }
 
     /**
+     * The count is what the values prove, not the sum over collision groups. A serial toggle
+     * (0->1, 1->0, 0->1) followed by a real loss (two threads read 1, both write 2) has two
+     * collision groups - "0" with two readers, "1" with three - which the old arithmetic added up
+     * to three lost writes. Only one write was lost. The values leave two reads that no write
+     * accounts for; one of them is the starting value, so at least one write was overwritten
+     * unread, and that is the number the finding may claim.
+     */
+    @Test
+    void theCountIsTheMinimumTheValuesProveNotTheGroupSum() throws Exception {
+        var d = new LambdaLostUpdateDetector();
+        var task = lambda();
+
+        d.recordReadModifyWrite(task, "state", 0, 1, here());
+        onAnotherThread(() -> d.recordReadModifyWrite(task, "state", 1, 0, here()));
+        onAnotherThread(() -> d.recordReadModifyWrite(task, "state", 0, 1, here()));   // legitimate recurrence
+        onAnotherThread(() -> d.recordReadModifyWrite(task, "state", 1, 2, here()));
+        onAnotherThread(() -> d.recordReadModifyWrite(task, "state", 1, 2, here()));   // the real loss
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues());
+        String msg = report.violations.get(0);
+        assertTrue(msg.contains("lost at least 1 update(s)"), msg);
+        assertEquals(1, report.structuredViolations.get(0).attributes().get("lostWrites"));
+    }
+
+    /**
+     * Four threads, one barrier, all read 0 and all write 1: three writes overwritten unread, and
+     * the values prove exactly that (four reads of 0, no write of 0, one starting value).
+     */
+    @Test
+    void fourReadersOfOneValueAreThreeLostWrites() throws Exception {
+        var d = new LambdaLostUpdateDetector();
+        var task = lambda();
+
+        d.recordReadModifyWrite(task, "counter", 0, 1, here());
+        for (int i = 0; i < 3; i++) {
+            onAnotherThread(() -> d.recordReadModifyWrite(task, "counter", 0, 1, here()));
+        }
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues());
+        assertTrue(report.violations.get(0).contains("lost at least 3 update(s)"), report.violations.get(0));
+        assertEquals(3, report.structuredViolations.get(0).attributes().get("lostWrites"));
+    }
+
+    private static void onAnotherThread(Runnable body) throws InterruptedException {
+        Thread t = Thread.ofPlatform().start(body);
+        t.join();
+    }
+
+    /**
      * Two monitors are not one guard: a lock only excludes the threads that take the same one.
      * The finding stands, and the message must say what happened - not "some, not all, held the
      * monitor", because every update here did hold one.
@@ -193,7 +244,7 @@ class LambdaLostUpdateDetectorTest {
         assertTrue(report.hasIssues());
         String msg = report.violations.get(0);
         assertTrue(msg.contains("counter"));
-        assertTrue(msg.contains("lost 1 update(s)"));
+        assertTrue(msg.contains("lost at least 1 update(s)"), msg);
         assertTrue(msg.contains("all read 0"));
         assertEquals(IssueSeverity.HIGH, report.structuredViolations.get(0).severity());
         assertEquals("LambdaLostUpdate", report.structuredViolations.get(0).detector());

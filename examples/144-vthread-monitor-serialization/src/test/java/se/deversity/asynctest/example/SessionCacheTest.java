@@ -45,10 +45,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *     short enough that nobody piles up behind it
  *
  * WHY THE FINDING IS A FACT:
- *   the peak queue depth and the number of distinct virtual threads in
- *   the queue are both counts. LOCK_CONTENTION cannot make this call:
- *   it has no notion of a virtual thread, so it scores four platform
- *   workers and four thousand virtual ones identically.
+ *   the peak number of virtual threads queued at once and the number of
+ *   distinct virtual threads in the queue are both counts; a queue that
+ *   platform threads made is LOCK_CONTENTION's finding, not this one.
+ *   LOCK_CONTENTION cannot make this call the other way: it has no notion
+ *   of a virtual thread, so it scores four platform workers and four
+ *   thousand virtual ones identically.
  */
 class SessionCacheTest {
 

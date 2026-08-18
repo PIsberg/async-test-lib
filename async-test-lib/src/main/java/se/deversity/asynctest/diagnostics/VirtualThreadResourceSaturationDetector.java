@@ -30,8 +30,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * removes the admission control with it, and nothing in the code says so.
  *
  * <p>One finding, and it is a count rather than an inference: {@link IssueSeverity#HIGH} when
- * more callers were waiting for the resource at one moment than the resource can ever serve at
- * once, with at least one of them a virtual thread. The fan-out outran the resource.
+ * more <em>virtual</em> threads were waiting for the resource at one moment than the resource can
+ * ever serve at once. The fan-out outran the resource. It is the virtual waiters that are counted
+ * against the capacity, not everyone in the queue: a platform-only burst that outran the pool,
+ * with a virtual thread passing through at some other moment, is a bounded pool's problem and is
+ * not attributed to a fan-out that never happened.
  *
  * <p>The detector deliberately does not report on how many callers <em>held</em> the resource at
  * once, though it would be the obvious second finding. It cannot know: a caller returns the
@@ -42,8 +45,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>A fan-out bounded by a semaphore of the resource's own size never queues more waiters than
  * the capacity, so the corrected shape produces no finding. Neither does a workload with no
- * virtual threads in it: a bounded platform pool cannot produce this hazard, and
- * {@code THREAD_POOL_DEADLOCK} already owns that ground.
+ * virtual threads in it, or one whose queue was made of platform threads: a bounded platform pool
+ * cannot produce this hazard, and {@code THREAD_POOL_DEADLOCK} already owns that ground.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -72,9 +75,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @since 1.11.0
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER,
-        note = "One state object per resource in a ConcurrentHashMap. Waiting and holding are atomic "
-             + "counters and the peaks are maintained with a CAS retry loop, so a peak observed under "
-             + "contention is never lower than the true peak.")
+        note = "One state object per resource in a ConcurrentHashMap. The waiters, and the virtual threads "
+             + "among them, are atomic counters whose peaks are maintained with a CAS retry loop, so a peak "
+             + "observed under contention is never lower than the true peak.")
 @AITestDriven(
     framework = {AITestDriven.Framework.JUNIT_5},
     coverageGoal = 80,
@@ -85,10 +88,14 @@ public final class VirtualThreadResourceSaturationDetector {
     private static final class ResourceState {
         final String        name;
         final int           capacity;
-        final AtomicInteger waiting     = new AtomicInteger();
-        final AtomicInteger peakWaiting = new AtomicInteger();
-        final Set<Long>     virtualAcquirers  = ConcurrentHashMap.newKeySet();
-        final Set<Long>     platformAcquirers = ConcurrentHashMap.newKeySet();
+        /** Callers between "about to ask" and "got it" (or "gave up"), and the most at once. */
+        final AtomicInteger waiting            = new AtomicInteger();
+        final AtomicInteger peakWaiting        = new AtomicInteger();
+        /** The virtual threads among them, and the most of those at once - the count that fires. */
+        final AtomicInteger virtualWaiting     = new AtomicInteger();
+        final AtomicInteger peakVirtualWaiting = new AtomicInteger();
+        final Set<Long>     virtualAcquirers   = ConcurrentHashMap.newKeySet();
+        final Set<Long>     platformAcquirers  = ConcurrentHashMap.newKeySet();
 
         ResourceState(String name, int capacity) {
             this.name     = name;
@@ -129,8 +136,12 @@ public final class VirtualThreadResourceSaturationDetector {
         ResourceState s = state(name, thread);
         if (s == null) return;
         raise(s.peakWaiting, s.waiting.incrementAndGet());
-        if (isVirtual(thread)) s.virtualAcquirers.add(thread.threadId());
-        else s.platformAcquirers.add(thread.threadId());
+        if (isVirtual(thread)) {
+            raise(s.peakVirtualWaiting, s.virtualWaiting.incrementAndGet());
+            s.virtualAcquirers.add(thread.threadId());
+        } else {
+            s.platformAcquirers.add(thread.threadId());
+        }
     }
 
     /**
@@ -164,6 +175,7 @@ public final class VirtualThreadResourceSaturationDetector {
         ResourceState s = state(name, thread);
         if (s == null) return;
         s.waiting.decrementAndGet();
+        if (isVirtual(thread)) s.virtualWaiting.decrementAndGet();
     }
 
     private @Nullable ResourceState state(String name, Thread thread) {
@@ -196,22 +208,28 @@ public final class VirtualThreadResourceSaturationDetector {
     /**
      * Analyses the recorded acquisitions and builds the report.
      *
+     * <p>The count compared against the capacity is the peak number of <em>virtual</em> threads
+     * waiting at once. The overall peak is reported alongside for context, but a queue that
+     * platform threads made is not this finding, whatever else passed through the resource.
+     *
      * @return the findings this detector collected during the run
      */
     public Report analyze() {
         Report r = new Report();
         for (ResourceState s : resources.values()) {
-            int peakWaiting = s.peakWaiting.get();
+            int peakWaiting        = s.peakWaiting.get();
+            int peakVirtualWaiting = s.peakVirtualWaiting.get();
             int virtual  = s.virtualAcquirers.size();
             int platform = s.platformAcquirers.size();
 
-            if (peakWaiting > s.capacity && virtual > 0) {
+            if (peakVirtualWaiting > s.capacity) {
                 String msg = String.format(
-                        "Resource '%s' has capacity %d, and %d caller(s) were waiting for it at once "
-                        + "(%d virtual thread(s), %d platform thread(s)). The virtual fan-out is unbounded "
-                        + "and the resource is not, so the extra callers are queueing, not working - the "
-                        + "cost shows up as acquisition timeouts rather than as a threading failure.",
-                        s.name, s.capacity, peakWaiting, virtual, platform);
+                        "Resource '%s' has capacity %d, and %d virtual thread(s) were waiting for it at once "
+                        + "(the deepest queue overall was %d; %d virtual and %d platform thread(s) acquired "
+                        + "over the run). The virtual fan-out is unbounded and the resource is not, so the "
+                        + "extra callers are queueing, not working - the cost shows up as acquisition "
+                        + "timeouts rather than as a threading failure.",
+                        s.name, s.capacity, peakVirtualWaiting, peakWaiting, virtual, platform);
                 r.violations.add(msg);
                 r.structuredViolations.add(new Violation(
                         "VirtualThreadResourceSaturation",
@@ -219,6 +237,7 @@ public final class VirtualThreadResourceSaturationDetector {
                         Map.of("resource", s.name,
                                "capacity", s.capacity,
                                "peakWaiting", peakWaiting,
+                               "peakVirtualWaiting", peakVirtualWaiting,
                                "virtualAcquirers", virtual,
                                "platformAcquirers", platform),
                         Instant.now()));

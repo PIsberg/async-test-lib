@@ -2810,8 +2810,8 @@ public final class AsyncTestContext {
      *
      * <p>Declare the bounded resource with {@code registerResource(name, capacity)}, then bracket
      * each acquisition with {@code recordAcquireStart} and {@code recordAcquired}, or
-     * {@code recordAcquireAbandoned} when the wait gives up; the detector reports a fan-out that
-     * queued more callers than the resource can serve.
+     * {@code recordAcquireAbandoned} when the wait gives up; the detector reports a fan-out in which
+     * more virtual threads waited at once than the resource can serve.
      *
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVirtualThreadResourceSaturation = false}
      * @since 1.11.0
@@ -2826,8 +2826,8 @@ public final class AsyncTestContext {
      * Returns the {@link VirtualThreadMonitorSerializationDetector} for the current test.
      *
      * <p>Call {@code recordMonitorEnter} immediately before the {@code synchronized} block and
-     * {@code recordMonitorAcquired} inside it; the detector reports the peak queue depth and how
-     * many of the waiters were virtual threads.
+     * {@code recordMonitorAcquired} inside it; the detector reports the peak number of virtual
+     * threads queued at once, alongside the deepest queue overall and the distinct virtual waiters.
      *
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVirtualThreadMonitorSerialization = false}
      * @since 1.11.0

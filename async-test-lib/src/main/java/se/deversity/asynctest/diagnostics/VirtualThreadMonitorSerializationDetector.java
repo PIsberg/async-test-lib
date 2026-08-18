@@ -33,10 +33,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  * scores four platform workers and four thousand virtual ones the same way. Here the queue depth
  * and the number of distinct virtual threads in it are the finding, and both are counts.
  *
- * <p>Fires when the peak number of threads waiting on one monitor reaches the contention
- * threshold (default {@value #DEFAULT_CONTENTION_THRESHOLD}) and at least two of the waiters were
- * virtual threads. A critical section short enough that waiters never pile up produces no
- * finding, and neither does a workload that reaches the monitor from one thread at a time.
+ * <p>Fires when the peak number of <em>virtual</em> threads waiting on one monitor at once reaches
+ * the contention threshold (default {@value #DEFAULT_CONTENTION_THRESHOLD}) and at least two
+ * distinct virtual threads waited on it. It is the virtual waiters that are counted against the
+ * threshold, not everyone in the queue: a queue that platform threads made, with a virtual thread
+ * or two passing through at other moments, is {@code LOCK_CONTENTION}'s finding and is not
+ * attributed to a fan-out that never happened. A critical section short enough that waiters never
+ * pile up produces no finding, and neither does a workload that reaches the monitor from one
+ * thread at a time.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -54,9 +58,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @since 1.11.0
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER,
-        note = "One state object per monitor identity in a ConcurrentHashMap. Queue depth is an atomic "
-             + "counter and its peak is raised with a CAS retry loop, so a peak observed under contention "
-             + "is never lower than the true peak.")
+        note = "One state object per monitor identity in a ConcurrentHashMap. Queue depth, and the virtual "
+             + "threads in it, are atomic counters whose peaks are raised with a CAS retry loop, so a peak "
+             + "observed under contention is never lower than the true peak.")
 @AITestDriven(
     framework = {AITestDriven.Framework.JUNIT_5},
     coverageGoal = 80,
@@ -65,7 +69,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class VirtualThreadMonitorSerializationDetector {
 
     /**
-     * Peak queue depth at which a monitor counts as serialising the fan-out.
+     * Peak number of virtual threads queued at once at which a monitor counts as serialising the
+     * fan-out.
      *
      * <p>Two waiting threads is ordinary contention and says nothing about scale. Four at once on
      * one monitor is a queue, and under an unbounded virtual fan-out a queue only grows.
@@ -74,11 +79,15 @@ public final class VirtualThreadMonitorSerializationDetector {
 
     private static final class MonitorState {
         final String        label;
-        final AtomicInteger waiting     = new AtomicInteger();
-        final AtomicInteger peakWaiting = new AtomicInteger();
-        final AtomicInteger acquisitions = new AtomicInteger();
-        final Set<Long>     virtualWaiters  = ConcurrentHashMap.newKeySet();
-        final Set<Long>     platformWaiters = ConcurrentHashMap.newKeySet();
+        /** Threads between "about to enter" and "got in", and the most at once. */
+        final AtomicInteger waiting            = new AtomicInteger();
+        final AtomicInteger peakWaiting        = new AtomicInteger();
+        /** The virtual threads among them, and the most of those at once - the count that fires. */
+        final AtomicInteger virtualWaiting     = new AtomicInteger();
+        final AtomicInteger peakVirtualWaiting = new AtomicInteger();
+        final AtomicInteger acquisitions       = new AtomicInteger();
+        final Set<Long>     virtualWaiters     = ConcurrentHashMap.newKeySet();
+        final Set<Long>     platformWaiters    = ConcurrentHashMap.newKeySet();
 
         MonitorState(String label) { this.label = label; }
     }
@@ -96,8 +105,9 @@ public final class VirtualThreadMonitorSerializationDetector {
     /**
      * Creates a detector with an explicit threshold and JDK version.
      *
-     * @param contentionThreshold peak queue depth at which a monitor is reported; values below 2
-     *                            are raised to 2, since one waiter is not a queue
+     * @param contentionThreshold peak number of virtual threads queued at once at which a monitor is
+     *                            reported; values below 2 are raised to 2, since one waiter is not a
+     *                            queue
      * @param jdkFeatureVersion   the JDK the finding is phrased against, e.g. {@code 21} or {@code 24}
      */
     public VirtualThreadMonitorSerializationDetector(int contentionThreshold, int jdkFeatureVersion) {
@@ -121,8 +131,12 @@ public final class VirtualThreadMonitorSerializationDetector {
         String name = label != null ? label : "monitor@" + id;
         MonitorState s = monitors.computeIfAbsent(id, k -> new MonitorState(name));
         raise(s.peakWaiting, s.waiting.incrementAndGet());
-        if (isVirtual(thread)) s.virtualWaiters.add(thread.threadId());
-        else s.platformWaiters.add(thread.threadId());
+        if (isVirtual(thread)) {
+            raise(s.peakVirtualWaiting, s.virtualWaiting.incrementAndGet());
+            s.virtualWaiters.add(thread.threadId());
+        } else {
+            s.platformWaiters.add(thread.threadId());
+        }
     }
 
     /**
@@ -135,6 +149,7 @@ public final class VirtualThreadMonitorSerializationDetector {
         MonitorState s = state(monitor, thread);
         if (s == null) return;
         s.waiting.decrementAndGet();
+        if (isVirtual(thread)) s.virtualWaiting.decrementAndGet();
         s.acquisitions.incrementAndGet();
     }
 
@@ -168,14 +183,19 @@ public final class VirtualThreadMonitorSerializationDetector {
     /**
      * Analyses the recorded monitor traffic and builds the report.
      *
+     * <p>The count compared against the threshold is the peak number of <em>virtual</em> threads
+     * queued at once. The overall peak is reported alongside for context, but a queue that
+     * platform threads made is {@code LOCK_CONTENTION}'s finding, whatever else passed through.
+     *
      * @return the findings this detector collected during the run
      */
     public Report analyze() {
         Report r = new Report();
         for (MonitorState s : monitors.values()) {
-            int peak    = s.peakWaiting.get();
-            int virtual = s.virtualWaiters.size();
-            if (peak < contentionThreshold || virtual < 2) continue;
+            int peak        = s.peakWaiting.get();
+            int virtualPeak = s.peakVirtualWaiting.get();
+            int virtual     = s.virtualWaiters.size();
+            if (virtualPeak < contentionThreshold || virtual < 2) continue;
 
             String pinningNote = jdkFeatureVersion < 24
                     ? " On this JDK (" + jdkFeatureVersion + ") the monitor also pins the carrier, so "
@@ -184,10 +204,11 @@ public final class VirtualThreadMonitorSerializationDetector {
                       + "nothing else reports it - the throughput limit is all that is left, and it is silent.";
 
             String msg = String.format(
-                    "Monitor '%s' had %d thread(s) queued on it at once, %d of them virtual, across %d "
-                    + "acquisition(s). synchronized admits one thread at a time, so an unbounded virtual "
-                    + "fan-out onto this monitor is a queue rather than concurrency.%s",
-                    s.label, peak, virtual, s.acquisitions.get(), pinningNote);
+                    "Monitor '%s' had %d virtual thread(s) queued on it at once (the deepest queue overall "
+                    + "was %d), %d distinct virtual thread(s) across %d acquisition(s). synchronized admits "
+                    + "one thread at a time, so an unbounded virtual fan-out onto this monitor is a queue "
+                    + "rather than concurrency.%s",
+                    s.label, virtualPeak, peak, virtual, s.acquisitions.get(), pinningNote);
 
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
@@ -195,6 +216,7 @@ public final class VirtualThreadMonitorSerializationDetector {
                     IssueSeverity.HIGH, msg, List.of(),
                     Map.of("monitor", s.label,
                            "peakWaiting", peak,
+                           "peakVirtualWaiting", virtualPeak,
                            "virtualWaiters", virtual,
                            "platformWaiters", s.platformWaiters.size(),
                            "acquisitions", s.acquisitions.get(),

@@ -21,8 +21,10 @@ returns zero matches in `LockContentionDetector`, `ThreadLeakDetector` and
   down; removing it leaves the connection pool as bounded as it ever was. JEP 444 says to limit
   the resource with a `Semaphore` instead, and `VirtualThreadPoolingDetector:235` and
   `VirtualThreadCarrierExhaustionDetector:257` both printed that advice in their fix text while
-  nothing detected the violation. Fires when more callers were waiting than the resource can
-  serve, with at least one virtual acquirer. It deliberately does not report on how many callers
+  nothing detected the violation. Fires when more virtual threads were waiting at once than the
+  resource can serve; the count is of virtual waiters, so a queue that platform threads made,
+  with a virtual thread passing through at another moment, is `THREAD_POOL_DEADLOCK`'s ground and
+  not attributed to a fan-out. It deliberately does not report on how many callers
   *held* the resource: a caller returns it and then records having done so, and in that window the
   next caller can legitimately be granted it, so a count above the capacity is instrumentation
   skew as often as a real breach. That rule was in the first draft and CI caught it reporting a
@@ -33,7 +35,8 @@ returns zero matches in `LockContentionDetector`, `ThreadLeakDetector` and
   `synchronized` no longer pins, so `VIRTUAL_THREAD_PINNING` correctly reports those events as
   obsolete; one thread at a time is still one thread at a time, and nothing bounds the arrivals
   any more. The report says which side of JDK 24 it is on and cross-references the pinning
-  detector. Fires on peak queue depth with at least two distinct virtual waiters.
+  detector. Fires on the peak number of virtual threads queued at once, with at least two distinct
+  virtual waiters; a queue that platform threads made is `LOCK_CONTENTION`'s finding, not this one.
 - **`THREAD_LOCAL_CACHE_DEGRADATION`** - `ThreadLocal<SimpleDateFormat>` is a cache only because
   the thread count is bounded; per task it is an allocator, and the code that changed meaning did
   not change at all. Counts distinct instances by identity, so a shared value, a pooled helper
@@ -62,8 +65,9 @@ therefore invisible, and the lambda side had accuracy rather than coverage missi
 
 - **`COMPLETABLE_FUTURE_COMPLETION_RACE`** — the loser of a completion race gets `false` back and
   drops its value, or its exception, unread. Reported only for attempts observed to lose, so a
-  future completed by one thread stays silent. `HIGH` when an exception or a differing value was
-  discarded, `MEDIUM` when the loser carried the winner's value.
+  future completed by one thread stays silent; a lone recorded loser is reported too, with the
+  winner marked not observed. `HIGH` when an exception or a differing value was discarded, or the
+  winner was not seen, `MEDIUM` when the loser carried the winner's value.
 - **`COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION`** — `cancel()` completes one future and stops
   there, and the JDK documents that `mayInterruptIfRunning` has no effect on this type. Fires
   when a stage body was recorded finishing after the cancel, and separately on `cancel(true)`. A
@@ -79,7 +83,8 @@ therefore invisible, and the lambda side had accuracy rather than coverage missi
   one compares values: it fires only where two threads were observed reading the same pre-value
   before writing back *and* the recorded updates admit no serial order - a value that merely came
   round again under a `ReentrantLock` or an `updateAndGet` is a chain, not a loss - and suppresses
-  the finding when every recorded update held one monitor.
+  the finding when every recorded update held one monitor. The number it reports is the minimum
+  the values prove ("lost at least N"), not a sum over collision groups.
 
 Each ships with its consumer fixture (`Phase22CompletableFutureAndLambdaCaptureFixtureTest`,
 which asserts the finding comes back out through `AsyncFindings`, not merely that the detector is

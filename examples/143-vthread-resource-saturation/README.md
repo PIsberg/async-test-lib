@@ -52,8 +52,11 @@ anti-pattern `VIRTUAL_THREAD_POOLING` reports.
 
 Declare the capacity with `registerResource(name, capacity)`, then bracket each acquisition with
 `recordAcquireStart` and `recordAcquired`, or `recordAcquireAbandoned` when the wait gives up.
-One finding: 🔴 **High** when more callers were waiting at one moment than the resource can ever
-serve, with at least one of them a virtual thread. Peak waiters versus capacity — both counts.
+One finding: 🔴 **High** when more virtual threads were waiting at one moment than the resource
+can ever serve. Peak virtual waiters versus capacity — both counts. It is the virtual waiters
+that are counted, not everyone in the queue: a burst of platform threads that outran the pool,
+with a virtual thread passing through at some other moment, is a bounded pool's problem
+(`THREAD_POOL_DEADLOCK`) and is not attributed to a fan-out that never happened.
 
 The abandon call is not optional bookkeeping: a timeout is how this hazard surfaces, and a caller
 that times out and says nothing stays in the count for the rest of the run, so every later queue
