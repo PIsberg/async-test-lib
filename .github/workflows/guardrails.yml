@@ -126,7 +126,7 @@ jobs:
       # other action. The action touches .vibetags-locks (the processor's opt-in signal),
       # compiles the PR head so the report is fresh, and intersects the diff with it.
       - name: Guard @AILocked elements against this PR's diff
-        uses: PIsberg/vibetags/action/locked-files@8be75dd90b99bfcd3ec45023a19c3b289f7bd0a1 # main 2026-08-15
+        uses: PIsberg/vibetags/action/locked-files@d03b0093004162fe7c5f6a5c3f64ae744b5b7b74 # main 2026-08-15
         with:
           build-command: mvn -B -q clean compile -Djacoco.skip=true
           warn-only: ${{ contains(github.event.pull_request.labels.*.name, 'lock-override') && 'true' || 'false' }}
