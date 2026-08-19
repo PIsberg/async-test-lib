@@ -55,7 +55,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>The pair is enough: everything entered and not yet acquired is, by definition, queued.
  *
- * @since 1.11.0
+ * @since 1.9.5
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER,
         note = "One state object per monitor identity in a ConcurrentHashMap. Queue depth, and the virtual "

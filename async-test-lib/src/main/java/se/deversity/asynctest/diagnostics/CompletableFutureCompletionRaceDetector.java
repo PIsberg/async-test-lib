@@ -54,7 +54,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * AsyncTestContext.cfCompletionRaceDetector().complete(result, "lookup", myValue);
  * }</pre>
  *
- * @since 1.10.0
+ * @since 1.9.5
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER,
         note = "ConcurrentHashMap keyed on future identity; per-future attempt list is copy-on-write "

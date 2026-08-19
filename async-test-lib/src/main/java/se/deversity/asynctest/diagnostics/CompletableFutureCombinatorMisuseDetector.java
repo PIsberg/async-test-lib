@@ -64,7 +64,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * above: dependents fire last-registered first, so the record is sequenced before the combined
  * future completes and a read that follows is compared against the right count.
  *
- * @since 1.10.0
+ * @since 1.9.5
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER,
         note = "ConcurrentHashMap keyed on the combined future's identity; constituent and await events "

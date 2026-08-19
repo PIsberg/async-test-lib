@@ -2746,7 +2746,7 @@ public final class AsyncTestContext {
      * reports the attempts that lost the race and had their value or exception discarded.
      *
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCompletableFutureCompletionRace = false}
-     * @since 1.10.0
+     * @since 1.9.5
      *
      * @return the {@link CompletableFutureCompletionRaceDetector} for the active {@code @AsyncTest} context
      */
@@ -2764,7 +2764,7 @@ public final class AsyncTestContext {
      * against another worker's stages.
      *
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCompletableFutureCancellationPropagation = false}
-     * @since 1.10.0
+     * @since 1.9.5
      *
      * @return the {@link CompletableFutureCancellationPropagationDetector} for the active {@code @AsyncTest} context
      */
@@ -2780,7 +2780,7 @@ public final class AsyncTestContext {
      * reports groups the code moved past before they had finished.
      *
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectCompletableFutureCombinatorMisuse = false}
-     * @since 1.10.0
+     * @since 1.9.5
      *
      * @return the {@link CompletableFutureCombinatorMisuseDetector} for the active {@code @AsyncTest} context
      */
@@ -2797,7 +2797,7 @@ public final class AsyncTestContext {
      * could explain that.
      *
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLambdaLostUpdate = false}
-     * @since 1.10.0
+     * @since 1.9.5
      *
      * @return the {@link LambdaLostUpdateDetector} for the active {@code @AsyncTest} context
      */
@@ -2814,7 +2814,7 @@ public final class AsyncTestContext {
      * more virtual threads waited at once than the resource can serve.
      *
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVirtualThreadResourceSaturation = false}
-     * @since 1.11.0
+     * @since 1.9.5
      *
      * @return the {@link VirtualThreadResourceSaturationDetector} for the active {@code @AsyncTest} context
      */
@@ -2830,7 +2830,7 @@ public final class AsyncTestContext {
      * threads queued at once, alongside the deepest queue overall and the distinct virtual waiters.
      *
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectVirtualThreadMonitorSerialization = false}
-     * @since 1.11.0
+     * @since 1.9.5
      *
      * @return the {@link VirtualThreadMonitorSerializationDetector} for the active {@code @AsyncTest} context
      */
@@ -2846,7 +2846,7 @@ public final class AsyncTestContext {
      * instead of one per pooled worker.
      *
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectThreadLocalCacheDegradation = false}
-     * @since 1.11.0
+     * @since 1.9.5
      *
      * @return the {@link ThreadLocalCacheDegradationDetector} for the active {@code @AsyncTest} context
      */

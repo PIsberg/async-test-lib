@@ -68,7 +68,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * d.cancel(view, pipeline, "view", true);   // records the cancel and the ignored interrupt flag
  * }</pre>
  *
- * @since 1.10.0
+ * @since 1.9.5
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER,
         note = "One ConcurrentHashMap entry per pipeline; events go on copy-on-write lists and carry "

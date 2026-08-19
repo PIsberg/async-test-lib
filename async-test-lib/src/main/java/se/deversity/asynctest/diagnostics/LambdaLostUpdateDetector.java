@@ -76,7 +76,7 @@ import org.jspecify.annotations.Nullable;
  * };
  * }</pre>
  *
- * @since 1.10.0
+ * @since 1.9.5
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER,
         note = "ConcurrentHashMap keyed on lambda identity plus captured name; events are appended to a "

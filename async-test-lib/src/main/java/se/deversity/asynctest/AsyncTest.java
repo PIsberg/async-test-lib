@@ -2021,7 +2021,7 @@ public @interface AsyncTest {
      * Enable detection of threads racing to complete the same CompletableFuture, where the
      * loser's value or exception is silently discarded. See
      * {@link se.deversity.asynctest.diagnostics.CompletableFutureCompletionRaceDetector}.
-     * @since 1.10.0
+     * @since 1.9.5
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
@@ -2035,7 +2035,7 @@ public @interface AsyncTest {
      * Enable detection of stage work that outlives the cancellation of the future in front of it,
      * and of {@code cancel(true)} on a type that never interrupts. See
      * {@link se.deversity.asynctest.diagnostics.CompletableFutureCancellationPropagationDetector}.
-     * @since 1.10.0
+     * @since 1.9.5
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
@@ -2049,7 +2049,7 @@ public @interface AsyncTest {
      * Enable detection of allOf/anyOf results that are dropped or read without waiting, and of
      * anyOf failures that reach no handler. See
      * {@link se.deversity.asynctest.diagnostics.CompletableFutureCombinatorMisuseDetector}.
-     * @since 1.10.0
+     * @since 1.9.5
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
@@ -2063,7 +2063,7 @@ public @interface AsyncTest {
      * Enable detection of proven lost updates to a lambda's captured state, where two threads read
      * the same value before writing back. See
      * {@link se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector}.
-     * @since 1.10.0
+     * @since 1.9.5
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
@@ -2076,7 +2076,7 @@ public @interface AsyncTest {
     /**
      * Enable detection of an unbounded virtual-thread fan-out queueing on a bounded resource. See
      * {@link se.deversity.asynctest.diagnostics.VirtualThreadResourceSaturationDetector}.
-     * @since 1.11.0
+     * @since 1.9.5
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
@@ -2089,7 +2089,7 @@ public @interface AsyncTest {
     /**
      * Enable detection of a monitor serialising a large virtual-thread fan-out. See
      * {@link se.deversity.asynctest.diagnostics.VirtualThreadMonitorSerializationDetector}.
-     * @since 1.11.0
+     * @since 1.9.5
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
@@ -2103,7 +2103,7 @@ public @interface AsyncTest {
      * Enable detection of a ThreadLocal cache that degenerates into a per-task allocator under
      * virtual threads. See
      * {@link se.deversity.asynctest.diagnostics.ThreadLocalCacheDegradationDetector}.
-     * @since 1.11.0
+     * @since 1.9.5
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}

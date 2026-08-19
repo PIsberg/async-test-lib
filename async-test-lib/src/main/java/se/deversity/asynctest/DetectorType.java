@@ -349,7 +349,7 @@ public enum DetectorType {
     /** Detects SplittableRandom and JEP 356 RandomGenerator instances shared across threads — not thread-safe; concurrent use silently corrupts the sequence. */
     SHARED_SPLITTABLE_RANDOM,
 
-    // Phase 22: CompletableFuture publication and lambda capture hazards (1.10.0+)
+    // Phase 22: CompletableFuture publication and lambda capture hazards (1.9.5+)
     /** Detects threads racing to complete the same CompletableFuture, where the loser's value or exception is discarded unread. */
     COMPLETABLE_FUTURE_COMPLETION_RACE,
     /** Detects stage work that keeps running after the future in front of it was cancelled, and cancel(true) calls on a type that never interrupts. */
@@ -359,7 +359,7 @@ public enum DetectorType {
     /** Detects proven lost updates to a lambda's captured state: two threads read the same value before writing back. */
     LAMBDA_LOST_UPDATE,
 
-    // Phase 23: virtual-thread scale hazards (1.11.0+)
+    // Phase 23: virtual-thread scale hazards (1.9.5+)
     /** Detects an unbounded virtual-thread fan-out queueing on a bounded resource - JEP 444's "limit the resource, not the threads". */
     VIRTUAL_THREAD_RESOURCE_SATURATION,
     /** Detects a monitor serialising a large virtual-thread fan-out - the throughput limit JEP 491 left behind when it removed pinning. */

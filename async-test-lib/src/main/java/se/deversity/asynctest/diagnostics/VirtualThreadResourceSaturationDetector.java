@@ -72,7 +72,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * control you place in front of it. A caller queued on your {@code Semaphore} is not queued on the
  * resource; recording it as such would report the fix as the bug.
  *
- * @since 1.11.0
+ * @since 1.9.5
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER,
         note = "One state object per resource in a ConcurrentHashMap. The waiters, and the virtual threads "

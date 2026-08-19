@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.5] - 2026-08-19
+
+> Versioning note: as in 1.9.1 and 1.9.4, this ships as a patch by explicit owner decision.
+> Strictly it is additive - seven new detectors with their `@AsyncTest` attributes, config
+> fields and `AsyncTestContext` accessors, and `recordAcquireAbandoned` on the saturation
+> detector - which the SUPPORT_POLICY.md table would make 1.10.0. Nothing was removed or changed
+> incompatibly; the `@since` stamps written as 1.10.0 and 1.11.0 while these were unreleased now
+> read 1.9.5, and the japicmp baseline is re-pinned to 1.9.4.
+
 ### Added: three virtual-thread scale detectors (139 -> 142)
 
 The JEP 444 first-order hazards were already covered by six detectors: pinning (with the
@@ -97,6 +106,28 @@ Detection was verified rather than assumed: disabling the completion-race and lo
 turns 15 of their 26 unit tests red. Each detector also pins its correctly synchronized twin
 staying silent — an elected single completer, a cooperative stage, a joined combinator, an atomic
 increment, and a consistently held monitor.
+
+### Fixed: the Phase 22/23 detectors reviewed against their correct twins
+
+Two review passes over the seven detectors above (#277, #278) before any of them shipped:
+
+- **`LAMBDA_LOST_UPDATE`** no longer calls a shared pre-value proof on its own. A value that
+  legitimately recurs under a `ReentrantLock` or an `updateAndGet` shows the same evidence, so
+  the finding now also requires that the recorded updates admit no serial order (the read-twice,
+  written-once test), and its count is the minimum the values prove ("lost at least N") rather
+  than a sum over collision groups. Two different monitors are reported as such.
+- **`COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION`** anchors its `HIGH` finding to a stage that
+  *finished* after the cancel; a cooperative stage dispatched after the cancel starts, checks and
+  returns, and is silent. Pipeline labels are per instance in the usage.
+- **`COMPLETABLE_FUTURE_COMPLETION_RACE`** reports a lone recorded loser, with the winner marked
+  not observed, instead of needing two attempts before it would speak.
+- **`VIRTUAL_THREAD_RESOURCE_SATURATION`** gained `recordAcquireAbandoned` so a timed-out wait
+  leaves the queue, and both it and **`VIRTUAL_THREAD_MONITOR_SERIALIZATION`** compare the peak
+  number of *virtual* threads waiting at once against the capacity or threshold, so a queue that
+  platform threads made is not attributed to a virtual fan-out.
+- **`COMPLETABLE_FUTURE_COMBINATOR_MISUSE`** documents `whenComplete` (not `thenRun`, which is
+  skipped when a constituent fails) as the way to record constituents, and why the anyOf-orphan
+  rule reports only failures after the last read.
 
 ### Fixed: two dead static-analysis exclusions, and a Gradle gate CI never ran
 

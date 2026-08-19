@@ -45,7 +45,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *         .recordCachedValue("FORMAT", f, Thread.currentThread());
  * }</pre>
  *
- * @since 1.11.0
+ * @since 1.9.5
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER,
         note = "One state object per ThreadLocal name in a ConcurrentHashMap; instance identities and "

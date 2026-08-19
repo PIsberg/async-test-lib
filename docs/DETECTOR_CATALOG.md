@@ -3166,7 +3166,7 @@ JDK 24/25/26.
   d.recordAccess(rng, "ids", "nextLong");
   ```
 
-## Phase 22: CompletableFuture Publication & Lambda Capture Hazards (1.10.0+)
+## Phase 22: CompletableFuture Publication & Lambda Capture Hazards (1.9.5+)
 
 Four detectors whose findings rest on a value the detector observed rather than on the shape of
 the code: a `complete()` that returned `false`, a stage that finished after a cancel, a
@@ -3260,7 +3260,7 @@ Each stays silent on the correctly written twin — see [examples 139–142](../
   d.recordReadModifyWrite(task, "hits", before, before + 1, Thread.currentThread());
   ```
 
-## Phase 23: Virtual-Thread Scale Hazards (1.11.0+)
+## Phase 23: Virtual-Thread Scale Hazards (1.9.5+)
 
 The JEP 444 first-order hazards are covered by Phases 6 and 21 — pinning, pooling, CPU-bound
 tasks, carrier exhaustion, context leaks, thread-per-task. These three are the second-order set:
