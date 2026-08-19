@@ -294,7 +294,7 @@
 
 ### se.deversity.asynctest.diagnostics.VirtualThreadMonitorSerializationDetector
 - **Strategy**: OTHER
-- **Note**: One state object per monitor identity in a ConcurrentHashMap. Queue depth is an atomic counter and its peak is raised with a CAS retry loop, so a peak observed under contention is never lower than the true peak.
+- **Note**: One state object per monitor identity in a ConcurrentHashMap. Queue depth, and the virtual threads in it, are atomic counters whose peaks are raised with a CAS retry loop, so a peak observed under contention is never lower than the true peak.
 
 ### se.deversity.asynctest.diagnostics.VirtualThreadPoolingDetector
 - **Strategy**: OTHER
@@ -302,7 +302,7 @@
 
 ### se.deversity.asynctest.diagnostics.VirtualThreadResourceSaturationDetector
 - **Strategy**: OTHER
-- **Note**: One state object per resource in a ConcurrentHashMap. Waiting and holding are atomic counters and the peaks are maintained with a CAS retry loop, so a peak observed under contention is never lower than the true peak.
+- **Note**: One state object per resource in a ConcurrentHashMap. The waiters, and the virtual threads among them, are atomic counters whose peaks are maintained with a CAS retry loop, so a peak observed under contention is never lower than the true peak.
 
 ### se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector
 - **Strategy**: OTHER

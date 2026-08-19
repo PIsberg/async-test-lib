@@ -123,6 +123,83 @@ class VirtualThreadResourceSaturationDetectorTest {
     }
 
     /**
+     * The same platform burst, plus one virtual caller that arrives on its own afterwards. The
+     * queue that outran the resource was made of platform threads; the virtual thread never
+     * waited behind anyone. That is THREAD_POOL_DEADLOCK's ground with a bystander in it, not a
+     * virtual fan-out, and it must not be attributed to one because a virtual thread was seen at
+     * some other moment.
+     */
+    @Test
+    void aPlatformBurstWithAVirtualCallerElsewhereIsNotThisFinding() throws Exception {
+        var d = new VirtualThreadResourceSaturationDetector();
+        d.registerResource("connections", CAPACITY);
+        CountDownLatch allWaiting = new CountDownLatch(6);
+        CountDownLatch release = new CountDownLatch(1);
+        List<Thread> threads = new ArrayList<>();
+
+        for (int i = 0; i < 6; i++) {
+            Thread t = Thread.ofPlatform().start(() -> {
+                d.recordAcquireStart("connections", Thread.currentThread());
+                allWaiting.countDown();
+                awaitQuietly(release);
+                d.recordAcquired("connections", Thread.currentThread());
+            });
+            threads.add(t);
+        }
+        assertTrue(allWaiting.await(5, TimeUnit.SECONDS));
+        release.countDown();
+        for (Thread t : threads) t.join();
+
+        runOnVirtualThreads(1, () -> {                       // alone, after the burst has drained
+            d.recordAcquireStart("connections", Thread.currentThread());
+            d.recordAcquired("connections", Thread.currentThread());
+        });
+
+        var report = d.analyze();
+        assertFalse(report.hasIssues(),
+                () -> "the peak was platform-made; one virtual caller elsewhere is not a virtual fan-out:\n" + report);
+    }
+
+    /**
+     * Virtual threads queued behind platform holders: the count that matters is how many virtual
+     * threads were waiting at once, and here it is six on a resource that serves two.
+     */
+    @Test
+    void virtualThreadsQueuedBehindPlatformHoldersAreCounted() throws Exception {
+        var d = new VirtualThreadResourceSaturationDetector();
+        d.registerResource("connections", CAPACITY);
+        CountDownLatch allWaiting = new CountDownLatch(8);
+        CountDownLatch release = new CountDownLatch(1);
+        List<Thread> threads = new ArrayList<>();
+
+        for (int i = 0; i < 2; i++) {                        // the holders
+            threads.add(Thread.ofPlatform().start(() -> {
+                d.recordAcquireStart("connections", Thread.currentThread());
+                allWaiting.countDown();
+                awaitQuietly(release);
+                d.recordAcquired("connections", Thread.currentThread());
+            }));
+        }
+        for (int i = 0; i < 6; i++) {                        // the virtual queue behind them
+            threads.add(Thread.ofVirtual().start(() -> {
+                d.recordAcquireStart("connections", Thread.currentThread());
+                allWaiting.countDown();
+                awaitQuietly(release);
+                d.recordAcquired("connections", Thread.currentThread());
+            }));
+        }
+        assertTrue(allWaiting.await(5, TimeUnit.SECONDS));
+        release.countDown();
+        for (Thread t : threads) t.join();
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(), () -> "six virtual threads waiting on a capacity of two:\n" + report);
+        var v = report.structuredViolations.get(0);
+        assertEquals(8, v.attributes().get("peakWaiting"));
+        assertEquals(6, v.attributes().get("peakVirtualWaiting"));
+    }
+
+    /**
      * A caller returns the resource and then records having done so, and in that window the next
      * caller can legitimately be granted it. The detector must not read that skew as the limit
      * being breached - which it did until CI caught it on a correctly bounded pool.

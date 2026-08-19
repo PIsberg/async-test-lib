@@ -193,7 +193,9 @@ public final class LambdaLostUpdateDetector {
      *
      * <p>A capture is reported when both pieces of evidence are present: some pre-value was read
      * by two different threads, and the recorded updates admit no serial order at all (see
-     * {@link #serialisable(List)}). Either alone is consistent with a correct program.
+     * {@link #unaccountedReads(List)}). Either alone is consistent with a correct program. The
+     * reported count is the minimum number of lost writes consistent with the recorded values,
+     * never the sum over collision groups, which would assume an order the detector never saw.
      *
      * @return the findings this detector collected during the run
      */
@@ -212,7 +214,6 @@ public final class LambdaLostUpdateDetector {
 
             List<String> collisions = new ArrayList<>();
             Set<String> threads = new LinkedHashSet<>();
-            int lostWrites = 0;
             for (Map.Entry<String, List<Rmw>> entry : byBefore.entrySet()) {
                 List<Rmw> group = entry.getValue();
                 Set<Long> distinctThreads = new LinkedHashSet<>();
@@ -225,7 +226,6 @@ public final class LambdaLostUpdateDetector {
                     wrote.append('\'').append(e.threadName).append("' wrote ").append(e.written);
                     threads.add(e.threadName);
                 }
-                lostWrites += group.size() - 1;
                 collisions.add("all read " + entry.getKey() + " then " + wrote);
             }
             if (collisions.isEmpty()) continue;
@@ -233,8 +233,13 @@ public final class LambdaLostUpdateDetector {
             // The second piece. A value two threads read can also be a value that legitimately
             // came round twice, serialised by something the detector cannot see - a ReentrantLock,
             // an updateAndGet, one worker thread. Report only when no serial order of the recorded
-            // updates exists at all; a chain proves nothing, and that is the safe direction.
-            if (serialisable(events)) continue;
+            // updates exists at all; a chain proves nothing, and that is the safe direction. The
+            // same count is the finding's number: every unaccounted read beyond the one the
+            // starting value explains is a write that was overwritten unread, whichever way the
+            // events are ordered - and the values prove no more than that.
+            int unaccounted = unaccountedReads(events);
+            if (unaccounted < 2) continue;
+            int lostWrites = unaccounted - 1;
 
             int guardedEvents = 0;
             Set<Integer> monitorsHeld = new LinkedHashSet<>();
@@ -260,10 +265,12 @@ public final class LambdaLostUpdateDetector {
             }
 
             String msg = String.format(
-                    "Captured '%s' in lambda %s lost %d update(s): %s. Threads that read the same value before "
-                    + "updating it computed from state that was already stale, so every write but the last in "
-                    + "each group was discarded, and no serial order of the recorded updates exists.%s",
-                    s.capturedName, s.lambdaName, lostWrites, String.join("; ", collisions), guardNote);
+                    "Captured '%s' in lambda %s lost at least %d update(s): %s. Threads that read the same "
+                    + "value before updating it computed from state that was already stale, and the recorded "
+                    + "values leave %d read(s) that no write and no starting value can account for - each of "
+                    + "those is a write that was overwritten unread, whichever order the events ran in.%s",
+                    s.capturedName, s.lambdaName, lostWrites, String.join("; ", collisions), lostWrites,
+                    guardNote);
 
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
@@ -299,7 +306,7 @@ public final class LambdaLostUpdateDetector {
     }
 
     /**
-     * {@return whether the recorded updates could have happened one after another}
+     * {@return how many recorded reads no recorded write can account for}
      *
      * <p>A serial history is a chain: every update reads the value the previous one wrote. Along
      * a chain each value is written back as often as it is read, except for the starting value,
@@ -310,22 +317,29 @@ public final class LambdaLostUpdateDetector {
      * which is what a lost write is. In graph terms: an update is an edge from the value read to
      * the value written, and a history with two or more surplus out-degrees has no Eulerian trail.
      *
-     * <p>The test is a necessary condition for a chain, not a sufficient one, and that is the
-     * direction wanted here: a history it accepts may still be two chains that an unrecorded
-     * writer joined, and staying silent on that is the safe error. Values are compared as
-     * rendered, the same way the collision groups are formed.
+     * <p>The count is also the number the finding may claim. Each unaccounted read beyond the one
+     * the starting value explains is an update computed from a value that had already been
+     * overwritten, or from the same write another update also read; either way one write was
+     * overwritten unread. The values prove no more than that: the same multiset of before/written
+     * pairs is consistent with histories that lost exactly this many writes, so a larger number
+     * (the sum over collision groups, say) would be assuming an order the detector never saw.
+     *
+     * <p>Two or more is proof of a lost write. One is not proof of the opposite: it may be a real
+     * loss whose value later came round again, or two chains that an unrecorded writer joined,
+     * and staying silent on both is the safe error. Values are compared as rendered, the same way
+     * the collision groups are formed.
      */
-    private static boolean serialisable(List<Rmw> events) {
+    private static int unaccountedReads(List<Rmw> events) {
         Map<String, Integer> readsMinusWrites = new HashMap<>();
         for (Rmw e : events) {
             readsMinusWrites.merge(e.before, 1, Integer::sum);
             readsMinusWrites.merge(e.written, -1, Integer::sum);
         }
-        int unaccountedReads = 0;
+        int unaccounted = 0;
         for (int excess : readsMinusWrites.values()) {
-            if (excess > 0) unaccountedReads += excess;
+            if (excess > 0) unaccounted += excess;
         }
-        return unaccountedReads <= 1;
+        return unaccounted;
     }
 
     /** Report produced by {@link #analyze()}. */

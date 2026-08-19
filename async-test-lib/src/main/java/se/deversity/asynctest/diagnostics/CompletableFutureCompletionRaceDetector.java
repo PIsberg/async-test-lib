@@ -28,7 +28,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>The finding here is a fact rather than an inference: the detector reports only completion
  * attempts that were <em>observed to lose</em>. A future completed by exactly one thread produces
- * no finding, so a correctly guarded pipeline stays silent.
+ * no finding, so a correctly guarded pipeline stays silent. A single recorded attempt that lost
+ * to a completion the detector never saw - an {@code orTimeout} firing first, a raw
+ * {@code complete()} elsewhere - is reported all the same: the value it carried is gone whether
+ * or not the winner was instrumented, and the report says the winner was not observed.
  *
  * <p>Severity follows what was actually lost:
  * <ul>
@@ -186,13 +189,17 @@ public final class CompletableFutureCompletionRaceDetector {
     /**
      * Analyses the recorded completion attempts and builds the report.
      *
+     * <p>Every future with at least one recorded attempt that lost is reported. A lone loser is
+     * a discarded value like any other; it only means the winning completion happened where the
+     * detector could not see it, which the report says.
+     *
      * @return the findings this detector collected during the run
      */
     public Report analyze() {
         Report r = new Report();
         for (FutureState s : futures.values()) {
             List<Attempt> all = new ArrayList<>(s.attempts);
-            if (all.size() < 2) continue;
+            if (all.isEmpty()) continue;
 
             List<Attempt> losers = new ArrayList<>();
             Attempt winner = null;
@@ -231,7 +238,7 @@ public final class CompletableFutureCompletionRaceDetector {
             }
 
             String msg = String.format(
-                    "CompletableFuture '%s' took %d competing completion attempts across %d threads (%s); "
+                    "CompletableFuture '%s' took %d recorded completion attempt(s) across %d thread(s) (%s); "
                     + "%d attempt(s) lost the race and were discarded - %s. The winning completion was %s. "
                     + "complete()/completeExceptionally() returns false for the loser, and nothing read it.",
                     s.label, all.size(), threads.size(), String.join(", ", threads),

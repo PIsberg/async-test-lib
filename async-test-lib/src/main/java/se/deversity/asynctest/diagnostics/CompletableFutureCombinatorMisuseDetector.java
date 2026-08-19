@@ -36,7 +36,12 @@ import java.util.concurrent.atomic.AtomicLong;
  *       the combinator was given. The detector compares recorded event order, so this is what
  *       happened, not what might.</li>
  *   <li>{@link IssueSeverity#MEDIUM} - an {@code anyOf} constituent completed exceptionally
- *       after the combined future was already read. That exception reaches no handler.</li>
+ *       after the combined future was already read. {@code anyOf} propagates only the first
+ *       completion, so a loser's failure reaches no handler through the combinator whenever it
+ *       lands; the detector reports only the failures that landed <em>after</em> the last read,
+ *       when the caller had demonstrably moved on. A loser that failed before the read is left
+ *       alone: the caller could still have inspected it at the point of reading, and this rule
+ *       cannot see whether it did, so silence there is the conservative side.</li>
  * </ul>
  *
  * <p>Usage inside {@code @AsyncTest}:

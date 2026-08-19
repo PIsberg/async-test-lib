@@ -106,6 +106,28 @@ class CompletableFutureCompletionRaceDetectorTest {
         assertEquals(IssueSeverity.HIGH, report.structuredViolations.get(0).severity());
     }
 
+    /**
+     * One recorded attempt, and it lost: the future was completed somewhere the detector could
+     * not see (an orTimeout, a raw complete() elsewhere) and this value was discarded all the
+     * same. The contract is "attempts observed to lose", and this one was; the two-loser case
+     * below is already reported, so a lone loser must not be silent merely for lacking company.
+     */
+    @Test
+    void aLoneRecordedLoserIsStillADiscardedValue() {
+        var d = new CompletableFutureCompletionRaceDetector();
+        var f = new CompletableFuture<String>();
+        f.complete("completed out of view");   // not recorded
+        assertFalse(d.complete(f, "bridge", "late"));
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(), "a value was discarded, and the detector saw it happen");
+        String msg = report.violations.get(0);
+        assertTrue(msg.contains("dropped value late"), msg);
+        assertTrue(msg.contains("(not observed)"), msg);
+        assertEquals(IssueSeverity.HIGH, report.structuredViolations.get(0).severity());
+        assertEquals(1, report.structuredViolations.get(0).attributes().get("lostAttempts"));
+    }
+
     @Test
     void aLossWithNoObservedWinnerIsHigh() {
         var d = new CompletableFutureCompletionRaceDetector();

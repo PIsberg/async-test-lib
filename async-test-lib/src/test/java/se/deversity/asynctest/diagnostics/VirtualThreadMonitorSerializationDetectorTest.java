@@ -100,6 +100,83 @@ class VirtualThreadMonitorSerializationDetectorTest {
                 "a bounded pool queueing on a monitor is LOCK_CONTENTION's finding, not this one");
     }
 
+    /**
+     * The same platform queue, and two virtual threads that each pass through the monitor alone
+     * afterwards. Two distinct virtual waiters were seen, and the peak was six - but the peak was
+     * platform-made and no virtual thread was ever in it. That is LOCK_CONTENTION's queue with two
+     * bystanders, and it must not be reported as a virtual fan-out serialising on the monitor.
+     */
+    @Test
+    void aPlatformQueueWithVirtualThreadsElsewhereIsNotThisFinding() throws Exception {
+        var d = new VirtualThreadMonitorSerializationDetector();
+        Object lock = new Object();
+        CountDownLatch allQueued = new CountDownLatch(6);
+        CountDownLatch release = new CountDownLatch(1);
+
+        List<Thread> threads = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            threads.add(Thread.ofPlatform().start(() -> {
+                d.recordMonitorEnter(lock, "sessionCache", Thread.currentThread());
+                allQueued.countDown();
+                awaitQuietly(release);
+                d.recordMonitorAcquired(lock, Thread.currentThread());
+            }));
+        }
+        assertTrue(allQueued.await(5, TimeUnit.SECONDS));
+        release.countDown();
+        for (Thread t : threads) t.join();
+
+        for (int i = 0; i < 2; i++) {                        // one at a time, after the queue drained
+            Thread t = Thread.ofVirtual().start(() -> {
+                d.recordMonitorEnter(lock, "sessionCache", Thread.currentThread());
+                d.recordMonitorAcquired(lock, Thread.currentThread());
+            });
+            t.join();
+        }
+
+        var report = d.analyze();
+        assertFalse(report.hasIssues(),
+                () -> "the queue was platform-made; two virtual threads passing through later are not it:\n" + report);
+    }
+
+    /**
+     * Virtual threads queued behind a platform holder count for what they are: here four virtual
+     * threads waiting at once on top of one platform thread, so the reported peak is five with a
+     * virtual peak of four - at the default threshold, a finding.
+     */
+    @Test
+    void virtualThreadsQueuedBehindAPlatformHolderAreCounted() throws Exception {
+        var d = new VirtualThreadMonitorSerializationDetector();
+        Object lock = new Object();
+        CountDownLatch allQueued = new CountDownLatch(5);
+        CountDownLatch release = new CountDownLatch(1);
+
+        List<Thread> threads = new ArrayList<>();
+        threads.add(Thread.ofPlatform().start(() -> {
+            d.recordMonitorEnter(lock, "sessionCache", Thread.currentThread());
+            allQueued.countDown();
+            awaitQuietly(release);
+            d.recordMonitorAcquired(lock, Thread.currentThread());
+        }));
+        for (int i = 0; i < 4; i++) {
+            threads.add(Thread.ofVirtual().start(() -> {
+                d.recordMonitorEnter(lock, "sessionCache", Thread.currentThread());
+                allQueued.countDown();
+                awaitQuietly(release);
+                d.recordMonitorAcquired(lock, Thread.currentThread());
+            }));
+        }
+        assertTrue(allQueued.await(5, TimeUnit.SECONDS));
+        release.countDown();
+        for (Thread t : threads) t.join();
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(), () -> "four virtual threads queued at once:\n" + report);
+        var v = report.structuredViolations.get(0);
+        assertEquals(5, v.attributes().get("peakWaiting"));
+        assertEquals(4, v.attributes().get("peakVirtualWaiting"));
+    }
+
     @Test
     void aQueueBelowTheThresholdIsSilent() {
         var d = new VirtualThreadMonitorSerializationDetector(8, 25);
