@@ -35,10 +35,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * <em>position-mutating</em> access; absolute-only access from many threads is
  * reported as context, never as a violation.
  *
- * <p>The detector observes sharing — which threads performed position-mutating
- * operations — not locks: a shared buffer guarded by correct external
- * synchronization is flagged all the same. Treat a finding as a prompt to
- * verify that synchronization exists, or to give each thread its own view.
+ * <p>Synchronization awareness is partial. A position-mutating access recorded while the
+ * accessing thread holds the buffer's own monitor - the {@code synchronized (buffer)} idiom -
+ * counts as guarded, and a buffer whose every positional access was guarded produces no
+ * finding. A guard on any other lock object is invisible and still fires; treat such a finding
+ * as a prompt to verify the synchronization, or to give each thread its own view.
  *
  * <p>The safe pattern is to give each thread its own view via
  * {@code duplicate()} or {@code slice()} (independent position/limit/mark over
@@ -62,7 +63,7 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class SharedByteBufferDetector {
 
-    private static final class State {
+    private static final class State extends SelfGuard.TrackedInstance {
         final String label;
         final String kind;
         final Set<Long>   positionalThreadIds   = ConcurrentHashMap.newKeySet();
@@ -92,6 +93,7 @@ public final class SharedByteBufferDetector {
     public void recordPositionalAccess(Object buffer, String operation) {
         if (buffer == null) return;
         State s = resolve(buffer);
+        s.noteAccess(buffer);
         Thread thread = Thread.currentThread();
         s.positionalThreadIds.add(thread.threadId());
         s.positionalThreadNames.add(thread.getName());
@@ -134,15 +136,14 @@ public final class SharedByteBufferDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.positionalThreadIds.size() <= 1) continue;
+            if (s.positionalThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
             StringBuilder msg = new StringBuilder(String.format(
                     "%s '%s' had position-mutating operations (%s) performed by %d threads (%s) — "
                             + "java.nio.Buffer instances carry mutable position/limit/mark state that is not "
                             + "thread-safe; unsynchronized concurrent relative get/put, flip(), rewind(), clear(), mark()/reset(), "
                             + "or position(int)/limit(int) calls corrupt that state, causing "
                             + "BufferUnderflowException/BufferOverflowException or silently interleaved data"
-                            + " (the detector observes sharing, not locks — verify external"
-                            + " synchronization or use a per-thread instance).",
+                            + SelfGuard.REPORT_NOTE + ".",
                     s.kind,
                     s.label,
                     String.join(", ", s.positionalOperations),

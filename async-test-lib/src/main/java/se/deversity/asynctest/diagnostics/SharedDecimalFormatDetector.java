@@ -15,10 +15,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * grouping state, producing garbled output or {@link java.text.ParseException}.
  * This is the numeric-formatting equivalent of {@code SimpleDateFormat} misuse.
  *
- * <p>The detector observes sharing — which threads touched the instance — not
- * locks: a shared format guarded by correct external synchronization is flagged
- * all the same. Treat a finding as a prompt to verify that synchronization
- * exists, or to move to a per-thread instance.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
+ * the instance's own monitor - the {@code synchronized (format)} idiom - counts as guarded, and
+ * an instance whose every access was guarded produces no finding. A guard on any other lock
+ * object is invisible and still fires; treat such a finding as a prompt to verify the
+ * synchronization, or to move to a per-thread instance.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -30,7 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SharedDecimalFormatDetector {
 
-    private static class FormatState {
+    private static class FormatState extends SelfGuard.TrackedInstance {
         final String      name;
         final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
@@ -53,6 +54,7 @@ public class SharedDecimalFormatDetector {
                 : format.getClass().getSimpleName() + "@" + System.identityHashCode(format);
         FormatState s = formats.computeIfAbsent(
                 System.identityHashCode(format), id -> new FormatState(label));
+        s.noteAccess(format);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
     }
@@ -63,11 +65,10 @@ public class SharedDecimalFormatDetector {
     public SharedDecimalFormatReport analyze() {
         SharedDecimalFormatReport r = new SharedDecimalFormatReport();
         for (FormatState s : formats.values()) {
-            if (s.accessingThreadIds.size() > 1) {
+            if (s.accessingThreadIds.size() > 1 && s.sawUnguardedAccess()) {
                 r.violations.add(String.format(
                         "'%s' accessed from %d threads (%s) — DecimalFormat/NumberFormat is not thread-safe"
-                                + " (the detector observes sharing, not locks — verify external"
-                                + " synchronization or use a per-thread instance)",
+                                + SelfGuard.REPORT_NOTE,
                         s.name, s.accessingThreadIds.size(),
                         String.join(", ", s.accessingThreadNames)));
             }

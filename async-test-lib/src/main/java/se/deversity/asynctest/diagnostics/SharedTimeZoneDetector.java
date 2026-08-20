@@ -18,10 +18,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * non-deterministic timezone offsets and IDs — silently wrong date/time arithmetic
  * that is notoriously hard to reproduce.
  *
- * <p>The detector observes sharing — which threads mutated the instance — not
- * locks: mutations guarded by correct external synchronization are flagged all
- * the same. Treat a finding as a prompt to verify that synchronization exists,
- * or to prefer immutable {@link java.time.ZoneId} or a per-thread copy.
+ * <p>Synchronization awareness is partial. A mutation recorded while the mutating thread holds
+ * the instance's own monitor - the {@code synchronized (tz)} idiom - counts as guarded, and an
+ * instance whose every recorded mutation was guarded produces no finding. A guard on any other
+ * lock object is invisible and still fires; treat such a finding as a prompt to verify the
+ * synchronization, or to prefer immutable {@link java.time.ZoneId} or a per-thread copy.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -36,7 +37,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SharedTimeZoneDetector {
 
-    private static final class TzState {
+    private static final class TzState extends SelfGuard.TrackedInstance {
         final Set<Long>   mutatingThreadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> mutatingThreadNames = ConcurrentHashMap.newKeySet();
         volatile @Nullable String   firstOperation;
@@ -55,6 +56,7 @@ public class SharedTimeZoneDetector {
         if (timeZone == null || thread == null) return;
         TzState s = timezones.computeIfAbsent(System.identityHashCode(timeZone),
                 id -> new TzState());
+        s.noteAccess(timeZone);
         if (s.firstOperation == null) s.firstOperation = operation != null ? operation : "mutate";
         s.mutatingThreadIds.add(thread.threadId());
         s.mutatingThreadNames.add(thread.getName());
@@ -66,12 +68,11 @@ public class SharedTimeZoneDetector {
     public SharedTimeZoneReport analyze() {
         SharedTimeZoneReport r = new SharedTimeZoneReport();
         for (TzState s : timezones.values()) {
-            if (s.mutatingThreadIds.size() > 1) {
+            if (s.mutatingThreadIds.size() > 1 && s.sawUnguardedAccess()) {
                 r.violations.add(String.format(
                         "TimeZone instance mutated from %d threads (%s) via '%s' — "
                                 + "unsynchronized concurrent mutations corrupt date/time arithmetic"
-                                + " (the detector observes sharing, not locks — verify external"
-                                + " synchronization or use a per-thread instance)",
+                                + SelfGuard.REPORT_NOTE,
                         s.mutatingThreadIds.size(),
                         String.join(", ", s.mutatingThreadNames),
                         s.firstOperation));

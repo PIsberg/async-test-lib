@@ -44,14 +44,12 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().")
 public class SharedMessageDigestDetector {
 
-    private static class DigestState {
+    private static class DigestState extends SelfGuard.TrackedInstance {
         final String      name;
         final String      type;
         final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
         final Set<SiteCapture.Site> accessSites = ConcurrentHashMap.newKeySet();
-        /** One-way flag: some access happened without the instance's own monitor held. */
-        volatile boolean sawUnguardedAccess;
 
         DigestState(String name, String type) {
             this.name = name;
@@ -71,10 +69,9 @@ public class SharedMessageDigestDetector {
     public void recordAccess(Object digest, String name, Thread thread) {
         if (digest == null || thread == null) return;
 
-        // Guard-on-self probe, evaluated on the accessing thread at access time. holdsLock is
-        // an intrinsic over the current thread's own lock records: no monitor is taken, so the
-        // probe cannot serialize the threads it is observing.
-        boolean guarded = Thread.holdsLock(digest);
+        // The guard-on-self probe lives in SelfGuard.TrackedInstance and runs below, once the
+        // state object exists. It is evaluated on the accessing thread, still inside whatever
+        // region the caller is in.
 
         // Hot path: lookup-only. The vast majority of calls hit an instance the
         // detector has already seen at least once, so we avoid all classification
@@ -102,9 +99,7 @@ public class SharedMessageDigestDetector {
                 return new DigestState(label, type);
             });
         }
-        if (!guarded) {
-            s.sawUnguardedAccess = true;
-        }
+        s.noteAccess(digest);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
         // Capture the user-code site once per distinct call site. The Set's hashing
@@ -118,39 +113,35 @@ public class SharedMessageDigestDetector {
     public SharedMessageDigestReport analyze() {
         SharedMessageDigestReport r = new SharedMessageDigestReport();
         for (DigestState s : digests.values()) {
-            if (s.accessingThreadIds.size() > 1 && s.sawUnguardedAccess) {
+            if (s.accessingThreadIds.size() > 1 && s.sawUnguardedAccess()) {
                 r.violatedTypes.add(s.type);
                 String msg;
                 if ("Cipher".equals(s.type)) {
                     msg = String.format(
                             "'%s' accessed from %d threads (%s) — Cipher is not thread-safe; "
                                     + "unsynchronized concurrent encrypt/decrypt updates corrupt the block cipher states (e.g. IV, chaining blocks)"
-                                    + " (accesses under the instance's own monitor count as guarded; other locks are not observed — verify external"
-                                    + " synchronization or use a per-thread instance)",
+                                    + SelfGuard.REPORT_NOTE,
                             s.name, s.accessingThreadIds.size(),
                             String.join(", ", s.accessingThreadNames));
                 } else if ("Mac".equals(s.type)) {
                     msg = String.format(
                             "'%s' accessed from %d threads (%s) — Mac is not thread-safe; "
                                     + "unsynchronized concurrent update()/doFinal() calls corrupt the running MAC byte calculations"
-                                    + " (accesses under the instance's own monitor count as guarded; other locks are not observed — verify external"
-                                    + " synchronization or use a per-thread instance)",
+                                    + SelfGuard.REPORT_NOTE,
                             s.name, s.accessingThreadIds.size(),
                             String.join(", ", s.accessingThreadNames));
                 } else if ("Signature".equals(s.type)) {
                     msg = String.format(
                             "'%s' accessed from %d threads (%s) — Signature is not thread-safe; "
                                     + "unsynchronized concurrent update()/sign()/verify() calls corrupt stateful signing or verification operations"
-                                    + " (accesses under the instance's own monitor count as guarded; other locks are not observed — verify external"
-                                    + " synchronization or use a per-thread instance)",
+                                    + SelfGuard.REPORT_NOTE,
                             s.name, s.accessingThreadIds.size(),
                             String.join(", ", s.accessingThreadNames));
                 } else {
                     msg = String.format(
                             "'%s' accessed from %d threads (%s) — MessageDigest is not thread-safe; "
                                     + "unsynchronized concurrent update()/digest() calls corrupt the hash state"
-                                    + " (accesses under the instance's own monitor count as guarded; other locks are not observed — verify external"
-                                    + " synchronization or use a per-thread instance)",
+                                    + SelfGuard.REPORT_NOTE,
                             s.name, s.accessingThreadIds.size(),
                             String.join(", ", s.accessingThreadNames));
                 }

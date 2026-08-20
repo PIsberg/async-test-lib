@@ -45,7 +45,7 @@ class SharedDeflaterDetectorTest {
             assertTrue(msg.contains("response-gzip"));
             assertTrue(msg.contains("2 threads"));
             assertTrue(msg.contains("Deflater"));
-            assertTrue(msg.contains("observes sharing, not locks"));
+            assertTrue(msg.contains("own monitor count as guarded"));
             assertEquals(1, report.structuredViolations.size());
             assertEquals("SharedDeflater", report.structuredViolations.get(0).detector());
             assertEquals("Deflater", report.structuredViolations.get(0).attributes().get("kind"));

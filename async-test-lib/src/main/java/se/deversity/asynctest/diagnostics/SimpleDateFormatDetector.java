@@ -19,6 +19,11 @@ import org.jspecify.annotations.Nullable;
  * - DateTimeFormatter (Java 8+) which is immutable and thread-safe
  * - {@code ThreadLocal<SimpleDateFormat>} for legacy code
  * - Synchronized access blocks
+ *
+ * Synchronization awareness is partial: a format/parse call recorded while the calling thread
+ * holds the formatter's own monitor - the synchronized(sdf) idiom, the third option above -
+ * counts as guarded, and a formatter whose every recorded call was guarded produces no finding.
+ * A guard on any other lock object is invisible and still fires.
  * 
  * Usage:
  * <pre>{@code
@@ -37,7 +42,7 @@ import org.jspecify.annotations.Nullable;
  */
 public class SimpleDateFormatDetector {
 
-    private static class FormatterState {
+    private static class FormatterState extends SelfGuard.TrackedInstance {
         final String name;
         final AtomicInteger formatCount = new AtomicInteger(0);
         final AtomicInteger parseCount = new AtomicInteger(0);
@@ -129,6 +134,7 @@ public class SimpleDateFormatDetector {
             final String label = name != null ? name : "formatter@" + id;
             state = formatters.computeIfAbsent(id, k -> new FormatterState(formatter, label));
         }
+        state.noteAccess(formatter);
 
         long now = System.currentTimeMillis();
         state.accessingThreads.add(Thread.currentThread().threadId());
@@ -158,9 +164,10 @@ public class SimpleDateFormatDetector {
 
         for (FormatterState state : formatters.values()) {
             // Check for shared access (multiple threads using same formatter)
-            if (state.accessingThreads.size() > 1) {
+            if (state.accessingThreads.size() > 1 && state.sawUnguardedAccess()) {
                 report.sharedFormatters.add(String.format(
-                    "%s: accessed by %d threads (format: %d, parse: %d) - NOT THREAD SAFE!",
+                    "%s: accessed by %d threads (format: %d, parse: %d) - NOT THREAD SAFE!"
+                        + SelfGuard.REPORT_NOTE,
                     state.name, state.accessingThreads.size(),
                     state.formatCount.get(), state.parseCount.get()));
 

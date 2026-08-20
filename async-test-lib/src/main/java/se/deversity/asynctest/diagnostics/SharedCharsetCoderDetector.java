@@ -29,10 +29,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * coder in {@code CODING} or {@code FLUSHED} state that the caller did not
  * expect.
  *
- * <p>The detector observes sharing — which threads touched the coder — not
- * locks: a shared coder guarded by correct external synchronization is flagged
- * all the same. Treat a finding as a prompt to verify that synchronization
- * exists, or to move to a per-thread coder.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
+ * the coder's own monitor - the {@code synchronized (coder)} idiom - counts as guarded, and a
+ * coder whose every access was guarded produces no finding. A guard on any other lock object is
+ * invisible and still fires; treat such a finding as a prompt to verify the synchronization, or
+ * to move to a per-thread coder.
  *
  * <p>The safe pattern is a fresh coder per thread — cheap to obtain via
  * {@code Charset.newEncoder()}/{@code Charset.newDecoder()} since
@@ -57,7 +58,7 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class SharedCharsetCoderDetector {
 
-    private static final class State {
+    private static final class State extends SelfGuard.TrackedInstance {
         final String label;
         final String kind;
         final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
@@ -81,7 +82,7 @@ public final class SharedCharsetCoderDetector {
      */
     public void recordAccess(CharsetEncoder encoder, String operation, Thread thread) {
         if (encoder == null) return;
-        record(System.identityHashCode(encoder), operation, "CharsetEncoder", thread);
+        record(encoder, operation, "CharsetEncoder", thread);
     }
 
     /**
@@ -93,16 +94,18 @@ public final class SharedCharsetCoderDetector {
      */
     public void recordAccess(CharsetDecoder decoder, String operation, Thread thread) {
         if (decoder == null) return;
-        record(System.identityHashCode(decoder), operation, "CharsetDecoder", thread);
+        record(decoder, operation, "CharsetDecoder", thread);
     }
 
-    private void record(int id, String operation, String kind, Thread thread) {
+    private void record(Object coder, String operation, String kind, Thread thread) {
         if (thread == null) return;
+        int id = System.identityHashCode(coder);
         State s = instances.get(id);
         if (s == null) {
             final String label = kind + "@" + id;
             s = instances.computeIfAbsent(id, k -> new State(label, kind));
         }
+        s.noteAccess(coder);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
         if (operation != null) {
@@ -117,13 +120,12 @@ public final class SharedCharsetCoderDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1) continue;
+            if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
             String msg = String.format(
                     "%s '%s' accessed from %d threads (%s) via operations %s — %s carries mutable "
                             + "internal coding state and is not thread-safe; unsynchronized concurrent use corrupts "
                             + "the coder state, garbles output, or throws IllegalStateException"
-                            + " (the detector observes sharing, not locks — verify external"
-                            + " synchronization or use a per-thread instance).",
+                            + SelfGuard.REPORT_NOTE + ".",
                     s.kind,
                     s.label,
                     s.accessingThreadIds.size(),

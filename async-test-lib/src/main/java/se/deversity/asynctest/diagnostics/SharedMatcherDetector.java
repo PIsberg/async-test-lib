@@ -14,11 +14,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * use of the same {@code Matcher} instance produces incorrect matches or
  * {@link java.lang.StringIndexOutOfBoundsException}.
  *
- * <p>The detector observes sharing — which threads touched the instance — not
- * locks: a shared matcher guarded by correct external synchronization is
- * flagged all the same. Treat a finding as a prompt to verify that
- * synchronization exists, or to obtain a fresh matcher per thread from the
- * shared {@code Pattern}.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
+ * the matcher's own monitor - the {@code synchronized (matcher)} idiom - counts as guarded, and
+ * a matcher whose every access was guarded produces no finding. A guard on any other lock object
+ * is invisible and still fires; treat such a finding as a prompt to verify the synchronization,
+ * or to obtain a fresh matcher per thread from the shared {@code Pattern}.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -30,7 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SharedMatcherDetector {
 
-    private static class MatcherState {
+    private static class MatcherState extends SelfGuard.TrackedInstance {
         final String      name;
         final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
@@ -53,6 +53,7 @@ public class SharedMatcherDetector {
                 : matcher.getClass().getSimpleName() + "@" + System.identityHashCode(matcher);
         MatcherState s = matchers.computeIfAbsent(
                 System.identityHashCode(matcher), id -> new MatcherState(label));
+        s.noteAccess(matcher);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
     }
@@ -63,12 +64,11 @@ public class SharedMatcherDetector {
     public SharedMatcherReport analyze() {
         SharedMatcherReport r = new SharedMatcherReport();
         for (MatcherState s : matchers.values()) {
-            if (s.accessingThreadIds.size() > 1) {
+            if (s.accessingThreadIds.size() > 1 && s.sawUnguardedAccess()) {
                 r.violations.add(String.format(
                         "'%s' accessed from %d threads (%s) — Matcher is not thread-safe; "
                                 + "Pattern is safe but each Matcher holds mutable match state"
-                                + " (the detector observes sharing, not locks — verify external"
-                                + " synchronization or use a per-thread instance)",
+                                + SelfGuard.REPORT_NOTE,
                         s.name, s.accessingThreadIds.size(),
                         String.join(", ", s.accessingThreadNames)));
             }

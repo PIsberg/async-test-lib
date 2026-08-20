@@ -30,10 +30,11 @@ import java.util.zip.Inflater;
  * leak — but the thread-safety violation is the more acute bug, so findings are
  * reported here rather than via {@link ResourceLeakDetector}.
  *
- * <p>The detector observes sharing — which threads touched the instance — not
- * locks: a shared deflater/inflater guarded by correct external synchronization
- * is flagged all the same. Treat a finding as a prompt to verify that
- * synchronization exists, or to move to a per-thread instance.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
+ * the instance's own monitor - the {@code synchronized (deflater)} idiom - counts as guarded,
+ * and an instance whose every access was guarded produces no finding. A guard on any other lock
+ * object is invisible and still fires; treat such a finding as a prompt to verify the
+ * synchronization, or to move to a per-thread instance.
  *
  * <p>The safe pattern is one instance per thread (and a matching {@code end()}
  * in a {@code finally}), or a fresh instance per compression unit.
@@ -55,7 +56,7 @@ import java.util.zip.Inflater;
 )
 public final class SharedDeflaterDetector {
 
-    private static final class State {
+    private static final class State extends SelfGuard.TrackedInstance {
         final String label;
         final String kind;
         final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
@@ -78,7 +79,7 @@ public final class SharedDeflaterDetector {
      */
     public void recordAccess(Deflater deflater, String name, Thread thread) {
         if (deflater == null) return;
-        record(System.identityHashCode(deflater), name, "Deflater", thread);
+        record(deflater, name, "Deflater", thread);
     }
 
     /**
@@ -90,16 +91,18 @@ public final class SharedDeflaterDetector {
      */
     public void recordAccess(Inflater inflater, String name, Thread thread) {
         if (inflater == null) return;
-        record(System.identityHashCode(inflater), name, "Inflater", thread);
+        record(inflater, name, "Inflater", thread);
     }
 
-    private void record(int id, String name, String kind, Thread thread) {
+    private void record(Object instance, String name, String kind, Thread thread) {
         if (thread == null) return;
+        int id = System.identityHashCode(instance);
         State s = instances.get(id);
         if (s == null) {
             final String label = (name != null) ? name : kind + "@" + id;
             s = instances.computeIfAbsent(id, k -> new State(label, kind));
         }
+        s.noteAccess(instance);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
     }
@@ -111,13 +114,12 @@ public final class SharedDeflaterDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1) continue;
+            if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
             String msg = String.format(
                     "%s '%s' accessed from %d threads (%s) — java.util.zip %s wraps a "
                             + "stateful native zlib stream and is not thread-safe; unsynchronized concurrent use "
                             + "corrupts output or crashes when one thread calls end() mid-stream"
-                            + " (the detector observes sharing, not locks — verify external"
-                            + " synchronization or use a per-thread instance).",
+                            + SelfGuard.REPORT_NOTE + ".",
                     s.kind,
                     s.label,
                     s.accessingThreadIds.size(),

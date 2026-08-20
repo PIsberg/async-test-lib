@@ -27,9 +27,11 @@ import java.util.random.RandomGenerator;
  * {@code SHARED_SECURE_RANDOM}, and {@code ThreadLocalRandom} to
  * {@code THREAD_LOCAL_RANDOM_MISUSE}. One {@code instanceof Random} check excludes all three.
  *
- * <p>Like the other Shared* detectors, this one observes sharing, not locks — an instance guarded
- * by external synchronization is flagged all the same; treat a finding as a prompt to verify the
- * sharing is intended, or to {@code split()} per thread.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
+ * the generator's own monitor - the {@code synchronized (generator)} idiom - counts as guarded,
+ * and a generator whose every access was guarded produces no finding. A guard on any other lock
+ * object is invisible and still fires; treat such a finding as a prompt to verify the
+ * synchronization, or to {@code split()} per thread.
  *
  * <p>Usage:
  * <pre>{@code
@@ -54,7 +56,7 @@ import java.util.random.RandomGenerator;
 )
 public final class SharedSplittableRandomDetector {
 
-    private static final class GeneratorState {
+    private static final class GeneratorState extends SelfGuard.TrackedInstance {
         final String name;
         final String type;
         final AtomicInteger accessCount = new AtomicInteger();
@@ -107,6 +109,7 @@ public final class SharedSplittableRandomDetector {
             final String type = generator.getClass().getSimpleName();
             state = generators.computeIfAbsent(id, k -> new GeneratorState(label, type));
         }
+        state.noteAccess(generator);
         state.accessCount.incrementAndGet();
         state.operations.add(methodName != null ? methodName : "next*");
         Thread current = Thread.currentThread();
@@ -126,13 +129,12 @@ public final class SharedSplittableRandomDetector {
     public Report analyze() {
         Report r = new Report();
         for (GeneratorState state : generators.values()) {
-            if (state.accessingThreadIds.size() <= 1) {
+            if (state.accessingThreadIds.size() <= 1 || !state.sawUnguardedAccess()) {
                 continue;
             }
             String msg = String.format(
                     "'%s' (%s): accessed from %d threads (%s) via %s — not thread-safe; concurrent use"
-                            + " silently corrupts the sequence (the detector observes sharing, not locks —"
-                            + " verify external synchronization or split() per thread)",
+                            + " silently corrupts the sequence" + SelfGuard.REPORT_NOTE,
                     state.name,
                     state.type,
                     state.accessingThreadIds.size(),

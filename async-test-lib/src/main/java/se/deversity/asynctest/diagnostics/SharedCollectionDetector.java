@@ -28,11 +28,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li>Structural modifications during concurrent reads</li>
  * </ul>
  *
- * <p>The detector observes sharing — which threads touched a registered
- * collection — not locks: a shared collection guarded by correct external
- * synchronization is flagged all the same. Treat a finding as a prompt to
- * verify that synchronization exists, or to confine the collection to one
- * thread.
+ * <p>Synchronization awareness is partial. A read or write recorded while the accessing thread
+ * holds the collection's own monitor - the {@code synchronized (collection)} idiom, and what
+ * {@code Collections.synchronizedList/Map/Set} does internally - counts as guarded, and a
+ * collection whose every access was guarded produces no finding. A guard on any other lock
+ * object is invisible and still fires; treat such a finding as a prompt to verify the
+ * synchronization, or to confine the collection to one thread.
  *
  * <p>Thread-safe alternatives:
  * <ul>
@@ -57,7 +58,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class SharedCollectionDetector {
 
-    private static class CollectionState {
+    private static class CollectionState extends SelfGuard.TrackedInstance {
         final String name;
         final String collectionType;
         final AtomicInteger readCount  = new AtomicInteger(0);
@@ -99,6 +100,7 @@ public class SharedCollectionDetector {
     public void recordRead(Object collection, String name, String operation) {
         if (!enabled || collection == null) return;
         CollectionState state = resolveState(collection, name);
+        state.noteAccess(collection);
         state.readThreads.add(Thread.currentThread().threadId());
         state.readCount.incrementAndGet();
     }
@@ -113,6 +115,7 @@ public class SharedCollectionDetector {
     public void recordWrite(Object collection, String name, String operation) {
         if (!enabled || collection == null) return;
         CollectionState state = resolveState(collection, name);
+        state.noteAccess(collection);
         state.writeThreads.add(Thread.currentThread().threadId());
         state.writeCount.incrementAndGet();
     }
@@ -138,19 +141,18 @@ public class SharedCollectionDetector {
             Set<Long> allWriters = state.writeThreads;
             Set<Long> allReaders = state.readThreads;
 
-            if (allWriters.size() > 1) {
+            if (allWriters.size() > 1 && state.sawUnguardedAccess()) {
                 report.concurrentWriteViolations.add(String.format(
                         "%s (%s): write operations from %d threads (writes: %d) — DATA CORRUPTION RISK"
-                                + " (the detector observes sharing, not locks — verify external"
-                                + " synchronization or use a per-thread instance)!",
+                                + SelfGuard.REPORT_NOTE + "!",
                         state.name, state.collectionType,
                         allWriters.size(), state.writeCount.get()));
-            } else if (allWriters.size() == 1 && allReaders.size() > 1) {
+            } else if (allWriters.size() == 1 && allReaders.size() > 1
+                    && state.sawUnguardedAccess()) {
                 // One writer, multiple readers — still risky without synchronisation
                 report.mixedAccessViolations.add(String.format(
                         "%s (%s): written by 1 thread, read by %d threads without visible synchronisation — VISIBILITY RISK"
-                                + " (the detector observes sharing, not locks — verify external"
-                                + " synchronization or use a per-thread instance)",
+                                + SelfGuard.REPORT_NOTE,
                         state.name, state.collectionType, allReaders.size()));
             }
 

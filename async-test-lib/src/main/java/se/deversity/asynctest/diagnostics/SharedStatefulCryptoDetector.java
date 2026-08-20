@@ -66,14 +66,12 @@ import javax.crypto.Mac;
 @AISecure(aspect = "cryptography (confidentiality / integrity / authenticity state)")
 public final class SharedStatefulCryptoDetector {
 
-    private static final class State {
+    private static final class State extends SelfGuard.TrackedInstance {
         final String label;
         final String kind;
         final String algorithm;
         final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
-        /** One-way flag: some access happened without the instance's own monitor held. */
-        volatile boolean sawUnguardedAccess;
 
         State(String label, String kind, String algorithm) {
             this.label = label;
@@ -93,7 +91,7 @@ public final class SharedStatefulCryptoDetector {
      */
     public void recordAccess(Cipher cipher, String name, Thread thread) {
         if (cipher == null) return;
-        record(System.identityHashCode(cipher), Thread.holdsLock(cipher), name, "Cipher",
+        record(cipher, name, "Cipher",
                 cipher.getClass(), safeString(cipher::getAlgorithm), thread);
     }
 
@@ -106,7 +104,7 @@ public final class SharedStatefulCryptoDetector {
      */
     public void recordAccess(Mac mac, String name, Thread thread) {
         if (mac == null) return;
-        record(System.identityHashCode(mac), Thread.holdsLock(mac), name, "Mac",
+        record(mac, name, "Mac",
                 mac.getClass(), safeString(mac::getAlgorithm), thread);
     }
 
@@ -119,22 +117,21 @@ public final class SharedStatefulCryptoDetector {
      */
     public void recordAccess(Signature signature, String name, Thread thread) {
         if (signature == null) return;
-        record(System.identityHashCode(signature), Thread.holdsLock(signature), name, "Signature",
+        record(signature, name, "Signature",
                 signature.getClass(), safeString(signature::getAlgorithm), thread);
     }
 
-    private void record(int id, boolean guarded, String name, String kind, Class<?> type,
+    private void record(Object instance, String name, String kind, Class<?> type,
                         String algorithm, Thread thread) {
         if (thread == null) return;
+        int id = System.identityHashCode(instance);
         State s = instances.get(id);
         if (s == null) {
             // Cold path — first observation of this instance.
             final String label = (name != null) ? name : type.getSimpleName() + "@" + id;
             s = instances.computeIfAbsent(id, k -> new State(label, kind, algorithm));
         }
-        if (!guarded) {
-            s.sawUnguardedAccess = true;
-        }
+        s.noteAccess(instance);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
     }
@@ -146,13 +143,12 @@ public final class SharedStatefulCryptoDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess) continue;
+            if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
             String msg = String.format(
                     "%s '%s' (algorithm=%s) accessed from %d threads (%s) — %s is stateful "
                             + "and not thread-safe; unsynchronized concurrent init/update/doFinal interleaving "
                             + "corrupts output or breaks integrity"
-                            + " (accesses under the instance's own monitor count as guarded; other locks are not observed — verify external"
-                            + " synchronization or use a per-thread instance).",
+                            + SelfGuard.REPORT_NOTE + ".",
                     s.kind,
                     s.label,
                     s.algorithm,
