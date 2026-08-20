@@ -51,15 +51,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <h4>The guard-on-self column is a measurement, not an aspiration</h4>
  *
- * <p>Most of this family reduces its input to "how many distinct threads touched this instance"
- * and carries no representation of locks, so a correctly synchronized twin records the identical
- * event stream and produces the identical finding. That is a false positive, and pinning it here
- * is the honest way to hold it: the number is visible, and it can only shrink. Two detectors
- * ({@code SharedMessageDigestDetector}, {@code SharedStatefulCryptoDetector}) carry the
- * {@code Thread.holdsLock} guard-on-self probe and recognise the {@code synchronized(instance)}
- * idiom. When that probe rolls out to the rest, this test will fail on the newly-silent
- * detector, which is the signal to move it into {@link #GUARD_ON_SELF_AWARE} and update
- * {@code docs/analysis/detector-accuracy-eval.md} in the same change.
+ * <p>A detector that reduces its input to "how many distinct threads touched this instance" and
+ * carries no representation of locks cannot tell the guarded twin from the bug: both record the
+ * identical event stream. When this eval was first written, 17 of the 19 were in exactly that
+ * position and fired on correct code.
+ *
+ * <p>They now share one probe. {@code SelfGuard.TrackedInstance} asks
+ * {@link Thread#holdsLock(Object)} on the record path and remembers whether any access ran
+ * without the instance's own monitor held; {@code analyze()} reports only when one did. 17 of 19
+ * recognise the {@code synchronized(instance)} twin as a result, and the remaining two are in
+ * {@link #CONTENTION_NOTE_BY_DESIGN} because for them the twin is not a false positive at all.
+ *
+ * <p>What the probe still cannot see is a guard on any other lock object - a
+ * {@code ReentrantLock}, or a private lock - because nothing in these recording APIs names the
+ * lock the caller chose. Closing that direction needs a per-thread held-lock set rather than a
+ * single-object probe, and until it exists those twins are expected to fire.
  */
 @DisplayName("Accuracy eval: the Shared* family, unsafe sharing vs its guarded twin")
 class SharedTypeAccuracyEvalTest {
@@ -67,12 +73,45 @@ class SharedTypeAccuracyEvalTest {
     /**
      * Detectors that recognise {@code synchronized(sharedInstance)} and stay silent for it.
      *
-     * <p>Everything else in the family fires on the guarded twin. This set is the ratchet: it may
-     * grow as the {@code holdsLock} probe rolls out, and a detector leaving it is a regression.
+     * <p>This set is the ratchet. It may grow as the probe reaches detectors that do not carry it
+     * yet, and a detector leaving it is a regression: the guarded twin is correct code, and a
+     * detector that flags it makes the fix look as broken as the bug.
      */
     private static final Set<String> GUARD_ON_SELF_AWARE = new TreeSet<>(Set.of(
+            "SharedByteBufferDetector",
+            "SharedCharsetCoderDetector",
+            "SharedChecksumDetector",
+            "SharedCollectionDetector",
+            "SharedDecimalFormatDetector",
+            "SharedDeflaterDetector",
+            "SharedFormatterDetector",
+            "SharedIteratorDetector",
+            "SharedJsonMapperReconfigDetector",
+            "SharedKdfDetector",
+            "SharedMatcherDetector",
             "SharedMessageDigestDetector",
-            "SharedStatefulCryptoDetector"));
+            "SharedSplittableRandomDetector",
+            "SharedStatefulCryptoDetector",
+            "SharedTimeZoneDetector",
+            "SharedXmlParserDetector",
+            "SimpleDateFormatDetector"));
+
+    /**
+     * Detectors for which firing on the guarded twin is the correct answer, not a false positive.
+     *
+     * <p>{@code java.util.Random} and {@code SecureRandom} are both thread-safe. These two
+     * detectors do not claim that concurrent access corrupts the instance; they report that a
+     * single generator is being contended by several threads, which costs throughput. Wrapping
+     * the instance in {@code synchronized(instance)} does not make that untrue - it serializes
+     * the callers a second time, on top of the internal synchronization the type already has, so
+     * the contention the finding describes gets worse rather than going away.
+     *
+     * <p>They are therefore held here rather than left looking like unfinished work: the guarded
+     * twin must keep firing, and a probe that silenced one of them would be a defect.
+     */
+    private static final Set<String> CONTENTION_NOTE_BY_DESIGN = new TreeSet<>(Set.of(
+            "SharedRandomDetector",
+            "SharedSecureRandomDetector"));
 
     /** One detector under evaluation: record an access (optionally guarded), then ask the report. */
     private record Probe(Consumer<Boolean> access, BooleanSupplier hasIssues) { }
@@ -104,10 +143,11 @@ class SharedTypeAccuracyEvalTest {
     }
 
     @Test
-    @DisplayName("the guard-on-self twin: two detectors recognise it, the rest still fire")
+    @DisplayName("the guard-on-self twin: 17 detectors recognise it, 2 contention notes still fire")
     void guardOnSelfTwinOutcomeIsPinnedPerDetector() {
-        List<String> nowSilent = new ArrayList<>();
-        List<String> regressed = new ArrayList<>();
+        List<String> stillFires = new ArrayList<>();
+        List<String> contentionNoteLost = new ArrayList<>();
+        List<String> unclassified = new ArrayList<>();
 
         cases().forEach((name, factory) -> {
             Probe probe = factory.get();
@@ -116,27 +156,47 @@ class SharedTypeAccuracyEvalTest {
 
             if (GUARD_ON_SELF_AWARE.contains(name)) {
                 if (fired) {
-                    regressed.add(name);
+                    stillFires.add(name);
                 }
-            } else if (!fired) {
-                nowSilent.add(name);
+            } else if (CONTENTION_NOTE_BY_DESIGN.contains(name)) {
+                if (!fired) {
+                    contentionNoteLost.add(name);
+                }
+            } else {
+                unclassified.add(name);
             }
         });
 
-        assertTrue(regressed.isEmpty(),
-                "These detectors carry the Thread.holdsLock guard-on-self probe and must stay "
-                        + "silent when every access held the shared instance's own monitor - "
+        assertTrue(stillFires.isEmpty(),
+                "These detectors carry the SelfGuard.TrackedInstance guard-on-self probe and must "
+                        + "stay silent when every access held the shared instance's own monitor - "
                         + "synchronized(instance) is the most common correct guarding idiom in "
                         + "Java, and flagging it makes the fix look as broken as the bug:\n  "
-                        + String.join("\n  ", regressed));
+                        + String.join("\n  ", stillFires));
 
-        assertTrue(nowSilent.isEmpty(),
-                "Good news, and a deliberate failure: these detectors went silent on the "
-                        + "correctly guarded twin, which they did not do before:\n  "
-                        + String.join("\n  ", nowSilent)
-                        + "\n\nThat means the guard-on-self probe reached them and a pinned "
-                        + "false positive is gone. Add them to GUARD_ON_SELF_AWARE and update "
-                        + "docs/analysis/detector-accuracy-eval.md in the same change, so the "
+        assertTrue(contentionNoteLost.isEmpty(),
+                "These detectors went silent on the guarded twin, and for them that is wrong, not "
+                        + "progress:\n  "
+                        + String.join("\n  ", contentionNoteLost)
+                        + "\n\nThey watch a type that is already thread-safe, so their finding is a "
+                        + "contention note rather than a corruption claim. Wrapping the instance "
+                        + "in synchronized(instance) does not falsify that note - it adds a second "
+                        + "layer of serialization on top of the one the type already has, which "
+                        + "makes the contention worse. If a guard-on-self probe reached one of "
+                        + "these, take it back out rather than moving the detector into "
+                        + "GUARD_ON_SELF_AWARE.");
+
+        assertTrue(unclassified.isEmpty(),
+                "These Shared* detectors are in neither set, so nothing pins what their guarded "
+                        + "twin should do:\n  "
+                        + String.join("\n  ", unclassified)
+                        + "\n\nDecide which they are. If the finding claims that unsynchronized "
+                        + "access corrupts the instance, extend SelfGuard.TrackedInstance in the "
+                        + "detector's state class, call noteAccess(instance) on the record path, "
+                        + "gate analyze() on sawUnguardedAccess(), and add the detector here to "
+                        + "GUARD_ON_SELF_AWARE. If the type is thread-safe and the finding is "
+                        + "about contention, add it to CONTENTION_NOTE_BY_DESIGN with the reason. "
+                        + "Update docs/analysis/detector-accuracy-eval.md either way, so the "
                         + "published table cannot drift from the code.");
     }
 

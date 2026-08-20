@@ -22,10 +22,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code SAXParserFactory}, {@code TransformerFactory}, {@code XPathFactory})
  * are thread-safe for {@code newXxx()} calls and can be shared freely.
  *
- * <p>The detector observes sharing — which threads touched the instance — not
- * locks: a shared parser guarded by correct external synchronization is flagged
- * all the same. Treat a finding as a prompt to verify that synchronization
- * exists, or to create a per-thread parser from the shared factory.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
+ * the parser's own monitor - the {@code synchronized (parser)} idiom - counts as guarded, and a
+ * parser whose every access was guarded produces no finding. A guard on any other lock object is
+ * invisible and still fires; treat such a finding as a prompt to verify the synchronization, or
+ * to create a per-thread parser from the shared factory.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -38,7 +39,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SharedXmlParserDetector {
 
-    private static class ParserState {
+    private static class ParserState extends SelfGuard.TrackedInstance {
         final String      parserType;
         final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
@@ -62,6 +63,7 @@ public class SharedXmlParserDetector {
                 : parser.getClass().getSimpleName();
         ParserState s = parsers.computeIfAbsent(
                 System.identityHashCode(parser), id -> new ParserState(label));
+        s.noteAccess(parser);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
     }
@@ -72,13 +74,12 @@ public class SharedXmlParserDetector {
     public SharedXmlParserReport analyze() {
         SharedXmlParserReport r = new SharedXmlParserReport();
         for (ParserState s : parsers.values()) {
-            if (s.accessingThreadIds.size() > 1) {
+            if (s.accessingThreadIds.size() > 1 && s.sawUnguardedAccess()) {
                 r.violations.add(String.format(
                         "'%s' instance accessed from %d threads (%s) — "
                                 + "XML parsers are not thread-safe; unsynchronized concurrent use causes "
                                 + "corrupted parse results or ConcurrentModificationExceptions"
-                                + " (the detector observes sharing, not locks — verify external"
-                                + " synchronization or use a per-thread instance)",
+                                + SelfGuard.REPORT_NOTE,
                         s.parserType, s.accessingThreadIds.size(),
                         String.join(", ", s.accessingThreadNames)));
             }

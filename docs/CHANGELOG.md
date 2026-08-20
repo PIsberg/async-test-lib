@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The `Shared*` family no longer reports correctly synchronized code.** 17 of the 19 detectors
+  that watch a non-thread-safe JDK type now recognise the `synchronized (instance)` idiom and
+  stay silent for it; before this change 17 of 19 fired on the guarded twin as loudly as on the
+  bug, which `SharedTypeAccuracyEvalTest` had pinned since 2026-08-14. The probe is one shared
+  `SelfGuard.TrackedInstance` rather than a copy per detector, and it also supplies the wording,
+  so a report cannot claim awareness the code does not have. `SharedMessageDigestDetector` and
+  `SharedStatefulCryptoDetector`, which carried hand-rolled copies of the probe, were migrated
+  onto it. `SharedRandomDetector` and `SharedSecureRandomDetector` deliberately keep firing:
+  `Random` and `SecureRandom` are thread-safe, so their finding is about contention rather than
+  corruption, and wrapping the instance in a monitor makes that contention worse rather than
+  untrue. Detector report wording changed accordingly - a build parsing the old
+  "observes sharing, not locks" phrase should match on "own monitor count as guarded" instead.
+
+### Added
+
+- **`AtomicityValidator.recordFieldAccessOn(owner, field, value, isWrite)`**, which records a
+  field access together with the object that owns the field. The existing overloads see a field
+  name and nothing else, which is why the eval pinned this detector as firing on the
+  synchronized twin of the bug it looks for: with no object in hand there is nothing to ask
+  about a lock. A field whose every access held the owner's own monitor now produces no finding,
+  and the report only mentions locks when an owner was actually supplied. The older overloads
+  behave exactly as before, which includes the agent-fed path: weaving captures a qualified
+  field name but no objectref, so agent findings still carry no lock model — see
+  [AGENT.md](AGENT.md).
+- **`JapicmpBaselineFreshnessTest`**, which fails the build when the japicmp `<oldVersion>` is not
+  the newest release in this changelog below the version being built. Re-pinning the baseline is a
+  manual step in [RELEASE.md](RELEASE.md), it was missed at four consecutive releases, and missing
+  it produces a green build rather than a warning — the baseline sat at 1.6.0 while six releases
+  shipped past it, so the gate could not have failed on breaking any API those releases added. The
+  test refuses the forward-bump too: pinning the baseline to the version being cut makes the gate
+  compare the release against itself, against a coordinate that is not on Central yet.
+
 ## [1.9.5] - 2026-08-19
 
 > Versioning note: as in 1.9.1 and 1.9.4, this ships as a patch by explicit owner decision.

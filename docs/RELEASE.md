@@ -127,7 +127,11 @@ Then re-pin the japicmp baseline in `async-test-lib/pom.xml` to the version you 
         <version>1.9.1</version>   <!-- the release before the one being cut -->
 ```
 
-**This step is not optional, and skipping it is silent.** The baseline sat at 1.6.0 while 1.7.0
+**This step is not optional, and skipping it used to be silent.** `JapicmpBaselineFreshnessTest`
+now fails the build when `<oldVersion>` is not the newest release in `docs/CHANGELOG.md` below the
+version being built, in either direction — left behind, or bumped forward onto the release being
+cut. So the step is still yours to do, but forgetting it is now a red test naming the version it
+expected rather than a gate that quietly stops protecting anything. The baseline sat at 1.6.0 while 1.7.0
 through 1.9.1 shipped, so for six releases the gate compared against an artifact that predated
 every API those releases added — it could not have failed on breaking any of them, and the 1.9.1
 changelog's claim that japicmp was "green against 1.9.0" described a comparison that never ran.

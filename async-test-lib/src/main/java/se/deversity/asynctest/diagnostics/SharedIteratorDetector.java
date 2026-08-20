@@ -43,10 +43,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * independent of whether any modification of the backing collection ever
  * occurs.
  *
- * <p>The detector observes sharing — which threads drove the instance — not
- * locks or handoffs: an iterator handed between threads under correct external
- * synchronization is flagged all the same. Treat a finding as a prompt to
- * verify that coordination exists, or to give each thread its own iterator.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
+ * the iterator's own monitor - the {@code synchronized (it)} idiom - counts as guarded, and an
+ * iterator whose every access was guarded produces no finding. A guard on any other lock object,
+ * and a handoff coordinated some other way, is invisible and still fires; treat such a finding
+ * as a prompt to verify that coordination exists, or to give each thread its own iterator.
  *
  * <p>Cooperative API: call {@link #recordAccess} at each
  * {@code hasNext}/{@code next}/{@code remove}/{@code tryAdvance}/
@@ -72,7 +73,7 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class SharedIteratorDetector {
 
-    private static final class State {
+    private static final class State extends SelfGuard.TrackedInstance {
         final String label;
         final String kind;
         final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
@@ -106,6 +107,7 @@ public final class SharedIteratorDetector {
             final String label = kind + "@" + id;
             s = instances.computeIfAbsent(id, k -> new State(label, kind));
         }
+        s.noteAccess(iterator);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
         if (operation != null) s.operations.add(operation);
@@ -125,15 +127,14 @@ public final class SharedIteratorDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1) continue;
+            if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
             String msg = String.format(
                     "%s '%s' accessed from %d threads (%s) via %s — iterators carry mutable cursor "
                             + "state and are confined to a single thread; unsynchronized concurrent hasNext()/next()/remove()/"
                             + "tryAdvance() calls on the same instance skip or duplicate elements, throw "
                             + "NoSuchElementException, or corrupt the underlying collection, even when that "
                             + "collection is itself a concurrent collection"
-                            + " (the detector observes sharing, not locks — verify external"
-                            + " synchronization or use a per-thread instance).",
+                            + SelfGuard.REPORT_NOTE + ".",
                     s.kind,
                     s.label,
                     s.accessingThreadIds.size(),

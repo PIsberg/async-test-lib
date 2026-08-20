@@ -32,11 +32,23 @@ public class AtomicityValidator {
         final boolean write;
         /** Invocation round this access belongs to — see {@link #markInvocationStart()}. */
         final long epoch;
+        /**
+         * Whether the accessing thread held the owning object's monitor. Always {@code false}
+         * for the overloads that take no owner, which is what the agent-fed path uses: those
+         * carry no object reference, so "not known to be guarded" is the only honest answer and
+         * it preserves the behaviour those callers already had.
+         */
+        final boolean guarded;
+        /** Whether an owner was supplied at all, which decides what the report may claim. */
+        final boolean ownerKnown;
 
-        FieldAccessRecord(long threadId, boolean write, long epoch) {
+        FieldAccessRecord(long threadId, boolean write, long epoch,
+                          boolean guarded, boolean ownerKnown) {
             this.threadId = threadId;
             this.write = write;
             this.epoch = epoch;
+            this.guarded = guarded;
+            this.ownerKnown = ownerKnown;
         }
     }
 
@@ -137,13 +149,47 @@ public class AtomicityValidator {
      */
     public void recordFieldAccess(String fieldName, @Nullable Object value, boolean isWrite,
                                   long threadId) {
+        record(fieldName, value, isWrite, threadId, false, false);
+    }
+
+    /**
+     * Records a field access together with the object that owns the field, so that a guard held
+     * on that object can be recognised.
+     *
+     * <p>The overloads above see a field name and nothing else. That is enough to say "more than
+     * one thread touched this field, and at least one wrote", which is what makes this detector
+     * fire on correctly synchronized code as loudly as on a race: with no object in hand there is
+     * nothing to ask about a lock. Passing the owner closes that gap for the common case. The
+     * probe is {@link Thread#holdsLock(Object)} on the calling thread at record time, so call
+     * this from inside whatever region guards the access, not afterwards.
+     *
+     * <p>A field whose every recorded access held the owner's own monitor produces no finding. A
+     * guard on any other lock object is invisible and still produces one, and so does an access
+     * recorded through an overload that takes no owner - including everything the agent feeds in,
+     * which captures qualified field names but no object reference.
+     *
+     * @param owner     the object whose field is being accessed; {@code null} counts as unguarded
+     * @param fieldName the qualified field/accessor identifier; {@code null}/blank is ignored
+     * @param value     the observed value, or {@code null} when unavailable
+     * @param isWrite   {@code true} for a write access, {@code false} for a read
+     * @since 1.9.6
+     */
+    public void recordFieldAccessOn(@Nullable Object owner, String fieldName,
+                                    @Nullable Object value, boolean isWrite) {
+        record(fieldName, value, isWrite, Thread.currentThread().threadId(),
+                SelfGuard.heldOn(owner), owner != null);
+    }
+
+    private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
+                        boolean guarded, boolean ownerKnown) {
         if (!enabled || fieldName == null || fieldName.isBlank()) {
             return;
         }
 
         List<FieldAccessRecord> history = fieldHistory.computeIfAbsent(fieldName, ignored -> new ArrayList<>());
         synchronized (history) {
-            history.add(new FieldAccessRecord(threadId, isWrite, invocationEpoch.get()));
+            history.add(new FieldAccessRecord(threadId, isWrite, invocationEpoch.get(),
+                    guarded, ownerKnown));
         }
 
         for (CompoundOperation operation : activeOperations.values()) {
@@ -215,24 +261,35 @@ public class AtomicityValidator {
                 Set<Long> threads = new HashSet<>();
                 boolean hasRead = false;
                 boolean hasWrite = false;
+                // A round is only reportable if some access in it was not known to be guarded.
+                // Accesses recorded without an owner count as unguarded, so every caller that
+                // predates recordFieldAccessOn keeps the behaviour it had.
+                boolean sawUnguarded = false;
+                boolean anyOwnerKnown = false;
                 for (FieldAccessRecord access : roundAccesses) {
                     threads.add(access.threadId);
                     hasRead |= !access.write;
                     hasWrite |= access.write;
+                    sawUnguarded |= !access.guarded;
+                    anyOwnerKnown |= access.ownerKnown;
                 }
+                // Only claim to have looked at locks when an owner was actually supplied.
+                String note = anyOwnerKnown ? SelfGuard.REPORT_NOTE : "";
 
-                if (threads.size() > 1 && hasRead && hasWrite) {
+                if (threads.size() > 1 && hasRead && hasWrite && sawUnguarded) {
                     report.unsafeFieldAccesses.add(String.format(
-                        "%s: mixed read/write compound access across %d threads",
+                        "%s: mixed read/write compound access across %d threads%s",
                         entry.getKey(),
-                        threads.size()
+                        threads.size(),
+                        note
                     ));
                 }
-                if (threads.size() > 1 && hasWrite) {
+                if (threads.size() > 1 && hasWrite && sawUnguarded) {
                     report.totcouRaces.add(String.format(
-                        "%s: state changed between check/use windows on %d threads",
+                        "%s: state changed between check/use windows on %d threads%s",
                         entry.getKey(),
-                        threads.size()
+                        threads.size(),
+                        note
                     ));
                 }
             }

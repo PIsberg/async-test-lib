@@ -30,9 +30,11 @@ randomness.
 
 ## What the detector observes
 
-`registerGenerator` plus `recordAccess` per use; any tracked generator touched by more than
-one thread is reported. Like the rest of the `SHARED_*` family it observes sharing, not locks,
-and its report says so. `java.util.Random` subclasses are excluded — they belong to
+`registerGenerator` plus `recordAccess` per use; a tracked generator is reported when more than
+one thread touched it and at least one of those accesses held no lock on the generator itself.
+The `synchronized (generator)` idiom is recognised and stays silent; a `ReentrantLock` or a
+private lock object is invisible and still produces a finding, and the report says so.
+`java.util.Random` subclasses are excluded — they belong to
 `SHARED_RANDOM`, `SHARED_SECURE_RANDOM`, and `THREAD_LOCAL_RANDOM_MISUSE`.
 
 ## Run it

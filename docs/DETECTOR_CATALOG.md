@@ -15,13 +15,15 @@ fall into two tiers, and the difference decides whether a finding means "your co
 | **Verdict** | The detector can distinguish broken code from the correctly synchronized version of that same code. Silence is informative too. | Fail a build |
 | **Prompt** | The detector saw an object touched by more than one thread. It has no model of your locks, so correct code that shares an object produces the same signal as a race. | Open a ticket, not fail a build |
 
-This is measured rather than asserted. `DetectorAccuracyEvalTest` runs each evaluated detector
-against a buggy variant *and* against a synchronized twin that records the identical event stream
-while holding a real lock, and the results are published in
-[analysis/detector-accuracy-eval.md](analysis/detector-accuracy-eval.md). Of the pairs measured
-there, 6 of 6 buggy variants fire and 3 of 6 twins stay silent; the three that fire on correct code
-share one cause, which is that their input is `(thread, access)` tuples with no representation of
-synchronization.
+This is measured rather than asserted. Two evals run each covered detector against a buggy variant
+*and* against a synchronized twin that records the identical event stream while holding a real
+lock, and the results are published in
+[analysis/detector-accuracy-eval.md](analysis/detector-accuracy-eval.md).
+`DetectorAccuracyEvalTest` covers 8 detectors, one per mechanism class, with the per-detector
+outcome in that document. `SharedTypeAccuracyEvalTest` covers the whole `SHARED_*` family, the 19 that watch a
+non-thread-safe JDK type: 19 of 19 fire on unguarded sharing, and 17 of 19 stay silent on the
+`synchronized (instance)` twin. The twins that still fire share one cause - the guard is a lock
+object other than the shared instance itself, and nothing in those recording APIs names it.
 
 **Verdict tier, confirmed by that eval or by construction:** `DEADLOCKS`, `LOCK_ORDER`,
 `ATOMIC_NON_ATOMIC_UPDATE`, `VAR_HANDLE_NON_ATOMIC_UPDATE`, `STATIC_INIT_DEADLOCK`,
@@ -30,15 +32,25 @@ synchronization.
 `SHARED_MEMORY_SEGMENT_RACE` where the overlapping accesses disagree about which monitor guards
 them.
 
-**Prompt tier:** `RACE_CONDITIONS`, `ATOMICITY_VIOLATIONS`, and the `SHARED_*` family. Their reports
-say so in their own wording — they ask you to verify external synchronization rather than declaring
-a defect.
+**Prompt tier:** `RACE_CONDITIONS`, `ATOMICITY_VIOLATIONS`, `SHARED_RANDOM` and
+`SHARED_SECURE_RANDOM`. Their reports say so in their own wording - they ask you to verify
+external synchronization rather than declaring a defect. The two random detectors are a
+different case from the rest: `Random` and `SecureRandom` are thread-safe, so their finding is
+about contention on one instance rather than corruption of it, and it stands whether or not you
+hold a lock.
 
-**Not yet classified:** most of the remaining detectors. The eval covers 8 of 142, chosen to cover
-each mechanism class, and extending it is mechanical rather than hard. Where an entry below carries
-no explicit **Trust tier** line, treat it as unclassified and read its report wording, which is
-written to be honest about what it observed. Claiming a tier for all 135 without measuring would be
-exactly the kind of unfounded number this catalog is meant not to contain.
+**Split tier, the rest of the `SHARED_*` family:** verdict for the `synchronized (instance)`
+idiom, prompt for every other guard. 17 of the 19 in that family
+probe `Thread.holdsLock` on the tracked instance at record time and report only when some access
+held no lock on it, so code guarded by the instance's own monitor is silent. A `ReentrantLock` or
+a private lock object is still invisible to them and still produces a finding.
+
+**Not yet classified:** most of the remaining detectors. The two evals cover 24 distinct detectors
+of 142 between them (three appear in both), and extending them is mechanical rather than hard.
+Where an entry below carries no explicit **Trust tier** line, treat it as unclassified and read its
+report wording, which is written to be honest about what it observed. Claiming a tier for all 142
+without measuring would be exactly the kind of unfounded number this catalog is meant not to
+contain.
 
 **Practical consequence.** `failOn = CRITICAL` gates on the trustworthy end of the scale.
 `failOn = HIGH` will fail builds over correct-but-shared code unless those findings are baselined
@@ -3147,7 +3159,7 @@ JDK 24/25/26.
 
 ### 135. Shared Splittable Random
 * **Severity**: `HIGH`
-* **Trust tier**: **prompt** — like the rest of the `SHARED_*` family it observes sharing, not locks, and its report says so.
+* **Trust tier**: **split** — verdict for the `synchronized (generator)` idiom, which it recognises and stays silent for, prompt for any other guard, which it cannot see. Its report says so.
 * **Description**: Detects `SplittableRandom` and JEP 356 `RandomGenerator` instances (`L64X128MixRandom`, `Xoshiro256PlusPlus`, …) accessed from more than one thread. These generators are documented not thread-safe: the state transition is a plain non-atomic read-modify-write, so concurrent `nextLong()` calls interleave it — duplicated values and broken statistical guarantees with no exception. `java.util.Random` subclasses are excluded: `Random` belongs to `SHARED_RANDOM`, `SecureRandom` to `SHARED_SECURE_RANDOM`, `ThreadLocalRandom` to `THREAD_LOCAL_RANDOM_MISUSE`.
 * **Buggy Code**:
   ```java

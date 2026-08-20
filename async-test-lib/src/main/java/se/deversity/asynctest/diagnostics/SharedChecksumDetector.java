@@ -25,10 +25,11 @@ import java.util.zip.Checksum;
  * no crash, just data-integrity corruption that surfaces later as a checksum
  * mismatch far from the code that caused it.
  *
- * <p>The detector observes sharing — which threads touched the instance — not
- * locks: a shared checksum guarded by correct external synchronization is
- * flagged all the same. Treat a finding as a prompt to verify that
- * synchronization exists, or to move to a per-thread instance.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
+ * the instance's own monitor - the {@code synchronized (checksum)} idiom - counts as guarded,
+ * and an instance whose every access was guarded produces no finding. A guard on any other lock
+ * object is invisible and still fires; treat such a finding as a prompt to verify the
+ * synchronization, or to move to a per-thread instance.
  *
  * <p>The safe pattern is one {@code Checksum} instance per thread (a
  * {@link ThreadLocal} works well), or computing a checksum per-chunk on each
@@ -53,7 +54,7 @@ import java.util.zip.Checksum;
 )
 public final class SharedChecksumDetector {
 
-    private static final class State {
+    private static final class State extends SelfGuard.TrackedInstance {
         final String label;
         final Set<String>  operations           = ConcurrentHashMap.newKeySet();
         final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
@@ -82,6 +83,7 @@ public final class SharedChecksumDetector {
             final String label = checksum.getClass().getSimpleName() + "@" + id;
             s = instances.computeIfAbsent(id, k -> new State(label));
         }
+        s.noteAccess(checksum);
         if (operation != null) s.operations.add(operation);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
@@ -94,14 +96,13 @@ public final class SharedChecksumDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1) continue;
+            if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
             String msg = String.format(
                     "Checksum '%s' accessed from %d threads (%s) via %s — java.util.zip "
                             + "Checksum implementations accumulate mutable running state and are "
                             + "not thread-safe; unsynchronized concurrent update()/getValue()/reset() calls "
                             + "produce wrong checksum values with no exception"
-                            + " (the detector observes sharing, not locks — verify external"
-                            + " synchronization or use a per-thread instance).",
+                            + SelfGuard.REPORT_NOTE + ".",
                     s.label,
                     s.accessingThreadIds.size(),
                     String.join(", ", s.accessingThreadNames),

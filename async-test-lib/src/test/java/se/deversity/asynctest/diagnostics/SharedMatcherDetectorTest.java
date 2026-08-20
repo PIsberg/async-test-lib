@@ -33,7 +33,7 @@ public class SharedMatcherDetectorTest {
         assertTrue(d.analyze().hasIssues());
         assertTrue(d.analyze().violations.get(0).contains("m"));
         assertTrue(d.analyze().violations.get(0).contains("2"));
-        assertTrue(d.analyze().violations.get(0).contains("observes sharing, not locks"));
+        assertTrue(d.analyze().violations.get(0).contains("own monitor count as guarded"));
     }
 
     @Test

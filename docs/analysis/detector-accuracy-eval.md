@@ -8,6 +8,11 @@ _Updated 2026-08-11 (`feat/detector-lock-awareness`): three detectors gained gua
 synchronization awareness - a `Thread.holdsLock(<tracked instance>)` probe at record time.
 The rows, counts and limits below reflect it._
 
+_Updated 2026-08-20 (`fix/detector-fp-surface`): that probe moved into one shared
+`SelfGuard.TrackedInstance` and reached 15 more detectors, taking the Shared* family from 2 of
+19 to 17 of 19 silent on the correctly guarded twin. The remaining two are contention notes on
+thread-safe types, where firing is the correct answer._
+
 ## What was measured
 
 For each detector: does it fire on genuinely buggy concurrent code (true positive), and
@@ -17,7 +22,7 @@ while the underlying code holds a real lock, uses CAS, or orders its locks consi
 Every recording happens from two live threads released by a CyclicBarrier.
 
 This is a recording-level eval of 8 detectors plus one gated detector, not a corpus study
-of all 135. It measures the analyzers' models, which is the property that decides whether
+of all 142. It measures the analyzers' models, which is the property that decides whether
 a finding on your code means your code is wrong. Since the guard-on-self change the twins
 distinguish where the lock lives: guarding with the shared instance's own monitor
 (`synchronized (theInstance)`) is now recognized, guarding with any other lock object is
@@ -28,7 +33,7 @@ still invisible.
 | Detector | Buggy variant | Synchronized twin | Verdict |
 |---|---|---|---|
 | RaceConditionDetector | fires | silent when guarded by the shared object's own monitor; **fires** with an external lock | guard-on-self recognized; other locks invisible |
-| AtomicityValidator | fires | **fires** | FP on correct code: the recording API carries only (field, value, isWrite) with no object reference, so there is nothing to probe a lock on; agent-fed, so the FP surface is the largest |
+| AtomicityValidator | fires | silent when recorded with `recordFieldAccessOn` and guarded by the owner's own monitor; **fires** with an external lock, and **fires** through the overloads that name no owner | guard-on-self recognized on the owner-aware path only; the agent-fed path has no object reference to probe, so its FP surface is unchanged |
 | SharedMessageDigestDetector | fires | silent with `synchronized(digest)`; **fires** with an external lock | guard-on-self recognized; other locks invisible |
 | SharedStatefulCryptoDetector | fires | silent with `synchronized(mac)` | guard-on-self recognized; the external-lock direction is not yet pinned for this one |
 | SharedSecureRandomDetector | n/a (sharing is the documented-safe idiom) | fires at MEDIUM | contention note by design, no longer a HIGH "corruption" claim |
@@ -37,13 +42,12 @@ still invisible.
 | DeadlockDetector | fires (real deadlock, zero config; pinned by `DetectionCoverageTest`) | silent | genuine both-direction detector, near-zero FP |
 | FalseSharingDetector | silent by default (experimental gate) | silent | findings uncorrelated with the phenomenon; opt-in via `-Dasync-test.experimental.false-sharing=true` |
 
-Counting the measured variants: 7 of 7 buggy variants fire; 6 of 9 synchronized twins
-stay silent. The three twins that still fire on correct code share one cause: the guard
-is a lock object other than the shared instance itself. The recording paths now probe
-`Thread.holdsLock` on the tracked instance, so the `synchronized (theInstance)` idiom is
-recognized as guarded; a private lock object, a `ReentrantLock`, or any other external
-guard remains invisible, and `AtomicityValidator`'s recording API carries no object
-reference to probe at all.
+Every buggy variant above fires. The twin column is the interesting one, and the twins that
+still fire on correct code share a single cause: the guard is a lock object the detector cannot
+name. The recording paths probe `Thread.holdsLock` on the tracked instance, so the
+`synchronized (theInstance)` idiom is recognized as guarded; a private lock object, a
+`ReentrantLock`, or any other external guard remains invisible. `DetectorAccuracyEvalTest` is the
+authority on which row is which - each outcome above is one assertion in it.
 
 ## What this means for a user
 
@@ -56,32 +60,43 @@ reference to probe at all.
   fires. Code guarded by an external lock object still does, so a finding remains a
   prompt to verify synchronization rather than a verdict; the report wording says which
   locks are observed.
-- Findings from AtomicityValidator and the rest of the Shared* family still mean only
-  "this object was touched by more than one thread". Extending the guard-on-self probe
-  across that family is mechanical (each detector needs its wording, its unit test and a
-  twin here) and is the standing follow-up.
+- For `AtomicityValidator` the answer now depends on how the access was recorded.
+  `recordFieldAccessOn(owner, field, value, isWrite)` lets it probe the owner's monitor, and a
+  field guarded that way produces no finding. The older overloads, and the agent-fed path that
+  uses them, carry no object reference, so their findings still mean only "more than one thread
+  touched this field and at least one wrote". The report only mentions locks when an owner was
+  actually supplied.
+- The rest of the Shared* family no longer has that limit; see the section below.
 - `failOn = CRITICAL` gates on the trustworthy end of the scale.
   `failOn = HIGH` will fail builds over correct-but-shared code unless those findings
   are baselined; see the baseline mechanism in `ConcurrencyRunner`.
 
-## The Shared* family (2026-08-14, `test/shared-family-accuracy-eval`)
+## The Shared* family (2026-08-14, extended 2026-08-20)
 
 _Enforced by `SharedTypeAccuracyEvalTest`._ The same pair harness applied to all 19
 detectors that watch a non-thread-safe JDK type, which is the largest cluster in the
-catalogue and the one carrying most of the false-positive surface above.
+catalogue and the one that carried most of the false-positive surface above.
 
-| Direction | Result |
-|---|---|
-| Unguarded sharing (true positive) | 19 of 19 fire |
-| `synchronized(instance)` twin (true negative) | 2 of 19 stay silent |
+| Direction | Result 2026-08-14 | Result now |
+|---|---|---|
+| Unguarded sharing (true positive) | 19 of 19 fire | 19 of 19 fire |
+| `synchronized(instance)` twin (true negative) | 2 of 19 stay silent | 17 of 19 stay silent |
 
-The two that recognise the guarded twin are `SharedMessageDigestDetector` and
-`SharedStatefulCryptoDetector`, the two that carry the `Thread.holdsLock` probe. The
-other 17 fire on correctly guarded code, for the reason given above: they reduce their
-input to "how many distinct threads touched this instance" and hold no representation of
-locks, so the guarded twin records an identical event stream. That number is pinned in
-`GUARD_ON_SELF_AWARE`, and it can only shrink - a detector that goes silent on the twin
-fails the test until it is moved into that set and this table is updated.
+The 17 all reach that answer through one shared probe rather than 17 copies of it.
+`SelfGuard.TrackedInstance` holds the flag and the `Thread.holdsLock` call; a detector's state
+class extends it, its record path calls `noteAccess(instance)`, and its `analyze()` reports only
+when `sawUnguardedAccess()`. The finding's wording comes from the same place
+(`SelfGuard.REPORT_NOTE`), so the report cannot claim awareness the code does not have.
+
+The two that keep firing are `SharedRandomDetector` and `SharedSecureRandomDetector`, and for
+them that is the right answer rather than an unfinished one. `Random` and `SecureRandom` are both
+thread-safe; those detectors report contention on a single instance, not corruption of it, and
+`synchronized (instance)` does not falsify that - it serializes the callers a second time, on top
+of the type's own internal synchronization, which makes the contention worse. They are pinned in
+`CONTENTION_NOTE_BY_DESIGN`, and a probe that silenced one of them would fail the test.
+
+Both sets are ratchets. A detector leaving `GUARD_ON_SELF_AWARE` is a regression; a new Shared*
+detector in neither set fails the test until somebody decides which it is.
 
 ### The true-positive column was not free
 
@@ -107,10 +122,10 @@ verdict must not change depending on whether two threads raced to register the i
 - Recording-level: it measures the analyzers, not end-to-end reachability under a bare
   `@AsyncTest` (that is `DetectionCoverageTest`'s job) and not the agent's weaving
   (that is `AgentFeedsDetectorEndToEndTest`'s job).
-- 26 of 135 detectors: the 7 above plus the 19 of the Shared* family. The first set was
-  chosen to cover each mechanism class - access-pattern analyzers, per-thread state
-  machines, graph analysis, and JVM introspection - and the second covers one whole
-  cluster. Extending the pair harness further is mechanical; the helper
+- 24 distinct detectors of 142: the 8 above plus the 19 of the Shared* family, three of which
+  appear in both. The first set was chosen to cover each mechanism class - access-pattern
+  analyzers, per-thread state machines, graph analysis, and JVM introspection - and the second
+  covers one whole cluster. Extending the pair harness further is mechanical; the helper
   (`onTwoThreads`) and the pinning convention are in place.
 - The synchronization model is the tracked object's own monitor only, probed with
   `Thread.holdsLock` on the accessing thread at record time. External lock objects,

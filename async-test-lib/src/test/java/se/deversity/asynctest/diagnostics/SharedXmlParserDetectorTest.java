@@ -31,7 +31,7 @@ public class SharedXmlParserDetectorTest {
         assertTrue(report.hasIssues());
         assertTrue(report.violations.get(0).contains("SAXParser"));
         assertTrue(report.violations.get(0).contains("2"));
-        assertTrue(report.violations.get(0).contains("observes sharing, not locks"));
+        assertTrue(report.violations.get(0).contains("own monitor count as guarded"));
     }
 
     @Test

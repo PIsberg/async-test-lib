@@ -36,10 +36,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * comes from a thread that never used the instance, or the instance has already been used
  * from two or more distinct threads — the exact preconditions for a configuration race.
  *
- * <p>The detector observes the cross-thread ordering of uses and mutations —
- * not locks: a reconfiguration guarded by correct external synchronization is
- * flagged all the same. Treat a finding as a prompt to verify that
- * synchronization exists, or to freeze configuration before sharing.
+ * <p>Synchronization awareness is partial. A use or a mutation recorded while the accessing
+ * thread holds the mapper's own monitor - the {@code synchronized (mapper)} idiom - counts as
+ * guarded, and a mapper whose every recorded call was guarded produces no finding. A guard on
+ * any other lock object is invisible and still fires; treat such a finding as a prompt to
+ * verify the synchronization, or to freeze configuration before sharing.
  *
  * <p>The safe pattern is to freeze configuration before publishing the mapper to other
  * threads, and to obtain per-call variation via {@code ObjectMapper.copy()},
@@ -75,7 +76,7 @@ public final class SharedJsonMapperReconfigDetector {
         }
     }
 
-    private static final class State {
+    private static final class State extends SelfGuard.TrackedInstance {
         final String className;
         final Set<Long>   usingThreadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> usingThreadNames = ConcurrentHashMap.newKeySet();
@@ -97,6 +98,7 @@ public final class SharedJsonMapperReconfigDetector {
     public void recordUse(Object mapper) {
         if (mapper == null) return;
         State s = stateFor(mapper);
+        s.noteAccess(mapper);
         Thread thread = Thread.currentThread();
         s.usingThreadIds.add(thread.threadId());
         s.usingThreadNames.add(thread.getName());
@@ -119,6 +121,7 @@ public final class SharedJsonMapperReconfigDetector {
     public void recordConfigMutation(Object mapper, String mutationDescription) {
         if (mapper == null) return;
         State s = stateFor(mapper);
+        s.noteAccess(mapper);
         if (s.usingThreadIds.isEmpty()) {
             return;
         }
@@ -147,7 +150,7 @@ public final class SharedJsonMapperReconfigDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.violatingMutations.isEmpty()) continue;
+            if (s.violatingMutations.isEmpty() || !s.sawUnguardedAccess()) continue;
             List<String> descriptions = new ArrayList<>();
             List<String> mutatingThreads = new ArrayList<>();
             for (MutationRecord m : s.violatingMutations) {
@@ -162,8 +165,7 @@ public final class SharedJsonMapperReconfigDetector {
                             + "serializer/mapper is visible to other threads; an unsynchronized reconfiguration racing with "
                             + "serialize/deserialize calls causes intermittent corruption or "
                             + "ConcurrentModificationException in internal caches"
-                            + " (the detector observes sharing, not locks — verify external"
-                            + " synchronization or use a per-thread instance).",
+                            + SelfGuard.REPORT_NOTE + ".",
                     s.className,
                     String.join(", ", descriptions),
                     String.join(", ", mutatingThreads),

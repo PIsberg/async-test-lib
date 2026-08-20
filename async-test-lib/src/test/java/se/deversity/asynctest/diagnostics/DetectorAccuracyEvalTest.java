@@ -142,7 +142,7 @@ class DetectorAccuracyEvalTest {
     }
 
     @Test
-    @DisplayName("atomicity: the synchronized twin fires identically (pinned false positive)")
+    @DisplayName("atomicity: the externally-locked twin fires identically (pinned false positive)")
     void atomicityValidatorFiresOnTheSynchronizedTwinToo() throws InterruptedException {
         AtomicityValidator validator = new AtomicityValidator();
         Counter shared = new Counter();
@@ -157,12 +157,57 @@ class DetectorAccuracyEvalTest {
         onTwoThreads(readModifyWrite, readModifyWrite);
 
         assertTrue(validator.analyze().hasIssues(),
-                "PINNED FALSE POSITIVE: the read-modify-write is atomic under the lock, "
-                        + "but the validator reads only (threadId, isWrite) and cannot tell "
-                        + "a guarded compound operation from a racy one. This matters "
-                        + "doubly because the agent auto-feeds this validator from woven "
-                        + "JavaBean accessors. If this went silent, flip the assertion and "
-                        + "update detector-accuracy-eval.md");
+                "PINNED FALSE POSITIVE: the read-modify-write is atomic under the lock, but "
+                        + "nothing here lets the validator know that. The guard is a private "
+                        + "lock object rather than the owner's monitor, and this call site uses "
+                        + "the overload that names no owner at all - which is also what the "
+                        + "agent-fed path uses, since weaving captures qualified field names but "
+                        + "no object reference. recordFieldAccessOn closes the owner's-monitor "
+                        + "case (see the two tests below); an external lock stays invisible. If "
+                        + "this went silent, flip the assertion and update "
+                        + "detector-accuracy-eval.md");
+    }
+
+    @Test
+    @DisplayName("atomicity: owner-aware recording, guarded on the owner's monitor, is silent")
+    void atomicityValidatorIsSilentWhenTheOwnersOwnMonitorGuardedEveryAccess()
+            throws InterruptedException {
+        AtomicityValidator validator = new AtomicityValidator();
+        Counter shared = new Counter();
+        Runnable readModifyWrite = () -> {
+            synchronized (shared) {
+                validator.recordFieldAccessOn(shared, "balance", shared.value, false);
+                shared.value++;
+                validator.recordFieldAccessOn(shared, "balance", shared.value, true);
+            }
+        };
+        onTwoThreads(readModifyWrite, readModifyWrite);
+
+        assertFalse(validator.analyze().hasIssues(),
+                "This is the same compound operation as the two tests above, guarded by the "
+                        + "owner's own monitor and recorded through the overload that names the "
+                        + "owner. The validator can probe that lock, so correct code must produce "
+                        + "no finding - otherwise recordFieldAccessOn buys nothing and the fix "
+                        + "still looks as broken as the bug");
+    }
+
+    @Test
+    @DisplayName("atomicity: owner-aware recording with no lock held still fires")
+    void atomicityValidatorStillFiresWhenTheOwnerIsKnownButNoLockIsHeld()
+            throws InterruptedException {
+        AtomicityValidator validator = new AtomicityValidator();
+        Counter shared = new Counter();
+        Runnable readModifyWrite = () -> {
+            validator.recordFieldAccessOn(shared, "balance", shared.value, false);
+            shared.value++;
+            validator.recordFieldAccessOn(shared, "balance", shared.value, true);
+        };
+        onTwoThreads(readModifyWrite, readModifyWrite);
+
+        assertTrue(validator.analyze().hasIssues(),
+                "The owner is known here and no lock is held on it, which is the genuine race. "
+                        + "Naming the owner must not turn the detector off - if this goes silent, "
+                        + "the guard probe is answering true when no monitor is held");
     }
 
     // ---- SharedMessageDigestDetector ----

@@ -25,10 +25,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * cryptographic-integrity failure (the derived key simply doesn't match what the
  * peer derives) with no exception at the point of corruption.
  *
- * <p>The detector observes sharing — which threads touched the instance — not
- * locks: a shared KDF guarded by correct external synchronization is flagged
- * all the same. Treat a finding as a prompt to verify that synchronization
- * exists, or to move to a per-thread instance.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
+ * the instance's own monitor - the {@code synchronized (kdf)} idiom, which is exactly what the
+ * KDF javadoc asks callers to do - counts as guarded, and an instance whose every access was
+ * guarded produces no finding. A guard on any other lock object is invisible and still fires;
+ * treat such a finding as a prompt to verify the synchronization, or to move to a per-thread
+ * instance.
  *
  * <p>The safe pattern is one {@code KDF} instance per thread (KDF construction
  * via {@code KDF.getInstance(...)} is cheap), or full external synchronization
@@ -55,7 +57,7 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class SharedKdfDetector {
 
-    private static final class State {
+    private static final class State extends SelfGuard.TrackedInstance {
         final String label;
         final String algorithm;
         final Set<String> operations           = ConcurrentHashMap.newKeySet();
@@ -89,6 +91,7 @@ public final class SharedKdfDetector {
             final String algo = algorithm != null ? algorithm : "unknown";
             s = instances.computeIfAbsent(id, k -> new State(label, algo));
         }
+        s.noteAccess(kdf);
         if (operation != null) s.operations.add(operation);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
@@ -101,15 +104,14 @@ public final class SharedKdfDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1) continue;
+            if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
             String msg = String.format(
                     "KDF '%s' (algorithm %s) accessed from %d threads (%s) via %s — "
                             + "javax.crypto.KDF is documented as not thread-safe unless the "
                             + "provider says otherwise; unsynchronized concurrent deriveKey()/deriveData() "
                             + "calls can interleave provider state and silently derive wrong "
                             + "keys that fail to match the peer's"
-                            + " (the detector observes sharing, not locks — verify external"
-                            + " synchronization or use a per-thread instance).",
+                            + SelfGuard.REPORT_NOTE + ".",
                     s.label,
                     s.algorithm,
                     s.accessingThreadIds.size(),

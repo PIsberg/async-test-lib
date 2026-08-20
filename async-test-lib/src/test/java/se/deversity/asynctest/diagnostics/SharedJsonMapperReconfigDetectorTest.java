@@ -57,7 +57,7 @@ class SharedJsonMapperReconfigDetectorTest {
         String msg = report.violations.get(0);
         assertTrue(msg.contains(FakeMapper.class.getName()));
         assertTrue(msg.contains("registerModule(JavaTimeModule)"));
-        assertTrue(msg.contains("observes sharing, not locks"));
+        assertTrue(msg.contains("own monitor count as guarded"));
         assertEquals(1, report.structuredViolations.size());
         var violation = report.structuredViolations.get(0);
         assertEquals("SharedJsonMapperReconfig", violation.detector());

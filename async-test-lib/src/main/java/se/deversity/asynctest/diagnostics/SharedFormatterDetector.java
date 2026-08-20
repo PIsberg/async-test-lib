@@ -15,10 +15,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * garbled format strings, or internal state corruption. {@link System#out} and
  * {@link System#err} are {@code PrintStream} instances that are commonly shared unknowingly.
  *
- * <p>The detector observes sharing — which threads touched the instance — not
- * locks: a shared formatter guarded by correct external synchronization is
- * flagged all the same. Treat a finding as a prompt to verify that
- * synchronization exists, or to move to a per-thread instance.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
+ * the instance's own monitor - the {@code synchronized (out)} idiom, and what {@code PrintStream}
+ * does internally - counts as guarded, and an instance whose every access was guarded produces
+ * no finding. A guard on any other lock object is invisible and still fires; treat such a
+ * finding as a prompt to verify the synchronization, or to move to a per-thread instance.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -28,7 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SharedFormatterDetector {
 
-    private static class FormatterState {
+    private static class FormatterState extends SelfGuard.TrackedInstance {
         final String      name;
         final Set<Long>   accessingThreadIds = ConcurrentHashMap.newKeySet();
         final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
@@ -51,6 +52,7 @@ public class SharedFormatterDetector {
                 : formatter.getClass().getSimpleName() + "@" + System.identityHashCode(formatter);
         FormatterState s = formatters.computeIfAbsent(
             System.identityHashCode(formatter), id -> new FormatterState(label));
+        s.noteAccess(formatter);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
     }
@@ -61,11 +63,10 @@ public class SharedFormatterDetector {
     public SharedFormatterReport analyze() {
         SharedFormatterReport r = new SharedFormatterReport();
         for (FormatterState s : formatters.values()) {
-            if (s.accessingThreadIds.size() > 1) {
+            if (s.accessingThreadIds.size() > 1 && s.sawUnguardedAccess()) {
                 r.violations.add(String.format(
                     "'%s' accessed from %d threads (%s) — not thread-safe; unsynchronized concurrent"
-                        + " writes interleave output (the detector observes sharing, not locks —"
-                        + " verify external synchronization or use a per-thread instance)",
+                        + " writes interleave output" + SelfGuard.REPORT_NOTE,
                     s.name, s.accessingThreadIds.size(),
                     String.join(", ", s.accessingThreadNames)));
             }

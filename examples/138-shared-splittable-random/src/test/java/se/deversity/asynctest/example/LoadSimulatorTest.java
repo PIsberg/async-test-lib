@@ -82,9 +82,9 @@ class LoadSimulatorTest {
     }
 
     // -----------------------------------------------------------------------
-    // Part 2: the buggy shape. Two workers draw from the same instance; the
-    // detector reports the sharing (it observes sharing, not locks — its
-    // report says so in as many words).
+    // Part 2: the buggy shape. Two workers draw from the same instance with no
+    // lock held on it, so the guard-on-self probe finds nothing to excuse the
+    // sharing and the detector reports it.
     // -----------------------------------------------------------------------
 
     @Test
