@@ -33,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   behave exactly as before, which includes the agent-fed path: weaving captures a qualified
   field name but no objectref, so agent findings still carry no lock model — see
   [AGENT.md](AGENT.md).
+- **`JapicmpBaselineFreshnessTest`**, which fails the build when the japicmp `<oldVersion>` is not
+  the newest release in this changelog below the version being built. Re-pinning the baseline is a
+  manual step in [RELEASE.md](RELEASE.md), it was missed at four consecutive releases, and missing
+  it produces a green build rather than a warning — the baseline sat at 1.6.0 while six releases
+  shipped past it, so the gate could not have failed on breaking any API those releases added. The
+  test refuses the forward-bump too: pinning the baseline to the version being cut makes the gate
+  compare the release against itself, against a coordinate that is not on Central yet.
 
 ## [1.9.5] - 2026-08-19
 

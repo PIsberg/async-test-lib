@@ -127,9 +127,12 @@
                          claimed "japicmp green against 1.9.0"; the gate was comparing 1.6.0, so
                          that published compatibility statement had never been machine-checked.
 
-                         Re-pin this on every release. docs/RELEASE.md carries the step; without
-                         it the baseline drifts again by 1.10.0, which is exactly how it got five
-                         releases stale the first time. -->
+                         Re-pin this on every release; docs/RELEASE.md carries the step. It was
+                         missed at four consecutive releases while the only thing asking for it
+                         was this comment, so JapicmpBaselineFreshnessTest now checks it: the
+                         version below must be the newest release in docs/CHANGELOG.md that is
+                         older than the version being built. Editing it by hand is still fine -
+                         the test says what it expected and why. -->
                     <oldVersion>
                         <dependency>
                             <groupId>se.deversity.async-test-lib</groupId>

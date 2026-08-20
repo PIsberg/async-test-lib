@@ -36,6 +36,12 @@ import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.sp
  * assertion existed these fixtures proved only that the accessor resolved: they ran the hazard,
  * recorded nothing, and would have passed with the detector deleted.
  *
+ * <p>No fixture here may wrap its recording in {@code synchronized (theSharedInstance)}. Every
+ * detector in this group carries the guard-on-self probe, so the instance's own monitor is the
+ * one idiom they recognise as correct: a fixture that records inside it would assert a finding
+ * that should not exist. Two of these did, and the class-level {@code assertAllReported} would
+ * have caught it only in CI, which is the only place the consumer fixture builds.
+ *
  * <p>Two fixtures still assert reachability only, and say why at the call site:
  * {@code fileChannelPositionRace} needs one {@code FileChannel} open across workers, which is
  * lifecycle this fixture should not own, and {@code sharedJsonMapperReconfig} has no mapper to
@@ -76,18 +82,19 @@ class Phase17SharedStatefulJdkDetectorsFixtureTest {
     void sharedByteBuffer() {
         reachable("sharedByteBufferDetector()", AsyncTestContext::sharedByteBufferDetector);
 
-        // position/limit are mutable state; two workers on one buffer corrupt each other. The
-        // synchronized block keeps the fixture deterministic - the detector's subject is that
-        // two threads touched one buffer's relative-position API, not how they were ordered.
+        // position/limit are mutable state; two workers on one buffer corrupt each other.
+        //
+        // Deliberately unguarded: this recording used to sit inside synchronized (SHARED_BUFFER),
+        // which the detector now recognises as correct guarding, so the fixture would have been
+        // asserting a finding that should not exist. See the class javadoc. The catch below is
+        // what keeps the racy outcome from failing the round.
         try {
-            synchronized (SHARED_BUFFER) {
-                AsyncTestContext.sharedByteBufferDetector()
-                        .recordPositionalAccess(SHARED_BUFFER, "put/get");
-                SHARED_BUFFER.clear();
-                SHARED_BUFFER.put((byte) 1);
-                SHARED_BUFFER.flip();
-                SHARED_BUFFER.get();
-            }
+            AsyncTestContext.sharedByteBufferDetector()
+                    .recordPositionalAccess(SHARED_BUFFER, "put/get");
+            SHARED_BUFFER.clear();
+            SHARED_BUFFER.put((byte) 1);
+            SHARED_BUFFER.flip();
+            SHARED_BUFFER.get();
         } catch (RuntimeException expected) {
             // A shared ByteBuffer losing a race is the point of this fixture.
         }
@@ -99,13 +106,15 @@ class Phase17SharedStatefulJdkDetectorsFixtureTest {
         reachable("sharedCharsetCoderDetector()", AsyncTestContext::sharedCharsetCoderDetector);
 
         // CharsetEncoder is explicitly documented as not safe for concurrent use.
+        //
+        // Deliberately unguarded: this recording used to sit inside synchronized (SHARED_ENCODER),
+        // which the detector now recognises as correct guarding, so the fixture would have been
+        // asserting a finding that should not exist. See the class javadoc.
         try {
-            synchronized (SHARED_ENCODER) {
-                AsyncTestContext.sharedCharsetCoderDetector()
-                        .recordAccess(SHARED_ENCODER, "encode", Thread.currentThread());
-                SHARED_ENCODER.reset();
-                SHARED_ENCODER.encode(CharBuffer.wrap("payload"));
-            }
+            AsyncTestContext.sharedCharsetCoderDetector()
+                    .recordAccess(SHARED_ENCODER, "encode", Thread.currentThread());
+            SHARED_ENCODER.reset();
+            SHARED_ENCODER.encode(CharBuffer.wrap("payload"));
         } catch (RuntimeException expected) {
             // A shared encoder losing a race is the point of this fixture.
         } catch (java.nio.charset.CharacterCodingException e) {
