@@ -288,6 +288,12 @@ exactly one detector:
   the agent supplies, and it tolerates a `null` value. Events are forwarded through the
   explicit-thread-id overload `recordFieldAccess(String, Object, boolean, long)` so the access
   is attributed to the originating **worker** thread, not to the drain thread that replays it.
+  That overload names no owning object, which is the honest thing here: weaving captures a
+  qualified field name, not the instance the field belongs to. Agent-fed findings therefore
+  carry no lock model. The guard-aware path - `recordFieldAccessOn(owner, field, value, isWrite)`,
+  which probes the owner's monitor and stays silent on code guarded by it - is available only to
+  a manual call site that has the object in hand. Closing it for the agent means capturing the
+  objectref at the field instruction, which is a weaver change rather than a detector one.
 - **`VisibilityMonitor` — not routed.** Its analysis is value-equality based, so an access
   stream with no values carries no signal for it; worse, it rejects `null` values. Should a
   future agent version capture values, a value-aware overload can be added without breaking

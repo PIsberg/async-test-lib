@@ -22,6 +22,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   untrue. Detector report wording changed accordingly - a build parsing the old
   "observes sharing, not locks" phrase should match on "own monitor count as guarded" instead.
 
+### Added
+
+- **`AtomicityValidator.recordFieldAccessOn(owner, field, value, isWrite)`**, which records a
+  field access together with the object that owns the field. The existing overloads see a field
+  name and nothing else, which is why the eval pinned this detector as firing on the
+  synchronized twin of the bug it looks for: with no object in hand there is nothing to ask
+  about a lock. A field whose every access held the owner's own monitor now produces no finding,
+  and the report only mentions locks when an owner was actually supplied. The older overloads
+  behave exactly as before, which includes the agent-fed path: weaving captures a qualified
+  field name but no objectref, so agent findings still carry no lock model — see
+  [AGENT.md](AGENT.md).
+
 ## [1.9.5] - 2026-08-19
 
 > Versioning note: as in 1.9.1 and 1.9.4, this ships as a patch by explicit owner decision.

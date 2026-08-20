@@ -33,7 +33,7 @@ still invisible.
 | Detector | Buggy variant | Synchronized twin | Verdict |
 |---|---|---|---|
 | RaceConditionDetector | fires | silent when guarded by the shared object's own monitor; **fires** with an external lock | guard-on-self recognized; other locks invisible |
-| AtomicityValidator | fires | **fires** | FP on correct code: the recording API carries only (field, value, isWrite) with no object reference, so there is nothing to probe a lock on; agent-fed, so the FP surface is the largest |
+| AtomicityValidator | fires | silent when recorded with `recordFieldAccessOn` and guarded by the owner's own monitor; **fires** with an external lock, and **fires** through the overloads that name no owner | guard-on-self recognized on the owner-aware path only; the agent-fed path has no object reference to probe, so its FP surface is unchanged |
 | SharedMessageDigestDetector | fires | silent with `synchronized(digest)`; **fires** with an external lock | guard-on-self recognized; other locks invisible |
 | SharedStatefulCryptoDetector | fires | silent with `synchronized(mac)` | guard-on-self recognized; the external-lock direction is not yet pinned for this one |
 | SharedSecureRandomDetector | n/a (sharing is the documented-safe idiom) | fires at MEDIUM | contention note by design, no longer a HIGH "corruption" claim |
@@ -42,13 +42,12 @@ still invisible.
 | DeadlockDetector | fires (real deadlock, zero config; pinned by `DetectionCoverageTest`) | silent | genuine both-direction detector, near-zero FP |
 | FalseSharingDetector | silent by default (experimental gate) | silent | findings uncorrelated with the phenomenon; opt-in via `-Dasync-test.experimental.false-sharing=true` |
 
-Counting the measured variants: 7 of 7 buggy variants fire; 6 of 9 synchronized twins
-stay silent. The three twins that still fire on correct code share one cause: the guard
-is a lock object other than the shared instance itself. The recording paths now probe
-`Thread.holdsLock` on the tracked instance, so the `synchronized (theInstance)` idiom is
-recognized as guarded; a private lock object, a `ReentrantLock`, or any other external
-guard remains invisible, and `AtomicityValidator`'s recording API carries no object
-reference to probe at all.
+Every buggy variant above fires. The twin column is the interesting one, and the twins that
+still fire on correct code share a single cause: the guard is a lock object the detector cannot
+name. The recording paths probe `Thread.holdsLock` on the tracked instance, so the
+`synchronized (theInstance)` idiom is recognized as guarded; a private lock object, a
+`ReentrantLock`, or any other external guard remains invisible. `DetectorAccuracyEvalTest` is the
+authority on which row is which - each outcome above is one assertion in it.
 
 ## What this means for a user
 
@@ -61,9 +60,13 @@ reference to probe at all.
   fires. Code guarded by an external lock object still does, so a finding remains a
   prompt to verify synchronization rather than a verdict; the report wording says which
   locks are observed.
-- Findings from `AtomicityValidator` still mean only "this field was touched by more than
-  one thread", because its recording API carries no object reference to probe a lock on.
-  The rest of the Shared* family no longer has that limit; see the section below.
+- For `AtomicityValidator` the answer now depends on how the access was recorded.
+  `recordFieldAccessOn(owner, field, value, isWrite)` lets it probe the owner's monitor, and a
+  field guarded that way produces no finding. The older overloads, and the agent-fed path that
+  uses them, carry no object reference, so their findings still mean only "more than one thread
+  touched this field and at least one wrote". The report only mentions locks when an owner was
+  actually supplied.
+- The rest of the Shared* family no longer has that limit; see the section below.
 - `failOn = CRITICAL` gates on the trustworthy end of the scale.
   `failOn = HIGH` will fail builds over correct-but-shared code unless those findings
   are baselined; see the baseline mechanism in `ConcurrencyRunner`.
