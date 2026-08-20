@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.6] - 2026-08-20
+
+> **Versioning note.** As in 1.9.1, 1.9.4 and 1.9.5, this ships as a patch by explicit owner
+> decision, and this one stretches that convention further than its predecessors did. Those were
+> additive: new API, nothing that changed for code already written. This release also **changes
+> what existing detectors report**. Findings that used to fire on correctly guarded code no
+> longer do, which is the entire point of the change, but it means a build gating on
+> `failOn = HIGH` can go from red to green without anybody editing the code under test, and a
+> baseline of recorded findings can go stale. Strictly, new API plus changed behaviour is a
+> MINOR. Read the upgrade note below before taking this one on a pinned build.
+
+### Upgrading
+
+Detectors that watch a shared instance now recognise a lock and stay silent when one consistently
+covers every access. You will see **fewer findings** than on 1.9.5 for the same code, and the
+drop is larger than it looks: on 1.9.5 exactly two detectors (`SharedMessageDigestDetector` and
+`SharedStatefulCryptoDetector`) recognised any lock at all.
+
+Newly silent:
+
+- `synchronized (theInstance)` — recognised by 17 of the 19 `Shared*` detectors now, against 2 on
+  1.9.5, and by `RACE_CONDITIONS` and `ATOMICITY_VIOLATIONS`.
+- Any lock declared with the new `AsyncTestContext.holdingLock(lock)`, which covers a
+  `ReentrantLock` or a private lock object. Nothing recognised these before.
+- A `synchronized` block in code woven by the agent with `fields=true`, which needs no
+  declaration at all.
+
+Still firing, and rightly: inconsistent locking. Two threads holding *different* locks have
+excluded nothing from each other, and that is reported exactly as an unguarded race is.
+
+`SHARED_RANDOM` and `SHARED_SECURE_RANDOM` are deliberately unchanged: `Random` and
+`SecureRandom` are thread-safe, so their finding is about contention rather than corruption, and
+holding a lock does not make it untrue.
+
+If you keep a baseline of accepted findings, expect entries to disappear from it. Nothing new
+starts firing, so a green build cannot turn red on this alone.
+
 ### Fixed
 
 - **The `Shared*` family no longer reports correctly synchronized code.** 17 of the 19 detectors
