@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import se.deversity.asynctest.AsyncTestContext;
 
 import javax.crypto.Mac;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -23,6 +24,8 @@ import java.util.SplittableRandom;
 import java.util.TimeZone;
 import java.util.TreeSet;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -198,6 +201,98 @@ class SharedTypeAccuracyEvalTest {
                         + "about contention, add it to CONTENTION_NOTE_BY_DESIGN with the reason. "
                         + "Update docs/analysis/detector-accuracy-eval.md either way, so the "
                         + "published table cannot drift from the code.");
+    }
+
+    @Test
+    @DisplayName("the external-lock twin: a declared ReentrantLock is recognised too")
+    void declaredExternalLockIsRecognisedAsGuarding() {
+        List<String> stillFires = new ArrayList<>();
+        List<String> contentionNoteLost = new ArrayList<>();
+
+        cases().forEach((name, factory) -> {
+            Probe probe = factory.get();
+            ReentrantLock shared = new ReentrantLock();
+            onTwoThreads(() -> {
+                // The lock is a plain external object, not the tracked instance, so
+                // Thread.holdsLock on the instance says nothing about it. Declaring it is what
+                // puts it in the thread's lockset and therefore in the instance's intersection.
+                try (var held = AsyncTestContext.holdingLock(shared)) {
+                    shared.lock();
+                    try {
+                        probe.access().accept(false);
+                    } finally {
+                        shared.unlock();
+                    }
+                }
+            });
+            boolean fired = probe.hasIssues().getAsBoolean();
+
+            if (GUARD_ON_SELF_AWARE.contains(name)) {
+                if (fired) {
+                    stillFires.add(name);
+                }
+            } else if (CONTENTION_NOTE_BY_DESIGN.contains(name) && !fired) {
+                contentionNoteLost.add(name);
+            }
+        });
+
+        assertTrue(stillFires.isEmpty(),
+                "Both threads held one ReentrantLock across every access, and declared it, so "
+                        + "the Eraser intersection for the instance is that lock and nothing "
+                        + "should be reported. These detectors reported anyway:\n  "
+                        + String.join("\n  ", stillFires)
+                        + "\n\nThis is the direction that used to be impossible: before the "
+                        + "lockset, a detector could only ask Thread.holdsLock about the "
+                        + "instance itself, so every external guard looked like no guard. If one "
+                        + "detector is in this list its record path is probably not calling "
+                        + "noteAccess, or is calling it after the caller left the region.");
+
+        assertTrue(contentionNoteLost.isEmpty(),
+                "These report contention on a thread-safe type, so an external lock does not "
+                        + "make the finding wrong - it serializes the callers, which is the "
+                        + "contention being reported:\n  "
+                        + String.join("\n  ", contentionNoteLost));
+    }
+
+    @Test
+    @DisplayName("two threads taking different locks is still a race, and still reported")
+    void inconsistentLockingIsNotMistakenForGuarding() {
+        List<String> wronglySilent = new ArrayList<>();
+
+        cases().forEach((name, factory) -> {
+            if (!GUARD_ON_SELF_AWARE.contains(name)) {
+                return;
+            }
+            Probe probe = factory.get();
+            ReentrantLock first = new ReentrantLock();
+            ReentrantLock second = new ReentrantLock();
+            AtomicBoolean useFirst = new AtomicBoolean(true);
+            onTwoThreads(() -> {
+                ReentrantLock mine = useFirst.getAndSet(false) ? first : second;
+                try (var held = AsyncTestContext.holdingLock(mine)) {
+                    mine.lock();
+                    try {
+                        probe.access().accept(false);
+                    } finally {
+                        mine.unlock();
+                    }
+                }
+            });
+
+            if (!probe.hasIssues().getAsBoolean()) {
+                wronglySilent.add(name);
+            }
+        });
+
+        assertTrue(wronglySilent.isEmpty(),
+                "Each thread held a lock, but not the same one, so nothing serialises the two "
+                        + "accesses and the sharing is exactly as broken as with no lock at all. "
+                        + "These detectors went silent:\n  "
+                        + String.join("\n  ", wronglySilent)
+                        + "\n\nThat is the failure mode a per-thread 'was any lock held' flag "
+                        + "would have, and the reason the model is an intersection: the question "
+                        + "is not whether each thread held something, it is whether they held "
+                        + "the same something.");
     }
 
     // ---- harness ----

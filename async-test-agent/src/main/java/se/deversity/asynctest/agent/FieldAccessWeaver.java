@@ -134,6 +134,36 @@ final class FieldAccessWeaver {
             super(Opcodes.ASM9, delegate);
         }
 
+        /**
+         * Declares the monitor a {@code synchronized} block is about to take or release.
+         *
+         * <p>Without this the agent-fed detectors have no lock model at all: weaving captures
+         * which field was touched and on which thread, and {@code synchronized} emits no callback
+         * of its own, so a field guarded by a monitor in production code recorded identically to
+         * a racing one. The objectref is already on the stack at both instructions, which is why
+         * this needs no field-owner capture: {@code DUP} it, hand it to the registry, and let the
+         * per-thread lockset answer for every access inside the block.
+         *
+         * <p>Stack-neutral and branch-free, like the field weaving below: {@code DUP} pushes one
+         * slot and the {@code void} call consumes it, so the monitor instruction that follows
+         * still sees exactly its own objectref, every stack map frame stays valid, and only
+         * {@code maxStack} grows. The call is emitted <em>before</em> the instruction in both
+         * cases, so a lock reads as held just before it truly is and released just before it
+         * truly is; the declaring thread cannot record an access inside either window, because it
+         * is the thread executing these instructions. The compiler's exception-path
+         * {@code MONITOREXIT} is woven the same way, so an exception leaving a synchronized block
+         * still releases.
+         */
+        @Override
+        public void visitInsn(int opcode) {
+            if (opcode == Opcodes.MONITORENTER || opcode == Opcodes.MONITOREXIT) {
+                String hook = opcode == Opcodes.MONITORENTER ? "monitorEntered" : "monitorExited";
+                super.visitInsn(Opcodes.DUP);
+                super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, hook,
+                        "(Ljava/lang/Object;)V", false);
+            }
+            super.visitInsn(opcode);
+        }
         @Override
         public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
             if (shouldWeave(owner)) {

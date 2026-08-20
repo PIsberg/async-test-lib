@@ -193,6 +193,27 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      */
     @Override
     public void onEvent(long threadId, @Nullable String qualifiedName, boolean isWrite) {
+        onEvent(threadId, qualifiedName, isWrite, 0L);
+    }
+
+    /**
+     * Routes one drained access, carrying the locks the worker held when it happened.
+     *
+     * <p>The lock information cannot be recovered here: this runs on the drain thread, which
+     * holds none of what the worker held. It is captured at publish time on the worker and rides
+     * through the ring buffer as a fingerprint, which is what that allocation-free producer path
+     * can carry. A field always accessed under the same locks is not reported; one accessed under
+     * differing locks, or none, is.
+     *
+     * @param threadId        worker thread the access came from
+     * @param qualifiedName   the {@code declaringClass.methodName} accessor identifier
+     * @param isWrite         {@code true} for a setter (write), {@code false} for a getter (read)
+     * @param lockFingerprint identifies the locks held at the access, 0 for none
+     * @since 1.9.6
+     */
+    @Override
+    public void onEvent(long threadId, @Nullable String qualifiedName, boolean isWrite,
+                        long lockFingerprint) {
         if (!active) {
             return;
         }
@@ -200,7 +221,8 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
             return;
         }
         if (qualifiedName == null) return;
-        atomicityValidator.recordFieldAccess(fieldIdentifier(qualifiedName), null, isWrite, threadId);
+        atomicityValidator.recordFieldAccessUnderLocks(fieldIdentifier(qualifiedName), null,
+                isWrite, threadId, lockFingerprint);
     }
 
     /**

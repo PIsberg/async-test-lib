@@ -1,5 +1,6 @@
 package se.deversity.asynctest.telemetry;
 
+import se.deversity.asynctest.diagnostics.HeldLocks;
 import org.jspecify.annotations.Nullable;
 
 import java.util.concurrent.ExecutionException;
@@ -89,7 +90,12 @@ public final class TelemetryRegistry {
         if (STOPPED.get()) {
             return;
         }
-        BUFFER.publish(threadId, qualifiedName, isWrite);
+        // The lockset lives on this thread and this thread only, so the question has to be asked
+        // here: by the time the drain thread replays the event it holds nothing the producer held.
+        // Reading it is a walk over a small per-thread array, allocation-free and lock-free, which
+        // is what the producer path requires - a heavier capture here would change the scheduling
+        // this whole buffer exists to leave alone.
+        BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint());
     }
 
     /**
@@ -110,6 +116,42 @@ public final class TelemetryRegistry {
     public static void recordAccess(long threadId, String className, String methodName) {
         recordAccess(threadId, className + "#" + methodName,
                 methodName.startsWith("set") || methodName.startsWith("put"));
+    }
+
+    /**
+     * Records that the calling thread is entering a {@code synchronized} block on {@code monitor}.
+     *
+     * <p>Called from woven bytecode immediately before every {@code MONITORENTER}, which is the
+     * only way a plain {@code synchronized} block can become visible to the detectors: the JVM
+     * emits no callback for it, and a field guarded by one otherwise records identically to a
+     * field being raced. What this feeds is the per-thread lockset the lock-aware detectors
+     * intersect, so an access inside the block counts as guarded by this monitor.
+     *
+     * <p>Deliberately does <em>not</em> check {@link #stop()}: the acquire and release calls have
+     * to stay balanced across a stop, or a monitor entered before the stop would never be
+     * released and would read as held for the rest of the thread's life. The work is a push onto
+     * a small per-thread array, with no allocation in the steady state and no lock, so leaving it
+     * running costs less than the bookkeeping needed to make stopping safe.
+     *
+     * @param monitor the object whose monitor is being entered
+     * @since 1.9.6
+     */
+    public static void monitorEntered(Object monitor) {
+        HeldLocks.acquired(monitor);
+    }
+
+    /**
+     * Records that the calling thread is leaving a {@code synchronized} block on {@code monitor}.
+     *
+     * <p>Woven before every {@code MONITOREXIT}, including the one the compiler emits on the
+     * exception path out of a {@code synchronized} block, so an exception unwinding through the
+     * block releases the lock here too.
+     *
+     * @param monitor the object whose monitor is being exited
+     * @since 1.9.6
+     */
+    public static void monitorExited(Object monitor) {
+        HeldLocks.released(monitor);
     }
 
     /**

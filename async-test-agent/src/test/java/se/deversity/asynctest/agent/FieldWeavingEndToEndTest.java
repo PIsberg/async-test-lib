@@ -1,6 +1,7 @@
 package se.deversity.asynctest.agent;
 
 import com.example.agentfixture.DirectFieldMutationBean;
+import com.example.agentfixture.GuardedFieldMutationBean;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -17,6 +18,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -125,5 +127,87 @@ class FieldWeavingEndToEndTest {
                         + "The inserted sequence must push and consume exactly the operands it "
                         + "uses, leaving the stack as it found it. A wrong value here means the "
                         + "weaver corrupted the operand stack.");
+    }
+
+    /**
+     * The reason monitor weaving exists: an agent-fed finding used to carry no lock model at all.
+     *
+     * <p>Both fields here are mutated the same way, from two threads, with {@code fields=true}
+     * making both visible. The only difference is that one mutation happens inside
+     * {@code synchronized (lock)}. Before the {@code MONITORENTER}/{@code MONITOREXIT} weaving
+     * the agent could not tell them apart - a {@code count++} is a {@code GETFIELD} and a
+     * {@code PUTFIELD} either way - so the guarded field was reported exactly as loudly as the
+     * racing one, and a user who fixed their race by adding the lock saw the finding stay.
+     *
+     * <p>The unguarded field is the control, and it is asserted first for the same reason the
+     * other negative test in this suite does it: without a finding somewhere in this run, the
+     * absence of one for the guarded field would also be satisfied by an agent that never
+     * attached or a bridge that never forwarded.
+     */
+    @Test
+    @DisplayName("a field mutated under a synchronized block is not reported; its twin is")
+    void monitorWeavingDistinguishesTheGuardedFieldFromTheRacingOne() throws Exception {
+        AtomicityValidator validator = new AtomicityValidator();
+        Set<Long> workerThreadIds = ConcurrentHashMap.newKeySet();
+        GuardedFieldMutationBean bean = new GuardedFieldMutationBean();
+
+        CountDownLatch done = new CountDownLatch(2);
+        try (TelemetryBridge bridge =
+                     TelemetryBridge.activateWithFilter(validator, workerThreadIds::contains)) {
+            for (int t = 0; t < 2; t++) {
+                new Thread(() -> {
+                    workerThreadIds.add(Thread.currentThread().threadId());
+                    for (int i = 0; i < 200; i++) {
+                        bean.incrementGuarded();
+                        bean.incrementUnguarded();
+                    }
+                    done.countDown();
+                }, "mutator-" + t).start();
+            }
+            assertTrue(done.await(10, TimeUnit.SECONDS), "worker threads did not finish");
+            TelemetryRegistry.flush();
+        }
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+
+        assertTrue(report.unsafeFieldAccesses.stream()
+                        .anyMatch(f -> f.contains("GuardedFieldMutationBean.unguarded")),
+                "The unguarded field was not reported, so this run proves nothing about the "
+                        + "guarded one: the pipeline itself was not working. Findings were: "
+                        + report.unsafeFieldAccesses);
+
+        assertFalse(report.unsafeFieldAccesses.stream()
+                        .anyMatch(f -> f.contains("GuardedFieldMutationBean.guarded")),
+                "Every access to this field happened inside synchronized (lock), on both "
+                        + "threads, so one monitor covered all of them and there is no race to "
+                        + "report - the control above shows the pipeline was live while that "
+                        + "held. A finding here means the lock never reached the detector: check "
+                        + "that FieldAccessWeaver still weaves MONITORENTER and MONITOREXIT, "
+                        + "that TelemetryRegistry.monitorEntered feeds HeldLocks, and that "
+                        + "recordAccess still captures the fingerprint on the worker thread "
+                        + "rather than leaving it to the drain thread, which holds nothing. "
+                        + "Findings were: " + report.unsafeFieldAccesses);
+    }
+
+    /**
+     * Monitor weaving is an insertion into the instruction stream too, and the same corruption
+     * risk applies: {@code DUP} then a call that consumes it must leave the objectref the
+     * {@code MONITORENTER} itself needs. Getting that wrong throws
+     * {@code IllegalMonitorStateException} at the matching exit, or deadlocks on the wrong
+     * object, so a single-threaded run that completes and adds up is the cheap proof.
+     */
+    @Test
+    @DisplayName("monitor weaving preserves program semantics: the guarded counter still adds up")
+    void monitorWeavingDoesNotChangeTheComputedValue() {
+        GuardedFieldMutationBean bean = new GuardedFieldMutationBean();
+        for (int i = 0; i < 1000; i++) {
+            bean.incrementGuarded();
+        }
+        assertEquals(1000, bean.observedGuarded(),
+                "incrementGuarded() was woven with a DUP and a call before both MONITORENTER and "
+                        + "MONITOREXIT. The DUP must feed the call and leave the original "
+                        + "objectref for the monitor instruction: a wrong value, or an "
+                        + "IllegalMonitorStateException reaching this assertion, means the "
+                        + "operand stack was corrupted.");
     }
 }

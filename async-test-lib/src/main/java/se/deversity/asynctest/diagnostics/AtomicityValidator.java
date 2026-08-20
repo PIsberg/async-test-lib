@@ -32,28 +32,93 @@ public class AtomicityValidator {
         final boolean write;
         /** Invocation round this access belongs to — see {@link #markInvocationStart()}. */
         final long epoch;
-        /**
-         * Whether the accessing thread held the owning object's monitor. Always {@code false}
-         * for the overloads that take no owner, which is what the agent-fed path uses: those
-         * carry no object reference, so "not known to be guarded" is the only honest answer and
-         * it preserves the behaviour those callers already had.
-         */
-        final boolean guarded;
         /** Whether an owner was supplied at all, which decides what the report may claim. */
         final boolean ownerKnown;
 
-        FieldAccessRecord(long threadId, boolean write, long epoch,
-                          boolean guarded, boolean ownerKnown) {
+        FieldAccessRecord(long threadId, boolean write, long epoch, boolean ownerKnown) {
             this.threadId = threadId;
             this.write = write;
             this.epoch = epoch;
-            this.guarded = guarded;
             this.ownerKnown = ownerKnown;
         }
     }
 
+    /**
+     * What is known about the locks covering one field.
+     *
+     * <p>Two models, because the two recording paths can answer different questions. A
+     * cooperative caller names the owning object, so the full Eraser intersection is available.
+     * The agent-fed path cannot: its producer runs on the worker thread and its analysis on a
+     * drain thread, with an allocation-free ring buffer in between, so all that fits through is a
+     * fingerprint of the locks held. A field is reported unless every model that saw it says it
+     * was consistently covered.
+     */
+    private static final class FieldGuard {
+
+        /** No fingerprinted access yet. Distinct from 0, which means "held nothing". */
+        private static final long UNSET = Long.MIN_VALUE;
+
+        /** Eraser intersection, for accesses that named their owner. */
+        private final Locks objectLocks = new Locks();
+
+        /** The one fingerprint every agent-fed access shared, or 0 once they disagreed. */
+        private final java.util.concurrent.atomic.AtomicLong fingerprint =
+                new java.util.concurrent.atomic.AtomicLong(UNSET);
+
+        /** Set by a recording path that carries no lock information at all. */
+        private volatile boolean sawUnmodelledAccess;
+
+        /** Concrete only so it can carry the shared lockset implementation. */
+        private static final class Locks extends SelfGuard.TrackedInstance {
+        }
+
+        void noteOwner(@Nullable Object owner) {
+            objectLocks.noteAccess(owner);
+        }
+
+        void noteFingerprint(long observed) {
+            if (observed == 0L) {
+                fingerprint.set(0L);
+                return;
+            }
+            long current = fingerprint.get();
+            while (current != 0L && current != observed) {
+                // Either seed it, or collapse it: a second, different set of locks means no
+                // single set covered every access, which is what this model can detect.
+                long next = current == UNSET ? observed : 0L;
+                if (fingerprint.compareAndSet(current, next)) {
+                    return;
+                }
+                current = fingerprint.get();
+            }
+        }
+
+        void noteUnmodelled() {
+            sawUnmodelledAccess = true;
+        }
+
+        boolean sawUnguardedAccess() {
+            return sawUnmodelledAccess
+                    || objectLocks.sawUnguardedAccess()
+                    || fingerprint.get() == 0L;
+        }
+    }
+
+    /** Sentinel for "this caller carried no lock information at all". */
+    private static final long UNMODELLED = Long.MIN_VALUE;
+
     private final Map<String, CompoundOperation> activeOperations = new ConcurrentHashMap<>();
     private final Map<String, List<FieldAccessRecord>> fieldHistory = new ConcurrentHashMap<>();
+    /**
+     * Per-field lockset: the locks held at every recorded access to that field.
+     *
+     * <p>Same Eraser model the {@code Shared*} family uses, keyed by field name rather than by
+     * instance because that is the granularity this detector analyses at. A field whose
+     * intersection is still non-empty has a lock protecting it consistently and is not reported.
+     * An access recorded through an overload that names no owner collapses the set immediately,
+     * so the agent-fed path keeps exactly the behaviour it had.
+     */
+    private final Map<String, FieldGuard> fieldLocks = new ConcurrentHashMap<>();
     /**
      * Both writers — {@code recordFieldAccess} and {@code detectCheckThenActViolation} — are
      * called straight from the user's concurrently running test body, so this collection is
@@ -149,7 +214,7 @@ public class AtomicityValidator {
      */
     public void recordFieldAccess(String fieldName, @Nullable Object value, boolean isWrite,
                                   long threadId) {
-        record(fieldName, value, isWrite, threadId, false, false);
+        record(fieldName, value, isWrite, threadId, null, false, UNMODELLED);
     }
 
     /**
@@ -177,19 +242,61 @@ public class AtomicityValidator {
     public void recordFieldAccessOn(@Nullable Object owner, String fieldName,
                                     @Nullable Object value, boolean isWrite) {
         record(fieldName, value, isWrite, Thread.currentThread().threadId(),
-                SelfGuard.heldOn(owner), owner != null);
+                owner, owner != null, UNMODELLED);
+    }
+
+    /**
+     * Records a field access observed elsewhere, carrying the locks the accessing thread held.
+     *
+     * <p>For replaying callers: the access happened on one thread and is being recorded on
+     * another, so neither the owning object nor {@link Thread#holdsLock(Object)} can answer the
+     * lock question here. The agent's telemetry path is the case this exists for. What it takes
+     * instead is a fingerprint captured on the accessing thread at access time
+     * ({@code HeldLocks.lockFingerprint()}), which the ring buffer between the two threads can
+     * carry without allocating.
+     *
+     * <p>The model this supports is weaker than the owner-aware one: it can tell whether every
+     * access to a field held the <em>same</em> set of locks, not which lock is common to them.
+     * A field where one thread holds {@code {A, B}} and another holds {@code {A}} is genuinely
+     * protected by {@code A}, and this reports it anyway. Erring toward a finding is the right
+     * direction for a detector, and the report says which model produced it.
+     *
+     * @param fieldName       the qualified field identifier; {@code null}/blank is ignored
+     * @param value           the observed value, or {@code null} when unavailable
+     * @param isWrite         {@code true} for a write access, {@code false} for a read
+     * @param threadId        the id of the thread the access is attributed to
+     * @param lockFingerprint the locks that thread held at the access, 0 for none
+     * @since 1.9.6
+     */
+    public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
+                                            boolean isWrite, long threadId,
+                                            long lockFingerprint) {
+        record(fieldName, value, isWrite, threadId, null, false, lockFingerprint);
     }
 
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
-                        boolean guarded, boolean ownerKnown) {
+                        @Nullable Object owner, boolean ownerKnown, long lockFingerprint) {
         if (!enabled || fieldName == null || fieldName.isBlank()) {
             return;
+        }
+
+        // Record what is known about locks before the bookkeeping below: the question is only
+        // meaningful while the caller is still inside whatever region it is being asked about.
+        FieldGuard guard = fieldLocks.computeIfAbsent(fieldName, ignored -> new FieldGuard());
+        if (ownerKnown) {
+            guard.noteOwner(owner);
+        } else if (lockFingerprint != UNMODELLED) {
+            guard.noteFingerprint(lockFingerprint);
+        } else {
+            // No owner and no fingerprint: the caller has told us nothing about locks, which is
+            // what the original overloads do and what they have always effectively meant.
+            guard.noteUnmodelled();
         }
 
         List<FieldAccessRecord> history = fieldHistory.computeIfAbsent(fieldName, ignored -> new ArrayList<>());
         synchronized (history) {
             history.add(new FieldAccessRecord(threadId, isWrite, invocationEpoch.get(),
-                    guarded, ownerKnown));
+                    ownerKnown));
         }
 
         for (CompoundOperation operation : activeOperations.values()) {
@@ -261,18 +368,20 @@ public class AtomicityValidator {
                 Set<Long> threads = new HashSet<>();
                 boolean hasRead = false;
                 boolean hasWrite = false;
-                // A round is only reportable if some access in it was not known to be guarded.
-                // Accesses recorded without an owner count as unguarded, so every caller that
-                // predates recordFieldAccessOn keeps the behaviour it had.
-                boolean sawUnguarded = false;
                 boolean anyOwnerKnown = false;
                 for (FieldAccessRecord access : roundAccesses) {
                     threads.add(access.threadId);
                     hasRead |= !access.write;
                     hasWrite |= access.write;
-                    sawUnguarded |= !access.guarded;
                     anyOwnerKnown |= access.ownerKnown;
                 }
+                // The lockset is per field rather than per round, and deliberately so: a field
+                // guarded consistently in one round and raced in another has an empty
+                // intersection overall, and the round that raced is a real finding. Accesses
+                // recorded without an owner collapse it, so every caller that predates
+                // recordFieldAccessOn keeps the behaviour it had.
+                FieldGuard locks = fieldLocks.get(entry.getKey());
+                boolean sawUnguarded = locks == null || locks.sawUnguardedAccess();
                 // Only claim to have looked at locks when an owner was actually supplied.
                 String note = anyOwnerKnown ? SelfGuard.REPORT_NOTE : "";
 
@@ -316,6 +425,7 @@ public class AtomicityValidator {
     public void reset() {
         activeOperations.clear();
         fieldHistory.clear();
+        fieldLocks.clear();
         atomicityViolations.clear();
         invocationEpoch.set(0);
     }

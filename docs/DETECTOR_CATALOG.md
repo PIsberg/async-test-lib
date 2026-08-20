@@ -19,11 +19,13 @@ This is measured rather than asserted. Two evals run each covered detector again
 *and* against a synchronized twin that records the identical event stream while holding a real
 lock, and the results are published in
 [analysis/detector-accuracy-eval.md](analysis/detector-accuracy-eval.md).
-`DetectorAccuracyEvalTest` covers 8 detectors, one per mechanism class, with the per-detector
+`DetectorAccuracyEvalTest` covers 9 detectors, one per mechanism class, with the per-detector
 outcome in that document. `SharedTypeAccuracyEvalTest` covers the whole `SHARED_*` family, the 19 that watch a
-non-thread-safe JDK type: 19 of 19 fire on unguarded sharing, and 17 of 19 stay silent on the
-`synchronized (instance)` twin. The twins that still fire share one cause - the guard is a lock
-object other than the shared instance itself, and nothing in those recording APIs names it.
+non-thread-safe JDK type: 19 of 19 fire on unguarded sharing, and 17 of 19 stay silent both on the
+`synchronized (instance)` twin and on a twin guarded by a declared `ReentrantLock`. The same 17
+still fire when the two threads take *different* locks, which is a race no matter how many locks
+are held. The twins that do fire on correct code share one cause - the guard is a lock nothing
+told the library about.
 
 **Verdict tier, confirmed by that eval or by construction:** `DEADLOCKS`, `LOCK_ORDER`,
 `ATOMIC_NON_ATOMIC_UPDATE`, `VAR_HANDLE_NON_ATOMIC_UPDATE`, `STATIC_INIT_DEADLOCK`,
@@ -32,20 +34,29 @@ object other than the shared instance itself, and nothing in those recording API
 `SHARED_MEMORY_SEGMENT_RACE` where the overlapping accesses disagree about which monitor guards
 them.
 
-**Prompt tier:** `RACE_CONDITIONS`, `ATOMICITY_VIOLATIONS`, `SHARED_RANDOM` and
-`SHARED_SECURE_RANDOM`. Their reports say so in their own wording - they ask you to verify
-external synchronization rather than declaring a defect. The two random detectors are a
-different case from the rest: `Random` and `SecureRandom` are thread-safe, so their finding is
-about contention on one instance rather than corruption of it, and it stands whether or not you
-hold a lock.
+**Prompt tier:** `SHARED_RANDOM` and `SHARED_SECURE_RANDOM`. `Random` and `SecureRandom` are
+thread-safe, so their finding is about contention on one instance rather than corruption of it,
+and it stands whether or not you hold a lock - which is why no amount of lock awareness moves
+them up a tier.
 
-**Split tier, the rest of the `SHARED_*` family:** verdict for the `synchronized (instance)`
-idiom, prompt for every other guard. 17 of the 19 in that family
-probe `Thread.holdsLock` on the tracked instance at record time and report only when some access
-held no lock on it, so code guarded by the instance's own monitor is silent. A `ReentrantLock` or
-a private lock object is still invisible to them and still produces a finding.
+`RACE_CONDITIONS` and `ATOMICITY_VIOLATIONS` moved to the split tier below: both now carry a lock
+model, `ATOMICITY_VIOLATIONS` a coarser one on its agent-fed path (it compares whole lock sets
+rather than intersecting them, so a field one thread holds `{A, B}` for and another holds `{A}`
+for is still reported).
 
-**Not yet classified:** most of the remaining detectors. The two evals cover 24 distinct detectors
+**Split tier — `RACE_CONDITIONS`, `ATOMICITY_VIOLATIONS`, and the rest of the `SHARED_*`
+family:** verdict for a lock the library can see, prompt for one it cannot. 17 of the 19 in that
+family keep an Eraser lockset per instance - the locks held at every recorded access,
+intersected - and report only once that intersection is empty. A
+lock becomes visible three ways: it is the tracked instance's own monitor, so
+`synchronized (theInstance)` needs nothing; the test declares it with
+`AsyncTestContext.holdingLock(theLock)`, which covers a `ReentrantLock` or a private lock object;
+or the agent is attached with `fields=true`, which weaves `MONITORENTER`/`MONITOREXIT` and picks
+up `synchronized` blocks in woven code. An undeclared lock in unwoven code stays invisible and
+still produces a finding, and so does inconsistent locking - two threads holding different locks
+have excluded nothing, which is a race however many locks were involved.
+
+**Not yet classified:** most of the remaining detectors. The two evals cover 25 distinct detectors
 of 142 between them (three appear in both), and extending them is mechanical rather than hard.
 Where an entry below carries no explicit **Trust tier** line, treat it as unclassified and read its
 report wording, which is written to be honest about what it observed. Claiming a tier for all 142

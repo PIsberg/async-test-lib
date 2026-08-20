@@ -71,7 +71,7 @@ public class SharedMessageDigestDetectorTest {
         assertTrue(d.analyze().hasIssues());
         assertTrue(d.analyze().violations.get(0).contains("sha256"));
         assertTrue(d.analyze().violations.get(0).contains("2"));
-        assertTrue(d.analyze().violations.get(0).contains("other locks are not observed"));
+        assertTrue(d.analyze().violations.get(0).contains("never declared is not observed"));
     }
 
     @Test

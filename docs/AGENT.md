@@ -285,15 +285,26 @@ exactly one detector:
 
 - **`AtomicityValidator` — routed.** Its cross-thread mixed read/write analysis
   (`analyzeAtomicity()`) depends only on the thread id and the read/write flag, both of which
-  the agent supplies, and it tolerates a `null` value. Events are forwarded through the
-  explicit-thread-id overload `recordFieldAccess(String, Object, boolean, long)` so the access
-  is attributed to the originating **worker** thread, not to the drain thread that replays it.
-  That overload names no owning object, which is the honest thing here: weaving captures a
-  qualified field name, not the instance the field belongs to. Agent-fed findings therefore
-  carry no lock model. The guard-aware path - `recordFieldAccessOn(owner, field, value, isWrite)`,
-  which probes the owner's monitor and stays silent on code guarded by it - is available only to
-  a manual call site that has the object in hand. Closing it for the agent means capturing the
-  objectref at the field instruction, which is a weaver change rather than a detector one.
+  the agent supplies, and it tolerates a `null` value. Events are forwarded through
+  `recordFieldAccessUnderLocks(String, Object, boolean, long, long)` so the access is attributed
+  to the originating **worker** thread, not to the drain thread that replays it, and so it
+  carries the locks that worker held.
+
+  Those locks come from the weaver, not from the field: with `fields=true` it instruments
+  `MONITORENTER` and `MONITOREXIT` as well, so a `synchronized (lock) { count++ }` tells the
+  library which monitor was held and a field's accesses can be compared by what covered them. The
+  comparison travels as a fingerprint captured on the worker at access time, because the ring
+  buffer between the two threads is deliberately allocation-free and the drain thread holds none
+  of what the worker held. A field always accessed under the same locks is not reported; one
+  accessed under differing locks, or none, is.
+
+  Two boundaries, both pinned by `FieldWeavingEndToEndTest`:
+
+  - **`fields=true` only.** Monitor weaving lives in `FieldAccessWeaver`, which the accessor-only
+    default never installs, so under the default attach the agent still has no lock model.
+  - **Explicit `synchronized` blocks only.** A `synchronized` *method* carries the
+    `ACC_SYNCHRONIZED` flag and contains no `MONITORENTER` instruction at all, so there is
+    nothing to weave. A field guarded only by synchronized methods is still reported.
 - **`VisibilityMonitor` — not routed.** Its analysis is value-equality based, so an access
   stream with no values carries no signal for it; worse, it rejects `null` values. Should a
   future agent version capture values, a value-aware overload can be added without breaking
