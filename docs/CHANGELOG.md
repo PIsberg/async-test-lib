@@ -24,6 +24,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Lock awareness beyond the instance's own monitor** (#283). Detectors could ask
+  `Thread.holdsLock` about the instance they watch and about nothing else, so `synchronized (x)`
+  was recognised while a `ReentrantLock` or a private lock object looked identical to no lock at
+  all — the single remaining cause of every false positive the accuracy evals pinned. Three
+  things now make a lock visible: it is the tracked instance's own monitor, as before; the test
+  declares it with **`AsyncTestContext.holdingLock(lock)`**, a try-with-resources guard; or the
+  agent is attached with `fields=true`, which now weaves `MONITORENTER`/`MONITOREXIT` and picks
+  up `synchronized` blocks in woven code with no declaration at all.
+
+  What the detectors compute from it is the Eraser lockset: per instance, the intersection of the
+  locks held at every recorded access, reported only once that intersection is empty. Consistent
+  guarding under any single lock is silent; two threads holding *different* locks still fire,
+  because they have excluded nothing from each other. Measured in `SharedTypeAccuracyEvalTest`:
+  17 of 19 detectors stay silent on a declared-`ReentrantLock` twin, and the same 17 keep firing
+  when the two threads take different locks.
+
+  Still invisible, and stated as such in the docs: an undeclared lock in unwoven code, a
+  `synchronized` *method* (it carries `ACC_SYNCHRONIZED` and has no monitor instruction to
+  weave), and ordering established by anything other than mutual exclusion.
+- **`AtomicityValidator.recordFieldAccessUnderLocks(...)`** and a lock model for the agent-fed
+  path (#284). Weaving captures a qualified field name and no objectref, so the owner-aware
+  overload cannot serve it. The locks arrive from monitor weaving instead, captured on the worker
+  thread at access time as a fingerprint and carried through the telemetry ring buffer, which is
+  allocation-free by design and cannot pass a set. The model is coarser than the cooperative
+  one — it compares whole lock sets rather than intersecting them, so a field one thread holds
+  `{A, B}` for and another holds `{A}` for is still reported — and that is documented rather than
+  smoothed over.
 - **`AtomicityValidator.recordFieldAccessOn(owner, field, value, isWrite)`**, which records a
   field access together with the object that owns the field. The existing overloads see a field
   name and nothing else, which is why the eval pinned this detector as firing on the
@@ -33,6 +60,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   behave exactly as before, which includes the agent-fed path: weaving captures a qualified
   field name but no objectref, so agent findings still carry no lock model — see
   [AGENT.md](AGENT.md).
+- **`FalseSharingDetector` is now covered by `DetectorAccuracyEvalTest`** (#285). The eval
+  document claimed its table could not drift without a red build while that test never
+  constructed this detector, so its experimental gate could have been flipped in either
+  direction with nothing going red. Both directions are now asserted: silent by default, and
+  reporting once `-Dasync-test.experimental.false-sharing=true` is set.
 - **`JapicmpBaselineFreshnessTest`**, which fails the build when the japicmp `<oldVersion>` is not
   the newest release in this changelog below the version being built. Re-pinning the baseline is a
   manual step in [RELEASE.md](RELEASE.md), it was missed at four consecutive releases, and missing

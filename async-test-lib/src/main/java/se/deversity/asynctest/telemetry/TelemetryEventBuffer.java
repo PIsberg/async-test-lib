@@ -50,6 +50,27 @@ public final class TelemetryEventBuffer {
          * @param isWrite     true if it was a write access, false otherwise
          */
         void onEvent(long threadId, @Nullable String targetField, boolean isWrite);
+
+        /**
+         * Invoked for a drained event, with the locks the producer held when it recorded.
+         *
+         * <p>A {@code default} rather than a second abstract method on purpose: this is a
+         * {@link FunctionalInterface} that callers implement with a lambda, and adding a second
+         * abstract method would break every one of them, source and binary alike. Overriding this
+         * is how an implementation opts in to the lock information; not overriding it keeps
+         * exactly the old behaviour.
+         *
+         * @param threadId        {@code Thread.currentThread().threadId()} of the producer
+         * @param targetField     field or method identifier
+         * @param isWrite         true if it was a write access
+         * @param lockFingerprint identifies the set of locks the producer held at the access, 0
+         *                        for none; see {@code HeldLocks.lockFingerprint()}
+         * @since 1.9.6
+         */
+        default void onEvent(long threadId, @Nullable String targetField, boolean isWrite,
+                             long lockFingerprint) {
+            onEvent(threadId, targetField, isWrite);
+        }
     }
 
     /**
@@ -61,6 +82,7 @@ public final class TelemetryEventBuffer {
         long threadId;
         @Nullable String targetField;
         boolean isWrite;
+        long lockFingerprint;
     }
 
     private static final VarHandle SEQ_VH;
@@ -135,6 +157,19 @@ public final class TelemetryEventBuffer {
      * @param isWrite     {@code true} for a write access, {@code false} for a read
      */
     public void publish(long threadId, String targetField, boolean isWrite) {
+        publish(threadId, targetField, isWrite, 0L);
+    }
+
+    /**
+     * Publishes a field-access event together with the locks the producer holds.
+     *
+     * @param threadId        {@code Thread.currentThread().threadId()}
+     * @param targetField     field or method identifier
+     * @param isWrite         {@code true} for a write access, {@code false} for a read
+     * @param lockFingerprint identifies the locks held at the access, 0 for none
+     * @since 1.9.6
+     */
+    public void publish(long threadId, String targetField, boolean isWrite, long lockFingerprint) {
         long fullSinceNanos = 0L;
         int spins = 0;
         for (;;) {
@@ -171,6 +206,7 @@ public final class TelemetryEventBuffer {
                 event.threadId = threadId;
                 event.targetField = targetField;
                 event.isWrite = isWrite;
+                event.lockFingerprint = lockFingerprint;
                 // Release fence: consumer will not observe the event until this store completes.
                 SEQ_VH.setRelease(event, seq);
                 return;
@@ -210,7 +246,8 @@ public final class TelemetryEventBuffer {
             if (publishedSeq < next) {
                 break; // slot not yet published by any producer
             }
-            callback.onEvent(event.threadId, event.targetField, event.isWrite);
+            callback.onEvent(event.threadId, event.targetField, event.isWrite,
+                    event.lockFingerprint);
             localCursor = next;
             next++;
             count++;

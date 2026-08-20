@@ -13,6 +13,11 @@ _Updated 2026-08-20 (`fix/detector-fp-surface`): that probe moved into one share
 19 to 17 of 19 silent on the correctly guarded twin. The remaining two are contention notes on
 thread-safe types, where firing is the correct answer._
 
+_Updated 2026-08-20 (#285): the `FalseSharingDetector` row was prose. The document claimed the
+table could not drift without a red build, while `DetectorAccuracyEvalTest` never constructed
+that detector, so its experimental gate could have been flipped with nothing going red. Both
+directions of the gate are now asserted, and the claim of enforcement is true for every row._
+
 ## What was measured
 
 For each detector: does it fire on genuinely buggy concurrent code (true positive), and
@@ -21,7 +26,7 @@ The twin records the identical event stream through the detector's public record
 while the underlying code holds a real lock, uses CAS, or orders its locks consistently.
 Every recording happens from two live threads released by a CyclicBarrier.
 
-This is a recording-level eval of 8 detectors plus one gated detector, not a corpus study
+This is a recording-level eval of 9 detectors, one of them behind an experimental gate, not a corpus study
 of all 142. It measures the analyzers' models, which is the property that decides whether
 a finding on your code means your code is wrong. Since the guard-on-self change the twins
 distinguish where the lock lives: guarding with the shared instance's own monitor
@@ -32,21 +37,24 @@ still invisible.
 
 | Detector | Buggy variant | Synchronized twin | Verdict |
 |---|---|---|---|
-| RaceConditionDetector | fires | silent when guarded by the shared object's own monitor; **fires** with an external lock | guard-on-self recognized; other locks invisible |
-| AtomicityValidator | fires | silent when recorded with `recordFieldAccessOn` and guarded by the owner's own monitor; **fires** with an external lock, and **fires** through the overloads that name no owner | guard-on-self recognized on the owner-aware path only; the agent-fed path has no object reference to probe, so its FP surface is unchanged |
-| SharedMessageDigestDetector | fires | silent with `synchronized(digest)`; **fires** with an external lock | guard-on-self recognized; other locks invisible |
-| SharedStatefulCryptoDetector | fires | silent with `synchronized(mac)` | guard-on-self recognized; the external-lock direction is not yet pinned for this one |
+| RaceConditionDetector | fires | silent under the object's own monitor, and under one declared lock; **fires** under an undeclared lock, and when the two threads declare different locks | lock fingerprint per access; undeclared locks invisible |
+| AtomicityValidator | fires | silent when `recordFieldAccessOn` names the owner and one lock covers every access, and for agent-fed accesses under one woven monitor; **fires** through the overloads that carry no lock information | owner-aware path intersects locksets; the agent-fed path compares whole sets by fingerprint, which is coarser |
+| SharedMessageDigestDetector | fires | silent with `synchronized(digest)` and with a declared external lock; **fires** with an undeclared one | Eraser lockset via `SelfGuard` |
+| SharedStatefulCryptoDetector | fires | silent with `synchronized(mac)` and with a declared external lock; **fires** with an undeclared one | Eraser lockset via `SelfGuard` |
 | SharedSecureRandomDetector | n/a (sharing is the documented-safe idiom) | fires at MEDIUM | contention note by design, no longer a HIGH "corruption" claim |
 | LockOrderValidator | fires (inversion, no deadlock needed) | silent | genuine both-direction detector |
 | AtomicNonAtomicUpdateDetector | fires (get-then-set) | silent (CAS) | genuine both-direction detector |
 | DeadlockDetector | fires (real deadlock, zero config; pinned by `DetectionCoverageTest`) | silent | genuine both-direction detector, near-zero FP |
-| FalseSharingDetector | silent by default (experimental gate) | silent | findings uncorrelated with the phenomenon; opt-in via `-Dasync-test.experimental.false-sharing=true` |
+| FalseSharingDetector | silent by default (experimental gate), and reports the pair once the property is set | silent | findings uncorrelated with the phenomenon; opt-in via `-Dasync-test.experimental.false-sharing=true`, and both directions of that gate are now pinned |
 
 Every buggy variant above fires. The twin column is the interesting one, and the twins that
-still fire on correct code share a single cause: the guard is a lock object the detector cannot
-name. The recording paths probe `Thread.holdsLock` on the tracked instance, so the
-`synchronized (theInstance)` idiom is recognized as guarded; a private lock object, a
-`ReentrantLock`, or any other external guard remains invisible. `DetectorAccuracyEvalTest` is the
+still fire on correct code now share a single cause: the guard is a lock nothing told the library
+about. Two things make a lock knowable - the tracked instance's own monitor, which
+`Thread.holdsLock` answers for without help, and a lock declared through
+`AsyncTestContext.holdingLock(...)`. Under the agent with `fields=true` a third arrives on its
+own, because the weaver instruments `MONITORENTER` and `MONITOREXIT`. Anything else is
+unobservable: a `synchronized` block on a third object emits no callback, and a `synchronized`
+method does not even carry a monitor instruction to weave. `DetectorAccuracyEvalTest` is the
 authority on which row is which - each outcome above is one assertion in it.
 
 ## What this means for a user
@@ -55,17 +63,19 @@ authority on which row is which - each outcome above is one assertion in it.
   are trustworthy in both directions: a finding means something is wrong, silence on
   these patterns means the specific bug shape is absent.
 - For RaceConditionDetector, SharedMessageDigestDetector and SharedStatefulCryptoDetector
-  a finding now means "touched by more than one thread, and at least one access held no
-  lock on the instance itself". Code guarded by the instance's own monitor no longer
-  fires. Code guarded by an external lock object still does, so a finding remains a
-  prompt to verify synchronization rather than a verdict; the report wording says which
-  locks are observed.
-- For `AtomicityValidator` the answer now depends on how the access was recorded.
-  `recordFieldAccessOn(owner, field, value, isWrite)` lets it probe the owner's monitor, and a
-  field guarded that way produces no finding. The older overloads, and the agent-fed path that
-  uses them, carry no object reference, so their findings still mean only "more than one thread
-  touched this field and at least one wrote". The report only mentions locks when an owner was
-  actually supplied.
+  a finding now means "touched by more than one thread, and no single lock covered every
+  access". Code guarded by the instance's own monitor does not fire, and neither does code
+  guarded by any other lock the test declares with `AsyncTestContext.holdingLock(...)`. A lock
+  that was never declared is invisible and the finding stands, so it remains a prompt to verify
+  synchronization rather than a verdict; the report wording says exactly that.
+- For `AtomicityValidator` the answer depends on how the access was recorded.
+  `recordFieldAccessOn(owner, field, value, isWrite)` gives it the full lockset, and a field
+  covered by one lock across every access produces no finding. The agent-fed path gets a weaker
+  model: it compares whole lock sets by fingerprint rather than intersecting them, so a field one
+  thread holds `{A, B}` for and another holds `{A}` for is reported even though `A` protects it.
+  The original overloads, which carry no lock information at all, keep their old meaning: "more
+  than one thread touched this field and at least one wrote". The report only mentions locks when
+  the caller supplied some.
 - The rest of the Shared* family no longer has that limit; see the section below.
 - `failOn = CRITICAL` gates on the trustworthy end of the scale.
   `failOn = HIGH` will fail builds over correct-but-shared code unless those findings
@@ -81,12 +91,20 @@ catalogue and the one that carried most of the false-positive surface above.
 |---|---|---|
 | Unguarded sharing (true positive) | 19 of 19 fire | 19 of 19 fire |
 | `synchronized(instance)` twin (true negative) | 2 of 19 stay silent | 17 of 19 stay silent |
+| Declared `ReentrantLock` twin (true negative) | not measured | 17 of 19 stay silent |
+| Two threads, two different declared locks | not measured | 17 of 17 fire, correctly |
 
-The 17 all reach that answer through one shared probe rather than 17 copies of it.
-`SelfGuard.TrackedInstance` holds the flag and the `Thread.holdsLock` call; a detector's state
-class extends it, its record path calls `noteAccess(instance)`, and its `analyze()` reports only
-when `sawUnguardedAccess()`. The finding's wording comes from the same place
-(`SelfGuard.REPORT_NOTE`), so the report cannot claim awareness the code does not have.
+The 17 all reach those answers through one shared model rather than 17 copies of it.
+`SelfGuard.TrackedInstance` keeps the Eraser candidate set - the locks held at every access to
+that instance, intersected - and a detector's state class extends it, its record path calls
+`noteAccess(instance)`, and its `analyze()` reports only when `sawUnguardedAccess()`, which is
+now "the intersection is empty". The instance's own monitor is one member of that set rather
+than a special case. The finding's wording comes from the same place (`SelfGuard.REPORT_NOTE`),
+so the report cannot claim awareness the code does not have.
+
+The last row is why the model is an intersection and not a per-thread "was anything held" flag.
+Two threads that each take their own lock have serialised nothing, and a flag would call that
+guarded; the intersection empties and the finding stands.
 
 The two that keep firing are `SharedRandomDetector` and `SharedSecureRandomDetector`, and for
 them that is the right answer rather than an unfinished one. `Random` and `SecureRandom` are both
@@ -122,15 +140,18 @@ verdict must not change depending on whether two threads raced to register the i
 - Recording-level: it measures the analyzers, not end-to-end reachability under a bare
   `@AsyncTest` (that is `DetectionCoverageTest`'s job) and not the agent's weaving
   (that is `AgentFeedsDetectorEndToEndTest`'s job).
-- 24 distinct detectors of 142: the 8 above plus the 19 of the Shared* family, three of which
+- 25 distinct detectors of 142: the 9 above plus the 19 of the Shared* family, three of which
   appear in both. The first set was chosen to cover each mechanism class - access-pattern
   analyzers, per-thread state machines, graph analysis, and JVM introspection - and the second
   covers one whole cluster. Extending the pair harness further is mechanical; the helper
   (`onTwoThreads`) and the pinning convention are in place.
-- The synchronization model is the tracked object's own monitor only, probed with
-  `Thread.holdsLock` on the accessing thread at record time. External lock objects,
-  `java.util.concurrent` locks, and locks observed by other threads are all invisible;
-  general lock awareness remains the roadmap's happens-before gap.
+- The synchronization model is a lockset, not a happens-before relation. It covers the tracked
+  object's own monitor, any lock declared with `AsyncTestContext.holdingLock(...)`, and, under
+  the agent with `fields=true`, monitors taken by `synchronized` blocks in woven code. It does
+  not cover an undeclared lock in unwoven code, a `synchronized` method (which carries the
+  `ACC_SYNCHRONIZED` flag and no monitor instruction to weave), or ordering established by
+  anything other than mutual exclusion - a `CountDownLatch`, a `volatile` handoff, or a queue all
+  still read as unguarded. Ordering-based reasoning remains the roadmap's happens-before gap.
 - No schedule-dependence measurement: these detectors are structural given their
   recordings, so run-to-run variance was not the question. The timing-sensitive
   detectors (livelock, starvation, high-contention) have a documented false-positive

@@ -123,6 +123,7 @@ import se.deversity.asynctest.diagnostics.SharedChecksumDetector;
 import se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector;
 import se.deversity.asynctest.diagnostics.SharedIteratorDetector;
 import se.deversity.asynctest.diagnostics.HighContentionAtomicDetector;
+import se.deversity.asynctest.diagnostics.HeldLocks;
 import se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector;
 import se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector;
 import se.deversity.asynctest.diagnostics.FinalFieldMutationDetector;
@@ -694,7 +695,50 @@ public final class AsyncTestContext {
      */
     @AIIdempotent(reason = "ThreadLocal.remove() is documented as a no-op when the thread has no value set; the install/uninstall symmetry rule (CLAUDE.md) tolerates extra uninstalls. ConcurrencyRunner relies on this in its outermost-finally cleanup.")
     public static void uninstall() {
+        // Both ThreadLocals go together. A declared lock that outlived its invocation would be
+        // intersected into the next round's lockset and could silence a real finding there, so
+        // the symmetry rule covers this one exactly as it covers CURRENT.
+        HeldLocks.clear();
         CURRENT.remove();
+    }
+
+    /**
+     * Declares that the calling thread holds {@code lock} until the returned guard is closed, so
+     * that detectors can tell a guarded access from a racing one.
+     *
+     * <p>Detectors can ask {@link Thread#holdsLock(Object)} about the instance they are watching
+     * and about nothing else, because that is the only lock they can name. So
+     * {@code synchronized (theInstance)} is recognised for free, while a {@code ReentrantLock} or
+     * a private lock object looks exactly like no lock at all and the shared instance gets
+     * reported even though the code is correct. Declaring the lock here is what tells them
+     * otherwise:
+     *
+     * <pre>{@code
+     * try (var held = AsyncTestContext.holdingLock(cacheLock)) {
+     *     cacheLock.lock();
+     *     try {
+     *         AsyncTestContext.sharedCollectionMonitor().recordWrite(cache, "cache", "put");
+     *         cache.put(k, v);
+     *     } finally {
+     *         cacheLock.unlock();
+     *     }
+     * }
+     * }</pre>
+     *
+     * <p>What the detectors then compute is the Eraser lockset: per instance, the intersection of
+     * the locks held at every recorded access. Consistent guarding leaves that set non-empty and
+     * produces no finding; two threads using different locks empties it and is reported, which is
+     * correct, because inconsistent locking is a race.
+     *
+     * <p>Safe outside a run: the declaration is per-thread bookkeeping and does not require an
+     * installed context.
+     *
+     * @param lock the lock object being held; {@code null} yields a no-op guard
+     * @return a guard to close when the lock is released, intended for try-with-resources
+     * @since 1.9.6
+     */
+    public static HeldLocks.Guard holdingLock(@Nullable Object lock) {
+        return HeldLocks.holding(lock);
     }
 
     /**

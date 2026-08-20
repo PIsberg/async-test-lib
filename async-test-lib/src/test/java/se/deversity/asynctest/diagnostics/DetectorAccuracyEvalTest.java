@@ -2,13 +2,16 @@ package se.deversity.asynctest.diagnostics;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import se.deversity.asynctest.AsyncTestContext;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import javax.crypto.Mac;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -94,12 +97,73 @@ class DetectorAccuracyEvalTest {
         onTwoThreads(increment, increment);
 
         assertTrue(detector.analyze().hasIssues(),
-                "PINNED FALSE POSITIVE: the increments are fully lock-protected and the "
-                        + "code is correct, but the guard is a lock object other than the "
-                        + "shared instance itself, which the holdsLock probe cannot see "
-                        + "(the guard-on-self twin below is the recognized case). If this "
-                        + "went silent, the detector gained general lock awareness - flip "
-                        + "this assertion and update detector-accuracy-eval.md");
+                "PINNED FALSE POSITIVE: the increments are fully lock-protected and the code is "
+                        + "correct, but nothing told the library about this lock. It is neither "
+                        + "the shared instance's own monitor, which holdsLock can answer for, nor "
+                        + "a lock declared through AsyncTestContext.holdingLock, and a plain "
+                        + "synchronized block on a third object emits no callback anyone can "
+                        + "observe. The next test is the same lock, declared, and it is silent. "
+                        + "If this one goes silent too, the library found a way to see undeclared "
+                        + "monitors - flip the assertion and update detector-accuracy-eval.md");
+    }
+
+    @Test
+    @DisplayName("race: the same external lock, declared, is recognised and stays silent")
+    void raceDetectorIsSilentWhenTheExternalLockIsDeclared() throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Counter shared = new Counter();
+        ReentrantLock lock = new ReentrantLock();
+        Runnable increment = () -> {
+            try (var held = AsyncTestContext.holdingLock(lock)) {
+                lock.lock();
+                try {
+                    detector.recordFieldRead(shared, "value");
+                    shared.value++;
+                    detector.recordFieldWrite(shared, "value");
+                } finally {
+                    lock.unlock();
+                }
+            }
+        };
+        onTwoThreads(increment, increment);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "The increments are lock-protected exactly as in the test above; the only "
+                        + "difference is that this lock was declared, so the detector can see "
+                        + "that one lock covered every access. Reporting here would be reporting "
+                        + "the fix. If this fires, the fingerprint is not reaching the record "
+                        + "path - check that recordFieldRead/Write still call "
+                        + "HeldLocks.lockFingerprint(object) at record time rather than later");
+    }
+
+    @Test
+    @DisplayName("race: two threads on different declared locks is still a race")
+    void raceDetectorFiresWhenThreadsDeclareDifferentLocks() throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Counter shared = new Counter();
+        ReentrantLock first = new ReentrantLock();
+        ReentrantLock second = new ReentrantLock();
+        AtomicBoolean useFirst = new AtomicBoolean(true);
+        Runnable increment = () -> {
+            ReentrantLock mine = useFirst.getAndSet(false) ? first : second;
+            try (var held = AsyncTestContext.holdingLock(mine)) {
+                mine.lock();
+                try {
+                    detector.recordFieldRead(shared, "value");
+                    shared.value++;
+                    detector.recordFieldWrite(shared, "value");
+                } finally {
+                    mine.unlock();
+                }
+            }
+        };
+        onTwoThreads(increment, increment);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "Each thread held a lock and they were different locks, so neither excluded the "
+                        + "other and the lost update is exactly as available as with no locks. A "
+                        + "model that only asked 'was something held' would call this guarded, "
+                        + "which is why the comparison is between the sets and not their emptiness");
     }
 
     @Test
@@ -166,6 +230,68 @@ class DetectorAccuracyEvalTest {
                         + "case (see the two tests below); an external lock stays invisible. If "
                         + "this went silent, flip the assertion and update "
                         + "detector-accuracy-eval.md");
+    }
+
+    @Test
+    @DisplayName("atomicity: a declared external lock is recognised (the pinned FP above, closed)")
+    void atomicityValidatorIsSilentWhenOneDeclaredLockGuardsEveryAccess()
+            throws InterruptedException {
+        AtomicityValidator validator = new AtomicityValidator();
+        Counter shared = new Counter();
+        ReentrantLock lock = new ReentrantLock();
+        Runnable readModifyWrite = () -> {
+            try (var held = AsyncTestContext.holdingLock(lock)) {
+                lock.lock();
+                try {
+                    validator.recordFieldAccessOn(shared, "balance", shared.value, false);
+                    shared.value++;
+                    validator.recordFieldAccessOn(shared, "balance", shared.value, true);
+                } finally {
+                    lock.unlock();
+                }
+            }
+        };
+        onTwoThreads(readModifyWrite, readModifyWrite);
+
+        assertFalse(validator.analyze().hasIssues(),
+                "Same compound operation as the test above, and the same kind of external lock. "
+                        + "The difference is that this one is declared, so it enters the field's "
+                        + "lockset and the intersection across both threads is that lock. A "
+                        + "read-modify-write serialised by one lock is atomic, and reporting it "
+                        + "would be reporting the fix");
+    }
+
+    @Test
+    @DisplayName("atomicity: two threads on different declared locks is still a race")
+    void atomicityValidatorStillFiresWhenTheTwoThreadsTakeDifferentLocks()
+            throws InterruptedException {
+        AtomicityValidator validator = new AtomicityValidator();
+        Counter shared = new Counter();
+        ReentrantLock first = new ReentrantLock();
+        ReentrantLock second = new ReentrantLock();
+        AtomicBoolean useFirst = new AtomicBoolean(true);
+        Runnable readModifyWrite = () -> {
+            // An explicit toggle, not the thread name: default names are "Thread-N" with N
+            // counting across the whole JVM, so keying on them makes the test order-dependent.
+            ReentrantLock mine = useFirst.getAndSet(false) ? first : second;
+            try (var held = AsyncTestContext.holdingLock(mine)) {
+                mine.lock();
+                try {
+                    validator.recordFieldAccessOn(shared, "balance", shared.value, false);
+                    shared.value++;
+                    validator.recordFieldAccessOn(shared, "balance", shared.value, true);
+                } finally {
+                    mine.unlock();
+                }
+            }
+        };
+        onTwoThreads(readModifyWrite, readModifyWrite);
+
+        assertTrue(validator.analyze().hasIssues(),
+                "Both threads held a lock, but not the same one, so neither excludes the other "
+                        + "and the read-modify-write is exactly as broken as with no lock. The "
+                        + "intersection of the two locksets is empty, which is the whole reason "
+                        + "the model is an intersection rather than a per-access boolean");
     }
 
     @Test
@@ -430,6 +556,66 @@ class DetectorAccuracyEvalTest {
                         + "DetectionCoverageTest.deadlockIsReportedWithoutAnyInstrumentation");
     }
 
+    // ---- FalseSharingDetector ----
+
+    @Test
+    @DisplayName("false sharing: silent by default, on the buggy shape and its twin alike")
+    void falseSharingStaysSilentWhileTheExperimentalGateIsOff() throws InterruptedException {
+        assertFalse(Boolean.getBoolean(FalseSharingDetector.EXPERIMENTAL_PROPERTY),
+                "This pins the default, so it has to run with the property unset. Something "
+                        + "earlier in this JVM set it and did not restore it.");
+
+        FalseSharingDetector detector = new FalseSharingDetector();
+        AdjacentFields shared = new AdjacentFields();
+        onTwoThreads(
+                () -> detector.recordFieldAccess(shared, "first", long.class),
+                () -> {
+                    detector.recordFieldAccess(shared, "first", long.class);
+                    detector.recordFieldAccess(shared, "second", long.class);
+                });
+
+        assertFalse(detector.analyze().hasIssues(),
+                "Two threads touched two fields eight bytes apart, which is the shape this "
+                        + "detector looks for, and it must still report nothing: the offsets it "
+                        + "computes are declaration-order arithmetic that real JVM layout "
+                        + "(reordering, compressed oops, @Contended padding) does not follow, and "
+                        + "keying is per class rather than per object. Findings are therefore "
+                        + "opt-in. If this goes red, the experimental gate has been weakened and "
+                        + "every consumer now gets pairs the detector cannot substantiate");
+    }
+
+    @Test
+    @DisplayName("false sharing: the opt-in property is what produces findings, and nothing else")
+    void falseSharingReportsOnlyWhenExplicitlyOptedIn() throws InterruptedException {
+        FalseSharingDetector detector = new FalseSharingDetector();
+        AdjacentFields shared = new AdjacentFields();
+        onTwoThreads(
+                () -> detector.recordFieldAccess(shared, "first", long.class),
+                () -> {
+                    detector.recordFieldAccess(shared, "first", long.class);
+                    detector.recordFieldAccess(shared, "second", long.class);
+                });
+
+        // Recording is unaffected by the property, so opting in and re-analyzing the same
+        // instance is enough - this needs no second run, which is what makes the pair testable
+        // in one JVM at all.
+        String previous = System.getProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        try {
+            System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+            assertTrue(detector.analyze().hasIssues(),
+                    "With the property set, the same recorded accesses must produce the pair. A "
+                            + "gate that suppresses findings permanently would make the detector "
+                            + "dead code rather than experimental, and the catalog's claim that "
+                            + "it is opt-in would be false in the other direction");
+        } finally {
+            if (previous == null) {
+                System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+            } else {
+                System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, previous);
+            }
+        }
+    }
+
     private static MessageDigest sha256() {
         try {
             return MessageDigest.getInstance("SHA-256");
@@ -440,5 +626,14 @@ class DetectorAccuracyEvalTest {
 
     static class Counter {
         int value;
+    }
+
+    /**
+     * Two adjacent long fields: 8 bytes apart by the detector's declaration-order arithmetic,
+     * so well inside the 64-byte cache line it looks for.
+     */
+    static class AdjacentFields {
+        long first;
+        long second;
     }
 }

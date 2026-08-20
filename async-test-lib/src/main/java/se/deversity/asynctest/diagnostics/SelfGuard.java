@@ -3,8 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Guard-on-self synchronization awareness, shared by the detectors that watch a
- * non-thread-safe instance.
+ * Lock awareness, shared by the detectors that watch a non-thread-safe instance.
  *
  * <p>Most of the {@code Shared*} family reduces its input to "how many distinct threads
  * touched this instance". A correctly guarded twin - the same code with every access inside
@@ -12,18 +11,21 @@ import org.jspecify.annotations.Nullable;
  * reported the fix as loudly as the bug. {@code SharedTypeAccuracyEvalTest} measured that
  * directly: 19 of 19 fired on unguarded sharing, and 17 of 19 also fired on the guarded twin.
  *
- * <p>The probe here is what closes that gap. {@link Thread#holdsLock(Object)} is an intrinsic
- * over the calling thread's own lock records: it takes no monitor, so asking the question
- * cannot serialize the threads being observed, and it is cheap enough for a record-time hot
- * path. An instance whose every recorded access held its own monitor produces no finding.
+ * <p>What closes that gap is the Eraser lockset, in {@link TrackedInstance}: per instance, the
+ * intersection of the locks held at every recorded access. Non-empty means some lock protects
+ * the instance consistently; empty means none does. The instance's own monitor is one member of
+ * that set rather than a special case, so {@code synchronized (theInstance)} needs no
+ * declaration, and {@link Thread#holdsLock(Object)} stays the cheap intrinsic that answers for
+ * it - it takes no monitor, so asking cannot serialize the threads being observed.
  *
  * <h4>What it does not see</h4>
  *
- * <p>Only the instance's own monitor. A {@code ReentrantLock}, a private lock object, or any
- * other external guard is invisible and still produces a finding, because nothing in the
- * recording path names the lock the caller chose. Detector wording says so, so a finding stays
- * a prompt to verify synchronization rather than a verdict. Closing that direction needs a
- * per-thread held-lock set rather than a single-object probe.
+ * <p>A lock the test never declared. {@code synchronized} on any object other than the tracked
+ * instance emits no callback the library can observe, and the agent weaves field access rather
+ * than monitor instructions, so a {@code ReentrantLock} or a private lock object enters the set
+ * only through {@link HeldLocks}. An undeclared lock is invisible and the finding stands, which
+ * is the safe direction to be wrong in; the detector wording says so, so such a finding stays a
+ * prompt to verify synchronization rather than a verdict.
  *
  * <p>The probe reflects the thread that calls the record method. Detectors whose recording API
  * takes an explicit {@code Thread} parameter for attribution still probe the caller, which is
@@ -32,12 +34,14 @@ import org.jspecify.annotations.Nullable;
 final class SelfGuard {
 
     /**
-     * The wording every guard-aware detector appends to a finding, so the report says exactly
+     * The wording every lock-aware detector appends to a finding, so the report says exactly
      * which synchronization the detector can and cannot see.
      */
     static final String REPORT_NOTE =
-            " (accesses under the instance's own monitor count as guarded; other locks are not"
-            + " observed - verify external synchronization or use a per-thread instance)";
+            " (accesses under the instance's own monitor count as guarded, as do accesses under a"
+            + " lock declared with AsyncTestContext.holdingLock(...); a lock that was never"
+            + " declared is not observed - verify external synchronization or use a per-thread"
+            + " instance)";
 
     private SelfGuard() {
     }
@@ -52,39 +56,88 @@ final class SelfGuard {
     }
 
     /**
-     * Per-instance guard bookkeeping, extended by a detector's own state class.
+     * Per-instance lock bookkeeping, extended by a detector's own state class.
      *
-     * <p>The flag is one-way on purpose. A single access that held no lock on the instance is
-     * enough to make the sharing unsafe, and no later guarded access can undo it, so the state
-     * only ever moves from guarded to unguarded and never needs a lock of its own.
+     * <p>Holds the Eraser candidate set: the locks that were held at <em>every</em> recorded
+     * access to this instance, as an intersection that only ever shrinks. While it is non-empty
+     * some lock consistently protects the instance and there is nothing to report. Once it is
+     * empty no lock does, and the accesses were racing.
+     *
+     * <p>The instance's own monitor is one member of that set rather than a special case, so
+     * {@code synchronized (theInstance)} keeps working with no declaration at all, and a
+     * {@code ReentrantLock} or a private lock object works once the test declares it through
+     * {@link HeldLocks}.
      */
     abstract static class TrackedInstance {
 
-        private volatile boolean sawUnguardedAccess;
+        /**
+         * Locks common to every access so far. {@code null} until the first access; empty once
+         * the intersection has collapsed, which is the reportable state.
+         *
+         * <p>An {@link java.util.concurrent.atomic.AtomicReference} rather than a monitor because
+         * this runs on the record path of detectors whose whole job is observing contention:
+         * taking a lock here could serialize the very threads being watched and hide the race.
+         * The update is a CAS loop over a value that only shrinks, so it terminates.
+         */
+        private final java.util.concurrent.atomic.AtomicReference<int[]> candidateLocks =
+                new java.util.concurrent.atomic.AtomicReference<>();
 
         /**
-         * Records one access to {@code instance}, probing the guard on the calling thread.
+         * Records one access to {@code instance}, intersecting the candidate set with the locks
+         * the calling thread holds right now.
          *
          * <p>Call this from the record path, on the accessing thread, before any analysis
-         * bookkeeping - the probe is only meaningful while the caller is still inside the
-         * region it is being asked about.
+         * bookkeeping - the probe is only meaningful while the caller is still inside the region
+         * it is being asked about.
          *
          * @param instance the shared instance being accessed
          */
         final void noteAccess(@Nullable Object instance) {
-            if (!heldOn(instance)) {
-                sawUnguardedAccess = true;
+            if (instance == null) {
+                candidateLocks.set(HeldLocks.NONE);
+                return;
+            }
+            int[] current = candidateLocks.get();
+            // Fast path: already collapsed, and it can never grow again, so nothing to compute.
+            if (current != null && current.length == 0) {
+                return;
+            }
+            while (true) {
+                // The compare-and-set is unconditional even when nothing dropped out: the write
+                // is then the same reference back, which costs one uncontended CAS and saves
+                // having to signal "unchanged" out of band.
+                int[] next = HeldLocks.intersect(current, instance);
+                if (candidateLocks.compareAndSet(current, next)) {
+                    return;
+                }
+                current = candidateLocks.get();
+                if (current != null && current.length == 0) {
+                    return;
+                }
             }
         }
 
         /**
-         * {@return whether at least one recorded access did not hold the instance's own monitor}
+         * {@return whether no single lock was held across every recorded access}
          *
          * <p>An instance that has never been accessed reads as guarded, which is correct: with
-         * no access there is no hazard to report.
+         * no access there is no hazard to report. The name is unchanged from when this was a
+         * guard-on-self boolean, because that is still exactly what it answers for callers - the
+         * question just got a better model behind it.
          */
         final boolean sawUnguardedAccess() {
-            return sawUnguardedAccess;
+            int[] current = candidateLocks.get();
+            return current != null && current.length == 0;
+        }
+
+        /**
+         * {@return how many locks were held across every recorded access}
+         *
+         * <p>For reports and tests that want to say which side of the line an instance fell on.
+         */
+        final int commonLockCount() {
+            int[] current = candidateLocks.get();
+            return current == null ? 0 : current.length;
         }
     }
 }

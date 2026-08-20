@@ -1,0 +1,355 @@
+package se.deversity.asynctest.diagnostics;
+
+import java.util.Arrays;
+
+import org.jspecify.annotations.Nullable;
+
+/**
+ * The set of locks the calling thread currently holds, as far as the library can know it.
+ *
+ * <p><strong>Why this exists.</strong> A detector that watches a shared instance can ask
+ * {@link Thread#holdsLock(Object)} about that instance and nothing else, because that is the only
+ * lock it can name. So {@code synchronized (theInstance)} is recognised as correct guarding and
+ * every other guard - a {@code ReentrantLock}, a private lock object, the enclosing service's own
+ * monitor - looks identical to no guard at all. That was the single remaining cause of every
+ * false positive the accuracy evals pinned.
+ *
+ * <p>Declaring a lock here closes that gap. What the detectors then compute is the classic Eraser
+ * lockset: for each tracked instance, the intersection of the locks held at every recorded access.
+ * While that intersection is non-empty some lock consistently protects the instance, and the
+ * sharing is reported only once it becomes empty. Guard-on-self falls out as one member of the
+ * set rather than a special case.
+ *
+ * <h2>Usage</h2>
+ *
+ * <pre>{@code
+ * try (var held = AsyncTestContext.holdingLock(cacheLock)) {
+ *     cacheLock.lock();
+ *     try {
+ *         detector.recordAccess(sharedCache, "cache", Thread.currentThread());
+ *         sharedCache.put(k, v);
+ *     } finally {
+ *         cacheLock.unlock();
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>What it does not do</h2>
+ *
+ * <p>Nothing is discovered automatically. A {@code synchronized} block on an object other than the
+ * tracked instance emits no callback the library can observe, and the agent weaves field access
+ * rather than monitor instructions, so a lock only enters this set when the test declares it. An
+ * undeclared lock is invisible and the finding stands, which is the safe direction: the library
+ * would rather ask you to verify synchronization that exists than stay silent about one that does
+ * not.
+ *
+ * <p>Deliberately not fed from the other detectors' lock-recording APIs
+ * ({@code LockLeakDetector.recordLockAcquired} and friends). Those detectors only exist when
+ * enabled, so routing through them would make one detector's verdict depend on whether an
+ * unrelated detector is switched on - the same code and configuration producing a finding or not
+ * depending on a flag somewhere else is worse than reporting consistently.
+ *
+ * <p>Locks are identified by {@link System#identityHashCode}, as tracked instances are everywhere
+ * else in this package. A collision would make one lock look like another and could only hide a
+ * finding, never invent one.
+ *
+ * @since 1.9.6
+ */
+public final class HeldLocks {
+
+    /** Shared empty result: this thread holds nothing, or the intersection has collapsed. */
+    static final int[] NONE = new int[0];
+
+    /** Depth cap. Beyond this the frame stops growing and the deepest locks go unrecorded. */
+    private static final int MAX_DEPTH = 64;
+
+    /**
+     * Per-thread lock stack. Not an {@code InheritableThreadLocal}: a lock held by the thread that
+     * spawned a worker is not held by the worker, and inheriting it would invent guarding.
+     */
+    private static final ThreadLocal<Frame> FRAMES = ThreadLocal.withInitial(Frame::new);
+
+    private HeldLocks() {
+    }
+
+    /** A declared lock region. Closing it releases exactly the lock it opened. */
+    public interface Guard extends AutoCloseable {
+        /** Ends the region. Never throws, so it is safe in a try-with-resources on any path. */
+        @Override
+        void close();
+    }
+
+    /**
+     * Declares that the calling thread holds {@code lock} until the returned guard is closed.
+     *
+     * @param lock the lock object; {@code null} is ignored and yields a no-op guard
+     * @return a guard to close when the lock is released, intended for try-with-resources
+     */
+    public static Guard holding(@Nullable Object lock) {
+        if (lock == null) {
+            return () -> { };
+        }
+        acquired(lock);
+        return new SingleRelease(lock);
+    }
+
+    /**
+     * Declares that the calling thread has acquired {@code lock}.
+     *
+     * <p>For callers whose acquire and release are too far apart for {@link #holding(Object)}.
+     * Every call must be paired with {@link #released(Object)} on the same thread; an unpaired
+     * acquire leaves the lock in the set for the rest of the invocation and can hide findings,
+     * which is why the scoped form is the one to reach for first.
+     *
+     * @param lock the lock object; {@code null} is ignored
+     */
+    public static void acquired(@Nullable Object lock) {
+        if (lock != null) {
+            FRAMES.get().push(lock);
+        }
+    }
+
+    /**
+     * Declares that the calling thread has released {@code lock}.
+     *
+     * <p>Releases the most recent matching acquisition, so reentrant acquisition works and a
+     * non-LIFO release order does not corrupt the set. A release with no matching acquire is
+     * ignored rather than throwing: this is diagnostic bookkeeping and must never be the reason a
+     * user's test fails.
+     *
+     * @param lock the lock object; {@code null} is ignored
+     */
+    public static void released(@Nullable Object lock) {
+        if (lock != null) {
+            FRAMES.get().pop(lock);
+        }
+    }
+
+    /**
+     * {@return whether the calling thread currently holds {@code lock} by declaration}
+     *
+     * <p>Says nothing about monitors the thread holds without declaring them; use
+     * {@link Thread#holdsLock(Object)} for that.
+     *
+     * @param lock the lock object
+     */
+    public static boolean holds(@Nullable Object lock) {
+        return lock != null && FRAMES.get().indexOf(lock) >= 0;
+    }
+
+    /**
+     * Clears the calling thread's declared locks.
+     *
+     * <p>Called from {@code AsyncTestContext.uninstall()} so the set cannot outlive the invocation
+     * that built it. A leak here would carry one round's locks into the next and silence real
+     * findings, which is the same hazard the ThreadLocal symmetry rule exists for.
+     */
+    public static void clear() {
+        FRAMES.remove();
+    }
+
+    /**
+     * {@return a value identifying the exact set of locks this thread currently holds, or 0 for
+     * none}
+     *
+     * <p>For callers that cannot carry a lockset with them. The agent's telemetry path is the
+     * case that needs it: the producer runs on the worker thread, where the set is known, while
+     * the analysis runs later on a drain thread, where it is not, and the ring buffer between
+     * them is deliberately allocation-free so a set cannot be passed through it.
+     *
+     * <p>Two accesses holding the same locks produce the same value regardless of the order they
+     * took them, which is what lets the drain side ask "was this field always covered by the same
+     * locks" without ever seeing the locks. It is a weaker question than the intersection
+     * {@link #intersect} computes: a thread holding {@code {A, B}} and one holding {@code {A}}
+     * are genuinely both protected by {@code A}, but their values differ and the field is
+     * reported. That direction is the safe one, and the detectors say which model produced a
+     * finding.
+     */
+    public static long lockFingerprint() {
+        return FRAMES.get().fingerprint(0);
+    }
+
+    /**
+     * {@return a value identifying the locks this thread holds, counting {@code self}'s own
+     * monitor when it is held, or 0 for none}
+     *
+     * <p>The variant for detectors that track a specific object and keep per-access state rather
+     * than a running intersection. Folding the instance's own monitor in here is what keeps
+     * {@code synchronized (theInstance)} recognised without any declaration, exactly as it is for
+     * the intersection model.
+     *
+     * @param self the tracked instance, or {@code null} to ask about declared locks only
+     */
+    public static long lockFingerprint(@Nullable Object self) {
+        int selfHash = self != null && Thread.holdsLock(self) ? System.identityHashCode(self) : 0;
+        return FRAMES.get().fingerprint(selfHash);
+    }
+
+    /**
+     * Intersects {@code candidate} with the locks this thread holds right now.
+     *
+     * <p>Returns {@code null} rather than the input when nothing dropped out, so the caller can
+     * skip its compare-and-set entirely on the common path where the guarding is consistent.
+     *
+     * @param candidate the locks common to every previous access, or {@code null} for none yet
+     * @param self      the tracked instance, whose own monitor counts as held when it is
+     * @return the new intersection, which is {@code candidate} itself when nothing dropped out
+     */
+    static int[] intersect(int @Nullable [] candidate, Object self) {
+        Frame frame = FRAMES.get();
+        boolean selfHeld = Thread.holdsLock(self);
+        int selfHash = selfHeld ? System.identityHashCode(self) : 0;
+
+        if (candidate == null) {
+            return frame.snapshot(selfHeld, selfHash);
+        }
+        if (candidate.length == 0) {
+            return candidate;
+        }
+
+        int kept = 0;
+        // Stays null while every candidate lock is still held, which is both the common case and
+        // the allocation-free one: a consistently guarded instance never copies its set again.
+        int[] survivors = null;
+        for (int hash : candidate) {
+            boolean stillHeld = (selfHeld && hash == selfHash) || frame.containsHash(hash);
+            if (stillHeld) {
+                if (survivors != null) {
+                    survivors[kept] = hash;
+                }
+                kept++;
+            } else if (survivors == null) {
+                // First drop: copy what survived so far into a fresh array, leaving the shared
+                // candidate untouched for any thread reading it concurrently.
+                survivors = new int[candidate.length - 1];
+                System.arraycopy(candidate, 0, survivors, 0, kept);
+            }
+        }
+        if (survivors == null) {
+            return candidate;
+        }
+        if (kept == 0) {
+            return NONE;
+        }
+        return kept == survivors.length ? survivors : Arrays.copyOf(survivors, kept);
+    }
+
+    /** One thread's lock stack. Confined to its own thread, so it needs no synchronization. */
+    private static final class Frame {
+        private Object[] locks = new Object[8];
+        private int[] hashes = new int[8];
+        private int depth;
+
+        void push(Object lock) {
+            if (depth == MAX_DEPTH) {
+                return;
+            }
+            if (depth == locks.length) {
+                locks = Arrays.copyOf(locks, locks.length * 2);
+                hashes = Arrays.copyOf(hashes, hashes.length * 2);
+            }
+            locks[depth] = lock;
+            hashes[depth] = System.identityHashCode(lock);
+            depth++;
+        }
+
+        void pop(Object lock) {
+            int at = indexOf(lock);
+            if (at < 0) {
+                return;
+            }
+            System.arraycopy(locks, at + 1, locks, at, depth - at - 1);
+            System.arraycopy(hashes, at + 1, hashes, at, depth - at - 1);
+            depth--;
+            locks[depth] = null;
+        }
+
+        /**
+         * {@return the topmost index holding {@code lock}, or -1}
+         *
+         * <p>Identity, not {@code equals}: a lock is the object whose monitor is held, and two
+         * objects that compare equal are two different monitors. Matching by {@code equals} here
+         * would let one lock stand in for another and report consistent guarding that never
+         * happened, so the Error Prone suggestion is wrong for this comparison.
+         */
+        @SuppressWarnings({"ReferenceEquality", "PMD.CompareObjectsWithEquals"})
+        int indexOf(Object lock) {
+            for (int i = depth - 1; i >= 0; i--) {
+                if (locks[i] == lock) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        /**
+         * {@return a commutative digest of the held hashes, or 0 when nothing is held}
+         *
+         * <p>Commutative on purpose: two threads that took the same two locks in opposite orders
+         * are equally protected, and an order-sensitive digest would call that a race. The count
+         * is folded in so that a set and a strict subset cannot collide by summing alike.
+         */
+        long fingerprint(int extraHash) {
+            boolean addExtra = extraHash != 0 && !containsHash(extraHash);
+            int size = depth + (addExtra ? 1 : 0);
+            if (size == 0) {
+                return 0L;
+            }
+            long sum = 0L;
+            long xor = 0L;
+            for (int i = 0; i < depth; i++) {
+                sum += hashes[i];
+                xor ^= hashes[i];
+            }
+            if (addExtra) {
+                sum += extraHash;
+                xor ^= extraHash;
+            }
+            long value = (sum * 0x9E3779B97F4A7C15L) ^ (xor << 1) ^ ((long) size << 48);
+            // 0 is reserved for "nothing held", so a set that digests to it borrows another bit.
+            return value == 0L ? 1L : value;
+        }
+
+        boolean containsHash(int hash) {
+            for (int i = 0; i < depth; i++) {
+                if (hashes[i] == hash) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /** {@return a fresh array of the held hashes, plus {@code selfHash} when held} */
+        int[] snapshot(boolean selfHeld, int selfHash) {
+            boolean selfAlreadyIn = selfHeld && containsHash(selfHash);
+            int size = depth + (selfHeld && !selfAlreadyIn ? 1 : 0);
+            if (size == 0) {
+                return NONE;
+            }
+            int[] out = new int[size];
+            System.arraycopy(hashes, 0, out, 0, depth);
+            if (size > depth) {
+                out[depth] = selfHash;
+            }
+            return out;
+        }
+    }
+
+    /** Guard for exactly one acquisition, so closing twice cannot pop somebody else's lock. */
+    private static final class SingleRelease implements Guard {
+        private final Object lock;
+        private boolean open = true;
+
+        SingleRelease(Object lock) {
+            this.lock = lock;
+        }
+
+        @Override
+        public void close() {
+            if (open) {
+                open = false;
+                released(lock);
+            }
+        }
+    }
+}

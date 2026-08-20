@@ -30,15 +30,29 @@ public class RaceConditionDetector {
         final boolean write;
         /** Invocation round this access belongs to — see {@link #markInvocationStart()}. */
         final long epoch;
-        /** Whether the accessing thread held the tracked object's own monitor at record time. */
-        final boolean guarded;
+        /**
+         * Identifies the locks the accessing thread held at record time, 0 for none.
+         *
+         * <p>Was a boolean answering only "was the tracked object's own monitor held", which made
+         * every other guard - a {@code ReentrantLock}, a private lock object - indistinguishable
+         * from no guard. The fingerprint covers the instance's own monitor and any lock declared
+         * through {@link HeldLocks}, so two accesses can be compared by what actually covered
+         * them: the same non-zero value means one set of locks serialised both, and there is no
+         * race between them to report.
+         */
+        final long lockFingerprint;
 
-        FieldAccess(long threadId, boolean write, long epoch, boolean guarded) {
+        FieldAccess(long threadId, boolean write, long epoch, long lockFingerprint) {
             this.threadId = threadId;
             this.timestamp = System.nanoTime();
             this.write = write;
             this.epoch = epoch;
-            this.guarded = guarded;
+            this.lockFingerprint = lockFingerprint;
+        }
+
+        /** {@return whether {@code other} was covered by exactly the same locks as this} */
+        boolean sharesLocksWith(FieldAccess other) {
+            return lockFingerprint != 0L && lockFingerprint == other.lockFingerprint;
         }
     }
 
@@ -152,9 +166,9 @@ public class RaceConditionDetector {
         // Guard-on-self probe, evaluated on the accessing thread at access time. holdsLock is
         // an intrinsic over the current thread's own lock records: no monitor is taken, so the
         // probe cannot serialize the racing threads (the same reason the queue below is lock-free).
-        boolean guarded = Thread.holdsLock(object);
+        long lockFingerprint = HeldLocks.lockFingerprint(object);
         state.fieldAccesses.computeIfAbsent(fieldName, ignored -> new ConcurrentLinkedQueue<>())
-            .add(new FieldAccess(Thread.currentThread().threadId(), write, invocationEpoch.get(), guarded));
+            .add(new FieldAccess(Thread.currentThread().threadId(), write, invocationEpoch.get(), lockFingerprint));
     }
     /**
      * Analyses what has been recorded about race conditions and builds the report for it.
@@ -208,17 +222,34 @@ public class RaceConditionDetector {
         Set<Long> threads = new HashSet<>();
         boolean hasWrite = false;
         int writeCount = 0;
-        boolean allGuarded = true;
-        boolean allWritesGuarded = true;
+        // "Guarded" now means every access was covered by the same set of locks, not merely that
+        // each held something: two threads taking different locks exclude nothing from each other
+        // and race exactly as they would with no locks at all.
+        long commonLocks = 0L;
+        boolean firstAccess = true;
+        long commonWriteLocks = 0L;
+        boolean firstWrite = true;
         for (FieldAccess access : accesses) {
             threads.add(access.threadId);
-            allGuarded &= access.guarded;
+            if (firstAccess) {
+                commonLocks = access.lockFingerprint;
+                firstAccess = false;
+            } else if (commonLocks != access.lockFingerprint) {
+                commonLocks = 0L;
+            }
             if (access.write) {
                 hasWrite = true;
                 writeCount++;
-                allWritesGuarded &= access.guarded;
+                if (firstWrite) {
+                    commonWriteLocks = access.lockFingerprint;
+                    firstWrite = false;
+                } else if (commonWriteLocks != access.lockFingerprint) {
+                    commonWriteLocks = 0L;
+                }
             }
         }
+        boolean allGuarded = commonLocks != 0L;
+        boolean allWritesGuarded = commonWriteLocks != 0L;
 
         if (threads.size() < 2 || !hasWrite) {
             return;
@@ -257,7 +288,7 @@ public class RaceConditionDetector {
             FieldAccess previous = ordered.get(i - 1);
             FieldAccess current = ordered.get(i);
             if (previous.threadId != current.threadId && (previous.write || current.write)
-                    && !(previous.guarded && current.guarded)) {
+                    && !previous.sharesLocksWith(current)) {
                 report.unsafeAccesses.add(String.format(
                     "%s: thread %d %s followed by thread %d %s",
                     fieldRef,
