@@ -26,3 +26,8 @@ vibetags.log
 .vibetags-locks
 evals/results/
 .claude/lineage/
+
+# Axiom AST index, written by `axiom scan` into the repository it indexes.
+# 53 MB for this repository, regenerated in one command, and specific to
+# whichever working copy produced it.
+.axiom/
