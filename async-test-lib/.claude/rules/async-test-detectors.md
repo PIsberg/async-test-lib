@@ -348,7 +348,14 @@ a performance budget) are annotated individually and appear below.
 - **Note**: Java record — fields are final by language; types are all primitives or String.
 
 ## Public API Surface Protection
-
-### se.deversity.asynctest.diagnostics.SiteCapture.Site
 - **Rule**: Exposes public API. Preserve signature, Javadoc, and behavior without breaking backwards or source compatibility.
+- **Applies to**: `se.deversity.asynctest.diagnostics.DetectorTrust`, `se.deversity.asynctest.diagnostics.SiteCapture.Site`, `se.deversity.asynctest.diagnostics.TrustTier`
+
+## Mirrored — Keep In Sync
+
+### se.deversity.asynctest.diagnostics.DetectorTrust
+- **Rule**: Free to change, but every mirror must change in the same commit.
+- **Mirrors**: se.deversity.asynctest.DetectorType, se.deversity.asynctest.spi.adapters.LegacyDetectorFactories, docs/DETECTOR_CATALOG.md
+- **Reason**: Every DetectorType needs exactly one row, and each row names the detector class whose simple name keys the report map (DetectorRegistry.ifIssue) plus the short name the SPI adapter reports. A row naming a class the factory does not create silently stops resolving, and the finding loses its tier without anything going red.
+- **Enforced by**: se.deversity.asynctest.architecture.DetectorTrustCoverageTest
 <!-- VIBETAGS-END -->

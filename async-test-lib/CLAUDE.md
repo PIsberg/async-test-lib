@@ -99,6 +99,7 @@ you are editing here.
     <element path="se.deversity.asynctest.diagnostics.CompletableFutureObtrudeDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.ConfinedArenaThreadEscapeDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector" rules=".claude/rules/async-test-detectors.md"/>
+    <element path="se.deversity.asynctest.diagnostics.DetectorTrust" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.FinalFieldMutationDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.FlowPublisherConcurrencyDetector" rules=".claude/rules/async-test-detectors.md"/>
@@ -130,6 +131,7 @@ you are editing here.
     <element path="se.deversity.asynctest.diagnostics.ThisEscapeDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.ThreadLocalCacheDegradationDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.ThreadLocalRandomMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
+    <element path="se.deversity.asynctest.diagnostics.TrustTier" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.TryLockMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.VirtualThreadMonitorSerializationDetector" rules=".claude/rules/async-test-detectors.md"/>
