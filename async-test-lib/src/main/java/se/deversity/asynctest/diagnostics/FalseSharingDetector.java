@@ -269,6 +269,13 @@ public class FalseSharingDetector {
             }
             
             StringBuilder sb = new StringBuilder();
+            // The severity marker is load-bearing, not decoration. IssueSeverity.fromReport
+            // recovers a finding's severity from this text and defaults to HIGH when it finds no
+            // marker, so an unmarked advisory about cache-line adjacency reached the failOn gate
+            // ranked alongside a lost update. This detector is experimental, off unless
+            // -Dasync-test.experimental.false-sharing=true, and its findings are documented as
+            // uncorrelated with the phenomenon, so LOW is the only defensible ranking.
+            sb.append(IssueSeverity.LOW.getLabel()).append(" ");
             sb.append("POTENTIAL FALSE SHARING DETECTED:\n");
             
             if (!falseSharedPairs.isEmpty()) {

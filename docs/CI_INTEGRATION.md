@@ -209,9 +209,11 @@ output. They just cannot fail the build, which is the difference between a repor
 one it learns to ignore.
 
 Severity alone is the wrong floor to start from, and worth knowing why before trusting an old
-recipe: most detectors never set a severity at all, and `IssueSeverity.fromReport` recovers one by
-matching upper-case keywords in the report text, defaulting to `HIGH` when it finds none. So
-`failOn = HIGH` on its own is close to "fail on anything".
+recipe: 86 of the 142 detectors never set a severity at all, and `IssueSeverity.fromReport`
+recovers one by matching upper-case keywords in the report text, defaulting to `HIGH` when it
+finds none. So `failOn = HIGH` on its own is close to "fail on anything". That number is pinned by
+`DetectorSeverityMarkerTest` and can only go down; the remaining work is
+[issue #291](https://github.com/PIsberg/async-test-lib/issues/291).
 
 ---
 

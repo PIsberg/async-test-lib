@@ -28,6 +28,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`FalseSharingDetector` no longer reaches the gate ranked `HIGH`.** Its report carried no
+  severity marker, so `IssueSeverity.fromReport` fell through to its `HIGH` default and an
+  advisory about cache-line adjacency arrived at `failOn = HIGH` ranked as though it proved data
+  corruption. The detector is experimental, off unless
+  `-Dasync-test.experimental.false-sharing=true`, and its findings are documented as uncorrelated
+  with the phenomenon, so its report now opens with `LOW`.
+- **The count of detectors that leave their severity to be guessed is now pinned.**
+  `DetectorSeverityMarkerTest` measures it (86 of 142) and fails if it grows, so a new detector
+  cannot add to the pile, and no `FACT` or `ADVISORY` tier detector may leave it unset at all.
+  Choosing a severity for the remaining detectors changes what existing builds fail on, so it is
+  tracked as [#291](https://github.com/PIsberg/async-test-lib/issues/291) rather than done here.
+
 - **`ConcurrentModificationDetector` no longer reports thread-safe collections.** Two threads
   appending to a `CopyOnWriteArrayList` produced a finding, because `analyze()` flagged any
   collection touched by more than one thread whether or not the collection was thread-safe and

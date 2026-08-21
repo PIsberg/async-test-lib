@@ -612,6 +612,14 @@ class DetectorAccuracyEvalTest {
                             + "gate that suppresses findings permanently would make the detector "
                             + "dead code rather than experimental, and the catalog's claim that "
                             + "it is opt-in would be false in the other direction");
+
+            assertEquals(IssueSeverity.LOW, IssueSeverity.fromReport(detector.analyze().toString()),
+                    "The failOn gate reads a finding's severity out of this text, and defaults to "
+                            + "HIGH when it finds no marker, so before #291 an advisory about "
+                            + "cache-line adjacency reached the gate ranked as though it proved "
+                            + "data corruption. This detector is experimental and its findings are "
+                            + "documented as uncorrelated with the phenomenon, so LOW is the only "
+                            + "ranking it can carry");
         } finally {
             if (previous == null) {
                 System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
