@@ -22,6 +22,8 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static java.util.Map.entry;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -61,23 +63,38 @@ class DetectorTrustCoverageTest {
      * deadlock and a full run, which lives in {@code DetectionCoverageTest}, while the true
      * negative is a recording-level case in the eval.
      */
-    private static final Map<DetectorType, List<String>> EVIDENCE = Map.of(
-            DetectorType.DEADLOCKS, List.of(
+    private static final Map<DetectorType, List<String>> EVIDENCE = Map.ofEntries(
+            entry(DetectorType.DEADLOCKS, List.of(
                     "se.deversity.asynctest.DetectionCoverageTest#deadlockIsReportedWithoutAnyInstrumentation",
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#deadlockDetectorStaysSilentOnOrderedLocking"),
-            DetectorType.LOCK_ORDER, List.of(
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#deadlockDetectorStaysSilentOnOrderedLocking")),
+            entry(DetectorType.LOCK_ORDER, List.of(
                     "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#lockOrderValidatorFiresOnInversion",
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#lockOrderValidatorStaysSilentOnConsistentOrdering"),
-            DetectorType.ATOMIC_NON_ATOMIC_UPDATE, List.of(
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#lockOrderValidatorStaysSilentOnConsistentOrdering")),
+            entry(DetectorType.ATOMIC_NON_ATOMIC_UPDATE, List.of(
                     "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#nonAtomicUpdateDetectorFiresOnGetThenSet",
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#nonAtomicUpdateDetectorStaysSilentOnCas"),
-            DetectorType.LOCK_LEAKS, List.of(
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#nonAtomicUpdateDetectorStaysSilentOnCas")),
+            entry(DetectorType.LOCK_LEAKS, List.of(
                     "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#lockLeakDetectorFiresOnAnUnreleasedLock",
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#lockLeakDetectorStaysSilentWhenEveryAcquireIsReleased"),
-            DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, List.of(
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#lockLeakDetectorStaysSilentWhenEveryAcquireIsReleased")),
+            entry(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, List.of(
                     "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completableFutureExceptionDetectorFiresOnAnUnhandledFailure",
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completableFutureExceptionDetectorStaysSilentWhenTheFailureIsHandled"));
-
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completableFutureExceptionDetectorStaysSilentWhenTheFailureIsHandled")),
+            entry(DetectorType.RESOURCE_LEAKS, List.of(
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#resourceLeakDetectorFiresOnAnUnclosedResource",
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#resourceLeakDetectorStaysSilentWhenEveryOpenIsClosed")),
+            entry(DetectorType.INTERRUPT_MISHANDLING, List.of(
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#interruptMonitorFiresWhenTheFlagIsNeverRestored",
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#interruptMonitorStaysSilentWhenTheFlagIsRestored")),
+            entry(DetectorType.UNCAUGHT_EXCEPTION_HANDLER, List.of(
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#uncaughtExceptionHandlerDetectorFiresWhenNoHandlerIsInstalled",
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#uncaughtExceptionHandlerDetectorStaysSilentWhenAHandlerIsInstalled")),
+            entry(DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS, List.of(
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completionLeakDetectorFiresOnAFutureThatIsNeverCompleted",
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completionLeakDetectorStaysSilentWhenTheFutureIsCompleted")),
+            entry(DetectorType.THREAD_LEAKS, List.of(
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#threadLeakDetectorFiresOnAThreadStillAlive",
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#threadLeakDetectorStaysSilentWhenTheThreadTerminated"))
+    );
     /**
      * The one {@link DetectorType} with no row in {@code LegacyDetectorFactories}.
      *

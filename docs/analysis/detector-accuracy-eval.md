@@ -35,7 +35,7 @@ The twin records the identical event stream through the detector's public record
 while the underlying code holds a real lock, uses CAS, or orders its locks consistently.
 Every recording happens from two live threads released by a CyclicBarrier.
 
-This is a recording-level eval of twelve detectors, one of them behind an experimental gate, not a corpus study
+This is a recording-level eval of seventeen detectors, one of them behind an experimental gate, not a corpus study
 of all 142. It measures the analyzers' models, which is the property that decides whether
 a finding on your code means your code is wrong. Since the guard-on-self change the twins
 distinguish where the lock lives: guarding with the shared instance's own monitor
@@ -57,7 +57,12 @@ still invisible.
 | FalseSharingDetector | silent by default (experimental gate), and reports the pair once the property is set | silent | findings uncorrelated with the phenomenon; opt-in via `-Dasync-test.experimental.false-sharing=true`, and both directions of that gate are now pinned |
 | LockLeakDetector | fires (two acquisitions recorded, no release) | silent (every acquire released, nothing held at analysis time) | genuine both-direction detector |
 | CompletableFutureExceptionDetector | fires (completed exceptionally with no handler registered) | silent (same failure, handler registered first) | genuine both-direction detector |
-| ConcurrentModificationDetector | fires (modification recorded while an iterator is live) | **fires** on two threads appending to a `CopyOnWriteArrayList` | reports any collection touched by more than one thread, thread-safe or not, iterator or not |
+| ConcurrentModificationDetector | fires (modification recorded while an iterator is live) | silent on a `CopyOnWriteArrayList`, and on a snapshot iterator modified during iteration; **fires** on an `ArrayList` guarded by an undeclared lock | since #292 the collection's own type is consulted; an invisible lock is still invisible |
+| ResourceLeakDetector | fires (two opens, no close) | silent (every open closed, nothing open at analysis time) | genuine both-direction detector |
+| InterruptMonitor | fires (InterruptedException caught, flag never restored) | silent (catch-and-restore) | genuine both-direction detector |
+| UncaughtExceptionHandlerDetector | fires (thread throws with no custom handler) | silent (same throw, handler installed) | genuine both-direction detector |
+| CompletableFutureCompletionLeakDetector | fires (future created, never completed) | silent (created and completed) | genuine both-direction detector |
+| ThreadLeakDetector | fires (thread started, still alive at analysis) | silent (joined and recorded as ended) | genuine both-direction detector; auto mode, which watches the global thread count, is off by default |
 
 Every buggy variant above fires. The twin column is the interesting one, and the twins that
 still fire on correct code now share a single cause: the guard is a lock nothing told the library
