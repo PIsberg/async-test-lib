@@ -200,8 +200,8 @@ Two independent questions, two settings. `failOn` asks how bad a finding would b
 
 A finding's trust tier is a property of the detector that raised it, published in `DetectorTrust`
 and measured rather than asserted: `VERDICT` requires a case that fires on the bug and a case that
-stays silent on its correctly synchronized twin, and a gate refuses the tier without both. Five
-detectors carry it today. Most of the rest are `PROMPT`, meaning the detector saw a pattern it
+stays silent on its correctly synchronized twin, and a gate refuses the tier without both. Ten
+detectors carry it today, nine of them in the `ESSENTIALS` preset. Most of the rest are `PROMPT`, meaning the detector saw a pattern it
 cannot fully model, so a finding is a reason to look rather than proof of a bug.
 
 Findings below the floor are still printed and still reach every listener, the JSON and the SARIF

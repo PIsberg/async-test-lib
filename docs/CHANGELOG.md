@@ -20,11 +20,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   findings backed by a measured both-directions case. The default, `ADVISORY`, is the weakest
   tier and filters nothing, so existing behaviour is unchanged. Findings below the floor are
   still printed and still fired to listeners.
-- **Three ESSENTIALS-preset detectors measured for the first time.** `LockLeakDetector` and
-  `CompletableFutureExceptionDetector` hold in both directions and are classified `VERDICT`.
-  `ConcurrentModificationDetector` fires on two threads appending to a `CopyOnWriteArrayList`,
-  which is correct code with no iterator involved, so it stays at `PROMPT` with the limit pinned
-  by a test.
+- **Nine of the twelve `ESSENTIALS` detectors are now measured in both directions.**
+  `LockLeakDetector`, `CompletableFutureExceptionDetector`, `ResourceLeakDetector`,
+  `InterruptMonitor`, `UncaughtExceptionHandlerDetector`,
+  `CompletableFutureCompletionLeakDetector` and `ThreadLeakDetector` each fire on the bug and stay
+  silent on the correct twin, and are classified `VERDICT`. Ten detectors hold that tier.
+
+### Fixed
+
+- **`ConcurrentModificationDetector` no longer reports thread-safe collections.** Two threads
+  appending to a `CopyOnWriteArrayList` produced a finding, because `analyze()` flagged any
+  collection touched by more than one thread whether or not the collection was thread-safe and
+  whether or not an iterator had ever been live. It now consults the collection's own type:
+  `java.util.concurrent` types suppress both the iteration and mutation findings, and
+  `Collections.synchronizedXxx` wrappers suppress the mutation one. A modification during
+  iteration that the caller explicitly reported still stands whatever the type, because that is an
+  observation rather than an inference. The detector stays `PROMPT`: an `ArrayList` guarded by a
+  lock nobody declared still fires, and that limit is pinned by a test.
 
 ### Changed
 

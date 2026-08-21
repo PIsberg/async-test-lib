@@ -29,7 +29,7 @@ This is measured rather than asserted. Two evals run each covered detector again
 *and* against a synchronized twin that records the identical event stream while holding a real
 lock, and the results are published in
 [analysis/detector-accuracy-eval.md](analysis/detector-accuracy-eval.md).
-`DetectorAccuracyEvalTest` covers twelve detectors, one per mechanism class, with the per-detector
+`DetectorAccuracyEvalTest` covers seventeen detectors, one per mechanism class, with the per-detector
 outcome in that document. `SharedTypeAccuracyEvalTest` covers the whole `SHARED_*` family, the 19 that watch a
 non-thread-safe JDK type: 19 of 19 fire on unguarded sharing, and 17 of 19 stay silent both on the
 `synchronized (instance)` twin and on a twin guarded by a declared `ReentrantLock`. The same 17
@@ -38,9 +38,11 @@ are held. The twins that do fire on correct code share one cause - the guard is 
 told the library about.
 
 **VERDICT in the code, each with both directions measured:** `DEADLOCKS`, `LOCK_ORDER`,
-`ATOMIC_NON_ATOMIC_UPDATE`, `LOCK_LEAKS` and `COMPLETABLE_FUTURE_EXCEPTIONS`. Each names a test
-that fires on the bug and a test that stays silent on the correct twin, and the gate resolves both
-by reflection.
+`ATOMIC_NON_ATOMIC_UPDATE`, `LOCK_LEAKS`, `COMPLETABLE_FUTURE_EXCEPTIONS`, `RESOURCE_LEAKS`,
+`INTERRUPT_MISHANDLING`, `UNCAUGHT_EXCEPTION_HANDLER`, `COMPLETABLE_FUTURE_COMPLETION_LEAKS` and
+`THREAD_LEAKS`. Each names a test that fires on the bug and a test that stays silent on the
+correct twin, and the gate resolves both by reflection. Nine of the ten are in the `ESSENTIALS`
+preset, which is the one to gate on.
 
 **Documented as verdict here, but not in the code:** `VAR_HANDLE_NON_ATOMIC_UPDATE`,
 `STATIC_INIT_DEADLOCK`, `CONFINED_ARENA_THREAD_ESCAPE` (where the JDK supplies
@@ -77,7 +79,7 @@ have excluded nothing, which is a race however many locks were involved.
 **Classified, but not all measured.** Every detector now carries a tier, because a finding with no
 tier is one a reader has to rank alone. Most carry PROMPT, which is the honest default rather than
 a result: it says nobody has measured that detector's silent-on-correct-code direction, not that
-the detector is wrong. The two evals measure 28 distinct detectors of 142 between them (three
+the detector is wrong. The two evals measure 33 distinct detectors of 142 between them (three
 appear in both), and extending them is mechanical rather than hard. Each new both-directions case
 either promotes a detector or writes down a limit, and both outcomes are worth having: the
 `CONCURRENT_MODIFICATIONS` pair, added with the tier mechanism, showed the detector firing on two

@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -738,8 +739,8 @@ class DetectorAccuracyEvalTest {
     }
 
     @Test
-    @DisplayName("concurrent modification: the thread-safe twin fires identically (pinned false positive)")
-    void concurrentModificationDetectorFiresOnTheThreadSafeTwinToo() throws InterruptedException {
+    @DisplayName("concurrent modification: a thread-safe collection stays silent (true negative)")
+    void concurrentModificationDetectorStaysSilentOnAThreadSafeCollection() throws InterruptedException {
         ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
         List<String> list = new CopyOnWriteArrayList<>();
         detector.registerCollection(list, "list");
@@ -749,14 +750,232 @@ class DetectorAccuracyEvalTest {
         };
         onTwoThreads(safeModify, safeModify);
 
+        assertFalse(detector.analyze().hasIssues(),
+                "two threads adding to a CopyOnWriteArrayList is the type being used as designed. "
+                        + "Until #292 the detector reported it, because analyze() flagged any "
+                        + "collection touched by more than one thread whether or not the collection "
+                        + "was thread-safe and whether or not an iterator was ever live, which is a "
+                        + "false positive on the ESSENTIALS preset");
+    }
+
+    @Test
+    @DisplayName("concurrent modification: a snapshot iterator makes modification-during-iteration safe")
+    void concurrentModificationDetectorStaysSilentWhenTheIteratorIsASnapshot()
+            throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new CopyOnWriteArrayList<>();
+        detector.registerCollection(list, "list");
+        Runnable modifyWhileIterating = () -> {
+            detector.recordIterationStarted(list, "list");
+            detector.recordModification(list, "list", "add");
+            detector.recordIterationEnded(list, "list");
+        };
+        onTwoThreads(modifyWhileIterating, modifyWhileIterating);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "modifying a CopyOnWriteArrayList while iterating it cannot throw: the iterator is a "
+                        + "snapshot. The inferred finding is suppressed for types that cannot break");
+    }
+
+    @Test
+    @DisplayName("concurrent modification: an explicitly observed CME is reported whatever the type")
+    void concurrentModificationDetectorReportsAnObservedCmeEvenOnAThreadSafeCollection()
+            throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new CopyOnWriteArrayList<>();
+        detector.registerCollection(list, "list");
+        Runnable observed = () -> detector.recordModificationDuringIteration(list, "list", "add");
+        onTwoThreads(observed, observed);
+
         assertTrue(detector.analyze().hasIssues(),
-                "This is a limitation, written down rather than assumed away. Two threads adding to "
-                        + "a CopyOnWriteArrayList is correct code with no iteration in sight, and the "
-                        + "detector still reports, because analyze() flags any collection touched by "
-                        + "more than one thread regardless of whether the collection is thread-safe "
-                        + "and regardless of whether an iterator was ever live. That is why "
-                        + "CONCURRENT_MODIFICATIONS is classified PROMPT and not VERDICT. If this "
-                        + "ever goes silent the detector learned something: flip the assertion, "
-                        + "promote the tier with the evidence, and update the eval doc.");
+                "recordModificationDuringIteration is the caller saying it saw one, not this "
+                        + "detector inferring it. Suppressing an observation because the type looks "
+                        + "safe would be the library overruling the evidence");
+    }
+
+    @Test
+    @DisplayName("concurrent modification: an externally locked ArrayList still fires (pinned false positive)")
+    void concurrentModificationDetectorStillFiresOnAnExternallyLockedArrayList()
+            throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new ArrayList<>();
+        Object guard = new Object();
+        detector.registerCollection(list, "list");
+        Runnable guardedModify = () -> {
+            synchronized (guard) {
+                list.add("value");
+                detector.recordModification(list, "list", "add");
+            }
+        };
+        onTwoThreads(guardedModify, guardedModify);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "This is the limit that keeps CONCURRENT_MODIFICATIONS at PROMPT rather than "
+                        + "VERDICT. An ArrayList guarded by a lock the detector was never told about "
+                        + "is correct code, and the mutation-count finding still stands, exactly as "
+                        + "it does for the other detectors with no lock model. Fixing #292 removed "
+                        + "the findings the collection's own type ruled out, not the ones an "
+                        + "invisible lock rules out");
+    }
+
+    @Test
+    @DisplayName("resource leak: opening without closing fires (true positive)")
+    void resourceLeakDetectorFiresOnAnUnclosedResource() throws InterruptedException {
+        ResourceLeakDetector detector = new ResourceLeakDetector();
+        Object connection = new Object();
+        detector.registerResource(connection, "db", "Connection");
+        Runnable leak = () -> detector.recordResourceOpened(connection, "db");
+        onTwoThreads(leak, leak);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "two opens and no close is the leak this detector exists for");
+    }
+
+    @Test
+    @DisplayName("resource leak: the try-with-resources twin stays silent (true negative)")
+    void resourceLeakDetectorStaysSilentWhenEveryOpenIsClosed() throws InterruptedException {
+        ResourceLeakDetector detector = new ResourceLeakDetector();
+        Object connection = new Object();
+        detector.registerResource(connection, "db", "Connection");
+        Runnable balanced = () -> {
+            detector.recordResourceOpened(connection, "db");
+            detector.recordResourceClosed(connection, "db");
+        };
+        onTwoThreads(balanced, balanced);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "opens and closes balance and nothing is open at analysis time, so the detector "
+                        + "distinguishes the correct idiom from the leak rather than counting how "
+                        + "many threads touched the resource");
+    }
+
+    @Test
+    @DisplayName("interrupt: swallowing InterruptedException fires (true positive)")
+    void interruptMonitorFiresWhenTheFlagIsNeverRestored() throws InterruptedException {
+        InterruptMonitor monitor = new InterruptMonitor();
+        Runnable swallow = () -> monitor.recordInterruptException(new InterruptedException("caught"));
+        onTwoThreads(swallow, swallow);
+
+        assertTrue(monitor.analyze().hasIssues(),
+                "catching InterruptedException without restoring the flag loses the cancellation "
+                        + "signal for every caller above this frame");
+    }
+
+    @Test
+    @DisplayName("interrupt: the catch-and-restore twin stays silent (true negative)")
+    void interruptMonitorStaysSilentWhenTheFlagIsRestored() throws InterruptedException {
+        InterruptMonitor monitor = new InterruptMonitor();
+        Runnable restore = () -> {
+            monitor.recordInterruptException(new InterruptedException("caught"));
+            monitor.recordInterruptRestored();
+        };
+        onTwoThreads(restore, restore);
+
+        assertFalse(monitor.analyze().hasIssues(),
+                "catch-and-restore is the idiom this detector's own fix advice recommends, so it "
+                        + "must not be reported as an ignored interrupt");
+    }
+
+    @Test
+    @DisplayName("uncaught handler: a thread that throws with no handler fires (true positive)")
+    void uncaughtExceptionHandlerDetectorFiresWhenNoHandlerIsInstalled() throws InterruptedException {
+        UncaughtExceptionHandlerDetector detector = new UncaughtExceptionHandlerDetector();
+        Runnable throwWithoutHandler = () -> {
+            detector.recordThreadStart(Thread.currentThread());
+            detector.recordUncaughtException(Thread.currentThread(), new IllegalStateException("boom"));
+        };
+        onTwoThreads(throwWithoutHandler, throwWithoutHandler);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "a worker that dies with no custom handler prints to stderr and the submitter "
+                        + "never learns the task failed");
+    }
+
+    @Test
+    @DisplayName("uncaught handler: the same failure with a handler installed stays silent (true negative)")
+    void uncaughtExceptionHandlerDetectorStaysSilentWhenAHandlerIsInstalled()
+            throws InterruptedException {
+        UncaughtExceptionHandlerDetector detector = new UncaughtExceptionHandlerDetector();
+        Runnable throwWithHandler = () -> {
+            Thread.currentThread().setUncaughtExceptionHandler((thread, error) -> { /* observed */ });
+            detector.recordThreadStart(Thread.currentThread());
+            detector.recordUncaughtException(Thread.currentThread(), new IllegalStateException("boom"));
+        };
+        onTwoThreads(throwWithHandler, throwWithHandler);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "the same exception on a thread whose handler will see it is handled code; a "
+                        + "detector that still fired here would be reporting the exception rather "
+                        + "than the missing handler");
+    }
+
+    @Test
+    @DisplayName("completion leak: a future nobody completes fires (true positive)")
+    void completionLeakDetectorFiresOnAFutureThatIsNeverCompleted() throws InterruptedException {
+        CompletableFutureCompletionLeakDetector detector = new CompletableFutureCompletionLeakDetector();
+        CompletableFuture<String> future = new CompletableFuture<>();
+        Runnable create = () -> detector.recordFutureCreated(future, "future");
+        onTwoThreads(create, create);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "a future created and never completed leaves every caller awaiting it parked");
+    }
+
+    @Test
+    @DisplayName("completion leak: the completed twin stays silent (true negative)")
+    void completionLeakDetectorStaysSilentWhenTheFutureIsCompleted() throws InterruptedException {
+        CompletableFutureCompletionLeakDetector detector = new CompletableFutureCompletionLeakDetector();
+        CompletableFuture<String> future = new CompletableFuture<>();
+        Runnable createAndComplete = () -> {
+            detector.recordFutureCreated(future, "future");
+            future.complete("value");
+            detector.recordFutureCompleted(future, "future");
+        };
+        onTwoThreads(createAndComplete, createAndComplete);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "a future both threads see completed is not leaked, and completing it twice is "
+                        + "not this detector's concern");
+    }
+
+    @Test
+    @DisplayName("thread leak: a thread started and never joined fires (true positive)")
+    void threadLeakDetectorFiresOnAThreadStillAlive() throws InterruptedException {
+        ThreadLeakDetector detector = new ThreadLeakDetector();
+        CountDownLatch release = new CountDownLatch(1);
+        Thread leaked = new Thread(() -> {
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "leaked-worker");
+        leaked.setDaemon(true);
+        try {
+            leaked.start();
+            detector.recordThreadStart(leaked, "leaked-worker");
+
+            assertTrue(detector.analyzeLeaks().hasIssues(),
+                    "a thread started by the test body and still alive when the run ends outlives "
+                            + "the test that created it");
+        } finally {
+            release.countDown();
+            leaked.join(2_000);
+        }
+    }
+
+    @Test
+    @DisplayName("thread leak: the joined twin stays silent (true negative)")
+    void threadLeakDetectorStaysSilentWhenTheThreadTerminated() throws InterruptedException {
+        ThreadLeakDetector detector = new ThreadLeakDetector();
+        Thread worker = new Thread(() -> { /* returns immediately */ }, "joined-worker");
+        worker.start();
+        detector.recordThreadStart(worker, "joined-worker");
+        worker.join(2_000);
+        detector.recordThreadEnd(worker);
+
+        assertFalse(detector.analyzeLeaks().hasIssues(),
+                "a thread that was joined and recorded as ended is not a leak; auto mode, which "
+                        + "watches the global thread count, is off unless enableAutoMode() is called");
     }
 }
