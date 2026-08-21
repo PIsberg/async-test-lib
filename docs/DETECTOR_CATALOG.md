@@ -6,20 +6,30 @@
 
 ## Trust tiers
 
-Before using any of these as a merge gate, know which kind of statement it makes. Detectors here
-fall into two tiers, and the difference decides whether a finding means "your code is wrong" or
-"go and check something".
+Before using any of these as a merge gate, know which kind of statement it makes. The tier is a
+property of the detector, and it decides whether a finding means "your code is wrong" or "go and
+check something".
 
 | Tier | What a finding means | Use it to |
 |---|---|---|
-| **Verdict** | The detector can distinguish broken code from the correctly synchronized version of that same code. Silence is informative too. | Fail a build |
-| **Prompt** | The detector saw an object touched by more than one thread. It has no model of your locks, so correct code that shares an object produces the same signal as a race. | Open a ticket, not fail a build |
+| **VERDICT** | The detector distinguishes broken code from the correctly synchronized version of that same code. Silence is informative too. | Fail a build |
+| **FACT** | The report states something observed, not inferred. The claim is true; whether it is a bug in your design is your call. | Fail a build once you agree the pattern is wrong for you |
+| **PROMPT** | The detector saw a pattern it cannot fully model, most often a shared object whose lock it has no way to see. Correct code that shares an object produces the same signal as a race. | Open a ticket, not fail a build |
+| **ADVISORY** | A performance or hygiene note, not a correctness claim. | Read it, gate on nothing |
+
+**The tier is in the code, not in this document.** `DetectorTrust` classifies all 142, the runner
+prints the tier above every finding, every `Violation` carries it as a `trustTier` attribute, and
+`@AsyncTest(minTrust = TrustTier.VERDICT)` restricts the `failOn` gate to the tiers you name.
+`DetectorTrustCoverageTest` fails the build if a detector is unclassified, if a row names a
+detector class the factories do not construct, or if anything reaches VERDICT without naming
+both-directions tests that exist. This section is the narrative; the table in the code is the
+authority, and the two cannot drift silently.
 
 This is measured rather than asserted. Two evals run each covered detector against a buggy variant
 *and* against a synchronized twin that records the identical event stream while holding a real
 lock, and the results are published in
 [analysis/detector-accuracy-eval.md](analysis/detector-accuracy-eval.md).
-`DetectorAccuracyEvalTest` covers 9 detectors, one per mechanism class, with the per-detector
+`DetectorAccuracyEvalTest` covers twelve detectors, one per mechanism class, with the per-detector
 outcome in that document. `SharedTypeAccuracyEvalTest` covers the whole `SHARED_*` family, the 19 that watch a
 non-thread-safe JDK type: 19 of 19 fire on unguarded sharing, and 17 of 19 stay silent both on the
 `synchronized (instance)` twin and on a twin guarded by a declared `ReentrantLock`. The same 17
@@ -27,12 +37,20 @@ still fire when the two threads take *different* locks, which is a race no matte
 are held. The twins that do fire on correct code share one cause - the guard is a lock nothing
 told the library about.
 
-**Verdict tier, confirmed by that eval or by construction:** `DEADLOCKS`, `LOCK_ORDER`,
-`ATOMIC_NON_ATOMIC_UPDATE`, `VAR_HANDLE_NON_ATOMIC_UPDATE`, `STATIC_INIT_DEADLOCK`,
-`CONFINED_ARENA_THREAD_ESCAPE` (where the JDK supplies `MemorySegment.isAccessibleBy`),
-`RECORD_MUTABLE_COMPONENT_LEAK` for its observed-mutation finding, and
-`SHARED_MEMORY_SEGMENT_RACE` where the overlapping accesses disagree about which monitor guards
-them.
+**VERDICT in the code, each with both directions measured:** `DEADLOCKS`, `LOCK_ORDER`,
+`ATOMIC_NON_ATOMIC_UPDATE`, `LOCK_LEAKS` and `COMPLETABLE_FUTURE_EXCEPTIONS`. Each names a test
+that fires on the bug and a test that stays silent on the correct twin, and the gate resolves both
+by reflection.
+
+**Documented as verdict here, but not in the code:** `VAR_HANDLE_NON_ATOMIC_UPDATE`,
+`STATIC_INIT_DEADLOCK`, `CONFINED_ARENA_THREAD_ESCAPE` (where the JDK supplies
+`MemorySegment.isAccessibleBy`), `RECORD_MUTABLE_COMPONENT_LEAK` for its observed-mutation
+finding, and `SHARED_MEMORY_SEGMENT_RACE` where the overlapping accesses disagree about which
+monitor guards them. All five are verdict-grade by construction on one path and prompt-grade on
+another, and a per-detector tier carries the weakest of the grades a detector can emit, so they
+sit at PROMPT until either a both-directions case is registered or the tier becomes per-finding
+rather than per-detector. Reading the argument for verdict here and finding PROMPT in the code is
+not a contradiction: it is the gate declining to take prose as evidence.
 
 **Prompt tier:** `SHARED_RANDOM` and `SHARED_SECURE_RANDOM`. `Random` and `SecureRandom` are
 thread-safe, so their finding is about contention on one instance rather than corruption of it,
@@ -56,16 +74,21 @@ up `synchronized` blocks in woven code. An undeclared lock in unwoven code stays
 still produces a finding, and so does inconsistent locking - two threads holding different locks
 have excluded nothing, which is a race however many locks were involved.
 
-**Not yet classified:** most of the remaining detectors. The two evals cover 25 distinct detectors
-of 142 between them (three appear in both), and extending them is mechanical rather than hard.
-Where an entry below carries no explicit **Trust tier** line, treat it as unclassified and read its
-report wording, which is written to be honest about what it observed. Claiming a tier for all 142
-without measuring would be exactly the kind of unfounded number this catalog is meant not to
-contain.
+**Classified, but not all measured.** Every detector now carries a tier, because a finding with no
+tier is one a reader has to rank alone. Most carry PROMPT, which is the honest default rather than
+a result: it says nobody has measured that detector's silent-on-correct-code direction, not that
+the detector is wrong. The two evals measure 28 distinct detectors of 142 between them (three
+appear in both), and extending them is mechanical rather than hard. Each new both-directions case
+either promotes a detector or writes down a limit, and both outcomes are worth having: the
+`CONCURRENT_MODIFICATIONS` pair, added with the tier mechanism, showed the detector firing on two
+threads appending to a `CopyOnWriteArrayList`, which is correct code with no iterator in sight.
 
-**Practical consequence.** `failOn = CRITICAL` gates on the trustworthy end of the scale.
-`failOn = HIGH` will fail builds over correct-but-shared code unless those findings are baselined
-first — see [CI_INTEGRATION.md](CI_INTEGRATION.md#adopting-into-a-codebase-that-already-has-findings).
+**Practical consequence.** Gate on the tier, not on severity alone: `failOn = HIGH` with
+`minTrust = TrustTier.VERDICT` fails only on measured findings, while everything else still prints
+and still reaches the JSON and SARIF output. Severity is a poor proxy for trust because most
+detectors never set one: `IssueSeverity.fromReport` recovers it by matching upper-case keywords in
+the report text and defaults to `HIGH`, so `failOn = HIGH` on its own is close to "fail on
+anything". Without a trust floor, plan to baseline first — see [CI_INTEGRATION.md](CI_INTEGRATION.md#adopting-into-a-codebase-that-already-has-findings).
 
 ---
 

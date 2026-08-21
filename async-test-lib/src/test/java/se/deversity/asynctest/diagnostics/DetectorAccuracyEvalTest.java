@@ -8,6 +8,10 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import javax.crypto.Mac;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -635,5 +639,124 @@ class DetectorAccuracyEvalTest {
     static class AdjacentFields {
         long first;
         long second;
+    }
+
+    // ---- ESSENTIALS preset: the detectors docs recommend for everyday CI ----
+
+    @Test
+    @DisplayName("lock leak: acquiring without releasing fires (true positive)")
+    void lockLeakDetectorFiresOnAnUnreleasedLock() throws InterruptedException {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        detector.registerLock(lock, "lock");
+        Runnable leak = () -> detector.recordLockAcquired(lock, "lock");
+        onTwoThreads(leak, leak);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "two acquisitions and no release is the leak this detector exists for");
+    }
+
+    @Test
+    @DisplayName("lock leak: the balanced twin stays silent (true negative)")
+    void lockLeakDetectorStaysSilentWhenEveryAcquireIsReleased() throws InterruptedException {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        detector.registerLock(lock, "lock");
+        Runnable balanced = () -> {
+            lock.lock();
+            detector.recordLockAcquired(lock, "lock");
+            try {
+                Thread.yield();
+            } finally {
+                detector.recordLockReleased(lock, "lock");
+                lock.unlock();
+            }
+        };
+        // A real lock here, unlike the leak case above: the balanced twin releases it, so the
+        // second thread is never blocked. The leaking twin only records, because a ReentrantLock
+        // genuinely left held would hang this test rather than fail it.
+        onTwoThreads(balanced, balanced);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "acquire and release counts match and no lock is held at analysis time, so this "
+                        + "detector distinguishes the correct idiom from the broken one rather than "
+                        + "counting how many threads touched the lock");
+    }
+
+    @Test
+    @DisplayName("completable future: completing exceptionally with no handler fires (true positive)")
+    void completableFutureExceptionDetectorFiresOnAnUnhandledFailure() throws InterruptedException {
+        CompletableFutureExceptionDetector detector = new CompletableFutureExceptionDetector();
+        CompletableFuture<String> future = new CompletableFuture<>();
+        detector.recordFutureCreated(future, "future");
+        Runnable failIt = () -> {
+            future.completeExceptionally(new IllegalStateException("boom"));
+            detector.recordFutureCompleted(future, "future", false);
+        };
+        onTwoThreads(failIt, failIt);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "a future that completed exceptionally with no handler registered loses the failure");
+    }
+
+    @Test
+    @DisplayName("completable future: the handled twin stays silent (true negative)")
+    void completableFutureExceptionDetectorStaysSilentWhenTheFailureIsHandled()
+            throws InterruptedException {
+        CompletableFutureExceptionDetector detector = new CompletableFutureExceptionDetector();
+        CompletableFuture<String> future = new CompletableFuture<>();
+        detector.recordFutureCreated(future, "future");
+        Runnable handleIt = () -> {
+            IllegalStateException failure = new IllegalStateException("boom");
+            detector.recordExceptionHandled(future, "future", failure);
+            future.completeExceptionally(failure);
+            detector.recordFutureCompleted(future, "future", false);
+        };
+        onTwoThreads(handleIt, handleIt);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "the same failure, with a handler registered, is handled code; a detector that still "
+                        + "fired here would be reporting the exception rather than the missing handler");
+    }
+
+    @Test
+    @DisplayName("concurrent modification: modifying during iteration fires (true positive)")
+    void concurrentModificationDetectorFiresOnModificationDuringIteration()
+            throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new ArrayList<>();
+        detector.registerCollection(list, "list");
+        Runnable modifyWhileIterating = () -> {
+            detector.recordIterationStarted(list, "list");
+            detector.recordModification(list, "list", "add");
+            detector.recordIterationEnded(list, "list");
+        };
+        onTwoThreads(modifyWhileIterating, modifyWhileIterating);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "a structural modification while an iterator is live is the bug this detector names");
+    }
+
+    @Test
+    @DisplayName("concurrent modification: the thread-safe twin fires identically (pinned false positive)")
+    void concurrentModificationDetectorFiresOnTheThreadSafeTwinToo() throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new CopyOnWriteArrayList<>();
+        detector.registerCollection(list, "list");
+        Runnable safeModify = () -> {
+            list.add("value");
+            detector.recordModification(list, "list", "add");
+        };
+        onTwoThreads(safeModify, safeModify);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "This is a limitation, written down rather than assumed away. Two threads adding to "
+                        + "a CopyOnWriteArrayList is correct code with no iteration in sight, and the "
+                        + "detector still reports, because analyze() flags any collection touched by "
+                        + "more than one thread regardless of whether the collection is thread-safe "
+                        + "and regardless of whether an iterator was ever live. That is why "
+                        + "CONCURRENT_MODIFICATIONS is classified PROMPT and not VERDICT. If this "
+                        + "ever goes silent the detector learned something: flip the assertion, "
+                        + "promote the tier with the evidence, and update the eval doc.");
     }
 }

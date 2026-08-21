@@ -70,7 +70,13 @@ class DetectorTrustCoverageTest {
                     "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#lockOrderValidatorStaysSilentOnConsistentOrdering"),
             DetectorType.ATOMIC_NON_ATOMIC_UPDATE, List.of(
                     "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#nonAtomicUpdateDetectorFiresOnGetThenSet",
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#nonAtomicUpdateDetectorStaysSilentOnCas"));
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#nonAtomicUpdateDetectorStaysSilentOnCas"),
+            DetectorType.LOCK_LEAKS, List.of(
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#lockLeakDetectorFiresOnAnUnreleasedLock",
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#lockLeakDetectorStaysSilentWhenEveryAcquireIsReleased"),
+            DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, List.of(
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completableFutureExceptionDetectorFiresOnAnUnhandledFailure",
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completableFutureExceptionDetectorStaysSilentWhenTheFailureIsHandled"));
 
     /**
      * The one {@link DetectorType} with no row in {@code LegacyDetectorFactories}.
