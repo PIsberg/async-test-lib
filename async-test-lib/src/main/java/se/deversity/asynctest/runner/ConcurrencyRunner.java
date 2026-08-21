@@ -15,9 +15,11 @@ import se.deversity.asynctest.BeforeEachInvocation;
 import se.deversity.asynctest.benchmark.BenchmarkRecorder;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.diagnostics.DeadlockDetector;
+import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.MemoryModelValidator;
 import se.deversity.asynctest.diagnostics.Phase1DetectorSet;
+import se.deversity.asynctest.diagnostics.TrustTier;
 import se.deversity.asynctest.diagnostics.VirtualThreadStressConfig;
 import se.deversity.asynctest.report.Baseline;
 import se.deversity.asynctest.telemetry.TelemetryBridge;
@@ -571,9 +573,12 @@ public class ConcurrencyRunner {
                 suppressed++;
                 continue;
             }
+            TrustTier tier = DetectorTrust.tierOfDetector(e.getKey());
+            System.err.println(trustBanner(e.getKey(), tier));
             System.err.println(e.getValue());
             AsyncTestListenerRegistry.fireDetectorReport(e.getKey(), e.getValue());
-            if (config.failOn.triggeredBy(IssueSeverity.fromReport(e.getValue()))) {
+            if (config.failOn.triggeredBy(IssueSeverity.fromReport(e.getValue()))
+                    && tier.atLeast(config.minTrust)) {
                 failing.add(e.getKey());
             }
         }
@@ -998,9 +1003,35 @@ public class ConcurrencyRunner {
         };
     }
 
+    /**
+     * The one line a reader sees before a finding's own report: which detector, and how far to
+     * trust it.
+     *
+     * <p>A default run enables every detector, and without this line a recorded deadlock and a
+     * pattern the library cannot fully model print identically. A reader who cannot rank findings
+     * treats the whole report as noise, so the rank goes first, above the detail.
+     *
+     * <p>Written to {@code System.err} beside the report rather than prepended to it: the report
+     * string is what listeners receive and what tests assert on, and it stays untouched.
+     */
+    static String trustBanner(String detectorName, TrustTier tier) {
+        return "[AsyncTest] " + detectorName + " trust=" + tier + " " + trustHint(tier);
+    }
+
+    private static String trustHint(TrustTier tier) {
+        return switch (tier) {
+            case VERDICT -> "(a finding means the code is wrong; measured on the bug and on its correct twin)";
+            case FACT -> "(the report states what was observed; whether it is a bug is your call)";
+            case PROMPT -> "(a prompt to verify; synchronization the library cannot see may make this correct)";
+            case ADVISORY -> "(a performance or hygiene note, not a correctness claim)";
+        };
+    }
+
     private static void printPhase2Reports(Phase2Analysis phase2Analysis) {
         for (Map.Entry<String, String> finding : phase2Analysis.get().entrySet()) {
-            System.err.println("\n" + finding.getValue());
+            System.err.println("\n" + trustBanner(finding.getKey(),
+                    DetectorTrust.tierOfDetector(finding.getKey())));
+            System.err.println(finding.getValue());
             AsyncTestListenerRegistry.fireDetectorReport(finding.getKey(), finding.getValue());
         }
     }

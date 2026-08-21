@@ -3,6 +3,7 @@ package se.deversity.asynctest;
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 
+import se.deversity.asynctest.diagnostics.TrustTier;
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AICore;
 import se.deversity.vibetags.annotations.AIFeatureFlag;
@@ -58,6 +59,16 @@ public final class AsyncTestConfig {
      * @since 1.7.0
      */
     public final FailOn failOn;
+
+    /**
+     * Lowest detector trust tier whose findings {@link #failOn} may act on.
+     *
+     * <p>{@link TrustTier#ADVISORY} (default) is the weakest tier, so it filters nothing and the
+     * gate behaves as it did before this field existed. Findings below the floor are still
+     * reported; they just cannot fail the test.
+     * @since 1.10.0
+     */
+    public final TrustTier minTrust;
 
     // ---- Phase 1 ----
     /** Resolved value of {@link AsyncTest#detectDeadlocks()} for this run. */
@@ -414,6 +425,7 @@ public final class AsyncTestConfig {
         detectAll                      = b.detectAll;
         replaySeed                     = b.replaySeed;
         failOn                         = b.failOn;
+        minTrust                       = b.minTrust;
         detectDeadlocks                = b.detectDeadlocks;
         detectVisibility               = b.detectVisibility;
         detectLivelocks                = b.detectLivelocks;
@@ -639,6 +651,7 @@ public final class AsyncTestConfig {
             .detectAll(effectiveDetectAll)
             .replaySeed(ann.replaySeed())
             .failOn(ann.failOn())
+            .minTrust(ann.minTrust())
             .detectDeadlocks(ann.detectDeadlocks())
             .detectVisibility(ann.detectVisibility())
             .detectLivelocks(ann.detectLivelocks())
@@ -810,6 +823,7 @@ public final class AsyncTestConfig {
         private boolean detectAll                  = false;
         private long    replaySeed                 = 0L;
         private FailOn  failOn                     = FailOn.NONE;
+        private TrustTier minTrust                 = TrustTier.ADVISORY;
         private boolean detectDeadlocks            = true;
         private boolean detectVisibility           = false;
         private boolean detectLivelocks            = false;
@@ -1018,6 +1032,12 @@ public final class AsyncTestConfig {
          * @return this builder
          */
         public Builder failOn(FailOn v)                      { failOn = (v != null) ? v : FailOn.NONE; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#minTrust}.
+         * @param v the value to use; {@code null} restores the default floor
+         * @return this builder
+         */
+        public Builder minTrust(TrustTier v)                 { minTrust = (v != null) ? v : TrustTier.ADVISORY; return this; }
         /**
          * Sets {@link AsyncTestConfig#detectDeadlocks}.
          * @param v the value to use
