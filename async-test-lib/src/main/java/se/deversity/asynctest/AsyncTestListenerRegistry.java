@@ -4,6 +4,7 @@ import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 
 import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AIContract;
@@ -228,7 +229,8 @@ public final class AsyncTestListenerRegistry {
                     severity,
                     message.isEmpty() ? detector + " reported a finding" : message,
                     List.of(),
-                    Map.of("report", text),
+                    Map.of("report", text,
+                           "trustTier", DetectorTrust.tierOfDetector(detector).name()),
                     Instant.now());
         } catch (RuntimeException e) {
             log.warn("Could not build a Violation for detector {}: {}", detectorName, e.toString(), e);

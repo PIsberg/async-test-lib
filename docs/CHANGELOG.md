@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Trust tiers for every detector.** `TrustTier` (`ADVISORY`, `PROMPT`, `FACT`, `VERDICT`) and
+  `DetectorTrust` classify all 142. The runner prints the tier above each finding, every
+  `Violation` carries it as a `trustTier` attribute, so it reaches the JSON and SARIF output and
+  every listener. A default run enables every detector, and until now a recorded deadlock and a
+  pattern the library cannot fully model printed identically; a reader who cannot rank findings
+  triages the whole report as noise.
+- **`@AsyncTest(minTrust = ...)`.** `failOn` asks how bad a finding would be if it were real;
+  `minTrust` asks whether it is real. `minTrust = TrustTier.VERDICT` restricts the gate to
+  findings backed by a measured both-directions case. The default, `ADVISORY`, is the weakest
+  tier and filters nothing, so existing behaviour is unchanged. Findings below the floor are
+  still printed and still fired to listeners.
+- **Three ESSENTIALS-preset detectors measured for the first time.** `LockLeakDetector` and
+  `CompletableFutureExceptionDetector` hold in both directions and are classified `VERDICT`.
+  `ConcurrentModificationDetector` fires on two threads appending to a `CopyOnWriteArrayList`,
+  which is correct code with no iterator involved, so it stays at `PROMPT` with the limit pinned
+  by a test.
+
+### Changed
+
+- Tiers are earned rather than asserted. `DetectorTrustCoverageTest` refuses a `VERDICT`
+  classification without named both-directions tests it can resolve by reflection, refuses an
+  unclassified detector, and refuses a row naming a detector class the factories do not
+  construct. Five detectors hold `VERDICT` today; the rest default to `PROMPT`, which states that
+  their silent-on-correct-code direction has not been measured rather than that they are wrong.
+- `docs/CI_INTEGRATION.md` recommends a trust floor before a severity threshold. Severity is a
+  poor proxy for trust: most detectors never set one, and `IssueSeverity.fromReport` recovers it
+  by matching upper-case keywords in the report text and defaults to `HIGH`.
+
+
 ## [1.9.6] - 2026-08-20
 
 > **Versioning note.** As in 1.9.1, 1.9.4 and 1.9.5, this ships as a patch by explicit owner

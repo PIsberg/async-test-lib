@@ -106,6 +106,7 @@ Detailed per-element guardrails live in scoped rule files that load automaticall
 - `se.deversity.asynctest.diagnostics.CompletableFutureObtrudeDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.ConfinedArenaThreadEscapeDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector` → `.gemini/rules/async-test-detectors.md`
+- `se.deversity.asynctest.diagnostics.DetectorTrust` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.FinalFieldMutationDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.FlowPublisherConcurrencyDetector` → `.gemini/rules/async-test-detectors.md`
@@ -137,6 +138,7 @@ Detailed per-element guardrails live in scoped rule files that load automaticall
 - `se.deversity.asynctest.diagnostics.ThisEscapeDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.ThreadLocalCacheDegradationDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.ThreadLocalRandomMisuseDetector` → `.gemini/rules/async-test-detectors.md`
+- `se.deversity.asynctest.diagnostics.TrustTier` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.TryLockMisuseDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.VirtualThreadMonitorSerializationDetector` → `.gemini/rules/async-test-detectors.md`

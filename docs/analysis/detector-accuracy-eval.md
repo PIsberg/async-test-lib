@@ -18,6 +18,15 @@ table could not drift without a red build, while `DetectorAccuracyEvalTest` neve
 that detector, so its experimental gate could have been flipped with nothing going red. Both
 directions of the gate are now asserted, and the claim of enforcement is true for every row._
 
+_Updated 2026-08-21 (`feat/detector-trust-tiers`): the trust tier moved out of prose and into
+`DetectorTrust`, which classifies all 142 and is enforced by `DetectorTrustCoverageTest`. VERDICT
+now requires named both-directions tests that the gate resolves by reflection, so the three rows
+that had it kept it and nothing else inherited it by assertion. Three ESSENTIALS-preset detectors
+were measured for the first time: `LockLeakDetector` and `CompletableFutureExceptionDetector` hold
+in both directions and were promoted, `ConcurrentModificationDetector` fires on correct
+thread-safe code and stays at PROMPT. `@AsyncTest(minTrust = ...)` restricts the failOn gate to
+the tiers you name._
+
 ## What was measured
 
 For each detector: does it fire on genuinely buggy concurrent code (true positive), and
@@ -26,7 +35,7 @@ The twin records the identical event stream through the detector's public record
 while the underlying code holds a real lock, uses CAS, or orders its locks consistently.
 Every recording happens from two live threads released by a CyclicBarrier.
 
-This is a recording-level eval of 9 detectors, one of them behind an experimental gate, not a corpus study
+This is a recording-level eval of twelve detectors, one of them behind an experimental gate, not a corpus study
 of all 142. It measures the analyzers' models, which is the property that decides whether
 a finding on your code means your code is wrong. Since the guard-on-self change the twins
 distinguish where the lock lives: guarding with the shared instance's own monitor
@@ -46,6 +55,9 @@ still invisible.
 | AtomicNonAtomicUpdateDetector | fires (get-then-set) | silent (CAS) | genuine both-direction detector |
 | DeadlockDetector | fires (real deadlock, zero config; pinned by `DetectionCoverageTest`) | silent | genuine both-direction detector, near-zero FP |
 | FalseSharingDetector | silent by default (experimental gate), and reports the pair once the property is set | silent | findings uncorrelated with the phenomenon; opt-in via `-Dasync-test.experimental.false-sharing=true`, and both directions of that gate are now pinned |
+| LockLeakDetector | fires (two acquisitions recorded, no release) | silent (every acquire released, nothing held at analysis time) | genuine both-direction detector |
+| CompletableFutureExceptionDetector | fires (completed exceptionally with no handler registered) | silent (same failure, handler registered first) | genuine both-direction detector |
+| ConcurrentModificationDetector | fires (modification recorded while an iterator is live) | **fires** on two threads appending to a `CopyOnWriteArrayList` | reports any collection touched by more than one thread, thread-safe or not, iterator or not |
 
 Every buggy variant above fires. The twin column is the interesting one, and the twins that
 still fire on correct code now share a single cause: the guard is a lock nothing told the library

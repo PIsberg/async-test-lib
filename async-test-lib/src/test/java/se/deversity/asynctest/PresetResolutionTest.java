@@ -137,6 +137,7 @@ class PresetResolutionTest {
         @Override public DetectorType[] excludes() { return excludes; }
         @Override public DetectorType[] includes() { return def("includes"); }
         @Override public FailOn failOn() { return def("failOn"); }
+        @Override public se.deversity.asynctest.diagnostics.TrustTier minTrust() { return def("minTrust"); }
         @Override public boolean detectFalseSharing() { return def("detectFalseSharing"); }
         @Override public boolean detectWakeupIssues() { return def("detectWakeupIssues"); }
         @Override public boolean validateConstructorSafety() { return def("validateConstructorSafety"); }

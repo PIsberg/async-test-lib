@@ -191,13 +191,27 @@ to find entries that have become stale.
 | Stage | Configuration |
 |---|---|
 | First run, see what you have | `failOn = NONE`, read the reports |
-| Adopt | record a baseline, then `failOn = CRITICAL` |
-| Tighten once the baseline stops growing | `failOn = HIGH` |
+| Adopt | `failOn = HIGH, minTrust = TrustTier.VERDICT` |
+| Tighten once that stays green | record a baseline, then lower `minTrust` to `FACT` |
+| Tighten again once the baseline stops growing | `minTrust = TrustTier.PROMPT` |
 
-`failOn = CRITICAL` gates on the verdict-tier detectors — deadlock, lock-order inversion,
-class-initialization deadlock, confinement violations. `failOn = HIGH` includes findings that some
-detectors raise on correct-but-shared code, which is why it is the second step rather than the
-first.
+Two independent questions, two settings. `failOn` asks how bad a finding would be if it were real.
+`minTrust` asks whether it is real, and it is the one that decides whether a gate is worth having.
+
+A finding's trust tier is a property of the detector that raised it, published in `DetectorTrust`
+and measured rather than asserted: `VERDICT` requires a case that fires on the bug and a case that
+stays silent on its correctly synchronized twin, and a gate refuses the tier without both. Five
+detectors carry it today. Most of the rest are `PROMPT`, meaning the detector saw a pattern it
+cannot fully model, so a finding is a reason to look rather than proof of a bug.
+
+Findings below the floor are still printed and still reach every listener, the JSON and the SARIF
+output. They just cannot fail the build, which is the difference between a report a team reads and
+one it learns to ignore.
+
+Severity alone is the wrong floor to start from, and worth knowing why before trusting an old
+recipe: most detectors never set a severity at all, and `IssueSeverity.fromReport` recovers one by
+matching upper-case keywords in the report text, defaulting to `HIGH` when it finds none. So
+`failOn = HIGH` on its own is close to "fail on anything".
 
 ---
 

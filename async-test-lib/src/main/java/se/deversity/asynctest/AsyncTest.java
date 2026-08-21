@@ -5,6 +5,7 @@ import org.apiguardian.api.API.Status;
 
 import org.junit.jupiter.api.TestTemplate;
 import org.junit.jupiter.api.extension.ExtendWith;
+import se.deversity.asynctest.diagnostics.TrustTier;
 import se.deversity.vibetags.annotations.AIContract;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
@@ -280,6 +281,32 @@ public @interface AsyncTest {
      * @return the lowest finding severity that should fail the test
      */
     FailOn failOn() default FailOn.NONE;
+
+    /**
+     * Lowest {@link TrustTier} a finding's detector must carry before {@link #failOn()} may act on
+     * it.
+     *
+     * <p>{@code failOn} asks how bad a finding would be if it were real. This asks whether it is
+     * real. The two are independent, and a merge gate needs both: of the 142 detectors, three are
+     * backed today by a measured case that fires on the bug and stays silent on its correctly
+     * synchronized twin, while most of the rest report a pattern they cannot fully model and mean
+     * "go and look" rather than "this is broken".
+     *
+     * <p>The default {@link TrustTier#ADVISORY} is the weakest tier, so it filters nothing and the
+     * gate behaves exactly as it did before this attribute existed. Set
+     * {@code minTrust = TrustTier.VERDICT} on a merge gate to fail only on findings the library
+     * can stand behind without a human reading the report first. Findings below the floor are
+     * still printed and still fired to every {@link AsyncTestListener}; they just do not fail the
+     * build.
+     *
+     * <p>Which detector carries which tier, and the evidence behind it, is in
+     * {@code DetectorTrust} and {@code docs/analysis/detector-accuracy-eval.md}.
+     *
+     * @since 1.10.0
+     *
+     * @return the lowest trust tier whose findings may fail the test
+     */
+    TrustTier minTrust() default TrustTier.ADVISORY;
 
     // ============= Phase 2: Advanced Detectors =============
 
