@@ -196,11 +196,35 @@ public final class PlatformThreadPerTaskDetector {
     }
 
     /** Report produced by {@link #analyze()}. {@code hasIssues()} drives the SPI sweep. */
-    public static final class Report {
+    public static final class Report implements GradedFindings {
         public final List<String> violations = new ArrayList<>();
         public final List<Violation> structuredViolations = new ArrayList<>();
 
         public boolean hasIssues() { return !violations.isEmpty(); }
+
+        /**
+         * One grade per finding, so a verdict-grade finding is not held back by a weaker one from
+         * the same detector.
+         *
+         * <p>The executor finding is a verdict: a probe task reports the thread kind it actually ran on, so
+         * "this executor gave every task its own platform thread" is observed rather than inferred.
+         * The churn finding is a threshold over platform-thread creations and says nothing about
+         * correctness, which is what {@link TrustTier#ADVISORY} means.
+         */
+        @Override
+        public List<GradedFindings.Grade> grades() {
+            return structuredViolations.stream()
+                    .map(v -> new GradedFindings.Grade(v.severity(), tierOf(v.severity()), v.message()))
+                    .toList();
+        }
+
+        private static TrustTier tierOf(IssueSeverity severity) {
+            return switch (severity) {
+            case HIGH -> TrustTier.VERDICT;
+            case MEDIUM -> TrustTier.ADVISORY;
+            default -> TrustTier.PROMPT;
+            };
+        }
 
         @Override
         public String toString() {

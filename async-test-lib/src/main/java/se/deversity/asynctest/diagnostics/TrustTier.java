@@ -13,10 +13,12 @@ import se.deversity.vibetags.annotations.AIPublicAPI;
  * detector that cannot see your lock is still a prompt to go and look, and a LOW finding that
  * states an observed fact is still a fact.
  *
- * <p>The tier is a property of the detector, not of the individual report, and it is deliberately
- * the <em>weakest</em> tier that detector can produce. A detector that emits a verdict-grade
- * finding in one code path and a prompt-grade one in another is classified as a prompt, so that
- * gating on {@link #VERDICT} can never admit a finding the library cannot stand behind.
+ * <p>The tier is a property of the detector by default, and deliberately the <em>weakest</em> tier
+ * that detector can produce, so that gating on {@link #VERDICT} can never admit a finding the
+ * library cannot stand behind. A detector that emits a verdict-grade finding in one code path and a
+ * prompt-grade one in another can carry the tier on each finding instead, by implementing
+ * {@link GradedFindings}: the gate then acts on any finding that clears the thresholds, rather
+ * than rating the whole detector at its weakest.
  *
  * <p>Tiers are assigned in {@link DetectorTrust} and are not free text: promotion to
  * {@link #VERDICT} requires a both-directions case in the detector-accuracy eval, and a gate

@@ -328,7 +328,7 @@
 
 ## Public API Surface Protection
 - **Rule**: Exposes public API. Preserve signature, Javadoc, and behavior without breaking backwards or source compatibility.
-- **Applies to**: `se.deversity.asynctest.diagnostics.DetectorDefaultSeverity`, `se.deversity.asynctest.diagnostics.DetectorTrust`, `se.deversity.asynctest.diagnostics.SiteCapture.Site`, `se.deversity.asynctest.diagnostics.TrustTier`
+- **Applies to**: `se.deversity.asynctest.diagnostics.DetectorDefaultSeverity`, `se.deversity.asynctest.diagnostics.DetectorTrust`, `se.deversity.asynctest.diagnostics.GradedFindings`, `se.deversity.asynctest.diagnostics.SiteCapture.Site`, `se.deversity.asynctest.diagnostics.TrustTier`
 
 ## Mirrored — Keep In Sync
 - **Rule**: Free to change, but every mirror must change in the same commit.

@@ -286,7 +286,7 @@ public final class StaticInitDeadlockDetector {
     }
 
     /** Report produced by {@link #analyze()}. {@code hasIssues()} drives the SPI sweep. */
-    public static final class Report {
+    public static final class Report implements GradedFindings {
         /** Human-readable findings, one per violation. */
         public final List<String> violations = new ArrayList<>();
         /** The same findings as machine-readable {@link Violation} records. */
@@ -298,6 +298,30 @@ public final class StaticInitDeadlockDetector {
          * @return true if there are violations, false otherwise
          */
         public boolean hasIssues() { return !violations.isEmpty(); }
+
+        /**
+         * One grade per finding, so a verdict-grade finding is not held back by a weaker one from
+         * the same detector.
+         *
+         * <p>The recorded cycle is a verdict: a closed chain of classes each waiting on the next is a
+         * deadlock, not a suspicion. The corroborating sample states which threads were seen inside
+         * which initializer, which is true as far as it goes and leaves the conclusion to the
+         * reader, so it is a {@link TrustTier#FACT}.
+         */
+        @Override
+        public List<GradedFindings.Grade> grades() {
+            return structuredViolations.stream()
+                    .map(v -> new GradedFindings.Grade(v.severity(), tierOf(v.severity()), v.message()))
+                    .toList();
+        }
+
+        private static TrustTier tierOf(IssueSeverity severity) {
+            return switch (severity) {
+            case CRITICAL -> TrustTier.VERDICT;
+            case HIGH -> TrustTier.FACT;
+            default -> TrustTier.PROMPT;
+            };
+        }
 
         @Override
         public String toString() {

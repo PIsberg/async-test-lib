@@ -5,9 +5,7 @@ import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.asynctest.spi.Detector;
 
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -60,7 +58,7 @@ class DetectorSweepResilienceTest {
     }
 
     private void assertThrowingDetectorIsContained() {
-        Map<String, String> out = new LinkedHashMap<>();
+        FindingSink out = new FindingSink();
 
         DetectorRegistry.ifIssue(new GoodDetector("before"),
             GoodDetector::analyze, GoodDetector.Report::hasIssues, out);
@@ -73,11 +71,11 @@ class DetectorSweepResilienceTest {
         DetectorRegistry.ifIssue(new GoodDetector("after"),
             GoodDetector::analyze, GoodDetector.Report::hasIssues, out);
 
-        assertEquals(1, out.size(), "the good detector's findings must survive: " + out);
-        assertTrue(out.get("GoodDetector").contains("before"),
-            "the finding collected before the thrower must not be discarded: " + out);
-        assertTrue(out.get("GoodDetector").contains("after"),
-            "detectors after the thrower must still run: " + out);
+        assertEquals(1, out.reports().size(), "the good detector's findings must survive: " + out.reports());
+        assertTrue(out.reports().get("GoodDetector").contains("before"),
+            "the finding collected before the thrower must not be discarded: " + out.reports());
+        assertTrue(out.reports().get("GoodDetector").contains("after"),
+            "detectors after the thrower must still run: " + out.reports());
     }
 
     @Test
@@ -86,14 +84,14 @@ class DetectorSweepResilienceTest {
     }
 
     private void assertUnrenderableReportIsContained() {
-        Map<String, String> out = new LinkedHashMap<>();
+        FindingSink out = new FindingSink();
 
         assertDoesNotThrow(() ->
             DetectorRegistry.ifIssue(new ExplodingDetector(),
                 d -> new ExplodingReport(), r -> true, out),
             "a report whose toString() throws must be contained too");
 
-        assertTrue(out.isEmpty(), "nothing to record when the report cannot be rendered: " + out);
+        assertTrue(out.reports().isEmpty(), "nothing to record when the report cannot be rendered: " + out.reports());
     }
 
     /**
@@ -105,7 +103,7 @@ class DetectorSweepResilienceTest {
     @Test
     void strictModeTurnsAContainedFailureIntoAFailedBuild() {
         System.setProperty(DetectorFailurePolicy.STRICT_PROPERTY, "true");
-        Map<String, String> out = new LinkedHashMap<>();
+        FindingSink out = new FindingSink();
 
         AssertionError raised = assertThrows(AssertionError.class, () ->
             DetectorRegistry.ifIssue(new ExplodingDetector(),
@@ -121,7 +119,7 @@ class DetectorSweepResilienceTest {
     @Test
     void strictModeAlsoCatchesAReportThatCannotBeRendered() {
         System.setProperty(DetectorFailurePolicy.STRICT_PROPERTY, "true");
-        Map<String, String> out = new LinkedHashMap<>();
+        FindingSink out = new FindingSink();
 
         assertThrows(AssertionError.class, () ->
             DetectorRegistry.ifIssue(new ExplodingDetector(),

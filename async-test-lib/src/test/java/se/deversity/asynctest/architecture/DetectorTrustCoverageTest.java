@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
+import se.deversity.asynctest.diagnostics.GradedFindings;
 import se.deversity.asynctest.diagnostics.TrustTier;
 
 import java.io.IOException;
@@ -229,6 +230,46 @@ class DetectorTrustCoverageTest {
                 "the report map's key for a built-in is the detector class simple name");
         assertEquals(TrustTier.VERDICT, DetectorTrust.tierOfDetector("Deadlocks"),
                 "the SPI path reports the adapter's short name instead");
+    }
+
+    /**
+     * The detectors that produce findings of different grades, and therefore have to grade them.
+     *
+     * <p>Each is documented in {@code docs/DETECTOR_CATALOG.md} as verdict-grade on one path and
+     * weaker on another. A per-detector tier carries the weakest, so before per-finding grades a
+     * gate on {@code minTrust = VERDICT} missed their verdict-grade findings entirely. Dropping the
+     * interface from one of these would restore that false negative silently, which is what this
+     * list is here to prevent.
+     */
+    private static final List<String> GRADED_DETECTORS = List.of(
+            "RecordMutableComponentLeakDetector",
+            "PlatformThreadPerTaskDetector",
+            "VirtualThreadPoolingDetector",
+            "StaticInitDeadlockDetector",
+            "VarHandleNonAtomicUpdateDetector",
+            "SharedMemorySegmentRaceDetector",
+            "ConfinedArenaThreadEscapeDetector");
+
+    @Test
+    @DisplayName("every split-tier detector grades its findings individually")
+    void splitTierDetectorsGradeTheirFindings() {
+        List<String> ungraded = new ArrayList<>();
+        for (String detector : GRADED_DETECTORS) {
+            String reportClass = "se.deversity.asynctest.diagnostics." + detector + "$Report";
+            try {
+                if (!GradedFindings.class.isAssignableFrom(Class.forName(reportClass))) {
+                    ungraded.add(detector);
+                }
+            } catch (ClassNotFoundException e) {
+                fail("No report class " + reportClass + ". If the report was renamed, this list and "
+                        + "the catalog's trust-tier section both need to follow: " + e);
+            }
+        }
+        assertTrue(ungraded.isEmpty(),
+                "These detectors produce a verdict-grade finding and a weaker one, so their reports "
+                        + "must implement GradedFindings. Without it the whole detector is judged at "
+                        + "its weakest tier and a minTrust = VERDICT gate stays green on findings the "
+                        + "library can stand behind: " + ungraded);
     }
 
     private static void assertTestMethodExists(String reference) {

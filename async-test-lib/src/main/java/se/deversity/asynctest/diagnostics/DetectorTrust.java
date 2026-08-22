@@ -29,10 +29,13 @@ import java.util.Optional;
  * description of a detector whose silent-on-correct-code direction nobody has measured yet.
  * Lowering a tier needs no evidence; raising one does.
  *
- * <p><strong>Weakest wins.</strong> Where a detector emits findings of different grades, the row
- * carries the weakest of them, so that gating on VERDICT can never admit a finding the library
- * cannot stand behind. Seven detectors are split this way today and are marked in the table;
- * raising them needs per-finding tiers rather than per-detector ones.
+ * <p><strong>Weakest wins, and a detector can say better.</strong> Where a detector emits findings
+ * of different grades, the row carries the weakest of them, so that gating on VERDICT can never
+ * admit a finding the library cannot stand behind. That rule under-rated the split detectors, so a
+ * report may now grade its findings individually by implementing
+ * {@link GradedFindings}; the gate then asks whether any single finding clears the thresholds
+ * rather than judging the detector as a block. Seven detectors do this today. The row's tier stays
+ * the answer for everything ungraded, and for the console banner when a report carries no grades.
  *
  * <p>Third-party detectors arriving through the SPI are unknown to this table and resolve to
  * {@link TrustTier#PROMPT}. The library has no evidence about somebody else's detector and does

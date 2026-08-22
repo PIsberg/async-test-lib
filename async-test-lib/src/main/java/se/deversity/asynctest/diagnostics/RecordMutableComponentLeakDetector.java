@@ -245,6 +245,8 @@ public final class RecordMutableComponentLeakDetector {
             }
 
             if (!mutated.isEmpty()) {
+                r.grades.add(new GradedFindings.Grade(IssueSeverity.HIGH, TrustTier.VERDICT,
+                        "observed mutation of a shared record's component: " + s.label));
                 add(r, s, IssueSeverity.HIGH, String.format(
                     "HIGH: record '%s' (%s) was touched by %d threads (%s) and %d of its "
                     + "components were mutated during the run: %s. A record's fields are final, "
@@ -256,6 +258,8 @@ public final class RecordMutableComponentLeakDetector {
                     String.join("; ", mutated)));
             }
             if (!structural.isEmpty()) {
+                r.grades.add(new GradedFindings.Grade(IssueSeverity.MEDIUM, TrustTier.PROMPT,
+                        "structural risk in a shared record: " + s.label));
                 add(r, s, IssueSeverity.MEDIUM, String.format(
                     "MEDIUM: record '%s' (%s) is shared by %d threads and carries mutable "
                     + "component(s): %s. Nothing wrote through them during this run, so this is a "
@@ -314,11 +318,13 @@ public final class RecordMutableComponentLeakDetector {
     }
 
     /** Report produced by {@link #analyze()}. {@code hasIssues()} drives the SPI sweep. */
-    public static final class Report {
+    public static final class Report implements GradedFindings {
         /** Human-readable findings, one per violation. */
         public final List<String> violations = new ArrayList<>();
         /** The same findings as machine-readable {@link Violation} records. */
         public final List<Violation> structuredViolations = new ArrayList<>();
+        /** Grades of the findings collected so far; see {@link #grades()}. */
+        final List<GradedFindings.Grade> grades = new ArrayList<>();
 
         /**
          * Checks if any issues were detected.
@@ -326,6 +332,21 @@ public final class RecordMutableComponentLeakDetector {
          * @return true if there are violations, false otherwise
          */
         public boolean hasIssues() { return !violations.isEmpty(); }
+
+        /**
+         * One grade per finding, so the gate can act on the observed mutation without being held
+         * back by the structural note.
+         *
+         * <p>This detector is the reason {@link GradedFindings} exists. Its observed-mutation
+         * finding is a verdict and its structural-risk finding is a prompt, and rating the
+         * detector as one thing meant the verdict inherited the prompt's tier: a build gating on
+         * {@code minTrust = VERDICT} would not have failed on shared mutable state that was
+         * actually seen being mutated.
+         */
+        @Override
+        public List<GradedFindings.Grade> grades() {
+            return List.copyOf(grades);
+        }
 
         @Override
         public String toString() {
