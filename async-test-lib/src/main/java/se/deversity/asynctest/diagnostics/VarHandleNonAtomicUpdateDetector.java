@@ -244,7 +244,7 @@ public final class VarHandleNonAtomicUpdateDetector {
     }
 
     /** Report produced by {@link #analyze()}. {@code hasIssues()} drives the SPI sweep. */
-    public static final class Report {
+    public static final class Report implements GradedFindings {
         /** Human-readable findings, one per violation. */
         public final List<String> violations = new ArrayList<>();
         /** The same findings as machine-readable {@link Violation} records. */
@@ -256,6 +256,28 @@ public final class VarHandleNonAtomicUpdateDetector {
          * @return true if there are violations, false otherwise
          */
         public boolean hasIssues() { return !violations.isEmpty(); }
+
+        /**
+         * One grade per finding, so a verdict-grade finding is not held back by a weaker one from
+         * the same detector.
+         *
+         * <p>A recorded get-then-set pair on the same variable from two threads is a lost update, which is
+         * a verdict. Plain-mode sharing is reported because it might be a bug, and it stays a prompt:
+         * the detector cannot see whether something else establishes the ordering.
+         */
+        @Override
+        public List<GradedFindings.Grade> grades() {
+            return structuredViolations.stream()
+                    .map(v -> new GradedFindings.Grade(v.severity(), tierOf(v.severity()), v.message()))
+                    .toList();
+        }
+
+        private static TrustTier tierOf(IssueSeverity severity) {
+            return switch (severity) {
+            case HIGH -> TrustTier.VERDICT;
+            default -> TrustTier.PROMPT;
+            };
+        }
 
         @Override
         public String toString() {

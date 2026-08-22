@@ -72,15 +72,19 @@ told the library about.
 correct twin, and the gate resolves both by reflection. Nine of the ten are in the `ESSENTIALS`
 preset, which is the one to gate on.
 
-**Documented as verdict here, but not in the code:** `VAR_HANDLE_NON_ATOMIC_UPDATE`,
-`STATIC_INIT_DEADLOCK`, `CONFINED_ARENA_THREAD_ESCAPE` (where the JDK supplies
-`MemorySegment.isAccessibleBy`), `RECORD_MUTABLE_COMPONENT_LEAK` for its observed-mutation
-finding, and `SHARED_MEMORY_SEGMENT_RACE` where the overlapping accesses disagree about which
-monitor guards them. All five are verdict-grade by construction on one path and prompt-grade on
-another, and a per-detector tier carries the weakest of the grades a detector can emit, so they
-sit at PROMPT until either a both-directions case is registered or the tier becomes per-finding
-rather than per-detector. Reading the argument for verdict here and finding PROMPT in the code is
-not a contradiction: it is the gate declining to take prose as evidence.
+**Verdict on one path, weaker on another: graded per finding.** `VAR_HANDLE_NON_ATOMIC_UPDATE`,
+`STATIC_INIT_DEADLOCK`, `CONFINED_ARENA_THREAD_ESCAPE`, `RECORD_MUTABLE_COMPONENT_LEAK`,
+`SHARED_MEMORY_SEGMENT_RACE`, `VIRTUAL_THREAD_POOLING` and `PLATFORM_THREAD_PER_TASK` each produce
+a verdict-grade finding on one path and a prompt-grade or advisory one on another. Their detector
+tier is still the weakest of those, because that is what a detector-level rating has to mean, but
+their reports implement `GradedFindings` and carry a tier on each finding, so `minTrust = VERDICT`
+acts on the recorded cycle, the lost update or the observed mutation without being held back by
+the note beside it. Before that, a verdict-only gate stayed green on every one of them.
+
+The grades are deliberately conservative: a finding becomes VERDICT only where
+its claim is something recorded rather than inferred, such as an access after an arena closed, or
+a probe reporting the thread kind a task actually ran on. Everything else stays PROMPT, which is
+where it already was.
 
 **Prompt tier:** `SHARED_RANDOM` and `SHARED_SECURE_RANDOM`. `Random` and `SecureRandom` are
 thread-safe, so their finding is about contention on one instance rather than corruption of it,

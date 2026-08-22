@@ -829,6 +829,25 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the per-finding grades from the most recent {@link #analyzeAllNamed()} pass}
+     *
+     * <p>Present only for detectors whose report implements
+     * {@link se.deversity.asynctest.diagnostics.GradedFindings}. The {@code failOn} gate uses them
+     * to judge a detector's findings individually rather than as one block, which is what lets a
+     * verdict-grade finding fail a build even though the same detector can also produce a
+     * prompt-grade one. Callers that find no entry fall back to the detector's own tier and
+     * severity.
+     *
+     * <p>Call after {@link #analyzeAllNamed()}; on its own this returns the previous pass's
+     * grades, or empty when no pass has run.
+     *
+     * @since 1.10.0
+     */
+    public Map<String, List<se.deversity.asynctest.diagnostics.GradedFindings.Grade>> findingGrades() {
+        return registry.lastGrades();
+    }
+
+    /**
      * Merges third-party SPI violations into {@code reports}, keyed by
      * {@link Violation#detector()}, then fires {@code onTestEnd()} once.
      *

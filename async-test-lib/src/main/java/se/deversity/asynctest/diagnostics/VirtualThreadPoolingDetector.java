@@ -214,11 +214,33 @@ public final class VirtualThreadPoolingDetector {
     }
 
     /** Report produced by {@link #analyze()}. {@code hasIssues()} drives the SPI sweep. */
-    public static final class Report {
+    public static final class Report implements GradedFindings {
         public final List<String> violations = new ArrayList<>();
         public final List<Violation> structuredViolations = new ArrayList<>();
 
         public boolean hasIssues() { return !violations.isEmpty(); }
+
+        /**
+         * One grade per finding, so a verdict-grade finding is not held back by a weaker one from
+         * the same detector.
+         *
+         * <p>Both findings rest on the factory probe, which distinguishes a virtual-thread factory from a
+         * platform one by construction rather than by guessing, so pooling virtual threads and
+         * reusing them across tasks are both verdicts.
+         */
+        @Override
+        public List<GradedFindings.Grade> grades() {
+            return structuredViolations.stream()
+                    .map(v -> new GradedFindings.Grade(v.severity(), tierOf(v.severity()), v.message()))
+                    .toList();
+        }
+
+        private static TrustTier tierOf(IssueSeverity severity) {
+            return switch (severity) {
+            case HIGH -> TrustTier.VERDICT;
+            default -> TrustTier.PROMPT;
+            };
+        }
 
         @Override
         public String toString() {

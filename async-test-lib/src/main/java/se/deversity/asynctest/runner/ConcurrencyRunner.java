@@ -17,6 +17,7 @@ import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.diagnostics.DeadlockDetector;
 import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
+import se.deversity.asynctest.diagnostics.GradedFindings;
 import se.deversity.asynctest.diagnostics.MemoryModelValidator;
 import se.deversity.asynctest.diagnostics.Phase1DetectorSet;
 import se.deversity.asynctest.diagnostics.TrustTier;
@@ -563,6 +564,8 @@ public class ConcurrencyRunner {
             return;
         }
 
+        Map<String, List<GradedFindings.Grade>> graded = phase2Analysis.grades();
+
         String testId = testMethod.getDeclaringClass().getName() + "#" + testMethod.getName();
         Baseline baseline = Baseline.fromSystemProperties();
 
@@ -573,12 +576,11 @@ public class ConcurrencyRunner {
                 suppressed++;
                 continue;
             }
-            TrustTier tier = DetectorTrust.tierOfDetector(e.getKey());
-            System.err.println(trustBanner(e.getKey(), tier));
+            List<GradedFindings.Grade> grades = graded.getOrDefault(e.getKey(), List.of());
+            System.err.println(trustBanner(e.getKey(), bannerTier(e.getKey(), grades)));
             System.err.println(e.getValue());
             AsyncTestListenerRegistry.fireDetectorReport(e.getKey(), e.getValue());
-            if (config.failOn.triggeredBy(DetectorDefaultSeverity.of(e.getKey(), e.getValue()))
-                    && tier.atLeast(config.minTrust)) {
+            if (trips(config, e.getKey(), e.getValue(), grades)) {
                 failing.add(e.getKey());
             }
         }
@@ -1027,6 +1029,36 @@ public class ConcurrencyRunner {
         };
     }
 
+    /**
+     * Whether this detector's output should fail the run.
+     *
+     * <p>A detector that graded its findings is judged finding by finding: the run fails when
+     * <em>any one</em> of them clears both thresholds. Judging the block as a whole is what made a
+     * verdict-grade finding inherit the weakest tier its detector can produce, so a verdict-only
+     * gate missed real bugs. Ungraded detectors keep the per-detector answer, which is still right
+     * for a detector whose findings are all the same kind.
+     */
+    private static boolean trips(AsyncTestConfig config, String detectorName, String report,
+                                 List<GradedFindings.Grade> grades) {
+        if (grades.isEmpty()) {
+            return config.failOn.triggeredBy(DetectorDefaultSeverity.of(detectorName, report))
+                    && DetectorTrust.tierOfDetector(detectorName).atLeast(config.minTrust);
+        }
+        return grades.stream().anyMatch(grade ->
+                config.failOn.triggeredBy(grade.severity()) && grade.tier().atLeast(config.minTrust));
+    }
+
+    /**
+     * The tier shown above a report: the best any of its findings carries, so a reader is not told
+     * a block is only a prompt when it contains a verdict.
+     */
+    private static TrustTier bannerTier(String detectorName, List<GradedFindings.Grade> grades) {
+        return grades.stream()
+                .map(GradedFindings.Grade::tier)
+                .max(java.util.Comparator.naturalOrder())
+                .orElseGet(() -> DetectorTrust.tierOfDetector(detectorName));
+    }
+
     private static void printPhase2Reports(Phase2Analysis phase2Analysis) {
         for (Map.Entry<String, String> finding : phase2Analysis.get().entrySet()) {
             System.err.println("\n" + trustBanner(finding.getKey(),
@@ -1063,6 +1095,17 @@ public class ConcurrencyRunner {
 
         Phase2Analysis(AsyncTestContext ctx) {
             this.ctx = ctx;
+        }
+
+        /**
+         * {@return the per-finding grades of this run, keyed by detector}
+         *
+         * <p>Runs {@link #get()} first: the grades are a by-product of the analysis pass, so
+         * reading them before it has run would report the previous pass's, or nothing at all.
+         */
+        Map<String, List<GradedFindings.Grade>> grades() {
+            get();
+            return ctx.findingGrades();
         }
 
         /** {@return the findings of this run, keyed by the detector that produced each} */

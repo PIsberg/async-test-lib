@@ -111,6 +111,7 @@ Detailed per-element guardrails live in scoped rule files that load automaticall
 - `se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.FinalFieldMutationDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.FlowPublisherConcurrencyDetector` → `.gemini/rules/async-test-detectors.md`
+- `se.deversity.asynctest.diagnostics.GradedFindings` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.HighContentionAtomicDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector` → `.gemini/rules/async-test-detectors.md`

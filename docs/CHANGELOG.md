@@ -19,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Findings can carry their own trust tier.** A detector's report may implement `GradedFindings`
+  and grade each finding it contains; the `failOn` gate then fails when any single finding clears
+  both `failOn` and `minTrust`, instead of judging the detector as one block. Seven detectors that
+  produce a verdict-grade finding on one path and a weaker one on another now do this:
+  `RECORD_MUTABLE_COMPONENT_LEAK`, `PLATFORM_THREAD_PER_TASK`, `VIRTUAL_THREAD_POOLING`,
+  `STATIC_INIT_DEADLOCK`, `VAR_HANDLE_NON_ATOMIC_UPDATE`, `SHARED_MEMORY_SEGMENT_RACE` and
+  `CONFINED_ARENA_THREAD_ESCAPE`. Before this, `minTrust = TrustTier.VERDICT` stayed green on
+  every one of their verdict-grade findings, because a per-detector tier carries the weakest grade
+  the detector can produce. This closes a false negative, so it fails builds that used to pass,
+  and only on findings backed by something recorded rather than inferred.
+- **`AsyncTestContext.findingGrades()`** exposes those grades for the run.
+
+### Added
+
 - **Every detector states its severity.** `DetectorDefaultSeverity` declares one for each of the 86
   detectors that write no marker in their report, chosen against `IssueSeverity`'s own definitions:
   `CRITICAL` where the report's primary claim is that something will not make progress, `HIGH` for

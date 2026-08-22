@@ -147,7 +147,6 @@ import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -569,6 +568,9 @@ final class DetectorRegistry {
         return new ArrayList<>(analyzeAllNamed().values());
     }
 
+    /** Per-finding grades from the last analysis pass; see {@link #lastGrades()}. */
+    private Map<String, List<se.deversity.asynctest.diagnostics.GradedFindings.Grade>> lastGrades = Map.of();
+
     /**
      * Runs every enabled Phase 2 detector's analysis and returns the reports of any that
      * found issues, keyed by the simple name of the detector that produced each one.
@@ -582,7 +584,7 @@ final class DetectorRegistry {
      * @return reports by detector name; never {@code null}
      */
     Map<String, String> analyzeAllNamed() {
-        Map<String, String> out = new LinkedHashMap<>();
+        FindingSink out = new FindingSink();
 
         // ---- Phase 1 ----
         ifIssue(deadlockDetector,
@@ -1067,7 +1069,19 @@ final class DetectorRegistry {
                 ThreadLocalCacheDegradationDetector::analyze,
                 ThreadLocalCacheDegradationDetector.Report::hasIssues, out);
 
-        return out;
+        lastGrades = out.grades();
+        return out.reports();
+    }
+
+    /**
+     * {@return the per-finding grades from the most recent {@link #analyzeAllNamed()} pass}
+     *
+     * <p>Empty for every detector whose report does not implement
+     * {@link se.deversity.asynctest.diagnostics.GradedFindings}, which is most of them; the gate
+     * falls back to the detector's own tier and severity for those.
+     */
+    Map<String, List<se.deversity.asynctest.diagnostics.GradedFindings.Grade>> lastGrades() {
+        return lastGrades;
     }
 
     // ---- Helper ----
@@ -1084,13 +1098,15 @@ final class DetectorRegistry {
     static <D, R> void ifIssue(@Nullable D detector,
                                Function<D, R> analyze,
                                Function<R, Boolean> hasIssues,
-                               Map<String, String> out) {
+                               FindingSink out) {
         if (detector == null) return;
         String name = detector.getClass().getSimpleName();
         try {
             R report = analyze.apply(detector);
             if (Boolean.TRUE.equals(hasIssues.apply(report))) {
-                out.merge(name, report.toString(), (first, second) -> first + "\n" + second);
+                out.add(name, report.toString(),
+                        report instanceof se.deversity.asynctest.diagnostics.GradedFindings graded
+                                ? graded.grades() : null);
             }
         } catch (RuntimeException | StackOverflowError e) {
             // Contain the failure: analyzeAllNamed() chains ~100 of these, so letting one

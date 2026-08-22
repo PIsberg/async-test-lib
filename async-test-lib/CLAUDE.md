@@ -104,6 +104,7 @@ you are editing here.
     <element path="se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.FinalFieldMutationDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.FlowPublisherConcurrencyDetector" rules=".claude/rules/async-test-detectors.md"/>
+    <element path="se.deversity.asynctest.diagnostics.GradedFindings" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.HighContentionAtomicDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector" rules=".claude/rules/async-test-detectors.md"/>
