@@ -20,11 +20,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   findings backed by a measured both-directions case. The default, `ADVISORY`, is the weakest
   tier and filters nothing, so existing behaviour is unchanged. Findings below the floor are
   still printed and still fired to listeners.
-- **Three ESSENTIALS-preset detectors measured for the first time.** `LockLeakDetector` and
-  `CompletableFutureExceptionDetector` hold in both directions and are classified `VERDICT`.
-  `ConcurrentModificationDetector` fires on two threads appending to a `CopyOnWriteArrayList`,
-  which is correct code with no iterator involved, so it stays at `PROMPT` with the limit pinned
-  by a test.
+- **Nine of the twelve `ESSENTIALS` detectors are now measured in both directions.**
+  `LockLeakDetector`, `CompletableFutureExceptionDetector`, `ResourceLeakDetector`,
+  `InterruptMonitor`, `UncaughtExceptionHandlerDetector`,
+  `CompletableFutureCompletionLeakDetector` and `ThreadLeakDetector` each fire on the bug and stay
+  silent on the correct twin, and are classified `VERDICT`. Ten detectors hold that tier.
+
+### Fixed
+
+- **`FalseSharingDetector` no longer reaches the gate ranked `HIGH`.** Its report carried no
+  severity marker, so `IssueSeverity.fromReport` fell through to its `HIGH` default and an
+  advisory about cache-line adjacency arrived at `failOn = HIGH` ranked as though it proved data
+  corruption. The detector is experimental, off unless
+  `-Dasync-test.experimental.false-sharing=true`, and its findings are documented as uncorrelated
+  with the phenomenon, so its report now opens with `LOW`.
+- **The count of detectors that leave their severity to be guessed is now pinned.**
+  `DetectorSeverityMarkerTest` measures it (86 of 142) and fails if it grows, so a new detector
+  cannot add to the pile, and no `FACT` or `ADVISORY` tier detector may leave it unset at all.
+  Choosing a severity for the remaining detectors changes what existing builds fail on, so it is
+  tracked as [#291](https://github.com/PIsberg/async-test-lib/issues/291) rather than done here.
+
+- **`ConcurrentModificationDetector` no longer reports thread-safe collections.** Two threads
+  appending to a `CopyOnWriteArrayList` produced a finding, because `analyze()` flagged any
+  collection touched by more than one thread whether or not the collection was thread-safe and
+  whether or not an iterator had ever been live. It now consults the collection's own type:
+  `java.util.concurrent` types suppress both the iteration and mutation findings, and
+  `Collections.synchronizedXxx` wrappers suppress the mutation one. A modification during
+  iteration that the caller explicitly reported still stands whatever the type, because that is an
+  observation rather than an inference. The detector stays `PROMPT`: an `ArrayList` guarded by a
+  lock nobody declared still fires, and that limit is pinned by a test.
 
 ### Changed
 

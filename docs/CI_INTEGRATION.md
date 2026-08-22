@@ -200,8 +200,8 @@ Two independent questions, two settings. `failOn` asks how bad a finding would b
 
 A finding's trust tier is a property of the detector that raised it, published in `DetectorTrust`
 and measured rather than asserted: `VERDICT` requires a case that fires on the bug and a case that
-stays silent on its correctly synchronized twin, and a gate refuses the tier without both. Five
-detectors carry it today. Most of the rest are `PROMPT`, meaning the detector saw a pattern it
+stays silent on its correctly synchronized twin, and a gate refuses the tier without both. Ten
+detectors carry it today, nine of them in the `ESSENTIALS` preset. Most of the rest are `PROMPT`, meaning the detector saw a pattern it
 cannot fully model, so a finding is a reason to look rather than proof of a bug.
 
 Findings below the floor are still printed and still reach every listener, the JSON and the SARIF
@@ -209,9 +209,11 @@ output. They just cannot fail the build, which is the difference between a repor
 one it learns to ignore.
 
 Severity alone is the wrong floor to start from, and worth knowing why before trusting an old
-recipe: most detectors never set a severity at all, and `IssueSeverity.fromReport` recovers one by
-matching upper-case keywords in the report text, defaulting to `HIGH` when it finds none. So
-`failOn = HIGH` on its own is close to "fail on anything".
+recipe: 86 of the 142 detectors never set a severity at all, and `IssueSeverity.fromReport`
+recovers one by matching upper-case keywords in the report text, defaulting to `HIGH` when it
+finds none. So `failOn = HIGH` on its own is close to "fail on anything". That number is pinned by
+`DetectorSeverityMarkerTest` and can only go down; the remaining work is
+[issue #291](https://github.com/PIsberg/async-test-lib/issues/291).
 
 ---
 

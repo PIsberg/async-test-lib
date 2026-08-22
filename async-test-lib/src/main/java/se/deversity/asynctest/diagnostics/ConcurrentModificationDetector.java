@@ -45,13 +45,28 @@ public class ConcurrentModificationDetector {
         final AtomicInteger modificationCount = new AtomicInteger(0);
         final AtomicInteger activeIterators = new AtomicInteger(0);
         final AtomicInteger concurrentModifications = new AtomicInteger(0);
+        /**
+         * Modifications the caller explicitly reported as happening during iteration, via
+         * {@link ConcurrentModificationDetector#recordModificationDuringIteration}. Counted apart
+         * from {@link #concurrentModifications}, which also collects the ones this detector infers
+         * from an iterator being active, because an inference about a thread-safe collection is
+         * worthless while an observation of one is still a fact the caller made.
+         */
+        final AtomicInteger observedDuringIteration = new AtomicInteger(0);
         final Set<Long> iteratingThreads = ConcurrentHashMap.newKeySet();
         final Set<Long> allIteratingThreads = ConcurrentHashMap.newKeySet();
         final Set<Long> modifyingThreads = ConcurrentHashMap.newKeySet();
         volatile String lastModificationType = "none";
+        /** Iteration and mutation are both safe here: the type is one of {@code java.util.concurrent}. */
+        final boolean concurrentType;
+        /** Mutation is safe, iteration is not: a {@code Collections.synchronizedXxx} wrapper. */
+        final boolean synchronizedWrapper;
 
         CollectionState(Collection<?> collection, String name) {
             this.name = name != null ? name : "collection@" + System.identityHashCode(collection);
+            String type = collection == null ? "" : collection.getClass().getName();
+            this.concurrentType = type.startsWith("java.util.concurrent.");
+            this.synchronizedWrapper = type.startsWith("java.util.Collections$Synchronized");
         }
     }
 
@@ -148,6 +163,7 @@ public class ConcurrentModificationDetector {
         CollectionState state = collections.get(System.identityHashCode(collection));
         if (state != null) {
             state.concurrentModifications.incrementAndGet();
+            state.observedDuringIteration.incrementAndGet();
             state.modifyingThreads.add(Thread.currentThread().threadId());
             state.lastModificationType = modificationType;
         }
@@ -163,22 +179,32 @@ public class ConcurrentModificationDetector {
         report.enabled = enabled;
 
         for (CollectionState state : collections.values()) {
-            // Check for concurrent modifications during iteration
-            if (state.concurrentModifications.get() > 0) {
+            // What the collection's own type already guarantees. Reporting a thread count for a
+            // CopyOnWriteArrayList says only that the type was used as designed: two threads adding
+            // to it is correct code, and a finding there is a false positive on the ESSENTIALS
+            // preset, which is where most users meet this detector.
+            boolean mutationIsSafe = state.concurrentType || state.synchronizedWrapper;
+            boolean iterationIsSafe = state.concurrentType;
+
+            // Modification during iteration. An explicit report from the caller stands whatever the
+            // type is, because the caller observed it; the inferred one needs a type that can
+            // actually break, since a snapshot or weakly-consistent iterator cannot.
+            boolean observed = state.observedDuringIteration.get() > 0;
+            if (observed || (!iterationIsSafe && state.concurrentModifications.get() > 0)) {
                 report.concurrentModifications.add(String.format(
                     "%s: %d modifications occurred during active iteration (last: %s)",
                     state.name, state.concurrentModifications.get(), state.lastModificationType));
             }
 
             // Check for multiple threads iterating same collection
-            if (state.allIteratingThreads.size() > 1) {
+            if (!iterationIsSafe && state.allIteratingThreads.size() > 1) {
                 report.concurrentIterations.add(String.format(
                     "%s: %d threads performed iteration (potential race condition)",
                     state.name, state.allIteratingThreads.size()));
             }
 
             // Check for multiple threads modifying same collection
-            if (state.modifyingThreads.size() > 1) {
+            if (!mutationIsSafe && state.modifyingThreads.size() > 1) {
                 report.concurrentMutations.add(String.format(
                     "%s: %d threads performed modifications (%d total modifications)",
                     state.name, state.modifyingThreads.size(), state.modificationCount.get()));
