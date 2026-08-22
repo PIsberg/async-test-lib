@@ -3,6 +3,9 @@ package se.deversity.asynctest.diagnostics;
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 
+import org.jspecify.annotations.Nullable;
+
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
@@ -139,7 +142,27 @@ public enum IssueSeverity {
      * @return the matched severity, or {@link #HIGH} if none is found
      */
     public static IssueSeverity fromReport(String report) {
-        if (report == null || report.isEmpty()) return HIGH;
+        return markedIn(report).orElse(HIGH);
+    }
+
+    /**
+     * {@return the severity this report explicitly marks, or empty when it marks none}
+     *
+     * <p>Same matching as {@link #fromReport(String)}, without the {@code HIGH} default. The
+     * distinction is the point: a caller can tell "this detector said HIGH" from "this detector
+     * said nothing and HIGH is what we assumed", and 86 of the 142 built-in detectors said
+     * nothing. {@code DetectorDefaultSeverity} supplies the answer for those instead of letting
+     * every one of them arrive at a merge gate ranked as though it proved data corruption.
+     *
+     * @param report the raw report text produced by a detector; {@code null} is treated as empty
+     * @since 1.10.0
+     */
+    public static Optional<IssueSeverity> markedIn(String report) {
+        return Optional.ofNullable(marked(report));
+    }
+
+    private static @Nullable IssueSeverity marked(String report) {
+        if (report == null || report.isEmpty()) return null;
 
         for (IssueSeverity severity : values()) {
             if (report.contains(severity.getLabel())
@@ -159,6 +182,6 @@ public enum IssueSeverity {
         if (MEDIUM_WORD.matcher(report).find())   return MEDIUM;
         if (LOW_WORD.matcher(report).find())      return LOW;
 
-        return HIGH;
+        return null;
     }
 }

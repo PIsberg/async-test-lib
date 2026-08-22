@@ -4,6 +4,7 @@ import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 
 import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.report.Violation;
@@ -164,7 +165,7 @@ public final class AsyncTestListenerRegistry {
         if (LISTENERS.isEmpty()) {
             return;
         }
-        IssueSeverity severity = parseSeverity(report);
+        IssueSeverity severity = DetectorDefaultSeverity.of(detectorName, report);
         Violation violation = toViolation(detectorName, severity, report);
         for (AsyncTestListener listener : LISTENERS) {
             try {
@@ -246,10 +247,6 @@ public final class AsyncTestListenerRegistry {
             }
         }
         return "";
-    }
-
-    private static IssueSeverity parseSeverity(String report) {
-        return IssueSeverity.fromReport(report);
     }
 
     /**

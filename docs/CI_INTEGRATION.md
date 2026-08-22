@@ -208,12 +208,12 @@ Findings below the floor are still printed and still reach every listener, the J
 output. They just cannot fail the build, which is the difference between a report a team reads and
 one it learns to ignore.
 
-Severity alone is the wrong floor to start from, and worth knowing why before trusting an old
-recipe: 86 of the 142 detectors never set a severity at all, and `IssueSeverity.fromReport`
-recovers one by matching upper-case keywords in the report text, defaulting to `HIGH` when it
-finds none. So `failOn = HIGH` on its own is close to "fail on anything". That number is pinned by
-`DetectorSeverityMarkerTest` and can only go down; the remaining work is
-[issue #291](https://github.com/PIsberg/async-test-lib/issues/291).
+Severity is now worth gating on, which it was not before 1.10.0. Until then 86 of the 142
+detectors set no severity at all and `IssueSeverity.fromReport` returned `HIGH` for every one of
+them, so `failOn = HIGH` was close to "fail on anything". Every detector now states a severity,
+either in its own report or in `DetectorDefaultSeverity`, and `DetectorSeverityMarkerTest` fails
+the build if one does not. If you are upgrading and your gate suddenly passes, read the changelog:
+nineteen of them that used to arrive as `HIGH` now declare `MEDIUM` or `LOW`.
 
 ---
 

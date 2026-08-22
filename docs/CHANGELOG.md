@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+> **Upgrading.** This release changes what a `failOn = HIGH` gate fails on. 86 of the 142 detectors
+> set no severity, and `IssueSeverity.fromReport` returned `HIGH` for all of them, so the gate could
+> not tell a resource left open from a lost update. Every detector now states a severity, and 19 of
+> them declare `MEDIUM` or `LOW` rather than inheriting `HIGH`: the leak and shutdown detectors,
+> the pool and contention monitors, busy-waiting, sleep-in-lock, starvation, common-pool blocking,
+> and `System.gc()`. **A build gating on `failOn = HIGH` can go from red to green with nobody
+> touching the code under test**, and a recorded baseline can go stale. Nothing is suppressed:
+> those findings are still printed and still reach every listener, the JSON and the SARIF output.
+> To keep the old behaviour, gate at `failOn = MEDIUM`.
+
+### Added
+
+- **Every detector states its severity.** `DetectorDefaultSeverity` declares one for each of the 86
+  detectors that write no marker in their report, chosen against `IssueSeverity`'s own definitions:
+  `CRITICAL` where the report's primary claim is that something will not make progress, `HIGH` for
+  corruption or an incorrect result, `MEDIUM` for degradation and leaks, `LOW` for an inefficiency.
+  A detector's own report always wins over the table, and `DetectorSeverityMarkerTest` fails on an
+  entry for a detector that marks its own, so the table can only shrink.
+- **`IssueSeverity.markedIn(String)`** returns what a report explicitly marks, or empty. The
+  distinction between "this detector said HIGH" and "this detector said nothing" is what made the
+  fix possible.
+
+### Changed
+
+- The `failOn` gate, the JSON report and the SARIF output all take a finding's severity from one
+  place, `DetectorDefaultSeverity.of(detectorName, report)`, so they cannot disagree about what a
+  finding was worth. Precedence: what the report marks, then what the detector declares, then
+  `HIGH` for anything the library does not know, which is every third-party SPI detector.
+- `docs/DETECTOR_CATALOG.md` changed seven entries from `HIGH` to `MEDIUM`. The catalog had drifted
+  from `IssueSeverity`'s definitions and from itself, ranking one resource leak `HIGH` and another
+  `MEDIUM`.
+
+
 ### Added
 
 - **Trust tiers for every detector.** `TrustTier` (`ADVISORY`, `PROMPT`, `FACT`, `VERDICT`) and

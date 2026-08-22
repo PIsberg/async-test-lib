@@ -4,6 +4,34 @@
 
 ---
 
+## Severity
+
+Every detector states a severity, and the code is where it is stated. A detector that marks one in
+its own report wins; the rest declare one in `DetectorDefaultSeverity`. Nothing is inferred any
+more: until #291 a detector that wrote no marker had its severity guessed by
+`IssueSeverity.fromReport`, which returned `HIGH`, and 86 of the 142 wrote none, so `failOn = HIGH`
+failed on a resource left open exactly as it failed on a lost update.
+
+The four levels mean what `IssueSeverity` defines them to mean, and that definition is what settles
+an argument about a particular detector:
+
+| Level | Definition |
+|---|---|
+| `CRITICAL` | Application will hang, deadlock, or crash |
+| `HIGH` | Data corruption, incorrect results, or lost updates possible |
+| `MEDIUM` | Performance degradation, resource leaks, or thread starvation |
+| `LOW` | Minor inefficiencies or best practice violations |
+
+Seven entries below were changed from `HIGH` to `MEDIUM` when the declarations were written,
+because the catalog had drifted from that definition and from itself: it ranked one resource leak
+`HIGH` and another `MEDIUM`. Leaks are `MEDIUM` by the definition above, so the leak detectors,
+thread-pool health and ForkJoinTask blocking now say so. This is a real change to what a
+`failOn = HIGH` gate fails on; the changelog carries the upgrade note.
+
+`DetectorSeverityMarkerTest` enforces that every detector states a severity somewhere, that the
+declaration table never shadows a detector that states its own, and that an `ADVISORY` tier
+detector cannot claim `CRITICAL` or `HIGH`.
+
 ## Trust tiers
 
 Before using any of these as a merge gate, know which kind of statement it makes. The tier is a
@@ -438,7 +466,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   ```
 
 ### 15. Thread Pool Health Detector
-* **Severity**: `HIGH`
+* **Severity**: `MEDIUM`
 * **Description**: Tracks executor queue depth, task rejections, active-thread counts, and per-task duration to surface pool saturation, silent task rejection, and worker starvation before they manifest as user-visible timeouts.
 * **Buggy Code**:
   ```java
@@ -671,7 +699,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   ```
 
 ### 28. Resource Leak Detector
-* **Severity**: `HIGH`
+* **Severity**: `MEDIUM`
 * **Description**: Tracks open/close counts for `AutoCloseable` resources (streams, connections) across threads to catch resources opened but never closed, especially on exception paths that skip cleanup.
 * **Buggy Code**:
   ```java
@@ -1181,7 +1209,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 ## Phase 4: Infrastructure & Resource Management
 
 ### 49. Thread Leak Detector
-* **Severity**: `HIGH`
+* **Severity**: `MEDIUM`
 * **Description**: Tracks thread creation and termination, then reports threads that were started but never joined or interrupted by test completion, or unexplained `Thread.activeCount()` growth across invocations.
 * **Buggy Code**:
   ```java
@@ -1225,7 +1253,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   ```
 
 ### 51. Unbounded Queue Detector
-* **Severity**: `HIGH`
+* **Severity**: `MEDIUM`
 * **Description**: Flags `BlockingQueue`s created without a capacity bound (and unbounded thread-pool executors), and tracks queue-size growth beyond a configurable threshold, since unbounded growth under producer/consumer imbalance leads to `OutOfMemoryError`.
 * **Buggy Code**:
   ```java
@@ -1507,7 +1535,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   ```
 
 ### 64. Stream Closing Detector
-* **Severity**: `HIGH`
+* **Severity**: `MEDIUM`
 * **Description**: Detects `InputStream`/`OutputStream`/`Reader`/`Writer` instances that are opened but never closed, closed from a different thread than the one that opened them, left open in excessive numbers concurrently, or not managed via try-with-resources.
 * **Buggy Code**:
   ```java
@@ -1566,7 +1594,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 ## Phase 8: Lifecycle & Structural Correctness
 
 ### 67. Executor Shutdown Detector
-* **Severity**: `HIGH`
+* **Severity**: `MEDIUM`
 * **Description**: Flags `ExecutorService` instances that have tasks submitted but are never shut down (thread leak), or that are shut down without a following `awaitTermination()` call (submitted tasks may be silently abandoned or still running at test end).
 * **Buggy Code**:
   ```java
@@ -1845,7 +1873,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   ```
 
 ### 79. ForkJoinTask Blocking Detector
-* **Severity**: `HIGH`
+* **Severity**: `MEDIUM`
 * **Description**: Detects blocking calls (`Thread.sleep`, `Object.wait`, `Future.get()`, blocking I/O) made from within a `ForkJoinTask` body. `ForkJoinPool` uses a bounded set of carrier threads, so a blocked task ties one up without doing useful work, starving every other submitted task and parallel stream.
 * **Buggy Code**:
   ```java
