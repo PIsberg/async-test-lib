@@ -15,8 +15,8 @@ import se.deversity.asynctest.BeforeEachInvocation;
 import se.deversity.asynctest.benchmark.BenchmarkRecorder;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.diagnostics.DeadlockDetector;
+import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
-import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.MemoryModelValidator;
 import se.deversity.asynctest.diagnostics.Phase1DetectorSet;
 import se.deversity.asynctest.diagnostics.TrustTier;
@@ -577,7 +577,7 @@ public class ConcurrencyRunner {
             System.err.println(trustBanner(e.getKey(), tier));
             System.err.println(e.getValue());
             AsyncTestListenerRegistry.fireDetectorReport(e.getKey(), e.getValue());
-            if (config.failOn.triggeredBy(IssueSeverity.fromReport(e.getValue()))
+            if (config.failOn.triggeredBy(DetectorDefaultSeverity.of(e.getKey(), e.getValue()))
                     && tier.atLeast(config.minTrust)) {
                 failing.add(e.getKey());
             }

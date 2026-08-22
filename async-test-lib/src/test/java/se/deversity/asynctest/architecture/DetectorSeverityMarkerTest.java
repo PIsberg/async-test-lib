@@ -3,6 +3,7 @@ package se.deversity.asynctest.architecture;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.TrustTier;
@@ -13,11 +14,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -44,84 +42,59 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class DetectorSeverityMarkerTest {
 
-    /**
-     * Wired detectors whose source carries no severity marker, measured on 2026-08-21.
-     *
-     * <p>Lower this number when you mark a detector. Never raise it.
-     */
-    private static final int BASELINE = 86;
-
-    /**
-     * The ways this codebase's detectors render a severity that {@code fromReport} recognises.
-     *
-     * <p>Plain substrings rather than one regular expression: the pattern would need six escaped
-     * brackets, and a gate whose own matcher is hard to read is a gate nobody trusts when it fires.
-     */
+    /** The ways this codebase's detectors render a severity that {@code fromReport} recognises. */
     private static final List<String> MARKERS = List.of(
             "IssueSeverity.", "getLabel()", "[CRITICAL]", "[HIGH]", "[MEDIUM]", "[LOW]",
             "Severity: ", "🔴", "🟠", "🟡", "🟢");
 
     @Test
-    @DisplayName("the count of detectors that leave severity to be guessed only ever goes down")
-    void unmarkedDetectorCountDoesNotGrow() {
-        List<String> unmarked = unmarkedDetectors();
-
-        assertTrue(unmarked.size() <= BASELINE,
-                "A detector that writes no severity marker has its severity guessed by "
-                        + "IssueSeverity.fromReport, which defaults to HIGH, so it reaches a "
-                        + "failOn = HIGH merge gate as though it proved data corruption. "
-                        + unmarked.size() + " detectors are unmarked, above the baseline of "
-                        + BASELINE + ". Mark the new one: open its report with "
-                        + "IssueSeverity.<LEVEL>.getLabel(). See issue #291. Unmarked: " + unmarked);
-
-        assertEquals(BASELINE, unmarked.size(),
-                "The unmarked count dropped to " + unmarked.size() + ", which is the point of this "
-                        + "gate. Lower BASELINE to that number so the ratchet holds at the new level.");
+    @DisplayName("every detector states its severity, by marker or by declaration")
+    void noDetectorFallsThroughToTheDefault() {
+        List<String> silent = new ArrayList<>();
+        for (DetectorTrust.Row row : DetectorTrust.rows()) {
+            if (!hasMarker(row.detectorClass()) && DetectorDefaultSeverity.of(row.type()).isEmpty()) {
+                silent.add(row.detectorClass());
+            }
+        }
+        assertTrue(silent.isEmpty(),
+                "A detector that neither marks its report nor declares a default has its severity "
+                        + "guessed by IssueSeverity.fromReport, which returns HIGH, so it reaches a "
+                        + "failOn = HIGH merge gate as though it proved data corruption. That was "
+                        + "true of 86 detectors and is the defect DetectorDefaultSeverity closed. "
+                        + "Either open the report with IssueSeverity.<LEVEL>.getLabel() or add an "
+                        + "entry to DetectorDefaultSeverity. Silent: " + silent);
     }
 
     @Test
-    @DisplayName("no FACT-tier detector leaves its severity to be guessed")
-    void factTierDetectorsAlwaysStateTheirSeverity() {
-        Map<TrustTier, List<String>> byTier = unmarkedByTier();
-        List<String> factUnmarked = byTier.getOrDefault(TrustTier.FACT, List.of());
-
-        assertTrue(factUnmarked.isEmpty(),
-                "A FACT-tier detector reports something it observed, so it knows what it saw and "
-                        + "has no excuse for letting the severity be inferred from its prose. "
-                        + "Unmarked: " + factUnmarked);
+    @DisplayName("the declaration table only covers detectors that say nothing themselves")
+    void declaredDefaultsDoNotShadowADetectorsOwnSeverity() {
+        List<String> redundant = new ArrayList<>();
+        for (DetectorTrust.Row row : DetectorTrust.rows()) {
+            if (hasMarker(row.detectorClass()) && DetectorDefaultSeverity.of(row.type()).isPresent()) {
+                redundant.add(row.detectorClass());
+            }
+        }
+        assertTrue(redundant.isEmpty(),
+                "A detector's own report wins over the table, so an entry for a detector that marks "
+                        + "its own severity is dead weight that reads as though it were in force. "
+                        + "Remove the entry: the table is meant to shrink as detectors learn to "
+                        + "state their own. Redundant: " + redundant);
     }
 
     @Test
-    @DisplayName("no ADVISORY-tier detector can reach a gate ranked HIGH by default")
-    void advisoryTierDetectorsAlwaysStateTheirSeverity() {
-        Map<TrustTier, List<String>> byTier = unmarkedByTier();
-        List<String> advisoryUnmarked = byTier.getOrDefault(TrustTier.ADVISORY, List.of());
-
-        assertTrue(advisoryUnmarked.isEmpty(),
-                "An ADVISORY-tier detector makes a performance or hygiene note, and an unmarked "
-                        + "report defaults to HIGH, which is the one ranking such a finding must "
-                        + "never carry. FalseSharingDetector was the last of these. Unmarked: "
-                        + advisoryUnmarked);
-    }
-
-    private static Map<TrustTier, List<String>> unmarkedByTier() {
-        Map<TrustTier, List<String>> out = new EnumMap<>(TrustTier.class);
+    @DisplayName("an advisory-tier detector cannot declare a correctness severity")
+    void advisoryTierDetectorsCannotClaimCorruption() {
+        List<String> overclaiming = new ArrayList<>();
         for (DetectorTrust.Row row : DetectorTrust.rows()) {
-            if (!hasMarker(row.detectorClass())) {
-                out.computeIfAbsent(row.tier(), tier -> new ArrayList<>()).add(row.detectorClass());
-            }
+            if (row.tier() != TrustTier.ADVISORY) continue;
+            DetectorDefaultSeverity.of(row.type())
+                    .filter(severity -> severity == IssueSeverity.CRITICAL || severity == IssueSeverity.HIGH)
+                    .ifPresent(severity -> overclaiming.add(row.detectorClass() + " declares " + severity));
         }
-        return out;
-    }
-
-    private static List<String> unmarkedDetectors() {
-        List<String> out = new ArrayList<>();
-        for (DetectorTrust.Row row : DetectorTrust.rows()) {
-            if (!hasMarker(row.detectorClass())) {
-                out.add(row.detectorClass());
-            }
-        }
-        return out;
+        assertTrue(overclaiming.isEmpty(),
+                "An ADVISORY-tier detector makes a performance or hygiene note. Declaring it "
+                        + "CRITICAL or HIGH would put a finding that says nothing about correctness "
+                        + "into the same bucket as a lost update: " + overclaiming);
     }
 
     private static boolean hasMarker(String detectorClass) {
