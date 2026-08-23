@@ -44,22 +44,22 @@ exception counts move, and only on the three subjects whose corruption surfaces 
 |---|---|---:|---|---:|
 | `mutableInt_incrementAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
 | `mutableLong_incrementAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `stopWatch_splitAndGet` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 78 |
-| `lruMap_putAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `stopWatch_splitAndGet` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 69 |
+| `lruMap_putAndGet` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
 | `flat3Map_putAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
 | `listOrderedMap_putAndGet` | NOT_THREAD_SAFE | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
 | `passiveExpiringMap_putAndGet` | NOT_THREAD_SAFE | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
 | `arrayListMultimap_put` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
 | `evictingQueue_addAndPoll` | NOT_THREAD_SAFE | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `guavaStopwatch_startStop` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 8 |
+| `guavaStopwatch_startStop` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 4 |
 | `statsAccumulator_add` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
 | `hashMultimap_put` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
 | `linkedListMultimap_put` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `minMaxPriorityQueue_addAndPoll` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 62 |
-| `hashedMap_putAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `linkedMap_putAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `minMaxPriorityQueue_addAndPoll` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 38 |
+| `hashedMap_putAndGet` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `linkedMap_putAndGet` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
 | `multiKeyMap_putAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `caseInsensitiveMap_putAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `caseInsensitiveMap_putAndGet` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
 | `lazyMap_get` | NOT_THREAD_SAFE | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
 | `fastDateFormat_format` | THREAD_SAFE | 0 | - | 0 |
 | `atomicSafeInitializer_get` | THREAD_SAFE | 0 | - | 0 |
@@ -132,6 +132,14 @@ finding was traced to a model gap rather than tuned away:
 | the same field, a second stream | with `fields=true` the accessor `Advice` still reported every getter and setter, with no instance identity and no volatile flag | the `Advice` stands down when field instructions are woven; the field stream carries strictly more |
 | `LocalCache$2` (the no-op discarding queue) | the collection hooks recorded every receiver reaching a `java.util` call shape, including a class with no state anywhere | a receiver is recorded only when it inherits instance fields from a bootstrap-loaded class; everything else is already watched field by field |
 | "write operations from 240 threads" on a 6-thread test | virtual threads are one per task and the collection detector counted ids across all 40 rounds | threads are counted per round, and a finding names the widest round |
+
+A third round arrived while fixing #305: replacing Byte Buddy's `MemberSubstitution` with the
+library's own call-site visitor did more than let records weave. `MemberSubstitution`'s relaxed
+mode silently skips a call site whose method graph fails to resolve, and four documented-unsafe
+commons maps (`LRUMap`, `HashedMap`, `LinkedMap`, `CaseInsensitiveMap`, all `AbstractHashedMap`
+subclasses) turned out to have been skipped that way all along; each now draws its
+`SharedCollectionDetector` finding alongside the `AtomicityValidator` one. More reach on the
+unsafe column, nothing new on the safe one.
 
 Round two also made the read-write idiom legible: the two views of a `ReentrantReadWriteLock`
 resolve to their owner, shared mode kept apart, so correct read-write usage is silent while a
