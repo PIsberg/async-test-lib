@@ -337,20 +337,26 @@ public final class AsyncTestAgent {
                         typeIgnore.matches(typeDescription) || bootstrapIgnore.matches(classLoader))
                 .type(typeMatcher(options.includes()))
                 .transform((b, typeDescription, classLoader, module, protectionDomain) -> {
-                    DynamicType.Builder<?> woven =
-                            b.visit(Advice.to(ReadAccessAdvice.class)
-                                           .on(ElementMatchers.isGetter()))
-                             .visit(Advice.to(WriteAccessAdvice.class)
-                                           .on(ElementMatchers.isSetter()));
+                    // The accessor Advice is the default mode's whole story and must stand down
+                    // when field instructions are woven: a getter's body contains the GETFIELD,
+                    // so with fields=true the Advice reported every accessor-shaped method a
+                    // second time, with no receiver identity, no volatile flag and no enclosing
+                    // monitor. That weaker duplicate re-merged every instance of a field under
+                    // one identity-0 key and is exactly why Guava's cache entries kept a finding
+                    // that the per-instance stream had already cleared.
+                    DynamicType.Builder<?> woven = weaveFields
+                            ? b.visit(FieldAccessWeaver.visitor())
+                            : b.visit(Advice.to(ReadAccessAdvice.class)
+                                             .on(ElementMatchers.isGetter()))
+                               .visit(Advice.to(WriteAccessAdvice.class)
+                                             .on(ElementMatchers.isSetter()));
                     // Direct field instructions are opt-in: they make a bare count++ observable,
                     // which accessor weaving structurally cannot do, at the cost of instrumenting
                     // every field access in every matched class.
                     // Monitor instructions come along whenever anything is being recorded: they
                     // are what separates a guarded access from a racing one. Field instructions
                     // are the part fields=true actually buys.
-                    if (weaveFields) {
-                        woven = woven.visit(FieldAccessWeaver.visitor());
-                    } else if (!collectionSubstitutions.isEmpty()) {
+                    if (!weaveFields && !collectionSubstitutions.isEmpty()) {
                         woven = woven.visit(FieldAccessWeaver.visitor(false));
                     }
                     // Collection calls are opt-in for the same reason and answer a different blind

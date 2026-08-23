@@ -193,6 +193,50 @@ public final class TelemetryRegistry {
     }
 
     /**
+     * Records a field access with the object it belongs to in hand, the agent's hot path.
+     *
+     * <p>Given the receiver rather than its identity hash, the hook can ask the one question the
+     * woven lockset cannot answer: is that object's monitor held right now. A {@code synchronized}
+     * method compiles to {@code ACC_SYNCHRONIZED} and no monitor instruction, so a class that
+     * guards its fields the most ordinary way in Java left nothing for the weaver to record and
+     * every such field read as unguarded. {@link Thread#holdsLock(Object)} answers for the
+     * receiver, and the weaver passes the monitor of an enclosing {@code synchronized} method
+     * outright, since holding it is what being inside that method means. Both travel with the
+     * event as identity hashes; the receiver itself is never retained.
+     *
+     * <p>For a write the fingerprint leaves out locks held in shared mode, because a read lock
+     * guards no write. The question is asked here, on the accessing thread, for the same reason
+     * the fingerprint is.
+     *
+     * @param receiver          the object the field belongs to, or the declaring class for a
+     *                          static field, or {@code null} when the weaver had neither
+     * @param methodMonitor     the monitor of the enclosing {@code synchronized} method, else
+     *                          {@code null}
+     * @param threadId          {@code Thread.currentThread().threadId()}
+     * @param qualifiedName     combined {@code declaringClass.field} identifier
+     * @param isWrite           {@code true} for a write access
+     * @param volatileField     whether the field is declared {@code volatile}
+     * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
+     * @param afterVolatileRead whether a volatile field of the owner was read first
+     * @param staticField       whether the field is static, so its identity stays 0
+     * @since 1.10.0
+     */
+    public static void recordAccess(@Nullable Object receiver, @Nullable Object methodMonitor,
+                                    long threadId, String qualifiedName, boolean isWrite,
+                                    boolean volatileField, int constantTag,
+                                    boolean afterVolatileRead, boolean staticField) {
+        if (STOPPED.get()) {
+            return;
+        }
+        int identity = staticField || receiver == null ? 0 : System.identityHashCode(receiver);
+        int ownMonitor = receiver != null && Thread.holdsLock(receiver)
+                ? System.identityHashCode(receiver) : 0;
+        int method = methodMonitor == null ? 0 : System.identityHashCode(methodMonitor);
+        BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
+                volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method);
+    }
+
+    /**
      * Records a field access from a class name and method name.
      *
      * <p>Convenience overload for callers that have the declaring class and method name
@@ -307,6 +351,10 @@ public final class TelemetryRegistry {
     // drain is stopped by shutting down drainExecutor in stop(), not by cancelling the Future.
     @SuppressWarnings("FutureReturnValueIgnored")
     public static void start(TelemetryEventBuffer.@Nullable DrainCallback callback) {
+        // A run starts here, whichever path installs its consumer. Locksets registered for an
+        // earlier run's fingerprints were resolved as that run's events arrived, so the table can
+        // start empty; a worker thread that cached a registration re-registers on its next access.
+        HeldLocks.forgetRegisteredLocksets();
         if (!RUNNING.compareAndSet(false, true)) {
             // Already running, but allow updating the callback.
             setCallback(callback);

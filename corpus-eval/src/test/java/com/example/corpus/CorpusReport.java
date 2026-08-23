@@ -42,7 +42,8 @@ final class CorpusReport {
                 .append("- OS: ").append(System.getProperty("os.name")).append('\n')
                 .append("- Configuration: threads=").append(threads)
                 .append(", invocations=").append(invocations)
-                .append(", detectAll=true, agent=fields=true\n")
+                .append(", detectAll=true, agent=")
+                .append(System.getProperty("asynctest.agent", "(not set)")).append('\n')
                 .append("- Body executions: ").append(CorpusRecorder.bodyExecutions()).append("\n\n");
 
         out.append("## Per subject\n\n")

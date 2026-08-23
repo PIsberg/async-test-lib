@@ -138,6 +138,22 @@ final class FieldAccessWeaver {
                                  int writerFlags,
                                  int readerFlags) {
             return new ClassVisitor(Opcodes.ASM9, classVisitor) {
+
+                /** The class being woven, and whether its version supports {@code ldc} of a class. */
+                private String internalName = instrumentedType.getInternalName();
+                private boolean classConstantsUsable = true;
+
+                @Override
+                public void visit(int version, int access, String name, String signature,
+                                  String superName, String[] interfaces) {
+                    internalName = name;
+                    // ldc of a class constant needs a 49.0 (Java 5) class file. Older files get
+                    // null where a class object would have gone, which loses only the probes that
+                    // need one; everything else is unchanged.
+                    classConstantsUsable = (version & 0xFFFF) >= Opcodes.V1_5;
+                    super.visit(version, access, name, signature, superName, interfaces);
+                }
+
                 @Override
                 public MethodVisitor visitMethod(int access, String name, String descriptor,
                                                  String signature, String[] exceptions) {
@@ -146,7 +162,10 @@ final class FieldAccessWeaver {
                     boolean typeInitializer = "<clinit>".equals(name);
                     return new FieldAccessMethodVisitor(delegate,
                             weaveFieldInstructions && !typeInitializer, typePool,
-                            "<init>".equals(name));
+                            "<init>".equals(name),
+                            (access & Opcodes.ACC_SYNCHRONIZED) != 0,
+                            (access & Opcodes.ACC_STATIC) != 0,
+                            internalName, classConstantsUsable);
                 }
             };
         }
@@ -242,13 +261,46 @@ final class FieldAccessWeaver {
          */
         private final boolean insideConstructor;
 
+        /** Whether the enclosing method is {@code synchronized}, and how its monitor is named. */
+        private final boolean methodSynchronized;
+        private final boolean methodStatic;
+        private final String classInternalName;
+        private final boolean classConstantsUsable;
+
         FieldAccessMethodVisitor(MethodVisitor delegate, boolean weaveFieldInstructions,
-                                 TypePool typePool, boolean constructor) {
+                                 TypePool typePool, boolean constructor,
+                                 boolean methodSynchronized, boolean methodStatic,
+                                 String classInternalName, boolean classConstantsUsable) {
             super(Opcodes.ASM9, delegate);
             this.weaveFieldInstructions = weaveFieldInstructions;
             this.typePool = typePool;
             this.thisIsUninitialised = constructor;
             this.insideConstructor = constructor;
+            this.methodSynchronized = methodSynchronized;
+            this.methodStatic = methodStatic;
+            this.classInternalName = classInternalName;
+            this.classConstantsUsable = classConstantsUsable;
+        }
+
+        /**
+         * Pushes the monitor an {@code ACC_SYNCHRONIZED} method holds, or {@code null}.
+         *
+         * <p>A {@code synchronized} method compiles to a flag and no instruction, so the monitor
+         * weaving that sees every {@code synchronized} block sees nothing here. Being inside the
+         * method is proof the monitor is held, which is why no probe is needed: {@code this} for
+         * an instance method, the declaring class for a static one. Constructors cannot carry the
+         * flag, so {@code ALOAD 0} here never loads an uninitialised {@code this}.
+         */
+        private void pushMethodMonitor() {
+            if (!methodSynchronized) {
+                super.visitInsn(Opcodes.ACONST_NULL);
+            } else if (!methodStatic) {
+                super.visitVarInsn(Opcodes.ALOAD, 0);
+            } else if (classConstantsUsable) {
+                super.visitLdcInsn(Type.getObjectType(classInternalName));
+            } else {
+                super.visitInsn(Opcodes.ACONST_NULL);
+            }
         }
 
         /**
@@ -406,7 +458,7 @@ final class FieldAccessWeaver {
          * branch-free and returns the stack to the exact shape the field instruction expects, so
          * only {@code maxStack} moves, which is what {@code COMPUTE_MAXS} is for.
          */
-        private void liftReceiverIdentity(boolean isWrite, String descriptor) {
+        private void liftReceiver(boolean isWrite, String descriptor) {
             if (!isWrite) {
                 super.visitInsn(Opcodes.DUP);                 // obj -> obj, obj
             } else if (isCategoryTwo(descriptor)) {
@@ -417,8 +469,6 @@ final class FieldAccessWeaver {
                 super.visitInsn(Opcodes.DUP2);                // obj, v -> obj, v, obj, v
                 super.visitInsn(Opcodes.POP);                 //        -> obj, v, obj
             }
-            super.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/System", "identityHashCode",
-                    "(Ljava/lang/Object;)I", false);
         }
 
         /**
@@ -510,12 +560,18 @@ final class FieldAccessWeaver {
                 boolean isWrite = write;
                 boolean isStatic = isStaticAccess;
                 if (isStatic) {
-                    // No receiver: static state is shared by definition, and 0 is the identity
-                    // every static access shares, which is exactly the old behaviour.
-                    super.visitInsn(Opcodes.ICONST_0);
+                    // The declaring class stands in for the receiver: its identity stays 0 on
+                    // the hook side, exactly the old behaviour, while its monitor is what a
+                    // static synchronized method somewhere up the stack would be holding.
+                    if (classConstantsUsable) {
+                        super.visitLdcInsn(Type.getObjectType(owner));
+                    } else {
+                        super.visitInsn(Opcodes.ACONST_NULL);
+                    }
                 } else {
-                    liftReceiverIdentity(isWrite, descriptor);
+                    liftReceiver(isWrite, descriptor);
                 }
+                pushMethodMonitor();
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, THREAD, "currentThread",
                         "()Ljava/lang/Thread;", false);
                 super.visitMethodInsn(Opcodes.INVOKEVIRTUAL, THREAD, "threadId", "()J", false);
@@ -525,8 +581,9 @@ final class FieldAccessWeaver {
                 super.visitLdcInsn(tag);
                 super.visitInsn(ownersWithVolatileReadInThisMethod.contains(owner)
                         ? Opcodes.ICONST_1 : Opcodes.ICONST_0);
+                super.visitInsn(isStatic ? Opcodes.ICONST_1 : Opcodes.ICONST_0);
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "recordAccess",
-                        "(IJLjava/lang/String;ZZIZ)V", false);
+                        "(Ljava/lang/Object;Ljava/lang/Object;JLjava/lang/String;ZZIZZ)V", false);
                 if (isWrite && !isStatic) {
                     restoreReceiverBelowValue(descriptor);
                 }

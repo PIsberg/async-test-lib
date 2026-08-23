@@ -63,12 +63,45 @@ public class SharedCollectionDetector {
         final String collectionType;
         final AtomicInteger readCount  = new AtomicInteger(0);
         final AtomicInteger writeCount = new AtomicInteger(0);
+        /** Threads that touched the instance in the round in progress; folded at each round start. */
         final Set<Long> readThreads    = ConcurrentHashMap.newKeySet();
         final Set<Long> writeThreads   = ConcurrentHashMap.newKeySet();
+        /** The widest single round seen so far, which is what a finding reports. */
+        volatile int maxRoundWriters;
+        volatile int maxRoundReaders;
+        /** Whether some round had exactly one writer and several readers: the visibility shape. */
+        volatile boolean sawSingleWriterManyReaders;
 
         CollectionState(String name, String collectionType) {
             this.name = name;
             this.collectionType = collectionType;
+        }
+
+        /**
+         * Folds the round in progress into the per-round maxima and starts the next one.
+         *
+         * <p>Only threads that shared a round can have raced: the harness orders rounds through
+         * the runner thread, so a collection written by one thread per round was written
+         * sequentially however many rounds there were. Counting across rounds reported "write
+         * operations from 240 threads" on a six-thread test, because virtual threads are one per
+         * task and every round brought six new ids, and it would report a sequential writer as a
+         * race. Called on the runner thread between rounds, when no worker is running, and once
+         * more at analysis for the final round.
+         */
+        void foldRound() {
+            int writers = writeThreads.size();
+            int readers = readThreads.size();
+            if (writers > maxRoundWriters) {
+                maxRoundWriters = writers;
+            }
+            if (readers > maxRoundReaders) {
+                maxRoundReaders = readers;
+            }
+            if (writers == 1 && readers > 1) {
+                sawSingleWriterManyReaders = true;
+            }
+            writeThreads.clear();
+            readThreads.clear();
         }
     }
 
@@ -100,7 +133,7 @@ public class SharedCollectionDetector {
     public void recordRead(Object collection, String name, String operation) {
         if (!enabled || collection == null) return;
         CollectionState state = resolveState(collection, name);
-        state.noteAccess(collection);
+        state.noteAccess(collection, false);
         state.readThreads.add(Thread.currentThread().threadId());
         state.readCount.incrementAndGet();
     }
@@ -115,7 +148,7 @@ public class SharedCollectionDetector {
     public void recordWrite(Object collection, String name, String operation) {
         if (!enabled || collection == null) return;
         CollectionState state = resolveState(collection, name);
-        state.noteAccess(collection);
+        state.noteAccess(collection, true);
         state.writeThreads.add(Thread.currentThread().threadId());
         state.writeCount.incrementAndGet();
     }
@@ -130,6 +163,23 @@ public class SharedCollectionDetector {
     }
 
     /**
+     * Marks the start of a new invocation round.
+     *
+     * <p>Threads are counted per round from here on: accesses recorded before this call belong
+     * to the previous round and are never counted together with the ones that follow, because
+     * the harness orders rounds and two accesses from different rounds cannot race. Called by
+     * {@code ConcurrencyRunner} before every round; a caller that never calls it measures one
+     * round, which is what the manual API did before.
+     *
+     * @since 1.10.0
+     */
+    public void markInvocationStart() {
+        for (CollectionState state : collections.values()) {
+            state.foldRound();
+        }
+    }
+
+    /**
      * Analyse collection usage and return a report.
      *
      * @return the findings this detector collected during the run
@@ -138,30 +188,32 @@ public class SharedCollectionDetector {
         SharedCollectionReport report = new SharedCollectionReport();
 
         for (CollectionState state : collections.values()) {
-            Set<Long> allWriters = state.writeThreads;
-            Set<Long> allReaders = state.readThreads;
+            // The final round has not been folded by a round start.
+            state.foldRound();
+            int writers = state.maxRoundWriters;
+            int readers = state.maxRoundReaders;
 
-            if (allWriters.size() > 1 && state.sawUnguardedAccess()) {
+            if (writers > 1 && state.sawUnguardedAccess()) {
                 report.concurrentWriteViolations.add(String.format(
                         "%s (%s): write operations from %d threads (writes: %d) — DATA CORRUPTION RISK"
                                 + SelfGuard.REPORT_NOTE + "!",
                         state.name, state.collectionType,
-                        allWriters.size(), state.writeCount.get()));
-            } else if (allWriters.size() == 1 && allReaders.size() > 1
+                        writers, state.writeCount.get()));
+            } else if (writers == 1 && state.sawSingleWriterManyReaders
                     && state.sawUnguardedAccess()) {
-                // One writer, multiple readers — still risky without synchronisation
+                // One writer, multiple readers in the same round: still risky without synchronisation
                 report.mixedAccessViolations.add(String.format(
                         "%s (%s): written by 1 thread, read by %d threads without visible synchronisation — VISIBILITY RISK"
                                 + SelfGuard.REPORT_NOTE,
-                        state.name, state.collectionType, allReaders.size()));
+                        state.name, state.collectionType, readers));
             }
 
             int total = state.readCount.get() + state.writeCount.get();
             if (total > 0) {
                 report.collectionActivity.put(state.name, String.format(
                         "reads: %d from %d thread(s), writes: %d from %d thread(s)",
-                        state.readCount.get(), allReaders.size(),
-                        state.writeCount.get(), allWriters.size()));
+                        state.readCount.get(), readers,
+                        state.writeCount.get(), writers));
             }
         }
 

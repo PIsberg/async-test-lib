@@ -40,12 +40,14 @@ import org.jspecify.annotations.Nullable;
  * object other than the tracked instance emits no callback the library can observe, so a lock only
  * enters this set when the test declares it.
  *
- * <p>With the agent attached, one kind does arrive on its own. Since 1.9.6 the weaver instruments
+ * <p>With the agent attached, locks arrive on their own. Since 1.9.6 the weaver instruments
  * {@code MONITORENTER} and {@code MONITOREXIT} and routes them here through
  * {@code TelemetryRegistry.monitorEntered}, so a plain {@code synchronized} block in instrumented
- * code counts as a held lock with no declaration at all. That covers monitors and only monitors: a
- * {@link java.util.concurrent.locks.ReentrantLock} compiles to an ordinary method call and stays
- * invisible until the test declares it.
+ * code counts as a held lock with no declaration at all. With {@code collections=true} the woven
+ * {@code Lock.lock()}/{@code unlock()} call sites feed the same stack through
+ * {@code AgentLockHooks}, read-write views resolved to their owner and read views marked shared,
+ * so a {@link java.util.concurrent.locks.ReentrantLock} needs no declaration either. What still
+ * does: a lock acquired only inside code the weaver never sees.
  *
  * <p>An undeclared lock the agent cannot see is invisible and the finding stands, which is the safe
  * direction: the library would rather ask you to verify synchronization that exists than stay
@@ -112,8 +114,26 @@ public final class HeldLocks {
      * @param lock the lock object; {@code null} is ignored
      */
     public static void acquired(@Nullable Object lock) {
+        acquired(lock, false);
+    }
+
+    /**
+     * Declares that the calling thread has acquired {@code lock}, in shared or exclusive mode.
+     *
+     * <p>A shared acquisition is a read lock: it keeps writers out, and nothing else. It therefore
+     * guards a read and never a write, which is the one distinction the lockset has to keep, or a
+     * write made under a read lock would look protected by the very lock that permits it. Mapping
+     * both views of a {@link java.util.concurrent.locks.ReentrantReadWriteLock} to the one lock
+     * object, with this flag telling them apart, is what lets a reader holding the read view and
+     * a writer holding the write view share a lockset.
+     *
+     * @param lock   the lock object; {@code null} is ignored
+     * @param shared {@code true} for a read lock, {@code false} for exclusive ownership
+     * @since 1.10.0
+     */
+    public static void acquired(@Nullable Object lock, boolean shared) {
         if (lock != null) {
-            FRAMES.get().push(lock);
+            FRAMES.get().push(lock, shared);
         }
     }
 
@@ -128,8 +148,20 @@ public final class HeldLocks {
      * @param lock the lock object; {@code null} is ignored
      */
     public static void released(@Nullable Object lock) {
+        released(lock, false);
+    }
+
+    /**
+     * Declares that the calling thread has released {@code lock}, matching the mode it was
+     * acquired in, so a thread that holds both views of a read-write lock releases the right one.
+     *
+     * @param lock   the lock object; {@code null} is ignored
+     * @param shared the mode passed to {@link #acquired(Object, boolean)}
+     * @since 1.10.0
+     */
+    public static void released(@Nullable Object lock, boolean shared) {
         if (lock != null) {
-            FRAMES.get().pop(lock);
+            FRAMES.get().pop(lock, shared);
         }
     }
 
@@ -174,7 +206,53 @@ public final class HeldLocks {
      * finding.
      */
     public static long lockFingerprint() {
-        return FRAMES.get().fingerprint(0);
+        return lockFingerprint(false);
+    }
+
+    /**
+     * {@return a value identifying the locks this thread holds that guard an access of the given
+     * kind, or 0 for none}
+     *
+     * <p>For a write, a lock held in shared mode is left out: a read lock admits other readers and
+     * guards nothing a writer does. For a read every held lock counts.
+     *
+     * <p>Unlike the fingerprint alone, the set behind this value is recoverable: the first time a
+     * thread computes it for a new set, the members are registered so that a consumer on another
+     * thread can intersect sets instead of comparing digests. See {@link #members(long)}.
+     *
+     * @param forWrite whether the access being recorded is a write
+     * @since 1.10.0
+     */
+    public static long lockFingerprint(boolean forWrite) {
+        return FRAMES.get().registeredFingerprint(forWrite);
+    }
+
+    /**
+     * {@return the identity hashes behind a fingerprint produced by {@link #lockFingerprint(boolean)},
+     * or {@code null} when the fingerprint is not one this registry has seen}
+     *
+     * <p>This is what turns the agent path's equality test into the intersection the owner-aware
+     * path always computed: a thread holding {@code {A, B}} and one holding {@code {A}} are both
+     * covered by {@code A}, which only a consumer that can see the members can tell. The registry
+     * is bounded; once full, new sets stay unregistered and a consumer falls back to treating the
+     * fingerprint as one opaque lock, which is the equality model this replaces. A caller must not
+     * modify the returned array.
+     *
+     * @param fingerprint a value from {@link #lockFingerprint(boolean)}
+     * @since 1.10.0
+     */
+    public static int @Nullable [] members(long fingerprint) {
+        return fingerprint == 0L ? NONE : LocksetRegistry.members(fingerprint);
+    }
+
+    /**
+     * Forgets every registered lockset. Called when the telemetry registry starts a run: every
+     * consumer resolves members as events arrive, so nothing from an earlier run needs them.
+     *
+     * @since 1.10.0
+     */
+    public static void forgetRegisteredLocksets() {
+        LocksetRegistry.clear();
     }
 
     /**
@@ -204,12 +282,25 @@ public final class HeldLocks {
      * @return the new intersection, which is {@code candidate} itself when nothing dropped out
      */
     static int[] intersect(int @Nullable [] candidate, Object self) {
+        return intersect(candidate, self, true);
+    }
+
+    /**
+     * Intersects {@code candidate} with the locks this thread holds right now that guard an access
+     * of the given kind: every held lock for a read, only exclusively held ones for a write.
+     *
+     * @param candidate the locks common to every previous access, or {@code null} for none yet
+     * @param self      the tracked instance, whose own monitor counts as held when it is
+     * @param forWrite  whether the access is a write, which a shared lock does not guard
+     * @return the new intersection, which is {@code candidate} itself when nothing dropped out
+     */
+    static int[] intersect(int @Nullable [] candidate, Object self, boolean forWrite) {
         Frame frame = FRAMES.get();
         boolean selfHeld = Thread.holdsLock(self);
         int selfHash = selfHeld ? System.identityHashCode(self) : 0;
 
         if (candidate == null) {
-            return frame.snapshot(selfHeld, selfHash);
+            return frame.snapshot(selfHeld, selfHash, forWrite);
         }
         if (candidate.length == 0) {
             return candidate;
@@ -220,7 +311,7 @@ public final class HeldLocks {
         // the allocation-free one: a consistently guarded instance never copies its set again.
         int[] survivors = null;
         for (int hash : candidate) {
-            boolean stillHeld = (selfHeld && hash == selfHash) || frame.containsHash(hash);
+            boolean stillHeld = (selfHeld && hash == selfHash) || frame.containsHash(hash, forWrite);
             if (stillHeld) {
                 if (survivors != null) {
                     survivors[kept] = hash;
@@ -246,30 +337,53 @@ public final class HeldLocks {
     private static final class Frame {
         private Object[] locks = new Object[8];
         private int[] hashes = new int[8];
+        private boolean[] shared = new boolean[8];
         private int depth;
 
-        void push(Object lock) {
+        /**
+         * Cached per-mode fingerprints, recomputed lazily after a push or pop.
+         *
+         * <p>An access records the fingerprint and nothing changes between two accesses under the
+         * same locks, so the digest, and the registration that goes with it, are paid once per
+         * lock transition rather than once per field instruction.
+         */
+        private long readFingerprint;
+        private long writeFingerprint;
+        private boolean fingerprintsValid;
+        private int registeredGeneration;
+
+        void push(Object lock, boolean isShared) {
             if (depth == MAX_DEPTH) {
                 return;
             }
             if (depth == locks.length) {
                 locks = Arrays.copyOf(locks, locks.length * 2);
                 hashes = Arrays.copyOf(hashes, hashes.length * 2);
+                shared = Arrays.copyOf(shared, shared.length * 2);
             }
             locks[depth] = lock;
             hashes[depth] = System.identityHashCode(lock);
+            shared[depth] = isShared;
             depth++;
+            fingerprintsValid = false;
         }
 
-        void pop(Object lock) {
-            int at = indexOf(lock);
+        void pop(Object lock, boolean isShared) {
+            int at = indexOf(lock, isShared);
             if (at < 0) {
-                return;
+                // A release in the other mode still refers to this lock: a caller that acquired
+                // without a mode and releases with one, or the reverse, must not leak an entry.
+                at = indexOf(lock);
+                if (at < 0) {
+                    return;
+                }
             }
             System.arraycopy(locks, at + 1, locks, at, depth - at - 1);
             System.arraycopy(hashes, at + 1, hashes, at, depth - at - 1);
+            System.arraycopy(shared, at + 1, shared, at, depth - at - 1);
             depth--;
             locks[depth] = null;
+            fingerprintsValid = false;
         }
 
         /**
@@ -290,6 +404,17 @@ public final class HeldLocks {
             return -1;
         }
 
+        /** {@return the topmost index holding {@code lock} in the given mode, or -1} */
+        @SuppressWarnings({"ReferenceEquality", "PMD.CompareObjectsWithEquals"})
+        int indexOf(Object lock, boolean isShared) {
+            for (int i = depth - 1; i >= 0; i--) {
+                if (locks[i] == lock && shared[i] == isShared) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
         /**
          * {@return a commutative digest of the held hashes, or 0 when nothing is held}
          *
@@ -298,16 +423,25 @@ public final class HeldLocks {
          * is folded in so that a set and a strict subset cannot collide by summing alike.
          */
         long fingerprint(int extraHash) {
-            boolean addExtra = extraHash != 0 && !containsHash(extraHash);
-            int size = depth + (addExtra ? 1 : 0);
-            if (size == 0) {
-                return 0L;
-            }
+            return fingerprint(extraHash, false);
+        }
+
+        /** {@return the digest over the locks that guard an access of the given kind} */
+        long fingerprint(int extraHash, boolean forWrite) {
+            boolean addExtra = extraHash != 0 && !containsHash(extraHash, forWrite);
+            int size = addExtra ? 1 : 0;
             long sum = 0L;
             long xor = 0L;
             for (int i = 0; i < depth; i++) {
+                if (forWrite && shared[i]) {
+                    continue;
+                }
                 sum += hashes[i];
                 xor ^= hashes[i];
+                size++;
+            }
+            if (size == 0) {
+                return 0L;
             }
             if (addExtra) {
                 sum += extraHash;
@@ -318,9 +452,35 @@ public final class HeldLocks {
             return value == 0L ? 1L : value;
         }
 
+        /**
+         * {@return the per-mode fingerprint, registering its members the first time this frame
+         * computes it since the last lock transition}
+         */
+        long registeredFingerprint(boolean forWrite) {
+            int generation = LocksetRegistry.generation();
+            if (!fingerprintsValid || registeredGeneration != generation) {
+                readFingerprint = fingerprint(0, false);
+                writeFingerprint = fingerprint(0, true);
+                fingerprintsValid = true;
+                registeredGeneration = generation;
+                if (readFingerprint != 0L && !LocksetRegistry.isRegistered(readFingerprint)) {
+                    LocksetRegistry.register(readFingerprint, snapshot(false, 0, false));
+                }
+                if (writeFingerprint != 0L && !LocksetRegistry.isRegistered(writeFingerprint)) {
+                    LocksetRegistry.register(writeFingerprint, snapshot(false, 0, true));
+                }
+            }
+            return forWrite ? writeFingerprint : readFingerprint;
+        }
+
         boolean containsHash(int hash) {
+            return containsHash(hash, false);
+        }
+
+        /** {@return whether {@code hash} is held in a mode that guards the given access kind} */
+        boolean containsHash(int hash, boolean forWrite) {
             for (int i = 0; i < depth; i++) {
-                if (hashes[i] == hash) {
+                if (hashes[i] == hash && !(forWrite && shared[i])) {
                     return true;
                 }
             }
@@ -329,15 +489,31 @@ public final class HeldLocks {
 
         /** {@return a fresh array of the held hashes, plus {@code selfHash} when held} */
         int[] snapshot(boolean selfHeld, int selfHash) {
-            boolean selfAlreadyIn = selfHeld && containsHash(selfHash);
-            int size = depth + (selfHeld && !selfAlreadyIn ? 1 : 0);
+            return snapshot(selfHeld, selfHash, false);
+        }
+
+        /** {@return a fresh array of the hashes guarding the given access kind, plus self} */
+        int[] snapshot(boolean selfHeld, int selfHash, boolean forWrite) {
+            boolean selfAlreadyIn = selfHeld && containsHash(selfHash, forWrite);
+            int size = selfHeld && !selfAlreadyIn ? 1 : 0;
+            for (int i = 0; i < depth; i++) {
+                if (!(forWrite && shared[i])) {
+                    size++;
+                }
+            }
             if (size == 0) {
                 return NONE;
             }
             int[] out = new int[size];
-            System.arraycopy(hashes, 0, out, 0, depth);
-            if (size > depth) {
-                out[depth] = selfHash;
+            int at = 0;
+            for (int i = 0; i < depth; i++) {
+                if (!(forWrite && shared[i])) {
+                    out[at] = hashes[i];
+                    at++;
+                }
+            }
+            if (at < size) {
+                out[at] = selfHash;
             }
             return out;
         }

@@ -7,6 +7,8 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import net.bytebuddy.asm.AsmVisitorWrapper;
 import net.bytebuddy.asm.MemberSubstitution;
@@ -66,24 +68,44 @@ final class CollectionAccessWeaver {
     private CollectionAccessWeaver() {
     }
 
-    /** One weave entry: which invocation to replace, and which hook replaces it. */
-    private record Entry(Class<?> declaredBy, String method, String hook, Class<?>... parameters) {
+    /**
+     * One weave entry: which invocation to replace, and which hook replaces it.
+     *
+     * <p>{@code returning} narrows the match to one return type when set. The read-write lock
+     * views need it because {@code ReentrantReadWriteLock.readLock()} declares a covariant return
+     * type: a call site compiled against the concrete class expects a {@code ReadLock} on the
+     * stack and a call site compiled against the interface expects a {@code Lock}, so each needs
+     * a hook returning exactly what the instruction it replaces produced.
+     */
+    private record Entry(Class<?> declaredBy, String method, String hook,
+                         @org.jspecify.annotations.Nullable Class<?> returning,
+                         Class<?>... parameters) {
+
+        /** An entry matched by name and arguments alone, whatever the call returns. */
+        static Entry call(Class<?> declaredBy, String method, String hook, Class<?>... parameters) {
+            return new Entry(declaredBy, method, hook, null, parameters);
+        }
+
+        /** A no-argument entry matched by its exact return type as well. */
+        static Entry view(Class<?> declaredBy, String method, String hook, Class<?> returning) {
+            return new Entry(declaredBy, method, hook, returning);
+        }
     }
 
     private static final List<Entry> ENTRIES = List.of(
-            new Entry(Map.class, "put", "mapPut", Object.class, Object.class),
-            new Entry(Map.class, "get", "mapGet", Object.class),
-            new Entry(Map.class, "remove", "mapRemove", Object.class),
-            new Entry(Map.class, "containsKey", "mapContainsKey", Object.class),
-            new Entry(Collection.class, "add", "collectionAdd", Object.class),
-            new Entry(Collection.class, "remove", "collectionRemove", Object.class),
-            new Entry(Collection.class, "contains", "collectionContains", Object.class),
-            new Entry(Collection.class, "clear", "collectionClear"),
-            new Entry(List.class, "get", "listGet", int.class),
-            new Entry(List.class, "set", "listSet", int.class, Object.class),
-            new Entry(Queue.class, "offer", "queueOffer", Object.class),
-            new Entry(Queue.class, "poll", "queuePoll"),
-            new Entry(Queue.class, "peek", "queuePeek"));
+            Entry.call(Map.class, "put", "mapPut", Object.class, Object.class),
+            Entry.call(Map.class, "get", "mapGet", Object.class),
+            Entry.call(Map.class, "remove", "mapRemove", Object.class),
+            Entry.call(Map.class, "containsKey", "mapContainsKey", Object.class),
+            Entry.call(Collection.class, "add", "collectionAdd", Object.class),
+            Entry.call(Collection.class, "remove", "collectionRemove", Object.class),
+            Entry.call(Collection.class, "contains", "collectionContains", Object.class),
+            Entry.call(Collection.class, "clear", "collectionClear"),
+            Entry.call(List.class, "get", "listGet", int.class),
+            Entry.call(List.class, "set", "listSet", int.class, Object.class),
+            Entry.call(Queue.class, "offer", "queueOffer", Object.class),
+            Entry.call(Queue.class, "poll", "queuePoll"),
+            Entry.call(Queue.class, "peek", "queuePeek"));
 
     /**
      * {@return the substitutions to apply, in table order}
@@ -125,9 +147,15 @@ final class CollectionAccessWeaver {
      * {@code add} on a type that is not a collection is not.
      */
     private static ElementMatcher.Junction<MethodDescription> invocationMatcher(Entry entry) {
-        return ElementMatchers.isDeclaredBy(ElementMatchers.isSubTypeOf(entry.declaredBy()))
+        ElementMatcher.Junction<MethodDescription> matcher =
+                ElementMatchers.isDeclaredBy(ElementMatchers.isSubTypeOf(entry.declaredBy()))
                 .<MethodDescription>and(ElementMatchers.named(entry.method()))
                 .and(ElementMatchers.takesArguments(entry.parameters()));
+        Class<?> returning = entry.returning();
+        if (returning != null) {
+            matcher = matcher.and(ElementMatchers.returns(returning));
+        }
+        return matcher;
     }
 
     private static java.lang.reflect.Method hookMethod(Class<?> hooks, Entry entry) {
@@ -162,11 +190,21 @@ final class CollectionAccessWeaver {
      * only place a lock acquisition can be observed at all.
      */
     private static final List<Entry> LOCK_ENTRIES = List.of(
-            new Entry(Lock.class, "lock", "lock"),
-            new Entry(Lock.class, "lockInterruptibly", "lockInterruptibly"),
-            new Entry(Lock.class, "tryLock", "tryLock"),
-            new Entry(Lock.class, "tryLock", "tryLock", long.class, TimeUnit.class),
-            new Entry(Lock.class, "unlock", "unlock"));
+            Entry.call(Lock.class, "lock", "lock"),
+            Entry.call(Lock.class, "lockInterruptibly", "lockInterruptibly"),
+            Entry.call(Lock.class, "tryLock", "tryLock"),
+            Entry.call(Lock.class, "tryLock", "tryLock", long.class, TimeUnit.class),
+            Entry.call(Lock.class, "unlock", "unlock"),
+            // The views. Resolving readLock()/writeLock() at the call site is the only place the
+            // owner and its view are both in hand; the hooks remember the pair so that acquiring
+            // a view records the owner, in shared mode for the read side. The concrete class
+            // declares covariant return types, so it needs its own pair of entries.
+            Entry.view(ReadWriteLock.class, "readLock", "readLock", Lock.class),
+            Entry.view(ReadWriteLock.class, "writeLock", "writeLock", Lock.class),
+            Entry.view(ReentrantReadWriteLock.class, "readLock", "readLock",
+                    ReentrantReadWriteLock.ReadLock.class),
+            Entry.view(ReentrantReadWriteLock.class, "writeLock", "writeLock",
+                    ReentrantReadWriteLock.WriteLock.class));
 
     /**
      * {@return the lock substitutions, in table order}

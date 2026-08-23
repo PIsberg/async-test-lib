@@ -20,12 +20,13 @@ import org.jspecify.annotations.Nullable;
  *
  * <h4>What it does not see</h4>
  *
- * <p>A lock the test never declared. {@code synchronized} on any object other than the tracked
- * instance emits no callback the library can observe, and the agent weaves field access rather
- * than monitor instructions, so a {@code ReentrantLock} or a private lock object enters the set
- * only through {@link HeldLocks}. An undeclared lock is invisible and the finding stands, which
- * is the safe direction to be wrong in; the detector wording says so, so such a finding stays a
- * prompt to verify synchronization rather than a verdict.
+ * <p>A lock the test never declared and the agent never saw. Without the agent, {@code
+ * synchronized} on any object other than the tracked instance emits no callback the library can
+ * observe, so such a lock enters the set only through {@link HeldLocks}; with it, woven monitor
+ * instructions and woven {@code Lock} call sites feed that same set on their own. A lock acquired
+ * only inside unwoven code stays invisible and the finding stands, which is the safe direction to
+ * be wrong in; the detector wording says so, so such a finding stays a prompt to verify
+ * synchronization rather than a verdict.
  *
  * <p>The probe reflects the thread that calls the record method. Detectors whose recording API
  * takes an explicit {@code Thread} parameter for attribution still probe the caller, which is
@@ -93,6 +94,22 @@ final class SelfGuard {
          * @param instance the shared instance being accessed
          */
         final void noteAccess(@Nullable Object instance) {
+            noteAccess(instance, true);
+        }
+
+        /**
+         * Records one access to {@code instance}, saying whether it is a write.
+         *
+         * <p>The distinction exists for locks held in shared mode: the read view of a
+         * {@link java.util.concurrent.locks.ReentrantReadWriteLock} guards a read and nothing
+         * else, so it stays in the set for a read and drops out for a write. A caller that does
+         * not know treats the access as a write, which is the direction that can only add a
+         * finding.
+         *
+         * @param instance the shared instance being accessed
+         * @param forWrite whether the access mutates the instance
+         */
+        final void noteAccess(@Nullable Object instance, boolean forWrite) {
             if (instance == null) {
                 candidateLocks.set(HeldLocks.NONE);
                 return;
@@ -106,7 +123,7 @@ final class SelfGuard {
                 // The compare-and-set is unconditional even when nothing dropped out: the write
                 // is then the same reference back, which costs one uncontended CAS and saves
                 // having to signal "unchanged" out of band.
-                int[] next = HeldLocks.intersect(current, instance);
+                int[] next = HeldLocks.intersect(current, instance, forWrite);
                 if (candidateLocks.compareAndSet(current, next)) {
                     return;
                 }

@@ -205,10 +205,20 @@ Three limits worth knowing before switching it on:
 
 - **Guarding works, and has to.** Monitor weaving is installed alongside, so a collection touched
   only inside a `synchronized` block reports nothing even though the test never declared the lock.
-  A `ReentrantLock` is still invisible: declare it with `AsyncTestContext.holdingLock(...)`.
-- **Thread-safe types are skipped.** A receiver from `java.util.concurrent` or a
-  `Collections.synchronizedX` wrapper synchronizes where nothing can be woven, so recording it
-  would report every shared use. Those calls are delegated and never recorded.
+  Lock weaving rides along too: a `Lock.lock()`/`unlock()` call site in woven code feeds the same
+  lockset, and `ReadWriteLock.readLock()`/`writeLock()` call sites resolve each view to its owner,
+  in shared mode for the read side, so a collection guarded by a `ReentrantLock` or a
+  `ReentrantReadWriteLock` reports nothing either. A lock acquired only inside unwoven code still
+  needs `AsyncTestContext.holdingLock(...)`.
+- **Thread-safe types are skipped.** A receiver from `java.util.concurrent`, a
+  `Collections.synchronizedX` wrapper, a `Hashtable` or a `Vector` synchronizes where nothing can
+  be woven, so recording it would report every shared use. Those calls are delegated and never
+  recorded. So is any receiver that inherits no instance state from a bootstrap-loaded class: its
+  fields live in weavable code, where the field weaver already watches them, and a stateless
+  implementation such as Guava's discarding queue has nothing a write could corrupt.
+- **Threads are counted per round.** Rounds are ordered by the runner, so two accesses from
+  different rounds cannot race; a collection written by one (virtual) thread per round is
+  sequential, and a finding names the widest single round.
 - **`super` calls keep their dispatch.** Only virtual and interface invocations are rewritten. A
   decorator's `super.get(...)` must stay an `INVOKESPECIAL`, or the substitution would re-dispatch
   virtually into the override and recurse.
@@ -351,9 +361,13 @@ exactly one detector:
     agent has no lock model. Either option installs it: `collections=true` weaves monitors without
     field instructions, because recording an access without knowing what lock covered it is how a
     correctly guarded `HashMap` gets reported as racing.
-  - **Explicit `synchronized` blocks only.** A `synchronized` *method* carries the
-    `ACC_SYNCHRONIZED` flag and contains no `MONITORENTER` instruction at all, so there is
-    nothing to weave. A field guarded only by synchronized methods is still reported.
+  - **`synchronized` methods are answered at the access, not by weaving.** A `synchronized`
+    *method* carries the `ACC_SYNCHRONIZED` flag and contains no `MONITORENTER` instruction, so
+    there is nothing to weave; instead each woven field access passes its receiver, whose monitor
+    is probed with `Thread.holdsLock`, and the monitor of the enclosing synchronized method
+    outright. A field guarded by its owner's synchronized methods is not reported; one guarded by
+    *another* object's synchronized method, with none of its accesses on that object's own
+    methods, still is.
 - **`VisibilityMonitor` — not routed.** Its analysis is value-equality based, so an access
   stream with no values carries no signal for it; worse, it rejects `null` values. Should a
   future agent version capture values, a value-aware overload can be added without breaking

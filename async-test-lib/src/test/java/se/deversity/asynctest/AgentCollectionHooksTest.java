@@ -3,9 +3,13 @@ package se.deversity.asynctest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.AbstractQueue;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Hashtable;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -13,6 +17,7 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -68,5 +73,81 @@ class AgentCollectionHooksTest {
         AgentCollectionHooks.mapPut(synchronizedMap, "k", "v");
         assertEquals("v", AgentCollectionHooks.mapGet(synchronizedMap, "k"),
                 "a synchronized wrapper must still have its operation performed");
+    }
+
+    /**
+     * A queue with no state anywhere: the shape Guava's cache hands to every lock-free read.
+     * Writing to it from any number of threads corrupts nothing, because there is nothing.
+     */
+    private static final class StatelessQueue extends AbstractQueue<Object> {
+        @Override
+        public boolean offer(Object element) {
+            return true;
+        }
+
+        @Override
+        public Object poll() {
+            return null;
+        }
+
+        @Override
+        public Object peek() {
+            return null;
+        }
+
+        @Override
+        public Iterator<Object> iterator() {
+            return Collections.emptyIterator();
+        }
+
+        @Override
+        public int size() {
+            return 0;
+        }
+    }
+
+    @Test
+    @DisplayName("a receiver with no state inside java.util is delegated but never recorded")
+    void receiversWithoutUnweavableStateAreNotRecorded() throws InterruptedException {
+        // The hook stands in for fields the weaver cannot see. A receiver whose state lives in
+        // woven classes, or nowhere, is already covered field by field, and recording it here
+        // reported Guava's stateless discarding queue as a data-corruption risk on a class its
+        // javadoc calls safe for concurrent use.
+        assertFalse(reportsTwoUnguardedWriters(new StatelessQueue()),
+                "a stateless AbstractQueue subclass has nothing the hook can speak for");
+        assertFalse(reportsTwoUnguardedWriters(new Hashtable<>()),
+                "Hashtable synchronizes every method inside java.util, where no monitor is woven");
+
+        assertTrue(reportsTwoUnguardedWriters(new ArrayDeque<>()),
+                "an ArrayDeque keeps its array inside java.util, which only this hook can see");
+        assertTrue(reportsTwoUnguardedWriters(new ArrayDeque<>() { }),
+                "a subclass inherits that array, so it stays recorded");
+    }
+
+    /** Writes to {@code receiver} through the hook from two threads and asks the detector. */
+    private static boolean reportsTwoUnguardedWriters(Object receiver) throws InterruptedException {
+        AsyncTestConfig cfg = AsyncTestConfig.builder().detectSharedCollections(true).build();
+        AsyncTestContext ctx = new AsyncTestContext(cfg);
+        for (int i = 0; i < 2; i++) {
+            Thread writer = new Thread(() -> {
+                AsyncTestContext.install(ctx);
+                try {
+                    if (receiver instanceof Map<?, ?>) {
+                        @SuppressWarnings("unchecked")
+                        Map<Object, Object> map = (Map<Object, Object>) receiver;
+                        AgentCollectionHooks.mapPut(map, "k", "v");
+                    } else {
+                        @SuppressWarnings("unchecked")
+                        Queue<Object> queue = (Queue<Object>) receiver;
+                        AgentCollectionHooks.queueOffer(queue, "x");
+                    }
+                } finally {
+                    AsyncTestContext.uninstall();
+                }
+            });
+            writer.start();
+            writer.join();
+        }
+        return ctx.sharedCollectionDetector.analyze().hasIssues();
     }
 }

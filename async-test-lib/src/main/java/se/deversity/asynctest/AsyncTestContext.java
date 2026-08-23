@@ -708,10 +708,11 @@ public final class AsyncTestContext {
      *
      * <p>Detectors can ask {@link Thread#holdsLock(Object)} about the instance they are watching
      * and about nothing else, because that is the only lock they can name. So
-     * {@code synchronized (theInstance)} is recognised for free, while a {@code ReentrantLock} or
-     * a private lock object looks exactly like no lock at all and the shared instance gets
-     * reported even though the code is correct. Declaring the lock here is what tells them
-     * otherwise:
+     * {@code synchronized (theInstance)} is recognised for free; with the agent attached, woven
+     * monitor instructions and woven {@code Lock} call sites are recognised too. What is left is
+     * a lock acquired only inside code the weaver never sees, which looks exactly like no lock at
+     * all, and the shared instance gets reported even though the code is correct. Declaring the
+     * lock here is what tells the detectors otherwise:
      *
      * <pre>{@code
      * try (var held = AsyncTestContext.holdingLock(cacheLock)) {
@@ -779,6 +780,20 @@ public final class AsyncTestContext {
     public static long replaySeed() {
         AsyncTestContext ctx = CURRENT.get();
         return ctx == null ? 0L : ctx.currentRoundSeed;
+    }
+
+    /**
+     * Internal: called by {@code ConcurrencyRunner} at the start of each invocation round, after
+     * the previous round's workers have all finished, so the detectors that count per round can
+     * close the round in progress. Touches only this context's own detector instances, never the
+     * {@code ThreadLocal}, so install/uninstall symmetry is unaffected.
+     *
+     * @since 1.10.0
+     */
+    public void markInvocationStart() {
+        if (sharedCollectionDetector != null) {
+            sharedCollectionDetector.markInvocationStart();
+        }
     }
 
     /**

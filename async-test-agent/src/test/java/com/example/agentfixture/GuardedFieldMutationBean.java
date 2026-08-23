@@ -9,10 +9,10 @@ package com.example.agentfixture;
  * of its own. So the agent-fed detectors reported the guarded field exactly as loudly as the
  * racing one, which is what {@code FieldWeavingEndToEndTest} now pins as fixed.
  *
- * <p>The guard is an explicit {@code synchronized (lock)} block rather than a synchronized
- * method, deliberately: a synchronized method carries the {@code ACC_SYNCHRONIZED} flag and has
- * no {@code MONITORENTER} instruction at all, so it is not something monitor weaving can see.
- * Keeping the fixture honest about that boundary matters more than making it look complete.
+ * <p>The guard is an explicit {@code synchronized (lock)} block on a private lock object, the
+ * shape only monitor weaving can see: a synchronized method carries the {@code ACC_SYNCHRONIZED}
+ * flag and no {@code MONITORENTER} instruction, and is covered separately by the receiver probe
+ * that {@code LockModelWeavingEndToEndTest} pins with {@code SynchronizedMethodBean}.
  */
 public class GuardedFieldMutationBean {
 
