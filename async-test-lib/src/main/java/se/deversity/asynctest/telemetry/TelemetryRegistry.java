@@ -107,6 +107,27 @@ public final class TelemetryRegistry {
      */
     public static void recordAccess(long threadId, String qualifiedName, boolean isWrite,
                                     boolean volatileField) {
+        recordAccess(threadId, qualifiedName, isWrite, volatileField, Integer.MIN_VALUE);
+    }
+
+    /**
+     * Records a field access, also saying what a constant write stored.
+     *
+     * <p>The weaver supplies the tag only for a write whose value came from a constant instruction
+     * in a method that had not read the field. Both halves matter: a field written the same
+     * constant by every thread cannot change what any of them decides, while a write preceded by a
+     * read of the same field might be {@code if (!initialized) initialized = true}, which is a real
+     * bug and keeps its finding.
+     *
+     * @param threadId      {@code Thread.currentThread().threadId()}
+     * @param qualifiedName combined {@code declaringClass.field} identifier
+     * @param isWrite       {@code true} for a write access
+     * @param volatileField whether the field is declared {@code volatile}
+     * @param constantTag   the constant stored, or {@code Integer.MIN_VALUE} for "not a constant"
+     * @since 1.10.0
+     */
+    public static void recordAccess(long threadId, String qualifiedName, boolean isWrite,
+                                    boolean volatileField, int constantTag) {
         if (STOPPED.get()) {
             return;
         }
@@ -116,7 +137,7 @@ public final class TelemetryRegistry {
         // is what the producer path requires - a heavier capture here would change the scheduling
         // this whole buffer exists to leave alone.
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(),
-                volatileField);
+                volatileField, constantTag);
     }
 
     /**

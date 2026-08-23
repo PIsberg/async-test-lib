@@ -82,12 +82,48 @@ public class AtomicityValidator {
         /** Whether the field is declared {@code volatile}, as resolved at weave time. */
         private volatile boolean volatileField;
 
+        /**
+         * The one constant every write stored, {@link #UNSET} before the first write, and
+         * {@code Integer.MIN_VALUE} once a write stored something else.
+         */
+        private final java.util.concurrent.atomic.AtomicInteger writeConstant =
+                new java.util.concurrent.atomic.AtomicInteger(NO_CONSTANT_YET);
+
         /** Concrete only so it can carry the shared lockset implementation. */
         private static final class Locks extends SelfGuard.TrackedInstance {
         }
 
         void noteOwner(@Nullable Object owner) {
             objectLocks.noteAccess(owner);
+        }
+
+        void noteWriteConstant(int tag) {
+            if (tag == NOT_A_CONSTANT) {
+                writeConstant.set(NOT_A_CONSTANT);
+                return;
+            }
+            int current = writeConstant.get();
+            while (current != NOT_A_CONSTANT && current != tag) {
+                int next = current == NO_CONSTANT_YET ? tag : NOT_A_CONSTANT;
+                if (writeConstant.compareAndSet(current, next)) {
+                    return;
+                }
+                current = writeConstant.get();
+            }
+        }
+
+        /**
+         * {@return whether every write to this field stored the same constant}
+         *
+         * <p>The weaver only tags a write when the value came from a constant instruction and the
+         * writing method had not read the field, so this cannot be the "act" half of a
+         * check-then-act. A field all of whose writes store the same value settles at that value
+         * however the threads interleave, which is what {@code isLocked = true} on every call to
+         * {@code FixedOrderComparator.compare} does.
+         */
+        boolean writesOnlyOneConstant() {
+            int constant = writeConstant.get();
+            return constant != NO_CONSTANT_YET && constant != NOT_A_CONSTANT;
         }
 
         void noteVolatile() {
@@ -156,6 +192,12 @@ public class AtomicityValidator {
 
     /** Sentinel for "this caller carried no lock information at all". */
     private static final long UNMODELLED = Long.MIN_VALUE;
+
+    /** Tag meaning the weaver could not read the written value as a constant. */
+    private static final int NOT_A_CONSTANT = Integer.MIN_VALUE;
+
+    /** Tag meaning no write has been recorded yet. Distinct from a real constant. */
+    private static final int NO_CONSTANT_YET = Integer.MAX_VALUE;
 
     private final Map<String, CompoundOperation> activeOperations = new ConcurrentHashMap<>();
     private final Map<String, List<FieldAccessRecord>> fieldHistory = new ConcurrentHashMap<>();
@@ -350,6 +392,29 @@ public class AtomicityValidator {
         record(fieldName, value, isWrite, threadId, null, false, lockFingerprint);
     }
 
+    /**
+     * Records an agent-fed access carrying both the field's volatility and any constant it stored.
+     *
+     * @param fieldName       the field, as it should appear in the report
+     * @param value           the value read or written, may be {@code null}
+     * @param isWrite         {@code true} for a write
+     * @param threadId        the thread that made the access
+     * @param lockFingerprint the locks that thread held at the access, 0 for none
+     * @param volatileField   whether the field is declared {@code volatile}
+     * @param constantTag     the constant this write stored, {@code Integer.MIN_VALUE} for none
+     * @since 1.10.0
+     */
+    public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
+                                            boolean isWrite, long threadId, long lockFingerprint,
+                                            boolean volatileField, int constantTag) {
+        if (isWrite && fieldName != null && !fieldName.isBlank()) {
+            fieldLocks.computeIfAbsent(fieldName, ignored -> new FieldGuard())
+                    .noteWriteConstant(constantTag);
+        }
+        recordFieldAccessUnderLocks(fieldName, value, isWrite, threadId, lockFingerprint,
+                volatileField);
+    }
+
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint) {
         if (!enabled || fieldName == null || fieldName.isBlank()) {
@@ -466,7 +531,9 @@ public class AtomicityValidator {
                 // check-then-act violation on every correct implementation of it, which is what
                 // commons-lang's LazyInitializer and Guava's memoizing supplier both are.
                 boolean sawUnguarded = locks == null
-                        || (locks.sawUnguardedAccess() && !locks.isSafePublication());
+                        || (locks.sawUnguardedAccess()
+                            && !locks.isSafePublication()
+                            && !locks.writesOnlyOneConstant());
                 // Only claim to have looked at locks when an owner was actually supplied.
                 String note = anyOwnerKnown ? SelfGuard.REPORT_NOTE : "";
 

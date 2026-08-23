@@ -43,18 +43,18 @@ exception counts move, and only on the three subjects whose corruption surfaces 
 |---|---|---:|---|---:|
 | `mutableInt_incrementAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
 | `mutableLong_incrementAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `stopWatch_splitAndGet` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 54 |
+| `stopWatch_splitAndGet` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 83 |
 | `lruMap_putAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `flat3Map_putAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `flat3Map_putAndGet` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 1 |
 | `listOrderedMap_putAndGet` | NOT_THREAD_SAFE | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
 | `passiveExpiringMap_putAndGet` | NOT_THREAD_SAFE | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
 | `arrayListMultimap_put` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
 | `evictingQueue_addAndPoll` | NOT_THREAD_SAFE | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `guavaStopwatch_startStop` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 6 |
+| `guavaStopwatch_startStop` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 5 |
 | `statsAccumulator_add` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
 | `hashMultimap_put` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
 | `linkedListMultimap_put` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `minMaxPriorityQueue_addAndPoll` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 171 |
+| `minMaxPriorityQueue_addAndPoll` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 39 |
 | `hashedMap_putAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
 | `linkedMap_putAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
 | `multiKeyMap_putAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
@@ -62,7 +62,7 @@ exception counts move, and only on the three subjects whose corruption surfaces 
 | `lazyMap_get` | NOT_THREAD_SAFE | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
 | `fastDateFormat_format` | THREAD_SAFE | 0 | - | 0 |
 | `atomicSafeInitializer_get` | THREAD_SAFE | 0 | - | 0 |
-| `lazyInitializer_get` | THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `lazyInitializer_get` | THREAD_SAFE | 0 | - | 0 |
 | `synchronizedBag_addAndCount` | THREAD_SAFE | 0 | - | 0 |
 | `rateLimiter_tryAcquire` | THREAD_SAFE | 0 | - | 0 |
 | `eventBus_post` | THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
@@ -73,14 +73,14 @@ exception counts move, and only on the three subjects whose corruption surfaces 
 | `joiner_join` | THREAD_SAFE | 0 | - | 0 |
 | `splitter_splitToList` | THREAD_SAFE | 0 | - | 0 |
 | `patternFilenameFilter_accept` | THREAD_SAFE | 0 | - | 0 |
-| `fixedOrderComparator_compare` | THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `fixedOrderComparator_compare` | THREAD_SAFE | 0 | - | 0 |
 
 | Measure | Value |
 |---|---|
 | Documented-thread-safe classes with a VERDICT-tier HIGH or CRITICAL finding | 0 of 14 |
-| Documented-thread-safe classes with any finding at all | 5 of 14 |
+| Documented-thread-safe classes with any finding at all | 3 of 14 |
 | Documented-not-thread-safe classes with at least one finding | 19 of 19 |
-| Documented-not-thread-safe classes that threw out of their own code | 3 of 19 |
+| Documented-not-thread-safe classes that threw out of their own code | 3 to 4 of 19 |
 | Distinct detectors that produced any finding | 2 of 142 |
 
 ## What this means for a user
@@ -91,13 +91,25 @@ the tier `@AsyncTest(failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT)` gates 
 10 classes whose javadoc says they are safe for concurrent use, that tier produced nothing. A build
 gated at `minTrust = VERDICT` would not have failed on any of them.
 
-**Below that tier, correct lock-free code does draw findings.** Four of the ten safe classes drew a
-`PROMPT`-tier HIGH finding from `AtomicityValidator`, and in every case the field it named belongs
-to the library's internals rather than to the caller's code: `LazyInitializer.object`,
-`LocalCache$Segment.count` and `AbstractFutureState$Waiter.next` reached through `EventBus` and the
-memoizing supplier, and the `BloomFilter` bit array. These are the CAS-and-volatile idioms the
-detector says it cannot model, which is what `PROMPT` means: a pattern worth a look, not a verdict.
-Reading them as defects would be wrong, and a team that gates on everything will meet them.
+**Below that tier, three of the fourteen still draw a `PROMPT`-tier finding**, and each names a
+limit of the model rather than a defect in the code:
+
+- `Suppliers.memoize` reports its non-volatile `value` field, which is written under a lock and read
+  without one. It is correct because the value is published through the *volatile* `delegate` write
+  beside it, and recognising that needs happens-before reasoning across two fields, which a lockset
+  does not do.
+- `BloomFilter` reports `Murmur3_128Hasher.h1`, `h2` and `length`. Those belong to a hasher created
+  per call, so each thread has its own: the agent's field events carry a field name and no instance,
+  so six thread-confined objects aggregate into one apparently shared field.
+- `EventBus` reports the same identity artefact through a per-call iterator, plus a Guava cache view
+  written under **striped** locks, where each thread holds the lock for its own segment. An Eraser
+  lockset intersects to empty by construction there, which is a property of the technique, not a
+  tuning problem.
+
+Two other findings that stood here in earlier runs are gone, and both went because the model learned
+something general rather than because this corpus was special: `LazyInitializer`'s double-checked
+locking is now recognised as safe publication, and `FixedOrderComparator`'s `isLocked = true` is
+recognised as a constant written by a method that never reads it.
 
 **Six of the nine genuinely unsafe classes were caught, and one crashed.** `StopWatch` threw out of
 its own code 45 to 53 times per run, which no single-threaded test would ever show. The finding

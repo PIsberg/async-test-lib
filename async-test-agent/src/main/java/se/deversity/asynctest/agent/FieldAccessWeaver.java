@@ -11,6 +11,7 @@ import net.bytebuddy.jar.asm.MethodVisitor;
 import net.bytebuddy.jar.asm.Opcodes;
 import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.pool.TypePool;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Weaves an observation call in front of every field instruction in a method body, so a field
@@ -67,6 +68,9 @@ final class FieldAccessWeaver {
             String.join("/", "net", "bytebuddy") + "/",
             "se/deversity/asynctest/",
     };
+
+    /** Tag meaning "this write did not put a knowable constant in the field". */
+    static final int NOT_A_CONSTANT_WRITE = Integer.MIN_VALUE;
 
     private FieldAccessWeaver() {}
 
@@ -160,6 +164,22 @@ final class FieldAccessWeaver {
 
         private final TypePool typePool;
 
+        /**
+         * Fields this method has already read, and the constant sitting on the stack, if any.
+         *
+         * <p>Together they answer the only question worth asking about a constant write: could it
+         * be the "act" half of a check-then-act? A method that writes {@code true} without ever
+         * having read the field cannot be checking it, so no interleaving of such writes can
+         * change what any thread decides. A method that read the field first might well be
+         * {@code if (!initialized) initialized = true}, which is a real bug, so seeing the read
+         * disqualifies the write. The visitor is per method and instructions arrive in order,
+         * which is what makes the read-before-write question answerable while streaming.
+         */
+        private final java.util.Set<String> fieldsReadInThisMethod = new java.util.HashSet<>();
+
+        /** The int-valued constant the previous instruction pushed, or {@code null}. */
+        private @Nullable Integer pendingConstant;
+
         FieldAccessMethodVisitor(MethodVisitor delegate, boolean weaveFieldInstructions,
                                  TypePool typePool) {
             super(Opcodes.ASM9, delegate);
@@ -214,6 +234,8 @@ final class FieldAccessWeaver {
          */
         @Override
         public void visitInsn(int opcode) {
+            noteConstant(opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5
+                    ? opcode - Opcodes.ICONST_0 : null);
             if (opcode == Opcodes.MONITORENTER || opcode == Opcodes.MONITOREXIT) {
                 String hook = opcode == Opcodes.MONITORENTER ? "monitorEntered" : "monitorExited";
                 super.visitInsn(Opcodes.DUP);
@@ -223,17 +245,69 @@ final class FieldAccessWeaver {
             super.visitInsn(opcode);
         }
         @Override
+        public void visitIntInsn(int opcode, int operand) {
+            noteConstant(opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH ? operand : null);
+            super.visitIntInsn(opcode, operand);
+        }
+
+        @Override
+        public void visitLdcInsn(Object value) {
+            // Only int-shaped constants are trusted. A String or a long could collide or tear the
+            // reasoning, and the flag may only ever suppress a finding, so anything unclear must
+            // read as "not a constant".
+            noteConstant(value instanceof Integer i ? i : null);
+            super.visitLdcInsn(value);
+        }
+
+        @Override
+        public void visitMethodInsn(int opcode, String owner, String name, String descriptor,
+                                    boolean isInterface) {
+            noteConstant(null);
+            super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+        }
+
+        @Override
+        public void visitVarInsn(int opcode, int varIndex) {
+            noteConstant(null);
+            super.visitVarInsn(opcode, varIndex);
+        }
+
+        private void noteConstant(@Nullable Integer constant) {
+            pendingConstant = constant;
+        }
+
+        /**
+         * {@return the tag describing what this write puts in the field}
+         *
+         * <p>{@link #NOT_A_CONSTANT_WRITE} unless the value came from a constant instruction and
+         * this method has not read the field, in which case the constant itself is the tag.
+         */
+        private int constantTag(boolean isWrite, String identifier) {
+            if (!isWrite || pendingConstant == null || fieldsReadInThisMethod.contains(identifier)) {
+                return NOT_A_CONSTANT_WRITE;
+            }
+            return pendingConstant;
+        }
+
+        @Override
         public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
+            String identifier = identifier(owner, name);
+            boolean write = opcode == Opcodes.PUTFIELD || opcode == Opcodes.PUTSTATIC;
+            int tag = constantTag(write, identifier);
+            if (!write) {
+                fieldsReadInThisMethod.add(identifier);
+            }
             if (weaveFieldInstructions && shouldWeave(owner)) {
-                boolean isWrite = opcode == Opcodes.PUTFIELD || opcode == Opcodes.PUTSTATIC;
+                boolean isWrite = write;
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, THREAD, "currentThread",
                         "()Ljava/lang/Thread;", false);
                 super.visitMethodInsn(Opcodes.INVOKEVIRTUAL, THREAD, "threadId", "()J", false);
-                super.visitLdcInsn(identifier(owner, name));
+                super.visitLdcInsn(identifier);
                 super.visitInsn(isWrite ? Opcodes.ICONST_1 : Opcodes.ICONST_0);
                 super.visitInsn(isVolatile(owner, name) ? Opcodes.ICONST_1 : Opcodes.ICONST_0);
+                super.visitLdcInsn(tag);
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "recordAccess",
-                        "(JLjava/lang/String;ZZ)V", false);
+                        "(JLjava/lang/String;ZZI)V", false);
             }
             super.visitFieldInsn(opcode, owner, name, descriptor);
         }

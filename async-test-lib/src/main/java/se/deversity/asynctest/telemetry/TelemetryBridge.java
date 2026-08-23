@@ -230,6 +230,23 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
     @Override
     public void onEvent(long threadId, @Nullable String qualifiedName, boolean isWrite,
                         long lockFingerprint, boolean volatileField) {
+        onEvent(threadId, qualifiedName, isWrite, lockFingerprint, volatileField, Integer.MIN_VALUE);
+    }
+
+    /**
+     * Forwards a drained access that also carries what a constant write stored.
+     *
+     * @param threadId        the worker that recorded the access
+     * @param qualifiedName   the field identifier the weaver emitted
+     * @param isWrite         {@code true} for a write access
+     * @param lockFingerprint the locks that worker held at the access, 0 for none
+     * @param volatileField   whether the field is declared {@code volatile}
+     * @param constantTag     the constant stored, or {@code Integer.MIN_VALUE} for "not a constant"
+     * @since 1.10.0
+     */
+    @Override
+    public void onEvent(long threadId, @Nullable String qualifiedName, boolean isWrite,
+                        long lockFingerprint, boolean volatileField, int constantTag) {
         if (!active) {
             return;
         }
@@ -238,7 +255,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         }
         if (qualifiedName == null) return;
         atomicityValidator.recordFieldAccessUnderLocks(fieldIdentifier(qualifiedName), null,
-                isWrite, threadId, lockFingerprint, volatileField);
+                isWrite, threadId, lockFingerprint, volatileField, constantTag);
     }
 
     /**

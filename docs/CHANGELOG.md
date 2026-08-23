@@ -27,6 +27,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A constant written by a method that never read the field is no longer a check-then-act.** The
+  weaver tags a write when its value came from a constant instruction *and* the writing method had
+  not already read that field. Both halves matter: a field every thread writes the same constant to
+  settles at that value however they interleave, while a write preceded by a read of the same field
+  may be `if (!initialized) initialized = true`, which is a real bug and keeps its finding.
+  `SafePublicationRuleTest` pins all three directions, including two threads writing *different*
+  constants.
+
+  Measured on the corpus eval: `commons-collections4`'s `FixedOrderComparator`, whose `compare`
+  writes `isLocked = true` on every call, stopped being a false positive. Documented-thread-safe
+  classes with any finding went from 4 of 14 to 3 of 14, detection held at 19 of 19.
+
+- **Architecture diagrams regenerate on code-karta 0.3.0** (`tools/generate-architecture-diagrams.sh`).
+
 - **`ReentrantLock` is visible to the lock model.** A `synchronized` block compiles to
   `MONITORENTER`, which the agent weaves; a `java.util.concurrent.locks.Lock` compiles to an
   ordinary method call and looked like nothing, so code guarded by one was reported as unguarded.
