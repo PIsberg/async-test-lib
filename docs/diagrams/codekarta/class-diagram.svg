@@ -705,8 +705,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="DetectorRegistry" data-target="Detector" data-type="HAS" x="666.0" y="190.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">byType</text>
 <path class="edge-line" data-source="TelemetryBridge" data-target="AtomicityValidator" data-type="HAS" d="M986.0 244.0 Q1660.1 1025.9 2388.0 1758.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="TelemetryBridge" data-target="AtomicityValidator" data-type="HAS" x="1673.6" y="1007.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">atomicityValidator</text>
-<path class="edge-line" data-source="TelemetryRegistry" data-target="TelemetryEventBuffer" data-type="HAS" d="M1076.0 254.0 Q1087.4 253.9 1096.0 246.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="TelemetryRegistry" data-target="TelemetryEventBuffer" data-type="HAS" x="1086.7" y="246.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">BUFFER</text>
+<path class="edge-line" data-source="TelemetryRegistry" data-target="TelemetryEventBuffer" data-type="HAS" d="M1076.0 254.0 Q1086.0 257.6 1096.0 254.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="TelemetryRegistry" data-target="TelemetryEventBuffer" data-type="HAS" x="1086.0" y="249.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">BUFFER</text>
 <g id="AfterEachInvocation">
   <title>AfterEachInvocation [CLASS]</title>
   <rect class="node-rect" x="24.0" y="588.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
@@ -2805,12 +2805,12 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text class="node-label" x="2388.0" y="1780.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">AtomicityValidator</text>
   <line x1="2298.0" y1="1802.0" x2="2478.0" y2="1802.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="2306.0" y="1815.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">UNMODELLED: long</text>
-  <text x="2306.0" y="1830.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">activeOperations: Map&lt;Stri…</text>
-  <text x="2306.0" y="1845.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldHistory: Map&lt;String,L…</text>
-  <text x="2306.0" y="1860.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldLocks: Map&lt;String,Fie…</text>
-  <text x="2306.0" y="1875.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">atomicityViolations: Queue…</text>
-  <text x="2306.0" y="1890.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">invocationEpoch: java.util…</text>
-  <text x="2306.0" y="1905.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
+  <text x="2306.0" y="1830.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">NOT_A_CONSTANT: int</text>
+  <text x="2306.0" y="1845.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">NO_CONSTANT_YET: int</text>
+  <text x="2306.0" y="1860.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">activeOperations: Map&lt;Stri…</text>
+  <text x="2306.0" y="1875.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldHistory: Map&lt;String,L…</text>
+  <text x="2306.0" y="1890.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldLocks: Map&lt;String,Fie…</text>
+  <text x="2306.0" y="1905.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
   <line x1="2298.0" y1="1919.0" x2="2478.0" y2="1919.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="2306.0" y="1932.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">markInvocationStart(): void</text>
   <text x="2306.0" y="1947.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordCompoundOperationSta…</text>
@@ -2818,7 +2818,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="2306.0" y="1977.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordFieldAccess(String, …</text>
   <text x="2306.0" y="1992.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordFieldAccess(String, …</text>
   <text x="2306.0" y="2007.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordFieldAccessOn(Object…</text>
-  <text x="2306.0" y="2022.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+10 more)</text>
+  <text x="2306.0" y="2022.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+11 more)</text>
 </g>
 <g id="AsyncTestListenerRegistry">
   <title>AsyncTestListenerRegistry [CLASS]</title>
@@ -3647,11 +3647,11 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="904.0" y="183.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">onEvent(long, String, bool…</text>
   <text x="904.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">onEvent(long, String, bool…</text>
   <text x="904.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">onEvent(long, String, bool…</text>
-  <text x="904.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+5 more)</text>
+  <text x="904.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+6 more)</text>
 </g>
 <g id="TelemetryEventBuffer">
   <title>TelemetryEventBuffer [CLASS]</title>
-  <rect class="node-rect" x="1096.0" y="114.0" width="180.0" height="265.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="1096.0" y="114.0" width="180.0" height="280.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="1186.0" y="136.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">TelemetryEventBuffer</text>
   <line x1="1096.0" y1="158.0" x2="1276.0" y2="158.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="1104.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">SEQ_VH: VarHandle</text>
@@ -3665,9 +3665,10 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="1104.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">publish(long, String, bool…</text>
   <text x="1104.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">publish(long, String, bool…</text>
   <text x="1104.0" y="318.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">publish(long, String, bool…</text>
-  <text x="1104.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">droppedCount(): long</text>
-  <text x="1104.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">drain(DrainCallback): int</text>
-  <text x="1104.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">publishedCount(): long</text>
+  <text x="1104.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">publish(long, String, bool…</text>
+  <text x="1104.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">droppedCount(): long</text>
+  <text x="1104.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">drain(DrainCallback): int</text>
+  <text x="1104.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
 </g>
 <g id="TelemetryRegistry">
   <title>TelemetryRegistry [CLASS]</title>
@@ -3685,10 +3686,10 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="904.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAccess(long, String,…</text>
   <text x="904.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAccess(long, String,…</text>
   <text x="904.0" y="318.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAccess(long, String,…</text>
-  <text x="904.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">monitorEntered(Object): vo…</text>
-  <text x="904.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">monitorExited(Object): void</text>
-  <text x="904.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">start(TelemetryEventBuffer…</text>
-  <text x="904.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+8 more)</text>
+  <text x="904.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAccess(long, String,…</text>
+  <text x="904.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">monitorEntered(Object): vo…</text>
+  <text x="904.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">monitorExited(Object): void</text>
+  <text x="904.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+9 more)</text>
 </g>
 <rect x="3052.0" y="2503.0" width="220.0" height="100.0" rx="6" fill="#ffffff" stroke="#d1d5db" stroke-width="1" filter="url(#nodeShadow)"/>
 <text x="3068.0" y="2523.0" font-family="sans-serif" font-size="11" font-weight="bold" fill="#374151">Legend</text>

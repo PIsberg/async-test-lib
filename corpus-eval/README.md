@@ -35,7 +35,11 @@ by the test body itself is reported.
 1. Find a class whose **own javadoc** states its thread-safety contract. An inferred contract is
    not ground truth and does not belong here.
 2. Add a `Subject` row to `Corpus.java` quoting that sentence, with the file and line in the
-   library's sources jar (`mvn dependency:copy -Dartifact=<ga>:<version>:jar:sources`).
+   library's sources jar. Unpack it **outside the repository**:
+   `mvn dependency:copy -Dartifact=<ga>:<version>:jar:sources -DoutputDirectory=$TMPDIR/corpus-sources`.
+   Third-party sources anywhere under the repo root end up in the architecture diagrams,
+   because `tools/generate-architecture-diagrams.sh` scans `.` for the module picture, and
+   the Guardrail job then fails on drift that exists only on your machine.
 3. Add one `@AsyncTest` method to `CorpusEvalTest` named exactly as the row's `testMethod`. Use
    `unsafeOperation(...)` for a documented-unsafe subject, since corruption there can surface as a
    thrown exception that the eval counts rather than fails on, and `safeOperation(...)` otherwise.

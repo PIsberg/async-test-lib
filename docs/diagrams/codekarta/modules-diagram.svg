@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="4452" height="694" viewBox="0 0 4452 694">
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="694" viewBox="0 0 960 694">
 <defs>
 <style>
 svg { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
@@ -48,226 +48,50 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <pattern id="dotGrid" width="24" height="24" patternUnits="userSpaceOnUse">
   <circle cx="2" cy="2" r="1" fill="#e5e7eb"/>
 </pattern>
+<marker id="marker-open-374151" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+  <path d="M0,0 L8,4 L0,8" fill="none" stroke="#374151" stroke-width="1.2"/>
+</marker>
 <marker id="marker-filled-6d28d9" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
   <path d="M0,0 L8,4 L0,8 Z" fill="#6d28d9"/>
 </marker>
-<marker id="marker-open-065f46" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
-  <path d="M0,0 L8,4 L0,8" fill="none" stroke="#065f46" stroke-width="1.2"/>
-</marker>
 </defs>
-<rect width="4452" height="694" fill="#f9fafb"/>
-<rect width="4452" height="694" fill="url(#dotGrid)"/>
-<path class="edge-line" data-source="com.google.common" data-target="java.logging" data-type="REQUIRES" d="M274.2 55.0 Q2040.0 237.9 3812.0 345.0" fill="none" stroke="#6d28d9" stroke-width="1.6" marker-end="url(#marker-filled-6d28d9)"/>
-<text class="edge-label" data-source="com.google.common" data-target="java.logging" data-type="REQUIRES" x="2041.5" y="213.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#6d28d9" font-style="italic">requires</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.common.util.concurrent.internal" data-type="REQUIRES" d="M274.2 55.0 Q2240.3 238.2 4212.0 345.0" fill="none" stroke="#6d28d9" stroke-width="1.6" marker-end="url(#marker-filled-6d28d9)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.common.util.concurrent.internal" data-type="REQUIRES" x="2241.7" y="213.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#6d28d9" font-style="italic">requires</text>
-<path class="edge-line" data-source="com.google.common" data-target="jdk.unsupported" data-type="REQUIRES" d="M184.2 98.0 Q217.0 215.1 302.0 302.0" fill="none" stroke="#6d28d9" stroke-width="1.6" marker-end="url(#marker-filled-6d28d9)"/>
-<text class="edge-label" data-source="com.google.common" data-target="jdk.unsupported" data-type="REQUIRES" x="230.1" y="201.5" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#6d28d9" font-style="italic">requires</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.errorprone.annotations" data-type="REQUIRES" d="M274.2 55.0 Q631.0 230.7 1012.0 345.0" fill="none" stroke="#6d28d9" stroke-width="1.6" marker-end="url(#marker-filled-6d28d9)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.errorprone.annotations" data-type="REQUIRES" x="637.1" y="209.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#6d28d9" font-style="italic">requires</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.j2objc.annotations" data-type="REQUIRES" d="M274.2 55.0 Q1338.1 236.6 2412.0 345.0" fill="none" stroke="#6d28d9" stroke-width="1.6" marker-end="url(#marker-filled-6d28d9)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.j2objc.annotations" data-type="REQUIRES" x="1340.6" y="212.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#6d28d9" font-style="italic">requires</text>
-<path class="edge-line" data-source="com.google.common" data-target="org.jspecify" data-type="REQUIRES" d="M274.2 55.0 Q1639.1 237.3 3012.0 345.0" fill="none" stroke="#6d28d9" stroke-width="1.6" marker-end="url(#marker-filled-6d28d9)"/>
-<text class="edge-label" data-source="com.google.common" data-target="org.jspecify" data-type="REQUIRES" x="1641.1" y="212.7" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#6d28d9" font-style="italic">requires</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.common.annotations" data-type="EXPORTS" d="M274.2 55.0 Q1237.7 236.3 2212.0 345.0" fill="none" stroke="#065f46" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#marker-open-065f46)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.common.annotations" data-type="EXPORTS" x="1240.4" y="212.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">exports</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.common.base" data-type="EXPORTS" d="M274.2 55.0 Q423.5 222.8 612.0 345.0" fill="none" stroke="#065f46" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#marker-open-065f46)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.common.base" data-type="EXPORTS" x="433.3" y="205.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">exports</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.common.cache" data-type="EXPORTS" d="M274.2 55.0 Q935.6 234.6 1612.0 345.0" fill="none" stroke="#065f46" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#marker-open-065f46)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.common.cache" data-type="EXPORTS" x="939.3" y="211.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">exports</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.common.collect" data-type="EXPORTS" d="M274.2 55.0 Q528.1 227.8 812.0 345.0" fill="none" stroke="#065f46" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#marker-open-065f46)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.common.collect" data-type="EXPORTS" x="535.6" y="207.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">exports</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.common.escape" data-type="EXPORTS" d="M274.2 55.0 Q316.1 212.8 412.0 345.0" fill="none" stroke="#065f46" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#marker-open-065f46)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.common.escape" data-type="EXPORTS" x="329.6" y="200.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">exports</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.common.eventbus" data-type="EXPORTS" d="M274.2 55.0 Q1137.1 235.8 2012.0 345.0" fill="none" stroke="#065f46" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#marker-open-065f46)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.common.eventbus" data-type="EXPORTS" x="1140.1" y="211.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">exports</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.common.graph" data-type="EXPORTS" d="M274.2 55.0 Q733.0 232.5 1212.0 345.0" fill="none" stroke="#065f46" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#marker-open-065f46)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.common.graph" data-type="EXPORTS" x="738.1" y="210.2" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">exports</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.common.hash" data-type="EXPORTS" d="M274.2 55.0 Q1036.4 235.3 1812.0 345.0" fill="none" stroke="#065f46" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#marker-open-065f46)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.common.hash" data-type="EXPORTS" x="1039.8" y="211.7" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">exports</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.common.html" data-type="EXPORTS" d="M274.2 55.0 Q1839.6 237.7 3412.0 345.0" fill="none" stroke="#065f46" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#marker-open-065f46)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.common.html" data-type="EXPORTS" x="1841.3" y="212.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">exports</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.common.io" data-type="EXPORTS" d="M274.2 55.0 Q1939.8 237.8 3612.0 345.0" fill="none" stroke="#065f46" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#marker-open-065f46)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.common.io" data-type="EXPORTS" x="1941.4" y="212.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">exports</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.common.math" data-type="EXPORTS" d="M274.2 55.0 Q1739.4 237.5 3212.0 345.0" fill="none" stroke="#065f46" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#marker-open-065f46)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.common.math" data-type="EXPORTS" x="1741.2" y="212.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">exports</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.common.net" data-type="EXPORTS" d="M274.2 55.0 Q1438.5 236.9 2612.0 345.0" fill="none" stroke="#065f46" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#marker-open-065f46)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.common.net" data-type="EXPORTS" x="1440.8" y="212.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">exports</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.common.primitives" data-type="EXPORTS" d="M274.2 55.0 Q834.5 233.7 1412.0 345.0" fill="none" stroke="#065f46" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#marker-open-065f46)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.common.primitives" data-type="EXPORTS" x="838.8" y="210.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">exports</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.common.reflect" data-type="EXPORTS" d="M184.2 98.0 Q116.0 189.1 102.0 302.0" fill="none" stroke="#065f46" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#marker-open-065f46)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.common.reflect" data-type="EXPORTS" x="129.6" y="188.5" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">exports</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.common.util.concurrent" data-type="EXPORTS" d="M274.2 55.0 Q1538.8 237.1 2812.0 345.0" fill="none" stroke="#065f46" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#marker-open-065f46)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.common.util.concurrent" data-type="EXPORTS" x="1541.0" y="212.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">exports</text>
-<path class="edge-line" data-source="com.google.common" data-target="com.google.common.xml" data-type="EXPORTS" d="M274.2 55.0 Q2140.1 238.1 4012.0 345.0" fill="none" stroke="#065f46" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#marker-open-065f46)"/>
-<text class="edge-label" data-source="com.google.common" data-target="com.google.common.xml" data-type="EXPORTS" x="2141.6" y="213.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">exports</text>
-<g id="com.google.common">
-  <title>com.google.common [MODULE]</title>
-  <rect class="node-rect" x="94.2" y="12.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-MODULE)" stroke="#6d28d9" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="184.2" y="41.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#6d28d9" font-style="italic">«mod»</text>
-  <text class="node-label" x="184.2" y="53.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google</text>
-  <text class="node-label" x="184.2" y="67.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">common</text>
+<rect width="960" height="694" fill="#f9fafb"/>
+<rect width="960" height="694" fill="url(#dotGrid)"/>
+<path class="edge-line" data-source="async-test-parent" data-target="async-test-lib" data-type="HAS" d="M147.0 98.0 Q223.8 177.9 332.0 202.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<path class="edge-line" data-source="async-test-parent" data-target="async-test-agent" data-type="HAS" d="M237.0 55.0 Q206.5 100.5 212.0 155.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<path class="edge-line" data-source="async-test-parent" data-target="async-test-analysis" data-type="HAS" d="M147.0 98.0 Q122.0 96.9 102.0 112.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<path class="edge-line" data-source="async-test-agent" data-target="async-test-lib" data-type="REQUIRES" d="M302.0 198.0 Q316.3 205.4 332.0 202.0" fill="none" stroke="#6d28d9" stroke-width="1.6" marker-end="url(#marker-filled-6d28d9)"/>
+<text class="edge-label" data-source="async-test-agent" data-target="async-test-lib" data-type="REQUIRES" x="316.6" y="196.7" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#6d28d9" font-style="italic">requires</text>
+<g id="async-test-parent">
+  <title>async-test-parent [MODULE]</title>
+  <rect class="node-rect" x="57.0" y="12.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-MODULE)" stroke="#6d28d9" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="147.0" y="46.5" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#6d28d9" font-style="italic">«mod»</text>
+  <text class="node-label" x="147.0" y="61.5" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">async-test-parent</text>
 </g>
-<g id="java.logging">
-  <title>java.logging [MODULE]</title>
-  <rect class="node-rect" x="3812.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="3902.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#9ca3af" font-style="italic">«mod»</text>
-  <text class="node-label" x="3902.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">java</text>
-  <text class="node-label" x="3902.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">logging</text>
+<g id="async-test-lib">
+  <title>async-test-lib [MODULE]</title>
+  <rect class="node-rect" x="242.0" y="202.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-MODULE)" stroke="#6d28d9" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="332.0" y="236.5" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#6d28d9" font-style="italic">«mod»</text>
+  <text class="node-label" x="332.0" y="251.5" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">async-test-lib</text>
 </g>
-<g id="com.google.common.util.concurrent.internal">
-  <title>com.google.common.util.concurrent.internal [MODULE]</title>
-  <rect class="node-rect" x="4212.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-MODULE)" stroke="#6d28d9" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="4302.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#6d28d9" font-style="italic">«mod»</text>
-  <text class="node-label" x="4302.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.common.util.concurrent</text>
-  <text class="node-label" x="4302.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">internal</text>
+<g id="async-test-agent">
+  <title>async-test-agent [MODULE]</title>
+  <rect class="node-rect" x="212.0" y="112.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-MODULE)" stroke="#6d28d9" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="302.0" y="146.5" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#6d28d9" font-style="italic">«mod»</text>
+  <text class="node-label" x="302.0" y="161.5" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">async-test-agent</text>
 </g>
-<g id="jdk.unsupported">
-  <title>jdk.unsupported [MODULE]</title>
-  <rect class="node-rect" x="212.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-MODULE)" stroke="#6d28d9" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="302.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#6d28d9" font-style="italic">«mod»</text>
-  <text class="node-label" x="302.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">jdk</text>
-  <text class="node-label" x="302.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">unsupported</text>
+<g id="async-test-analysis">
+  <title>async-test-analysis [MODULE]</title>
+  <rect class="node-rect" x="12.0" y="112.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-MODULE)" stroke="#6d28d9" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="102.0" y="146.5" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#6d28d9" font-style="italic">«mod»</text>
+  <text class="node-label" x="102.0" y="161.5" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">async-test-analysis</text>
 </g>
-<g id="com.google.errorprone.annotations">
-  <title>com.google.errorprone.annotations [MODULE]</title>
-  <rect class="node-rect" x="1012.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-MODULE)" stroke="#6d28d9" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="1102.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#6d28d9" font-style="italic">«mod»</text>
-  <text class="node-label" x="1102.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.errorprone</text>
-  <text class="node-label" x="1102.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">annotations</text>
-</g>
-<g id="com.google.j2objc.annotations">
-  <title>com.google.j2objc.annotations [MODULE]</title>
-  <rect class="node-rect" x="2412.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-MODULE)" stroke="#6d28d9" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="2502.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#6d28d9" font-style="italic">«mod»</text>
-  <text class="node-label" x="2502.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.j2objc</text>
-  <text class="node-label" x="2502.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">annotations</text>
-</g>
-<g id="org.jspecify">
-  <title>org.jspecify [MODULE]</title>
-  <rect class="node-rect" x="3012.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-MODULE)" stroke="#6d28d9" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="3102.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#6d28d9" font-style="italic">«mod»</text>
-  <text class="node-label" x="3102.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">org</text>
-  <text class="node-label" x="3102.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">jspecify</text>
-</g>
-<g id="com.google.common.annotations">
-  <title>com.google.common.annotations [PACKAGE]</title>
-  <rect class="node-rect" x="2212.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-PACKAGE)" stroke="#065f46" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="2302.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">«pkg»</text>
-  <text class="node-label" x="2302.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.common</text>
-  <text class="node-label" x="2302.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">annotations</text>
-</g>
-<g id="com.google.common.base">
-  <title>com.google.common.base [PACKAGE]</title>
-  <rect class="node-rect" x="612.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-PACKAGE)" stroke="#065f46" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="702.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">«pkg»</text>
-  <text class="node-label" x="702.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.common</text>
-  <text class="node-label" x="702.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">base</text>
-</g>
-<g id="com.google.common.cache">
-  <title>com.google.common.cache [PACKAGE]</title>
-  <rect class="node-rect" x="1612.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-PACKAGE)" stroke="#065f46" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="1702.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">«pkg»</text>
-  <text class="node-label" x="1702.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.common</text>
-  <text class="node-label" x="1702.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">cache</text>
-</g>
-<g id="com.google.common.collect">
-  <title>com.google.common.collect [PACKAGE]</title>
-  <rect class="node-rect" x="812.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-PACKAGE)" stroke="#065f46" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="902.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">«pkg»</text>
-  <text class="node-label" x="902.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.common</text>
-  <text class="node-label" x="902.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">collect</text>
-</g>
-<g id="com.google.common.escape">
-  <title>com.google.common.escape [PACKAGE]</title>
-  <rect class="node-rect" x="412.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-PACKAGE)" stroke="#065f46" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="502.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">«pkg»</text>
-  <text class="node-label" x="502.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.common</text>
-  <text class="node-label" x="502.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">escape</text>
-</g>
-<g id="com.google.common.eventbus">
-  <title>com.google.common.eventbus [PACKAGE]</title>
-  <rect class="node-rect" x="2012.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-PACKAGE)" stroke="#065f46" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="2102.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">«pkg»</text>
-  <text class="node-label" x="2102.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.common</text>
-  <text class="node-label" x="2102.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">eventbus</text>
-</g>
-<g id="com.google.common.graph">
-  <title>com.google.common.graph [PACKAGE]</title>
-  <rect class="node-rect" x="1212.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-PACKAGE)" stroke="#065f46" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="1302.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">«pkg»</text>
-  <text class="node-label" x="1302.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.common</text>
-  <text class="node-label" x="1302.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">graph</text>
-</g>
-<g id="com.google.common.hash">
-  <title>com.google.common.hash [PACKAGE]</title>
-  <rect class="node-rect" x="1812.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-PACKAGE)" stroke="#065f46" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="1902.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">«pkg»</text>
-  <text class="node-label" x="1902.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.common</text>
-  <text class="node-label" x="1902.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">hash</text>
-</g>
-<g id="com.google.common.html">
-  <title>com.google.common.html [PACKAGE]</title>
-  <rect class="node-rect" x="3412.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-PACKAGE)" stroke="#065f46" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="3502.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">«pkg»</text>
-  <text class="node-label" x="3502.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.common</text>
-  <text class="node-label" x="3502.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">html</text>
-</g>
-<g id="com.google.common.io">
-  <title>com.google.common.io [PACKAGE]</title>
-  <rect class="node-rect" x="3612.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-PACKAGE)" stroke="#065f46" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="3702.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">«pkg»</text>
-  <text class="node-label" x="3702.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.common</text>
-  <text class="node-label" x="3702.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">io</text>
-</g>
-<g id="com.google.common.math">
-  <title>com.google.common.math [PACKAGE]</title>
-  <rect class="node-rect" x="3212.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-PACKAGE)" stroke="#065f46" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="3302.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">«pkg»</text>
-  <text class="node-label" x="3302.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.common</text>
-  <text class="node-label" x="3302.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">math</text>
-</g>
-<g id="com.google.common.net">
-  <title>com.google.common.net [PACKAGE]</title>
-  <rect class="node-rect" x="2612.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-PACKAGE)" stroke="#065f46" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="2702.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">«pkg»</text>
-  <text class="node-label" x="2702.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.common</text>
-  <text class="node-label" x="2702.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">net</text>
-</g>
-<g id="com.google.common.primitives">
-  <title>com.google.common.primitives [PACKAGE]</title>
-  <rect class="node-rect" x="1412.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-PACKAGE)" stroke="#065f46" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="1502.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">«pkg»</text>
-  <text class="node-label" x="1502.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.common</text>
-  <text class="node-label" x="1502.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">primitives</text>
-</g>
-<g id="com.google.common.reflect">
-  <title>com.google.common.reflect [PACKAGE]</title>
-  <rect class="node-rect" x="12.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-PACKAGE)" stroke="#065f46" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="102.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">«pkg»</text>
-  <text class="node-label" x="102.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.common</text>
-  <text class="node-label" x="102.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">reflect</text>
-</g>
-<g id="com.google.common.util.concurrent">
-  <title>com.google.common.util.concurrent [PACKAGE]</title>
-  <rect class="node-rect" x="2812.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-PACKAGE)" stroke="#065f46" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="2902.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">«pkg»</text>
-  <text class="node-label" x="2902.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.common.util</text>
-  <text class="node-label" x="2902.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">concurrent</text>
-</g>
-<g id="com.google.common.xml">
-  <title>com.google.common.xml [PACKAGE]</title>
-  <rect class="node-rect" x="4012.0" y="302.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-PACKAGE)" stroke="#065f46" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="4102.0" y="331.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10" fill="#065f46" font-style="italic">«pkg»</text>
-  <text class="node-label" x="4102.0" y="343.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.0" fill="#6b7280">com.google.common</text>
-  <text class="node-label" x="4102.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">xml</text>
-</g>
-<rect x="4216.0" y="560.0" width="220.0" height="100.0" rx="6" fill="#ffffff" stroke="#d1d5db" stroke-width="1" filter="url(#nodeShadow)"/>
-<text x="4232.0" y="580.0" font-family="sans-serif" font-size="11" font-weight="bold" fill="#374151">Legend</text>
-<line x1="4232.0" y1="604.0" x2="4268.0" y2="604.0" stroke="#6d28d9" stroke-width="2" marker-end="url(#marker-filled-6d28d9)"/>
-<text x="4276.0" y="608.0" font-family="sans-serif" font-size="11" fill="#374151">requires</text>
-<line x1="4232.0" y1="628.0" x2="4268.0" y2="628.0" stroke="#065f46" stroke-width="2" stroke-dasharray="4,4" marker-end="url(#marker-open-065f46)"/>
-<text x="4276.0" y="632.0" font-family="sans-serif" font-size="11" fill="#374151">exports</text>
+<rect x="724.0" y="560.0" width="220.0" height="100.0" rx="6" fill="#ffffff" stroke="#d1d5db" stroke-width="1" filter="url(#nodeShadow)"/>
+<text x="740.0" y="580.0" font-family="sans-serif" font-size="11" font-weight="bold" fill="#374151">Legend</text>
+<line x1="740.0" y1="604.0" x2="776.0" y2="604.0" stroke="#374151" stroke-width="2" marker-end="url(#marker-open-374151)"/>
+<text x="784.0" y="608.0" font-family="sans-serif" font-size="11" fill="#374151">has</text>
+<line x1="740.0" y1="628.0" x2="776.0" y2="628.0" stroke="#6d28d9" stroke-width="2" marker-end="url(#marker-filled-6d28d9)"/>
+<text x="784.0" y="632.0" font-family="sans-serif" font-size="11" fill="#374151">requires</text>
 <script type="text/javascript">
 <![CDATA[
 document.addEventListener('DOMContentLoaded', () => {
@@ -333,6 +157,6 @@ document.addEventListener('DOMContentLoaded', () => {
 ]]>
 </script>
 <a class="diagram-attribution" href="https://github.com/PIsberg/codekarta" target="_blank" rel="noopener noreferrer">
-  <text x="4436.0" y="678.0" text-anchor="end" font-family="sans-serif" font-size="11" fill="#6b7280" text-decoration="underline">Created with https://github.com/PIsberg/codekarta</text>
+  <text x="944.0" y="678.0" text-anchor="end" font-family="sans-serif" font-size="11" fill="#6b7280" text-decoration="underline">Created with https://github.com/PIsberg/codekarta</text>
 </a>
 </svg>
