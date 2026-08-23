@@ -1,5 +1,19 @@
-package se.deversity.asynctest.corpus;
+package com.example.corpus;
 
+import com.google.common.base.Joiner;
+import com.google.common.base.Splitter;
+import com.google.common.base.Stopwatch;
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.LinkedListMultimap;
+import com.google.common.collect.MinMaxPriorityQueue;
+import com.google.common.io.PatternFilenameFilter;
+import com.google.common.math.StatsAccumulator;
+import org.apache.commons.collections4.comparators.FixedOrderComparator;
+import org.apache.commons.collections4.map.CaseInsensitiveMap;
+import org.apache.commons.collections4.map.HashedMap;
+import org.apache.commons.collections4.map.LazyMap;
+import org.apache.commons.collections4.map.LinkedMap;
+import org.apache.commons.collections4.map.MultiKeyMap;
 import com.google.common.base.Suppliers;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ConcurrentHashMultiset;
@@ -32,6 +46,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
@@ -64,6 +79,36 @@ class CorpusEvalTest {
             new PassiveExpiringMap<>(60_000L);
     private final ArrayListMultimap<String, String> multimap = ArrayListMultimap.create();
     private final EvictingQueue<String> evictingQueue = EvictingQueue.create(16);
+
+    // --- documented NOT thread-safe, second wave: state in arrays, nodes and primitives
+
+    private final Stopwatch stopwatch = Stopwatch.createStarted();
+    private final StatsAccumulator statsAccumulator = new StatsAccumulator();
+    private final HashMultimap<String, String> hashMultimap = HashMultimap.create();
+    private final LinkedListMultimap<String, String> linkedListMultimap = LinkedListMultimap.create();
+    private final MinMaxPriorityQueue<Integer> minMaxQueue = MinMaxPriorityQueue.maximumSize(32).create();
+    private final HashedMap<String, String> hashedMap = new HashedMap<>();
+    private final LinkedMap<String, String> linkedMap = new LinkedMap<>();
+    private final MultiKeyMap<String, String> multiKeyMap = new MultiKeyMap<>();
+    private final CaseInsensitiveMap<String, String> caseInsensitiveMap = new CaseInsensitiveMap<>();
+    private final Map<String, String> lazyMap = LazyMap.lazyMap(new HashMap<>(), key -> "value");
+
+    // --- documented thread-safe, second wave: immutable and post-setup-locked subjects
+
+    private static final Joiner JOINER = Joiner.on(',').skipNulls();
+    private static final Splitter SPLITTER = Splitter.on(',').trimResults();
+    private final PatternFilenameFilter filenameFilter = new PatternFilenameFilter("[a-z]+\\.txt");
+    private final FixedOrderComparator<String> fixedOrderComparator = lockedComparator();
+
+    /**
+     * Builds the comparator and completes its setup, which is what its contract requires before
+     * concurrent use: the first comparison locks it, and a lock attempt after that throws.
+     */
+    private static FixedOrderComparator<String> lockedComparator() {
+        FixedOrderComparator<String> comparator = new FixedOrderComparator<>("a", "b", "c");
+        comparator.compare("a", "b");
+        return comparator;
+    }
 
     // --- documented thread-safe -----------------------------------------------------------
 
@@ -277,5 +322,106 @@ class CorpusEvalTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void memoizedSupplier_get() {
         safeOperation(memoized::get);
+    }
+
+    // --- subjects documented as NOT thread-safe, second wave --------------------------------
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void guavaStopwatch_startStop() {
+        unsafeOperation(() -> {
+            if (stopwatch.isRunning()) {
+                stopwatch.stop();
+            } else {
+                stopwatch.start();
+            }
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void statsAccumulator_add() {
+        unsafeOperation(() -> statsAccumulator.add(1.5));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void hashMultimap_put() {
+        unsafeOperation(() -> {
+            hashMultimap.put("key", "value");
+            hashMultimap.get("key");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void linkedListMultimap_put() {
+        unsafeOperation(() -> {
+            linkedListMultimap.put("key", "value");
+            linkedListMultimap.get("key");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void minMaxPriorityQueue_addAndPoll() {
+        unsafeOperation(() -> {
+            minMaxQueue.add(7);
+            minMaxQueue.poll();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void hashedMap_putAndGet() {
+        unsafeOperation(() -> {
+            hashedMap.put("key", "value");
+            hashedMap.get("key");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void linkedMap_putAndGet() {
+        unsafeOperation(() -> {
+            linkedMap.put("key", "value");
+            linkedMap.get("key");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void multiKeyMap_putAndGet() {
+        unsafeOperation(() -> {
+            multiKeyMap.put("first", "second", "value");
+            multiKeyMap.get("first", "second");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void caseInsensitiveMap_putAndGet() {
+        unsafeOperation(() -> {
+            caseInsensitiveMap.put("Key", "value");
+            caseInsensitiveMap.get("kEY");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void lazyMap_get() {
+        unsafeOperation(() -> lazyMap.get("key"));
+    }
+
+    // --- subjects documented as thread-safe, second wave ------------------------------------
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void joiner_join() {
+        safeOperation(() -> JOINER.join("a", "b", "c"));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void splitter_splitToList() {
+        safeOperation(() -> SPLITTER.splitToList("a, b, c"));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void patternFilenameFilter_accept() {
+        safeOperation(() -> filenameFilter.accept(new java.io.File("."), "notes.txt"));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void fixedOrderComparator_compare() {
+        safeOperation(() -> fixedOrderComparator.compare("a", "c"));
     }
 }

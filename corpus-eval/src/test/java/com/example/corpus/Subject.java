@@ -1,4 +1,4 @@
-package se.deversity.asynctest.corpus;
+package com.example.corpus;
 
 /**
  * One corpus entry: a third-party class, the contract its javadoc states, and the evidence for it.

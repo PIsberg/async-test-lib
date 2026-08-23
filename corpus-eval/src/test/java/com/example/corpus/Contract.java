@@ -1,4 +1,4 @@
-package se.deversity.asynctest.corpus;
+package com.example.corpus;
 
 /**
  * The thread-safety contract a corpus subject's own javadoc states.

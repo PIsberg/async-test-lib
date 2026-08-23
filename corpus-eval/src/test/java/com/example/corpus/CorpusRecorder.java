@@ -1,4 +1,4 @@
-package se.deversity.asynctest.corpus;
+package com.example.corpus;
 
 import se.deversity.asynctest.AsyncTestListener;
 import se.deversity.asynctest.AsyncTestListenerRegistry;

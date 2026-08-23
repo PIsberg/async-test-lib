@@ -13,22 +13,22 @@ The [detector-accuracy eval](detector-accuracy-eval.md) measures 17 of the 142 d
 twins written for the test. It answers "does the analyzer's model hold", and it cannot answer the
 question an evaluating team asks first: on code neither the library nor the test author wrote, does
 a finding mean something is wrong, and how much noise comes with it. This document answers that on
-19 classes from three third-party libraries.
+33 classes from three third-party libraries.
 
 ## What was measured
 
-Nineteen classes from `commons-lang3:3.20.0`, `commons-collections4:4.5.0` and `guava:33.4.8-jre`,
-each exercised by one shared instance under `@AsyncTest(threads = 6, invocations = 40)` with
+Thirty-three classes from `commons-lang3:3.20.0`, `commons-collections4:4.5.0` and
+`guava:33.4.8-jre`, each exercised by one shared instance under `@AsyncTest(threads = 6, invocations = 40)` with
 `detectAll = true` and the agent attached as `fields=true,collections=true`. No detector is configured, nothing is
 recorded by hand, and no line of the subject library is modified. The only thing the test body does
 is call the class from six threads at once.
 
 Ground truth is each class's own javadoc, quoted with its file and line in that library's sources
-jar in [`Corpus.java`](../../corpus-eval/src/test/java/se/deversity/asynctest/corpus/Corpus.java):
+jar in [`Corpus.java`](../../corpus-eval/src/test/java/com/example/corpus/Corpus.java):
 
-- **Nine classes document themselves as not thread-safe.** Sharing one instance across threads is
+- **Nineteen classes document themselves as not thread-safe.** Sharing one instance across threads is
   the defect a user would have written, so a finding is a true positive.
-- **Ten document themselves as safe for concurrent use.** Sharing one instance is the usage the
+- **Fourteen document themselves as safe for concurrent use.** Sharing one instance is the usage the
   class exists for, so a finding is noise.
 
 A test method with no corpus row fails the run, so a subject cannot be exercised without a
@@ -37,36 +37,50 @@ documented contract behind it.
 ## Results
 
 Measured on JDK 26 on Windows 11. Consecutive runs produce identical per-subject rows; only the
-`StopWatch` exception count moves, between 56 and 71.
+exception counts move, and only on the three subjects whose corruption surfaces as a throw.
 
-| Subject | Contract | Findings | Detector (tier/severity) | Threw |
+| Subject | Contract | Findings | Detectors (tier/severity) | Crashes |
 |---|---|---:|---|---:|
-| `MutableInt.incrementAndGet` | not thread-safe | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `MutableLong.incrementAndGet` | not thread-safe | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `StopWatch.split` | not thread-safe | 2 | AtomicityValidator, SharedCollectionDetector (PROMPT/HIGH) | 56 to 71 |
-| `LRUMap.put/get` | not thread-safe | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `Flat3Map.put/get` | not thread-safe | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `ListOrderedMap.put/get` | not thread-safe | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `PassiveExpiringMap.put/get` | not thread-safe | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `ArrayListMultimap.put/get` | not thread-safe | 2 | AtomicityValidator, SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `EvictingQueue.add/poll` | not thread-safe | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `FastDateFormat.format` | thread-safe | 0 | none | 0 |
-| `AtomicSafeInitializer.get` | thread-safe | 0 | none | 0 |
-| `LazyInitializer.get` | thread-safe | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `SynchronizedBag.add/getCount` | thread-safe | 0 | none | 0 |
-| `RateLimiter.tryAcquire` | thread-safe | 0 | none | 0 |
-| `EventBus.post` | thread-safe | 2 | AtomicityValidator, SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `BloomFilter.put/mightContain` | thread-safe | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `AtomicLongMap.incrementAndGet` | thread-safe | 0 | none | 0 |
-| `ConcurrentHashMultiset.add/count` | thread-safe | 0 | none | 0 |
-| `Suppliers.memoize(...).get` | thread-safe | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `mutableInt_incrementAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `mutableLong_incrementAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `stopWatch_splitAndGet` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 54 |
+| `lruMap_putAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `flat3Map_putAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `listOrderedMap_putAndGet` | NOT_THREAD_SAFE | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `passiveExpiringMap_putAndGet` | NOT_THREAD_SAFE | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `arrayListMultimap_put` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `evictingQueue_addAndPoll` | NOT_THREAD_SAFE | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `guavaStopwatch_startStop` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 6 |
+| `statsAccumulator_add` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `hashMultimap_put` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `linkedListMultimap_put` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `minMaxPriorityQueue_addAndPoll` | NOT_THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 171 |
+| `hashedMap_putAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `linkedMap_putAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `multiKeyMap_putAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `caseInsensitiveMap_putAndGet` | NOT_THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `lazyMap_get` | NOT_THREAD_SAFE | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `fastDateFormat_format` | THREAD_SAFE | 0 | - | 0 |
+| `atomicSafeInitializer_get` | THREAD_SAFE | 0 | - | 0 |
+| `lazyInitializer_get` | THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `synchronizedBag_addAndCount` | THREAD_SAFE | 0 | - | 0 |
+| `rateLimiter_tryAcquire` | THREAD_SAFE | 0 | - | 0 |
+| `eventBus_post` | THREAD_SAFE | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `bloomFilter_putAndMightContain` | THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `atomicLongMap_incrementAndGet` | THREAD_SAFE | 0 | - | 0 |
+| `concurrentHashMultiset_add` | THREAD_SAFE | 0 | - | 0 |
+| `memoizedSupplier_get` | THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `joiner_join` | THREAD_SAFE | 0 | - | 0 |
+| `splitter_splitToList` | THREAD_SAFE | 0 | - | 0 |
+| `patternFilenameFilter_accept` | THREAD_SAFE | 0 | - | 0 |
+| `fixedOrderComparator_compare` | THREAD_SAFE | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
 
 | Measure | Value |
 |---|---|
-| Documented-thread-safe classes with a VERDICT-tier HIGH or CRITICAL finding | 0 of 10 |
-| Documented-thread-safe classes with any finding at all | 4 of 10 |
-| Documented-not-thread-safe classes with at least one finding | 9 of 9 |
-| Documented-not-thread-safe classes that threw out of their own code | 1 of 9 |
+| Documented-thread-safe classes with a VERDICT-tier HIGH or CRITICAL finding | 0 of 14 |
+| Documented-thread-safe classes with any finding at all | 5 of 14 |
+| Documented-not-thread-safe classes with at least one finding | 19 of 19 |
+| Documented-not-thread-safe classes that threw out of their own code | 3 of 19 |
 | Distinct detectors that produced any finding | 2 of 142 |
 
 ## What this means for a user
@@ -89,25 +103,31 @@ Reading them as defects would be wrong, and a team that gates on everything will
 its own code 45 to 53 times per run, which no single-threaded test would ever show. The finding
 names the field and the thread count, so the report points at the state, not just at the test.
 
-**The three misses had one cause, and it is now closed.** `ListOrderedMap`, `PassiveExpiringMap`
-and `EvictingQueue` keep their mutable state inside JDK objects behind final fields: an `ArrayList`
-insert order, a `HashMap` of expiry times, an `ArrayDeque` delegate. There was no field instruction
-to weave, and the writes that race happen where nothing can be. The agent's `collections=true` mode
-rewrites the collection call itself so the instance reaches the detectors, and all three now report.
-The general shape matters more than the three classes: **any class that delegates its state to a JDK
-collection was invisible**, which covers most classes with a `private final Map` or `List` field.
+**The misses had one cause, and it is now closed.** With field weaving alone, four of the nineteen
+documented-not-thread-safe subjects report nothing: `ListOrderedMap`, `PassiveExpiringMap`,
+`EvictingQueue` and `LazyMap`. All four keep their mutable state inside a JDK object behind a final
+field, an `ArrayList` insert order, a `HashMap` of expiry times, an `ArrayDeque` delegate, a
+decorated `HashMap`. There is no field instruction to weave, and the writes that race happen where
+nothing can be woven. `LazyMap` is the useful one: it was added after the diagnosis, as a class the
+explanation predicted would be missed, and it was.
+
+The agent's `collections=true` mode rewrites the collection call itself so the instance reaches the
+detectors, and all four now report. The general shape matters more than the four classes: **any
+class that delegates its state to a JDK collection was invisible**, which covers most classes with a
+`private final Map` or `List` field.
 
 ## What closing the gap changed
 
 The eval's first run is the reason `collections=true` exists, so the honest way to read this
-document is as a before and after. Same 19 subjects, same configuration otherwise:
+document is as a before and after. Both columns are the same 33 subjects on the same machine, with
+only the agent option changed:
 
 | Measure | Field weaving only | With collection weaving |
 |---|---|---|
-| Documented-not-thread-safe classes with a finding | 6 of 9 | **9 of 9** |
-| Documented-thread-safe classes with a VERDICT-tier HIGH or CRITICAL finding | 0 of 10 | **0 of 10** |
-| Documented-thread-safe classes with any finding | 4 of 10 | 4 of 10 |
-| Total findings | 10 | 16 |
+| Documented-not-thread-safe classes with a finding | 15 of 19 | **19 of 19** |
+| Documented-thread-safe classes with a VERDICT-tier HIGH or CRITICAL finding | 0 of 14 | **0 of 14** |
+| Documented-thread-safe classes with any finding | 5 of 14 | 5 of 14 |
+| Total findings | 20 | 30 |
 
 The gate that matters held: no class documented as safe for concurrent use drew a finding at the
 tier a merge gate can be set to. One new `PROMPT`-tier finding did appear, on Guava's `EventBus`,

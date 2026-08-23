@@ -1,7 +1,7 @@
 # corpus-eval
 
-Measures what the 142 detectors report on third-party code with a documented thread-safety
-contract. The write-up, with the numbers and what they do and do not support, is
+Measures what the 142 detectors report on 33 third-party classes with a documented
+thread-safety contract. The write-up, with the numbers and what they do and do not support, is
 [docs/analysis/corpus-eval.md](../docs/analysis/corpus-eval.md).
 
 ## Why it is a standalone module
@@ -20,6 +20,15 @@ mvn -f corpus-eval/pom.xml test
 The run writes `target/corpus-eval/corpus-eval.md` with the JVM, the OS, the configuration and one
 row per subject. That file is the source of truth for a given run; the document under `docs/` is a
 copy of one.
+
+## Where the tests live
+
+The subjects live in `com.example.corpus`, not under the library's own package root. That is
+deliberate: `CollectionAccessWeaver` excludes `se.deversity.asynctest.` from collection
+substitution to stop the recording path from re-entering itself, so a corpus in that namespace
+would have measured a narrower path than a user's suite does.
+`TestBodyCollectionIsObservedTest` pins the canonical case that depends on it: a `HashMap` shared
+by the test body itself is reported.
 
 ## Adding a subject
 
