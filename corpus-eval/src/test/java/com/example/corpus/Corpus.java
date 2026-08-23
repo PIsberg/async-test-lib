@@ -193,7 +193,17 @@ final class Corpus {
                     "org.apache.commons.collections4.comparators.FixedOrderComparator", Contract.THREAD_SAFE,
                     "it is thread-safe to perform multiple comparisons after all the setup "
                             + "operations are complete.",
-                    "org/apache/commons/collections4/comparators/FixedOrderComparator.java:43")
+                    "org/apache/commons/collections4/comparators/FixedOrderComparator.java:43"),
+
+            // --- Documented thread-safe, third wave: the synchronized-method idiom. Every field is
+            // @GuardedBy("this") and every method is a synchronized method, which compiles to
+            // ACC_SYNCHRONIZED and no monitor instruction. The corpus had no such subject until
+            // the probe that found it drawing a HIGH finding.
+
+            new Subject("fileBackedOutputStream_writeAndReset", GUAVA,
+                    "com.google.common.io.FileBackedOutputStream", Contract.THREAD_SAFE,
+                    "This class is thread-safe.",
+                    "com/google/common/io/FileBackedOutputStream.java:59")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()

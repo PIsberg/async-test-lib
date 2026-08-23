@@ -22,6 +22,7 @@ import com.google.common.eventbus.EventBus;
 import com.google.common.eventbus.Subscribe;
 import com.google.common.hash.BloomFilter;
 import com.google.common.hash.Funnels;
+import com.google.common.io.FileBackedOutputStream;
 import com.google.common.util.concurrent.AtomicLongMap;
 import com.google.common.util.concurrent.RateLimiter;
 import org.apache.commons.collections4.bag.HashBag;
@@ -42,6 +43,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.extension.ExtendWith;
 import se.deversity.asynctest.AsyncTest;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Date;
@@ -99,6 +102,11 @@ class CorpusEvalTest {
     private static final Splitter SPLITTER = Splitter.on(',').trimResults();
     private final PatternFilenameFilter filenameFilter = new PatternFilenameFilter("[a-z]+\\.txt");
     private final FixedOrderComparator<String> fixedOrderComparator = lockedComparator();
+
+    // --- documented thread-safe, third wave: synchronized methods guarding @GuardedBy("this") fields
+
+    /** Threshold far above what one body writes, so the stream stays in memory and on this JVM. */
+    private final FileBackedOutputStream fileBackedOutputStream = new FileBackedOutputStream(1 << 20);
 
     /**
      * Builds the comparator and completes its setup, which is what its contract requires before
@@ -423,5 +431,23 @@ class CorpusEvalTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void fixedOrderComparator_compare() {
         safeOperation(() -> fixedOrderComparator.compare("a", "c"));
+    }
+
+    // --- subjects documented as thread-safe, third wave ------------------------------------
+
+    /**
+     * Writes then resets, so every body both reads and writes the {@code @GuardedBy("this")}
+     * fields ({@code out}, {@code memory}, {@code file}) through {@code synchronized} methods.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void fileBackedOutputStream_writeAndReset() {
+        safeOperation(() -> {
+            try {
+                fileBackedOutputStream.write(new byte[] {1, 2, 3});
+                fileBackedOutputStream.reset();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
     }
 }
