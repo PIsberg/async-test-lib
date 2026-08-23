@@ -82,3 +82,18 @@ in that language.
 | Groovy (`org.apache.groovy:groovy`, `gmavenplus-plugin`) | `groovy.version`, `gmavenplus-plugin.version` | The Groovy fixture (plain JUnit 5, not Spock). |
 | Scala 3 (`scala3-library_3`, `scala-maven-plugin`) | `scala.version`, `scala-maven-plugin.version` | The Scala fixture. |
 | Clojure (`org.clojure:clojure`, `clojure-maven-plugin`) | `clojure.version`, `clojure-maven-plugin.version` | The Clojure fixture; `gen-class` AOT is the only way to put JUnit annotations on a Clojure class. |
+
+## 6. Corpus subjects
+
+Third-party libraries that [`corpus-eval/`](../corpus-eval) exercises as *subjects* rather than
+uses as tools. They are on that standalone module's test classpath only: nothing in the reactor,
+the published artifacts or the Gradle derivation resolves them, and a consumer never meets them.
+The module picks classes whose own javadoc states a thread-safety contract, which is what makes it
+possible to say whether a finding on them is a true or a false positive
+([corpus-eval.md](analysis/corpus-eval.md)).
+
+| Library | Property (in `corpus-eval/pom.xml`) | Why it is here |
+|---|---|---|
+| `org.apache.commons:commons-lang3` | `commons-lang3.version` | Apache-2.0. Supplies six subjects with per-class contracts, from `MutableInt` ("this method is not thread safe") to `FastDateFormat` ("fast and thread-safe version of SimpleDateFormat"). |
+| `org.apache.commons:commons-collections4` | `commons-collections4.version` | Apache-2.0. Five map and bag subjects, including the `SynchronizedBag` decorator as a documented-safe case and `LRUMap` as a documented-unsafe one. |
+| `com.google.guava:guava` | `guava.version` | Apache-2.0. Eight subjects spanning both contracts, and the source of the lock-free internals (`LocalCache`, `AbstractFutureState`) that the eval measures the noise floor against. |
