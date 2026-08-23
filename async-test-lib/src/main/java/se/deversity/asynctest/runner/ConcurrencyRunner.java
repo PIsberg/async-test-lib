@@ -339,6 +339,7 @@ public class ConcurrencyRunner {
                 if (phase1.atomicity != null) {
                     phase1.atomicity.markInvocationStart();
                 }
+                phase2Context.markInvocationStart();
                 AsyncTestListenerRegistry.fireInvocationStarted(i, actualThreads);
                 long roundStartNanos = System.nanoTime();
                 log.debug("runner.round.start test={} round={} seed={} remainingMs={}",

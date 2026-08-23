@@ -782,6 +782,20 @@ public final class AsyncTestContext {
     }
 
     /**
+     * Internal: called by {@code ConcurrencyRunner} at the start of each invocation round, after
+     * the previous round's workers have all finished, so the detectors that count per round can
+     * close the round in progress. Touches only this context's own detector instances, never the
+     * {@code ThreadLocal}, so install/uninstall symmetry is unaffected.
+     *
+     * @since 1.10.0
+     */
+    public void markInvocationStart() {
+        if (sharedCollectionDetector != null) {
+            sharedCollectionDetector.markInvocationStart();
+        }
+    }
+
+    /**
      * Internal: set by {@code ConcurrencyRunner} before each invocation round.
      *
      * @param seed the seed for this round, so a reported interleaving can be replayed
