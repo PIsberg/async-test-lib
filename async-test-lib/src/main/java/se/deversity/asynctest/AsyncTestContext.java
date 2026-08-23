@@ -708,10 +708,11 @@ public final class AsyncTestContext {
      *
      * <p>Detectors can ask {@link Thread#holdsLock(Object)} about the instance they are watching
      * and about nothing else, because that is the only lock they can name. So
-     * {@code synchronized (theInstance)} is recognised for free, while a {@code ReentrantLock} or
-     * a private lock object looks exactly like no lock at all and the shared instance gets
-     * reported even though the code is correct. Declaring the lock here is what tells them
-     * otherwise:
+     * {@code synchronized (theInstance)} is recognised for free; with the agent attached, woven
+     * monitor instructions and woven {@code Lock} call sites are recognised too. What is left is
+     * a lock acquired only inside code the weaver never sees, which looks exactly like no lock at
+     * all, and the shared instance gets reported even though the code is correct. Declaring the
+     * lock here is what tells the detectors otherwise:
      *
      * <pre>{@code
      * try (var held = AsyncTestContext.holdingLock(cacheLock)) {

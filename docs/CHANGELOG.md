@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The woven lockset sees `synchronized` methods.** `ACC_SYNCHRONIZED` compiles to a flag and no
+  monitor instruction, so a class guarding its fields the most ordinary way in Java read as
+  unguarded and drew an `AtomicityValidator` finding; Guava's `FileBackedOutputStream`, documented
+  thread-safe with every field `@GuardedBy("this")`, was the corpus proof. Each woven field access
+  now passes its receiver, whose monitor is probed with `Thread.holdsLock`, and the monitor of an
+  enclosing `synchronized` method outright. Pinned both ways by `LockModelWeavingEndToEndTest`:
+  `SynchronizedMethodBean` stays silent, a bare `count++` keeps firing.
+
+- **Lockset intersection instead of digest equality on the agent path.** The ring buffer carries a
+  lockset as one `long`, and the only question the drain side could ask was "same digest?", which
+  reports a field guarded by `A` as soon as one path also holds `B`: Guava's cache writes an entry
+  under its segment lock and, on the load path, under the entry's monitor as well, and that shape
+  kept `LocalCache$WeakEntry.valueReference` a finding through every earlier fix. `HeldLocks` now
+  registers each distinct set once (`LocksetRegistry`, bounded, cleared per run) so the validator
+  intersects real members; an unregistered digest degrades to the old equality model.
+  `LocksetIntersectionTest` pins `{A}` versus `{A, B}` silent and `{A}` versus `{B}` firing.
+
+- **Read-write locks resolve to one lock with two modes.** The two views of a
+  `ReentrantReadWriteLock` are two objects, so a reader and a writer could never share a lockset.
+  Woven `readLock()`/`writeLock()` call sites remember view-to-owner, acquisition records the
+  owner (shared for the read view), and a shared-mode lock guards reads and never writes, so
+  correct read-write usage goes quiet while `count++` under the read view keeps firing
+  (`ReadWriteLockBean` versus `ReadLockWritingBean`).
+
 - **Agent option `collections=true`: the detectors can see state a class does not own.** Field
   weaving observes a class's own fields, which does nothing for a class whose state lives in a
   `HashMap` behind a final field: there is no field instruction to weave, and the write that races
@@ -26,6 +50,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   synchronization the weaver cannot see.
 
 ### Changed
+
+- **With `fields=true`, the accessor Advice stands down.** A getter's body contains the `GETFIELD`,
+  so weaving both the accessor entry and the field instruction reported every accessor-shaped
+  method twice, and the Advice copy was the weaker one: no receiver identity, no volatile flag, no
+  enclosing monitor. That identity-0 duplicate re-merged every instance of a field under one
+  unguarded key, which is why Guava's cache entries kept a finding the per-instance stream had
+  already cleared. The default accessor-only attach is unchanged.
+
+- **`SharedCollectionDetector` counts threads per round.** Rounds are ordered by the runner, so
+  accesses from different rounds cannot race, yet thread ids accumulated for the whole run: with
+  virtual threads (the default) every round brings fresh ids, and the corpus eval's EventBus
+  finding read "write operations from 240 threads" on a six-thread test. A collection written by
+  one thread per round now reports nothing, and a finding names the widest single round.
+  `ConcurrencyRunner` drives it through the new `AsyncTestContext.markInvocationStart()`.
+
+- **Collection hooks record only receivers with state the weaver cannot see.** A receiver is
+  recorded when a bootstrap-loaded class in its superclass chain declares an instance field:
+  `HashMap`, `ArrayDeque` and `extends ArrayList` stay recorded, while a subclass of
+  `AbstractQueue` or `AbstractCollection` is judged by its own woven fields. Guava's stateless
+  discarding queue, reported as a data-corruption risk on `EventBus`, is the case this closes.
+  `Hashtable` and `Vector` join the never-recorded types for the reason `ConcurrentHashMap` is
+  there. Detection on the corpus stayed 19 of 19; the four subjects whose state lives in a JDK
+  collection are still reported through their inner `HashMap`, `ArrayList` and `ArrayDeque`.
 
 - **Construction is no longer read as mutation.** A constructor's writes to its own object happen
   before that object is published, so they cannot be half of a check-then-act, and no other thread

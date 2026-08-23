@@ -1,6 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -73,34 +74,30 @@ public class AtomicityValidator {
      * cooperative caller names the owning object, so the full Eraser intersection is available.
      * The agent-fed path cannot: its producer runs on the worker thread and its analysis on a
      * drain thread, with an allocation-free ring buffer in between, so all that fits through is a
-     * fingerprint of the locks held. A field is reported unless every model that saw it says it
-     * was consistently covered.
+     * fingerprint of the locks held, which {@link HeldLocks#members(long)} resolves back into a
+     * set on the drain side, plus the monitors the event carries alongside it. A field is reported
+     * unless every model that saw it says it was consistently covered.
      */
     private static final class FieldGuard {
-
-        /** No fingerprinted access yet. Distinct from 0, which means "held nothing". */
-        private static final long UNSET = Long.MIN_VALUE;
 
         /** Eraser intersection, for accesses that named their owner. */
         private final Locks objectLocks = new Locks();
 
-        /** The one fingerprint every agent-fed access shared, or 0 once they disagreed. */
-        private final java.util.concurrent.atomic.AtomicLong fingerprint =
-                new java.util.concurrent.atomic.AtomicLong(UNSET);
+        /** The locks every agent-fed access held, as an intersection. */
+        private final Lockset allAccesses = new Lockset();
 
         /** Set by a recording path that carries no lock information at all. */
         private volatile boolean sawUnmodelledAccess;
 
         /**
-         * The one fingerprint every <em>write</em> shared, or 0 once they disagreed.
+         * The locks every <em>write</em> held.
          *
-         * <p>Tracked apart from {@link #fingerprint} because safe publication is asymmetric: what
+         * <p>Tracked apart from {@link #allAccesses} because safe publication is asymmetric: what
          * makes double-checked locking correct is that the writes agreed on a lock, while the
          * reads deliberately took none. Intersecting reads and writes together collapses exactly
          * the case worth recognising.
          */
-        private final java.util.concurrent.atomic.AtomicLong writeFingerprint =
-                new java.util.concurrent.atomic.AtomicLong(UNSET);
+        private final Lockset writes = new Lockset();
 
         /** Whether the field is declared {@code volatile}, as resolved at weave time. */
         private volatile boolean volatileField;
@@ -154,52 +151,37 @@ public class AtomicityValidator {
         }
 
         void noteWriteFingerprint(long observed) {
-            if (observed == 0L) {
-                writeFingerprint.set(0L);
-                return;
-            }
-            long current = writeFingerprint.get();
-            while (current != 0L && current != observed) {
-                long next = current == UNSET ? observed : 0L;
-                if (writeFingerprint.compareAndSet(current, next)) {
-                    return;
-                }
-                current = writeFingerprint.get();
+            writes.note(observed, 0, 0);
+        }
+
+        /**
+         * Records what one agent-fed access held: the fingerprinted set plus the monitors that
+         * travel outside it. A write also narrows the write-only intersection.
+         */
+        void noteAccess(long fingerprint, int ownMonitor, int methodMonitor, boolean isWrite) {
+            allAccesses.note(fingerprint, ownMonitor, methodMonitor);
+            if (isWrite) {
+                writes.note(fingerprint, ownMonitor, methodMonitor);
             }
         }
 
         /**
          * {@return whether this field's accesses are safe publication rather than a race}
          *
-         * <p>True when the field is {@code volatile} and every write to it was made holding the
-         * same lock. That is the double-checked-locking shape: the reads are deliberately
-         * unguarded, and the JMM makes them safe because the field is volatile and the mutation is
-         * serialised by a lock. A volatile field written with no lock held stays reportable, which
-         * is what keeps {@code volatile count++} a finding.
+         * <p>True when the field is {@code volatile} and some lock was held at every write to it.
+         * That is the double-checked-locking shape: the reads are deliberately unguarded, and the
+         * JMM makes them safe because the field is volatile and the mutation is serialised by a
+         * lock. A volatile field written with no lock held stays reportable, which is what keeps
+         * {@code volatile count++} a finding. Guava's cache writes an entry under its segment
+         * lock and, on the load path, under the entry's monitor as well: the intersection is the
+         * segment lock, and that is enough.
          */
         boolean isSafePublication() {
-            if (!volatileField) {
-                return false;
-            }
-            long writes = writeFingerprint.get();
-            return writes != UNSET && writes != 0L;
+            return volatileField && writes.guarded();
         }
 
         void noteFingerprint(long observed) {
-            if (observed == 0L) {
-                fingerprint.set(0L);
-                return;
-            }
-            long current = fingerprint.get();
-            while (current != 0L && current != observed) {
-                // Either seed it, or collapse it: a second, different set of locks means no
-                // single set covered every access, which is what this model can detect.
-                long next = current == UNSET ? observed : 0L;
-                if (fingerprint.compareAndSet(current, next)) {
-                    return;
-                }
-                current = fingerprint.get();
-            }
+            allAccesses.note(observed, 0, 0);
         }
 
         void noteUnmodelled() {
@@ -209,8 +191,118 @@ public class AtomicityValidator {
         boolean sawUnguardedAccess() {
             return sawUnmodelledAccess
                     || objectLocks.sawUnguardedAccess()
-                    || fingerprint.get() == 0L;
+                    || allAccesses.collapsed();
         }
+
+        /**
+         * The locks common to every access recorded on the agent path, as an intersection.
+         *
+         * <p>An event carries a fingerprint, which {@link HeldLocks#members(long)} turns back into
+         * the locks it stands for, plus up to two monitors the fingerprint could not hold: the
+         * receiver's own, when the access happened inside one of its {@code synchronized}
+         * methods or under {@code synchronized (this)} further up the stack, and the monitor of
+         * the enclosing {@code synchronized} method. Intersecting is what the owner-aware path
+         * always did; the agent path compared digests for equality, which reported a field
+         * guarded by {@code A} as soon as one path touched it under {@code {A, B}}.
+         *
+         * <p>A fingerprint with no registered members is treated as one opaque lock, so a caller
+         * that only ever passed a digest keeps the equality model it had: the same digest twice
+         * is consistent, two different digests collapse.
+         */
+        private static final class Lockset {
+
+            /**
+             * {@code null} before the first access; empty once no lock survived. Guarded by this
+             * object's monitor, readers included: the producer is the single drain thread and the
+             * readers run after analysis quiesces, so the monitor is never contended.
+             */
+            private int @Nullable [] common;
+
+            synchronized void note(long fingerprint, int ownMonitor, int methodMonitor) {
+                int[] current = common;
+                if (current != null && current.length == 0) {
+                    return;
+                }
+                int[] members = HeldLocks.members(fingerprint);
+                if (members == null) {
+                    members = new int[] {opaque(fingerprint)};
+                }
+                if (current == null) {
+                    common = union(members, ownMonitor, methodMonitor);
+                    return;
+                }
+                int kept = 0;
+                int[] survivors = null;
+                for (int hash : current) {
+                    boolean held = (hash == ownMonitor && ownMonitor != 0)
+                            || (hash == methodMonitor && methodMonitor != 0)
+                            || contains(members, hash);
+                    if (held) {
+                        if (survivors != null) {
+                            survivors[kept] = hash;
+                        }
+                        kept++;
+                    } else if (survivors == null) {
+                        survivors = new int[current.length - 1];
+                        System.arraycopy(current, 0, survivors, 0, kept);
+                    }
+                }
+                if (survivors == null) {
+                    return;
+                }
+                common = kept == 0 ? HeldLocks.NONE : Arrays.copyOf(survivors, kept);
+            }
+
+            /** {@return whether some access was recorded and no lock covered all of them} */
+            synchronized boolean collapsed() {
+                return common != null && common.length == 0;
+            }
+
+            /** {@return whether at least one access was recorded and some lock covered all of them} */
+            synchronized boolean guarded() {
+                return common != null && common.length > 0;
+            }
+
+            private static int[] union(int[] members, int ownMonitor, int methodMonitor) {
+                int extra = (ownMonitor != 0 && !contains(members, ownMonitor) ? 1 : 0)
+                        + (methodMonitor != 0 && methodMonitor != ownMonitor
+                                && !contains(members, methodMonitor) ? 1 : 0);
+                if (members.length + extra == 0) {
+                    return HeldLocks.NONE;
+                }
+                int[] out = Arrays.copyOf(members, members.length + extra);
+                int at = members.length;
+                if (ownMonitor != 0 && !contains(members, ownMonitor)) {
+                    out[at] = ownMonitor;
+                    at++;
+                }
+                if (methodMonitor != 0 && methodMonitor != ownMonitor
+                        && !contains(members, methodMonitor)) {
+                    out[at] = methodMonitor;
+                }
+                return out;
+            }
+
+            private static boolean contains(int[] hashes, int hash) {
+                for (int candidate : hashes) {
+                    if (candidate == hash) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            /**
+             * {@return a lock id for a digest nobody registered, in a range no identity hash uses}
+             *
+             * <p>Identity hashes are non-negative, so the sign bit marks an opaque id and the two
+             * can never be confused for one another.
+             */
+            private static int opaque(long fingerprint) {
+                return (int) (fingerprint ^ (fingerprint >>> 32)) | Integer.MIN_VALUE;
+            }
+        }
+
     }
 
     /**
@@ -354,9 +446,10 @@ public class AtomicityValidator {
      * this from inside whatever region guards the access, not afterwards.
      *
      * <p>A field whose every recorded access held the owner's own monitor produces no finding. A
-     * guard on any other lock object is invisible and still produces one, and so does an access
-     * recorded through an overload that takes no owner - including everything the agent feeds in,
-     * which captures qualified field names but no object reference.
+     * guard on any other lock object is invisible to this overload and still produces one, as is
+     * an access recorded through an overload that carries no lock information at all. The agent
+     * does better on its own path: it passes a fingerprint of the woven locks plus the receiver's
+     * monitor, resolved back into a set and intersected on the drain side.
      *
      * @param owner     the object whose field is being accessed; {@code null} counts as unguarded
      * @param fieldName the qualified field/accessor identifier; {@code null}/blank is ignored
@@ -460,6 +553,37 @@ public class AtomicityValidator {
     public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
                                             boolean isWrite, long threadId, long lockFingerprint,
                                             boolean volatileField, int constantTag, int identity) {
+        recordFieldAccessUnderLocks(fieldName, value, isWrite, threadId, lockFingerprint, 0, 0,
+                volatileField, constantTag, identity);
+    }
+
+    /**
+     * Records an agent-fed access together with the monitors its lockset could not see.
+     *
+     * <p>The fingerprint names the locks the weaver observed being taken. Two monitors never
+     * reach it: the receiver's own, which a {@code synchronized} method holds without any
+     * instruction the weaver could record, and the monitor of that method itself. Both arrive
+     * here as identity hashes, or 0 when not held, and join the intersection alongside the
+     * fingerprint's members. An access whose every lock is one of these is as guarded as one
+     * under an explicit {@code synchronized} block, which is what makes a class built on
+     * {@code synchronized} methods stop reading as a race.
+     *
+     * @param fieldName       the field, as it should appear in the report
+     * @param value           the value read or written, may be {@code null}
+     * @param isWrite         {@code true} for a write
+     * @param threadId        the thread that made the access
+     * @param lockFingerprint the locks that thread held at the access, 0 for none
+     * @param ownMonitor      identity hash of the receiver when its monitor was held, else 0
+     * @param methodMonitor   identity hash of the enclosing synchronized method's monitor, else 0
+     * @param volatileField   whether the field is declared {@code volatile}
+     * @param constantTag     the constant this write stored, {@code Integer.MIN_VALUE} for none
+     * @param identity        {@code System.identityHashCode} of the owner, 0 for statics
+     * @since 1.10.0
+     */
+    public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
+                                            boolean isWrite, long threadId, long lockFingerprint,
+                                            int ownMonitor, int methodMonitor,
+                                            boolean volatileField, int constantTag, int identity) {
         if (fieldName != null && !fieldName.isBlank()) {
             // Per instance, not just per field. One WeakEntry in a striped cache is written under
             // its own segment's lock every time; merging the entries makes those locks disagree
@@ -468,24 +592,24 @@ public class AtomicityValidator {
                     ignored -> new FieldGuard());
             if (isWrite) {
                 guard.noteWriteConstant(constantTag);
-                guard.noteWriteFingerprint(lockFingerprint);
             }
             if (volatileField) {
                 guard.noteVolatile();
             }
-            guard.noteFingerprint(lockFingerprint);
+            guard.noteAccess(lockFingerprint, ownMonitor, methodMonitor, isWrite);
         }
-        record(fieldName, value, isWrite, threadId, null, false, lockFingerprint, identity);
+        record(fieldName, value, isWrite, threadId, null, false, lockFingerprint, identity,
+                ownMonitor, methodMonitor);
     }
 
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint) {
-        record(fieldName, value, isWrite, threadId, owner, ownerKnown, lockFingerprint, 0);
+        record(fieldName, value, isWrite, threadId, owner, ownerKnown, lockFingerprint, 0, 0, 0);
     }
 
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint,
-                        int identity) {
+                        int identity, int ownMonitor, int methodMonitor) {
         if (!enabled || fieldName == null || fieldName.isBlank()) {
             return;
         }
@@ -496,9 +620,10 @@ public class AtomicityValidator {
         if (ownerKnown) {
             guard.noteOwner(owner);
         } else if (lockFingerprint != UNMODELLED) {
-            guard.noteFingerprint(lockFingerprint);
-            if (isWrite) {
-                guard.noteWriteFingerprint(lockFingerprint);
+            if (identity == 0) {
+                // This is the guard the analysis consults for this access; with an identity the
+                // per-instance guard above already holds the fuller answer.
+                guard.noteAccess(lockFingerprint, ownMonitor, methodMonitor, isWrite);
             }
         } else {
             // No owner and no fingerprint: the caller has told us nothing about locks, which is

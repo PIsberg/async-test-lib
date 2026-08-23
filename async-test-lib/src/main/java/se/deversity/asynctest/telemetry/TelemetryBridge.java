@@ -287,6 +287,31 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
     public void onEvent(long threadId, @Nullable String qualifiedName, boolean isWrite,
                         long lockFingerprint, boolean volatileField, int constantTag,
                         int identity, boolean afterVolatileRead) {
+        onEvent(threadId, qualifiedName, isWrite, lockFingerprint, volatileField, constantTag,
+                identity, afterVolatileRead, 0, 0);
+    }
+
+    /**
+     * Forwards an agent-captured access, with the monitors the lockset could not see, to the
+     * {@link AtomicityValidator}.
+     *
+     * @param threadId          producer thread
+     * @param qualifiedName     field identifier as the weaver emitted it
+     * @param isWrite           true for a write
+     * @param lockFingerprint   locks held at the access, 0 for none
+     * @param volatileField     whether the field is declared {@code volatile}
+     * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
+     * @param identity          identity hash of the owner, 0 for statics
+     * @param afterVolatileRead whether a volatile field of the owner was read first
+     * @param ownMonitor        identity hash of the receiver when its monitor was held, else 0
+     * @param methodMonitor     identity hash of the enclosing synchronized method's monitor, else 0
+     * @since 1.10.0
+     */
+    @Override
+    public void onEvent(long threadId, @Nullable String qualifiedName, boolean isWrite,
+                        long lockFingerprint, boolean volatileField, int constantTag,
+                        int identity, boolean afterVolatileRead, int ownMonitor,
+                        int methodMonitor) {
         if (!active) {
             return;
         }
@@ -318,7 +343,8 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
                 && afterVolatileRead
                 && TelemetryRegistry.isPublishedByVolatile(qualifiedName);
         atomicityValidator.recordFieldAccessUnderLocks(field, null, isWrite, threadId,
-                lockFingerprint, volatileField || safelyPublished, constantTag, identity);
+                lockFingerprint, ownMonitor, methodMonitor, volatileField || safelyPublished,
+                constantTag, identity);
     }
 
     /**

@@ -133,7 +133,7 @@ public class SharedCollectionDetector {
     public void recordRead(Object collection, String name, String operation) {
         if (!enabled || collection == null) return;
         CollectionState state = resolveState(collection, name);
-        state.noteAccess(collection);
+        state.noteAccess(collection, false);
         state.readThreads.add(Thread.currentThread().threadId());
         state.readCount.incrementAndGet();
     }
@@ -148,7 +148,7 @@ public class SharedCollectionDetector {
     public void recordWrite(Object collection, String name, String operation) {
         if (!enabled || collection == null) return;
         CollectionState state = resolveState(collection, name);
-        state.noteAccess(collection);
+        state.noteAccess(collection, true);
         state.writeThreads.add(Thread.currentThread().threadId());
         state.writeCount.incrementAndGet();
     }
