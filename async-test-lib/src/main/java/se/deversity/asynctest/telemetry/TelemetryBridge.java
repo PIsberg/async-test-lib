@@ -295,6 +295,23 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         }
         if (qualifiedName == null) return;
         String field = fieldIdentifier(qualifiedName);
+        // A field under a lock-free protocol is not something a lockset can judge. Dropping the
+        // event rather than passing it on keeps that honest: the detectors say nothing about the
+        // field instead of saying the wrong thing about every access to it.
+        //
+        // Asked with both names on purpose. A field instruction reports the field itself, while a
+        // woven accessor reports "Type#setNext" and only becomes "Type.next" after normalisation,
+        // so checking the raw name alone silently misses every access that arrived through an
+        // accessor - which is how these fields are usually touched.
+        if (TelemetryRegistry.isAtomicallyManaged(qualifiedName)
+                || TelemetryRegistry.isAtomicallyManaged(field)) {
+            // Drop this access, and everything already recorded about the field. The binding that
+            // proves the field is lock-free lives in a static initializer, which can run after the
+            // first accesses were forwarded, and those early accesses are exactly what produces
+            // the finding. Retracting makes the answer independent of that ordering.
+            atomicityValidator.forgetField(field);
+            return;
+        }
         // Both halves of the publish-via-volatile idiom, resolved here so the detector sees one
         // answer rather than two facts it would have to combine itself.
         boolean safelyPublished = !isWrite

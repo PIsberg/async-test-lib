@@ -213,6 +213,16 @@ public class AtomicityValidator {
         }
     }
 
+    /**
+     * {@return the key a field's lock model is tracked under}
+     *
+     * <p>Identity 0 means "not known", and every caller that predates the agent's identity events
+     * uses it, so their accesses share one guard exactly as they always did.
+     */
+    private static String guardKey(String fieldName, int identity) {
+        return identity == 0 ? fieldName : fieldName + '@' + identity;
+    }
+
     /** Sentinel for "this caller carried no lock information at all". */
     private static final long UNMODELLED = Long.MIN_VALUE;
 
@@ -451,13 +461,19 @@ public class AtomicityValidator {
                                             boolean isWrite, long threadId, long lockFingerprint,
                                             boolean volatileField, int constantTag, int identity) {
         if (fieldName != null && !fieldName.isBlank()) {
-            FieldGuard guard = fieldLocks.computeIfAbsent(fieldName, ignored -> new FieldGuard());
+            // Per instance, not just per field. One WeakEntry in a striped cache is written under
+            // its own segment's lock every time; merging the entries makes those locks disagree
+            // and collapses an intersection that is consistent for every object taken alone.
+            FieldGuard guard = fieldLocks.computeIfAbsent(guardKey(fieldName, identity),
+                    ignored -> new FieldGuard());
             if (isWrite) {
                 guard.noteWriteConstant(constantTag);
+                guard.noteWriteFingerprint(lockFingerprint);
             }
             if (volatileField) {
                 guard.noteVolatile();
             }
+            guard.noteFingerprint(lockFingerprint);
         }
         record(fieldName, value, isWrite, threadId, null, false, lockFingerprint, identity);
     }
@@ -539,6 +555,30 @@ public class AtomicityValidator {
         return violation;
     }
     /**
+     * Discards everything recorded about {@code fieldName}, whatever the instance.
+     *
+     * <p>For a fact learned late. A field mutated through a {@code VarHandle} or an atomic updater
+     * belongs to a lock-free protocol that no lockset can judge, but the binding that proves it
+     * sits in a static initializer which may run after the first accesses have already been
+     * recorded. Filtering at record time therefore cannot be enough: the early accesses are already
+     * in, and they are the ones that produce the finding. Forgetting the field the moment the fact
+     * arrives is what makes the answer independent of that ordering.
+     *
+     * @param fieldName the field to forget, as it appears in reports
+     * @since 1.10.0
+     */
+    public void forgetField(String fieldName) {
+        if (fieldName == null || fieldName.isBlank()) {
+            return;
+        }
+        fieldHistory.remove(fieldName);
+        // Lock state is keyed per instance as "field@identity", so the field's own key is not the
+        // only one to clear.
+        fieldLocks.keySet().removeIf(key ->
+                key.equals(fieldName) || key.startsWith(fieldName + '@'));
+    }
+
+    /**
      * Analyses what has been recorded about atomicity and builds the report for it.
      *
      * @return the findings this detector collected during the run
@@ -582,7 +622,8 @@ public class AtomicityValidator {
                 // intersection overall, and the round that raced is a real finding. Accesses
                 // recorded without an owner collapse it, so every caller that predates
                 // recordFieldAccessOn keeps the behaviour it had.
-                FieldGuard locks = fieldLocks.get(entry.getKey());
+                int groupIdentity = roundAccesses.isEmpty() ? 0 : roundAccesses.get(0).identity;
+                FieldGuard locks = fieldLocks.get(guardKey(entry.getKey(), groupIdentity));
                 // Safe publication is not an unguarded access. A volatile field whose every write
                 // held the same lock is double-checked locking, where the reads take no lock on
                 // purpose and the JMM makes that correct. Without this the idiom reports as a

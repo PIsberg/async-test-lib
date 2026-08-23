@@ -27,6 +27,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Construction is no longer read as mutation.** A constructor's writes to its own object happen
+  before that object is published, so they cannot be half of a check-then-act, and no other thread
+  could have seen the field's earlier value. Recording them made every immutable object look
+  mutated: a final `seed` on a hash function or `elements` on an `ImmutableSet`, written once and
+  read by every thread, reads as one writer and six readers on shared state. Writes to `this` inside
+  a constructor are no longer recorded. What this gives up is the unsafe-publication bug, where a
+  reference escapes mid-construction, which is a different defect from the one this detector claims.
+
+- **Fields under a lock-free protocol are left alone.** A class that binds a field to a `VarHandle`
+  or an atomic field updater is running a compare-and-swap protocol whose correctness never rests on
+  a lock, so a lockset has no basis for a verdict. The weaver spots the binding, and because that
+  binding sits in a static initializer that can run after the first accesses were already recorded,
+  learning it also retracts what was recorded for that field (`AtomicityValidator.forgetField`).
+  Guava's waiter list is the case that motivated it, and its own source says why: "non-volatile
+  write to the next field. Should be made visible by a subsequent CAS".
+
+- **A receiver that declares itself concurrent is trusted by its interface, not its package.** The
+  collection path skipped `java.util.concurrent` by name; it now also skips any receiver that
+  implements `ConcurrentMap`, `BlockingQueue` or `BlockingDeque`, which is a contract its
+  implementor has to keep wherever the class lives, including a user's own.
+
+- **The lock model is tracked per instance.** Two objects of the same class guarded by their own
+  locks used to share one lockset, so consistent per-object locking looked inconsistent.
+
 - **A plain field published by a volatile write is recognised.** Writing a field under a lock and
   then assigning a `volatile` field to expose it is how `Suppliers.memoize` and most lazy holders
   work: the plain field is safe because every reader reads the volatile guard first. The weaver sees

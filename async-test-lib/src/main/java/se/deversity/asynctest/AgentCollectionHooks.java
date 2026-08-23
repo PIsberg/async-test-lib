@@ -58,6 +58,16 @@ public final class AgentCollectionHooks {
         if (receiver == null) {
             return;
         }
+        // What the receiver's own type promises. A ConcurrentMap or a BlockingQueue is a contract
+        // its implementor has to keep, wherever it lives: Guava's cache implements ConcurrentMap
+        // and guards itself with striped locks, so an Eraser intersection over the whole structure
+        // is empty however correct it is. Asking the interface rather than the package name is
+        // both narrower and more general than a prefix, and it covers a user's own implementation.
+        if (receiver instanceof java.util.concurrent.ConcurrentMap
+                || receiver instanceof java.util.concurrent.BlockingQueue
+                || receiver instanceof java.util.concurrent.BlockingDeque) {
+            return;
+        }
         String type = receiver.getClass().getName();
         if (type.startsWith("java.util.concurrent.")
                 || type.startsWith("java.util.Collections$Synchronized")) {

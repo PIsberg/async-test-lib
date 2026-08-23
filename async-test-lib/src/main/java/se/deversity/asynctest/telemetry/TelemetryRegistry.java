@@ -62,6 +62,10 @@ public final class TelemetryRegistry {
     private static @Nullable ScheduledExecutorService drainExecutor = null;
     private static @Nullable Thread shutdownHook = null;
 
+    /** Fields bound to a VarHandle or an atomic updater. Static facts; grows only. */
+    private static final java.util.Set<String> ATOMICALLY_MANAGED =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     /** Fields a volatile write publishes, as the weaver found them. Static facts; grows only. */
     private static final java.util.Set<String> PUBLISHED_BY_VOLATILE =
             java.util.concurrent.ConcurrentHashMap.newKeySet();
@@ -241,6 +245,32 @@ public final class TelemetryRegistry {
      */
     public static void publishedByVolatile(String qualifiedName) {
         PUBLISHED_BY_VOLATILE.add(qualifiedName);
+    }
+
+    /**
+     * Declares that {@code qualifiedName} is mutated through a {@code VarHandle} or an atomic field
+     * updater.
+     *
+     * <p>Such a field belongs to a lock-free protocol: correctness comes from compare-and-swap and
+     * from the algorithm's own argument, never from a lock. A lockset has nothing to intersect
+     * there, so the honest answer for that field is silence rather than a finding on every access.
+     * The weaver emits this where it sees the binding, which is a static fact about the class.
+     *
+     * @param qualifiedName the field bound to atomic access
+     * @since 1.10.0
+     */
+    public static void atomicallyManaged(String qualifiedName) {
+        ATOMICALLY_MANAGED.add(qualifiedName);
+    }
+
+    /**
+     * {@return whether {@code qualifiedName} is mutated through atomic operations}
+     *
+     * @param qualifiedName the field to ask about
+     * @since 1.10.0
+     */
+    public static boolean isAtomicallyManaged(String qualifiedName) {
+        return ATOMICALLY_MANAGED.contains(qualifiedName);
     }
 
     /**

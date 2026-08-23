@@ -92,21 +92,16 @@ the tier `@AsyncTest(failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT)` gates 
 gated at `minTrust = VERDICT` would not have failed on any of them.
 
 **Below that tier, one of the fourteen still draws a `PROMPT`-tier finding.** Guava's `EventBus`
-reports two things, and both name the boundary of what a lockset can decide rather than anything
-wrong with the code:
+reaches a cache whose entries are guarded by **striped** locks: each thread holds the lock for its
+own segment, so "the locks held at every access" intersects to empty by construction, however
+correct the code is. Both findings, on `LocalCache$WeakEntry.valueReference` and on a cache
+structure reached from it, are that one property.
 
-- `LocalCache$WeakEntry.valueReference` and `AbstractFutureState$Waiter.next` are volatile fields
-  mutated by lock-free protocols. The writes take no lock at all, by design, and correctness comes
-  from compare-and-swap and from publication order. An Eraser lockset has nothing to intersect.
-- A Guava cache structure reached through the same path is guarded by **striped** locks: each thread
-  holds the lock for its own segment, so the intersection of "locks held at every access" is empty
-  by construction, however correct the code is.
-
-Both are exactly what `PROMPT` is defined to mean, a pattern the library cannot fully model, and
-neither is reachable by a lockset without per-partition reasoning and happens-before analysis that
-this architecture does not have. The honest options are to leave it reported, or to run the agent
-the way [AGENT.md](../AGENT.md) recommends, with `includes=` scoped to the code under test, which is
-what a user does and what stops the eval auditing the internals of a dependency it never called.
+This is a boundary of the technique rather than a rule that is missing. Blessing striped locking
+needs per-partition reasoning, knowing that *this* entry belongs to *that* segment and that the
+segment's lock covers it, which an Eraser lockset does not express. It is tracked, not tuned away:
+the alternative, suppressing by type or excluding the package, would improve the number here and
+nothing at all for a user.
 
 ## What the model learned from this corpus
 
@@ -119,6 +114,9 @@ did not know, and each fix generalises well beyond these subjects:
 | `FixedOrderComparator.isLocked` | `isLocked = true` on every call reads as a changing state | a constant written by a method that never read the field is benign |
 | `Murmur3_128Hasher.h1/h2` | six threads, six per-call hashers, aggregated by field name | field accesses are attributed to the object they belong to |
 | `NonSerializableMemoizingSupplier.value` | a plain field written under a lock and read without one | recognised when a volatile write publishes it and reads are ordered by a volatile read |
+| `RegularImmutableSet.elements`, `Murmur3_128HashFunction.seed` | a final field written once in the constructor, then read by every thread | construction is not mutation: a constructor's writes precede publication |
+| `Joiner$3` captured fields | javac writes an inner class's captured fields before `super()` | an object that has not finished construction cannot have escaped |
+| `AbstractFutureState$Waiter.next` | a hand-rolled lock-free protocol, which Guava's own source describes as a non-volatile write published by a later CAS | a field bound to a `VarHandle` or atomic updater is outside what a lockset can judge, and what was recorded before that binding was seen is retracted |
 
 Detection stayed at 19 of 19 through every one of them, which is the number that matters while
 chasing the other column: a rule that quietens a false positive by weakening detection has not

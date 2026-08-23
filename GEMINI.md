@@ -22,6 +22,7 @@ Detailed per-element guardrails live in scoped rule files that load automaticall
 
 - `se.deversity.asynctest.agent.AgentOptions` → `.gemini/rules/async-test-instrumentation.md`
 - `se.deversity.asynctest.agent.AsyncTestAgent` → `.gemini/rules/async-test-instrumentation.md`
+- `se.deversity.asynctest.agent.AtomicFieldRegistry` → `.gemini/rules/async-test-instrumentation.md`
 - `se.deversity.asynctest.agent.CollectionAccessWeaver` → `.gemini/rules/async-test-instrumentation.md`
 <!-- VIBETAGS-MODULE-END: async-test-agent -->
 <!-- VIBETAGS-MODULE: async-test-analysis -->

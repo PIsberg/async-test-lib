@@ -14,6 +14,9 @@
 ### se.deversity.asynctest.agent.AgentOptions
 - **Reason**: The class is package-private but the agentArgs grammar it parses is public surface: users type it on the -javaagent: command line. Key names (includes/excludes/debug), the comma-or-semicolon separator, the bare-token continuation that lets one key carry several values, and case-insensitive key matching are all part of that contract — changing any of them breaks existing launch scripts silently. Parsing must stay total: it is called from premain, where a thrown exception aborts JVM startup, so unknown keys are ignored and malformed input degrades to the default instrument-everything behaviour rather than failing.
 
+### se.deversity.asynctest.agent.AtomicFieldRegistry
+- **Reason**: Resolved reflectively so async-test-agent keeps its zero-dependency boundary on async-test-lib, which ArchitectureTest enforces in both directions. The method name and signature must match TelemetryRegistry.atomicallyManaged(String). Every failure path here must stay silent: this only ever suppresses findings, so losing it degrades precision rather than correctness, while throwing out of a class transformation would fail the user's test run.
+
 ### se.deversity.asynctest.agent.CollectionAccessWeaver
 - **Reason**: The hook class name and the method names here are the other half of AgentCollectionHooks: they are matched by erased signature at weave time, so renaming a hook or changing a parameter type breaks weaving with a NoSuchMethodError inside user code rather than at compile time. Each entry must consume exactly the stack its original invocation consumed - substitution stays stack-shape-neutral and member-free, which is what keeps retransformation safe under disableClassFormatChanges(). Collection weaving is opt-in (collections=true) because it instruments every listed call in every matched class.
 <!-- VIBETAGS-MODULE-END: async-test-agent -->

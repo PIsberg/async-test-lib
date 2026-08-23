@@ -2,14 +2,16 @@ package se.deversity.asynctest.agent;
 
 import net.bytebuddy.asm.AsmVisitorWrapper;
 import net.bytebuddy.description.field.FieldDescription;
-import net.bytebuddy.description.method.MethodDescription;
+import net.bytebuddy.description.field.FieldList;
+import net.bytebuddy.description.method.MethodList;
 import net.bytebuddy.description.type.TypeDefinition;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.implementation.Implementation;
 import net.bytebuddy.jar.asm.ClassWriter;
+import net.bytebuddy.jar.asm.ClassVisitor;
 import net.bytebuddy.jar.asm.MethodVisitor;
 import net.bytebuddy.jar.asm.Opcodes;
-import net.bytebuddy.matcher.ElementMatchers;
+import net.bytebuddy.jar.asm.Type;
 import net.bytebuddy.pool.TypePool;
 import org.jspecify.annotations.Nullable;
 
@@ -100,10 +102,54 @@ final class FieldAccessWeaver {
      * @param weaveFieldInstructions whether {@code GETFIELD} and {@code PUTFIELD} are observed too
      */
     static AsmVisitorWrapper visitor(boolean weaveFieldInstructions) {
-        return new AsmVisitorWrapper.ForDeclaredMethods()
-                .method(ElementMatchers.not(ElementMatchers.isTypeInitializer()),
-                        new Wrapper(weaveFieldInstructions))
-                .writerFlags(ClassWriter.COMPUTE_MAXS);
+        return new ClassLevelWrapper(weaveFieldInstructions);
+    }
+
+    /**
+     * Visits every method of a type, including its type initializer.
+     *
+     * <p>{@code AsmVisitorWrapper.ForDeclaredMethods} does not offer the type initializer, and that
+     * is the one place a class binds a {@code VarHandle} or an atomic updater to a field. Missing
+     * it means missing the only static evidence that a field belongs to a lock-free protocol, which
+     * is the difference between staying quiet about such a field and reporting every access to it.
+     *
+     * <p>The initializer is visited and never woven: class initialisation already runs under the
+     * JVM's own lock, so recording accesses there buys nothing.
+     */
+    private record ClassLevelWrapper(boolean weaveFieldInstructions) implements AsmVisitorWrapper {
+
+        @Override
+        public int mergeWriter(int flags) {
+            return flags | ClassWriter.COMPUTE_MAXS;
+        }
+
+        @Override
+        public int mergeReader(int flags) {
+            return flags;
+        }
+
+        @Override
+        public ClassVisitor wrap(TypeDescription instrumentedType,
+                                 ClassVisitor classVisitor,
+                                 Implementation.Context implementationContext,
+                                 TypePool typePool,
+                                 FieldList<FieldDescription.InDefinedShape> fields,
+                                 MethodList<?> methods,
+                                 int writerFlags,
+                                 int readerFlags) {
+            return new ClassVisitor(Opcodes.ASM9, classVisitor) {
+                @Override
+                public MethodVisitor visitMethod(int access, String name, String descriptor,
+                                                 String signature, String[] exceptions) {
+                    MethodVisitor delegate =
+                            super.visitMethod(access, name, descriptor, signature, exceptions);
+                    boolean typeInitializer = "<clinit>".equals(name);
+                    return new FieldAccessMethodVisitor(delegate,
+                            weaveFieldInstructions && !typeInitializer, typePool,
+                            "<init>".equals(name));
+                }
+            };
+        }
     }
 
     /**
@@ -130,28 +176,6 @@ final class FieldAccessWeaver {
      */
     static String identifier(String owner, String name) {
         return owner.replace('/', '.') + '.' + name;
-    }
-
-    /** Binds {@link FieldAccessMethodVisitor} to every method the matcher selects. */
-    private static final class Wrapper
-            implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisitorWrapper {
-
-        private final boolean weaveFieldInstructions;
-
-        Wrapper(boolean weaveFieldInstructions) {
-            this.weaveFieldInstructions = weaveFieldInstructions;
-        }
-
-        @Override
-        public MethodVisitor wrap(TypeDescription instrumentedType,
-                                  MethodDescription instrumentedMethod,
-                                  MethodVisitor methodVisitor,
-                                  Implementation.Context implementationContext,
-                                  TypePool typePool,
-                                  int writerFlags,
-                                  int readerFlags) {
-            return new FieldAccessMethodVisitor(methodVisitor, weaveFieldInstructions, typePool);
-        }
     }
 
     /**
@@ -187,11 +211,44 @@ final class FieldAccessWeaver {
         private final java.util.Set<String> ownersWithVolatileReadInThisMethod =
                 new java.util.HashSet<>();
 
+        /** Recent class and string constants, for reading atomic-updater bindings off the stack. */
+        private final java.util.Deque<Object> recentConstants = new java.util.ArrayDeque<>();
+
+        /**
+         * Whether {@code this} is still uninitialised, which is true inside a constructor until the
+         * super constructor has run.
+         *
+         * <p>Before that call the verifier types {@code this} as {@code uninitializedThis} and
+         * refuses to pass it to any method, so lifting its identity there produces a class that
+         * will not load. Guava's {@code Joiner$3} constructor is one of many that writes a field in
+         * that window. Those writes record identity 0, the same "not known" every non-agent caller
+         * uses, and everything after the super call records normally.
+         */
+        private boolean thisIsUninitialised;
+
+        /**
+         * Whether this method is a constructor, in which case its writes to {@code this} are
+         * construction, not mutation.
+         *
+         * <p>A constructor's writes happen before the object is published, so they cannot be the
+         * "act" of a check-then-act and no other thread can have observed the field's earlier
+         * value. Recording them makes every immutable object look mutated: {@code seed} on a hash
+         * function and {@code elements} on an ImmutableSet are final fields written once and then
+         * read by every thread, which reads as one writer and six readers on shared state.
+         *
+         * <p>What this gives up is the unsafe-publication bug, where a reference escapes mid
+         * construction. That is a different defect from the one this detector claims to find, and
+         * paying for it with a finding on every immutable object is not a trade worth making.
+         */
+        private final boolean insideConstructor;
+
         FieldAccessMethodVisitor(MethodVisitor delegate, boolean weaveFieldInstructions,
-                                 TypePool typePool) {
+                                 TypePool typePool, boolean constructor) {
             super(Opcodes.ASM9, delegate);
             this.weaveFieldInstructions = weaveFieldInstructions;
             this.typePool = typePool;
+            this.thisIsUninitialised = constructor;
+            this.insideConstructor = constructor;
         }
 
         /**
@@ -257,8 +314,57 @@ final class FieldAccessWeaver {
             super.visitIntInsn(opcode, operand);
         }
 
+        /**
+         * Notices a field being bound to a {@code VarHandle} or an atomic field updater.
+         *
+         * <p>Such a field is mutated by a lock-free protocol whose correctness comes from
+         * compare-and-swap and from the algorithm's own reasoning, not from any lock. Guava's
+         * waiter list is the case that made this necessary and says so in its own source: "non-
+         * volatile write to the next field. Should be made visible by a subsequent CAS". An Eraser
+         * lockset has nothing to intersect there and no basis for a verdict, so the honest answer
+         * is to say nothing about that field rather than to report every access to it.
+         *
+         * <p>The binding is read from the constants the call site pushes: the field name is the
+         * string, and the owner is the first class literal, which holds for
+         * {@code findVarHandle(Owner.class, "f", Type.class)},
+         * {@code newUpdater(Owner.class, Type.class, "f")} and
+         * {@code Owner.class.getDeclaredField("f")} alike.
+         */
+        private void noteAtomicBinding(String name) {
+            if (!"findVarHandle".equals(name) && !"newUpdater".equals(name)
+                    && !"getDeclaredField".equals(name)) {
+                return;
+            }
+            String fieldName = null;
+            String ownerType = null;
+            for (Object constant : recentConstants) {
+                if (constant instanceof String text && fieldName == null) {
+                    fieldName = text;
+                } else if (constant instanceof Type type
+                        && type.getSort() == Type.OBJECT) {
+                    ownerType = type.getInternalName();
+                }
+            }
+            if (fieldName != null && ownerType != null) {
+                String field = identifier(ownerType, fieldName);
+                // Both, because neither alone is enough. The emitted call resolves the registry
+                // from the woven class's own loader, which is the copy the detectors read, but it
+                // only fires if that class initialises after the agent attached. The weave-time
+                // call always happens but lands in whichever copy the agent's loader sees, and
+                // under a test runner with an isolated classloader that is a different one.
+                super.visitLdcInsn(field);
+                super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "atomicallyManaged",
+                        "(Ljava/lang/String;)V", false);
+                AtomicFieldRegistry.record(field);
+            }
+        }
+
         @Override
         public void visitLdcInsn(Object value) {
+            recentConstants.addFirst(value);
+            while (recentConstants.size() > 4) {
+                recentConstants.removeLast();
+            }
             // Only int-shaped constants are trusted. A String or a long could collide or tear the
             // reasoning, and the flag may only ever suppress a finding, so anything unclear must
             // read as "not a constant".
@@ -270,7 +376,12 @@ final class FieldAccessWeaver {
         public void visitMethodInsn(int opcode, String owner, String name, String descriptor,
                                     boolean isInterface) {
             noteConstant(null);
+            noteAtomicBinding(name);
             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+            recentConstants.clear();
+            if (thisIsUninitialised && opcode == Opcodes.INVOKESPECIAL && "<init>".equals(name)) {
+                thisIsUninitialised = false;
+            }
         }
 
         @Override
@@ -386,9 +497,18 @@ final class FieldAccessWeaver {
             if (!write) {
                 fieldsReadInThisMethod.add(identifier);
             }
-            if (weaveFieldInstructions && shouldWeave(owner)) {
+            boolean isStaticAccess = opcode == Opcodes.GETSTATIC || opcode == Opcodes.PUTSTATIC;
+            // An instance field touched before the super constructor has run belongs to an object
+            // that cannot have escaped yet: no other thread can hold a reference to something still
+            // being constructed, so there is nothing to observe. Recording it anyway would be worse
+            // than useless, because the verifier forbids passing uninitializedThis to
+            // identityHashCode, so the access would land in the identity-0 bucket and merge with
+            // every other instance. javac writes captured fields there in every inner class.
+            boolean constructionWrite = write && !isStaticAccess && insideConstructor;
+            if (weaveFieldInstructions && shouldWeave(owner) && !constructionWrite
+                    && (isStaticAccess || !thisIsUninitialised)) {
                 boolean isWrite = write;
-                boolean isStatic = opcode == Opcodes.GETSTATIC || opcode == Opcodes.PUTSTATIC;
+                boolean isStatic = isStaticAccess;
                 if (isStatic) {
                     // No receiver: static state is shared by definition, and 0 is the identity
                     // every static access shares, which is exactly the old behaviour.
