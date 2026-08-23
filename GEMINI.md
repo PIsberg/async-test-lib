@@ -22,6 +22,7 @@ Detailed per-element guardrails live in scoped rule files that load automaticall
 
 - `se.deversity.asynctest.agent.AgentOptions` → `.gemini/rules/async-test-instrumentation.md`
 - `se.deversity.asynctest.agent.AsyncTestAgent` → `.gemini/rules/async-test-instrumentation.md`
+- `se.deversity.asynctest.agent.CollectionAccessWeaver` → `.gemini/rules/async-test-instrumentation.md`
 <!-- VIBETAGS-MODULE-END: async-test-agent -->
 <!-- VIBETAGS-MODULE: async-test-analysis -->
 # AUTO-GENERATED AI RULES
@@ -84,6 +85,7 @@ The following elements are security-critical. AI must not weaken security proper
 ## Scoped Rules Index
 Detailed per-element guardrails live in scoped rule files that load automatically when you open the matching source file. Consult the referenced file before modifying an element:
 
+- `se.deversity.asynctest.AgentCollectionHooks` → `.gemini/rules/se-deversity-asynctest-AgentCollectionHooks.md`
 - `se.deversity.asynctest.AsyncAssert` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.AsyncFindings` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.AsyncTest` → `.gemini/rules/async-test-configuration.md`

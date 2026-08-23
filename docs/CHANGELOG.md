@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Agent option `collections=true`: the detectors can see state a class does not own.** Field
+  weaving observes a class's own fields, which does nothing for a class whose state lives in a
+  `HashMap` behind a final field: there is no field instruction to weave, and the write that races
+  happens inside `java.util`, where the agent deliberately never looks. `collections=true` rewrites
+  the collection call itself, so the instance reaches `SharedCollectionDetector` and the other
+  instance-keyed detectors. Off by default. `AgentCollectionHooks` (new, `INTERNAL`) holds the
+  rewritten call targets; `CollectionAccessWeaver` holds the table of what is rewritten:
+  `Map.put/get/remove/containsKey`, `Collection.add/remove/contains/clear`, `List.get/set`,
+  `Queue.offer/poll/peek`.
+
+  Measured on the corpus eval's 19 third-party classes: documented-not-thread-safe classes producing
+  a finding went from **6 of 9 to 9 of 9**, with no new VERDICT-tier finding on any of the ten
+  documented as thread-safe. One additional `PROMPT`-tier finding did appear there, on Guava's
+  `EventBus`, whose internal `ArrayList` and `HashMap` are written by several threads under
+  synchronization the weaver cannot see.
+
+### Changed
+
+- **Monitor weaving no longer rides on `fields=true` alone.** `FieldAccessWeaver.visitor(boolean)`
+  separates the two: monitor instructions are woven whenever anything is being recorded, field
+  instructions only when `fields=true` asked for them. Without this, `collections=true` reported a
+  `HashMap` guarded by a `synchronized` block as racing, which `CollectionWeavingEndToEndTest` now
+  pins in both directions.
+
+### Fixed
+
+- **`HeldLocks` documented a limit it no longer had.** Its javadoc said the agent "weaves field
+  access rather than monitor instructions, so a lock only enters this set when the test declares
+  it". Monitor weaving landed in the same 1.9.6 release that added the class, so agent-observed
+  `synchronized` blocks have fed the lockset all along. The text now says what is actually
+  discovered automatically (monitors, under the agent) and what still is not (`ReentrantLock`).
+
 ## [1.9.7] - 2026-08-23
 
 > **Versioning note.** As in 1.9.1, 1.9.4, 1.9.5 and 1.9.6, this ships as a patch by explicit owner

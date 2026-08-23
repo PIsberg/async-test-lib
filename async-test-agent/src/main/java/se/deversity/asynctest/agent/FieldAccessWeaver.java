@@ -77,8 +77,26 @@ final class FieldAccessWeaver {
      * not need recomputing.
      */
     static AsmVisitorWrapper visitor() {
+        return visitor(true);
+    }
+
+    /**
+     * {@return a visitor wrapper that always weaves monitor instructions, and weaves field
+     * instructions only when asked}
+     *
+     * <p>The two are separable because they answer to different options and to different
+     * questions. Field instructions are what {@code fields=true} buys. Monitor instructions are
+     * what makes any lock-aware detector able to tell guarded code from racing code, so every mode
+     * that records an access needs them: {@code collections=true} without them would report a
+     * {@code HashMap} guarded by a {@code synchronized} block as unguarded, and reporting correct
+     * code is the failure mode a stress-test library can least afford.
+     *
+     * @param weaveFieldInstructions whether {@code GETFIELD} and {@code PUTFIELD} are observed too
+     */
+    static AsmVisitorWrapper visitor(boolean weaveFieldInstructions) {
         return new AsmVisitorWrapper.ForDeclaredMethods()
-                .method(ElementMatchers.not(ElementMatchers.isTypeInitializer()), new Wrapper())
+                .method(ElementMatchers.not(ElementMatchers.isTypeInitializer()),
+                        new Wrapper(weaveFieldInstructions))
                 .writerFlags(ClassWriter.COMPUTE_MAXS);
     }
 
@@ -112,6 +130,12 @@ final class FieldAccessWeaver {
     private static final class Wrapper
             implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisitorWrapper {
 
+        private final boolean weaveFieldInstructions;
+
+        Wrapper(boolean weaveFieldInstructions) {
+            this.weaveFieldInstructions = weaveFieldInstructions;
+        }
+
         @Override
         public MethodVisitor wrap(TypeDescription instrumentedType,
                                   MethodDescription instrumentedMethod,
@@ -120,7 +144,7 @@ final class FieldAccessWeaver {
                                   TypePool typePool,
                                   int writerFlags,
                                   int readerFlags) {
-            return new FieldAccessMethodVisitor(methodVisitor);
+            return new FieldAccessMethodVisitor(methodVisitor, weaveFieldInstructions);
         }
     }
 
@@ -130,8 +154,11 @@ final class FieldAccessWeaver {
      */
     private static final class FieldAccessMethodVisitor extends MethodVisitor {
 
-        FieldAccessMethodVisitor(MethodVisitor delegate) {
+        private final boolean weaveFieldInstructions;
+
+        FieldAccessMethodVisitor(MethodVisitor delegate, boolean weaveFieldInstructions) {
             super(Opcodes.ASM9, delegate);
+            this.weaveFieldInstructions = weaveFieldInstructions;
         }
 
         /**
@@ -166,7 +193,7 @@ final class FieldAccessWeaver {
         }
         @Override
         public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
-            if (shouldWeave(owner)) {
+            if (weaveFieldInstructions && shouldWeave(owner)) {
                 boolean isWrite = opcode == Opcodes.PUTFIELD || opcode == Opcodes.PUTSTATIC;
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, THREAD, "currentThread",
                         "()Ljava/lang/Thread;", false);

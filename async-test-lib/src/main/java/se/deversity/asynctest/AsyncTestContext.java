@@ -1620,6 +1620,22 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the current thread's {@link SharedCollectionDetector}, or {@code null} when there is
+     * none}
+     *
+     * <p>The public accessors throw when called outside an {@code @AsyncTest} or with the detector
+     * switched off, which is right for a test author who asked for something that is not there.
+     * {@link AgentCollectionHooks} asks a different question: it runs inside woven third-party code
+     * that has no idea a test is in progress, so "no context here" is the ordinary case and must
+     * cost a null check rather than an exception. Reads the same {@code ThreadLocal} and installs
+     * nothing, so it cannot affect the install/uninstall symmetry the class contract requires.
+     */
+    static @Nullable SharedCollectionDetector currentSharedCollectionDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.sharedCollectionDetector;
+    }
+
+    /**
      * Returns the {@link TimerDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectTimerIssues = false}
      * @deprecated use {@link #timerDetector()}

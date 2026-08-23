@@ -23,6 +23,9 @@ import se.deversity.vibetags.annotations.AIContract;
  *       (the positive {@code type(...)} match is narrowed).</li>
  *   <li>{@code excludes} — one or more name prefixes appended to the built-in ignore
  *       matcher, so matching types are never instrumented.</li>
+ *   <li>{@code collections} — a boolean flag ({@code collections=true}) that rewrites
+ *       collection calls in instrumented types so the collection instance reaches the
+ *       instance-keyed detectors. Off by default.</li>
  *   <li>{@code debug} — a boolean flag ({@code debug=true}) that turns on verbose agent
  *       diagnostics: every successfully instrumented type is logged and instrumentation
  *       errors carry a full stack trace. Any value other than {@code true} (case
@@ -61,13 +64,15 @@ final class AgentOptions {
     private final List<String> excludes;
     private final boolean debug;
     private final boolean fields;
+    private final boolean collections;
 
     private AgentOptions(List<String> includes, List<String> excludes, boolean debug,
-                         boolean fields) {
+                         boolean fields, boolean collections) {
         this.includes = List.copyOf(includes);
         this.excludes = List.copyOf(excludes);
         this.debug = debug;
         this.fields = fields;
+        this.collections = collections;
     }
 
     /**
@@ -86,6 +91,7 @@ final class AgentOptions {
         List<String> excludes = new ArrayList<>();
         boolean debug = false;
         boolean fields = false;
+        boolean collections = false;
         if (agentArgs != null) {
             String currentKey = null;
             for (String token : agentArgs.split("[,;]")) {
@@ -110,11 +116,13 @@ final class AgentOptions {
                     debug = Boolean.parseBoolean(value);
                 } else if ("fields".equals(currentKey)) {
                     fields = Boolean.parseBoolean(value);
+                } else if ("collections".equals(currentKey)) {
+                    collections = Boolean.parseBoolean(value);
                 }
                 // Unknown keys (and bare values before any key) are ignored on purpose.
             }
         }
-        return new AgentOptions(includes, excludes, debug, fields);
+        return new AgentOptions(includes, excludes, debug, fields, collections);
     }
 
     /**
@@ -165,5 +173,20 @@ final class AgentOptions {
      */
     boolean fields() {
         return fields;
+    }
+
+    /**
+     * {@return whether {@code collections=true} was supplied}
+     *
+     * <p>Rewrites the collection calls listed in {@code CollectionAccessWeaver} so the instance
+     * being touched reaches the detectors. Off by default and worth the same care as
+     * {@code fields=}: it instruments every listed call in every matched type, and it is the only
+     * way a class that keeps its state in a {@code HashMap} is visible at all, because the map's
+     * own writes happen in {@code java.util}, where nothing is woven.
+     *
+     * @since 1.10.0
+     */
+    boolean collections() {
+        return collections;
     }
 }
