@@ -1,4 +1,4 @@
-package se.deversity.asynctest.corpus;
+package com.example.corpus;
 
 import java.lang.reflect.Method;
 import java.util.List;

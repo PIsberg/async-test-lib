@@ -21,7 +21,7 @@
 # job hand you the fresh ones as an artifact.
 set -eu
 
-CK_VERSION="0.2.0"
+CK_VERSION="0.3.0"
 CK_COORDS="se.deversity.codekarta:code-karta-cli:${CK_VERSION}:jar:all"
 OUT_DIR="docs/diagrams/codekarta"
 SRC="async-test-lib/src/main/java/se/deversity/asynctest"

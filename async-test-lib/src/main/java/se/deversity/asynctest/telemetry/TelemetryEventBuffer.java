@@ -71,6 +71,80 @@ public final class TelemetryEventBuffer {
                              long lockFingerprint) {
             onEvent(threadId, targetField, isWrite);
         }
+
+        /**
+         * Invoked for a drained event, also saying whether the field is declared {@code volatile}.
+         *
+         * <p>{@code default} for the same reason as the overload above: implementations are
+         * lambdas, and a second abstract method would break all of them. Not overriding it keeps
+         * the previous behaviour exactly.
+         *
+         * @param threadId        {@code Thread.currentThread().threadId()} of the producer
+         * @param targetField     field or method identifier
+         * @param isWrite         true if it was a write access
+         * @param lockFingerprint identifies the set of locks the producer held at the access
+         * @param volatileField   whether the accessed field is declared {@code volatile}
+         * @since 1.10.0
+         */
+        default void onEvent(long threadId, @Nullable String targetField, boolean isWrite,
+                             long lockFingerprint, boolean volatileField) {
+            onEvent(threadId, targetField, isWrite, lockFingerprint);
+        }
+
+        /**
+         * Invoked for a drained event, also carrying what a constant write stored.
+         *
+         * @param threadId        producer thread
+         * @param targetField     field or method identifier
+         * @param isWrite         true for a write
+         * @param lockFingerprint locks held at the access
+         * @param volatileField   whether the field is declared {@code volatile}
+         * @param constantTag     the constant stored, or {@code Integer.MIN_VALUE} for "not a
+         *                        knowable constant"
+         * @since 1.10.0
+         */
+        default void onEvent(long threadId, @Nullable String targetField, boolean isWrite,
+                             long lockFingerprint, boolean volatileField, int constantTag) {
+            onEvent(threadId, targetField, isWrite, lockFingerprint, volatileField);
+        }
+
+        /**
+         * Invoked for a drained event, also identifying the instance the field belongs to.
+         *
+         * @param threadId        producer thread
+         * @param targetField     field or method identifier
+         * @param isWrite         true for a write
+         * @param lockFingerprint locks held at the access
+         * @param volatileField   whether the field is declared {@code volatile}
+         * @param constantTag     the constant stored, {@code Integer.MIN_VALUE} for none
+         * @param identity        {@code System.identityHashCode} of the owner, 0 for statics
+         * @since 1.10.0
+         */
+        default void onEvent(long threadId, @Nullable String targetField, boolean isWrite,
+                             long lockFingerprint, boolean volatileField, int constantTag,
+                             int identity) {
+            onEvent(threadId, targetField, isWrite, lockFingerprint, volatileField, constantTag);
+        }
+
+        /**
+         * Invoked for a drained event, with the volatile-read ordering bit as well.
+         *
+         * @param threadId          producer thread
+         * @param targetField       field or method identifier
+         * @param isWrite           true for a write
+         * @param lockFingerprint   locks held at the access
+         * @param volatileField     whether the field is declared {@code volatile}
+         * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
+         * @param identity          identity hash of the owner, 0 for statics
+         * @param afterVolatileRead whether a volatile field of the owner was read first
+         * @since 1.10.0
+         */
+        default void onEvent(long threadId, @Nullable String targetField, boolean isWrite,
+                             long lockFingerprint, boolean volatileField, int constantTag,
+                             int identity, boolean afterVolatileRead) {
+            onEvent(threadId, targetField, isWrite, lockFingerprint, volatileField, constantTag,
+                    identity);
+        }
     }
 
     /**
@@ -83,6 +157,10 @@ public final class TelemetryEventBuffer {
         @Nullable String targetField;
         boolean isWrite;
         long lockFingerprint;
+        boolean volatileField;
+        int constantTag;
+        int identity;
+        boolean afterVolatileRead;
     }
 
     private static final VarHandle SEQ_VH;
@@ -170,6 +248,80 @@ public final class TelemetryEventBuffer {
      * @since 1.9.6
      */
     public void publish(long threadId, String targetField, boolean isWrite, long lockFingerprint) {
+        publish(threadId, targetField, isWrite, lockFingerprint, false);
+    }
+
+    /**
+     * Publishes a field-access event that also says whether the field is declared {@code volatile}.
+     *
+     * <p>The flag is resolved at weave time and baked into the call, so it costs nothing here. It
+     * exists because a volatile field whose writes all happened under one lock is safe publication,
+     * not a race: that is the double-checked-locking idiom, and without this bit every correct use
+     * of it reads as a check-then-act violation.
+     *
+     * @param threadId        {@code Thread.currentThread().threadId()}
+     * @param targetField     field or method identifier
+     * @param isWrite         {@code true} for a write access, {@code false} for a read
+     * @param lockFingerprint identifies the locks held at the access, 0 for none
+     * @param volatileField   whether the accessed field is declared {@code volatile}
+     * @since 1.10.0
+     */
+    public void publish(long threadId, String targetField, boolean isWrite, long lockFingerprint,
+                        boolean volatileField) {
+        publish(threadId, targetField, isWrite, lockFingerprint, volatileField, Integer.MIN_VALUE);
+    }
+
+    /**
+     * Publishes a field-access event that also carries what a constant write put in the field.
+     *
+     * @param threadId        {@code Thread.currentThread().threadId()}
+     * @param targetField     field or method identifier
+     * @param isWrite         {@code true} for a write access
+     * @param lockFingerprint identifies the locks held at the access, 0 for none
+     * @param volatileField   whether the accessed field is declared {@code volatile}
+     * @param constantTag     the constant this write stored, or {@code Integer.MIN_VALUE} when the
+     *                        write stored something the weaver could not read as a constant
+     * @since 1.10.0
+     */
+    public void publish(long threadId, String targetField, boolean isWrite, long lockFingerprint,
+                        boolean volatileField, int constantTag) {
+        publish(threadId, targetField, isWrite, lockFingerprint, volatileField, constantTag, 0);
+    }
+
+    /**
+     * Publishes a field-access event that also identifies the instance the field belongs to.
+     *
+     * @param threadId        {@code Thread.currentThread().threadId()}
+     * @param targetField     field or method identifier
+     * @param isWrite         {@code true} for a write access
+     * @param lockFingerprint identifies the locks held at the access, 0 for none
+     * @param volatileField   whether the accessed field is declared {@code volatile}
+     * @param constantTag     the constant this write stored, {@code Integer.MIN_VALUE} for none
+     * @param identity        {@code System.identityHashCode} of the owning instance, 0 for statics
+     * @since 1.10.0
+     */
+    public void publish(long threadId, String targetField, boolean isWrite, long lockFingerprint,
+                        boolean volatileField, int constantTag, int identity) {
+        publish(threadId, targetField, isWrite, lockFingerprint, volatileField, constantTag,
+                identity, false);
+    }
+
+    /**
+     * Publishes an event that also says whether a volatile field of the same object was read first.
+     *
+     * @param threadId          producer thread
+     * @param targetField       field or method identifier
+     * @param isWrite           {@code true} for a write access
+     * @param lockFingerprint   locks held at the access, 0 for none
+     * @param volatileField     whether the accessed field is declared {@code volatile}
+     * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
+     * @param identity          identity hash of the owner, 0 for statics
+     * @param afterVolatileRead whether a volatile field of the owner was read first
+     * @since 1.10.0
+     */
+    public void publish(long threadId, String targetField, boolean isWrite, long lockFingerprint,
+                        boolean volatileField, int constantTag, int identity,
+                        boolean afterVolatileRead) {
         long fullSinceNanos = 0L;
         int spins = 0;
         for (;;) {
@@ -207,6 +359,10 @@ public final class TelemetryEventBuffer {
                 event.targetField = targetField;
                 event.isWrite = isWrite;
                 event.lockFingerprint = lockFingerprint;
+                event.volatileField = volatileField;
+                event.constantTag = constantTag;
+                event.identity = identity;
+                event.afterVolatileRead = afterVolatileRead;
                 // Release fence: consumer will not observe the event until this store completes.
                 SEQ_VH.setRelease(event, seq);
                 return;
@@ -247,7 +403,8 @@ public final class TelemetryEventBuffer {
                 break; // slot not yet published by any producer
             }
             callback.onEvent(event.threadId, event.targetField, event.isWrite,
-                    event.lockFingerprint);
+                    event.lockFingerprint, event.volatileField, event.constantTag, event.identity,
+                    event.afterVolatileRead);
             localCursor = next;
             next++;
             count++;

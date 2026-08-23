@@ -1,4 +1,4 @@
-package se.deversity.asynctest.corpus;
+package com.example.corpus;
 
 import java.util.List;
 import java.util.Map;
@@ -68,6 +68,56 @@ final class Corpus {
                     "This class is not thread-safe, and does not accept null elements.",
                     "com/google/common/collect/EvictingQueue.java:42"),
 
+            new Subject("guavaStopwatch_startStop", GUAVA,
+                    "com.google.common.base.Stopwatch", Contract.NOT_THREAD_SAFE,
+                    "Note: This class is not thread-safe.",
+                    "com/google/common/base/Stopwatch.java:80"),
+
+            new Subject("statsAccumulator_add", GUAVA,
+                    "com.google.common.math.StatsAccumulator", Contract.NOT_THREAD_SAFE,
+                    "This class is not thread safe.",
+                    "com/google/common/math/StatsAccumulator.java:32"),
+
+            new Subject("hashMultimap_put", GUAVA,
+                    "com.google.common.collect.HashMultimap", Contract.NOT_THREAD_SAFE,
+                    "This class is not threadsafe when any concurrent operations update the multimap.",
+                    "com/google/common/collect/HashMultimap.java:41"),
+
+            new Subject("linkedListMultimap_put", GUAVA,
+                    "com.google.common.collect.LinkedListMultimap", Contract.NOT_THREAD_SAFE,
+                    "This class is not threadsafe when any concurrent operations update the multimap.",
+                    "com/google/common/collect/LinkedListMultimap.java:88"),
+
+            new Subject("minMaxPriorityQueue_addAndPoll", GUAVA,
+                    "com.google.common.collect.MinMaxPriorityQueue", Contract.NOT_THREAD_SAFE,
+                    "This class is not thread-safe, and does not accept null elements.",
+                    "com/google/common/collect/MinMaxPriorityQueue.java:80"),
+
+            new Subject("hashedMap_putAndGet", COLLECTIONS4,
+                    "org.apache.commons.collections4.map.HashedMap", Contract.NOT_THREAD_SAFE,
+                    "Note that HashedMap is not synchronized and is not thread-safe.",
+                    "org/apache/commons/collections4/map/HashedMap.java:34"),
+
+            new Subject("linkedMap_putAndGet", COLLECTIONS4,
+                    "org.apache.commons.collections4.map.LinkedMap", Contract.NOT_THREAD_SAFE,
+                    "Note that LinkedMap is not synchronized and is not thread-safe.",
+                    "org/apache/commons/collections4/map/LinkedMap.java:60"),
+
+            new Subject("multiKeyMap_putAndGet", COLLECTIONS4,
+                    "org.apache.commons.collections4.map.MultiKeyMap", Contract.NOT_THREAD_SAFE,
+                    "Note that MultiKeyMap is not synchronized and is not thread-safe.",
+                    "org/apache/commons/collections4/map/MultiKeyMap.java:78"),
+
+            new Subject("caseInsensitiveMap_putAndGet", COLLECTIONS4,
+                    "org.apache.commons.collections4.map.CaseInsensitiveMap", Contract.NOT_THREAD_SAFE,
+                    "Note that CaseInsensitiveMap is not synchronized and is not thread-safe.",
+                    "org/apache/commons/collections4/map/CaseInsensitiveMap.java:63"),
+
+            new Subject("lazyMap_get", COLLECTIONS4,
+                    "org.apache.commons.collections4.map.LazyMap", Contract.NOT_THREAD_SAFE,
+                    "Note that LazyMap is not synchronized and is not thread-safe.",
+                    "org/apache/commons/collections4/map/LazyMap.java:56"),
+
             // --- Documented thread-safe: concurrent use is what the class is for, so a finding
             // --- above the noise floor is a false positive.
 
@@ -121,7 +171,29 @@ final class Corpus {
             new Subject("memoizedSupplier_get", GUAVA,
                     "com.google.common.base.Suppliers", Contract.THREAD_SAFE,
                     "The returned supplier is thread-safe.",
-                    "com/google/common/base/Suppliers.java:100")
+                    "com/google/common/base/Suppliers.java:100"),
+
+            new Subject("joiner_join", GUAVA,
+                    "com.google.common.base.Joiner", Contract.THREAD_SAFE,
+                    "This makes joiners thread-safe, and safe to store as static final constants.",
+                    "com/google/common/base/Joiner.java:50"),
+
+            new Subject("splitter_splitToList", GUAVA,
+                    "com.google.common.base.Splitter", Contract.THREAD_SAFE,
+                    "Splitter instances are thread-safe immutable, and are therefore safe to store "
+                            + "as static final constants.",
+                    "com/google/common/base/Splitter.java:86"),
+
+            new Subject("patternFilenameFilter_accept", GUAVA,
+                    "com.google.common.io.PatternFilenameFilter", Contract.THREAD_SAFE,
+                    "This class is thread-safe.",
+                    "com/google/common/io/PatternFilenameFilter.java:26"),
+
+            new Subject("fixedOrderComparator_compare", COLLECTIONS4,
+                    "org.apache.commons.collections4.comparators.FixedOrderComparator", Contract.THREAD_SAFE,
+                    "it is thread-safe to perform multiple comparisons after all the setup "
+                            + "operations are complete.",
+                    "org/apache/commons/collections4/comparators/FixedOrderComparator.java:43")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()

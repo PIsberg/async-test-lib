@@ -136,6 +136,7 @@ Everything after the `=` is the `agentArgs` string, parsed by `AgentOptions`. Th
 | `excludes` | one or more name prefixes | **Never** instrument types whose name starts with one of the prefixes (appended to the built-in ignore matcher). |
 | `debug` | `true` / `false` | `debug=true` turns on verbose diagnostics (see [Diagnostics](#6-diagnostics)). Any other value, or absence, keeps the default errors-only logging. Case-insensitive. |
 | `fields` | `true` / `false` | `fields=true` also weaves **direct field instructions**, so a field touched only inside a method body — the `count++` in an `increment()` — produces events. Off by default; see below. Case-insensitive. |
+| `collections` | `true` / `false` | `collections=true` rewrites the collection calls an instrumented type makes, so the **collection instance** reaches the detectors that are keyed by instance. It is what makes a class whose state lives in a `HashMap` visible at all. Off by default; see below. Case-insensitive. |
 
 **Separators and multi-values.** Entries are separated by `,` **or** `;`. A bare token (no
 `=`) is appended to the **most recently named key**, so a single key can carry several
@@ -166,6 +167,51 @@ without that, a `System.out` reference in user code would emit on every call, an
 inside the telemetry sink would recurse. Static initialisers are skipped too, because emitting
 from `<clinit>` can force the telemetry classes to initialise inside another class's
 initialisation, and circular class initialisation deadlocks rather than failing.
+
+**`collections=true`: reaching state a class does not own.**
+
+Field weaving makes a class's own fields observable. It does nothing for a class that keeps its
+state in a collection:
+
+```java
+class Registry {
+    private final Map<String, Integer> entries = new HashMap<>();   // final: no PUTFIELD to weave
+
+    void record(String key) {                                        // the racing write happens
+        entries.put(key, entries.getOrDefault(key, 0) + 1);          // inside java.util.HashMap
+    }
+}
+```
+
+`entries` is assigned once, so there is no field instruction to observe, and the write that races
+happens inside `java.util.HashMap`, which is on the ignore list and always will be. Under
+`fields=true` this class produces no finding no matter how many threads collide on it. This is not
+a corner case: it was measured on real libraries, where three of nine documented-not-thread-safe
+classes were silent for exactly this reason ([corpus eval](analysis/corpus-eval.md)).
+
+`collections=true` rewrites the collection call itself, so the map instance reaches
+`SharedCollectionDetector` and its instance-keyed siblings:
+
+```
+-javaagent:async-test-agent-<version>.jar=includes=com.myapp,collections=true
+```
+
+What is rewritten is an explicit table in `CollectionAccessWeaver`: `Map.put/get/remove/containsKey`,
+`Collection.add/remove/contains/clear`, `List.get/set`, `Queue.offer/poll/peek`. Each call becomes a
+call to a hook that records and then performs the original operation, so behaviour is unchanged;
+`CollectionWeavingEndToEndTest` pins that a woven program still computes the same values.
+
+Three limits worth knowing before switching it on:
+
+- **Guarding works, and has to.** Monitor weaving is installed alongside, so a collection touched
+  only inside a `synchronized` block reports nothing even though the test never declared the lock.
+  A `ReentrantLock` is still invisible: declare it with `AsyncTestContext.holdingLock(...)`.
+- **Thread-safe types are skipped.** A receiver from `java.util.concurrent` or a
+  `Collections.synchronizedX` wrapper synchronizes where nothing can be woven, so recording it
+  would report every shared use. Those calls are delegated and never recorded.
+- **`super` calls keep their dispatch.** Only virtual and interface invocations are rewritten. A
+  decorator's `super.get(...)` must stay an `INVOKESPECIAL`, or the substitution would re-dispatch
+  virtually into the override and recurse.
 
 **Reaching it without a `-javaagent` path.** `-Dasynctest.agent=fields=true` makes the runner
 attach the agent itself at the start of the run, so you do not have to resolve the jar's path in
@@ -300,8 +346,11 @@ exactly one detector:
 
   Two boundaries, both pinned by `FieldWeavingEndToEndTest`:
 
-  - **`fields=true` only.** Monitor weaving lives in `FieldAccessWeaver`, which the accessor-only
-    default never installs, so under the default attach the agent still has no lock model.
+  - **Not under the accessor-only default.** Monitor weaving lives in `FieldAccessWeaver`, which
+    the default attach never installs, so with neither `fields=true` nor `collections=true` the
+    agent has no lock model. Either option installs it: `collections=true` weaves monitors without
+    field instructions, because recording an access without knowing what lock covered it is how a
+    correctly guarded `HashMap` gets reported as racing.
   - **Explicit `synchronized` blocks only.** A `synchronized` *method* carries the
     `ACC_SYNCHRONIZED` flag and contains no `MONITORENTER` instruction at all, so there is
     nothing to weave. A field guarded only by synchronized methods is still reported.

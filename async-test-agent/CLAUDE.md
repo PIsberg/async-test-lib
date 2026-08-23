@@ -25,6 +25,8 @@ library is fine; one pointing at the agent is not.
     <note>Detailed per-element guardrails for the elements below live in scoped rule files that load automatically when the matching source file is opened. Consult the referenced file before modifying an element.</note>
     <element path="se.deversity.asynctest.agent.AgentOptions" rules=".claude/rules/se-deversity-asynctest-agent-AgentOptions.md"/>
     <element path="se.deversity.asynctest.agent.AsyncTestAgent" rules=".claude/rules/se-deversity-asynctest-agent-AsyncTestAgent.md"/>
+    <element path="se.deversity.asynctest.agent.AtomicFieldRegistry" rules=".claude/rules/se-deversity-asynctest-agent-AtomicFieldRegistry.md"/>
+    <element path="se.deversity.asynctest.agent.CollectionAccessWeaver" rules=".claude/rules/se-deversity-asynctest-agent-CollectionAccessWeaver.md"/>
   </scoped_rules>
 
 <rule>When you work on any element listed in <scoped_rules>, open its referenced rule file and apply the guardrails there. The rule files are the authoritative source for those elements.</rule>

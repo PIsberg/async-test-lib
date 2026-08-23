@@ -95,5 +95,5 @@ possible to say whether a finding on them is a true or a false positive
 | Library | Property (in `corpus-eval/pom.xml`) | Why it is here |
 |---|---|---|
 | `org.apache.commons:commons-lang3` | `commons-lang3.version` | Apache-2.0. Supplies six subjects with per-class contracts, from `MutableInt` ("this method is not thread safe") to `FastDateFormat` ("fast and thread-safe version of SimpleDateFormat"). |
-| `org.apache.commons:commons-collections4` | `commons-collections4.version` | Apache-2.0. Five map and bag subjects, including the `SynchronizedBag` decorator as a documented-safe case and `LRUMap` as a documented-unsafe one. |
-| `com.google.guava:guava` | `guava.version` | Apache-2.0. Eight subjects spanning both contracts, and the source of the lock-free internals (`LocalCache`, `AbstractFutureState`) that the eval measures the noise floor against. |
+| `org.apache.commons:commons-collections4` | `commons-collections4.version` | Apache-2.0. Eleven map, bag and comparator subjects, including the `SynchronizedBag` decorator as a documented-safe case and `LRUMap` as a documented-unsafe one. |
+| `com.google.guava:guava` | `guava.version` | Apache-2.0. Sixteen subjects spanning both contracts, and the source of the lock-free internals (`LocalCache`, `AbstractFutureState`) that the eval measures the noise floor against. |

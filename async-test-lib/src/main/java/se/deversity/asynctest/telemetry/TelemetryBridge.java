@@ -214,6 +214,79 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
     @Override
     public void onEvent(long threadId, @Nullable String qualifiedName, boolean isWrite,
                         long lockFingerprint) {
+        onEvent(threadId, qualifiedName, isWrite, lockFingerprint, false);
+    }
+
+    /**
+     * Forwards a drained access that also says whether the field is declared {@code volatile}.
+     *
+     * @param threadId        the worker that recorded the access
+     * @param qualifiedName   the field identifier the weaver emitted
+     * @param isWrite         {@code true} for a write access
+     * @param lockFingerprint the locks that worker held at the access, 0 for none
+     * @param volatileField   whether the field is declared {@code volatile}
+     * @since 1.10.0
+     */
+    @Override
+    public void onEvent(long threadId, @Nullable String qualifiedName, boolean isWrite,
+                        long lockFingerprint, boolean volatileField) {
+        onEvent(threadId, qualifiedName, isWrite, lockFingerprint, volatileField, Integer.MIN_VALUE);
+    }
+
+    /**
+     * Forwards a drained access that also carries what a constant write stored.
+     *
+     * @param threadId        the worker that recorded the access
+     * @param qualifiedName   the field identifier the weaver emitted
+     * @param isWrite         {@code true} for a write access
+     * @param lockFingerprint the locks that worker held at the access, 0 for none
+     * @param volatileField   whether the field is declared {@code volatile}
+     * @param constantTag     the constant stored, or {@code Integer.MIN_VALUE} for "not a constant"
+     * @since 1.10.0
+     */
+    @Override
+    public void onEvent(long threadId, @Nullable String qualifiedName, boolean isWrite,
+                        long lockFingerprint, boolean volatileField, int constantTag) {
+        onEvent(threadId, qualifiedName, isWrite, lockFingerprint, volatileField, constantTag, 0);
+    }
+
+    /**
+     * Forwards a drained access that also identifies the instance the field belongs to.
+     *
+     * @param threadId        the worker that recorded the access
+     * @param qualifiedName   the field identifier the weaver emitted
+     * @param isWrite         {@code true} for a write access
+     * @param lockFingerprint the locks that worker held at the access, 0 for none
+     * @param volatileField   whether the field is declared {@code volatile}
+     * @param constantTag     the constant stored, {@code Integer.MIN_VALUE} for none
+     * @param identity        {@code System.identityHashCode} of the owner, 0 for statics
+     * @since 1.10.0
+     */
+    @Override
+    public void onEvent(long threadId, @Nullable String qualifiedName, boolean isWrite,
+                        long lockFingerprint, boolean volatileField, int constantTag,
+                        int identity) {
+        onEvent(threadId, qualifiedName, isWrite, lockFingerprint, volatileField, constantTag,
+                identity, false);
+    }
+
+    /**
+     * Forwards a drained access with the volatile-read ordering bit as well.
+     *
+     * @param threadId          the worker that recorded the access
+     * @param qualifiedName     the field identifier the weaver emitted
+     * @param isWrite           {@code true} for a write access
+     * @param lockFingerprint   the locks that worker held, 0 for none
+     * @param volatileField     whether the field is declared {@code volatile}
+     * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
+     * @param identity          identity hash of the owner, 0 for statics
+     * @param afterVolatileRead whether a volatile field of the owner was read first
+     * @since 1.10.0
+     */
+    @Override
+    public void onEvent(long threadId, @Nullable String qualifiedName, boolean isWrite,
+                        long lockFingerprint, boolean volatileField, int constantTag,
+                        int identity, boolean afterVolatileRead) {
         if (!active) {
             return;
         }
@@ -221,8 +294,31 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
             return;
         }
         if (qualifiedName == null) return;
-        atomicityValidator.recordFieldAccessUnderLocks(fieldIdentifier(qualifiedName), null,
-                isWrite, threadId, lockFingerprint);
+        String field = fieldIdentifier(qualifiedName);
+        // A field under a lock-free protocol is not something a lockset can judge. Dropping the
+        // event rather than passing it on keeps that honest: the detectors say nothing about the
+        // field instead of saying the wrong thing about every access to it.
+        //
+        // Asked with both names on purpose. A field instruction reports the field itself, while a
+        // woven accessor reports "Type#setNext" and only becomes "Type.next" after normalisation,
+        // so checking the raw name alone silently misses every access that arrived through an
+        // accessor - which is how these fields are usually touched.
+        if (TelemetryRegistry.isAtomicallyManaged(qualifiedName)
+                || TelemetryRegistry.isAtomicallyManaged(field)) {
+            // Drop this access, and everything already recorded about the field. The binding that
+            // proves the field is lock-free lives in a static initializer, which can run after the
+            // first accesses were forwarded, and those early accesses are exactly what produces
+            // the finding. Retracting makes the answer independent of that ordering.
+            atomicityValidator.forgetField(field);
+            return;
+        }
+        // Both halves of the publish-via-volatile idiom, resolved here so the detector sees one
+        // answer rather than two facts it would have to combine itself.
+        boolean safelyPublished = !isWrite
+                && afterVolatileRead
+                && TelemetryRegistry.isPublishedByVolatile(qualifiedName);
+        atomicityValidator.recordFieldAccessUnderLocks(field, null, isWrite, threadId,
+                lockFingerprint, volatileField || safelyPublished, constantTag, identity);
     }
 
     /**

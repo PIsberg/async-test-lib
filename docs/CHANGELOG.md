@@ -7,6 +7,117 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Agent option `collections=true`: the detectors can see state a class does not own.** Field
+  weaving observes a class's own fields, which does nothing for a class whose state lives in a
+  `HashMap` behind a final field: there is no field instruction to weave, and the write that races
+  happens inside `java.util`, where the agent deliberately never looks. `collections=true` rewrites
+  the collection call itself, so the instance reaches `SharedCollectionDetector` and the other
+  instance-keyed detectors. Off by default. `AgentCollectionHooks` (new, `INTERNAL`) holds the
+  rewritten call targets; `CollectionAccessWeaver` holds the table of what is rewritten:
+  `Map.put/get/remove/containsKey`, `Collection.add/remove/contains/clear`, `List.get/set`,
+  `Queue.offer/poll/peek`.
+
+  Measured on the corpus eval's 19 third-party classes: documented-not-thread-safe classes producing
+  a finding went from **6 of 9 to 9 of 9**, with no new VERDICT-tier finding on any of the ten
+  documented as thread-safe. One additional `PROMPT`-tier finding did appear there, on Guava's
+  `EventBus`, whose internal `ArrayList` and `HashMap` are written by several threads under
+  synchronization the weaver cannot see.
+
+### Changed
+
+- **Construction is no longer read as mutation.** A constructor's writes to its own object happen
+  before that object is published, so they cannot be half of a check-then-act, and no other thread
+  could have seen the field's earlier value. Recording them made every immutable object look
+  mutated: a final `seed` on a hash function or `elements` on an `ImmutableSet`, written once and
+  read by every thread, reads as one writer and six readers on shared state. Writes to `this` inside
+  a constructor are no longer recorded. What this gives up is the unsafe-publication bug, where a
+  reference escapes mid-construction, which is a different defect from the one this detector claims.
+
+- **Fields under a lock-free protocol are left alone.** A class that binds a field to a `VarHandle`
+  or an atomic field updater is running a compare-and-swap protocol whose correctness never rests on
+  a lock, so a lockset has no basis for a verdict. The weaver spots the binding, and because that
+  binding sits in a static initializer that can run after the first accesses were already recorded,
+  learning it also retracts what was recorded for that field (`AtomicityValidator.forgetField`).
+  Guava's waiter list is the case that motivated it, and its own source says why: "non-volatile
+  write to the next field. Should be made visible by a subsequent CAS".
+
+- **A receiver that declares itself concurrent is trusted by its interface, not its package.** The
+  collection path skipped `java.util.concurrent` by name; it now also skips any receiver that
+  implements `ConcurrentMap`, `BlockingQueue` or `BlockingDeque`, which is a contract its
+  implementor has to keep wherever the class lives, including a user's own.
+
+- **The lock model is tracked per instance.** Two objects of the same class guarded by their own
+  locks used to share one lockset, so consistent per-object locking looked inconsistent.
+
+- **A plain field published by a volatile write is recognised.** Writing a field under a lock and
+  then assigning a `volatile` field to expose it is how `Suppliers.memoize` and most lazy holders
+  work: the plain field is safe because every reader reads the volatile guard first. The weaver sees
+  both halves in program order, so the rule is checked rather than assumed. It marks the plain
+  field as published only when a volatile write of the same object follows it in the same method,
+  and marks a read as ordered only when that method already read a volatile field of that object.
+  A field written and never published, or read without the volatile read in front of it, keeps its
+  finding.
+
+- **Field accesses are attributed to the object they belong to.** Every agent-fed field event
+  carried a field *name* and no instance, so accesses to different objects of the same class merged.
+  Six threads each using their own per-call object read exactly like six threads racing on one, and
+  that is not a corner case: a hasher, a matcher, an iterator or any short-lived helper created
+  inside a method hits it. The weaver now lifts `System.identityHashCode` of the receiver onto the
+  stack before each field instruction, using duplication only, so the sequence stays branch-free,
+  needs no local variable, and leaves the operand stack exactly as the field instruction expects.
+  Static fields report identity 0, as does every non-agent caller, so their behaviour is unchanged.
+  `AtomicityValidator` analyses each instance separately; `PerInstanceAnalysisTest` pins that one
+  shared instance still reports.
+
+- **A constant written by a method that never read the field is no longer a check-then-act.** The
+  weaver tags a write when its value came from a constant instruction *and* the writing method had
+  not already read that field. Both halves matter: a field every thread writes the same constant to
+  settles at that value however they interleave, while a write preceded by a read of the same field
+  may be `if (!initialized) initialized = true`, which is a real bug and keeps its finding.
+  `SafePublicationRuleTest` pins all three directions, including two threads writing *different*
+  constants.
+
+  Measured on the corpus eval: `commons-collections4`'s `FixedOrderComparator`, whose `compare`
+  writes `isLocked = true` on every call, stopped being a false positive. Documented-thread-safe
+  classes with any finding went from 4 of 14 to 3 of 14, detection held at 19 of 19.
+
+- **Architecture diagrams regenerate on code-karta 0.3.0** (`tools/generate-architecture-diagrams.sh`).
+
+- **`ReentrantLock` is visible to the lock model.** A `synchronized` block compiles to
+  `MONITORENTER`, which the agent weaves; a `java.util.concurrent.locks.Lock` compiles to an
+  ordinary method call and looked like nothing, so code guarded by one was reported as unguarded.
+  `AgentLockHooks` (new, `INTERNAL`) substitutes `lock`, `lockInterruptibly`, `tryLock` and
+  `unlock`, recording after acquisition and before release so the recorded interval is always
+  contained by the real one. A failed `tryLock` records nothing.
+
+- **`volatile` fields with guarded writes are no longer reported as check-then-act.** Double-checked
+  locking is indistinguishable from a check-then-act bug to a lockset: reads take no lock, writes
+  take one. What separates them is `volatile`, which the weaver now resolves at weave time and
+  bakes into the recording call, so the hot path pays nothing. `AtomicityValidator` tracks the
+  write-only lockset separately and treats "volatile, and every write held the same lock" as safe
+  publication. A volatile field written with **no** lock held is still reported, so `volatile
+  count++` remains the finding it should be; `SafePublicationRuleTest` pins all three directions.
+
+  Measured on the corpus eval: `commons-lang3`'s `LazyInitializer` stopped being a false positive,
+  taking documented-thread-safe classes with any finding from 5 of 14 to 4 of 14, while
+  documented-not-thread-safe detection stayed at 19 of 19.
+
+- **Monitor weaving no longer rides on `fields=true` alone.** `FieldAccessWeaver.visitor(boolean)`
+  separates the two: monitor instructions are woven whenever anything is being recorded, field
+  instructions only when `fields=true` asked for them. Without this, `collections=true` reported a
+  `HashMap` guarded by a `synchronized` block as racing, which `CollectionWeavingEndToEndTest` now
+  pins in both directions.
+
+### Fixed
+
+- **`HeldLocks` documented a limit it no longer had.** Its javadoc said the agent "weaves field
+  access rather than monitor instructions, so a lock only enters this set when the test declares
+  it". Monitor weaving landed in the same 1.9.6 release that added the class, so agent-observed
+  `synchronized` blocks have fed the lockset all along. The text now says what is actually
+  discovered automatically (monitors, under the agent) and what still is not (`ReentrantLock`).
+
 ## [1.9.7] - 2026-08-23
 
 > **Versioning note.** As in 1.9.1, 1.9.4, 1.9.5 and 1.9.6, this ships as a patch by explicit owner

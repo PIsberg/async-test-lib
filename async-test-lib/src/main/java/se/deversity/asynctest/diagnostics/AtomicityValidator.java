@@ -27,6 +27,15 @@ public class AtomicityValidator {
         }
     }
 
+    /**
+     * One invocation round on one instance: the unit within which accesses can actually race.
+     *
+     * <p>A record rather than a packed key because packing an epoch and an identity hash into one
+     * long collides, and a collision here merges the histories of two unrelated objects, which is
+     * the same false positive this split exists to remove.
+     */
+    private record AccessGroup(long epoch, int identity) { }
+
     private static class FieldAccessRecord {
         final long threadId;
         final boolean write;
@@ -35,11 +44,25 @@ public class AtomicityValidator {
         /** Whether an owner was supplied at all, which decides what the report may claim. */
         final boolean ownerKnown;
 
+        /**
+         * {@code System.identityHashCode} of the instance the field belongs to, 0 when unknown or
+         * static. Accesses to different instances of the same field are different state and are
+         * analysed apart: six threads each touching their own hasher is not six threads sharing
+         * one.
+         */
+        final int identity;
+
         FieldAccessRecord(long threadId, boolean write, long epoch, boolean ownerKnown) {
+            this(threadId, write, epoch, ownerKnown, 0);
+        }
+
+        FieldAccessRecord(long threadId, boolean write, long epoch, boolean ownerKnown,
+                          int identity) {
             this.threadId = threadId;
             this.write = write;
             this.epoch = epoch;
             this.ownerKnown = ownerKnown;
+            this.identity = identity;
         }
     }
 
@@ -68,12 +91,98 @@ public class AtomicityValidator {
         /** Set by a recording path that carries no lock information at all. */
         private volatile boolean sawUnmodelledAccess;
 
+        /**
+         * The one fingerprint every <em>write</em> shared, or 0 once they disagreed.
+         *
+         * <p>Tracked apart from {@link #fingerprint} because safe publication is asymmetric: what
+         * makes double-checked locking correct is that the writes agreed on a lock, while the
+         * reads deliberately took none. Intersecting reads and writes together collapses exactly
+         * the case worth recognising.
+         */
+        private final java.util.concurrent.atomic.AtomicLong writeFingerprint =
+                new java.util.concurrent.atomic.AtomicLong(UNSET);
+
+        /** Whether the field is declared {@code volatile}, as resolved at weave time. */
+        private volatile boolean volatileField;
+
+        /**
+         * The one constant every write stored, {@link #UNSET} before the first write, and
+         * {@code Integer.MIN_VALUE} once a write stored something else.
+         */
+        private final java.util.concurrent.atomic.AtomicInteger writeConstant =
+                new java.util.concurrent.atomic.AtomicInteger(NO_CONSTANT_YET);
+
         /** Concrete only so it can carry the shared lockset implementation. */
         private static final class Locks extends SelfGuard.TrackedInstance {
         }
 
         void noteOwner(@Nullable Object owner) {
             objectLocks.noteAccess(owner);
+        }
+
+        void noteWriteConstant(int tag) {
+            if (tag == NOT_A_CONSTANT) {
+                writeConstant.set(NOT_A_CONSTANT);
+                return;
+            }
+            int current = writeConstant.get();
+            while (current != NOT_A_CONSTANT && current != tag) {
+                int next = current == NO_CONSTANT_YET ? tag : NOT_A_CONSTANT;
+                if (writeConstant.compareAndSet(current, next)) {
+                    return;
+                }
+                current = writeConstant.get();
+            }
+        }
+
+        /**
+         * {@return whether every write to this field stored the same constant}
+         *
+         * <p>The weaver only tags a write when the value came from a constant instruction and the
+         * writing method had not read the field, so this cannot be the "act" half of a
+         * check-then-act. A field all of whose writes store the same value settles at that value
+         * however the threads interleave, which is what {@code isLocked = true} on every call to
+         * {@code FixedOrderComparator.compare} does.
+         */
+        boolean writesOnlyOneConstant() {
+            int constant = writeConstant.get();
+            return constant != NO_CONSTANT_YET && constant != NOT_A_CONSTANT;
+        }
+
+        void noteVolatile() {
+            volatileField = true;
+        }
+
+        void noteWriteFingerprint(long observed) {
+            if (observed == 0L) {
+                writeFingerprint.set(0L);
+                return;
+            }
+            long current = writeFingerprint.get();
+            while (current != 0L && current != observed) {
+                long next = current == UNSET ? observed : 0L;
+                if (writeFingerprint.compareAndSet(current, next)) {
+                    return;
+                }
+                current = writeFingerprint.get();
+            }
+        }
+
+        /**
+         * {@return whether this field's accesses are safe publication rather than a race}
+         *
+         * <p>True when the field is {@code volatile} and every write to it was made holding the
+         * same lock. That is the double-checked-locking shape: the reads are deliberately
+         * unguarded, and the JMM makes them safe because the field is volatile and the mutation is
+         * serialised by a lock. A volatile field written with no lock held stays reportable, which
+         * is what keeps {@code volatile count++} a finding.
+         */
+        boolean isSafePublication() {
+            if (!volatileField) {
+                return false;
+            }
+            long writes = writeFingerprint.get();
+            return writes != UNSET && writes != 0L;
         }
 
         void noteFingerprint(long observed) {
@@ -104,8 +213,24 @@ public class AtomicityValidator {
         }
     }
 
+    /**
+     * {@return the key a field's lock model is tracked under}
+     *
+     * <p>Identity 0 means "not known", and every caller that predates the agent's identity events
+     * uses it, so their accesses share one guard exactly as they always did.
+     */
+    private static String guardKey(String fieldName, int identity) {
+        return identity == 0 ? fieldName : fieldName + '@' + identity;
+    }
+
     /** Sentinel for "this caller carried no lock information at all". */
     private static final long UNMODELLED = Long.MIN_VALUE;
+
+    /** Tag meaning the weaver could not read the written value as a constant. */
+    private static final int NOT_A_CONSTANT = Integer.MIN_VALUE;
+
+    /** Tag meaning no write has been recorded yet. Distinct from a real constant. */
+    private static final int NO_CONSTANT_YET = Integer.MAX_VALUE;
 
     private final Map<String, CompoundOperation> activeOperations = new ConcurrentHashMap<>();
     private final Map<String, List<FieldAccessRecord>> fieldHistory = new ConcurrentHashMap<>();
@@ -274,8 +399,93 @@ public class AtomicityValidator {
         record(fieldName, value, isWrite, threadId, null, false, lockFingerprint);
     }
 
+    /**
+     * Records an agent-fed access that also says whether the field is declared {@code volatile}.
+     *
+     * <p>Volatility alone never excuses anything: it is combined with the locks the writes held.
+     * A volatile field written under one consistent lock and read without it is safe publication,
+     * the double-checked-locking idiom; a volatile field written with no lock held is still a
+     * finding, which is what keeps {@code volatile count++} reportable.
+     *
+     * @param fieldName       the field, as it should appear in the report
+     * @param value           the value read or written, may be {@code null}
+     * @param isWrite         {@code true} for a write
+     * @param threadId        the thread that made the access
+     * @param lockFingerprint the locks that thread held at the access, 0 for none
+     * @param volatileField   whether the field is declared {@code volatile}
+     * @since 1.10.0
+     */
+    public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
+                                            boolean isWrite, long threadId,
+                                            long lockFingerprint, boolean volatileField) {
+        if (volatileField && fieldName != null && !fieldName.isBlank()) {
+            FieldGuard guard = fieldLocks.computeIfAbsent(fieldName, ignored -> new FieldGuard());
+            guard.noteVolatile();
+        }
+        record(fieldName, value, isWrite, threadId, null, false, lockFingerprint);
+    }
+
+    /**
+     * Records an agent-fed access carrying both the field's volatility and any constant it stored.
+     *
+     * @param fieldName       the field, as it should appear in the report
+     * @param value           the value read or written, may be {@code null}
+     * @param isWrite         {@code true} for a write
+     * @param threadId        the thread that made the access
+     * @param lockFingerprint the locks that thread held at the access, 0 for none
+     * @param volatileField   whether the field is declared {@code volatile}
+     * @param constantTag     the constant this write stored, {@code Integer.MIN_VALUE} for none
+     * @since 1.10.0
+     */
+    public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
+                                            boolean isWrite, long threadId, long lockFingerprint,
+                                            boolean volatileField, int constantTag) {
+        recordFieldAccessUnderLocks(fieldName, value, isWrite, threadId, lockFingerprint,
+                volatileField, constantTag, 0);
+    }
+
+    /**
+     * Records an agent-fed access, naming the instance the field belongs to.
+     *
+     * @param fieldName       the field, as it should appear in the report
+     * @param value           the value read or written, may be {@code null}
+     * @param isWrite         {@code true} for a write
+     * @param threadId        the thread that made the access
+     * @param lockFingerprint the locks that thread held at the access, 0 for none
+     * @param volatileField   whether the field is declared {@code volatile}
+     * @param constantTag     the constant this write stored, {@code Integer.MIN_VALUE} for none
+     * @param identity        {@code System.identityHashCode} of the owner, 0 for statics
+     * @since 1.10.0
+     */
+    public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
+                                            boolean isWrite, long threadId, long lockFingerprint,
+                                            boolean volatileField, int constantTag, int identity) {
+        if (fieldName != null && !fieldName.isBlank()) {
+            // Per instance, not just per field. One WeakEntry in a striped cache is written under
+            // its own segment's lock every time; merging the entries makes those locks disagree
+            // and collapses an intersection that is consistent for every object taken alone.
+            FieldGuard guard = fieldLocks.computeIfAbsent(guardKey(fieldName, identity),
+                    ignored -> new FieldGuard());
+            if (isWrite) {
+                guard.noteWriteConstant(constantTag);
+                guard.noteWriteFingerprint(lockFingerprint);
+            }
+            if (volatileField) {
+                guard.noteVolatile();
+            }
+            guard.noteFingerprint(lockFingerprint);
+        }
+        record(fieldName, value, isWrite, threadId, null, false, lockFingerprint, identity);
+    }
+
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint) {
+        record(fieldName, value, isWrite, threadId, owner, ownerKnown, lockFingerprint, 0);
+    }
+
+    private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
+                        @Nullable Object owner, boolean ownerKnown, long lockFingerprint,
+                        int identity) {
         if (!enabled || fieldName == null || fieldName.isBlank()) {
             return;
         }
@@ -287,6 +497,9 @@ public class AtomicityValidator {
             guard.noteOwner(owner);
         } else if (lockFingerprint != UNMODELLED) {
             guard.noteFingerprint(lockFingerprint);
+            if (isWrite) {
+                guard.noteWriteFingerprint(lockFingerprint);
+            }
         } else {
             // No owner and no fingerprint: the caller has told us nothing about locks, which is
             // what the original overloads do and what they have always effectively meant.
@@ -296,7 +509,7 @@ public class AtomicityValidator {
         List<FieldAccessRecord> history = fieldHistory.computeIfAbsent(fieldName, ignored -> new ArrayList<>());
         synchronized (history) {
             history.add(new FieldAccessRecord(threadId, isWrite, invocationEpoch.get(),
-                    ownerKnown));
+                    ownerKnown, identity));
         }
 
         for (CompoundOperation operation : activeOperations.values()) {
@@ -342,6 +555,30 @@ public class AtomicityValidator {
         return violation;
     }
     /**
+     * Discards everything recorded about {@code fieldName}, whatever the instance.
+     *
+     * <p>For a fact learned late. A field mutated through a {@code VarHandle} or an atomic updater
+     * belongs to a lock-free protocol that no lockset can judge, but the binding that proves it
+     * sits in a static initializer which may run after the first accesses have already been
+     * recorded. Filtering at record time therefore cannot be enough: the early accesses are already
+     * in, and they are the ones that produce the finding. Forgetting the field the moment the fact
+     * arrives is what makes the answer independent of that ordering.
+     *
+     * @param fieldName the field to forget, as it appears in reports
+     * @since 1.10.0
+     */
+    public void forgetField(String fieldName) {
+        if (fieldName == null || fieldName.isBlank()) {
+            return;
+        }
+        fieldHistory.remove(fieldName);
+        // Lock state is keyed per instance as "field@identity", so the field's own key is not the
+        // only one to clear.
+        fieldLocks.keySet().removeIf(key ->
+                key.equals(fieldName) || key.startsWith(fieldName + '@'));
+    }
+
+    /**
      * Analyses what has been recorded about atomicity and builds the report for it.
      *
      * @return the findings this detector collected during the run
@@ -359,9 +596,14 @@ public class AtomicityValidator {
             synchronized (entry.getValue()) {
                 copy = new ArrayList<>(entry.getValue());
             }
-            Map<Long, List<FieldAccessRecord>> byEpoch = new HashMap<>();
+            // Split by instance before anything else. Two threads touching the same field of two
+            // different objects share nothing, and merging them is how a per-call object reads as
+            // contended. Identity 0 means "not known", which keeps every pre-agent caller's
+            // accesses in one group exactly as before.
+            Map<AccessGroup, List<FieldAccessRecord>> byEpoch = new HashMap<>();
             for (FieldAccessRecord access : copy) {
-                byEpoch.computeIfAbsent(access.epoch, ignored -> new ArrayList<>()).add(access);
+                byEpoch.computeIfAbsent(new AccessGroup(access.epoch, access.identity),
+                        ignored -> new ArrayList<>()).add(access);
             }
 
             for (List<FieldAccessRecord> roundAccesses : byEpoch.values()) {
@@ -380,8 +622,17 @@ public class AtomicityValidator {
                 // intersection overall, and the round that raced is a real finding. Accesses
                 // recorded without an owner collapse it, so every caller that predates
                 // recordFieldAccessOn keeps the behaviour it had.
-                FieldGuard locks = fieldLocks.get(entry.getKey());
-                boolean sawUnguarded = locks == null || locks.sawUnguardedAccess();
+                int groupIdentity = roundAccesses.isEmpty() ? 0 : roundAccesses.get(0).identity;
+                FieldGuard locks = fieldLocks.get(guardKey(entry.getKey(), groupIdentity));
+                // Safe publication is not an unguarded access. A volatile field whose every write
+                // held the same lock is double-checked locking, where the reads take no lock on
+                // purpose and the JMM makes that correct. Without this the idiom reports as a
+                // check-then-act violation on every correct implementation of it, which is what
+                // commons-lang's LazyInitializer and Guava's memoizing supplier both are.
+                boolean sawUnguarded = locks == null
+                        || (locks.sawUnguardedAccess()
+                            && !locks.isSafePublication()
+                            && !locks.writesOnlyOneConstant());
                 // Only claim to have looked at locks when an owner was actually supplied.
                 String note = anyOwnerKnown ? SelfGuard.REPORT_NOTE : "";
 

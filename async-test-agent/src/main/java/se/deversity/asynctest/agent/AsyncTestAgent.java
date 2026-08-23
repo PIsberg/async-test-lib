@@ -6,6 +6,7 @@ import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.matcher.ElementMatcher;
+import net.bytebuddy.asm.AsmVisitorWrapper;
 import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.utility.JavaModule;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
@@ -326,6 +327,11 @@ public final class AsyncTestAgent {
                     .disableClassFormatChanges();
         }
         boolean weaveFields = options.fields();
+        // Resolved once, here, rather than per transformation: the hook class lives in the library
+        // jar, and a classpath that cannot see it must fail while installing the agent, not later
+        // from inside somebody's woven test body.
+        List<AsmVisitorWrapper> collectionSubstitutions =
+                options.collections() ? collectionSubstitutions() : List.of();
         builder
                 .ignore((typeDescription, classLoader, module, classBeingRedefined, protectionDomain) ->
                         typeIgnore.matches(typeDescription) || bootstrapIgnore.matches(classLoader))
@@ -339,9 +345,52 @@ public final class AsyncTestAgent {
                     // Direct field instructions are opt-in: they make a bare count++ observable,
                     // which accessor weaving structurally cannot do, at the cost of instrumenting
                     // every field access in every matched class.
-                    return weaveFields ? woven.visit(FieldAccessWeaver.visitor()) : woven;
+                    // Monitor instructions come along whenever anything is being recorded: they
+                    // are what separates a guarded access from a racing one. Field instructions
+                    // are the part fields=true actually buys.
+                    if (weaveFields) {
+                        woven = woven.visit(FieldAccessWeaver.visitor());
+                    } else if (!collectionSubstitutions.isEmpty()) {
+                        woven = woven.visit(FieldAccessWeaver.visitor(false));
+                    }
+                    // Collection calls are opt-in for the same reason and answer a different blind
+                    // spot: a class that keeps its state in a HashMap writes nothing of its own,
+                    // so field weaving sees a correct class racing and reports nothing at all.
+                    for (AsmVisitorWrapper substitution : collectionSubstitutions) {
+                        woven = woven.visit(substitution);
+                    }
+                    return woven;
                 })
                 .installOn(inst);
+    }
+
+    /**
+     * Resolves the library-side hook class and builds the collection substitutions.
+     *
+     * <p>The hooks live in {@code async-test-lib}, which the agent does not depend on: the agent
+     * jar carries Byte Buddy and nothing of the library, exactly as the module boundary requires.
+     * Loading it by name here is the same arrangement the field weaver already has with
+     * {@code TelemetryRegistry}, and it fails loudly at install time when the two are not on the
+     * same classpath.
+     */
+    private static List<AsmVisitorWrapper> collectionSubstitutions() {
+        try {
+            ClassLoader loader = AsyncTestAgent.class.getClassLoader();
+            Class<?> hooks = Class.forName(CollectionAccessWeaver.hooksClassName(), false, loader);
+            Class<?> lockHooks = Class.forName(CollectionAccessWeaver.lockHooksClassName(), false, loader);
+            // Lock weaving rides along with collection weaving rather than being its own option:
+            // recording an access without seeing the ReentrantLock that covered it reports correct
+            // code, which is the same reason monitor weaving is not separately switchable.
+            List<AsmVisitorWrapper> all =
+                    new java.util.ArrayList<>(CollectionAccessWeaver.substitutions(hooks));
+            all.addAll(CollectionAccessWeaver.lockSubstitutions(lockHooks));
+            return all;
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException(
+                    "collections=true needs " + CollectionAccessWeaver.hooksClassName()
+                            + " on the classpath; add the async-test-lib dependency, or drop the"
+                            + " collections= option", e);
+        }
     }
 
     /**

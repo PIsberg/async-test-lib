@@ -36,12 +36,20 @@ import org.jspecify.annotations.Nullable;
  *
  * <h2>What it does not do</h2>
  *
- * <p>Nothing is discovered automatically. A {@code synchronized} block on an object other than the
- * tracked instance emits no callback the library can observe, and the agent weaves field access
- * rather than monitor instructions, so a lock only enters this set when the test declares it. An
- * undeclared lock is invisible and the finding stands, which is the safe direction: the library
- * would rather ask you to verify synchronization that exists than stay silent about one that does
- * not.
+ * <p>Without the agent, nothing is discovered automatically: a {@code synchronized} block on an
+ * object other than the tracked instance emits no callback the library can observe, so a lock only
+ * enters this set when the test declares it.
+ *
+ * <p>With the agent attached, one kind does arrive on its own. Since 1.9.6 the weaver instruments
+ * {@code MONITORENTER} and {@code MONITOREXIT} and routes them here through
+ * {@code TelemetryRegistry.monitorEntered}, so a plain {@code synchronized} block in instrumented
+ * code counts as a held lock with no declaration at all. That covers monitors and only monitors: a
+ * {@link java.util.concurrent.locks.ReentrantLock} compiles to an ordinary method call and stays
+ * invisible until the test declares it.
+ *
+ * <p>An undeclared lock the agent cannot see is invisible and the finding stands, which is the safe
+ * direction: the library would rather ask you to verify synchronization that exists than stay
+ * silent about one that does not.
  *
  * <p>Deliberately not fed from the other detectors' lock-recording APIs
  * ({@code LockLeakDetector.recordLockAcquired} and friends). Those detectors only exist when
