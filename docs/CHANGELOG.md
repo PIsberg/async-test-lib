@@ -27,6 +27,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`ReentrantLock` is visible to the lock model.** A `synchronized` block compiles to
+  `MONITORENTER`, which the agent weaves; a `java.util.concurrent.locks.Lock` compiles to an
+  ordinary method call and looked like nothing, so code guarded by one was reported as unguarded.
+  `AgentLockHooks` (new, `INTERNAL`) substitutes `lock`, `lockInterruptibly`, `tryLock` and
+  `unlock`, recording after acquisition and before release so the recorded interval is always
+  contained by the real one. A failed `tryLock` records nothing.
+
+- **`volatile` fields with guarded writes are no longer reported as check-then-act.** Double-checked
+  locking is indistinguishable from a check-then-act bug to a lockset: reads take no lock, writes
+  take one. What separates them is `volatile`, which the weaver now resolves at weave time and
+  bakes into the recording call, so the hot path pays nothing. `AtomicityValidator` tracks the
+  write-only lockset separately and treats "volatile, and every write held the same lock" as safe
+  publication. A volatile field written with **no** lock held is still reported, so `volatile
+  count++` remains the finding it should be; `SafePublicationRuleTest` pins all three directions.
+
+  Measured on the corpus eval: `commons-lang3`'s `LazyInitializer` stopped being a false positive,
+  taking documented-thread-safe classes with any finding from 5 of 14 to 4 of 14, while
+  documented-not-thread-safe detection stayed at 19 of 19.
+
 - **Monitor weaving no longer rides on `fields=true` alone.** `FieldAccessWeaver.visitor(boolean)`
   separates the two: monitor instructions are woven whenever anything is being recorded, field
   instructions only when `fields=true` asked for them. Without this, `collections=true` reported a
