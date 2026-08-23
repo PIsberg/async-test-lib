@@ -1,6 +1,6 @@
 # corpus-eval
 
-Measures what the 142 detectors report on 33 third-party classes with a documented
+Measures what the 142 detectors report on 34 third-party classes with a documented
 thread-safety contract. The write-up, with the numbers and what they do and do not support, is
 [docs/analysis/corpus-eval.md](../docs/analysis/corpus-eval.md).
 
