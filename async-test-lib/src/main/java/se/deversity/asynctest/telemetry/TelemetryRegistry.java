@@ -62,6 +62,10 @@ public final class TelemetryRegistry {
     private static @Nullable ScheduledExecutorService drainExecutor = null;
     private static @Nullable Thread shutdownHook = null;
 
+    /** Fields a volatile write publishes, as the weaver found them. Static facts; grows only. */
+    private static final java.util.Set<String> PUBLISHED_BY_VOLATILE =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     private TelemetryRegistry() {}
 
     /**
@@ -128,6 +132,50 @@ public final class TelemetryRegistry {
      */
     public static void recordAccess(long threadId, String qualifiedName, boolean isWrite,
                                     boolean volatileField, int constantTag) {
+        recordAccess(0, threadId, qualifiedName, isWrite, volatileField, constantTag);
+    }
+
+    /**
+     * Records a field access on a named instance, the agent's widest hot path.
+     *
+     * <p>{@code identity} is {@code System.identityHashCode} of the object the field belongs to,
+     * or 0 for a static field. It is what separates two threads racing on one object from two
+     * threads each using their own: without it a per-call object such as a hasher or an iterator
+     * aggregates by field name and reads as shared, which reports code that never shared anything.
+     *
+     * @param identity      {@code System.identityHashCode(receiver)}, or 0 for a static field
+     * @param threadId      {@code Thread.currentThread().threadId()}
+     * @param qualifiedName combined {@code declaringClass.field} identifier
+     * @param isWrite       {@code true} for a write access
+     * @param volatileField whether the field is declared {@code volatile}
+     * @param constantTag   the constant stored, or {@code Integer.MIN_VALUE} for "not a constant"
+     * @since 1.10.0
+     */
+    public static void recordAccess(int identity, long threadId, String qualifiedName,
+                                    boolean isWrite, boolean volatileField, int constantTag) {
+        recordAccess(identity, threadId, qualifiedName, isWrite, volatileField, constantTag, false);
+    }
+
+    /**
+     * Records a field access, saying also whether the method had already read a volatile field of
+     * the same object.
+     *
+     * <p>That bit is one half of the publish-via-volatile idiom; the other arrives through
+     * {@link #publishedByVolatile(String)}. Together they describe a plain field written under a
+     * lock, published by a volatile write, and read only after the volatile read that orders it.
+     *
+     * @param identity          {@code System.identityHashCode(receiver)}, 0 for a static field
+     * @param threadId          {@code Thread.currentThread().threadId()}
+     * @param qualifiedName     combined {@code declaringClass.field} identifier
+     * @param isWrite           {@code true} for a write access
+     * @param volatileField     whether the field is declared {@code volatile}
+     * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
+     * @param afterVolatileRead whether a volatile field of the owner was read first
+     * @since 1.10.0
+     */
+    public static void recordAccess(int identity, long threadId, String qualifiedName,
+                                    boolean isWrite, boolean volatileField, int constantTag,
+                                    boolean afterVolatileRead) {
         if (STOPPED.get()) {
             return;
         }
@@ -137,7 +185,7 @@ public final class TelemetryRegistry {
         // is what the producer path requires - a heavier capture here would change the scheduling
         // this whole buffer exists to leave alone.
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(),
-                volatileField, constantTag);
+                volatileField, constantTag, identity, afterVolatileRead);
     }
 
     /**
@@ -180,6 +228,29 @@ public final class TelemetryRegistry {
      */
     public static void monitorEntered(Object monitor) {
         HeldLocks.acquired(monitor);
+    }
+
+    /**
+     * Declares that a volatile write in the same method publishes {@code qualifiedName}.
+     *
+     * <p>Emitted by the weaver at the volatile write, once per plain field that method wrote before
+     * it. The fact is static, so recording it repeatedly is harmless and the set only grows.
+     *
+     * @param qualifiedName the plain field a volatile write publishes
+     * @since 1.10.0
+     */
+    public static void publishedByVolatile(String qualifiedName) {
+        PUBLISHED_BY_VOLATILE.add(qualifiedName);
+    }
+
+    /**
+     * {@return whether a volatile write is known to publish {@code qualifiedName}}
+     *
+     * @param qualifiedName the field to ask about
+     * @since 1.10.0
+     */
+    public static boolean isPublishedByVolatile(String qualifiedName) {
+        return PUBLISHED_BY_VOLATILE.contains(qualifiedName);
     }
 
     /**

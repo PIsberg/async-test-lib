@@ -27,6 +27,15 @@ public class AtomicityValidator {
         }
     }
 
+    /**
+     * One invocation round on one instance: the unit within which accesses can actually race.
+     *
+     * <p>A record rather than a packed key because packing an epoch and an identity hash into one
+     * long collides, and a collision here merges the histories of two unrelated objects, which is
+     * the same false positive this split exists to remove.
+     */
+    private record AccessGroup(long epoch, int identity) { }
+
     private static class FieldAccessRecord {
         final long threadId;
         final boolean write;
@@ -35,11 +44,25 @@ public class AtomicityValidator {
         /** Whether an owner was supplied at all, which decides what the report may claim. */
         final boolean ownerKnown;
 
+        /**
+         * {@code System.identityHashCode} of the instance the field belongs to, 0 when unknown or
+         * static. Accesses to different instances of the same field are different state and are
+         * analysed apart: six threads each touching their own hasher is not six threads sharing
+         * one.
+         */
+        final int identity;
+
         FieldAccessRecord(long threadId, boolean write, long epoch, boolean ownerKnown) {
+            this(threadId, write, epoch, ownerKnown, 0);
+        }
+
+        FieldAccessRecord(long threadId, boolean write, long epoch, boolean ownerKnown,
+                          int identity) {
             this.threadId = threadId;
             this.write = write;
             this.epoch = epoch;
             this.ownerKnown = ownerKnown;
+            this.identity = identity;
         }
     }
 
@@ -407,16 +430,46 @@ public class AtomicityValidator {
     public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
                                             boolean isWrite, long threadId, long lockFingerprint,
                                             boolean volatileField, int constantTag) {
-        if (isWrite && fieldName != null && !fieldName.isBlank()) {
-            fieldLocks.computeIfAbsent(fieldName, ignored -> new FieldGuard())
-                    .noteWriteConstant(constantTag);
-        }
         recordFieldAccessUnderLocks(fieldName, value, isWrite, threadId, lockFingerprint,
-                volatileField);
+                volatileField, constantTag, 0);
+    }
+
+    /**
+     * Records an agent-fed access, naming the instance the field belongs to.
+     *
+     * @param fieldName       the field, as it should appear in the report
+     * @param value           the value read or written, may be {@code null}
+     * @param isWrite         {@code true} for a write
+     * @param threadId        the thread that made the access
+     * @param lockFingerprint the locks that thread held at the access, 0 for none
+     * @param volatileField   whether the field is declared {@code volatile}
+     * @param constantTag     the constant this write stored, {@code Integer.MIN_VALUE} for none
+     * @param identity        {@code System.identityHashCode} of the owner, 0 for statics
+     * @since 1.10.0
+     */
+    public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
+                                            boolean isWrite, long threadId, long lockFingerprint,
+                                            boolean volatileField, int constantTag, int identity) {
+        if (fieldName != null && !fieldName.isBlank()) {
+            FieldGuard guard = fieldLocks.computeIfAbsent(fieldName, ignored -> new FieldGuard());
+            if (isWrite) {
+                guard.noteWriteConstant(constantTag);
+            }
+            if (volatileField) {
+                guard.noteVolatile();
+            }
+        }
+        record(fieldName, value, isWrite, threadId, null, false, lockFingerprint, identity);
     }
 
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint) {
+        record(fieldName, value, isWrite, threadId, owner, ownerKnown, lockFingerprint, 0);
+    }
+
+    private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
+                        @Nullable Object owner, boolean ownerKnown, long lockFingerprint,
+                        int identity) {
         if (!enabled || fieldName == null || fieldName.isBlank()) {
             return;
         }
@@ -440,7 +493,7 @@ public class AtomicityValidator {
         List<FieldAccessRecord> history = fieldHistory.computeIfAbsent(fieldName, ignored -> new ArrayList<>());
         synchronized (history) {
             history.add(new FieldAccessRecord(threadId, isWrite, invocationEpoch.get(),
-                    ownerKnown));
+                    ownerKnown, identity));
         }
 
         for (CompoundOperation operation : activeOperations.values()) {
@@ -503,9 +556,14 @@ public class AtomicityValidator {
             synchronized (entry.getValue()) {
                 copy = new ArrayList<>(entry.getValue());
             }
-            Map<Long, List<FieldAccessRecord>> byEpoch = new HashMap<>();
+            // Split by instance before anything else. Two threads touching the same field of two
+            // different objects share nothing, and merging them is how a per-call object reads as
+            // contended. Identity 0 means "not known", which keeps every pre-agent caller's
+            // accesses in one group exactly as before.
+            Map<AccessGroup, List<FieldAccessRecord>> byEpoch = new HashMap<>();
             for (FieldAccessRecord access : copy) {
-                byEpoch.computeIfAbsent(access.epoch, ignored -> new ArrayList<>()).add(access);
+                byEpoch.computeIfAbsent(new AccessGroup(access.epoch, access.identity),
+                        ignored -> new ArrayList<>()).add(access);
             }
 
             for (List<FieldAccessRecord> roundAccesses : byEpoch.values()) {

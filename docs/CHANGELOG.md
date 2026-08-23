@@ -27,6 +27,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A plain field published by a volatile write is recognised.** Writing a field under a lock and
+  then assigning a `volatile` field to expose it is how `Suppliers.memoize` and most lazy holders
+  work: the plain field is safe because every reader reads the volatile guard first. The weaver sees
+  both halves in program order, so the rule is checked rather than assumed. It marks the plain
+  field as published only when a volatile write of the same object follows it in the same method,
+  and marks a read as ordered only when that method already read a volatile field of that object.
+  A field written and never published, or read without the volatile read in front of it, keeps its
+  finding.
+
+- **Field accesses are attributed to the object they belong to.** Every agent-fed field event
+  carried a field *name* and no instance, so accesses to different objects of the same class merged.
+  Six threads each using their own per-call object read exactly like six threads racing on one, and
+  that is not a corner case: a hasher, a matcher, an iterator or any short-lived helper created
+  inside a method hits it. The weaver now lifts `System.identityHashCode` of the receiver onto the
+  stack before each field instruction, using duplication only, so the sequence stays branch-free,
+  needs no local variable, and leaves the operand stack exactly as the field instruction expects.
+  Static fields report identity 0, as does every non-agent caller, so their behaviour is unchanged.
+  `AtomicityValidator` analyses each instance separately; `PerInstanceAnalysisTest` pins that one
+  shared instance still reports.
+
 - **A constant written by a method that never read the field is no longer a check-then-act.** The
   weaver tags a write when its value came from a constant instruction *and* the writing method had
   not already read that field. Both halves matter: a field every thread writes the same constant to

@@ -247,6 +247,46 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
     @Override
     public void onEvent(long threadId, @Nullable String qualifiedName, boolean isWrite,
                         long lockFingerprint, boolean volatileField, int constantTag) {
+        onEvent(threadId, qualifiedName, isWrite, lockFingerprint, volatileField, constantTag, 0);
+    }
+
+    /**
+     * Forwards a drained access that also identifies the instance the field belongs to.
+     *
+     * @param threadId        the worker that recorded the access
+     * @param qualifiedName   the field identifier the weaver emitted
+     * @param isWrite         {@code true} for a write access
+     * @param lockFingerprint the locks that worker held at the access, 0 for none
+     * @param volatileField   whether the field is declared {@code volatile}
+     * @param constantTag     the constant stored, {@code Integer.MIN_VALUE} for none
+     * @param identity        {@code System.identityHashCode} of the owner, 0 for statics
+     * @since 1.10.0
+     */
+    @Override
+    public void onEvent(long threadId, @Nullable String qualifiedName, boolean isWrite,
+                        long lockFingerprint, boolean volatileField, int constantTag,
+                        int identity) {
+        onEvent(threadId, qualifiedName, isWrite, lockFingerprint, volatileField, constantTag,
+                identity, false);
+    }
+
+    /**
+     * Forwards a drained access with the volatile-read ordering bit as well.
+     *
+     * @param threadId          the worker that recorded the access
+     * @param qualifiedName     the field identifier the weaver emitted
+     * @param isWrite           {@code true} for a write access
+     * @param lockFingerprint   the locks that worker held, 0 for none
+     * @param volatileField     whether the field is declared {@code volatile}
+     * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
+     * @param identity          identity hash of the owner, 0 for statics
+     * @param afterVolatileRead whether a volatile field of the owner was read first
+     * @since 1.10.0
+     */
+    @Override
+    public void onEvent(long threadId, @Nullable String qualifiedName, boolean isWrite,
+                        long lockFingerprint, boolean volatileField, int constantTag,
+                        int identity, boolean afterVolatileRead) {
         if (!active) {
             return;
         }
@@ -254,8 +294,14 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
             return;
         }
         if (qualifiedName == null) return;
-        atomicityValidator.recordFieldAccessUnderLocks(fieldIdentifier(qualifiedName), null,
-                isWrite, threadId, lockFingerprint, volatileField, constantTag);
+        String field = fieldIdentifier(qualifiedName);
+        // Both halves of the publish-via-volatile idiom, resolved here so the detector sees one
+        // answer rather than two facts it would have to combine itself.
+        boolean safelyPublished = !isWrite
+                && afterVolatileRead
+                && TelemetryRegistry.isPublishedByVolatile(qualifiedName);
+        atomicityValidator.recordFieldAccessUnderLocks(field, null, isWrite, threadId,
+                lockFingerprint, volatileField || safelyPublished, constantTag, identity);
     }
 
     /**

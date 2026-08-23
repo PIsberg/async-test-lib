@@ -78,7 +78,7 @@ exception counts move, and only on the three subjects whose corruption surfaces 
 | Measure | Value |
 |---|---|
 | Documented-thread-safe classes with a VERDICT-tier HIGH or CRITICAL finding | 0 of 14 |
-| Documented-thread-safe classes with any finding at all | 3 of 14 |
+| Documented-thread-safe classes with any finding at all | 1 of 14 |
 | Documented-not-thread-safe classes with at least one finding | 19 of 19 |
 | Documented-not-thread-safe classes that threw out of their own code | 3 to 4 of 19 |
 | Distinct detectors that produced any finding | 2 of 142 |
@@ -91,42 +91,38 @@ the tier `@AsyncTest(failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT)` gates 
 10 classes whose javadoc says they are safe for concurrent use, that tier produced nothing. A build
 gated at `minTrust = VERDICT` would not have failed on any of them.
 
-**Below that tier, three of the fourteen still draw a `PROMPT`-tier finding**, and each names a
-limit of the model rather than a defect in the code:
+**Below that tier, one of the fourteen still draws a `PROMPT`-tier finding.** Guava's `EventBus`
+reports two things, and both name the boundary of what a lockset can decide rather than anything
+wrong with the code:
 
-- `Suppliers.memoize` reports its non-volatile `value` field, which is written under a lock and read
-  without one. It is correct because the value is published through the *volatile* `delegate` write
-  beside it, and recognising that needs happens-before reasoning across two fields, which a lockset
-  does not do.
-- `BloomFilter` reports `Murmur3_128Hasher.h1`, `h2` and `length`. Those belong to a hasher created
-  per call, so each thread has its own: the agent's field events carry a field name and no instance,
-  so six thread-confined objects aggregate into one apparently shared field.
-- `EventBus` reports the same identity artefact through a per-call iterator, plus a Guava cache view
-  written under **striped** locks, where each thread holds the lock for its own segment. An Eraser
-  lockset intersects to empty by construction there, which is a property of the technique, not a
-  tuning problem.
+- `LocalCache$WeakEntry.valueReference` and `AbstractFutureState$Waiter.next` are volatile fields
+  mutated by lock-free protocols. The writes take no lock at all, by design, and correctness comes
+  from compare-and-swap and from publication order. An Eraser lockset has nothing to intersect.
+- A Guava cache structure reached through the same path is guarded by **striped** locks: each thread
+  holds the lock for its own segment, so the intersection of "locks held at every access" is empty
+  by construction, however correct the code is.
 
-Two other findings that stood here in earlier runs are gone, and both went because the model learned
-something general rather than because this corpus was special: `LazyInitializer`'s double-checked
-locking is now recognised as safe publication, and `FixedOrderComparator`'s `isLocked = true` is
-recognised as a constant written by a method that never reads it.
+Both are exactly what `PROMPT` is defined to mean, a pattern the library cannot fully model, and
+neither is reachable by a lockset without per-partition reasoning and happens-before analysis that
+this architecture does not have. The honest options are to leave it reported, or to run the agent
+the way [AGENT.md](../AGENT.md) recommends, with `includes=` scoped to the code under test, which is
+what a user does and what stops the eval auditing the internals of a dependency it never called.
 
-**Six of the nine genuinely unsafe classes were caught, and one crashed.** `StopWatch` threw out of
-its own code 45 to 53 times per run, which no single-threaded test would ever show. The finding
-names the field and the thread count, so the report points at the state, not just at the test.
+## What the model learned from this corpus
 
-**The misses had one cause, and it is now closed.** With field weaving alone, four of the nineteen
-documented-not-thread-safe subjects report nothing: `ListOrderedMap`, `PassiveExpiringMap`,
-`EvictingQueue` and `LazyMap`. All four keep their mutable state inside a JDK object behind a final
-field, an `ArrayList` insert order, a `HashMap` of expiry times, an `ArrayDeque` delegate, a
-decorated `HashMap`. There is no field instruction to weave, and the writes that race happen where
-nothing can be woven. `LazyMap` is the useful one: it was added after the diagnosis, as a class the
-explanation predicted would be missed, and it was.
+Four false positives stood when the eval was first written. Each was traced to something the model
+did not know, and each fix generalises well beyond these subjects:
 
-The agent's `collections=true` mode rewrites the collection call itself so the instance reaches the
-detectors, and all four now report. The general shape matters more than the four classes: **any
-class that delegates its state to a JDK collection was invisible**, which covers most classes with a
-`private final Map` or `List` field.
+| Was reported | Because | Now |
+|---|---|---|
+| `LazyInitializer.object` | double-checked locking looks exactly like check-then-act to a lockset | `volatile` plus writes under one lock is recognised as safe publication |
+| `FixedOrderComparator.isLocked` | `isLocked = true` on every call reads as a changing state | a constant written by a method that never read the field is benign |
+| `Murmur3_128Hasher.h1/h2` | six threads, six per-call hashers, aggregated by field name | field accesses are attributed to the object they belong to |
+| `NonSerializableMemoizingSupplier.value` | a plain field written under a lock and read without one | recognised when a volatile write publishes it and reads are ordered by a volatile read |
+
+Detection stayed at 19 of 19 through every one of them, which is the number that matters while
+chasing the other column: a rule that quietens a false positive by weakening detection has not
+fixed anything.
 
 ## What closing the gap changed
 

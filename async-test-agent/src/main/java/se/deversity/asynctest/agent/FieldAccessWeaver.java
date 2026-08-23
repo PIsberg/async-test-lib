@@ -180,6 +180,13 @@ final class FieldAccessWeaver {
         /** The int-valued constant the previous instruction pushed, or {@code null}. */
         private @Nullable Integer pendingConstant;
 
+        /** Non-volatile fields this method has written, in order, awaiting a volatile write. */
+        private final java.util.List<String> plainWritesInThisMethod = new java.util.ArrayList<>();
+
+        /** Whether this method has already read a volatile field of the same owner. */
+        private final java.util.Set<String> ownersWithVolatileReadInThisMethod =
+                new java.util.HashSet<>();
+
         FieldAccessMethodVisitor(MethodVisitor delegate, boolean weaveFieldInstructions,
                                  TypePool typePool) {
             super(Opcodes.ASM9, delegate);
@@ -272,6 +279,88 @@ final class FieldAccessWeaver {
             super.visitVarInsn(opcode, varIndex);
         }
 
+
+        /**
+         * Leaves {@code System.identityHashCode(receiver)} on top of the stack, with the operands
+         * the field instruction needs still beneath it, in their original order.
+         *
+         * <p>Which instance a field belongs to is the difference between six threads racing on one
+         * object and six threads each using their own. Without it a per-call object, a hasher, a
+         * matcher, an iterator, aggregates by field name and reads as shared, which is a false
+         * positive on code that is not even concurrent.
+         *
+         * <p>Done with stack manipulation rather than a scratch local on purpose: a local would
+         * grow {@code maxLocals} and put a write and a read of an undeclared slot into a method
+         * whose stack map frames the weaver deliberately does not recompute. Every sequence here is
+         * branch-free and returns the stack to the exact shape the field instruction expects, so
+         * only {@code maxStack} moves, which is what {@code COMPUTE_MAXS} is for.
+         */
+        private void liftReceiverIdentity(boolean isWrite, String descriptor) {
+            if (!isWrite) {
+                super.visitInsn(Opcodes.DUP);                 // obj -> obj, obj
+            } else if (isCategoryTwo(descriptor)) {
+                super.visitInsn(Opcodes.DUP2_X1);             // obj, v1, v2 -> v1, v2, obj, v1, v2
+                super.visitInsn(Opcodes.POP2);                //             -> v1, v2, obj
+                super.visitInsn(Opcodes.DUP);                 //             -> v1, v2, obj, obj
+            } else {
+                super.visitInsn(Opcodes.DUP2);                // obj, v -> obj, v, obj, v
+                super.visitInsn(Opcodes.POP);                 //        -> obj, v, obj
+            }
+            super.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/System", "identityHashCode",
+                    "(Ljava/lang/Object;)I", false);
+        }
+
+        /**
+         * Puts the receiver back underneath a two-slot value after the recording call.
+         *
+         * <p>Only the category-2 write needs it: lifting the receiver out from under a {@code long}
+         * or {@code double} is the one case that cannot be undone by duplication alone.
+         */
+        private void restoreReceiverBelowValue(String descriptor) {
+            if (isCategoryTwo(descriptor)) {
+                super.visitInsn(Opcodes.DUP_X2);              // v1, v2, obj -> obj, v1, v2, obj
+                super.visitInsn(Opcodes.POP);                 //             -> obj, v1, v2
+            }
+        }
+
+        private static boolean isCategoryTwo(String descriptor) {
+            return "J".equals(descriptor) || "D".equals(descriptor);
+        }
+
+
+        /**
+         * Tracks the "write it, then publish it with a volatile write" idiom inside one method.
+         *
+         * <p>Guava's memoizing supplier is the canonical case: it assigns {@code value} under its
+         * own monitor and then assigns the <em>volatile</em> {@code delegate}, and every reader
+         * reads {@code delegate} before {@code value}. The plain field is safely published by that
+         * ordering, and reporting it means telling the author of correct code to fix it.
+         *
+         * <p>Both halves are visible here, in program order, which is what makes the rule checkable
+         * rather than assumed: a volatile write publishes the plain writes this method already made
+         * to the same owner, and a plain read only counts as ordered when this method has already
+         * read a volatile field of that owner. A class that writes the plain field and never
+         * publishes it, or reads it without reading the volatile guard first, is untouched by this
+         * and keeps its finding.
+         */
+        private void notePublication(String owner, String name, boolean isWrite, boolean isVolatile) {
+            String identifier = identifier(owner, name);
+            if (isVolatile) {
+                if (isWrite) {
+                    for (String published : plainWritesInThisMethod) {
+                        super.visitLdcInsn(published);
+                        super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "publishedByVolatile",
+                                "(Ljava/lang/String;)V", false);
+                    }
+                    plainWritesInThisMethod.clear();
+                } else {
+                    ownersWithVolatileReadInThisMethod.add(owner);
+                }
+            } else if (isWrite) {
+                plainWritesInThisMethod.add(identifier);
+            }
+        }
+
         private void noteConstant(@Nullable Integer constant) {
             pendingConstant = constant;
         }
@@ -299,6 +388,14 @@ final class FieldAccessWeaver {
             }
             if (weaveFieldInstructions && shouldWeave(owner)) {
                 boolean isWrite = write;
+                boolean isStatic = opcode == Opcodes.GETSTATIC || opcode == Opcodes.PUTSTATIC;
+                if (isStatic) {
+                    // No receiver: static state is shared by definition, and 0 is the identity
+                    // every static access shares, which is exactly the old behaviour.
+                    super.visitInsn(Opcodes.ICONST_0);
+                } else {
+                    liftReceiverIdentity(isWrite, descriptor);
+                }
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, THREAD, "currentThread",
                         "()Ljava/lang/Thread;", false);
                 super.visitMethodInsn(Opcodes.INVOKEVIRTUAL, THREAD, "threadId", "()J", false);
@@ -306,8 +403,14 @@ final class FieldAccessWeaver {
                 super.visitInsn(isWrite ? Opcodes.ICONST_1 : Opcodes.ICONST_0);
                 super.visitInsn(isVolatile(owner, name) ? Opcodes.ICONST_1 : Opcodes.ICONST_0);
                 super.visitLdcInsn(tag);
+                super.visitInsn(ownersWithVolatileReadInThisMethod.contains(owner)
+                        ? Opcodes.ICONST_1 : Opcodes.ICONST_0);
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "recordAccess",
-                        "(JLjava/lang/String;ZZI)V", false);
+                        "(IJLjava/lang/String;ZZIZ)V", false);
+                if (isWrite && !isStatic) {
+                    restoreReceiverBelowValue(descriptor);
+                }
+                notePublication(owner, name, isWrite, isVolatile(owner, name));
             }
             super.visitFieldInsn(opcode, owner, name, descriptor);
         }
