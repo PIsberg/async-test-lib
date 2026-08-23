@@ -96,8 +96,11 @@
                         <license.mock.mode>true</license.mock.mode>
                         <!-- fields=true is what makes a bare field instruction inside a
                              third-party method body observable. Without it only JavaBean
-                             accessors are woven and most subjects are invisible. -->
-                        <asynctest.agent>fields=true</asynctest.agent>
+                             accessors are woven and most subjects are invisible.
+                             collections=true adds the other half: a class that keeps its state
+                             in a JDK collection writes no field of its own, so without it three
+                             of the nine documented-unsafe subjects reported nothing at all. -->
+                        <asynctest.agent>fields=true,collections=true</asynctest.agent>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>
