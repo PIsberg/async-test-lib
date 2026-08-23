@@ -71,6 +71,25 @@ public final class TelemetryEventBuffer {
                              long lockFingerprint) {
             onEvent(threadId, targetField, isWrite);
         }
+
+        /**
+         * Invoked for a drained event, also saying whether the field is declared {@code volatile}.
+         *
+         * <p>{@code default} for the same reason as the overload above: implementations are
+         * lambdas, and a second abstract method would break all of them. Not overriding it keeps
+         * the previous behaviour exactly.
+         *
+         * @param threadId        {@code Thread.currentThread().threadId()} of the producer
+         * @param targetField     field or method identifier
+         * @param isWrite         true if it was a write access
+         * @param lockFingerprint identifies the set of locks the producer held at the access
+         * @param volatileField   whether the accessed field is declared {@code volatile}
+         * @since 1.10.0
+         */
+        default void onEvent(long threadId, @Nullable String targetField, boolean isWrite,
+                             long lockFingerprint, boolean volatileField) {
+            onEvent(threadId, targetField, isWrite, lockFingerprint);
+        }
     }
 
     /**
@@ -83,6 +102,7 @@ public final class TelemetryEventBuffer {
         @Nullable String targetField;
         boolean isWrite;
         long lockFingerprint;
+        boolean volatileField;
     }
 
     private static final VarHandle SEQ_VH;
@@ -170,6 +190,26 @@ public final class TelemetryEventBuffer {
      * @since 1.9.6
      */
     public void publish(long threadId, String targetField, boolean isWrite, long lockFingerprint) {
+        publish(threadId, targetField, isWrite, lockFingerprint, false);
+    }
+
+    /**
+     * Publishes a field-access event that also says whether the field is declared {@code volatile}.
+     *
+     * <p>The flag is resolved at weave time and baked into the call, so it costs nothing here. It
+     * exists because a volatile field whose writes all happened under one lock is safe publication,
+     * not a race: that is the double-checked-locking idiom, and without this bit every correct use
+     * of it reads as a check-then-act violation.
+     *
+     * @param threadId        {@code Thread.currentThread().threadId()}
+     * @param targetField     field or method identifier
+     * @param isWrite         {@code true} for a write access, {@code false} for a read
+     * @param lockFingerprint identifies the locks held at the access, 0 for none
+     * @param volatileField   whether the accessed field is declared {@code volatile}
+     * @since 1.10.0
+     */
+    public void publish(long threadId, String targetField, boolean isWrite, long lockFingerprint,
+                        boolean volatileField) {
         long fullSinceNanos = 0L;
         int spins = 0;
         for (;;) {
@@ -207,6 +247,7 @@ public final class TelemetryEventBuffer {
                 event.targetField = targetField;
                 event.isWrite = isWrite;
                 event.lockFingerprint = lockFingerprint;
+                event.volatileField = volatileField;
                 // Release fence: consumer will not observe the event until this store completes.
                 SEQ_VH.setRelease(event, seq);
                 return;
@@ -247,7 +288,7 @@ public final class TelemetryEventBuffer {
                 break; // slot not yet published by any producer
             }
             callback.onEvent(event.threadId, event.targetField, event.isWrite,
-                    event.lockFingerprint);
+                    event.lockFingerprint, event.volatileField);
             localCursor = next;
             next++;
             count++;

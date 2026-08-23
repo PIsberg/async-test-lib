@@ -5,6 +5,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
 
 import net.bytebuddy.asm.AsmVisitorWrapper;
 import net.bytebuddy.asm.MemberSubstitution;
@@ -55,8 +57,11 @@ final class CollectionAccessWeaver {
      */
     private static final String LIBRARY_ROOT = String.join(".", "se", "deversity", "asynctest") + ".";
 
-    /** The library-side class the substituted calls land in. */
+    /** The library-side class the substituted collection calls land in. */
     private static final String HOOKS = LIBRARY_ROOT + "AgentCollectionHooks";
+
+    /** The library-side class the substituted lock calls land in. */
+    private static final String LOCK_HOOKS = LIBRARY_ROOT + "AgentLockHooks";
 
     private CollectionAccessWeaver() {
     }
@@ -86,8 +91,12 @@ final class CollectionAccessWeaver {
      * @param hooks the class holding the hook methods, resolved in the weaving class loader
      */
     static List<AsmVisitorWrapper> substitutions(Class<?> hooks) {
-        List<AsmVisitorWrapper> substitutions = new ArrayList<>(ENTRIES.size());
-        for (Entry entry : ENTRIES) {
+        return substitutionsFor(ENTRIES, hooks);
+    }
+
+    private static List<AsmVisitorWrapper> substitutionsFor(List<Entry> entries, Class<?> hooks) {
+        List<AsmVisitorWrapper> substitutions = new ArrayList<>(entries.size());
+        for (Entry entry : entries) {
             substitutions.add(MemberSubstitution.relaxed()
                     .method(invocationMatcher(entry))
                     // Virtual and interface invocations only. A super.get() call is INVOKESPECIAL
@@ -137,8 +146,37 @@ final class CollectionAccessWeaver {
         }
     }
 
-    /** {@return the hook class name the substituted calls land in} */
+    /** {@return the hook class name the substituted collection calls land in} */
     static String hooksClassName() {
         return HOOKS;
+    }
+
+    /** {@return the hook class name the substituted lock calls land in} */
+    static String lockHooksClassName() {
+        return LOCK_HOOKS;
+    }
+
+    /**
+     * The lock table. {@code java.util.concurrent.locks.Lock} is an interface whose implementations
+     * live in {@code java.util.concurrent.locks}, where nothing is woven, so the call site is the
+     * only place a lock acquisition can be observed at all.
+     */
+    private static final List<Entry> LOCK_ENTRIES = List.of(
+            new Entry(Lock.class, "lock", "lock"),
+            new Entry(Lock.class, "lockInterruptibly", "lockInterruptibly"),
+            new Entry(Lock.class, "tryLock", "tryLock"),
+            new Entry(Lock.class, "tryLock", "tryLock", long.class, TimeUnit.class),
+            new Entry(Lock.class, "unlock", "unlock"));
+
+    /**
+     * {@return the lock substitutions, in table order}
+     *
+     * <p>Feeds the same per-thread lockset that woven {@code MONITORENTER} instructions feed, so a
+     * field or collection guarded by a {@code ReentrantLock} stops reading as unguarded.
+     *
+     * @param lockHooks the class holding the lock hooks, resolved in the weaving class loader
+     */
+    static List<AsmVisitorWrapper> lockSubstitutions(Class<?> lockHooks) {
+        return substitutionsFor(LOCK_ENTRIES, lockHooks);
     }
 }

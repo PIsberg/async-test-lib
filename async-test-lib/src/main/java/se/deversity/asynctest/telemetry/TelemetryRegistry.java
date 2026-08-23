@@ -87,6 +87,26 @@ public final class TelemetryRegistry {
      * @since 1.7.0
      */
     public static void recordAccess(long threadId, String qualifiedName, boolean isWrite) {
+        recordAccess(threadId, qualifiedName, isWrite, false);
+    }
+
+    /**
+     * Records a field access, saying whether the field is declared {@code volatile}.
+     *
+     * <p>Same hot path as the three-argument form; the flag is a constant the weaver resolved and
+     * baked in, so this allocates nothing and computes nothing extra. It matters because a volatile
+     * field whose writes all happened under one lock is the double-checked-locking idiom, which is
+     * correct, and indistinguishable from a check-then-act bug without knowing the field is
+     * volatile.
+     *
+     * @param threadId      {@code Thread.currentThread().threadId()}
+     * @param qualifiedName combined {@code declaringClass.field} identifier
+     * @param isWrite       {@code true} for a write access
+     * @param volatileField whether the field is declared {@code volatile}
+     * @since 1.10.0
+     */
+    public static void recordAccess(long threadId, String qualifiedName, boolean isWrite,
+                                    boolean volatileField) {
         if (STOPPED.get()) {
             return;
         }
@@ -95,7 +115,8 @@ public final class TelemetryRegistry {
         // Reading it is a walk over a small per-thread array, allocation-free and lock-free, which
         // is what the producer path requires - a heavier capture here would change the scheduling
         // this whole buffer exists to leave alone.
-        BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint());
+        BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(),
+                volatileField);
     }
 
     /**

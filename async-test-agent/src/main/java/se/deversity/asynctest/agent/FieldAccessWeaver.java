@@ -1,7 +1,9 @@
 package se.deversity.asynctest.agent;
 
 import net.bytebuddy.asm.AsmVisitorWrapper;
+import net.bytebuddy.description.field.FieldDescription;
 import net.bytebuddy.description.method.MethodDescription;
+import net.bytebuddy.description.type.TypeDefinition;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.implementation.Implementation;
 import net.bytebuddy.jar.asm.ClassWriter;
@@ -144,7 +146,7 @@ final class FieldAccessWeaver {
                                   TypePool typePool,
                                   int writerFlags,
                                   int readerFlags) {
-            return new FieldAccessMethodVisitor(methodVisitor, weaveFieldInstructions);
+            return new FieldAccessMethodVisitor(methodVisitor, weaveFieldInstructions, typePool);
         }
     }
 
@@ -156,9 +158,38 @@ final class FieldAccessWeaver {
 
         private final boolean weaveFieldInstructions;
 
-        FieldAccessMethodVisitor(MethodVisitor delegate, boolean weaveFieldInstructions) {
+        private final TypePool typePool;
+
+        FieldAccessMethodVisitor(MethodVisitor delegate, boolean weaveFieldInstructions,
+                                 TypePool typePool) {
             super(Opcodes.ASM9, delegate);
             this.weaveFieldInstructions = weaveFieldInstructions;
+            this.typePool = typePool;
+        }
+
+        /**
+         * {@return whether {@code owner.name} is declared {@code volatile}}
+         *
+         * <p>Resolved here, at weave time, and emitted as a constant, so the hot path pays
+         * nothing. A field that cannot be resolved reads as non-volatile, which keeps the previous
+         * behaviour: the flag can only ever suppress a finding, so failing to find it must leave
+         * the finding standing.
+         */
+        private boolean isVolatile(String owner, String name) {
+            try {
+                TypeDescription type = typePool.describe(owner.replace('/', '.')).resolve();
+                for (TypeDefinition current = type; current != null; current = current.getSuperClass()) {
+                    for (FieldDescription.InDefinedShape field
+                            : current.asErasure().getDeclaredFields()) {
+                        if (field.getName().equals(name)) {
+                            return field.isVolatile();
+                        }
+                    }
+                }
+            } catch (RuntimeException e) { // NOPMD - an unresolvable type is not a weaving failure
+                return false;
+            }
+            return false;
         }
 
         /**
@@ -200,8 +231,9 @@ final class FieldAccessWeaver {
                 super.visitMethodInsn(Opcodes.INVOKEVIRTUAL, THREAD, "threadId", "()J", false);
                 super.visitLdcInsn(identifier(owner, name));
                 super.visitInsn(isWrite ? Opcodes.ICONST_1 : Opcodes.ICONST_0);
+                super.visitInsn(isVolatile(owner, name) ? Opcodes.ICONST_1 : Opcodes.ICONST_0);
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "recordAccess",
-                        "(JLjava/lang/String;Z)V", false);
+                        "(JLjava/lang/String;ZZ)V", false);
             }
             super.visitFieldInsn(opcode, owner, name, descriptor);
         }

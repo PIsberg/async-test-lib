@@ -375,9 +375,16 @@ public final class AsyncTestAgent {
      */
     private static List<AsmVisitorWrapper> collectionSubstitutions() {
         try {
-            Class<?> hooks = Class.forName(CollectionAccessWeaver.hooksClassName(), false,
-                    AsyncTestAgent.class.getClassLoader());
-            return CollectionAccessWeaver.substitutions(hooks);
+            ClassLoader loader = AsyncTestAgent.class.getClassLoader();
+            Class<?> hooks = Class.forName(CollectionAccessWeaver.hooksClassName(), false, loader);
+            Class<?> lockHooks = Class.forName(CollectionAccessWeaver.lockHooksClassName(), false, loader);
+            // Lock weaving rides along with collection weaving rather than being its own option:
+            // recording an access without seeing the ReentrantLock that covered it reports correct
+            // code, which is the same reason monitor weaving is not separately switchable.
+            List<AsmVisitorWrapper> all =
+                    new java.util.ArrayList<>(CollectionAccessWeaver.substitutions(hooks));
+            all.addAll(CollectionAccessWeaver.lockSubstitutions(lockHooks));
+            return all;
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException(
                     "collections=true needs " + CollectionAccessWeaver.hooksClassName()

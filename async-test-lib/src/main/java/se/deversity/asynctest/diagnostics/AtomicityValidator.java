@@ -68,12 +68,62 @@ public class AtomicityValidator {
         /** Set by a recording path that carries no lock information at all. */
         private volatile boolean sawUnmodelledAccess;
 
+        /**
+         * The one fingerprint every <em>write</em> shared, or 0 once they disagreed.
+         *
+         * <p>Tracked apart from {@link #fingerprint} because safe publication is asymmetric: what
+         * makes double-checked locking correct is that the writes agreed on a lock, while the
+         * reads deliberately took none. Intersecting reads and writes together collapses exactly
+         * the case worth recognising.
+         */
+        private final java.util.concurrent.atomic.AtomicLong writeFingerprint =
+                new java.util.concurrent.atomic.AtomicLong(UNSET);
+
+        /** Whether the field is declared {@code volatile}, as resolved at weave time. */
+        private volatile boolean volatileField;
+
         /** Concrete only so it can carry the shared lockset implementation. */
         private static final class Locks extends SelfGuard.TrackedInstance {
         }
 
         void noteOwner(@Nullable Object owner) {
             objectLocks.noteAccess(owner);
+        }
+
+        void noteVolatile() {
+            volatileField = true;
+        }
+
+        void noteWriteFingerprint(long observed) {
+            if (observed == 0L) {
+                writeFingerprint.set(0L);
+                return;
+            }
+            long current = writeFingerprint.get();
+            while (current != 0L && current != observed) {
+                long next = current == UNSET ? observed : 0L;
+                if (writeFingerprint.compareAndSet(current, next)) {
+                    return;
+                }
+                current = writeFingerprint.get();
+            }
+        }
+
+        /**
+         * {@return whether this field's accesses are safe publication rather than a race}
+         *
+         * <p>True when the field is {@code volatile} and every write to it was made holding the
+         * same lock. That is the double-checked-locking shape: the reads are deliberately
+         * unguarded, and the JMM makes them safe because the field is volatile and the mutation is
+         * serialised by a lock. A volatile field written with no lock held stays reportable, which
+         * is what keeps {@code volatile count++} a finding.
+         */
+        boolean isSafePublication() {
+            if (!volatileField) {
+                return false;
+            }
+            long writes = writeFingerprint.get();
+            return writes != UNSET && writes != 0L;
         }
 
         void noteFingerprint(long observed) {
@@ -274,6 +324,32 @@ public class AtomicityValidator {
         record(fieldName, value, isWrite, threadId, null, false, lockFingerprint);
     }
 
+    /**
+     * Records an agent-fed access that also says whether the field is declared {@code volatile}.
+     *
+     * <p>Volatility alone never excuses anything: it is combined with the locks the writes held.
+     * A volatile field written under one consistent lock and read without it is safe publication,
+     * the double-checked-locking idiom; a volatile field written with no lock held is still a
+     * finding, which is what keeps {@code volatile count++} reportable.
+     *
+     * @param fieldName       the field, as it should appear in the report
+     * @param value           the value read or written, may be {@code null}
+     * @param isWrite         {@code true} for a write
+     * @param threadId        the thread that made the access
+     * @param lockFingerprint the locks that thread held at the access, 0 for none
+     * @param volatileField   whether the field is declared {@code volatile}
+     * @since 1.10.0
+     */
+    public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
+                                            boolean isWrite, long threadId,
+                                            long lockFingerprint, boolean volatileField) {
+        if (volatileField && fieldName != null && !fieldName.isBlank()) {
+            FieldGuard guard = fieldLocks.computeIfAbsent(fieldName, ignored -> new FieldGuard());
+            guard.noteVolatile();
+        }
+        record(fieldName, value, isWrite, threadId, null, false, lockFingerprint);
+    }
+
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint) {
         if (!enabled || fieldName == null || fieldName.isBlank()) {
@@ -287,6 +363,9 @@ public class AtomicityValidator {
             guard.noteOwner(owner);
         } else if (lockFingerprint != UNMODELLED) {
             guard.noteFingerprint(lockFingerprint);
+            if (isWrite) {
+                guard.noteWriteFingerprint(lockFingerprint);
+            }
         } else {
             // No owner and no fingerprint: the caller has told us nothing about locks, which is
             // what the original overloads do and what they have always effectively meant.
@@ -381,7 +460,13 @@ public class AtomicityValidator {
                 // recorded without an owner collapse it, so every caller that predates
                 // recordFieldAccessOn keeps the behaviour it had.
                 FieldGuard locks = fieldLocks.get(entry.getKey());
-                boolean sawUnguarded = locks == null || locks.sawUnguardedAccess();
+                // Safe publication is not an unguarded access. A volatile field whose every write
+                // held the same lock is double-checked locking, where the reads take no lock on
+                // purpose and the JMM makes that correct. Without this the idiom reports as a
+                // check-then-act violation on every correct implementation of it, which is what
+                // commons-lang's LazyInitializer and Guava's memoizing supplier both are.
+                boolean sawUnguarded = locks == null
+                        || (locks.sawUnguardedAccess() && !locks.isSafePublication());
                 // Only claim to have looked at locks when an owner was actually supplied.
                 String note = anyOwnerKnown ? SelfGuard.REPORT_NOTE : "";
 

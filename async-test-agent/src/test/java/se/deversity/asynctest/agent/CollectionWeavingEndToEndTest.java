@@ -2,6 +2,7 @@ package se.deversity.asynctest.agent;
 
 import com.example.agentfixture.DelegatedStateBean;
 import com.example.agentfixture.GuardedDelegatedStateBean;
+import com.example.agentfixture.LockGuardedStateBean;
 import com.example.agentfixture.SuperCallingMapBean;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import org.junit.jupiter.api.AfterAll;
@@ -40,6 +41,7 @@ class CollectionWeavingEndToEndTest {
 
     private final DelegatedStateBean unguarded = new DelegatedStateBean();
     private final GuardedDelegatedStateBean guarded = new GuardedDelegatedStateBean();
+    private final LockGuardedStateBean lockGuarded = new LockGuardedStateBean();
 
     @BeforeAll
     static void attachWithCollectionWeaving() {
@@ -65,6 +67,11 @@ class CollectionWeavingEndToEndTest {
     @AsyncTest(threads = 4, invocations = 25)
     void guardedDelegatedState() {
         guarded.record("key");
+    }
+
+    @AsyncTest(threads = 4, invocations = 25)
+    void lockGuardedDelegatedState() {
+        lockGuarded.record("key");
     }
 
     @Test
@@ -107,6 +114,7 @@ class CollectionWeavingEndToEndTest {
             // rendered report the violation carries, which is also what the user reads.
             boolean reportedOnUnguarded = namesCollection("HashMap");
             boolean reportedOnGuarded = namesCollection("TreeMap");
+            boolean reportedOnLockGuarded = namesCollection("LinkedHashMap");
 
             assertTrue(reportedOnUnguarded,
                     "collections=true was supplied, so the HashMap inside DelegatedStateBean "
@@ -127,6 +135,14 @@ class CollectionWeavingEndToEndTest {
                             + "ship: check that AsyncTestAgent still applies "
                             + "FieldAccessWeaver.visitor(false) when only collections=true is set. "
                             + "Findings were: " + findings.violations());
+            assertFalse(reportedOnLockGuarded,
+                    "LockGuardedStateBean touches its LinkedHashMap only while holding a "
+                            + "ReentrantLock, and never declares that lock. A ReentrantLock emits "
+                            + "no monitor instruction, so the only way it can be seen is the "
+                            + "substituted lock() call: check that "
+                            + "CollectionAccessWeaver.lockSubstitutions is still applied and that "
+                            + "AgentLockHooks still records after acquiring. Findings were: "
+                            + findings.violations());
         } finally {
             findings.close();
         }
