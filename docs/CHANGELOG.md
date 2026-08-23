@@ -7,107 +7,104 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> **Upgrading.** This release changes what a `failOn = HIGH` gate fails on. 86 of the 142 detectors
-> set no severity, and `IssueSeverity.fromReport` returned `HIGH` for all of them, so the gate could
-> not tell a resource left open from a lost update. Every detector now states a severity, and 19 of
-> them declare `MEDIUM` or `LOW` rather than inheriting `HIGH`: the leak and shutdown detectors,
-> the pool and contention monitors, busy-waiting, sleep-in-lock, starvation, common-pool blocking,
-> and `System.gc()`. **A build gating on `failOn = HIGH` can go from red to green with nobody
-> touching the code under test**, and a recorded baseline can go stale. Nothing is suppressed:
-> those findings are still printed and still reach every listener, the JSON and the SARIF output.
-> To keep the old behaviour, gate at `failOn = MEDIUM`.
+## [1.9.7] - 2026-08-23
 
-### Added
+> **Versioning note.** As in 1.9.1, 1.9.4, 1.9.5 and 1.9.6, this ships as a patch by explicit owner
+> decision. It adds public API and changes what a merge gate fails on in both directions, which the
+> SUPPORT_POLICY.md table would make a MINOR. The `@since` stamps written as 1.10.0 while these were
+> unreleased now read 1.9.7.
 
-- **Findings can carry their own trust tier.** A detector's report may implement `GradedFindings`
-  and grade each finding it contains; the `failOn` gate then fails when any single finding clears
-  both `failOn` and `minTrust`, instead of judging the detector as one block. Seven detectors that
-  produce a verdict-grade finding on one path and a weaker one on another now do this:
-  `RECORD_MUTABLE_COMPONENT_LEAK`, `PLATFORM_THREAD_PER_TASK`, `VIRTUAL_THREAD_POOLING`,
-  `STATIC_INIT_DEADLOCK`, `VAR_HANDLE_NON_ATOMIC_UPDATE`, `SHARED_MEMORY_SEGMENT_RACE` and
-  `CONFINED_ARENA_THREAD_ESCAPE`. Before this, `minTrust = TrustTier.VERDICT` stayed green on
-  every one of their verdict-grade findings, because a per-detector tier carries the weakest grade
-  the detector can produce. This closes a false negative, so it fails builds that used to pass,
-  and only on findings backed by something recorded rather than inferred.
-- **`AsyncTestContext.findingGrades()`** exposes those grades for the run.
-
-### Added
-
-- **Every detector states its severity.** `DetectorDefaultSeverity` declares one for each of the 86
-  detectors that write no marker in their report, chosen against `IssueSeverity`'s own definitions:
-  `CRITICAL` where the report's primary claim is that something will not make progress, `HIGH` for
-  corruption or an incorrect result, `MEDIUM` for degradation and leaks, `LOW` for an inefficiency.
-  A detector's own report always wins over the table, and `DetectorSeverityMarkerTest` fails on an
-  entry for a detector that marks its own, so the table can only shrink.
-- **`IssueSeverity.markedIn(String)`** returns what a report explicitly marks, or empty. The
-  distinction between "this detector said HIGH" and "this detector said nothing" is what made the
-  fix possible.
-
-### Changed
-
-- The `failOn` gate, the JSON report and the SARIF output all take a finding's severity from one
-  place, `DetectorDefaultSeverity.of(detectorName, report)`, so they cannot disagree about what a
-  finding was worth. Precedence: what the report marks, then what the detector declares, then
-  `HIGH` for anything the library does not know, which is every third-party SPI detector.
-- `docs/DETECTOR_CATALOG.md` changed seven entries from `HIGH` to `MEDIUM`. The catalog had drifted
-  from `IssueSeverity`'s definitions and from itself, ranking one resource leak `HIGH` and another
-  `MEDIUM`.
-
+> **Upgrading.** This release changes what `failOn` fails on, in both directions. Read this before
+> taking it on a pinned build.
+>
+> **Fewer failures at `failOn = HIGH`.** 86 of the 142 detectors set no severity, and
+> `IssueSeverity.fromReport` returned `HIGH` for all of them, so the gate could not tell a resource
+> left open from a lost update. Every detector now states a severity, and nineteen of them declare
+> `MEDIUM` or `LOW` rather than inheriting `HIGH`: the leak and shutdown detectors, the pool and
+> contention monitors, busy-waiting, sleep-in-lock, starvation, common-pool blocking, and
+> `System.gc()`. **A build gating on `failOn = HIGH` can go from red to green with nobody touching
+> the code under test**, and a recorded baseline can go stale. Gate at `failOn = MEDIUM` to keep the
+> old behaviour.
+>
+> **More failures at `minTrust = TrustTier.VERDICT`**, which is new in this release and off by
+> default. Seven detectors that produce a verdict-grade finding on one path and a weaker one on
+> another now grade each finding, so a verdict-only gate acts on the recorded cycle, the lost update
+> or the observed mutation instead of being held back by the note beside it.
+>
+> Nothing is suppressed in either direction: every finding is still printed and still reaches every
+> listener, the JSON and the SARIF output. What changed is only which ones can fail a build.
 
 ### Added
 
 - **Trust tiers for every detector.** `TrustTier` (`ADVISORY`, `PROMPT`, `FACT`, `VERDICT`) and
-  `DetectorTrust` classify all 142. The runner prints the tier above each finding, every
+  `DetectorTrust` classify all 142. The runner prints the tier above each finding and every
   `Violation` carries it as a `trustTier` attribute, so it reaches the JSON and SARIF output and
   every listener. A default run enables every detector, and until now a recorded deadlock and a
   pattern the library cannot fully model printed identically; a reader who cannot rank findings
   triages the whole report as noise.
 - **`@AsyncTest(minTrust = ...)`.** `failOn` asks how bad a finding would be if it were real;
-  `minTrust` asks whether it is real. `minTrust = TrustTier.VERDICT` restricts the gate to
-  findings backed by a measured both-directions case. The default, `ADVISORY`, is the weakest
-  tier and filters nothing, so existing behaviour is unchanged. Findings below the floor are
-  still printed and still fired to listeners.
-- **Nine of the twelve `ESSENTIALS` detectors are now measured in both directions.**
-  `LockLeakDetector`, `CompletableFutureExceptionDetector`, `ResourceLeakDetector`,
-  `InterruptMonitor`, `UncaughtExceptionHandlerDetector`,
-  `CompletableFutureCompletionLeakDetector` and `ThreadLeakDetector` each fire on the bug and stay
-  silent on the correct twin, and are classified `VERDICT`. Ten detectors hold that tier.
+  `minTrust` asks whether it is real. `minTrust = TrustTier.VERDICT` restricts the gate to findings
+  backed by a measured both-directions case. The default, `ADVISORY`, is the weakest tier and
+  filters nothing, so existing behaviour is unchanged.
+- **Every detector states its severity.** `DetectorDefaultSeverity` declares one for each of the 86
+  that write no marker in their report, chosen against `IssueSeverity`'s own definitions: `CRITICAL`
+  where the report's primary claim is that something will not make progress, `HIGH` for corruption
+  or an incorrect result, `MEDIUM` for degradation and leaks, `LOW` for an inefficiency. A
+  detector's own report always wins over the table.
+- **Findings can carry their own trust tier.** A detector's report may implement `GradedFindings`
+  and grade each finding it contains; the gate then fails when any single finding clears both
+  `failOn` and `minTrust`, instead of judging the detector as one block. Seven detectors do this:
+  `RECORD_MUTABLE_COMPONENT_LEAK`, `PLATFORM_THREAD_PER_TASK`, `VIRTUAL_THREAD_POOLING`,
+  `STATIC_INIT_DEADLOCK`, `VAR_HANDLE_NON_ATOMIC_UPDATE`, `SHARED_MEMORY_SEGMENT_RACE` and
+  `CONFINED_ARENA_THREAD_ESCAPE`.
+- **Nine of the twelve `ESSENTIALS` detectors are measured in both directions.** `LockLeakDetector`,
+  `CompletableFutureExceptionDetector`, `ResourceLeakDetector`, `InterruptMonitor`,
+  `UncaughtExceptionHandlerDetector`, `CompletableFutureCompletionLeakDetector` and
+  `ThreadLeakDetector` each fire on the bug and stay silent on the correct twin. Ten detectors hold
+  `VERDICT`.
+- **`IssueSeverity.markedIn(String)`** returns what a report explicitly marks, or empty. Separating
+  "said HIGH" from "said nothing" is what made the severity work possible.
+- **`AsyncTestContext.findingGrades()`** exposes the per-finding grades for a run.
+
+### Changed
+
+- **Tiers are earned rather than asserted.** `DetectorTrustCoverageTest` refuses a `VERDICT`
+  classification without named both-directions tests it can resolve by reflection, refuses an
+  unclassified detector, and refuses a row naming a detector class the factories do not construct.
+  Detectors default to `PROMPT`, which states that their silent-on-correct-code direction has not
+  been measured rather than that they are wrong.
+- **Nothing infers a severity any more.** `DetectorSeverityMarkerTest` fails the build if a detector
+  neither marks its report nor declares a default, if the table shadows a detector that marks its
+  own, or if an `ADVISORY` tier detector claims `CRITICAL` or `HIGH`.
+- The `failOn` gate, the JSON report and the SARIF output take a finding's severity from one place,
+  `DetectorDefaultSeverity.of(detectorName, report)`, so they cannot disagree about what a finding
+  was worth. Precedence: what the report marks, then what the detector declares, then `HIGH` for
+  anything the library does not know, which is every third-party SPI detector.
+- `docs/CI_INTEGRATION.md` recommends a trust floor alongside the severity threshold, and
+  `docs/DETECTOR_CATALOG.md` changed seven entries from `HIGH` to `MEDIUM`. The catalog had drifted
+  from `IssueSeverity`'s definitions and from itself, ranking one resource leak `HIGH` and another
+  `MEDIUM`.
 
 ### Fixed
-
-- **`FalseSharingDetector` no longer reaches the gate ranked `HIGH`.** Its report carried no
-  severity marker, so `IssueSeverity.fromReport` fell through to its `HIGH` default and an
-  advisory about cache-line adjacency arrived at `failOn = HIGH` ranked as though it proved data
-  corruption. The detector is experimental, off unless
-  `-Dasync-test.experimental.false-sharing=true`, and its findings are documented as uncorrelated
-  with the phenomenon, so its report now opens with `LOW`.
-- **The count of detectors that leave their severity to be guessed is now pinned.**
-  `DetectorSeverityMarkerTest` measures it (86 of 142) and fails if it grows, so a new detector
-  cannot add to the pile, and no `FACT` or `ADVISORY` tier detector may leave it unset at all.
-  Choosing a severity for the remaining detectors changes what existing builds fail on, so it is
-  tracked as [#291](https://github.com/PIsberg/async-test-lib/issues/291) rather than done here.
 
 - **`ConcurrentModificationDetector` no longer reports thread-safe collections.** Two threads
   appending to a `CopyOnWriteArrayList` produced a finding, because `analyze()` flagged any
   collection touched by more than one thread whether or not the collection was thread-safe and
   whether or not an iterator had ever been live. It now consults the collection's own type:
-  `java.util.concurrent` types suppress both the iteration and mutation findings, and
-  `Collections.synchronizedXxx` wrappers suppress the mutation one. A modification during
-  iteration that the caller explicitly reported still stands whatever the type, because that is an
-  observation rather than an inference. The detector stays `PROMPT`: an `ArrayList` guarded by a
-  lock nobody declared still fires, and that limit is pinned by a test.
-
-### Changed
-
-- Tiers are earned rather than asserted. `DetectorTrustCoverageTest` refuses a `VERDICT`
-  classification without named both-directions tests it can resolve by reflection, refuses an
-  unclassified detector, and refuses a row naming a detector class the factories do not
-  construct. Five detectors hold `VERDICT` today; the rest default to `PROMPT`, which states that
-  their silent-on-correct-code direction has not been measured rather than that they are wrong.
-- `docs/CI_INTEGRATION.md` recommends a trust floor before a severity threshold. Severity is a
-  poor proxy for trust: most detectors never set one, and `IssueSeverity.fromReport` recovers it
-  by matching upper-case keywords in the report text and defaults to `HIGH`.
-
+  `java.util.concurrent` types suppress the iteration and mutation findings, and
+  `Collections.synchronizedXxx` wrappers suppress the mutation one. A modification during iteration
+  that the caller reported explicitly still stands whatever the type, because that is an observation
+  rather than an inference. The detector stays `PROMPT`: an `ArrayList` guarded by a lock nobody
+  declared still fires, and that limit is pinned by a test.
+- **`FalseSharingDetector` no longer reaches the gate ranked `HIGH`.** Its report carried no
+  severity marker, so `IssueSeverity.fromReport` fell through to its `HIGH` default and an advisory
+  about cache-line adjacency arrived at `failOn = HIGH` ranked as though it proved data corruption.
+  The detector is experimental, off unless `-Dasync-test.experimental.false-sharing=true`, and its
+  findings are documented as uncorrelated with the phenomenon, so its report now opens with `LOW`.
+- **A verdict-grade finding is no longer held back by a weaker one from the same detector.** A
+  per-detector tier carries the weakest grade a detector can produce, so `minTrust = VERDICT`
+  previously stayed green on an observed mutation of a shared record's component, a recorded
+  class-initialization cycle and a segment used after its arena closed.
 
 ## [1.9.6] - 2026-08-20
 

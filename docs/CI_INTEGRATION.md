@@ -208,7 +208,7 @@ Findings below the floor are still printed and still reach every listener, the J
 output. They just cannot fail the build, which is the difference between a report a team reads and
 one it learns to ignore.
 
-Severity is now worth gating on, which it was not before 1.10.0. Until then 86 of the 142
+Severity is now worth gating on, which it was not before 1.9.7. Until then 86 of the 142
 detectors set no severity at all and `IssueSeverity.fromReport` returned `HIGH` for every one of
 them, so `failOn = HIGH` was close to "fail on anything". Every detector now states a severity,
 either in its own report or in `DetectorDefaultSeverity`, and `DetectorSeverityMarkerTest` fails

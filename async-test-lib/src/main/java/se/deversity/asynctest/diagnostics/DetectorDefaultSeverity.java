@@ -39,7 +39,7 @@ import static java.util.Map.entry;
  * <p>Third-party detectors arriving through the SPI are not in this table and keep the historical
  * {@code HIGH} default. The library has no basis for ranking somebody else's finding.
  *
- * @since 1.10.0
+ * @since 1.9.7
  */
 @AIPublicAPI
 @AIKeepInSync(

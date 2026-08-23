@@ -28,7 +28,7 @@ import java.util.List;
  * returns an empty list. Nothing reads the grades of a report that
  * {@code hasIssues()} says is empty.
  *
- * @since 1.10.0
+ * @since 1.9.7
  */
 @AIPublicAPI
 @API(status = Status.EXPERIMENTAL)

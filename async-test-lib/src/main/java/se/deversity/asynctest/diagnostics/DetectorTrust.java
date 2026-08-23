@@ -41,7 +41,7 @@ import java.util.Optional;
  * {@link TrustTier#PROMPT}. The library has no evidence about somebody else's detector and does
  * not pretend to.
  *
- * @since 1.10.0
+ * @since 1.9.7
  */
 @AIPublicAPI
 @AIKeepInSync(

@@ -66,7 +66,7 @@ public final class AsyncTestConfig {
      * <p>{@link TrustTier#ADVISORY} (default) is the weakest tier, so it filters nothing and the
      * gate behaves as it did before this field existed. Findings below the floor are still
      * reported; they just cannot fail the test.
-     * @since 1.10.0
+     * @since 1.9.7
      */
     public final TrustTier minTrust;
 

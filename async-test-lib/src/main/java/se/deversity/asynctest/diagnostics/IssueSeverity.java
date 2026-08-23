@@ -155,7 +155,7 @@ public enum IssueSeverity {
      * every one of them arrive at a merge gate ranked as though it proved data corruption.
      *
      * @param report the raw report text produced by a detector; {@code null} is treated as empty
-     * @since 1.10.0
+     * @since 1.9.7
      */
     public static Optional<IssueSeverity> markedIn(String report) {
         return Optional.ofNullable(marked(report));

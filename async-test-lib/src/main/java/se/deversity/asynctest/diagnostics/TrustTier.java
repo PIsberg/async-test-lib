@@ -24,7 +24,7 @@ import se.deversity.vibetags.annotations.AIPublicAPI;
  * {@link #VERDICT} requires a both-directions case in the detector-accuracy eval, and a gate
  * refuses the promotion without one. See {@code docs/analysis/detector-accuracy-eval.md}.
  *
- * @since 1.10.0
+ * @since 1.9.7
  */
 @AIPublicAPI
 @API(status = Status.EXPERIMENTAL)

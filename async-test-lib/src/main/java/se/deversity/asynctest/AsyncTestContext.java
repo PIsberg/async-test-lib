@@ -841,7 +841,7 @@ public final class AsyncTestContext {
      * <p>Call after {@link #analyzeAllNamed()}; on its own this returns the previous pass's
      * grades, or empty when no pass has run.
      *
-     * @since 1.10.0
+     * @since 1.9.7
      */
     public Map<String, List<se.deversity.asynctest.diagnostics.GradedFindings.Grade>> findingGrades() {
         return registry.lastGrades();

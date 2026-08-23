@@ -302,7 +302,7 @@ public @interface AsyncTest {
      * <p>Which detector carries which tier, and the evidence behind it, is in
      * {@code DetectorTrust} and {@code docs/analysis/detector-accuracy-eval.md}.
      *
-     * @since 1.10.0
+     * @since 1.9.7
      *
      * @return the lowest trust tier whose findings may fail the test
      */
