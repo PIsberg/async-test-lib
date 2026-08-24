@@ -28,6 +28,14 @@ A run executes the same subjects twice, and writes one report per lane under
 
 Those files are the source of truth for a given run; the document under `docs/` is a copy of one.
 
+The attached lane uses `-javaagent:` at JVM startup rather than the library's self-attach, and
+`CorpusGates` fails the run if that changes. Self-attach happens partway through the run and weaves
+only what loads after it, so which subjects the agent can see depends on which test class Surefire
+runs first. That ordering differs between a developer machine and a CI runner, and it moved this
+eval from 20 of 20 documented-unsafe subjects detected to 6 of 20 with nothing else changed;
+`-Dsurefire.runOrder=reversealphabetical` reproduces it. A launch flag takes the file order out of
+the measurement.
+
 ## Exposure, and why the reports lead with it
 
 A finding count with no denominator cannot be read. The corpus records nothing by hand, so 137 of
