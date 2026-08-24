@@ -341,6 +341,184 @@ class DetectorAccuracyEvalTest {
                         + "the guard probe is answering true when no monitor is held");
     }
 
+    // ---- AtomicityValidator, agent-path rules: #311, #312, #313 ----
+    //
+    // These drive the ten-argument agent overload directly, with explicit thread ids and raw
+    // lock fingerprints, because the rules under test are about the order of accesses. Real
+    // threads would make the recorded order nondeterministic and these assertions flaky; the
+    // validator only ever sees the recorded stream, and this is the same stream the telemetry
+    // drain delivers. A fingerprint nobody registered is one opaque lock: the same value twice
+    // is the same lock, two values are two locks, which is all these shapes need.
+
+    private static final long NO_LOCKS = 0L;
+    private static final long WRITE_LOCK = 0x1111L;
+    private static final long OTHER_LOCK = 0x2222L;
+
+    private static void agentAccess(AtomicityValidator validator, String field, boolean write,
+                                    long threadId, long fingerprint, int identity) {
+        validator.recordFieldAccessUnderLocks(field, null, write, threadId, fingerprint, 0, 0,
+                false, Integer.MIN_VALUE, identity);
+    }
+
+    @Test
+    @DisplayName("atomicity: a hint read re-read under the write lock is silent (#311)")
+    void atomicityHintReadsReReadUnderTheWriteLockAreSilent() {
+        AtomicityValidator validator = new AtomicityValidator();
+        // Publish the receiver first, so both threads' patterns below are post-construction.
+        agentAccess(validator, "segment.resizeThreshold", false, 1, NO_LOCKS, 77);
+        agentAccess(validator, "segment.resizeThreshold", false, 2, NO_LOCKS, 77);
+        for (long thread = 1; thread <= 2; thread++) {
+            agentAccess(validator, "segment.resizeThreshold", false, thread, NO_LOCKS, 77);
+            agentAccess(validator, "segment.resizeThreshold", false, thread, WRITE_LOCK, 77);
+            agentAccess(validator, "segment.resizeThreshold", true, thread, WRITE_LOCK, 77);
+        }
+        assertFalse(validator.analyze().hasIssues(),
+                "Every write held the same lock and the unlocked read was re-established under "
+                        + "that lock by the same thread in the same round before anything acted "
+                        + "on it. That is the safe half of double-checked locking - spring's "
+                        + "resizeThreshold hint - and reporting it reports the idiom, not a bug");
+    }
+
+    @Test
+    @DisplayName("atomicity: an unlocked read never re-read under the lock still fires (#311)")
+    void atomicityStillFiresWhenTheUnlockedReadIsTheOnlyRead() {
+        AtomicityValidator validator = new AtomicityValidator();
+        agentAccess(validator, "cache.threshold", false, 1, NO_LOCKS, 78);
+        agentAccess(validator, "cache.threshold", false, 2, NO_LOCKS, 78);
+        for (long thread = 1; thread <= 2; thread++) {
+            agentAccess(validator, "cache.threshold", false, thread, NO_LOCKS, 78);
+            agentAccess(validator, "cache.threshold", true, thread, WRITE_LOCK, 78);
+        }
+        assertTrue(validator.analyze().hasIssues(),
+                "The unlocked read is the only read: nothing re-establishes the value under the "
+                        + "lock the writes agree on, so the hint is the decision and the TOCTOU "
+                        + "window is real. The #311 rule must not retract this");
+    }
+
+    @Test
+    @DisplayName("atomicity: a re-read under some other lock still fires (#311)")
+    void atomicityStillFiresWhenTheReReadIsUnderALockTheWritesDoNotHold() {
+        AtomicityValidator validator = new AtomicityValidator();
+        agentAccess(validator, "cache.limit", false, 1, NO_LOCKS, 79);
+        agentAccess(validator, "cache.limit", false, 2, NO_LOCKS, 79);
+        for (long thread = 1; thread <= 2; thread++) {
+            agentAccess(validator, "cache.limit", false, thread, NO_LOCKS, 79);
+            agentAccess(validator, "cache.limit", false, thread, OTHER_LOCK, 79);
+            agentAccess(validator, "cache.limit", true, thread, WRITE_LOCK, 79);
+        }
+        assertTrue(validator.analyze().hasIssues(),
+                "The later read holds a lock, but not one the writes hold, so it excludes no "
+                        + "writer and confirms nothing. Only a re-read under a lock that covers "
+                        + "the writes turns the unlocked read into a hint");
+    }
+
+    @Test
+    @DisplayName("atomicity: construction writes are not raced against later readers (#312)")
+    void atomicityConstructionWritesAreNotRacedAgainstLaterReaders() {
+        AtomicityValidator validator = new AtomicityValidator();
+        // The builder writes while no other thread can reach the receiver, under its own lock -
+        // netty builds a chunk's metadata under the arena lock and serves it under the chunk's.
+        agentAccess(validator, "chunk.mask", true, 1, WRITE_LOCK, 88);
+        agentAccess(validator, "chunk.mask", true, 1, WRITE_LOCK, 88);
+        agentAccess(validator, "chunk.mask", false, 2, OTHER_LOCK, 88);
+        agentAccess(validator, "chunk.mask", false, 3, OTHER_LOCK, 88);
+        agentAccess(validator, "chunk.mask", false, 1, OTHER_LOCK, 88);
+        assertFalse(validator.analyze().hasIssues(),
+                "Both writes happened while the receiver was reachable only from the thread "
+                        + "building it, and every post-publication access is a read. Intersecting "
+                        + "construction locks against post-publication locks is how an unshared "
+                        + "write turns into a finding, which is the #312 false positive");
+    }
+
+    @Test
+    @DisplayName("atomicity: a writer that keeps writing after publication still fires (#312)")
+    void atomicityStillFiresWhenWritesContinueAfterPublication() {
+        AtomicityValidator validator = new AtomicityValidator();
+        agentAccess(validator, "node.next", true, 1, WRITE_LOCK, 89);
+        agentAccess(validator, "node.next", false, 2, NO_LOCKS, 89);
+        agentAccess(validator, "node.next", true, 1, NO_LOCKS, 89);
+        agentAccess(validator, "node.next", false, 2, NO_LOCKS, 89);
+        assertTrue(validator.analyze().hasIssues(),
+                "The receiver escaped - another thread has read it - and the builder wrote again "
+                        + "with no lock. Excusing that would excuse every race that starts one "
+                        + "access after publication; the exclusive phase must end permanently at "
+                        + "the first foreign access");
+    }
+
+    @Test
+    @DisplayName("atomicity: the settled single-check cache is silent (#313)")
+    void atomicitySettledSingleCheckCacheIsSilent() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.markInvocationStart();
+        agentAccess(validator, "writer.serializerCache", false, 1, NO_LOCKS, 99);
+        agentAccess(validator, "writer.serializerCache", false, 2, NO_LOCKS, 99);
+        agentAccess(validator, "writer.serializerCache", true, 1, NO_LOCKS, 99);
+        agentAccess(validator, "writer.serializerCache", true, 2, NO_LOCKS, 99);
+        for (int round = 0; round < 2; round++) {
+            validator.markInvocationStart();
+            agentAccess(validator, "writer.serializerCache", false, 1, NO_LOCKS, 99);
+            agentAccess(validator, "writer.serializerCache", false, 2, NO_LOCKS, 99);
+        }
+        assertFalse(validator.analyze().hasIssues(),
+                "Both threads missed, both filled, and one write was lost - then the cache "
+                        + "settled: two later rounds of reads from both threads and not another "
+                        + "write. That convergence is jackson's racy single-check idiom doing "
+                        + "what it is designed to do, and the lost update cost a recomputation");
+    }
+
+    @Test
+    @DisplayName("atomicity: lost updates that keep writing every round still fire (#313)")
+    void atomicityStillFiresWhenWritesNeverSettle() {
+        AtomicityValidator validator = new AtomicityValidator();
+        for (int round = 0; round < 3; round++) {
+            validator.markInvocationStart();
+            agentAccess(validator, "counter.value", false, 1, NO_LOCKS, 98);
+            agentAccess(validator, "counter.value", false, 2, NO_LOCKS, 98);
+            agentAccess(validator, "counter.value", true, 1, NO_LOCKS, 98);
+            agentAccess(validator, "counter.value", true, 2, NO_LOCKS, 98);
+        }
+        assertTrue(validator.analyze().hasIssues(),
+                "A read-modify-write that races in every round is a lost update, not a cache: "
+                        + "nothing converges. The #313 rule keys on settling, so this must stay "
+                        + "as loud as it ever was");
+    }
+
+    @Test
+    @DisplayName("atomicity: a blind store is initialization, not a single-check cache (#313)")
+    void atomicityStillFiresWhenTheWarmRoundStoreWasBlind() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.markInvocationStart();
+        agentAccess(validator, "config.instance", false, 1, NO_LOCKS, 97);
+        agentAccess(validator, "config.instance", true, 2, NO_LOCKS, 97);
+        agentAccess(validator, "config.instance", false, 1, NO_LOCKS, 97);
+        for (int round = 0; round < 2; round++) {
+            validator.markInvocationStart();
+            agentAccess(validator, "config.instance", false, 1, NO_LOCKS, 97);
+            agentAccess(validator, "config.instance", false, 2, NO_LOCKS, 97);
+        }
+        assertTrue(validator.analyze().hasIssues(),
+                "The store did not depend on a miss check - the writer never read the field - so "
+                        + "this is racy initialization, not the single-check idiom, however "
+                        + "quietly it settles afterwards");
+    }
+
+    @Test
+    @DisplayName("atomicity: a run too short to show convergence keeps its finding (#313)")
+    void atomicityDoesNotSettleWithoutTwoQuietRounds() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.markInvocationStart();
+        agentAccess(validator, "lazy.holder", false, 1, NO_LOCKS, 96);
+        agentAccess(validator, "lazy.holder", false, 2, NO_LOCKS, 96);
+        agentAccess(validator, "lazy.holder", true, 1, NO_LOCKS, 96);
+        agentAccess(validator, "lazy.holder", true, 2, NO_LOCKS, 96);
+        validator.markInvocationStart();
+        agentAccess(validator, "lazy.holder", false, 1, NO_LOCKS, 96);
+        agentAccess(validator, "lazy.holder", false, 2, NO_LOCKS, 96);
+        assertTrue(validator.analyze().hasIssues(),
+                "One quiet round is not convergence, it is a short run. Silence here must be "
+                        + "earned by evidence the field settled, so the default stays a finding");
+    }
+
     // ---- SharedMessageDigestDetector ----
 
     @Test
