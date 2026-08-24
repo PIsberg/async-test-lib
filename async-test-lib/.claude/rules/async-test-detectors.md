@@ -359,6 +359,11 @@ a performance budget) are annotated individually and appear below.
 - **Reason**: An entry here is the severity a built-in detector's findings carry at the failOn gate when its report marks none. A detector missing from both this table and the marker convention silently falls back to HIGH, which is the defect this table exists to fix.
 - **Enforced by**: se.deversity.asynctest.architecture.DetectorSeverityMarkerTest
 
+### se.deversity.asynctest.diagnostics.DetectorFeeds
+- **Mirrors**: se.deversity.asynctest.DetectorType, se.deversity.asynctest.diagnostics.DetectorTrust, docs/DETECTOR_CATALOG.md
+- **Reason**: Every DetectorType resolves to exactly one feed, the AGENT set must equal the detectors the telemetry bridge and collection hooks are compile-wired into, and the catalog's feed listing must name the same classes this table classifies. A feed that drifts misleads the user deciding whether attaching the agent buys them anything.
+- **Enforced by**: se.deversity.asynctest.architecture.DetectorFeedCoverageTest
+
 ### se.deversity.asynctest.diagnostics.DetectorTrust
 - **Mirrors**: se.deversity.asynctest.DetectorType, se.deversity.asynctest.spi.adapters.LegacyDetectorFactories, docs/DETECTOR_CATALOG.md
 - **Reason**: Every DetectorType needs exactly one row, and each row names the detector class whose simple name keys the report map (DetectorRegistry.ifIssue) plus the short name the SPI adapter reports. A row naming a class the factory does not create silently stops resolving, and the finding loses its tier without anything going red.
