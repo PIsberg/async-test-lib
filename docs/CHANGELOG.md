@@ -198,6 +198,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The corpus eval now reads clean: zero findings on all 22 documented-thread-safe classes,
+  with all 20 documented-not-thread-safe classes still detected, on every platform.** The three
+  model gaps behind every remaining false positive each became a rule in `AtomicityValidator`,
+  and each shipped with twins in both directions in `DetectorAccuracyEvalTest`
+  ([#311](https://github.com/PIsberg/async-test-lib/issues/311),
+  [#312](https://github.com/PIsberg/async-test-lib/issues/312),
+  [#313](https://github.com/PIsberg/async-test-lib/issues/313)):
+  - *The locked re-read* (spring's `ConcurrentReferenceHashMap`): when every write to a field
+    holds a consistent lock and the same thread demonstrably re-reads the field under that lock
+    after an unlocked read, the unlocked reads are hints, not TOCTOU windows. A hint that is
+    never re-established, or re-read under some other lock, still fires.
+  - *The corroborated construction write* (netty's pool chunks): accesses made while the
+    receiver is still exclusive to the thread building it are construction, not contention, so
+    building under one lock and serving under another stops reading as a race — but only once
+    the receiver's post-publication accesses span more than one round; a single-round stream
+    keeps reporting. The exclusivity flips permanently at the first foreign access, so a write
+    after escape is never excused.
+  - *The settled single-check cache* (jackson's serializer caches): an unguarded field whose
+    writes are confined to a warming prefix (never more rounds than there are writers), each
+    preceded by that thread's miss check, and which then out-settles that warming — multi-thread
+    reads, no writes, at least as many rounds as the warming took and never fewer than two — is
+    the racy single-check idiom converging. A one-shot view field with nothing left to read
+    (jackson's `PrivateMaxEntriesMap.entrySet`) settles on the run's own clock instead: the run
+    must keep executing for the same required rounds with the field never raced again. Lost
+    updates that keep writing, blind stores, warmings that outlast their writers, races in a
+    run's closing rounds, and runs too short to show convergence all keep their finding.
+
+  Measured on the 42-class corpus ([docs/analysis/corpus-eval.md](analysis/corpus-eval.md)):
+  documented-safe classes with any finding at all went from 3 of 22 locally and 4 of 22 on CI to
+  **0 of 22 on all four keyed platforms** — local JDK 26 on Windows plus the pipeline's corpus
+  legs on JDK 21, 25 and 26 — with VERDICT-tier noise 0 throughout and detection at **20 of
+  20** in every run. The CI legs earned their keep twice during the work: a two-core schedule
+  spreads a cache's warm-up over two rounds and races views a six-core machine never touches,
+  and two of the three rules took their final form only against that evidence.
+
 - **`HeldLocks` documented a limit it no longer had.** Its javadoc said the agent "weaves field
   access rather than monitor instructions, so a lock only enters this set when the test declares
   it". Monitor weaving landed in the same 1.9.6 release that added the class, so agent-observed
