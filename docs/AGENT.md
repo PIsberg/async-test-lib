@@ -282,6 +282,20 @@ If detectors go quiet after an attach, that line is the first thing to look for.
 [the corpus eval](analysis/corpus-eval.md#what-the-corpus-taught-the-model-in-four-rounds), where
 the defect cost 874 of 1074 instrumented classes and the whole documented-unsafe detection column.
 
+**Self-attach weaves what loads after it, and that can depend on test order.** Retransformation
+covers the classes that are already loaded *at the moment of the attach*, and load-time weaving
+covers everything after. What neither covers is a class loaded between the two in a way the
+transformer never sees, and in a suite with more than one test class the attach point is decided
+by whichever test runs first. The corpus eval measured the cost: running its two test classes in
+the other order moved detection of documented-unsafe subjects from 20 of 20 to 6 of 20, with the
+subject classes built in field initializers never woven and nothing logged
+([#316](https://github.com/PIsberg/async-test-lib/issues/316)). `-Dsurefire.runOrder=reversealphabetical`
+reproduces it exactly, down to the per-subject event counts.
+
+If a suite's results have to be comparable across machines, attach with the launch flag rather
+than by self-attach: `premain` installs before any application class exists, so nothing depends on
+which test runs first. `corpus-eval/pom.xml` does exactly this and gates on it.
+
 **Idempotency and interaction with `-javaagent`.** All three entry points share a single
 at-most-once install gate (an `AtomicBoolean` CAS). If the agent was already attached — via a
 launch flag or a prior `selfAttach` — the call returns immediately without attaching again or

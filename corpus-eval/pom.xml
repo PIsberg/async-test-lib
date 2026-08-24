@@ -29,6 +29,7 @@
         <spring.version>7.0.9</spring.version>
         <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
+        <maven-dependency-plugin.version>3.9.0</maven-dependency-plugin.version>
     </properties>
 
     <dependencies>
@@ -113,12 +114,28 @@
                     <encoding>UTF-8</encoding>
                 </configuration>
             </plugin>
+            <!-- Resolves the agent jar's path into a property, so the launch flag below can
+                 name it. Without this the module would have to hard-code a path into the local
+                 repository, which differs between a developer machine and CI. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>${maven-dependency-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>resolve-agent-jar</id>
+                        <goals><goal>properties</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${maven-surefire-plugin.version}</version>
                 <configuration>
-                    <!-- Self-attach needs the flag; Surefire forks its own JVM. -->
+                    <!-- Self-attach needs the flag; Surefire forks its own JVM. The agent-on
+                         lane no longer uses self-attach (see below), but the agent-off lane
+                         still proves that nothing attaches, so the flag stays harmless here. -->
                     <argLine>-Djdk.attach.allowAttachSelf=true</argLine>
                 </configuration>
                 <executions>
@@ -128,6 +145,17 @@
                         <id>default-test</id>
                         <goals><goal>test</goal></goals>
                         <configuration>
+                            <!-- The agent is attached at JVM startup rather than self-attached
+                                 from the first @AsyncTest, and that is a measurement decision,
+                                 not a style one. A self-attach happens partway through the run,
+                                 and only classes loaded after it are woven, so which subjects the
+                                 agent can see depends on which test class Surefire happens to run
+                                 first. That ordering differs between a developer machine and a CI
+                                 runner, and it moved this eval's detection from 20 of 20 to 6 of
+                                 20 with nothing else changed (#316). premain weaves at load time,
+                                 before any subject class exists, so the corpus measures the
+                                 detectors instead of the file order. -->
+                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=fields=true,collections=true</argLine>
                             <systemPropertyVariables>
                                 <license.mock.mode>true</license.mock.mode>
                                 <corpus.lane>agent-on</corpus.lane>

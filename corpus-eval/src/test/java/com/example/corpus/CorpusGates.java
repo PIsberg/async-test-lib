@@ -1,5 +1,6 @@
 package com.example.corpus;
 
+import java.lang.management.ManagementFactory;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.List;
@@ -40,6 +41,7 @@ final class CorpusGates {
         everyFindingIsAttributed(findings, crashes);
         noFalsePositiveOnDocumentedThreadSafeCode(findings);
         everyReportingDetectorWasExposed(findings, lane);
+        theAgentIsAttachedTheWayThisLaneRequires(lane);
         if (lane == CorpusLane.AGENT_ON) {
             theUnsafeGroupIsDetected(findings, crashes);
         } else {
@@ -115,6 +117,37 @@ final class CorpusGates {
                         + "DetectorFeeds says nothing in this run can feed them, so either the "
                         + "feed classification or the exposure denominators in the report are "
                         + "wrong: " + unexposed);
+    }
+
+    /**
+     * The agent must be attached at JVM startup, not from inside the first test.
+     *
+     * <p>This is a measurement gate, not a style one. A self-attach happens partway through the
+     * run and weaves only what loads after it, so which subjects the agent can see depends on
+     * which test class Surefire runs first. That ordering differs between a developer machine and
+     * a CI runner, and it moved this eval's detection from 20 of 20 to 6 of 20 with nothing else
+     * changed: {@code -Dsurefire.runOrder=reversealphabetical} reproduced the CI result exactly,
+     * down to the per-subject event counts. A launch flag removes the ordering from the
+     * measurement, and this gate refuses to let the module drift back.
+     *
+     * @param lane which lane is running
+     */
+    private static void theAgentIsAttachedTheWayThisLaneRequires(CorpusLane lane) {
+        boolean launched = ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
+                .anyMatch(argument -> argument.startsWith("-javaagent:")
+                        && argument.contains("async-test-agent"));
+
+        if (lane == CorpusLane.AGENT_ON) {
+            assertTrue(launched,
+                    "the agent-on lane must attach the agent with -javaagent at JVM startup. "
+                            + "Self-attaching from the first @AsyncTest weaves only classes loaded "
+                            + "after that point, which makes every number in this report depend on "
+                            + "the order Surefire happens to run the test classes in");
+        } else {
+            assertFalse(launched,
+                    "the control lane must have nothing attached; a -javaagent flag here would "
+                            + "make its silence meaningless");
+        }
     }
 
     private static void theUnsafeGroupIsDetected(List<CorpusRecorder.Finding> findings,
