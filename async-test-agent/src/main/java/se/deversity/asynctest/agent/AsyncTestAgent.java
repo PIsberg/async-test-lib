@@ -742,5 +742,27 @@ public final class AsyncTestAgent {
             }
             return List.of();
         }
+
+        /**
+         * Reports what the redefinition pass actually did, which no other listener can say.
+         *
+         * <p>A pass that considers nothing and a pass that succeeds look identical from outside:
+         * both leave the agent installed with no error. The difference decides whether a class
+         * loaded before the attach was re-woven or quietly left alone, and a user whose detectors
+         * went quiet has no other way to tell.
+         *
+         * @param amount   how many types the pass redefined
+         * @param types    every type it considered
+         * @param failures the batches that failed, with their causes
+         */
+        @Override
+        public void onComplete(int amount, List<Class<?>> types,
+                               java.util.Map<List<Class<?>>, Throwable> failures) {
+            if (debug) {
+                System.err.println("[ASYNC-TEST-AGENT] Retransformation considered " + types.size()
+                        + " already-loaded types, redefined " + amount + ", failed batches "
+                        + failures.size());
+            }
+        }
     }
 }
