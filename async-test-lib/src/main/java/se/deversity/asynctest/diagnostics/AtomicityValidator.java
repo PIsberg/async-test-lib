@@ -1109,11 +1109,14 @@ public class AtomicityValidator {
      * on a miss, compute a replacement and store it. Two threads can miss together and one
      * write can be lost, which is exactly what the analysis sees. What tells the idiom apart
      * from a genuine lost update is not the access pattern but what happens afterwards: a cache
-     * converges. Its writes are confined to the round that warmed it, every writer read the
-     * field in that round before writing (the miss check its store depends on), and the run
-     * then keeps reading — at least two later rounds, from at least two threads, rounds the
-     * harness itself orders — without another write. A counter or a copy-on-write structure
-     * that loses updates keeps writing every round and never satisfies this; a run too short to
+     * converges. Its writes are confined to a warming prefix of rounds — a lost fill surfaces
+     * as the next round's re-miss and re-write, so on a slow scheduler the prefix is more than
+     * one round — every writer read the field before writing (the miss check its store depends
+     * on), and the run then stays settled, reading from at least two threads across at least as
+     * many rounds as the warming took and never fewer than two, without another write. A
+     * counter or a copy-on-write structure that loses updates keeps writing every round and can
+     * never out-settle its own warming, and a warming longer than the writer count is not
+     * warming at all; a run too short to
      * show convergence keeps its finding, which is the conservative direction.
      *
      * <p>What this deliberately does not judge is whether the stored value was safe to publish
@@ -1126,8 +1129,9 @@ public class AtomicityValidator {
         if (locks.isVolatileField()) {
             return false;
         }
-        long warmEpoch = Long.MIN_VALUE;
         long lastWriteEpoch = Long.MIN_VALUE;
+        Set<Long> warmingRounds = new HashSet<>();
+        Set<Long> writers = new HashSet<>();
         for (FieldAccessRecord access : history) {
             if (access.identity != identity
                     || (access.exclusivePhase && constructionExcused)) {
@@ -1136,14 +1140,22 @@ public class AtomicityValidator {
             if (access.fingerprint == UNMODELLED) {
                 return false;
             }
-            if (warmEpoch == Long.MIN_VALUE) {
-                warmEpoch = access.epoch;
-            }
-            if (access.write && access.epoch > lastWriteEpoch) {
-                lastWriteEpoch = access.epoch;
+            if (access.write) {
+                warmingRounds.add(access.epoch);
+                writers.add(access.threadId);
+                if (access.epoch > lastWriteEpoch) {
+                    lastWriteEpoch = access.epoch;
+                }
             }
         }
-        if (lastWriteEpoch == Long.MIN_VALUE || lastWriteEpoch != warmEpoch) {
+        if (lastWriteEpoch == Long.MIN_VALUE) {
+            return false;
+        }
+        // Each warm round beyond the first exists because some loser's fill was overwritten and
+        // it re-missed, so a genuine cache cannot warm for more rounds than it has writers. A
+        // field that keeps being written past that is not converging, however quiet it goes
+        // afterwards.
+        if (warmingRounds.size() > writers.size()) {
             return false;
         }
         Set<Long> settledRounds = new HashSet<>();
@@ -1177,7 +1189,8 @@ public class AtomicityValidator {
                 readBeforeWriting.add(access.threadId);
             }
         }
-        return settledRounds.size() >= 2 && settledReaders.size() >= 2;
+        return settledRounds.size() >= Math.max(2, warmingRounds.size())
+                && settledReaders.size() >= 2;
     }
 
     /**

@@ -497,6 +497,29 @@ class DetectorAccuracyEvalTest {
     }
 
     @Test
+    @DisplayName("atomicity: writes spread over more rounds than writers are not warming (#313)")
+    void atomicityStillFiresWhenWarmingOutlastsTheWriters() {
+        AtomicityValidator validator = new AtomicityValidator();
+        for (int round = 0; round < 3; round++) {
+            validator.markInvocationStart();
+            agentAccess(validator, "phase.counter", false, 1, NO_LOCKS, 95);
+            agentAccess(validator, "phase.counter", false, 2, NO_LOCKS, 95);
+            agentAccess(validator, "phase.counter", true, 1, NO_LOCKS, 95);
+            agentAccess(validator, "phase.counter", true, 2, NO_LOCKS, 95);
+        }
+        for (int round = 0; round < 3; round++) {
+            validator.markInvocationStart();
+            agentAccess(validator, "phase.counter", false, 1, NO_LOCKS, 95);
+            agentAccess(validator, "phase.counter", false, 2, NO_LOCKS, 95);
+        }
+        assertTrue(validator.analyze().hasIssues(),
+                "Two writers cannot take three rounds to warm a single-check cache: each extra "
+                        + "warm round exists because a loser re-missed, and there are only so "
+                        + "many losers. A counter that stops being written mid-run must not "
+                        + "out-settle its own warming");
+    }
+
+    @Test
     @DisplayName("atomicity: a blind store is initialization, not a single-check cache (#313)")
     void atomicityStillFiresWhenTheWarmRoundStoreWasBlind() {
         AtomicityValidator validator = new AtomicityValidator();
