@@ -66,8 +66,8 @@ final class CorpusReport {
                 .append("\n\n");
 
         out.append("## Per subject\n\n")
-                .append("| Subject | Library | Contract | Findings | Detectors (tier/severity) | Crashes |\n")
-                .append("|---|---|---|---:|---|---:|\n");
+                .append("| Subject | Library | Contract | Events | Findings | Detectors (tier/severity) | Crashes |\n")
+                .append("|---|---|---|---:|---:|---|---:|\n");
 
         for (Subject subject : Corpus.subjects()) {
             List<CorpusRecorder.Finding> mine = findings.stream()
@@ -83,6 +83,7 @@ final class CorpusReport {
             out.append("| `").append(subject.testMethod()).append("` | ")
                     .append(subject.library()).append(" | ")
                     .append(subject.contract()).append(" | ")
+                    .append(CorpusRecorder.eventsFor(subject.testMethod())).append(" | ")
                     .append(mine.size()).append(" | ")
                     .append(detectors.isEmpty() ? "-" : String.join(", ", detectors)).append(" | ")
                     .append(crashCount).append(" |\n");

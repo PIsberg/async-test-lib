@@ -7,9 +7,11 @@ import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.SiteCapture;
 import se.deversity.asynctest.diagnostics.TrustTier;
 import se.deversity.asynctest.report.Violation;
+import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -43,7 +45,10 @@ final class CorpusRecorder implements AsyncTestListener {
     private static final List<Crash> CRASHES = new CopyOnWriteArrayList<>();
     private static final AtomicInteger BODY_EXECUTIONS = new AtomicInteger();
 
+    private static final Map<String, Long> EVENTS_PER_SUBJECT = new ConcurrentHashMap<>();
+
     private static volatile String currentSubject = "unattributed";
+    private static volatile long subjectStartEvents;
 
     private CorpusRecorder() {
     }
@@ -66,6 +71,29 @@ final class CorpusRecorder implements AsyncTestListener {
 
     static void countBodyExecution() {
         BODY_EXECUTIONS.incrementAndGet();
+    }
+
+    /** Remembers where the telemetry counter stood as a subject started. */
+    static void markSubjectStart() {
+        subjectStartEvents = TelemetryRegistry.publishedEvents();
+    }
+
+    /**
+     * Attributes the events published while {@code subject} ran to that subject.
+     *
+     * <p>The number a zero finding count needs. Without it, a subject that produced no finding and
+     * a subject the agent never observed are the same row, which is the per-subject form of the
+     * exposure problem the report already fixes per detector.
+     *
+     * @param subject the test method that just finished
+     */
+    static void markSubjectEnd(String subject) {
+        EVENTS_PER_SUBJECT.put(subject, TelemetryRegistry.publishedEvents() - subjectStartEvents);
+    }
+
+    /** {@return how many access events were published while {@code subject} ran} */
+    static long eventsFor(String subject) {
+        return EVENTS_PER_SUBJECT.getOrDefault(subject, 0L);
     }
 
     static List<Finding> findings() {
