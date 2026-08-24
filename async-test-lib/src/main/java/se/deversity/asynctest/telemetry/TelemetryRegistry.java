@@ -459,6 +459,25 @@ public final class TelemetryRegistry {
     }
 
     /**
+     * {@return how many access events this JVM published and then threw away}
+     *
+     * <p>The ring buffer is bounded. When it stays full and the drain makes no progress,
+     * {@link TelemetryEventBuffer#publish} eventually drops the event rather than holding a
+     * worker thread hostage, which is the right trade for the program under test and the wrong
+     * one to keep quiet about: every dropped event is an access a detector never saw, so a run
+     * with a nonzero count here has weaker evidence than its finding list suggests, in both
+     * directions. A missing write can hide a race; a missing lock acquisition can invent one.
+     *
+     * <p>Cumulative for the life of the JVM and never reset, so a harness that reports it should
+     * read it once at the end of the run.
+     *
+     * @since 1.10.0
+     */
+    public static long droppedEvents() {
+        return BUFFER.droppedCount();
+    }
+
+    /**
      * Drains everything published so far to the active callback, and returns once that
      * drain has completed.
      *

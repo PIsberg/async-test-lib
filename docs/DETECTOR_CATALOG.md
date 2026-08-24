@@ -126,6 +126,89 @@ anything". Without a trust floor, plan to baseline first — see [CI_INTEGRATION
 
 ---
 
+## What feeds each detector
+
+A detector only speaks when something feeds it, and the corpus eval made the three feeds visible:
+42 unmodified third-party classes under `detectAll = true` produced findings from exactly two
+detectors, because only two read the agent's woven streams. Before enabling everything and
+wondering about the silence, know which kind each detector is. The classification lives in
+`DetectorFeeds`, the listing below mirrors it, and `DetectorFeedCoverageTest` fails the build when
+the two drift or when the agent-fed set stops matching the classes the woven streams are wired
+into.
+
+### Agent-fed (2)
+
+Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
+on unmodified code, third-party code included, whenever the agent is attached:
+
+`AtomicityValidator`, `SharedCollectionDetector`
+
+### Zero-config (3)
+
+Watch the JVM and the harness themselves (`ThreadMXBean` deadlock scans, per-round thread-dump
+snapshots, live `<clinit>` stacks) and can fire with an empty test body, no agent and no recording
+call:
+
+`DeadlockDetector`, `LivelockDetector`, `StaticInitDeadlockDetector`
+
+### Recording-only (137)
+
+Fire only when the test body records what it did, through the detector's `record*`/`register*`
+API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
+recording is the feed:
+
+`VisibilityMonitor`, `FalseSharingDetector`, `WakeupDetector`, `ConstructorSafetyValidator`,
+`ABAProblemDetector`, `LockOrderValidator`, `SynchronizerMonitor`, `ThreadPoolMonitor`,
+`MemoryOrderingMonitor`, `PipelineMonitor`, `ReadWriteLockMonitor`, `SemaphoreMisuseDetector`,
+`CompletableFutureExceptionDetector`, `CompletableFutureCompletionLeakDetector`,
+`VirtualThreadPinningDetector`, `ThreadPoolDeadlockDetector`, `ConcurrentModificationDetector`,
+`LockLeakDetector`, `SharedRandomDetector`, `BlockingQueueDetector`, `ConditionVariableDetector`,
+`SimpleDateFormatDetector`, `ParallelStreamDetector`, `ResourceLeakDetector`,
+`CountDownLatchDetector`, `CyclicBarrierDetector`, `ReentrantLockDetector`,
+`VolatileArrayDetector`, `DoubleCheckedLockingDetector`, `WaitTimeoutDetector`,
+`LockContentionDetector`, `SynchronizedNonFinalDetector`, `MissedSignalDetector`,
+`LazyInitRaceDetector`, `PhaserDetector`, `StampedLockDetector`, `ExchangerDetector`,
+`ScheduledExecutorDetector`, `ForkJoinPoolDetector`, `ThreadFactoryDetector`,
+`RaceConditionDetector`, `ThreadLocalMonitor`, `BusyWaitDetector`, `InterruptMonitor`,
+`ThreadLeakDetector`, `SleepInLockDetector`, `UnboundedQueueDetector`, `ThreadStarvationDetector`,
+`CalendarDetector`, `TimerDetector`, `CopyOnWriteCollectionDetector`, `StringBuilderDetector`,
+`StructuredConcurrencyMisuseDetector`, `VirtualThreadContextLeakDetector`,
+`ScopedValueMisuseDetector`, `VirtualThreadCpuBoundTaskDetector`,
+`VirtualThreadCarrierExhaustionDetector`, `HttpClientConcurrencyDetector`, `StreamClosingDetector`,
+`CacheConcurrencyDetector`, `CompletableFutureChainDetector`, `ExecutorShutdownDetector`,
+`MutableMapKeyDetector`, `NestedMonitorLockoutDetector`, `LockDowngradeDetector`,
+`InheritableThreadLocalMisuseDetector`, `ThreadLocalContaminationDetector`,
+`AtomicNonAtomicUpdateDetector`, `SynchronizedCollectionIterationDetector`,
+`SharedFormatterDetector`, `ConcurrentMapComputeRecursionDetector`,
+`SynchronizedOnLiteralDetector`, `PublicLockExposureDetector`, `ForkJoinTaskBlockingDetector`,
+`OptimisticReadValidationDetector`, `CompletableFutureCommonPoolBlockingDetector`,
+`SharedMatcherDetector`, `SharedDecimalFormatDetector`, `WeakReferenceRaceDetector`,
+`StatefulLambdaDetector`, `SharedMessageDigestDetector`, `InterruptSwallowingDetector`,
+`MdcContextLeakDetector`, `SystemPropertyMutationDetector`, `FutureIgnoredDetector`,
+`ExplicitGcDetector`, `DeprecatedThreadApiDetector`, `SharedXmlParserDetector`,
+`BoxedPrimitiveLockDetector`, `SharedTimeZoneDetector`, `UncaughtExceptionHandlerDetector`,
+`DaemonThreadHygieneDetector`, `NotifyWithoutMonitorDetector`, `SharedSecureRandomDetector`,
+`WeakHashMapSharedDetector`, `JdbcConnectionSharedDetector`, `SharedStatefulCryptoDetector`,
+`NonAtomicConcurrentMapUpdateDetector`, `SharedDeflaterDetector`, `ThisEscapeDetector`,
+`ThreadLocalRandomMisuseDetector`, `CompletableFutureObtrudeDetector`, `SpuriousWakeupDetector`,
+`LockUpgradeDeadlockDetector`, `TryLockMisuseDetector`,
+`CompletableFutureBlockingCallbackDetector`, `StableValueMisuseDetector`,
+`StructuredTaskScopeMisuseDetector`, `GathererConcurrencyMisuseDetector`,
+`SharedByteBufferDetector`, `SharedCharsetCoderDetector`, `SharedChecksumDetector`,
+`FileChannelPositionRaceDetector`, `SharedIteratorDetector`, `HighContentionAtomicDetector`,
+`SharedJsonMapperReconfigDetector`, `LazyConstantMisuseDetector`, `FinalFieldMutationDetector`,
+`SharedKdfDetector`, `LatchMisuseDetector`, `ExecutorDeadlockDetector`, `FutureBlockingDetector`,
+`FlowPublisherConcurrencyDetector`, `ConfinedArenaThreadEscapeDetector`,
+`SharedMemorySegmentRaceDetector`, `VarHandleNonAtomicUpdateDetector`,
+`RecordMutableComponentLeakDetector`, `VirtualThreadPoolingDetector`,
+`PlatformThreadPerTaskDetector`, `SharedSplittableRandomDetector`,
+`CompletableFutureCompletionRaceDetector`, `CompletableFutureCancellationPropagationDetector`,
+`CompletableFutureCombinatorMisuseDetector`, `LambdaLostUpdateDetector`,
+`VirtualThreadResourceSaturationDetector`, `VirtualThreadMonitorSerializationDetector`,
+`ThreadLocalCacheDegradationDetector`
+
+---
+
 ## Phase 1: Core (Always Enabled)
 
 These detectors run automatically on every `@AsyncTest` without configuration.

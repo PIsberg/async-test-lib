@@ -203,4 +203,13 @@
         <Class name="se.deversity.asynctest.agent.AsyncTestAgent$DiagnosticListener"/>
     </Match>
 
+    <!-- Same reasoning one layer out: this listener hears about the retransformClasses call
+         rather than the transformation, and naming the class the JVM refused to re-weave is
+         the whole point of it existing. A swallowed failure here costs a user every already
+         loaded class's weaving with no way to find out why. Scoped to the listener. -->
+    <Match>
+        <Bug pattern="INFORMATION_EXPOSURE_THROUGH_AN_ERROR_MESSAGE"/>
+        <Class name="se.deversity.asynctest.agent.AsyncTestAgent$RetransformDiagnosticListener"/>
+    </Match>
+
 </FindBugsFilter>

@@ -102,6 +102,7 @@ you are editing here.
     <element path="se.deversity.asynctest.diagnostics.ConfinedArenaThreadEscapeDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.DetectorDefaultSeverity" rules=".claude/rules/async-test-detectors.md"/>
+    <element path="se.deversity.asynctest.diagnostics.DetectorFeeds" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.DetectorTrust" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.FinalFieldMutationDetector" rules=".claude/rules/async-test-detectors.md"/>

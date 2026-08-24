@@ -4,10 +4,12 @@ import se.deversity.asynctest.AsyncTestListener;
 import se.deversity.asynctest.AsyncTestListenerRegistry;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
+import se.deversity.asynctest.diagnostics.SiteCapture;
 import se.deversity.asynctest.diagnostics.TrustTier;
 import se.deversity.asynctest.report.Violation;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -20,8 +22,16 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 final class CorpusRecorder implements AsyncTestListener {
 
-    /** One reported finding, already resolved to the reporting detector's trust tier. */
-    record Finding(String subject, String detector, IssueSeverity severity, TrustTier tier, String message) {
+    /**
+     * One reported finding, already resolved to the reporting detector's trust tier.
+     *
+     * <p>{@code evidence} flattens the violation's sites and attributes into one line. A finding
+     * on a documented-thread-safe subject has to be arguable from the report alone, and the
+     * headline message is the same sentence for every atomicity finding; the field and the class
+     * are in the evidence.
+     */
+    record Finding(String subject, String detector, IssueSeverity severity, TrustTier tier,
+                   String message, String evidence) {
     }
 
     /** A RuntimeException thrown out of a subject's own code while several threads used it. */
@@ -77,6 +87,20 @@ final class CorpusRecorder implements AsyncTestListener {
                 violation.detector(),
                 violation.severity(),
                 DetectorTrust.tierOfDetector(violation.detector()),
-                violation.message()));
+                violation.message(),
+                evidenceOf(violation)));
+    }
+
+    /** {@return the violation's sites and attributes on one line, or {@code "-"} when it has none} */
+    private static String evidenceOf(Violation violation) {
+        StringBuilder evidence = new StringBuilder();
+        for (SiteCapture.Site site : violation.sites()) {
+            evidence.append(evidence.isEmpty() ? "" : "; ").append(site);
+        }
+        for (Map.Entry<String, Object> attribute : violation.attributes().entrySet()) {
+            evidence.append(evidence.isEmpty() ? "" : "; ")
+                    .append(attribute.getKey()).append('=').append(attribute.getValue());
+        }
+        return evidence.isEmpty() ? "-" : evidence.toString();
     }
 }

@@ -18,6 +18,10 @@ final class Corpus {
     private static final String LANG3 = "commons-lang3:3.20.0";
     private static final String COLLECTIONS4 = "commons-collections4:4.5.0";
     private static final String GUAVA = "guava:33.4.8-jre";
+    private static final String JACKSON = "jackson-databind:2.22.2";
+    private static final String CAFFEINE = "caffeine:3.2.4";
+    private static final String NETTY = "netty-buffer:4.2.17.Final";
+    private static final String SPRING = "spring-core:7.0.9";
 
     private static final List<Subject> SUBJECTS = List.of(
 
@@ -203,7 +207,65 @@ final class Corpus {
             new Subject("fileBackedOutputStream_writeAndReset", GUAVA,
                     "com.google.common.io.FileBackedOutputStream", Contract.THREAD_SAFE,
                     "This class is thread-safe.",
-                    "com/google/common/io/FileBackedOutputStream.java:59")
+                    "com/google/common/io/FileBackedOutputStream.java:59"),
+
+            // --- Fourth wave (#302): four libraries outside the Apache/Guava axis the first three
+            // --- waves came from, chosen for mechanisms the corpus had never exercised - a
+            // --- reconfigurable mapper, a cache with its own eviction machinery, an arena
+            // --- allocator and a reference map with lock-striped segments.
+
+            new Subject("objectMapper_reconfigureWhileWriting", JACKSON,
+                    "com.fasterxml.jackson.databind.ObjectMapper", Contract.NOT_THREAD_SAFE,
+                    "ObjectWriters are thread-safe whereas ObjectMapper itself is only thread-safe "
+                            + "when configuring methods (such as this one) are NOT called.",
+                    "com/fasterxml/jackson/databind/ObjectMapper.java:2538"),
+
+            new Subject("objectMapper_configuredThenShared", JACKSON,
+                    "com.fasterxml.jackson.databind.ObjectMapper", Contract.THREAD_SAFE,
+                    "Mapper instances are fully thread-safe provided that ALL configuration of the "
+                            + "instance occurs before ANY read or write calls.",
+                    "com/fasterxml/jackson/databind/ObjectMapper.java:83"),
+
+            new Subject("objectReader_readValue", JACKSON,
+                    "com.fasterxml.jackson.databind.ObjectReader", Contract.THREAD_SAFE,
+                    "Uses \"mutant factory\" pattern so that instances are immutable (and thus "
+                            + "fully thread-safe with no external synchronization);",
+                    "com/fasterxml/jackson/databind/ObjectReader.java:31"),
+
+            new Subject("objectWriter_writeValueAsString", JACKSON,
+                    "com.fasterxml.jackson.databind.ObjectWriter", Contract.THREAD_SAFE,
+                    "Instances are initially constructed by ObjectMapper and can be reused in "
+                            + "completely thread-safe manner with no explicit synchronization",
+                    "com/fasterxml/jackson/databind/ObjectWriter.java:31"),
+
+            // The contract for the next three is stated on the type the instance is reached
+            // through, which is where these libraries put it. The instance is named in the test
+            // method's javadoc; the file and line below are where the sentence lives.
+
+            new Subject("caffeineCache_getAndPut", CAFFEINE,
+                    "com.github.benmanes.caffeine.cache.Cache", Contract.THREAD_SAFE,
+                    "Implementations of this interface are expected to be thread-safe and can be "
+                            + "safely accessed by multiple concurrent threads.",
+                    "com/github/benmanes/caffeine/cache/Cache.java:34"),
+
+            new Subject("caffeineAsMap_computeIfAbsent", CAFFEINE,
+                    "com.github.benmanes.caffeine.cache.Cache", Contract.THREAD_SAFE,
+                    "Returns a view of the entries stored in this cache as a thread-safe map. ... "
+                            + "A computation operation, such as ConcurrentMap#compute, performs "
+                            + "the entire method invocation atomically",
+                    "com/github/benmanes/caffeine/cache/Cache.java:200"),
+
+            new Subject("pooledByteBufAllocator_bufferAndRelease", NETTY,
+                    "io.netty.buffer.ByteBufAllocator", Contract.THREAD_SAFE,
+                    "Implementations are responsible to allocate buffers. Implementations of this "
+                            + "interface are expected to be thread-safe.",
+                    "io/netty/buffer/ByteBufAllocator.java:19"),
+
+            new Subject("concurrentReferenceHashMap_putAndGet", SPRING,
+                    "org.springframework.util.ConcurrentReferenceHashMap", Contract.THREAD_SAFE,
+                    "This implementation follows the same design constraints as ConcurrentHashMap "
+                            + "with the exception that null values and null keys are supported.",
+                    "org/springframework/util/ConcurrentReferenceHashMap.java:51")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()

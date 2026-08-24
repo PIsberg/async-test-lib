@@ -107,6 +107,16 @@ public final class AsyncTestAgent {
      */
     private static final AtomicBoolean INSTALLED = new AtomicBoolean(false);
 
+    /**
+     * How many already-loaded classes go into one {@code retransformClasses} call.
+     *
+     * <p>Any bound would do; what matters is that there is one. The JVM's call is all-or-nothing,
+     * so an unbounded batch means one unretransformable class costs every other class its
+     * weaving. A few hundred keeps the number of JVM round trips small while leaving a failure
+     * something the splitting reallocator can isolate in a handful of halvings.
+     */
+    private static final int RETRANSFORM_BATCH_SIZE = 256;
+
     private AsyncTestAgent() {}
 
     /**
@@ -322,8 +332,25 @@ public final class AsyncTestAgent {
             // Dynamic attach: re-weave already-loaded classes. Neither Advice inlining nor the
             // field weaver adds new members, so disableClassFormatChanges() keeps
             // retransformation schema-safe.
+            //
+            // Batching and the reallocator are not tuning. Byte Buddy's default hands every
+            // loaded class to Instrumentation.retransformClasses in ONE call, and that call is
+            // all-or-nothing: a single type the JVM refuses re-weaves none of the others, and
+            // the default RedefinitionStrategy.Listener swallows the failure. Attaching to a
+            // suite with a large classpath therefore silently degraded to "weave only what
+            // loads from here on", which is the failure the corpus eval hit when four more
+            // libraries joined its classpath: instrumented types fell from 1074 to 200 and
+            // every subject loaded before the attach went quiet. Fixed batches bound the blast
+            // radius, the splitting reallocator halves a failing batch until the offending type
+            // is alone, and RetransformDiagnosticListener says which type that was instead of
+            // leaving a user to wonder why their detectors went silent.
             builder = builder
                     .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+                    .with(AgentBuilder.RedefinitionStrategy.BatchAllocator.ForFixedSize
+                            .ofSize(RETRANSFORM_BATCH_SIZE))
+                    .with(new AgentBuilder.RedefinitionStrategy.Listener.Compound(
+                            AgentBuilder.RedefinitionStrategy.Listener.BatchReallocator.splitting(),
+                            new RetransformDiagnosticListener(options.debug())))
                     .disableClassFormatChanges();
         }
         boolean weaveFields = options.fields();
@@ -661,6 +688,59 @@ public final class AsyncTestAgent {
                 @Advice.Origin("#m") String methodName) {
             TelemetryRegistry.recordAccess(
                     Thread.currentThread().threadId(), className, methodName);
+        }
+    }
+
+    /**
+     * Says which already-loaded class the JVM refused to re-weave, instead of losing it silently.
+     *
+     * <p>Retransformation failures do not reach {@link DiagnosticListener}: that one hears about
+     * transformation, this one about the {@code retransformClasses} call around it. Paired with
+     * {@code BatchReallocator.splitting()}, a failing batch is halved until the offending type
+     * stands alone, so the single-type failure logged here names the actual culprit and every
+     * other class in the original batch has already been re-woven by then. Intermediate batch
+     * failures are the splitting working as intended and are logged only under {@code debug}.
+     */
+    static final class RetransformDiagnosticListener
+            extends AgentBuilder.RedefinitionStrategy.Listener.Adapter {
+
+        private final boolean debug;
+
+        /**
+         * Creates a listener.
+         *
+         * @param debug {@code true} to also log the batches that are about to be split, and full
+         *              stack traces; {@code false} for one line per type that could not be
+         *              re-woven
+         */
+        RetransformDiagnosticListener(boolean debug) {
+            this.debug = debug;
+        }
+
+        /**
+         * Reports a failed retransformation batch and leaves the retry to the reallocator.
+         *
+         * @param index     the batch's index (unused)
+         * @param batch     the classes in the failed batch
+         * @param throwable the failure the JVM raised
+         * @param types     every type the redefinition considered (unused)
+         * @return no additional retries; {@code BatchReallocator.splitting()} supplies those
+         */
+        @Override
+        public Iterable<? extends List<Class<?>>> onError(int index, List<Class<?>> batch,
+                                                          Throwable throwable,
+                                                          List<Class<?>> types) {
+            if (batch.size() == 1) {
+                System.err.println("[ASYNC-TEST-AGENT] Could not re-weave already-loaded class "
+                        + batch.get(0).getName() + ": " + throwable);
+            } else if (debug) {
+                System.err.println("[ASYNC-TEST-AGENT] Retransformation batch of " + batch.size()
+                        + " failed, splitting to isolate the type: " + throwable);
+            }
+            if (debug) {
+                throwable.printStackTrace();
+            }
+            return List.of();
         }
     }
 }
