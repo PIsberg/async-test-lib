@@ -264,6 +264,24 @@ the class schema is unchanged and retransformation is safe. **Verified empirical
 (`SelfAttachTest`): accessors of classes loaded *before* the attach are re-woven in place,
 exactly like classes loaded afterwards.
 
+**A class the JVM refuses does not cost the others their weaving.** `retransformClasses` is
+all-or-nothing per call, and some classes cannot be re-verified at all: Netty's optional logger
+adapters fail with `InternalError: class redefinition failed: invalid class` when log4j is absent
+from the classpath, because re-verifying them needs a type that is not there. Byte Buddy's default
+passes every loaded class in one such call and its default listener swallows the failure, so a
+single refused class used to leave the agent installed but weaving nothing that had already
+loaded, silently. The agent therefore retransforms in fixed batches, halves a failing batch until
+the refused class stands alone, and prints one line naming it:
+
+```
+[ASYNC-TEST-AGENT] Could not re-weave already-loaded class io.netty.util.internal.logging.Log4JLogger: java.lang.InternalError: class redefinition failed: invalid class
+```
+
+If detectors go quiet after an attach, that line is the first thing to look for. Pinned by
+`RetransformBatchIsolationTest`; measured on a real classpath in
+[the corpus eval](analysis/corpus-eval.md#what-the-corpus-taught-the-model-in-four-rounds), where
+the defect cost 874 of 1074 instrumented classes and the whole documented-unsafe detection column.
+
 **Idempotency and interaction with `-javaagent`.** All three entry points share a single
 at-most-once install gate (an `AtomicBoolean` CAS). If the agent was already attached — via a
 launch flag or a prior `selfAttach` — the call returns immediately without attaching again or
