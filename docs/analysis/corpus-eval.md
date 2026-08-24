@@ -98,10 +98,53 @@ is not reproducible.
 Each CI job uploads both lanes' reports as `e2e-corpus-eval-report-java-<version>`, so any row here
 can be checked against the run that produced it.
 
+### The platforms disagree, and that is the headline
+
+The first run of this table did what a platform key is for: it produced a divergence nobody had
+predicted, on numbers the earlier single-run version of this document would have published as
+properties of the library.
+
+| Measure | **L** | **C21** | **C25** | **C26** |
+|---|---:|---:|---:|---:|
+| Documented-thread-safe with a VERDICT-tier HIGH or CRITICAL finding | **0 of 22** | **0 of 22** | **0 of 22** | **0 of 22** |
+| Documented-not-thread-safe with at least one finding | 20 of 20 | 7 of 20 | 7 of 20 | 6 of 20 |
+| Documented-thread-safe with any finding at all | 3 of 22 | 6 of 22 | 6 of 22 | 6 of 22 |
+| Total findings | 31 | 18 | 18 | 17 |
+| Body executions | 10080 | 10080 | 10080 | 10080 |
+
+Read the first row first: the gate's invariant held on every platform. The tier that fails a build
+produced nothing on any documented-thread-safe class anywhere, which is the claim this eval exists
+to support and the only one it currently supports across machines.
+
+Every other row moved, and in both directions at once: the Linux runs detect fewer of the classes
+their own javadoc calls unsafe *and* report more of the classes it calls safe. The three CI legs
+agree with each other exactly, so the axis is the machine, not the JDK.
+
+What has been ruled out, by measurement rather than by argument:
+
+- **Not lost work.** All four runs executed the same 10,080 test bodies, and no round timed out.
+- **Not weaving coverage.** The agent prints a line for every already-loaded class the JVM refuses
+  to re-weave. The CI logs contain none, so retransformation was complete there.
+- **Not the JDK.** 21, 25 and 26 on Linux produce the same numbers.
+- **Not core count alone.** Re-running locally under `-XX:ActiveProcessorCount=2` still detected
+  20 of 20.
+- **Not backpressure.** Every report now prints how many access events the ring buffer threw away.
+  All four runs report **0**, so the events all arrived and it is the conclusions drawn from them
+  that differ.
+
+The suspicious observation is in `synchronizedBag_addAndCount`, which is silent on **L** and fires
+on all three CI legs: its report shows 480 collection reads, exactly two per body, so the events
+were not lost, yet the monitor that guards them was not credited. That points at what the pipeline
+concludes rather than at how much of it arrived.
+
+Until the mechanism is named, no per-detector rate from this eval should be quoted as a property of
+the library, and the per-subject table below is a property of run **L**. That is
+[#316](https://github.com/PIsberg/async-test-lib/issues/316), and it is the first thing to fix.
+
 ### Divergences to expect, and how to read one
 
-A cell that differs between JDKs is not automatically noise. Two differences are predicted by the
-library rather than observed by it, and are declared here so a reader does not have to guess:
+A cell that differs between platforms is not automatically noise. Two differences are predicted by
+the library rather than observed by it, and are declared here so a reader does not have to guess:
 
 - **Virtual-thread pinning is version-dependent.** `VirtualThreadPinningDetector` treats JDK 24 and
   later differently, because JEP 491 stopped `synchronized` pinning a carrier, and JDK 26 again
@@ -118,7 +161,7 @@ library rather than observed by it, and are declared here so a reader does not h
 
 Anything else that differs between two cells is worth an issue.
 
-### Per subject, run **L**
+### Per subject, run **L** (local, JDK 26 on Windows 11)
 
 | Subject | Library | Contract | Findings | Detectors (tier/severity) | Crashes |
 |---|---|---|---:|---|---:|
@@ -174,17 +217,29 @@ Anything else that differs between two cells is worth an issue.
 | Documented-not-thread-safe classes that threw out of their own code | 3 of 20 | 3 of 20 |
 | Distinct detectors that produced any finding | 2 of 5 exposed | 0 of 3 exposed |
 
+The control column is the same on every platform: with nothing attached, all four runs observed
+nothing at all from the agent-fed pair, over 42 subjects. Whatever moves between machines moves
+inside the woven pipeline, not in the harness.
+
 ## What this means for a user
 
-**The strongest claim held.** `VERDICT` is the tier the library reserves for findings backed by a
-measured case that fires on a bug and stays silent on its correctly synchronized twin, and it is
-the tier `@AsyncTest(failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT)` gates a merge on. Across
-22 classes whose javadoc says they are safe for concurrent use, no finding reached it: a build
-gated at that tier would not have failed on any of them. Three drew a `PROMPT`-tier finding, which
-is the tier that says "verify this", and all three are traced below.
+**The strongest claim held, on every platform.** `VERDICT` is the tier the library reserves for
+findings backed by a measured case that fires on a bug and stays silent on its correctly
+synchronized twin, and it is the tier `@AsyncTest(failOn = FailOn.HIGH, minTrust =
+TrustTier.VERDICT)` gates a merge on. Across 22 classes whose javadoc says they are safe for
+concurrent use, no finding reached it on any of the four runs: a build gated at that tier would not
+have failed on any of them, anywhere. This is the one result the cross-platform comparison leaves
+standing, and it is the result the tier system was built to produce.
+
+**Everything below the gate is run L's, not the library's.** Three documented-safe classes drew a
+`PROMPT`-tier finding locally and six did on CI, with only two of the three in common. The three
+local ones are traced below because they are the ones that were reproduced and investigated; the
+CI-only ones (`rateLimiter_tryAcquire`, `synchronizedBag_addAndCount`, and Jackson's configured
+mapper) wait on #316, because a finding that does not reproduce on the machine you are debugging on
+cannot be traced to a model gap yet.
 
 **What attaching the agent buys, in one number.** Five detectors of 142 could see anything in this
-corpus, and two of them produced every finding in it. That is not a defect in the other 140: 137
+corpus, and two of them produced every finding in it, on every platform. That is not a defect in the other 140: 137
 of them are told what happened by the test body, and this corpus tells them nothing on purpose.
 A user attaching the agent to an existing suite and changing no test code is buying the
 `AGENT` set; a user willing to record is buying the rest. The control lane is what makes that
@@ -282,9 +337,10 @@ here on", with detection quietly reduced and nothing said.
   this corpus says nothing about them in either direction. Measuring them needs a lane whose test
   bodies record what they did, which is a different eval with a different denominator
   ([#310](https://github.com/PIsberg/async-test-lib/issues/310)).
-- **A noise column of 3 of 22 is a measurement, not a guarantee.** Nineteen documented-safe classes
-  produce nothing, and each of them went quiet because a specific mechanism became visible to the
-  model. A correct class guarded by a mechanism the weaver cannot see, a lock acquired inside
+- **The noise column is not stable across machines.** It is 3 of 22 on run L and 6 of 22 on all
+  three CI legs, and until #316 explains why, the only number here that is a property of the
+  library rather than of a machine is the VERDICT-tier zero. Where a documented-safe class does go
+  quiet, it went quiet because a specific mechanism became visible to the model. A correct class guarded by a mechanism the weaver cannot see, a lock acquired inside
   unwoven code, a hand-rolled protocol on plain fields, will still draw a `PROMPT`-tier finding,
   and the tier system exists to price exactly that. The three above are that case, named.
 - **Detection is probabilistic, and the gate reflects that.** `CorpusGates` fails the run when a
