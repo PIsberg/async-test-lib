@@ -418,14 +418,21 @@ class DetectorAccuracyEvalTest {
         AtomicityValidator validator = new AtomicityValidator();
         // The builder writes while no other thread can reach the receiver, under its own lock -
         // netty builds a chunk's metadata under the arena lock and serves it under the chunk's.
+        // The reads keep coming in later rounds: that corroboration is what licenses the excuse,
+        // and the single-round variant of this stream is pinned as still firing by
+        // LocksetIntersectionTest.disjointLocksStillReport.
+        validator.markInvocationStart();
         agentAccess(validator, "chunk.mask", true, 1, WRITE_LOCK, 88);
         agentAccess(validator, "chunk.mask", true, 1, WRITE_LOCK, 88);
         agentAccess(validator, "chunk.mask", false, 2, OTHER_LOCK, 88);
         agentAccess(validator, "chunk.mask", false, 3, OTHER_LOCK, 88);
+        validator.markInvocationStart();
         agentAccess(validator, "chunk.mask", false, 1, OTHER_LOCK, 88);
+        agentAccess(validator, "chunk.mask", false, 2, OTHER_LOCK, 88);
         assertFalse(validator.analyze().hasIssues(),
                 "Both writes happened while the receiver was reachable only from the thread "
-                        + "building it, and every post-publication access is a read. Intersecting "
+                        + "building it, and every post-publication access is a read under one "
+                        + "shared lock, across rounds the harness orders. Intersecting "
                         + "construction locks against post-publication locks is how an unshared "
                         + "write turns into a finding, which is the #312 false positive");
     }
@@ -434,9 +441,15 @@ class DetectorAccuracyEvalTest {
     @DisplayName("atomicity: a writer that keeps writing after publication still fires (#312)")
     void atomicityStillFiresWhenWritesContinueAfterPublication() {
         AtomicityValidator validator = new AtomicityValidator();
+        // Corroborated hand-off shape in every other respect - rounds of reads follow - but the
+        // builder writes once more after the receiver escaped, and that write holds nothing.
+        validator.markInvocationStart();
         agentAccess(validator, "node.next", true, 1, WRITE_LOCK, 89);
         agentAccess(validator, "node.next", false, 2, NO_LOCKS, 89);
         agentAccess(validator, "node.next", true, 1, NO_LOCKS, 89);
+        validator.markInvocationStart();
+        agentAccess(validator, "node.next", false, 2, NO_LOCKS, 89);
+        validator.markInvocationStart();
         agentAccess(validator, "node.next", false, 2, NO_LOCKS, 89);
         assertTrue(validator.analyze().hasIssues(),
                 "The receiver escaped - another thread has read it - and the builder wrote again "

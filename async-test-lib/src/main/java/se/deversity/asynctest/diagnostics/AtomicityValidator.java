@@ -664,12 +664,10 @@ public class AtomicityValidator {
                                             boolean volatileField, int constantTag, int identity) {
         boolean exclusive = false;
         if (fieldName != null && !fieldName.isBlank()) {
-            // A write made while the receiver is still exclusive to the thread that built it is
-            // construction, not contention (#312): nothing else can observe the field yet, so
-            // the access enters neither lockset, whatever locks it held. The state flips
-            // permanently on the first access from any other thread — a write to an object that
-            // has already escaped is never excused, which is the boundary ThisEscapeDetector
-            // owns and the two must agree on.
+            // Whether the receiver is still exclusive to the thread building it travels on the
+            // record (#312). The locksets are fed unconditionally: whether construction
+            // accesses are excused is decided at analysis time, where the corroboration the
+            // excuse needs — the receiver staying shared across later rounds — is visible.
             exclusive = inExclusivePhase(identity, threadId);
             // Per instance, not just per field. One WeakEntry in a striped cache is written under
             // its own segment's lock every time; merging the entries makes those locks disagree
@@ -679,12 +677,10 @@ public class AtomicityValidator {
             if (volatileField) {
                 guard.noteVolatile();
             }
-            if (!exclusive) {
-                if (isWrite) {
-                    guard.noteWriteConstant(constantTag);
-                }
-                guard.noteAccess(lockFingerprint, ownMonitor, methodMonitor, isWrite);
+            if (isWrite) {
+                guard.noteWriteConstant(constantTag);
             }
+            guard.noteAccess(lockFingerprint, ownMonitor, methodMonitor, isWrite);
         }
         record(fieldName, value, isWrite, threadId, null, false, lockFingerprint, identity,
                 ownMonitor, methodMonitor, exclusive);
@@ -815,22 +811,33 @@ public class AtomicityValidator {
             // different objects share nothing, and merging them is how a per-call object reads as
             // contended. Identity 0 means "not known", which keeps every pre-agent caller's
             // accesses in one group exactly as before.
+            //
+            // Construction accesses (#312) leave the contention stats only when the excuse is
+            // corroborated: the receiver's post-publication accesses must span more than one
+            // harness-ordered round. A builder that wrote and a second thread that read once,
+            // all inside one round, is exactly what a two-thread race over an inconsistent
+            // lockset looks like, and it keeps reporting; a receiver built once and then read
+            // round after round is the hand-off the rule exists for.
+            Map<Integer, Boolean> corroborated = new HashMap<>();
+            for (FieldAccessRecord access : copy) {
+                if (access.exclusivePhase) {
+                    corroborated.computeIfAbsent(access.identity,
+                            identity -> spansLaterRounds(copy, identity));
+                }
+            }
             Map<AccessGroup, List<FieldAccessRecord>> byEpoch = new HashMap<>();
             for (FieldAccessRecord access : copy) {
-                // A construction access — made while no thread but the builder could reach the
-                // receiver — cannot race whatever locks it held, and stays out of the contention
-                // stats, the twin of its exclusion from the locksets at record time (#312). It
-                // stays in the copy: the excuses below read program order from the full history.
-                if (access.exclusivePhase) {
+                if (access.exclusivePhase
+                        && Boolean.TRUE.equals(corroborated.get(access.identity))) {
                     continue;
                 }
                 byEpoch.computeIfAbsent(new AccessGroup(access.epoch, access.identity),
                         ignored -> new ArrayList<>()).add(access);
             }
 
-            // Per-instance excuses (#311, #313), computed at most once per identity and only
-            // when the lockset alone would have reported. Both need ordered history, which the
-            // per-round groups no longer carry.
+            // Per-instance excuses (#311, #312, #313), computed at most once per identity and
+            // only when the lockset alone would have reported. All need ordered history, which
+            // the per-round groups no longer carry.
             Map<Integer, Boolean> excusedIdentities = new HashMap<>();
 
             for (List<FieldAccessRecord> roundAccesses : byEpoch.values()) {
@@ -862,9 +869,12 @@ public class AtomicityValidator {
                             && !locks.writesOnlyOneConstant());
                 if (sawUnguarded && groupIdentity != 0 && locks != null) {
                     FieldGuard guard = locks;
+                    boolean handOff = Boolean.TRUE.equals(corroborated.get(groupIdentity));
                     boolean excused = excusedIdentities.computeIfAbsent(groupIdentity,
-                            identity -> hintReadsConfirmedUnderTheWriteLock(copy, identity, guard)
-                                    || settledSingleCheckCache(copy, identity, guard));
+                            identity -> (handOff && postShareAccessesShareALock(copy, identity))
+                                    || hintReadsConfirmedUnderTheWriteLock(copy, identity, guard,
+                                            handOff)
+                                    || settledSingleCheckCache(copy, identity, guard, handOff));
                     sawUnguarded = !excused;
                 }
                 // Only claim to have looked at locks when an owner was actually supplied.
@@ -893,6 +903,104 @@ public class AtomicityValidator {
     }
 
     /**
+     * {@return whether {@code identity}'s post-publication accesses span more than one round}
+     *
+     * <p>The corroboration the construction excuse (#312) needs before it may touch anything.
+     * Rounds are ordered by the harness, so a receiver that keeps being accessed in rounds after
+     * the one that built it is demonstrably a publication that held. Everything inside a single
+     * round could equally be two threads racing over an inconsistent lockset, and stays judged
+     * exactly as it always was.
+     */
+    private static boolean spansLaterRounds(List<FieldAccessRecord> history, int identity) {
+        long firstEpoch = Long.MIN_VALUE;
+        for (FieldAccessRecord access : history) {
+            if (access.identity != identity || access.exclusivePhase) {
+                continue;
+            }
+            if (firstEpoch == Long.MIN_VALUE) {
+                firstEpoch = access.epoch;
+            } else if (access.epoch != firstEpoch) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * {@return whether some lock was held at every post-publication access to {@code identity}}
+     *
+     * <p>The streamed intersection cannot answer this: it folded the construction accesses in as
+     * they arrived. Recomputed here from the records, with the same resolution the streamed set
+     * uses, this is what lets netty build a chunk's metadata under the arena lock and serve it
+     * under the chunk's own {@code runsAvailLock} — two locksets that never intersect, and no
+     * race, because the construction half is excused (#312) and the serving half agrees with
+     * itself.
+     */
+    private static boolean postShareAccessesShareALock(List<FieldAccessRecord> history,
+                                                       int identity) {
+        int[] common = null;
+        for (FieldAccessRecord access : history) {
+            if (access.identity != identity || access.exclusivePhase) {
+                continue;
+            }
+            if (access.fingerprint == UNMODELLED) {
+                return false;
+            }
+            int[] held = heldLocksOf(access);
+            if (held.length == 0) {
+                return false;
+            }
+            if (common == null) {
+                common = held;
+                continue;
+            }
+            common = intersectLocks(common, held);
+            if (common.length == 0) {
+                return false;
+            }
+        }
+        return common != null && common.length > 0;
+    }
+
+    /** {@return the resolved lock ids this access held, the carried monitors included} */
+    private static int[] heldLocksOf(FieldAccessRecord access) {
+        int[] members;
+        if (access.fingerprint == 0L || access.fingerprint == UNMODELLED) {
+            members = HeldLocks.NONE;
+        } else {
+            int[] registered = HeldLocks.members(access.fingerprint);
+            members = registered != null ? registered
+                    : new int[] {FieldGuard.Lockset.opaque(access.fingerprint)};
+        }
+        int extra = (access.ownMonitor != 0 ? 1 : 0) + (access.methodMonitor != 0 ? 1 : 0);
+        if (extra == 0) {
+            return members;
+        }
+        int[] out = Arrays.copyOf(members, members.length + extra);
+        int at = members.length;
+        if (access.ownMonitor != 0) {
+            out[at] = access.ownMonitor;
+            at++;
+        }
+        if (access.methodMonitor != 0) {
+            out[at] = access.methodMonitor;
+        }
+        return out;
+    }
+
+    private static int[] intersectLocks(int[] left, int[] right) {
+        int kept = 0;
+        int[] out = new int[Math.min(left.length, right.length)];
+        for (int hash : left) {
+            if (FieldGuard.Lockset.contains(right, hash)) {
+                out[kept] = hash;
+                kept++;
+            }
+        }
+        return kept == out.length ? out : Arrays.copyOf(out, kept);
+    }
+
+    /**
      * The safe half of double-checked locking, recognised per instance (#311): every write to
      * the field held a consistent lock, and the field demonstrated the confirming shape — an
      * unlocked read followed, on the same thread in the same round, by a read under one of the
@@ -911,7 +1019,8 @@ public class AtomicityValidator {
      * mutually excluded.
      */
     private static boolean hintReadsConfirmedUnderTheWriteLock(List<FieldAccessRecord> history,
-                                                               int identity, FieldGuard locks) {
+                                                               int identity, FieldGuard locks,
+                                                               boolean constructionExcused) {
         int[] writeLocks = locks.writeLockSurvivors();
         if (writeLocks.length == 0) {
             return false;
@@ -919,7 +1028,8 @@ public class AtomicityValidator {
         List<Integer> uncoveredReads = new ArrayList<>();
         for (int i = 0; i < history.size(); i++) {
             FieldAccessRecord access = history.get(i);
-            if (access.identity != identity || access.exclusivePhase) {
+            if (access.identity != identity
+                    || (access.exclusivePhase && constructionExcused)) {
                 continue;
             }
             if (access.fingerprint == UNMODELLED) {
@@ -936,7 +1046,7 @@ public class AtomicityValidator {
             return true;
         }
         for (int at : uncoveredReads) {
-            if (confirmedLater(history, at, identity, writeLocks)) {
+            if (confirmedLater(history, at, identity, writeLocks, constructionExcused)) {
                 return true;
             }
         }
@@ -945,11 +1055,12 @@ public class AtomicityValidator {
 
     /** {@return whether a later read on the same thread and round held one of the write locks} */
     private static boolean confirmedLater(List<FieldAccessRecord> history, int at, int identity,
-                                          int[] writeLocks) {
+                                          int[] writeLocks, boolean constructionExcused) {
         FieldAccessRecord hint = history.get(at);
         for (int i = at + 1; i < history.size(); i++) {
             FieldAccessRecord later = history.get(i);
-            if (later.identity != identity || later.exclusivePhase || later.write
+            if (later.identity != identity || later.write
+                    || (later.exclusivePhase && constructionExcused)
                     || later.threadId != hint.threadId || later.epoch != hint.epoch) {
                 continue;
             }
@@ -1010,14 +1121,16 @@ public class AtomicityValidator {
      * {@code ConstructorSafetyValidator} and {@code VisibilityMonitor} business.
      */
     private static boolean settledSingleCheckCache(List<FieldAccessRecord> history, int identity,
-                                                   FieldGuard locks) {
+                                                   FieldGuard locks,
+                                                   boolean constructionExcused) {
         if (locks.isVolatileField()) {
             return false;
         }
         long warmEpoch = Long.MIN_VALUE;
         long lastWriteEpoch = Long.MIN_VALUE;
         for (FieldAccessRecord access : history) {
-            if (access.identity != identity || access.exclusivePhase) {
+            if (access.identity != identity
+                    || (access.exclusivePhase && constructionExcused)) {
                 continue;
             }
             if (access.fingerprint == UNMODELLED) {
@@ -1037,15 +1150,16 @@ public class AtomicityValidator {
         Set<Long> settledReaders = new HashSet<>();
         Set<Long> readBeforeWriting = new HashSet<>();
         for (FieldAccessRecord access : history) {
-            // A construction read is still that thread's miss check. The builder reads its own
-            // fresh field before anything is published, the flip can land between its read and
-            // its store, and without this seed the store would look blind.
-            if (access.identity == identity && access.exclusivePhase && !access.write) {
-                readBeforeWriting.add(access.threadId);
+            if (access.identity != identity) {
+                continue;
             }
-        }
-        for (FieldAccessRecord access : history) {
-            if (access.identity != identity || access.exclusivePhase) {
+            if (access.exclusivePhase && constructionExcused) {
+                // A construction read is still that thread's miss check. The builder reads its
+                // own fresh field before anything is published, the flip can land between its
+                // read and its store, and without this the store would look blind.
+                if (!access.write) {
+                    readBeforeWriting.add(access.threadId);
+                }
                 continue;
             }
             if (access.epoch > lastWriteEpoch) {
