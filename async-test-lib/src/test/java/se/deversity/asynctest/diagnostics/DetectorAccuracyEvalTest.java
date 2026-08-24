@@ -520,6 +520,30 @@ class DetectorAccuracyEvalTest {
     }
 
     @Test
+    @DisplayName("atomicity: a one-shot view field settles by its receiver staying in service (#313)")
+    void atomicityOneShotViewFieldSettlesByReceiverActivity() {
+        AtomicityValidator validator = new AtomicityValidator();
+        // Jackson's PrivateMaxEntriesMap.entrySet: two threads race the lazy view creation once,
+        // the field is never touched again, and the map itself stays hot for the rest of the run.
+        validator.markInvocationStart();
+        agentAccess(validator, "map.entrySetView", false, 1, NO_LOCKS, 94);
+        agentAccess(validator, "map.entrySetView", false, 2, NO_LOCKS, 94);
+        agentAccess(validator, "map.entrySetView", true, 1, NO_LOCKS, 94);
+        agentAccess(validator, "map.entrySetView", true, 2, NO_LOCKS, 94);
+        for (int round = 0; round < 2; round++) {
+            validator.markInvocationStart();
+            agentAccess(validator, "map.size", false, 1, NO_LOCKS, 94);
+            agentAccess(validator, "map.size", false, 2, NO_LOCKS, 94);
+        }
+        assertFalse(validator.analyze().hasIssues(),
+                "Both threads missed the view check and both created it: a lost write costs one "
+                        + "extra view object and nothing else. The field cannot show settled "
+                        + "reads because nothing reads it again, but the receiver stayed in "
+                        + "shared service for two more rounds with the field never written "
+                        + "again, which is the same convergence the settled-cache rule accepts");
+    }
+
+    @Test
     @DisplayName("atomicity: a blind store is initialization, not a single-check cache (#313)")
     void atomicityStillFiresWhenTheWarmRoundStoreWasBlind() {
         AtomicityValidator validator = new AtomicityValidator();

@@ -361,8 +361,32 @@ public class AtomicityValidator {
         final long firstThread;
         volatile boolean shared;
 
+        /**
+         * Distinct rounds in which the receiver was accessed at all, in arrival order. What the
+         * settled-cache rule consults when a field's own reads stop with its writes: a receiver
+         * that stays in service for rounds after a field's last write, with the field never
+         * written again, has demonstrated the write phase ended (#313). Appends happen on the
+         * drain thread and rarely on a recording test thread, so the state carries its own
+         * monitor.
+         */
+        private final List<Long> activeEpochs = new ArrayList<>();
+
         ReceiverState(long firstThread) {
             this.firstThread = firstThread;
+        }
+
+        synchronized void noteEpoch(long epoch) {
+            if (activeEpochs.isEmpty() || activeEpochs.get(activeEpochs.size() - 1) != epoch) {
+                activeEpochs.add(epoch);
+            }
+        }
+
+        synchronized int roundsAfter(long epoch) {
+            int count = 0;
+            for (int i = activeEpochs.size() - 1; i >= 0 && activeEpochs.get(i) > epoch; i--) {
+                count++;
+            }
+            return count;
         }
     }
 
@@ -383,6 +407,7 @@ public class AtomicityValidator {
         }
         ReceiverState state = receiverStates.computeIfAbsent(identity,
                 ignored -> new ReceiverState(threadId));
+        state.noteEpoch(invocationEpoch.get());
         if (state.shared) {
             return false;
         }
@@ -1117,15 +1142,19 @@ public class AtomicityValidator {
      * counter or a copy-on-write structure that loses updates keeps writing every round and can
      * never out-settle its own warming, and a warming longer than the writer count is not
      * warming at all; a run too short to
-     * show convergence keeps its finding, which is the conservative direction.
+     * show convergence keeps its finding, which is the conservative direction. A field raced
+     * once and then never touched again — jackson's lazily created map views — cannot show
+     * settled reads of its own; there the receiver answers instead: an object that stays in
+     * shared service for the required rounds after the field's last write demonstrates the same
+     * convergence, while a field whose receiver goes quiet with it keeps its finding.
      *
      * <p>What this deliberately does not judge is whether the stored value was safe to publish
      * unsafely. A torn or stale value is visibility, not atomicity, and stays
      * {@code ConstructorSafetyValidator} and {@code VisibilityMonitor} business.
      */
-    private static boolean settledSingleCheckCache(List<FieldAccessRecord> history, int identity,
-                                                   FieldGuard locks,
-                                                   boolean constructionExcused) {
+    private boolean settledSingleCheckCache(List<FieldAccessRecord> history, int identity,
+                                            FieldGuard locks,
+                                            boolean constructionExcused) {
         if (locks.isVolatileField()) {
             return false;
         }
@@ -1189,8 +1218,17 @@ public class AtomicityValidator {
                 readBeforeWriting.add(access.threadId);
             }
         }
-        return settledRounds.size() >= Math.max(2, warmingRounds.size())
-                && settledReaders.size() >= 2;
+        int quietRoundsNeeded = Math.max(2, warmingRounds.size());
+        if (settledRounds.size() >= quietRoundsNeeded && settledReaders.size() >= 2) {
+            return true;
+        }
+        // A one-shot view field — jackson's PrivateMaxEntriesMap.entrySet — is raced once during
+        // warmup and then never touched again, so its own reads cannot demonstrate anything. The
+        // receiver can: a shared object that stays in service for rounds after the field's last
+        // write, with the field never written again, has demonstrated the write phase ended. A
+        // field whose receiver goes quiet with it earns nothing here and keeps its finding.
+        ReceiverState receiver = receiverStates.get(identity);
+        return receiver != null && receiver.roundsAfter(lastWriteEpoch) >= quietRoundsNeeded;
     }
 
     /**
