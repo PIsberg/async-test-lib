@@ -11,6 +11,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.locks.StampedLock;
 
 import net.bytebuddy.asm.AsmVisitorWrapper;
 import net.bytebuddy.description.field.FieldDescription;
@@ -150,7 +151,28 @@ final class CollectionAccessWeaver {
             Entry.view(ReentrantReadWriteLock.class, "readLock", "readLock",
                     ReentrantReadWriteLock.ReadLock.class),
             Entry.view(ReentrantReadWriteLock.class, "writeLock", "writeLock",
-                    ReentrantReadWriteLock.WriteLock.class));
+                    ReentrantReadWriteLock.WriteLock.class),
+            // StampedLock implements no locking interface and hands back a long, so the concrete
+            // class anchors every entry; the hooks record the lock object itself, exclusive for a
+            // write stamp and shared for a read stamp. tryOptimisticRead and validate are absent
+            // on purpose: an optimistic read holds nothing a lockset could record.
+            Entry.call(StampedLock.class, "writeLock", "writeLock"),
+            Entry.call(StampedLock.class, "readLock", "readLock"),
+            Entry.call(StampedLock.class, "writeLockInterruptibly", "writeLockInterruptibly"),
+            Entry.call(StampedLock.class, "readLockInterruptibly", "readLockInterruptibly"),
+            Entry.call(StampedLock.class, "tryWriteLock", "tryWriteLock"),
+            Entry.call(StampedLock.class, "tryReadLock", "tryReadLock"),
+            Entry.call(StampedLock.class, "tryWriteLock", "tryWriteLock", long.class, TimeUnit.class),
+            Entry.call(StampedLock.class, "tryReadLock", "tryReadLock", long.class, TimeUnit.class),
+            Entry.call(StampedLock.class, "unlockWrite", "unlockWrite", long.class),
+            Entry.call(StampedLock.class, "unlockRead", "unlockRead", long.class),
+            Entry.call(StampedLock.class, "unlock", "unlock", long.class),
+            Entry.call(StampedLock.class, "tryConvertToWriteLock", "tryConvertToWriteLock", long.class),
+            Entry.call(StampedLock.class, "tryConvertToReadLock", "tryConvertToReadLock", long.class),
+            Entry.call(StampedLock.class, "tryConvertToOptimisticRead", "tryConvertToOptimisticRead",
+                    long.class),
+            Entry.view(StampedLock.class, "asReadLock", "asReadLock", Lock.class),
+            Entry.view(StampedLock.class, "asWriteLock", "asWriteLock", Lock.class));
 
     /**
      * One resolved rewrite: the call shape to match and the hook invocation that replaces it.

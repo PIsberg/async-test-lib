@@ -26,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   intersects real members; an unregistered digest degrades to the old equality model.
   `LocksetIntersectionTest` pins `{A}` versus `{A, B}` silent and `{A}` versus `{B}` firing.
 
+- **StampedLock joins the lock model.** It implements no locking interface and hands back a
+  `long`, so code guarded by one read as unguarded and drew a `PROMPT`-tier finding. Its call
+  sites now have their own hooks: the lock object is the lockset identity, exclusive for a write
+  stamp and shared for a read stamp, with the `unlock*` and `tryConvertTo*` shapes moving the
+  thread's single entry between modes and the `asReadLock()`/`asWriteLock()` views resolving to
+  their owner. An optimistic read records nothing on purpose: it holds nothing, and its
+  correctness lives in the `validate()` protocol a lockset cannot judge. Pinned both ways by
+  `StampedLockBean` (silent) and `StampedReadLockWritingBean` (fires).
+
 - **Read-write locks resolve to one lock with two modes.** The two views of a
   `ReentrantReadWriteLock` are two objects, so a reader and a writer could never share a lockset.
   Woven `readLock()`/`writeLock()` call sites remember view-to-owner, acquisition records the

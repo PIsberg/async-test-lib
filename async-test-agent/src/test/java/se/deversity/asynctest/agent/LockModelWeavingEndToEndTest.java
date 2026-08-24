@@ -3,6 +3,8 @@ package se.deversity.asynctest.agent;
 import com.example.agentfixture.DirectFieldMutationBean;
 import com.example.agentfixture.ReadLockWritingBean;
 import com.example.agentfixture.ReadWriteLockBean;
+import com.example.agentfixture.StampedLockBean;
+import com.example.agentfixture.StampedReadLockWritingBean;
 import com.example.agentfixture.SynchronizedMethodBean;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import org.junit.jupiter.api.AfterEach;
@@ -121,6 +123,33 @@ class LockModelWeavingEndToEndTest {
         assertTrue(report.hasIssues(),
                 "count++ under the read view is mutation under a lock that admits every other "
                         + "reader; if this stops firing, resolving the views has erased the "
+                        + "shared/exclusive distinction");
+    }
+
+    @Test
+    @DisplayName("stamped locking reads as guarded: write stamps exclude, read stamps share")
+    void stampedLockReadsAsGuarded() throws Exception {
+        StampedLockBean bean = new StampedLockBean();
+        AtomicityValidator.AtomicityReport report = drive(() -> {
+            bean.increment();
+            bean.current();
+        });
+
+        assertFalse(report.hasIssues(),
+                "StampedLock implements no locking interface, so only its own call-site hooks "
+                        + "can make this bean readable as guarded. Findings: "
+                        + report.unsafeFieldAccesses + report.totcouRaces);
+    }
+
+    @Test
+    @DisplayName("a write under a read stamp keeps firing: a shared stamp guards no write")
+    void writingUnderAReadStampIsStillReported() throws Exception {
+        StampedReadLockWritingBean bean = new StampedReadLockWritingBean();
+        AtomicityValidator.AtomicityReport report = drive(bean::increment);
+
+        assertTrue(report.hasIssues(),
+                "count++ under a read stamp is mutation under a lock that admits every other "
+                        + "reader; if this stops firing, the stamp modelling has erased the "
                         + "shared/exclusive distinction");
     }
 
