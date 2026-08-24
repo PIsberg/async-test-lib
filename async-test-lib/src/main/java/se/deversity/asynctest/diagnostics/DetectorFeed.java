@@ -6,7 +6,7 @@ import org.apiguardian.api.API.Status;
 /**
  * What has to happen before a detector can produce a finding.
  *
- * <p>The corpus eval ran 34 unmodified third-party classes under {@code detectAll = true} and
+ * <p>The corpus eval ran 42 unmodified third-party classes under {@code detectAll = true} and
  * exactly two detectors of 142 spoke. That is not a defect in the other 140: it is a property
  * nobody had named. A detector is fed by one of three things, and a user deciding whether to
  * attach the agent, or wondering why a detector never fires, is really asking which one.

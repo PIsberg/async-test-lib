@@ -129,7 +129,7 @@ anything". Without a trust floor, plan to baseline first — see [CI_INTEGRATION
 ## What feeds each detector
 
 A detector only speaks when something feeds it, and the corpus eval made the three feeds visible:
-34 unmodified third-party classes under `detectAll = true` produced findings from exactly two
+42 unmodified third-party classes under `detectAll = true` produced findings from exactly two
 detectors, because only two read the agent's woven streams. Before enabling everything and
 wondering about the silence, know which kind each detector is. The classification lives in
 `DetectorFeeds`, the listing below mirrors it, and `DetectorFeedCoverageTest` fails the build when

@@ -1,5 +1,12 @@
 package com.example.corpus;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
+import com.fasterxml.jackson.databind.ObjectWriter;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.google.common.base.Stopwatch;
@@ -41,12 +48,17 @@ import org.apache.commons.lang3.time.StopWatch;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.extension.ExtendWith;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.PooledByteBufAllocator;
+import org.springframework.util.ConcurrentReferenceHashMap;
 import se.deversity.asynctest.AsyncTest;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -143,6 +155,37 @@ class CorpusEvalTest {
     private final ConcurrentHashMultiset<String> concurrentMultiset = ConcurrentHashMultiset.create();
     private final Supplier<Object> memoized = Suppliers.memoize(Object::new);
 
+    // --- fourth wave (#302): four libraries outside the Apache/Guava axis -------------------
+
+    /** The one payload every JSON subject reads or writes, kept small so weaving cost stays flat. */
+    private static final Map<String, String> PAYLOAD = Map.of("key", "value");
+    private static final String JSON = "{\"key\":\"value\"}";
+
+    /** Configured here and never again, which is exactly what its contract asks for. */
+    private final ObjectMapper configuredMapper =
+            new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+
+    /** A second mapper, reconfigured while other threads write through it: the documented defect. */
+    private final ObjectMapper reconfiguredMapper = new ObjectMapper();
+
+    private final ObjectReader objectReader = new ObjectMapper().readerFor(Map.class);
+    private final ObjectWriter objectWriter = new ObjectMapper().writerFor(Map.class);
+
+    private final Cache<String, String> caffeineCache = Caffeine.newBuilder().maximumSize(64).build();
+    private final Cache<String, String> caffeineAsMapCache = Caffeine.newBuilder().maximumSize(64).build();
+
+    /**
+     * Bounded and cache-free on purpose. The default allocator keeps a {@code PoolThreadCache}
+     * per thread, and {@code @AsyncTest} runs one virtual thread per task, so the default would
+     * build one cache per round per thread and measure the JVM's memory rather than the
+     * allocator's thread-safety. Two heap arenas, no direct arenas, no caches.
+     */
+    private final ByteBufAllocator pooledAllocator =
+            new PooledByteBufAllocator(false, 2, 0, 8192, 9, 0, 0, false);
+
+    private final ConcurrentReferenceHashMap<String, String> referenceMap =
+            new ConcurrentReferenceHashMap<>();
+
     /** Subscriber for the EventBus subject; its own state is atomic, so the bus is the subject. */
     final class CountingSubscriber {
         @Subscribe
@@ -163,11 +206,13 @@ class CorpusEvalTest {
     @AfterAll
     static void reportAndGate() {
         CorpusRecorder.uninstall();
+        CorpusLane lane = CorpusLane.current();
         Path report = CorpusReport.write(
-                CorpusRecorder.findings(), CorpusRecorder.crashes(), THREADS, INVOCATIONS);
+                CorpusRecorder.findings(), CorpusRecorder.crashes(), THREADS, INVOCATIONS, lane);
         System.out.println("Corpus report written to " + report.toAbsolutePath());
-        System.out.println(CorpusReport.summary(CorpusRecorder.findings(), CorpusRecorder.crashes()));
-        CorpusGates.check(CorpusRecorder.findings(), CorpusRecorder.crashes());
+        System.out.println(CorpusReport.exposure(CorpusRecorder.findings(), lane));
+        System.out.println(CorpusReport.summary(CorpusRecorder.findings(), CorpusRecorder.crashes(), lane));
+        CorpusGates.check(CorpusRecorder.findings(), CorpusRecorder.crashes(), lane);
     }
 
     /**
@@ -448,6 +493,96 @@ class CorpusEvalTest {
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
+        });
+    }
+
+    // --- fourth wave: documented NOT thread-safe --------------------------------------------
+
+    /**
+     * Reconfigures a mapper other threads are writing through, which its own javadoc calls out as
+     * the case that makes an {@code ObjectMapper} unsafe. The safe half of the same contract is
+     * {@link #objectMapper_configuredThenShared()}, on a different instance.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void objectMapper_reconfigureWhileWriting() {
+        unsafeOperation(() -> {
+            try {
+                reconfiguredMapper.setDateFormat(new SimpleDateFormat("yyyy-MM-dd"));
+                reconfiguredMapper.writeValueAsString(PAYLOAD);
+            } catch (JsonProcessingException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+    }
+
+    // --- fourth wave: documented thread-safe -------------------------------------------------
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void objectMapper_configuredThenShared() {
+        safeOperation(() -> {
+            try {
+                configuredMapper.writeValueAsString(PAYLOAD);
+            } catch (JsonProcessingException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void objectReader_readValue() {
+        safeOperation(() -> {
+            try {
+                objectReader.readValue(JSON);
+            } catch (JsonProcessingException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void objectWriter_writeValueAsString() {
+        safeOperation(() -> {
+            try {
+                objectWriter.writeValueAsString(PAYLOAD);
+            } catch (JsonProcessingException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+    }
+
+    /** The instance is Caffeine's {@code BoundedLocalCache}, reached through {@code Cache}. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void caffeineCache_getAndPut() {
+        safeOperation(() -> {
+            caffeineCache.put("key", "value");
+            caffeineCache.get("key", key -> "computed");
+        });
+    }
+
+    /** The {@code asMap()} view, whose javadoc promises the computation runs atomically. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void caffeineAsMap_computeIfAbsent() {
+        safeOperation(() -> caffeineAsMapCache.asMap().computeIfAbsent("key", key -> "computed"));
+    }
+
+    /** The instance is a {@code PooledByteBufAllocator}, reached through {@code ByteBufAllocator}. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void pooledByteBufAllocator_bufferAndRelease() {
+        safeOperation(() -> {
+            ByteBuf buffer = pooledAllocator.heapBuffer(64);
+            try {
+                buffer.writeInt(7);
+            } finally {
+                buffer.release();
+            }
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void concurrentReferenceHashMap_putAndGet() {
+        safeOperation(() -> {
+            referenceMap.put("key", "value");
+            referenceMap.get("key");
         });
     }
 }

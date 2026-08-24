@@ -23,6 +23,10 @@
         <commons-lang3.version>3.20.0</commons-lang3.version>
         <commons-collections4.version>4.5.0</commons-collections4.version>
         <guava.version>33.4.8-jre</guava.version>
+        <jackson.version>2.22.2</jackson.version>
+        <caffeine.version>3.2.4</caffeine.version>
+        <netty.version>4.2.17.Final</netty.version>
+        <spring.version>7.0.9</spring.version>
         <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
     </properties>
@@ -73,6 +77,30 @@
             <version>${guava.version}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+            <version>${caffeine.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-buffer</artifactId>
+            <version>${netty.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-core</artifactId>
+            <version>${spring.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -92,17 +120,50 @@
                 <configuration>
                     <!-- Self-attach needs the flag; Surefire forks its own JVM. -->
                     <argLine>-Djdk.attach.allowAttachSelf=true</argLine>
-                    <systemPropertyVariables>
-                        <license.mock.mode>true</license.mock.mode>
-                        <!-- fields=true is what makes a bare field instruction inside a
-                             third-party method body observable. Without it only JavaBean
-                             accessors are woven and most subjects are invisible.
-                             collections=true adds the other half: a class that keeps its state
-                             in a JDK collection writes no field of its own, so without it three
-                             of the nine documented-unsafe subjects reported nothing at all. -->
-                        <asynctest.agent>fields=true,collections=true</asynctest.agent>
-                    </systemPropertyVariables>
                 </configuration>
+                <executions>
+                    <!-- Lane one: the agent attached, which is the configuration the write-up
+                         quotes and the only one in which an agent-fed detector can see anything. -->
+                    <execution>
+                        <id>default-test</id>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <systemPropertyVariables>
+                                <license.mock.mode>true</license.mock.mode>
+                                <corpus.lane>agent-on</corpus.lane>
+                                <!-- fields=true is what makes a bare field instruction inside a
+                                     third-party method body observable. Without it only JavaBean
+                                     accessors are woven and most subjects are invisible.
+                                     collections=true adds the other half: a class that keeps its
+                                     state in a JDK collection writes no field of its own, so
+                                     without it three of the nine documented-unsafe subjects
+                                     reported nothing at all. -->
+                                <asynctest.agent>fields=true,collections=true</asynctest.agent>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </execution>
+                    <!-- Lane two: the same subjects with nothing attached and nothing recorded.
+                         It is the control that turns the exposure table from a claim into a
+                         measurement: with the agent detached the agent-fed detectors have no
+                         input, so the run must observe nothing, and CorpusGates asserts exactly
+                         that. Only CorpusEvalTest runs here; TestBodyCollectionIsObservedTest
+                         pins the woven path and would be asserting the opposite. -->
+                    <execution>
+                        <id>agent-off</id>
+                        <phase>test</phase>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <includes>
+                                <include>**/CorpusEvalTest.java</include>
+                            </includes>
+                            <reportsDirectory>${project.build.directory}/surefire-reports-agent-off</reportsDirectory>
+                            <systemPropertyVariables>
+                                <license.mock.mode>true</license.mock.mode>
+                                <corpus.lane>agent-off</corpus.lane>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

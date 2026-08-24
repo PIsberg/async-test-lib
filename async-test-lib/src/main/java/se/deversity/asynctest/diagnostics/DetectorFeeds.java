@@ -14,7 +14,7 @@ import java.util.Set;
 /**
  * The feed of every built-in detector: what has to happen before it can produce a finding.
  *
- * <p><strong>Why this exists.</strong> The corpus eval attached the agent to 34 unmodified
+ * <p><strong>Why this exists.</strong> The corpus eval attached the agent to 42 unmodified
  * third-party classes under {@code detectAll = true} and exactly two detectors of
  * {@value DetectorTrust#DETECTOR_COUNT} produced findings. That is a property of the feeds, not a
  * defect: most detectors are told what happened by the test body, some watch the JVM on their

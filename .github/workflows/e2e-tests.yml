@@ -392,10 +392,15 @@ jobs:
     name: Corpus Eval (Java ${{ matrix.java-version }})
     runs-on: ubuntu-latest
 
+    # Three JDKs here where the rest of this workflow runs two. The eval publishes numbers,
+    # and a number without the platform it was taken on is not reproducible: the agent, the
+    # memory model and the scheduler all differ across releases. 26 is on the list because
+    # docs/analysis/corpus-eval.md quotes a JDK 26 run, and a quoted number nobody re-runs is
+    # a claim rather than a measurement.
     strategy:
       fail-fast: false
       matrix:
-        java-version: [ '21', '25' ]
+        java-version: [ '21', '25', '26' ]
 
     steps:
       - name: Harden the runner (Block unexpected outbound calls)
@@ -429,8 +434,10 @@ jobs:
         run: mvn "-Dmaven.repo.local=.m2/repository" -DskipTests clean install
 
       # Measures what the detectors report on third-party classes whose javadoc states a
-      # thread-safety contract. The gates that must hold every run live in CorpusGates; the
-      # numbers themselves are in the uploaded report, one per JDK.
+      # thread-safety contract. Two lanes per run: the agent attached, and the same subjects
+      # with nothing attached as the control the exposure table rests on. The gates that must
+      # hold every run live in CorpusGates; the numbers are in the uploaded reports, one pair
+      # per JDK.
       - name: Run corpus eval
         run: mvn "-Dmaven.repo.local=.m2/repository" -f corpus-eval/pom.xml test
 
@@ -442,6 +449,7 @@ jobs:
           path: |
             corpus-eval/target/corpus-eval/
             corpus-eval/target/surefire-reports/
+            corpus-eval/target/surefire-reports-agent-off/
           retention-days: 7
 
   e2e-summary:
