@@ -538,9 +538,9 @@ class DetectorAccuracyEvalTest {
         assertFalse(validator.analyze().hasIssues(),
                 "Both threads missed the view check and both created it: a lost write costs one "
                         + "extra view object and nothing else. The field cannot show settled "
-                        + "reads because nothing reads it again, but the receiver stayed in "
-                        + "shared service for two more rounds with the field never written "
-                        + "again, which is the same convergence the settled-cache rule accepts");
+                        + "reads because nothing reads it again, but the run kept executing for "
+                        + "two more rounds with the field never raced again, which is the same "
+                        + "convergence the settled-cache rule accepts on the run's own clock");
     }
 
     @Test
