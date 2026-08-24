@@ -1,7 +1,9 @@
 package se.deversity.asynctest.agent;
 
 import com.example.agentfixture.DirectFieldMutationBean;
+import com.example.agentfixture.ActingOnUnlockedReadBean;
 import com.example.agentfixture.ReadLockWritingBean;
+import com.example.agentfixture.RevalidatingHintBean;
 import com.example.agentfixture.ReadWriteLockBean;
 import com.example.agentfixture.StampedLockBean;
 import com.example.agentfixture.StampedReadLockWritingBean;
@@ -21,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -112,6 +115,63 @@ class LockModelWeavingEndToEndTest {
                         + "ReentrantReadWriteLock; resolving both views to the owner is what lets "
                         + "them intersect. Findings: "
                         + report.unsafeFieldAccesses + report.totcouRaces);
+    }
+
+    /**
+     * The safe and unsafe shapes of an unlocked read are the same access stream.
+     *
+     * <p>[#311](https://github.com/PIsberg/async-test-lib/issues/311) proposed retracting a
+     * finding when an unlocked read is followed by a read of the same field under a lock that
+     * covers its writes, which is the safe half of double-checked locking and what Spring's
+     * {@code ConcurrentReferenceHashMap$Segment.resizeThreshold} does. This test is why that rule
+     * cannot be written against the access stream.
+     *
+     * <p>{@link RevalidatingHintBean} and {@link ActingOnUnlockedReadBean} differ only in whether
+     * the branch consumes the unlocked value or the re-read one. Both compile to the same
+     * sequence: unlocked GETFIELD, lock, locked GETFIELD, locked PUTFIELD. A rule keyed on that
+     * sequence would retract the lost update along with the hint.
+     *
+     * <p>So this asserts the current, honest state rather than the desired one: the two report the
+     * same fields. Telling them apart needs weave-time dataflow, asking whether the value a
+     * GETFIELD loaded reaches a branch whose taken path writes. When that lands, this test goes
+     * red and #311 is the reason.
+     */
+    @Test
+    @DisplayName("the hint shape and acting on the read are one access stream, so far")
+    void theHintShapeIsNotYetDistinguishableFromActingOnTheRead() throws Exception {
+        RevalidatingHintBean hint = new RevalidatingHintBean();
+        AtomicityValidator.AtomicityReport hintReport = drive(() -> {
+            hint.put();
+            hint.threshold();
+        });
+        ActingOnUnlockedReadBean acting = new ActingOnUnlockedReadBean();
+        AtomicityValidator.AtomicityReport actingReport = drive(() -> {
+            acting.put();
+            acting.threshold();
+        });
+
+        assertEquals(
+                fieldsIn(hintReport, RevalidatingHintBean.class.getName()),
+                fieldsIn(actingReport, ActingOnUnlockedReadBean.class.getName()),
+                "the correct bean and the racing one must still look identical to the model. If "
+                        + "they no longer do, the analyzer has gained the dataflow #311 needs and "
+                        + "this test should become the pair of assertions that issue asks for: "
+                        + "the hint silent, the lost update still reported");
+        assertTrue(hintReport.hasIssues(),
+                "the hint bean draws the false positive #311 is about; if it went quiet on its "
+                        + "own, find out why before celebrating");
+    }
+
+    /** {@return the field names a report mentions, stripped of the bean's package and class} */
+    private static java.util.Set<String> fieldsIn(AtomicityValidator.AtomicityReport report,
+                                                  String className) {
+        java.util.Set<String> fields = new java.util.TreeSet<>();
+        java.util.stream.Stream.concat(report.unsafeFieldAccesses.stream(),
+                        report.totcouRaces.stream())
+                .filter(entry -> entry.startsWith(className + "."))
+                .map(entry -> entry.substring(className.length() + 1, entry.indexOf(':')))
+                .forEach(fields::add);
+        return fields;
     }
 
     @Test
