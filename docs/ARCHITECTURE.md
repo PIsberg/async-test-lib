@@ -4,7 +4,7 @@
 
 This document is the entry point to the architecture of the async-test library. The library enables
 deterministic concurrency testing by forcing thread collisions and detecting concurrency bugs with
-**142 detectors**, organized phase by phase in [DETECTOR_CATALOG.md](DETECTOR_CATALOG.md).
+**146 detectors**, organized phase by phase in [DETECTOR_CATALOG.md](DETECTOR_CATALOG.md).
 
 Each topic below lives in its own file under [`architecture/`](architecture/). Read the one you need
 rather than the whole set.

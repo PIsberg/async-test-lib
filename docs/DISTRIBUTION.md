@@ -25,7 +25,7 @@ For the main library, each release produces three files:
 - **Contents**: Compiled Java classes + metadata
 - **Size**: ~150-200 KB
 - **What it includes**:
-  - All 142 detector implementations
+  - All 146 detector implementations
   - JUnit 5 extension code
   - Diagnostic reporters
   - Thread utilities

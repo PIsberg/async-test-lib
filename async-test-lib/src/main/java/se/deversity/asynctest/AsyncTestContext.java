@@ -147,6 +147,10 @@ import se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadResourceSaturationDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadMonitorSerializationDetector;
 import se.deversity.asynctest.diagnostics.ThreadLocalCacheDegradationDetector;
+import se.deversity.asynctest.diagnostics.ScopeJoinerMisuseDetector;
+import se.deversity.asynctest.diagnostics.ScopeConfigurationMisuseDetector;
+import se.deversity.asynctest.diagnostics.ScopeResultEscapeDetector;
+import se.deversity.asynctest.diagnostics.LazyCollectionMisuseDetector;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICallersOnly;
 import se.deversity.vibetags.annotations.AICore;
@@ -379,6 +383,10 @@ public final class AsyncTestContext {
     final @Nullable VirtualThreadResourceSaturationDetector          virtualThreadResourceSaturationDetector;
     final @Nullable VirtualThreadMonitorSerializationDetector        virtualThreadMonitorSerializationDetector;
     final @Nullable ThreadLocalCacheDegradationDetector              threadLocalCacheDegradationDetector;
+    final @Nullable ScopeJoinerMisuseDetector scopeJoinerMisuseDetector;
+    final @Nullable ScopeConfigurationMisuseDetector scopeConfigurationMisuseDetector;
+    final @Nullable ScopeResultEscapeDetector scopeResultEscapeDetector;
+    final @Nullable LazyCollectionMisuseDetector lazyCollectionMisuseDetector;
 
     // ---- Agent-telemetry bridge target (1.7.0+) ----
     // Exposed via atomicityValidator() so se.deversity.asynctest.telemetry.TelemetryBridge
@@ -535,6 +543,10 @@ public final class AsyncTestContext {
         virtualThreadResourceSaturationDetector          = registry.virtualThreadResourceSaturationDetector;
         virtualThreadMonitorSerializationDetector        = registry.virtualThreadMonitorSerializationDetector;
         threadLocalCacheDegradationDetector              = registry.threadLocalCacheDegradationDetector;
+        scopeJoinerMisuseDetector = registry.scopeJoinerMisuseDetector;
+        scopeConfigurationMisuseDetector = registry.scopeConfigurationMisuseDetector;
+        scopeResultEscapeDetector = registry.scopeResultEscapeDetector;
+        lazyCollectionMisuseDetector = registry.lazyCollectionMisuseDetector;
         // Agent-telemetry bridge target
         atomicityValidator                     = registry.atomicityValidator;
 
@@ -2946,6 +2958,54 @@ public final class AsyncTestContext {
      */
     public static ThreadLocalCacheDegradationDetector threadLocalCacheDegradationDetector() {
         return require("detectThreadLocalCacheDegradation", c -> c.threadLocalCacheDegradationDetector);
+    }
+
+    /**
+     * Returns the {@link ScopeJoinerMisuseDetector} for the current test.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectScopeJoinerMisuse = false}
+     * @since 1.9.7
+     *
+     * @return the {@link ScopeJoinerMisuseDetector} for the active {@code @AsyncTest} context
+     */
+    public static ScopeJoinerMisuseDetector scopeJoinerMisuseDetector() {
+        return require("detectScopeJoinerMisuse", c -> c.scopeJoinerMisuseDetector);
+    }
+
+    /**
+     * Returns the {@link ScopeConfigurationMisuseDetector} for the current test.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectScopeConfigurationMisuse = false}
+     * @since 1.9.7
+     *
+     * @return the {@link ScopeConfigurationMisuseDetector} for the active {@code @AsyncTest} context
+     */
+    public static ScopeConfigurationMisuseDetector scopeConfigurationMisuseDetector() {
+        return require("detectScopeConfigurationMisuse", c -> c.scopeConfigurationMisuseDetector);
+    }
+
+    /**
+     * Returns the {@link ScopeResultEscapeDetector} for the current test.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectScopeResultEscape = false}
+     * @since 1.9.7
+     *
+     * @return the {@link ScopeResultEscapeDetector} for the active {@code @AsyncTest} context
+     */
+    public static ScopeResultEscapeDetector scopeResultEscapeDetector() {
+        return require("detectScopeResultEscape", c -> c.scopeResultEscapeDetector);
+    }
+
+    /**
+     * Returns the {@link LazyCollectionMisuseDetector} for the current test.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectLazyCollectionMisuse = false}
+     * @since 1.9.7
+     *
+     * @return the {@link LazyCollectionMisuseDetector} for the active {@code @AsyncTest} context
+     */
+    public static LazyCollectionMisuseDetector lazyCollectionMisuseDetector() {
+        return require("detectLazyCollectionMisuse", c -> c.lazyCollectionMisuseDetector);
     }
 
     // ---- Phase 1 / Phase 3 detector accessors ----

@@ -2140,6 +2140,58 @@ public @interface AsyncTest {
 
     boolean detectThreadLocalCacheDegradation() default true;
 
+    /**
+     * Enable detection of StructuredTaskScope.Joiner misuse (JEP 525, JDK 26). See
+     * {@link se.deversity.asynctest.diagnostics.ScopeJoinerMisuseDetector}.
+     * @since 1.9.7
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#SCOPE_JOINER_MISUSE} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectScopeJoinerMisuse() default true;
+
+    /**
+     * Enable detection of StructuredTaskScope Configuration misuse (JEP 525, JDK 26). See
+     * {@link se.deversity.asynctest.diagnostics.ScopeConfigurationMisuseDetector}.
+     * @since 1.9.7
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#SCOPE_CONFIGURATION_MISUSE} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectScopeConfigurationMisuse() default true;
+
+    /**
+     * Enable detection of StructuredTaskScope results escaping their scope (JDK 26). See
+     * {@link se.deversity.asynctest.diagnostics.ScopeResultEscapeDetector}.
+     * @since 1.9.7
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#SCOPE_RESULT_ESCAPE} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectScopeResultEscape() default true;
+
+    /**
+     * Enable detection of List.ofLazy / Map.ofLazy misuse (JEP 526, JDK 26). See
+     * {@link se.deversity.asynctest.diagnostics.LazyCollectionMisuseDetector}.
+     * @since 1.9.7
+     *
+     * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#LAZY_COLLECTION_MISUSE} instead of this per-detector boolean flag.
+     */
+    @Deprecated
+
+    boolean detectLazyCollectionMisuse() default true;
+
     // ============= License Gating (Integration) =============
 
     /**

@@ -176,7 +176,7 @@ USAGE.md ............ for end users
 RELEASE.md .......... release process (canonical)
 DISTRIBUTION.md ..... distribution/technical reference
 ARCHITECTURE.md ..... system design
-DETECTOR_CATALOG.md . all 142 detectors with examples
+DETECTOR_CATALOG.md . all 146 detectors with examples
 INDEX.md ............ full documentation map
 ```
 

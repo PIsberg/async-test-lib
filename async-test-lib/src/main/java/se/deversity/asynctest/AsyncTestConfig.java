@@ -391,6 +391,14 @@ public final class AsyncTestConfig {
     public final boolean detectVirtualThreadMonitorSerialization;
     /** Resolved value of {@link AsyncTest#detectThreadLocalCacheDegradation()} for this run. */
     public final boolean detectThreadLocalCacheDegradation;
+    /** Resolved value of {@link AsyncTest#detectScopeJoinerMisuse()} for this run. */
+    public final boolean detectScopeJoinerMisuse;
+    /** Resolved value of {@link AsyncTest#detectScopeConfigurationMisuse()} for this run. */
+    public final boolean detectScopeConfigurationMisuse;
+    /** Resolved value of {@link AsyncTest#detectScopeResultEscape()} for this run. */
+    public final boolean detectScopeResultEscape;
+    /** Resolved value of {@link AsyncTest#detectLazyCollectionMisuse()} for this run. */
+    public final boolean detectLazyCollectionMisuse;
 
     // ---- Benchmarking ----
     /** Resolved value of {@link AsyncTest#enableBenchmarking()} for this run. */
@@ -574,6 +582,10 @@ public final class AsyncTestConfig {
         detectVirtualThreadResourceSaturation = b.detectVirtualThreadResourceSaturation;
         detectVirtualThreadMonitorSerialization = b.detectVirtualThreadMonitorSerialization;
         detectThreadLocalCacheDegradation = b.detectThreadLocalCacheDegradation;
+        detectScopeJoinerMisuse = b.detectScopeJoinerMisuse;
+        detectScopeConfigurationMisuse = b.detectScopeConfigurationMisuse;
+        detectScopeResultEscape = b.detectScopeResultEscape;
+        detectLazyCollectionMisuse = b.detectLazyCollectionMisuse;
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -794,6 +806,10 @@ public final class AsyncTestConfig {
             .detectVirtualThreadResourceSaturation(ann.detectVirtualThreadResourceSaturation())
             .detectVirtualThreadMonitorSerialization(ann.detectVirtualThreadMonitorSerialization())
             .detectThreadLocalCacheDegradation(ann.detectThreadLocalCacheDegradation())
+            .detectScopeJoinerMisuse(ann.detectScopeJoinerMisuse())
+            .detectScopeConfigurationMisuse(ann.detectScopeConfigurationMisuse())
+            .detectScopeResultEscape(ann.detectScopeResultEscape())
+            .detectLazyCollectionMisuse(ann.detectLazyCollectionMisuse())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())
@@ -972,6 +988,10 @@ public final class AsyncTestConfig {
         private boolean detectVirtualThreadResourceSaturation = false;
         private boolean detectVirtualThreadMonitorSerialization = false;
         private boolean detectThreadLocalCacheDegradation = false;
+        private boolean detectScopeJoinerMisuse = false;
+        private boolean detectScopeConfigurationMisuse = false;
+        private boolean detectScopeResultEscape = false;
+        private boolean detectLazyCollectionMisuse = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -1891,6 +1911,30 @@ public final class AsyncTestConfig {
          */
         public Builder detectThreadLocalCacheDegradation(boolean v)     { detectThreadLocalCacheDegradation = v; return this; }
         /**
+         * Sets {@link AsyncTestConfig#detectScopeJoinerMisuse}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectScopeJoinerMisuse(boolean v) { detectScopeJoinerMisuse = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectScopeConfigurationMisuse}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectScopeConfigurationMisuse(boolean v) { detectScopeConfigurationMisuse = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectScopeResultEscape}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectScopeResultEscape(boolean v) { detectScopeResultEscape = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#detectLazyCollectionMisuse}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectLazyCollectionMisuse(boolean v) { detectLazyCollectionMisuse = v; return this; }
+        /**
          * Sets {@link AsyncTestConfig#enableBenchmarking}.
          * @param v the value to use
          * @return this builder
@@ -2156,6 +2200,10 @@ public final class AsyncTestConfig {
             detectVirtualThreadResourceSaturation = (detectAll || detectVirtualThreadResourceSaturation) && !excludes.contains(DetectorType.VIRTUAL_THREAD_RESOURCE_SATURATION);
             detectVirtualThreadMonitorSerialization = (detectAll || detectVirtualThreadMonitorSerialization) && !excludes.contains(DetectorType.VIRTUAL_THREAD_MONITOR_SERIALIZATION);
             detectThreadLocalCacheDegradation = (detectAll || detectThreadLocalCacheDegradation) && !excludes.contains(DetectorType.THREAD_LOCAL_CACHE_DEGRADATION);
+            detectScopeJoinerMisuse = (detectAll || detectScopeJoinerMisuse) && !excludes.contains(DetectorType.SCOPE_JOINER_MISUSE);
+            detectScopeConfigurationMisuse = (detectAll || detectScopeConfigurationMisuse) && !excludes.contains(DetectorType.SCOPE_CONFIGURATION_MISUSE);
+            detectScopeResultEscape = (detectAll || detectScopeResultEscape) && !excludes.contains(DetectorType.SCOPE_RESULT_ESCAPE);
+            detectLazyCollectionMisuse = (detectAll || detectLazyCollectionMisuse) && !excludes.contains(DetectorType.LAZY_COLLECTION_MISUSE);
             return new AsyncTestConfig(this);
         }
     }

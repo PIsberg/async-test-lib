@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Four detectors for the JDK 26 concurrency surface (142 -> 146).** JEP 525 (Structured
+  Concurrency, sixth preview) and JEP 526 (Lazy Constants, second preview) both moved work out of
+  the JDK and into the application, and each new extension point brought a hazard the existing
+  detectors could not see. `SCOPE_JOINER_MISUSE` models the `Joiner` contract: `onComplete` runs on
+  whichever subtask thread finished, concurrently with its peers, while `result()` and the new
+  `onTimeout()` run on the owner - so a joiner accumulating into a plain `ArrayList` races, and
+  JEP 525's recommended "return a partial result on timeout" pattern turns that latent race into
+  the value the caller gets back. `SCOPE_CONFIGURATION_MISUSE` covers the
+  `UnaryOperator<Configuration>` that replaced the scope constructors: `Configuration` is immutable,
+  so a lambda that does not return what it derived from its own parameter applies no timeout at all
+  and compiles fine. `SCOPE_RESULT_ESCAPE` covers the switch from `Stream` to `List` return types -
+  a stream held past `close()` failed loudly, a `List` stores happily in a field and is read after
+  the scope is gone. `LAZY_COLLECTION_MISUSE` covers `List.ofLazy` / `Map.ofLazy`, where *n*
+  elements compute independently and a mapping function that reads its own collection can deadlock
+  two threads that the JDK's single-thread cycle check never sees.
+
+  Each detector is evidence-gated: every finding is a recorded count or a comparison of two
+  recorded values, and each has a test asserting the corrected twin stays silent. There is no
+  detector for JEP 522 (G1 GC synchronization reduction) - it changes how application threads and
+  GC workers coordinate over the card table and exposes no API a test can record against.
+
+
 - **The woven lockset sees `synchronized` methods.** `ACC_SYNCHRONIZED` compiles to a flag and no
   monitor instruction, so a class guarding its fields the most ordinary way in Java read as
   unguarded and drew an `AtomicityValidator` finding; Guava's `FileBackedOutputStream`, documented
@@ -59,6 +81,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   synchronization the weaver cannot see.
 
 ### Changed
+
+- **CI builds and tests on JDK 26.** `tests.yml` (test and build jobs) and the e2e consumer-fixture
+  job now matrix 21, 25 and 26, joining the corpus eval which already ran all three. `QUALITY_GATES.md`
+  said the suite had never been exercised on 26; it now is, so 26 is supported rather than a
+  static-analysis footnote. The JDKs the runner image caches are free, and 26 is not one of them, so
+  each new leg's `harden-runner` allowlist gains `release-assets.githubusercontent.com` - without it
+  `setup-java` fails before anything runs. Gradle stays on 21: Gradle 8.13 requires a Java 21 or
+  earlier daemon.
 
 - **With `fields=true`, the accessor Advice stands down.** A getter's body contains the `GETFIELD`,
   so weaving both the accessor entry and the field instruction reported every accessor-shaped

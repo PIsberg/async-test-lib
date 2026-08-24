@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 `@AsyncTest` is a JUnit 5 `@TestTemplate` that runs a test body on N threads for M rounds, forcing
-them to collide on a `CyclicBarrier`, and reports what 142 detectors saw. This file is the map. It
+them to collide on a `CyclicBarrier`, and reports what 146 detectors saw. This file is the map. It
 is deliberately short: it loads on every session, so anything needed only sometimes lives behind a
 link, and every rule below names the gate that enforces it.
 
@@ -45,7 +45,7 @@ mvn install -DskipTests -Djacoco.skip=true # the static gate chain CI runs first
 ```
 
 Run locally without a license key with `-Dlicense.mock.mode=true`. Maven is canonical, Gradle is
-derived; CI builds on JDK 21 and 25. The reasoning and the traps: [docs/BUILDING.md](docs/BUILDING.md).
+derived; CI builds on JDK 21, 25 and 26. The reasoning and the traps: [docs/BUILDING.md](docs/BUILDING.md).
 
 ## Guardrails
 

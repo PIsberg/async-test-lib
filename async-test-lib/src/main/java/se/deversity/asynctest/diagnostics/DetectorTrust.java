@@ -60,7 +60,7 @@ import java.util.Optional;
 public final class DetectorTrust {
 
     /** Number of built-in detectors classified here; equals {@code DetectorType.values().length}. */
-    public static final int DETECTOR_COUNT = 142;
+    public static final int DETECTOR_COUNT = 146;
 
     /**
      * One detector's classification.
@@ -228,7 +228,11 @@ public final class DetectorTrust {
             row(DetectorType.LAMBDA_LOST_UPDATE, "LambdaLostUpdateDetector", "LambdaLostUpdate", TrustTier.FACT),
             row(DetectorType.VIRTUAL_THREAD_RESOURCE_SATURATION, "VirtualThreadResourceSaturationDetector", "VirtualThreadResourceSaturation", TrustTier.FACT),
             row(DetectorType.VIRTUAL_THREAD_MONITOR_SERIALIZATION, "VirtualThreadMonitorSerializationDetector", "VirtualThreadMonitorSerialization", TrustTier.FACT),
-            row(DetectorType.THREAD_LOCAL_CACHE_DEGRADATION, "ThreadLocalCacheDegradationDetector", "ThreadLocalCacheDegradation", TrustTier.FACT)
+            row(DetectorType.THREAD_LOCAL_CACHE_DEGRADATION, "ThreadLocalCacheDegradationDetector", "ThreadLocalCacheDegradation", TrustTier.FACT),
+            row(DetectorType.SCOPE_JOINER_MISUSE, "ScopeJoinerMisuseDetector", "ScopeJoinerMisuse", TrustTier.FACT),
+            row(DetectorType.SCOPE_CONFIGURATION_MISUSE, "ScopeConfigurationMisuseDetector", "ScopeConfigurationMisuse", TrustTier.FACT),
+            row(DetectorType.SCOPE_RESULT_ESCAPE, "ScopeResultEscapeDetector", "ScopeResultEscape", TrustTier.FACT),
+            row(DetectorType.LAZY_COLLECTION_MISUSE, "LazyCollectionMisuseDetector", "LazyCollectionMisuse", TrustTier.FACT)
     );
 
     private static final Map<DetectorType, Row> BY_TYPE = indexByType();

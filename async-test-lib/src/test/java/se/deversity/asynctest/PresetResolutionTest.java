@@ -277,6 +277,10 @@ class PresetResolutionTest {
         @Override public boolean detectVirtualThreadResourceSaturation() { return def("detectVirtualThreadResourceSaturation"); }
         @Override public boolean detectVirtualThreadMonitorSerialization() { return def("detectVirtualThreadMonitorSerialization"); }
         @Override public boolean detectThreadLocalCacheDegradation() { return def("detectThreadLocalCacheDegradation"); }
+        @Override public boolean detectScopeJoinerMisuse() { return def("detectScopeJoinerMisuse"); }
+        @Override public boolean detectScopeConfigurationMisuse() { return def("detectScopeConfigurationMisuse"); }
+        @Override public boolean detectScopeResultEscape() { return def("detectScopeResultEscape"); }
+        @Override public boolean detectLazyCollectionMisuse() { return def("detectLazyCollectionMisuse"); }
         @Override public boolean enableBenchmarking() { return def("enableBenchmarking"); }
         @Override public double benchmarkRegressionThreshold() { return def("benchmarkRegressionThreshold"); }
         @Override public boolean failOnBenchmarkRegression() { return def("failOnBenchmarkRegression"); }

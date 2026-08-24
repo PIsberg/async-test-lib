@@ -1,6 +1,6 @@
 # Detector Catalog
 
-`async-test-lib` includes **142 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
+`async-test-lib` includes **146 detectors** organized across different phases. Below is a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
 
 ---
 
@@ -151,7 +151,7 @@ call:
 
 `DeadlockDetector`, `LivelockDetector`, `StaticInitDeadlockDetector`
 
-### Recording-only (137)
+### Recording-only (141)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -205,7 +205,8 @@ recording is the feed:
 `CompletableFutureCompletionRaceDetector`, `CompletableFutureCancellationPropagationDetector`,
 `CompletableFutureCombinatorMisuseDetector`, `LambdaLostUpdateDetector`,
 `VirtualThreadResourceSaturationDetector`, `VirtualThreadMonitorSerializationDetector`,
-`ThreadLocalCacheDegradationDetector`
+`ThreadLocalCacheDegradationDetector`, `ScopeJoinerMisuseDetector`,
+`ScopeConfigurationMisuseDetector`, `ScopeResultEscapeDetector`, `LazyCollectionMisuseDetector`
 
 ---
 
@@ -3492,4 +3493,123 @@ detectors cannot see because they were written when the thread count was the poo
   ```java
   var d = AsyncTestContext.threadLocalCacheDegradationDetector();
   d.recordCachedValue("FORMAT", FORMAT.get(), Thread.currentThread());
+  ```
+
+---
+
+## Phase 24: JDK 26 Structured Concurrency and Lazy Constants
+
+JEP 525 (Structured Concurrency, sixth preview) and JEP 526 (Lazy Constants, second preview) both
+moved work from the JDK into the application: a `Joiner` you write, a `Configuration` lambda you
+return, a mapping function that runs per element. These four detectors cover the surfaces those
+changes created. `STRUCTURED_TASK_SCOPE_MISUSE` still owns the scope's own fork/join/close
+lifecycle; nothing here repeats it.
+
+There is no detector for JEP 522 (G1 GC synchronization reduction). It changes how application
+threads and GC workers coordinate over the card table, and exposes no API a test can record
+against, so a detector for it would be a guess dressed as a measurement.
+
+### 143. Scope Joiner Misuse
+* **Severity**: `CRITICAL` / `HIGH` / `MEDIUM` by finding
+* **Trust tier**: **fact** — every finding is a recorded count: scopes bound, threads overlapping in `onComplete`, calls seen off the owner thread.
+* **Description**: Detects misuse of the `StructuredTaskScope.Joiner` contract. A joiner is called from two directions at once: `onComplete` runs on whichever subtask thread finished, concurrently with its peers, while `result()` and the JDK 26 `onTimeout()` run on the owner. A joiner accumulating into a plain `ArrayList` is a data race no amount of correct scope usage removes. JEP 525's `onTimeout()` makes it worse by design — returning a partial result is now the recommended pattern, so an accumulator that used to be discarded on timeout is now read while cancelled subtasks are still writing to it. Also flags a joiner reused across scopes (it carries the previous run's state), and forking after `onComplete` asked for the short-circuit.
+* **Buggy Code**:
+  ```java
+  final class Collecting<T> implements Joiner<T, List<T>> {
+      private final List<T> done = new ArrayList<>();          // written from subtask threads
+      public boolean onComplete(Subtask<? extends T> st) { done.add(st.get()); return false; }
+      public List<T> onTimeout() { return List.copyOf(done); } // read on the owner, mid-write
+  }
+  ```
+* **Fixed Code**:
+  ```java
+  final class Collecting<T> implements Joiner<T, List<T>> {
+      private final Queue<T> done = new ConcurrentLinkedQueue<>();
+      public boolean onComplete(Subtask<? extends T> st) { done.add(st.get()); return false; }
+      public List<T> onTimeout() { return List.copyOf(done); }
+  }
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.scopeJoinerMisuseDetector();
+  d.recordJoinerBound(joiner, "orders", scopeId, Thread.currentThread());
+  d.recordOnCompleteEnter(joiner, Thread.currentThread());
+  d.recordAccumulate(joiner, Thread.currentThread());
+  d.recordOnCompleteExit(joiner, Thread.currentThread(), false);
+  ```
+
+### 144. Scope Configuration Misuse
+* **Severity**: `CRITICAL` / `HIGH` / `MEDIUM` / `LOW` by finding
+* **Trust tier**: **fact** — requested settings are compared against effective ones, and scope lifetimes are ordered by a sequence counter rather than the clock.
+* **Description**: Detects misuse of the `UnaryOperator<Configuration>` lambda JEP 525 introduced in place of the scope constructors. `Configuration` is immutable and every `withX` returns a new instance, so a lambda that does not hand back the value it derived from its own parameter applies nothing — the scope silently has no deadline, and one hung subtask hangs the test forever. Also flags a non-positive timeout (the timeout path becomes the only path), a wide fan-out with no deadline at all, a scope whose every `join()` expired, one `ThreadFactory` configured on scopes that are alive at the same time, and duplicate `withName` values among live scopes.
+* **Buggy Code**:
+  ```java
+  var base = StructuredTaskScope.Configuration.defaults();
+  try (var scope = StructuredTaskScope.open(joiner,
+          cfg -> { cfg.withTimeout(Duration.ofSeconds(3)); return base; })) {   // timeout dropped
+  ```
+* **Fixed Code**:
+  ```java
+  try (var scope = StructuredTaskScope.open(joiner,
+          cfg -> cfg.withTimeout(Duration.ofSeconds(3)).withName("order-fetcher"))) {
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.scopeConfigurationMisuseDetector();
+  d.recordScopeOpened(scopeId, "order-fetcher", 3000L, threadFactory, Thread.currentThread());
+  d.recordEffectiveConfiguration(scopeId, effectiveName, effectiveTimeoutMillis);
+  d.recordJoinOutcome(scopeId, timedOut);
+  d.recordScopeClosed(scopeId);
+  ```
+
+### 145. Scope Result Escape
+* **Severity**: `CRITICAL` / `HIGH` / `MEDIUM` by finding
+* **Trust tier**: **fact** — reads are ordered against the scope's close by a sequence counter, and the reading thread is compared against the recorded owner.
+* **Description**: Detects a scope's results outliving the scope. JDK 25's joiners returned a `Stream<Subtask<T>>`; a stream is lazy and single-use, so holding one past `close()` failed early and loudly. JDK 26 returns a `List`, which is the ergonomic win everyone wanted and also a handle that stores happily in a field. Structured concurrency's guarantee is that subtasks do not outlive their scope — a handle read after `close()`, or on a thread that never called `join()`, has no happens-before edge to the writes it points at. Also flags publishing the handle before `join()` returned, and mutating the unmodifiable result list. Distinct from `STRUCTURED_TASK_SCOPE_MISUSE`, which covers reading a result *too early*; this one covers too late, or on the wrong thread.
+* **Buggy Code**:
+  ```java
+  List<Subtask<Order>> results;
+  try (var scope = StructuredTaskScope.open(Joiner.<Order>allSuccessfulOrThrow())) {
+      scope.fork(this::fetchA);
+      results = scope.join();
+  }
+  return results.get(0).get();          // the scope is gone
+  ```
+* **Fixed Code**:
+  ```java
+  try (var scope = StructuredTaskScope.open(Joiner.<Order>allSuccessfulOrThrow())) {
+      scope.fork(this::fetchA);
+      return scope.join().get(0).get();  // read inside the structure
+  }
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.scopeResultEscapeDetector();
+  d.recordScopeOpened(scopeId, Thread.currentThread());
+  d.recordJoinCompleted(scopeId);
+  d.recordResultHandle(results, "orders", scopeId);
+  d.recordScopeClosed(scopeId);
+  d.recordHandleRead(results, Thread.currentThread());
+  ```
+
+### 146. Lazy Collection Misuse
+* **Severity**: `CRITICAL` / `HIGH` / `LOW` by finding
+* **Trust tier**: **fact** — computations, values and dependency edges are all recorded; the cycle finding is a walk over edges that were actually observed.
+* **Description**: Detects misuse of `List.ofLazy(size, fn)` and `Map.ofLazy(keys, fn)`, the lazy collections JEP 526 added beside `LazyConstant`. Where `LAZY_CONSTANT_MISUSE` covers one holder with one supplier, a lazy collection is *n* independent at-most-once computations sharing one mapping function, each running on whichever thread asked for that element first. That makes possible a failure a single constant cannot have: a mapping function that reaches back into its own collection couples two elements, and if the dependency runs both ways, two threads each hold one element and wait for the other — a deadlock the JDK breaks with `IllegalStateException` when the cycle is on one thread, and does not break when it is spread across two. Also flags a mapping function that ran twice, disagreed with itself, or returned `null` (which JDK 26 rejects), plus warnings for nested computation and for many readers queueing on one slow element.
+* **Buggy Code**:
+  ```java
+  static final List<Cell> GRID = List.ofLazy(64, i ->
+          new Cell(i, GRID.get((i + 1) % 64).weight()));   // every element waits on the next
+  ```
+* **Fixed Code**:
+  ```java
+  static final int[] WEIGHTS = computeWeights(64);          // eager base layer, no coupling
+  static final List<Cell> GRID = List.ofLazy(64, i -> new Cell(i, WEIGHTS[(i + 1) % 64]));
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.lazyCollectionMisuseDetector();
+  d.recordGet("GRID", i, Thread.currentThread());
+  d.recordComputeStart("GRID", i, Thread.currentThread());
+  d.recordComputeEnd("GRID", i, Thread.currentThread(), value);
   ```

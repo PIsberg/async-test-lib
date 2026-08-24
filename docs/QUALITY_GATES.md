@@ -44,7 +44,7 @@ containment. Verified by breaking a detector on purpose: the same `IllegalStateE
 it on. `DetectorSweepResilienceTest` pins both halves — the containment (with the flag cleared for
 the duration) and the promotion. Mechanics in `se.deversity.asynctest.DetectorFailurePolicy`.
 
-## Build with JDK 21 or 25, not 26
+## Build with JDK 21, 25 or 26
 
 > **Resolved: the PMD engine is now pinned, and JDK 26 no longer trips the gate.**
 >
@@ -65,9 +65,10 @@ the duration) and the promotion. Mechanics in `se.deversity.asynctest.DetectorFa
 > ```
 >
 > `mvn verify -DskipTests` (PMD, SpotBugs, Checkstyle and Error Prone) also passes on JDK 26 with
-> the pin in place. **The test suite has not been exercised on JDK 26**, so CI stays on 21 and 25
-> and that remains the supported pair — but a red PMD gate is no longer explained by the toolchain,
-> and a failure here should be read as a real finding.
+> the pin in place. The test suite now runs there too: `tests.yml` and the e2e consumer fixture
+> matrix 21, 25 and 26, so all three are supported rather than two plus a static-analysis note. A
+> red PMD gate is no longer explained by the toolchain, and a failure here should be read as a real
+> finding.
 >
 > Worth keeping the history because the old failure was convincing: it looked exactly like a
 > repository-wide code-quality problem, and the obvious remedy — a mechanical sweep replacing
@@ -150,7 +151,7 @@ same sources throughout, so this closed a duplicate-coverage hole rather than an
 ### NullAway
 
 Nullness is the one defect class the other analysers do not check, and this codebase is built out
-of nullable references: every one of the 142 detectors is `cfg.detectX ? new XDetector() : null`, so
+of nullable references: every one of the 146 detectors is `cfg.detectX ? new XDetector() : null`, so
 a `Phase1DetectorSet` field, a `DetectorRegistry` field and every accessor that reaches one is null
 whenever its flag is off. Whether each read site guards for that was, until now, enforced by
 convention.
