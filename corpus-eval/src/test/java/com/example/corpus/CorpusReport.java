@@ -5,6 +5,7 @@ import se.deversity.asynctest.diagnostics.DetectorFeed;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.TrustTier;
+import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -55,7 +56,12 @@ final class CorpusReport {
                 .append(", invocations=").append(invocations)
                 .append(", detectAll=true, agent=")
                 .append(System.getProperty("asynctest.agent", "(not attached)")).append('\n')
-                .append("- Body executions: ").append(CorpusRecorder.bodyExecutions()).append("\n\n");
+                .append("- Body executions: ").append(CorpusRecorder.bodyExecutions()).append('\n')
+                // An access the buffer threw away is an access no detector saw. A run that lost
+                // events has weaker evidence than its finding list looks like, in both directions,
+                // so the number belongs next to the numbers it qualifies rather than in a log.
+                .append("- Telemetry events dropped: ")
+                .append(TelemetryRegistry.droppedEvents()).append("\n\n");
 
         out.append("## Per subject\n\n")
                 .append("| Subject | Library | Contract | Findings | Detectors (tier/severity) | Crashes |\n")
