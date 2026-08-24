@@ -6,7 +6,7 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 
 Most examples ship the buggy service, a sequential `@Test` that passes on it, and an
 `@AsyncTest` that exposes the bug. **Those `@AsyncTest` demonstrations are `@Disabled`**: 99 of
-the 134 examples have one. That is deliberate: they demonstrate code that fails, so enabling
+the 148 examples have one. That is deliberate: they demonstrate code that fails, so enabling
 them would make the examples pipeline permanently red. Each carries a reason saying so, and
 removing the annotation is the intended way to watch the bug surface.
 
@@ -14,10 +14,11 @@ The newer examples take a different shape, and it is the better one. Rather than
 demonstration, they drive the detector's own recording API from ordinary `@Test` methods and
 assert on the report: clean usage stays silent, the buggy pattern is flagged, and the severity
 is pinned. Those tests **run in CI**, so they prove the detector still behaves as documented
-rather than only that the example compiles. Examples 129–135 are written this way.
+rather than only that the example compiles. Forty examples are written this way, and every
+example from 136 onwards is.
 
 The distinction matters when reading the pipeline's green tick. For the disabled majority, the
-examples pipeline builds all 134 and runs their enabled tests, so it proves those examples
+examples pipeline builds all 148 and runs their enabled tests, so it proves those examples
 **compile and keep working against the current library** — it does not prove any detector
 fires. The check that does that for the library itself is `DetectionCoverageTest` in
 `async-test-lib`, which runs real buggy code through a real `@AsyncTest` and asserts on the
