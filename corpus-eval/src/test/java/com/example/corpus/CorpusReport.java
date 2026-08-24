@@ -60,8 +60,10 @@ final class CorpusReport {
                 // An access the buffer threw away is an access no detector saw. A run that lost
                 // events has weaker evidence than its finding list looks like, in both directions,
                 // so the number belongs next to the numbers it qualifies rather than in a log.
-                .append("- Telemetry events dropped: ")
-                .append(TelemetryRegistry.droppedEvents()).append("\n\n");
+                .append("- Telemetry events published: ")
+                .append(TelemetryRegistry.publishedEvents())
+                .append(", dropped: ").append(TelemetryRegistry.droppedEvents())
+                .append("\n\n");
 
         out.append("## Per subject\n\n")
                 .append("| Subject | Library | Contract | Findings | Detectors (tier/severity) | Crashes |\n")
