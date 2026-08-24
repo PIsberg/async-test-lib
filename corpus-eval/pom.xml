@@ -138,7 +138,7 @@
                                      state in a JDK collection writes no field of its own, so
                                      without it three of the nine documented-unsafe subjects
                                      reported nothing at all. -->
-                                <asynctest.agent>fields=true,collections=true</asynctest.agent>
+                                <asynctest.agent>fields=true,collections=true,debug=true</asynctest.agent>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>
