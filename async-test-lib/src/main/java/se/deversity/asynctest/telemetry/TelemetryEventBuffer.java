@@ -478,6 +478,11 @@ public final class TelemetryEventBuffer {
     /**
      * Returns the number of events published so far (monotonically increasing).
      *
+     * <p>The denominator {@link #droppedCount()} needs. Zero drops means nothing on its own: a run
+     * that published a tenth of the accesses another run published saw a tenth of the evidence and
+     * dropped none of it, and the two runs are not comparable. Read from the producer cursor, so
+     * it costs the hot path nothing.
+     *
      * @return the number of events published since this buffer was created
      */
     public long publishedCount() {

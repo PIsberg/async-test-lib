@@ -478,6 +478,22 @@ public final class TelemetryRegistry {
     }
 
     /**
+     * {@return how many access events this JVM published}
+     *
+     * <p>The denominator for {@link #droppedEvents()}, and the first thing to compare when two
+     * runs of the same suite reach different conclusions: two runs that published the same number
+     * of events and dropped none of them saw the same evidence, so a difference between them is
+     * in the analysis rather than in the reach of the weaving.
+     *
+     * <p>Cumulative for the life of the JVM.
+     *
+     * @since 1.10.0
+     */
+    public static long publishedEvents() {
+        return BUFFER.publishedCount();
+    }
+
+    /**
      * Drains everything published so far to the active callback, and returns once that
      * drain has completed.
      *
