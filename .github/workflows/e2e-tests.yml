@@ -413,6 +413,10 @@ jobs:
             api.github.com:443
             github.com:443
             objects.githubusercontent.com:443
+            # Only the JDKs the runner image already caches are free. 26 is not cached, so
+            # setup-java downloads it from a GitHub release asset, and without this host the
+            # step fails before the eval runs at all.
+            release-assets.githubusercontent.com:443
             repo.maven.apache.org:443
             repo1.maven.org:443
 
