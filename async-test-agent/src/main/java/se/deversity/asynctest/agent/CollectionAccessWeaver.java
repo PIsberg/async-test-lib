@@ -1,7 +1,9 @@
 package se.deversity.asynctest.agent;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -11,15 +13,21 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import net.bytebuddy.asm.AsmVisitorWrapper;
-import net.bytebuddy.asm.MemberSubstitution;
-import net.bytebuddy.description.method.MethodDescription;
-import net.bytebuddy.matcher.ElementMatcher;
-import net.bytebuddy.matcher.ElementMatchers;
+import net.bytebuddy.description.field.FieldDescription;
+import net.bytebuddy.description.field.FieldList;
+import net.bytebuddy.description.method.MethodList;
+import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.implementation.Implementation;
+import net.bytebuddy.jar.asm.ClassVisitor;
+import net.bytebuddy.jar.asm.MethodVisitor;
+import net.bytebuddy.jar.asm.Opcodes;
+import net.bytebuddy.jar.asm.Type;
+import net.bytebuddy.pool.TypePool;
 
 import se.deversity.vibetags.annotations.AIContract;
 
 /**
- * Rewrites collection calls in woven code so the detectors see the collection itself.
+ * Rewrites collection and lock calls in woven code so the detectors see the receiver itself.
  *
  * <h2>Why substitution rather than more field weaving</h2>
  *
@@ -27,17 +35,32 @@ import se.deversity.vibetags.annotations.AIContract;
  * mutates its own fields and blind for a class that keeps its state in a collection: the write that
  * races happens inside {@code java.util.HashMap}, and {@code java.} is on the ignore list for good
  * reasons that are not going to change. What the detectors need there is not the field but the
- * receiver of the call, and the receiver is buried under the arguments at the point the weaver sees
- * the invocation.
+ * receiver of the call, and substituting the invocation with a static hook whose first parameter is
+ * the receiver hands it over without spilling arguments: the hook consumes exactly the stack the
+ * original call consumed and leaves the same value behind, so the operand stack shape at every
+ * instruction is unchanged, no branch is introduced, and no member is added. That is what keeps
+ * this safe under {@code disableClassFormatChanges()} on the retransformation path, on the same
+ * reasoning the field weaver documents.
  *
- * <p>Byte Buddy's {@link MemberSubstitution} solves exactly that: it replaces the invocation with a
- * call to a static method whose first parameter is the receiver, generating the argument handling
- * itself, including the two-slot cases a hand-written spill would have to special-case. Each
- * substitution consumes the same stack the original call consumed and leaves the same value behind,
- * so the operand stack shape at every instruction is unchanged, no branch is introduced, and no
- * member is added. That is what keeps this safe under
- * {@code disableClassFormatChanges()} on the retransformation path, on the same reasoning the
- * field weaver documents.
+ * <h2>Why a hand-rolled visitor rather than {@code MemberSubstitution}</h2>
+ *
+ * <p>Byte Buddy's {@code MemberSubstitution} performed the same rewrite, but its method visitor
+ * also parses every {@code invokedynamic} instruction's bootstrap arguments into constants, and
+ * as of Byte Buddy 1.18.12 that parsing reads a field method handle's descriptor as if it were a
+ * method descriptor ({@code JavaConstant.MethodHandle.ofAsm} calls {@code Type.getMethodType} on
+ * it unconditionally). Every Java record's {@code equals}/{@code hashCode}/{@code toString} calls
+ * {@code ObjectMethods.bootstrap} with exactly such handles, so every record in a woven package
+ * failed to instrument with a {@code StringIndexOutOfBoundsException}. This visitor rewrites the
+ * one instruction kind it is about, {@code invokevirtual}/{@code invokeinterface} on a table
+ * entry, and passes everything else through untouched, {@code invokedynamic} included.
+ *
+ * <p>The matching preserves the old semantics: the call site's method name and full descriptor
+ * must equal the hook's, receiver excluded, and the owner must be a subtype of the entry's
+ * interface, resolved through the type pool. A descriptor that differs, a covariant override for
+ * an entry that does not pin its return type, or an owner the pool cannot resolve is skipped and
+ * simply not recorded, which can only lose an observation, never invent one or change behaviour.
+ * {@code invokespecial} is never rewritten: a decorator's {@code super.get(...)} must keep its
+ * dispatch, or the substitution would re-dispatch virtually into the override and recurse.
  *
  * <h2>Why an explicit table</h2>
  *
@@ -48,7 +71,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.10.0
  */
-@AIContract(reason = "The hook class name and the method names here are the other half of AgentCollectionHooks: they are matched by erased signature at weave time, so renaming a hook or changing a parameter type breaks weaving with a NoSuchMethodError inside user code rather than at compile time. Each entry must consume exactly the stack its original invocation consumed - substitution stays stack-shape-neutral and member-free, which is what keeps retransformation safe under disableClassFormatChanges(). Collection weaving is opt-in (collections=true) because it instruments every listed call in every matched class.")
+@AIContract(reason = "The hook class name and the method names here are the other half of AgentCollectionHooks and AgentLockHooks: they are matched by erased signature at weave time, so renaming a hook or changing a parameter type breaks weaving with a NoSuchMethodError inside user code rather than at compile time. Each substitution must consume exactly the stack its original invocation consumed - stack-shape-neutral and member-free is what keeps retransformation safe under disableClassFormatChanges(). The visitor must never touch invokedynamic: parsing its constants is what made every Java record fail to instrument when this went through MemberSubstitution. Collection weaving is opt-in (collections=true) because it instruments every listed call in every matched class.")
 final class CollectionAccessWeaver {
 
     /**
@@ -108,83 +131,6 @@ final class CollectionAccessWeaver {
             Entry.call(Queue.class, "peek", "queuePeek"));
 
     /**
-     * {@return the substitutions to apply, in table order}
-     *
-     * @param hooks the class holding the hook methods, resolved in the weaving class loader
-     */
-    static List<AsmVisitorWrapper> substitutions(Class<?> hooks) {
-        return substitutionsFor(ENTRIES, hooks);
-    }
-
-    private static List<AsmVisitorWrapper> substitutionsFor(List<Entry> entries, Class<?> hooks) {
-        List<AsmVisitorWrapper> substitutions = new ArrayList<>(entries.size());
-        for (Entry entry : entries) {
-            substitutions.add(MemberSubstitution.relaxed()
-                    .method(invocationMatcher(entry))
-                    // Virtual and interface invocations only. A super.get() call is INVOKESPECIAL
-                    // on purpose: replacing it with a static that calls receiver.get() would
-                    // re-dispatch virtually, land back in the overriding subclass, and recurse
-                    // until the stack ran out. That is not hypothetical - it is what the corpus
-                    // eval's PassiveExpiringMap subject did, because a decorator that extends its
-                    // own abstraction calls super on every operation.
-                    .onVirtualCall()
-                    .replaceWith(hookMethod(hooks, entry))
-                    // Never substitute inside the library itself. AgentCollectionHooks.mapPut ends
-                    // by calling Map.put, so weaving it would replace that call with a call to
-                    // itself: the first shared map a test touched died with a StackOverflowError
-                    // before this matcher existed. Everything the detectors use internally is under
-                    // the same root, so one exclusion covers the whole recording path.
-                    .on(ElementMatchers.not(
-                            ElementMatchers.isDeclaredBy(
-                                    ElementMatchers.nameStartsWith(LIBRARY_ROOT)))));
-        }
-        return substitutions;
-    }
-
-    /**
-     * Matches the invocation by declaring type and erased parameter list, so a call through the
-     * interface and a call through the concrete implementation are both caught, and an unrelated
-     * {@code add} on a type that is not a collection is not.
-     */
-    private static ElementMatcher.Junction<MethodDescription> invocationMatcher(Entry entry) {
-        ElementMatcher.Junction<MethodDescription> matcher =
-                ElementMatchers.isDeclaredBy(ElementMatchers.isSubTypeOf(entry.declaredBy()))
-                .<MethodDescription>and(ElementMatchers.named(entry.method()))
-                .and(ElementMatchers.takesArguments(entry.parameters()));
-        Class<?> returning = entry.returning();
-        if (returning != null) {
-            matcher = matcher.and(ElementMatchers.returns(returning));
-        }
-        return matcher;
-    }
-
-    private static java.lang.reflect.Method hookMethod(Class<?> hooks, Entry entry) {
-        Class<?>[] signature = new Class<?>[entry.parameters().length + 1];
-        signature[0] = entry.declaredBy();
-        System.arraycopy(entry.parameters(), 0, signature, 1, entry.parameters().length);
-        try {
-            return hooks.getMethod(entry.hook(), signature);
-        } catch (NoSuchMethodException e) {
-            // The table and the hook class are compiled together and pinned by a test; reaching
-            // this means the two were shipped out of step, and weaving with a half-built table
-            // would be worse than telling the user which entry is missing.
-            throw new IllegalStateException(
-                    "no hook " + entry.hook() + " for " + entry.declaredBy().getName()
-                            + "." + entry.method() + "; agent and library versions disagree", e);
-        }
-    }
-
-    /** {@return the hook class name the substituted collection calls land in} */
-    static String hooksClassName() {
-        return HOOKS;
-    }
-
-    /** {@return the hook class name the substituted lock calls land in} */
-    static String lockHooksClassName() {
-        return LOCK_HOOKS;
-    }
-
-    /**
      * The lock table. {@code java.util.concurrent.locks.Lock} is an interface whose implementations
      * live in {@code java.util.concurrent.locks}, where nothing is woven, so the call site is the
      * only place a lock acquisition can be observed at all.
@@ -207,6 +153,63 @@ final class CollectionAccessWeaver {
                     ReentrantReadWriteLock.WriteLock.class));
 
     /**
+     * One resolved rewrite: the call shape to match and the hook invocation that replaces it.
+     *
+     * <p>{@code callSiteDescriptor} is the hook's descriptor with the receiver parameter removed,
+     * which is exactly the descriptor the original instruction must carry: matching on it makes
+     * the return types equal by construction, so the value the hook leaves on the stack is the
+     * value the following bytecode was verified against.
+     */
+    private record Target(String methodName, String callSiteDescriptor,
+                          TypeDescription receiverType, String hookOwnerInternalName,
+                          String hookMethodName, String hookDescriptor) {
+    }
+
+    private static List<Target> targets(List<Entry> entries, Class<?> hooks) {
+        List<Target> targets = new ArrayList<>(entries.size());
+        for (Entry entry : entries) {
+            Method hook = hookMethod(hooks, entry);
+            Type hookType = Type.getType(hook);
+            Type[] hookArguments = hookType.getArgumentTypes();
+            Type[] callSiteArguments = new Type[hookArguments.length - 1];
+            System.arraycopy(hookArguments, 1, callSiteArguments, 0, callSiteArguments.length);
+            targets.add(new Target(
+                    entry.method(),
+                    Type.getMethodDescriptor(hookType.getReturnType(), callSiteArguments),
+                    TypeDescription.ForLoadedType.of(entry.declaredBy()),
+                    Type.getInternalName(hooks),
+                    hook.getName(),
+                    hookType.getDescriptor()));
+        }
+        return targets;
+    }
+
+    private static Method hookMethod(Class<?> hooks, Entry entry) {
+        Class<?>[] signature = new Class<?>[entry.parameters().length + 1];
+        signature[0] = entry.declaredBy();
+        System.arraycopy(entry.parameters(), 0, signature, 1, entry.parameters().length);
+        try {
+            return hooks.getMethod(entry.hook(), signature);
+        } catch (NoSuchMethodException e) {
+            // The table and the hook class are compiled together and pinned by a test; reaching
+            // this means the two were shipped out of step, and weaving with a half-built table
+            // would be worse than telling the user which entry is missing.
+            throw new IllegalStateException(
+                    "no hook " + entry.hook() + " for " + entry.declaredBy().getName()
+                            + "." + entry.method() + "; agent and library versions disagree", e);
+        }
+    }
+
+    /**
+     * {@return the collection substitutions, as one visitor over the whole table}
+     *
+     * @param hooks the class holding the hook methods, resolved in the weaving class loader
+     */
+    static List<AsmVisitorWrapper> substitutions(Class<?> hooks) {
+        return List.of(new SubstitutionWrapper(targets(ENTRIES, hooks)));
+    }
+
+    /**
      * {@return the lock substitutions, in table order}
      *
      * <p>Feeds the same per-thread lockset that woven {@code MONITORENTER} instructions feed, so a
@@ -215,6 +218,129 @@ final class CollectionAccessWeaver {
      * @param lockHooks the class holding the lock hooks, resolved in the weaving class loader
      */
     static List<AsmVisitorWrapper> lockSubstitutions(Class<?> lockHooks) {
-        return substitutionsFor(LOCK_ENTRIES, lockHooks);
+        return List.of(new SubstitutionWrapper(targets(LOCK_ENTRIES, lockHooks)));
+    }
+
+    /** {@return the hook class name the substituted collection calls land in} */
+    static String hooksClassName() {
+        return HOOKS;
+    }
+
+    /** {@return the hook class name the substituted lock calls land in} */
+    static String lockHooksClassName() {
+        return LOCK_HOOKS;
+    }
+
+    /** Applies one table of {@link Target}s to every method of a woven class. */
+    private record SubstitutionWrapper(List<Target> targets) implements AsmVisitorWrapper {
+
+        @Override
+        public int mergeWriter(int flags) {
+            return flags;
+        }
+
+        @Override
+        public int mergeReader(int flags) {
+            return flags;
+        }
+
+        @Override
+        public ClassVisitor wrap(TypeDescription instrumentedType,
+                                 ClassVisitor classVisitor,
+                                 Implementation.Context implementationContext,
+                                 TypePool typePool,
+                                 FieldList<FieldDescription.InDefinedShape> fields,
+                                 MethodList<?> methods,
+                                 int writerFlags,
+                                 int readerFlags) {
+            // Never substitute inside the library itself. AgentCollectionHooks.mapPut ends by
+            // calling Map.put, so weaving it would replace that call with a call to itself. The
+            // agent's global ignore already excludes the root; this guard keeps the property
+            // local to the class that depends on it.
+            if (instrumentedType.getName().startsWith(LIBRARY_ROOT)) {
+                return classVisitor;
+            }
+            // Owner-to-entry assignability answers, per woven class: owners repeat heavily
+            // inside one class, and the pool lookup is the only non-trivial cost here.
+            Map<String, Boolean> assignable = new HashMap<>();
+            return new ClassVisitor(Opcodes.ASM9, classVisitor) {
+                @Override
+                public MethodVisitor visitMethod(int access, String name, String descriptor,
+                                                 String signature, String[] exceptions) {
+                    MethodVisitor delegate =
+                            super.visitMethod(access, name, descriptor, signature, exceptions);
+                    return new SubstitutingMethodVisitor(delegate, targets, typePool, assignable);
+                }
+            };
+        }
+    }
+
+    /** Rewrites matching virtual and interface invocations; passes every other instruction through. */
+    private static final class SubstitutingMethodVisitor extends MethodVisitor {
+
+        private final List<Target> targets;
+        private final TypePool typePool;
+        private final Map<String, Boolean> assignable;
+
+        SubstitutingMethodVisitor(MethodVisitor delegate, List<Target> targets,
+                                  TypePool typePool, Map<String, Boolean> assignable) {
+            super(Opcodes.ASM9, delegate);
+            this.targets = targets;
+            this.typePool = typePool;
+            this.assignable = assignable;
+        }
+
+        @Override
+        public void visitMethodInsn(int opcode, String owner, String name, String descriptor,
+                                    boolean isInterface) {
+            // Virtual and interface invocations only. A super.get() call is INVOKESPECIAL on
+            // purpose: replacing it with a static that calls receiver.get() would re-dispatch
+            // virtually, land back in the overriding subclass, and recurse until the stack ran
+            // out. That is not hypothetical - it is what the corpus eval's PassiveExpiringMap
+            // subject did, because a decorator that extends its own abstraction calls super on
+            // every operation.
+            if (opcode == Opcodes.INVOKEVIRTUAL || opcode == Opcodes.INVOKEINTERFACE) {
+                for (Target target : targets) {
+                    if (name.equals(target.methodName())
+                            && descriptor.equals(target.callSiteDescriptor())
+                            && ownerIsAssignable(owner, target)) {
+                        super.visitMethodInsn(Opcodes.INVOKESTATIC,
+                                target.hookOwnerInternalName(), target.hookMethodName(),
+                                target.hookDescriptor(), false);
+                        return;
+                    }
+                }
+            }
+            super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+        }
+
+        /**
+         * {@return whether the invocation's owner is a subtype of the target's receiver type}
+         *
+         * <p>An owner the pool cannot resolve is treated as not assignable: the call is left
+         * untouched and simply not recorded, which can only lose an observation. Resolving is
+         * name-based and never loads the class, the same constraint the field weaver's
+         * volatile lookup documents.
+         */
+        private boolean ownerIsAssignable(String owner, Target target) {
+            if (owner.charAt(0) == '[') {
+                return false;
+            }
+            String key = owner + '>' + target.receiverType().getName();
+            Boolean cached = assignable.get(key);
+            if (cached != null) {
+                return cached;
+            }
+            boolean answer;
+            try {
+                TypePool.Resolution resolution = typePool.describe(owner.replace('/', '.'));
+                answer = resolution.isResolved()
+                        && resolution.resolve().isAssignableTo(target.receiverType());
+            } catch (RuntimeException resolutionFailed) {
+                answer = false;
+            }
+            assignable.put(key, answer);
+            return answer;
+        }
     }
 }
