@@ -117,6 +117,9 @@ you are editing here.
     <element path="se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.PlatformThreadPerTaskDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector" rules=".claude/rules/async-test-detectors.md"/>
+    <element path="se.deversity.asynctest.diagnostics.ScopeConfigurationMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
+    <element path="se.deversity.asynctest.diagnostics.ScopeJoinerMisuseDetector" rules=".claude/rules/async-test-detectors.md"/>
+    <element path="se.deversity.asynctest.diagnostics.ScopeResultEscapeDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.SharedByteBufferDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.SharedCharsetCoderDetector" rules=".claude/rules/async-test-detectors.md"/>
     <element path="se.deversity.asynctest.diagnostics.SharedChecksumDetector" rules=".claude/rules/async-test-detectors.md"/>
