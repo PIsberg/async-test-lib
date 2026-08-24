@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="3288" height="2637" viewBox="0 0 3288 2637">
+<svg xmlns="http://www.w3.org/2000/svg" width="3338" height="2637" viewBox="0 0 3338 2637">
 <defs>
 <style>
 svg { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
@@ -55,13 +55,13 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <path d="M0,0 L8,4 L0,8" fill="none" stroke="#374151" stroke-width="1.2"/>
 </marker>
 </defs>
-<rect width="3288" height="2637" fill="#f9fafb"/>
-<rect width="3288" height="2637" fill="url(#dotGrid)"/>
+<rect width="3338" height="2637" fill="#f9fafb"/>
+<rect width="3338" height="2637" fill="url(#dotGrid)"/>
 <rect class="group-rect" x="10.0" y="100.0" width="808.0" height="1157.0" rx="8" fill="#f3f4f6" fill-opacity="0.5" stroke="#9ca3af" stroke-dasharray="6,4" stroke-width="1.2"/>
 <text x="16.0" y="113.0" font-family="sans-serif" font-size="11" fill="#6b7280" font-style="italic">se.deversity.asynctest</text>
 <rect class="group-rect" x="1730.0" y="10.0" width="608.0" height="398.0" rx="8" fill="#f3f4f6" fill-opacity="0.5" stroke="#9ca3af" stroke-dasharray="6,4" stroke-width="1.2"/>
 <text x="1736.0" y="23.0" font-family="sans-serif" font-size="11" fill="#6b7280" font-style="italic">se.deversity.asynctest.benchmark</text>
-<rect class="group-rect" x="834.0" y="574.0" width="2408.0" height="1883.0" rx="8" fill="#f3f4f6" fill-opacity="0.5" stroke="#9ca3af" stroke-dasharray="6,4" stroke-width="1.2"/>
+<rect class="group-rect" x="834.0" y="574.0" width="2458.0" height="1883.0" rx="8" fill="#f3f4f6" fill-opacity="0.5" stroke="#9ca3af" stroke-dasharray="6,4" stroke-width="1.2"/>
 <text x="840.0" y="587.0" font-family="sans-serif" font-size="11" fill="#6b7280" font-style="italic">se.deversity.asynctest.diagnostics</text>
 <rect class="group-rect" x="10.0" y="10.0" width="208.0" height="233.0" rx="8" fill="#f3f4f6" fill-opacity="0.5" stroke="#9ca3af" stroke-dasharray="6,4" stroke-width="1.2"/>
 <text x="16.0" y="23.0" font-family="sans-serif" font-size="11" fill="#6b7280" font-style="italic">se.deversity.asynctest.extension</text>
@@ -355,8 +355,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="AsyncTestContext" data-target="VirtualThreadMonitorSerializationDetector" data-type="HAS" x="715.7" y="1275.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">virtualThreadMonitorSerializationDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="ThreadLocalCacheDegradationDetector" data-type="HAS" d="M404.0 818.0 Q800.2 1274.5 1248.0 1680.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestContext" data-target="ThreadLocalCacheDegradationDetector" data-type="HAS" x="813.1" y="1255.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">threadLocalCacheDegradationDetector</text>
-<path class="edge-line" data-source="AsyncTestContext" data-target="AtomicityValidator" data-type="HAS" d="M404.0 818.0 Q1433.8 1391.3 2498.0 1898.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="AsyncTestContext" data-target="AtomicityValidator" data-type="HAS" x="1442.4" y="1368.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">atomicityValidator</text>
+<path class="edge-line" data-source="AsyncTestContext" data-target="AtomicityValidator" data-type="HAS" d="M404.0 818.0 Q1636.0 1392.6 2898.0 1898.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="AsyncTestContext" data-target="AtomicityValidator" data-type="HAS" x="1643.5" y="1369.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">atomicityValidator</text>
 <path class="edge-line" data-source="AsyncTestListenerRegistry" data-target="AsyncTestListener" data-type="HAS" d="M604.0 1058.0 Q619.2 1047.1 624.0 1029.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestListenerRegistry" data-target="AsyncTestListener" data-type="HAS" x="616.6" y="1039.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">LISTENERS</text>
 <path class="edge-line" data-source="BenchmarkComparisonResult" data-target="BenchmarkResult" data-type="HAS" d="M2124.0 254.0 Q2134.0 257.6 2144.0 254.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -371,10 +371,10 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="BenchmarkRegressionException" data-target="BenchmarkComparisonResult" data-type="HAS" x="1927.9" y="216.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">comparisonResult</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="DeadlockDetector" data-type="HAS" d="M562.0 319.0 Q1021.2 970.8 1538.0 1578.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="DeadlockDetector" data-type="HAS" x="1035.6" y="953.7" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">deadlockDetector</text>
-<path class="edge-line" data-source="DetectorRegistry" data-target="VisibilityMonitor" data-type="HAS" d="M652.0 216.5 Q1550.5 1029.8 2498.0 1785.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="DetectorRegistry" data-target="VisibilityMonitor" data-type="HAS" x="1562.8" y="1009.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">visibilityMonitor</text>
-<path class="edge-line" data-source="DetectorRegistry" data-target="LivelockDetector" data-type="HAS" d="M562.0 319.0 Q1549.2 1291.2 2588.0 2208.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="DetectorRegistry" data-target="LivelockDetector" data-type="HAS" x="1562.1" y="1271.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">livelockDetector</text>
+<path class="edge-line" data-source="DetectorRegistry" data-target="VisibilityMonitor" data-type="HAS" d="M652.0 216.5 Q1753.3 1032.1 2898.0 1785.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorRegistry" data-target="VisibilityMonitor" data-type="HAS" x="1764.1" y="1010.5" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">visibilityMonitor</text>
+<path class="edge-line" data-source="DetectorRegistry" data-target="LivelockDetector" data-type="HAS" d="M652.0 216.5 Q1748.8 1298.9 2898.0 2325.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorRegistry" data-target="LivelockDetector" data-type="HAS" x="1761.9" y="1279.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">livelockDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="FalseSharingDetector" data-type="HAS" d="M652.0 216.5 Q823.7 489.2 1048.0 720.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="FalseSharingDetector" data-type="HAS" x="836.8" y="472.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">falseSharingDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="WakeupDetector" data-type="HAS" d="M652.0 216.5 Q929.1 479.7 1248.0 690.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -453,16 +453,16 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="DetectorRegistry" data-target="ForkJoinPoolDetector" data-type="HAS" x="936.0" y="601.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">forkJoinPoolDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="ThreadFactoryDetector" data-type="HAS" d="M652.0 216.5 Q1026.1 607.1 1448.0 945.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="ThreadFactoryDetector" data-type="HAS" x="1038.0" y="588.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">threadFactoryDetector</text>
-<path class="edge-line" data-source="DetectorRegistry" data-target="RaceConditionDetector" data-type="HAS" d="M652.0 216.5 Q1546.8 1251.8 2498.0 2235.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="DetectorRegistry" data-target="RaceConditionDetector" data-type="HAS" x="1560.9" y="1232.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">raceConditionDetector</text>
-<path class="edge-line" data-source="DetectorRegistry" data-target="ThreadLocalMonitor" data-type="HAS" d="M652.0 216.5 Q1548.2 1159.3 2498.0 2048.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="DetectorRegistry" data-target="ThreadLocalMonitor" data-type="HAS" x="1561.6" y="1139.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">threadLocalMonitor</text>
-<path class="edge-line" data-source="DetectorRegistry" data-target="BusyWaitDetector" data-type="HAS" d="M652.0 216.5 Q1548.9 1114.9 2498.0 1958.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="DetectorRegistry" data-target="BusyWaitDetector" data-type="HAS" x="1562.0" y="1095.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">busyWaitDetector</text>
-<path class="edge-line" data-source="DetectorRegistry" data-target="AtomicityValidator" data-type="HAS" d="M652.0 216.5 Q1549.5 1085.3 2498.0 1898.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="DetectorRegistry" data-target="AtomicityValidator" data-type="HAS" x="1562.2" y="1065.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">atomicityValidator</text>
-<path class="edge-line" data-source="DetectorRegistry" data-target="InterruptMonitor" data-type="HAS" d="M652.0 216.5 Q1547.4 1207.4 2498.0 2145.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="DetectorRegistry" data-target="InterruptMonitor" data-type="HAS" x="1561.2" y="1188.2" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">interruptMonitor</text>
+<path class="edge-line" data-source="DetectorRegistry" data-target="RaceConditionDetector" data-type="HAS" d="M652.0 216.5 Q1749.4 1254.5 2898.0 2235.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorRegistry" data-target="RaceConditionDetector" data-type="HAS" x="1762.2" y="1234.2" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">raceConditionDetector</text>
+<path class="edge-line" data-source="DetectorRegistry" data-target="ThreadLocalMonitor" data-type="HAS" d="M652.0 216.5 Q1750.9 1161.8 2898.0 2048.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorRegistry" data-target="ThreadLocalMonitor" data-type="HAS" x="1762.9" y="1141.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">threadLocalMonitor</text>
+<path class="edge-line" data-source="DetectorRegistry" data-target="BusyWaitDetector" data-type="HAS" d="M652.0 216.5 Q1751.7 1117.3 2898.0 1958.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorRegistry" data-target="BusyWaitDetector" data-type="HAS" x="1763.3" y="1096.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">busyWaitDetector</text>
+<path class="edge-line" data-source="DetectorRegistry" data-target="AtomicityValidator" data-type="HAS" d="M652.0 216.5 Q1752.2 1087.7 2898.0 1898.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorRegistry" data-target="AtomicityValidator" data-type="HAS" x="1763.6" y="1066.5" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">atomicityValidator</text>
+<path class="edge-line" data-source="DetectorRegistry" data-target="InterruptMonitor" data-type="HAS" d="M652.0 216.5 Q1750.1 1210.0 2898.0 2145.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorRegistry" data-target="InterruptMonitor" data-type="HAS" x="1762.6" y="1189.5" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">interruptMonitor</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="ThreadLeakDetector" data-type="HAS" d="M652.0 216.5 Q1128.0 631.8 1648.0 990.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="ThreadLeakDetector" data-type="HAS" x="1139.0" y="611.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">threadLeakDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="SleepInLockDetector" data-type="HAS" d="M652.0 216.5 Q1230.7 626.4 1848.0 975.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -655,22 +655,28 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="DetectorRegistry" data-target="ThreadLocalCacheDegradationDetector" data-type="HAS" x="934.8" y="951.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">threadLocalCacheDegradationDetector</text>
 <path class="edge-line" data-source="DetectorDefaultSeverity" data-target="IssueSeverity" data-type="HAS" d="M2028.0 1725.5 Q2035.1 1737.1 2048.0 1741.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorDefaultSeverity" data-target="IssueSeverity" data-type="HAS" x="2036.6" y="1729.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">DECLARED</text>
-<path class="edge-line" data-source="Phase1DetectorSet" data-target="VisibilityMonitor" data-type="HAS" d="M2428.0 1819.3 Q2468.4 1813.5 2498.0 1785.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="Phase1DetectorSet" data-target="VisibilityMonitor" data-type="HAS" x="2465.7" y="1801.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">visibility</text>
-<path class="edge-line" data-source="Phase1DetectorSet" data-target="LivelockDetector" data-type="HAS" d="M2338.0 1944.3 Q2444.3 2093.8 2588.0 2208.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="Phase1DetectorSet" data-target="LivelockDetector" data-type="HAS" x="2453.7" y="2079.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">livelock</text>
-<path class="edge-line" data-source="Phase1DetectorSet" data-target="RaceConditionDetector" data-type="HAS" d="M2338.0 1944.3 Q2448.7 2051.7 2588.0 2118.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="Phase1DetectorSet" data-target="RaceConditionDetector" data-type="HAS" x="2455.8" y="2035.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">race</text>
-<path class="edge-line" data-source="Phase1DetectorSet" data-target="ThreadLocalMonitor" data-type="HAS" d="M2428.0 1819.3 Q2436.0 1941.9 2498.0 2048.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="Phase1DetectorSet" data-target="ThreadLocalMonitor" data-type="HAS" x="2449.5" y="1931.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">threadLocal</text>
-<path class="edge-line" data-source="Phase1DetectorSet" data-target="BusyWaitDetector" data-type="HAS" d="M2428.0 1819.3 Q2443.6 1898.4 2498.0 1958.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="Phase1DetectorSet" data-target="BusyWaitDetector" data-type="HAS" x="2453.3" y="1887.5" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">busyWait</text>
-<path class="edge-line" data-source="Phase1DetectorSet" data-target="AtomicityValidator" data-type="HAS" d="M2428.0 1819.3 Q2451.0 1869.3 2498.0 1898.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="Phase1DetectorSet" data-target="AtomicityValidator" data-type="HAS" x="2457.0" y="1858.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">atomicity</text>
-<path class="edge-line" data-source="Phase1DetectorSet" data-target="InterruptMonitor" data-type="HAS" d="M2338.0 1944.3 Q2454.8 2010.5 2588.0 2028.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="Phase1DetectorSet" data-target="InterruptMonitor" data-type="HAS" x="2458.9" y="1992.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">interrupt</text>
-<path class="edge-line" data-source="RaceConditionDetector" data-target="IssueDeduplicator" data-type="HAS" d="M2678.0 2235.5 Q2689.4 2235.4 2698.0 2228.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="RaceConditionDetector" data-target="IssueDeduplicator" data-type="HAS" x="2688.7" y="2227.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">deduplicator</text>
+<path class="edge-line" data-source="DetectorFeeds" data-target="DetectorType" data-type="HAS" d="M2248.0 1748.0 Q1342.8 1246.4 404.0 811.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorFeeds" data-target="DetectorType" data-type="HAS" x="1334.4" y="1257.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">AGENT_FED</text>
+<path class="edge-line" data-source="DetectorFeeds" data-target="DetectorType" data-type="HAS" d="M2248.0 1748.0 Q1342.8 1246.4 404.0 811.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorFeeds" data-target="DetectorType" data-type="HAS" x="1334.4" y="1257.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">ZERO_CONFIG_FED</text>
+<path class="edge-line" data-source="DetectorFeeds" data-target="DetectorFeed" data-type="HAS" d="M2428.0 1748.0 Q2444.7 1733.1 2448.0 1711.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorFeeds" data-target="DetectorFeed" data-type="HAS" x="2441.3" y="1725.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">FEEDS</text>
+<path class="edge-line" data-source="Phase1DetectorSet" data-target="VisibilityMonitor" data-type="HAS" d="M2828.0 1819.3 Q2868.4 1813.5 2898.0 1785.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="Phase1DetectorSet" data-target="VisibilityMonitor" data-type="HAS" x="2865.7" y="1801.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">visibility</text>
+<path class="edge-line" data-source="Phase1DetectorSet" data-target="LivelockDetector" data-type="HAS" d="M2738.0 1944.3 Q2844.3 2093.8 2988.0 2208.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="Phase1DetectorSet" data-target="LivelockDetector" data-type="HAS" x="2853.7" y="2079.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">livelock</text>
+<path class="edge-line" data-source="Phase1DetectorSet" data-target="RaceConditionDetector" data-type="HAS" d="M2738.0 1944.3 Q2848.7 2051.7 2988.0 2118.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="Phase1DetectorSet" data-target="RaceConditionDetector" data-type="HAS" x="2855.8" y="2035.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">race</text>
+<path class="edge-line" data-source="Phase1DetectorSet" data-target="ThreadLocalMonitor" data-type="HAS" d="M2828.0 1819.3 Q2836.0 1941.9 2898.0 2048.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="Phase1DetectorSet" data-target="ThreadLocalMonitor" data-type="HAS" x="2849.5" y="1931.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">threadLocal</text>
+<path class="edge-line" data-source="Phase1DetectorSet" data-target="BusyWaitDetector" data-type="HAS" d="M2828.0 1819.3 Q2843.6 1898.4 2898.0 1958.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="Phase1DetectorSet" data-target="BusyWaitDetector" data-type="HAS" x="2853.3" y="1887.5" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">busyWait</text>
+<path class="edge-line" data-source="Phase1DetectorSet" data-target="AtomicityValidator" data-type="HAS" d="M2828.0 1819.3 Q2851.0 1869.3 2898.0 1898.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="Phase1DetectorSet" data-target="AtomicityValidator" data-type="HAS" x="2857.0" y="1858.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">atomicity</text>
+<path class="edge-line" data-source="Phase1DetectorSet" data-target="InterruptMonitor" data-type="HAS" d="M2738.0 1944.3 Q2854.8 2010.5 2988.0 2028.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="Phase1DetectorSet" data-target="InterruptMonitor" data-type="HAS" x="2858.9" y="1992.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">interrupt</text>
+<path class="edge-line" data-source="RaceConditionDetector" data-target="IssueDeduplicator" data-type="HAS" d="M3078.0 2235.5 Q3089.4 2235.4 3098.0 2228.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="RaceConditionDetector" data-target="IssueDeduplicator" data-type="HAS" x="3088.7" y="2227.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">deduplicator</text>
 <path class="edge-line" data-source="AsyncTestInvocationInterceptor" data-target="AsyncTest" data-type="HAS" d="M114.0 229.0 Q81.3 453.5 114.0 678.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestInvocationInterceptor" data-target="AsyncTest" data-type="HAS" x="97.7" y="447.5" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">asyncTest</text>
 <path class="edge-line" data-source="NoopAsyncTestListener" data-target="AsyncTestListener" data-type="IMPLEMENTS" d="M604.0 924.0 Q595.4 980.0 624.0 1029.0" fill="none" stroke="#1d4ed8" stroke-width="1.6" stroke-dasharray="8,4" marker-end="url(#marker-hollow-1d4ed8)"/>
@@ -703,8 +709,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="SharedMessageDigestDetectorFactory" data-target="DetectorFactory" data-type="IMPLEMENTS" x="462.5" y="162.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#1d4ed8" font-style="italic">implements</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="Detector" data-type="HAS" d="M652.0 216.5 Q669.9 198.1 672.0 172.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="Detector" data-type="HAS" x="666.0" y="190.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">byType</text>
-<path class="edge-line" data-source="TelemetryBridge" data-target="AtomicityValidator" data-type="HAS" d="M986.0 244.0 Q1761.6 1027.9 2588.0 1758.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="TelemetryBridge" data-target="AtomicityValidator" data-type="HAS" x="1774.3" y="1008.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">atomicityValidator</text>
+<path class="edge-line" data-source="TelemetryBridge" data-target="AtomicityValidator" data-type="HAS" d="M1076.0 134.0 Q1960.6 1043.3 2898.0 1898.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="TelemetryBridge" data-target="AtomicityValidator" data-type="HAS" x="1973.8" y="1023.7" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">atomicityValidator</text>
 <path class="edge-line" data-source="TelemetryRegistry" data-target="TelemetryEventBuffer" data-type="HAS" d="M1076.0 254.0 Q1086.0 257.6 1096.0 254.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="TelemetryRegistry" data-target="TelemetryEventBuffer" data-type="HAS" x="1086.0" y="249.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">BUFFER</text>
 <g id="AfterEachInvocation">
@@ -739,9 +745,9 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="432.0" y="702.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">writeLock(ReadWriteLock): …</text>
   <text x="432.0" y="717.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">readLock(ReentrantReadWrit…</text>
   <text x="432.0" y="732.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">writeLock(ReentrantReadWri…</text>
-  <text x="432.0" y="747.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">remember(Lock, ReadWriteLo…</text>
+  <text x="432.0" y="747.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">remember(Lock, Object, boo…</text>
   <text x="432.0" y="762.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">viewOf(Lock): View</text>
-  <text x="432.0" y="777.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+7 more)</text>
+  <text x="432.0" y="777.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+23 more)</text>
 </g>
 <g id="AsyncAssert">
   <title>AsyncAssert [CLASS]</title>
@@ -2809,24 +2815,24 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="AtomicityValidator">
   <title>AtomicityValidator [CLASS]</title>
-  <rect class="node-rect" x="2498.0" y="1758.0" width="180.0" height="280.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="2588.0" y="1780.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">AtomicityValidator</text>
-  <line x1="2498.0" y1="1802.0" x2="2678.0" y2="1802.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2506.0" y="1815.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">UNMODELLED: long</text>
-  <text x="2506.0" y="1830.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">NOT_A_CONSTANT: int</text>
-  <text x="2506.0" y="1845.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">NO_CONSTANT_YET: int</text>
-  <text x="2506.0" y="1860.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">activeOperations: Map&lt;Stri…</text>
-  <text x="2506.0" y="1875.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldHistory: Map&lt;String,L…</text>
-  <text x="2506.0" y="1890.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldLocks: Map&lt;String,Fie…</text>
-  <text x="2506.0" y="1905.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
-  <line x1="2498.0" y1="1919.0" x2="2678.0" y2="1919.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2506.0" y="1932.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">guardKey(String, int): Str…</text>
-  <text x="2506.0" y="1947.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">markInvocationStart(): void</text>
-  <text x="2506.0" y="1962.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordCompoundOperationSta…</text>
-  <text x="2506.0" y="1977.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordCompoundOperationEnd…</text>
-  <text x="2506.0" y="1992.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordFieldAccess(String, …</text>
-  <text x="2506.0" y="2007.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordFieldAccess(String, …</text>
-  <text x="2506.0" y="2022.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+16 more)</text>
+  <rect class="node-rect" x="2898.0" y="1758.0" width="180.0" height="280.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="2988.0" y="1780.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">AtomicityValidator</text>
+  <line x1="2898.0" y1="1802.0" x2="3078.0" y2="1802.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2906.0" y="1815.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">UNMODELLED: long</text>
+  <text x="2906.0" y="1830.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">NOT_A_CONSTANT: int</text>
+  <text x="2906.0" y="1845.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">NO_CONSTANT_YET: int</text>
+  <text x="2906.0" y="1860.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">activeOperations: Map&lt;Stri…</text>
+  <text x="2906.0" y="1875.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldHistory: Map&lt;String,L…</text>
+  <text x="2906.0" y="1890.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldLocks: Map&lt;String,Fie…</text>
+  <text x="2906.0" y="1905.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
+  <line x1="2898.0" y1="1919.0" x2="3078.0" y2="1919.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2906.0" y="1932.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">guardKey(String, int): Str…</text>
+  <text x="2906.0" y="1947.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">markInvocationStart(): void</text>
+  <text x="2906.0" y="1962.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordCompoundOperationSta…</text>
+  <text x="2906.0" y="1977.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordCompoundOperationEnd…</text>
+  <text x="2906.0" y="1992.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordFieldAccess(String, …</text>
+  <text x="2906.0" y="2007.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordFieldAccess(String, …</text>
+  <text x="2906.0" y="2022.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+16 more)</text>
 </g>
 <g id="AsyncTestListenerRegistry">
   <title>AsyncTestListenerRegistry [CLASS]</title>
@@ -2979,109 +2985,109 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="VisibilityMonitor">
   <title>VisibilityMonitor [CLASS]</title>
-  <rect class="node-rect" x="2498.0" y="1668.0" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="2588.0" y="1690.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">VisibilityMonitor</text>
-  <line x1="2498.0" y1="1712.0" x2="2678.0" y2="1712.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2506.0" y="1725.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldSnapshots: Map&lt;String…</text>
-  <text x="2506.0" y="1740.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">invocationCounter: AtomicL…</text>
-  <text x="2506.0" y="1755.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
-  <text x="2506.0" y="1770.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">NULL_VALUE: Object</text>
-  <line x1="2498.0" y1="1784.0" x2="2678.0" y2="1784.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2506.0" y="1797.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordFieldAccess(String, …</text>
-  <text x="2506.0" y="1812.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">markInvocationStart(): void</text>
-  <text x="2506.0" y="1827.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeVisibility(): Visib…</text>
-  <text x="2506.0" y="1842.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): VisibilityReport</text>
-  <text x="2506.0" y="1857.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">reset(): void</text>
-  <text x="2506.0" y="1872.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">disable(): void</text>
-  <text x="2506.0" y="1887.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
+  <rect class="node-rect" x="2898.0" y="1668.0" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="2988.0" y="1690.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">VisibilityMonitor</text>
+  <line x1="2898.0" y1="1712.0" x2="3078.0" y2="1712.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2906.0" y="1725.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldSnapshots: Map&lt;String…</text>
+  <text x="2906.0" y="1740.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">invocationCounter: AtomicL…</text>
+  <text x="2906.0" y="1755.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
+  <text x="2906.0" y="1770.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">NULL_VALUE: Object</text>
+  <line x1="2898.0" y1="1784.0" x2="3078.0" y2="1784.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2906.0" y="1797.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordFieldAccess(String, …</text>
+  <text x="2906.0" y="1812.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">markInvocationStart(): void</text>
+  <text x="2906.0" y="1827.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeVisibility(): Visib…</text>
+  <text x="2906.0" y="1842.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): VisibilityReport</text>
+  <text x="2906.0" y="1857.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">reset(): void</text>
+  <text x="2906.0" y="1872.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">disable(): void</text>
+  <text x="2906.0" y="1887.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
 </g>
 <g id="LivelockDetector">
   <title>LivelockDetector [CLASS]</title>
-  <rect class="node-rect" x="2498.0" y="2208.0" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="2588.0" y="2230.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">LivelockDetector</text>
-  <line x1="2498.0" y1="2252.0" x2="2678.0" y2="2252.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2506.0" y="2265.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">threadHistory: Map&lt;Long,Li…</text>
-  <text x="2506.0" y="2280.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">observedThreads: Set&lt;Long&gt;</text>
-  <text x="2506.0" y="2295.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">threadMXBean: ThreadMXBean</text>
-  <text x="2506.0" y="2310.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
-  <line x1="2498.0" y1="2324.0" x2="2678.0" y2="2324.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2506.0" y="2337.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">captureSnapshot(): void</text>
-  <text x="2506.0" y="2352.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeLivelocks(): Livelo…</text>
-  <text x="2506.0" y="2367.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): LivelockReport</text>
-  <text x="2506.0" y="2382.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isStarved(List&lt;ThreadSnaps…</text>
-  <text x="2506.0" y="2397.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isRapidStateChanger(List&lt;T…</text>
-  <text x="2506.0" y="2412.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">madeProgress(List&lt;ThreadSn…</text>
-  <text x="2506.0" y="2427.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
+  <rect class="node-rect" x="2898.0" y="2208.0" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="2988.0" y="2230.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">LivelockDetector</text>
+  <line x1="2898.0" y1="2252.0" x2="3078.0" y2="2252.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2906.0" y="2265.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">threadHistory: Map&lt;Long,Li…</text>
+  <text x="2906.0" y="2280.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">observedThreads: Set&lt;Long&gt;</text>
+  <text x="2906.0" y="2295.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">threadMXBean: ThreadMXBean</text>
+  <text x="2906.0" y="2310.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
+  <line x1="2898.0" y1="2324.0" x2="3078.0" y2="2324.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2906.0" y="2337.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">captureSnapshot(): void</text>
+  <text x="2906.0" y="2352.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeLivelocks(): Livelo…</text>
+  <text x="2906.0" y="2367.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): LivelockReport</text>
+  <text x="2906.0" y="2382.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isStarved(List&lt;ThreadSnaps…</text>
+  <text x="2906.0" y="2397.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isRapidStateChanger(List&lt;T…</text>
+  <text x="2906.0" y="2412.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">madeProgress(List&lt;ThreadSn…</text>
+  <text x="2906.0" y="2427.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
 </g>
 <g id="RaceConditionDetector">
   <title>RaceConditionDetector [CLASS]</title>
-  <rect class="node-rect" x="2498.0" y="2118.0" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="2588.0" y="2140.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12.9" font-weight="bold" fill="#1f2937">RaceConditionDetector</text>
-  <line x1="2498.0" y1="2162.0" x2="2678.0" y2="2162.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2506.0" y="2175.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">objects: Map&lt;TrackedObject…</text>
-  <text x="2506.0" y="2190.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">deduplicator: IssueDedupli…</text>
-  <text x="2506.0" y="2205.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">invocationEpoch: AtomicLong</text>
-  <text x="2506.0" y="2220.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
-  <line x1="2498.0" y1="2234.0" x2="2678.0" y2="2234.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2506.0" y="2247.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">markInvocationStart(): void</text>
-  <text x="2506.0" y="2262.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordFieldRead(Object, St…</text>
-  <text x="2506.0" y="2277.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordFieldWrite(Object, S…</text>
-  <text x="2506.0" y="2292.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAccess(Object, Strin…</text>
-  <text x="2506.0" y="2307.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeRaceConditions(): R…</text>
-  <text x="2506.0" y="2322.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeRound(RaceCondition…</text>
-  <text x="2506.0" y="2337.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+5 more)</text>
+  <rect class="node-rect" x="2898.0" y="2118.0" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="2988.0" y="2140.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12.9" font-weight="bold" fill="#1f2937">RaceConditionDetector</text>
+  <line x1="2898.0" y1="2162.0" x2="3078.0" y2="2162.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2906.0" y="2175.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">objects: Map&lt;TrackedObject…</text>
+  <text x="2906.0" y="2190.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">deduplicator: IssueDedupli…</text>
+  <text x="2906.0" y="2205.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">invocationEpoch: AtomicLong</text>
+  <text x="2906.0" y="2220.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
+  <line x1="2898.0" y1="2234.0" x2="3078.0" y2="2234.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2906.0" y="2247.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">markInvocationStart(): void</text>
+  <text x="2906.0" y="2262.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordFieldRead(Object, St…</text>
+  <text x="2906.0" y="2277.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordFieldWrite(Object, S…</text>
+  <text x="2906.0" y="2292.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAccess(Object, Strin…</text>
+  <text x="2906.0" y="2307.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeRaceConditions(): R…</text>
+  <text x="2906.0" y="2322.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeRound(RaceCondition…</text>
+  <text x="2906.0" y="2337.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+5 more)</text>
 </g>
 <g id="ThreadLocalMonitor">
   <title>ThreadLocalMonitor [CLASS]</title>
-  <rect class="node-rect" x="2498.0" y="1938.0" width="180.0" height="220.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="2588.0" y="1960.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">ThreadLocalMonitor</text>
-  <line x1="2498.0" y1="1982.0" x2="2678.0" y2="1982.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2506.0" y="1995.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">threadLocals: Map&lt;Integer,…</text>
-  <text x="2506.0" y="2010.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">threadLocalsByThread: Map&lt;…</text>
-  <text x="2506.0" y="2025.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
-  <line x1="2498.0" y1="2039.0" x2="2678.0" y2="2039.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2506.0" y="2052.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordThreadLocalInit(Thre…</text>
-  <text x="2506.0" y="2067.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordThreadLocalAccess(Th…</text>
-  <text x="2506.0" y="2082.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordThreadLocalCleanup(T…</text>
-  <text x="2506.0" y="2097.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordThreadUsage(ThreadLo…</text>
-  <text x="2506.0" y="2112.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeThreadLocalLeaks():…</text>
-  <text x="2506.0" y="2127.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): ThreadLocalRepo…</text>
-  <text x="2506.0" y="2142.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
+  <rect class="node-rect" x="2898.0" y="1938.0" width="180.0" height="220.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="2988.0" y="1960.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">ThreadLocalMonitor</text>
+  <line x1="2898.0" y1="1982.0" x2="3078.0" y2="1982.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2906.0" y="1995.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">threadLocals: Map&lt;Integer,…</text>
+  <text x="2906.0" y="2010.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">threadLocalsByThread: Map&lt;…</text>
+  <text x="2906.0" y="2025.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
+  <line x1="2898.0" y1="2039.0" x2="3078.0" y2="2039.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2906.0" y="2052.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordThreadLocalInit(Thre…</text>
+  <text x="2906.0" y="2067.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordThreadLocalAccess(Th…</text>
+  <text x="2906.0" y="2082.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordThreadLocalCleanup(T…</text>
+  <text x="2906.0" y="2097.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordThreadUsage(ThreadLo…</text>
+  <text x="2906.0" y="2112.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeThreadLocalLeaks():…</text>
+  <text x="2906.0" y="2127.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): ThreadLocalRepo…</text>
+  <text x="2906.0" y="2142.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
 </g>
 <g id="BusyWaitDetector">
   <title>BusyWaitDetector [CLASS]</title>
-  <rect class="node-rect" x="2498.0" y="1848.0" width="180.0" height="220.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="2588.0" y="1870.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">BusyWaitDetector</text>
-  <line x1="2498.0" y1="1892.0" x2="2678.0" y2="1892.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2506.0" y="1905.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">SPIN_THRESHOLD_ITERATIONS:…</text>
-  <text x="2506.0" y="1920.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">threadActivities: Map&lt;Long…</text>
-  <text x="2506.0" y="1935.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
-  <line x1="2498.0" y1="1949.0" x2="2678.0" y2="1949.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2506.0" y="1962.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordLoopIteration(): void</text>
-  <text x="2506.0" y="1977.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordYield(): void</text>
-  <text x="2506.0" y="1992.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">reportSpinLoop(String, lon…</text>
-  <text x="2506.0" y="2007.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">inferCallSite(): String</text>
-  <text x="2506.0" y="2022.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeBusyWaiting(): Busy…</text>
-  <text x="2506.0" y="2037.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">addToReport(BusyWaitReport…</text>
-  <text x="2506.0" y="2052.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+4 more)</text>
+  <rect class="node-rect" x="2898.0" y="1848.0" width="180.0" height="220.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="2988.0" y="1870.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">BusyWaitDetector</text>
+  <line x1="2898.0" y1="1892.0" x2="3078.0" y2="1892.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2906.0" y="1905.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">SPIN_THRESHOLD_ITERATIONS:…</text>
+  <text x="2906.0" y="1920.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">threadActivities: Map&lt;Long…</text>
+  <text x="2906.0" y="1935.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
+  <line x1="2898.0" y1="1949.0" x2="3078.0" y2="1949.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2906.0" y="1962.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordLoopIteration(): void</text>
+  <text x="2906.0" y="1977.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordYield(): void</text>
+  <text x="2906.0" y="1992.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">reportSpinLoop(String, lon…</text>
+  <text x="2906.0" y="2007.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">inferCallSite(): String</text>
+  <text x="2906.0" y="2022.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeBusyWaiting(): Busy…</text>
+  <text x="2906.0" y="2037.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">addToReport(BusyWaitReport…</text>
+  <text x="2906.0" y="2052.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+4 more)</text>
 </g>
 <g id="InterruptMonitor">
   <title>InterruptMonitor [CLASS]</title>
-  <rect class="node-rect" x="2498.0" y="2028.0" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="2588.0" y="2050.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">InterruptMonitor</text>
-  <line x1="2498.0" y1="2072.0" x2="2678.0" y2="2072.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2506.0" y="2085.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">interruptEvents: List&lt;Inte…</text>
-  <text x="2506.0" y="2100.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">ignoredDescriptions: Set&lt;S…</text>
-  <text x="2506.0" y="2115.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">blockingWithoutHandling: S…</text>
-  <text x="2506.0" y="2130.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
-  <line x1="2498.0" y1="2144.0" x2="2678.0" y2="2144.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2506.0" y="2157.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordInterruptException(I…</text>
-  <text x="2506.0" y="2172.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordInterruptRestored():…</text>
-  <text x="2506.0" y="2187.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordIgnoredException(Str…</text>
-  <text x="2506.0" y="2202.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordBlockingOperationWit…</text>
-  <text x="2506.0" y="2217.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">inferCallSite(): String</text>
-  <text x="2506.0" y="2232.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeInterruptHandling()…</text>
-  <text x="2506.0" y="2247.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+4 more)</text>
+  <rect class="node-rect" x="2898.0" y="2028.0" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="2988.0" y="2050.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">InterruptMonitor</text>
+  <line x1="2898.0" y1="2072.0" x2="3078.0" y2="2072.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2906.0" y="2085.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">interruptEvents: List&lt;Inte…</text>
+  <text x="2906.0" y="2100.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">ignoredDescriptions: Set&lt;S…</text>
+  <text x="2906.0" y="2115.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">blockingWithoutHandling: S…</text>
+  <text x="2906.0" y="2130.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
+  <line x1="2898.0" y1="2144.0" x2="3078.0" y2="2144.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2906.0" y="2157.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordInterruptException(I…</text>
+  <text x="2906.0" y="2172.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordInterruptRestored():…</text>
+  <text x="2906.0" y="2187.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordIgnoredException(Str…</text>
+  <text x="2906.0" y="2202.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordBlockingOperationWit…</text>
+  <text x="2906.0" y="2217.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">inferCallSite(): String</text>
+  <text x="2906.0" y="2232.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeInterruptHandling()…</text>
+  <text x="2906.0" y="2247.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+4 more)</text>
 </g>
 <g id="DetectorType">
   <title>DetectorType [CLASS]</title>
@@ -3135,6 +3141,24 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="2056.0" y="1785.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">MEDIUM_WORD: Pattern</text>
   <text x="2056.0" y="1800.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">LOW_WORD: Pattern</text>
 </g>
+<g id="DetectorFeed">
+  <title>DetectorFeed [CLASS]</title>
+  <rect class="node-rect" x="2448.0" y="1668.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="2538.0" y="1711.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">DetectorFeed</text>
+</g>
+<g id="DetectorFeeds">
+  <title>DetectorFeeds [CLASS]</title>
+  <rect class="node-rect" x="2248.0" y="1668.0" width="180.0" height="160.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="2338.0" y="1690.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">DetectorFeeds</text>
+  <line x1="2248.0" y1="1712.0" x2="2428.0" y2="1712.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2256.0" y="1725.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">AGENT_FED: Set&lt;DetectorTyp…</text>
+  <text x="2256.0" y="1740.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">ZERO_CONFIG_FED: Set&lt;Detec…</text>
+  <text x="2256.0" y="1755.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">FEEDS: Map&lt;DetectorType,De…</text>
+  <line x1="2248.0" y1="1769.0" x2="2428.0" y2="1769.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2256.0" y="1782.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">buildTable(): Map&lt;Detector…</text>
+  <text x="2256.0" y="1797.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">feedOf(DetectorType): Dete…</text>
+  <text x="2256.0" y="1812.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fedBy(DetectorFeed): Set&lt;D…</text>
+</g>
 <g id="DetectorTrust">
   <title>DetectorTrust [CLASS]</title>
   <rect class="node-rect" x="2048.0" y="1578.0" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
@@ -3180,20 +3204,20 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="IssueDeduplicator">
   <title>IssueDeduplicator [CLASS]</title>
-  <rect class="node-rect" x="2698.0" y="2118.0" width="180.0" height="220.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="2788.0" y="2140.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">IssueDeduplicator</text>
-  <line x1="2698.0" y1="2162.0" x2="2878.0" y2="2162.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2706.0" y="2175.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">groups: Map&lt;String,IssueGr…</text>
-  <text x="2706.0" y="2190.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">totalCount: AtomicInteger</text>
-  <text x="2706.0" y="2205.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">MAX_DETAILED_THREADS: int</text>
-  <line x1="2698.0" y1="2219.0" x2="2878.0" y2="2219.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2706.0" y="2232.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">record(T): void</text>
-  <text x="2706.0" y="2247.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">getGroups(): List&lt;IssueGro…</text>
-  <text x="2706.0" y="2262.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">getTotalCount(): int</text>
-  <text x="2706.0" y="2277.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">getUniqueCount(): int</text>
-  <text x="2706.0" y="2292.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">hasIssues(): boolean</text>
-  <text x="2706.0" y="2307.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">clear(): void</text>
-  <text x="2706.0" y="2322.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
+  <rect class="node-rect" x="3098.0" y="2118.0" width="180.0" height="220.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="3188.0" y="2140.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">IssueDeduplicator</text>
+  <line x1="3098.0" y1="2162.0" x2="3278.0" y2="2162.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="3106.0" y="2175.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">groups: Map&lt;String,IssueGr…</text>
+  <text x="3106.0" y="2190.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">totalCount: AtomicInteger</text>
+  <text x="3106.0" y="2205.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">MAX_DETAILED_THREADS: int</text>
+  <line x1="3098.0" y1="2219.0" x2="3278.0" y2="2219.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="3106.0" y="2232.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">record(T): void</text>
+  <text x="3106.0" y="2247.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">getGroups(): List&lt;IssueGro…</text>
+  <text x="3106.0" y="2262.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">getTotalCount(): int</text>
+  <text x="3106.0" y="2277.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">getUniqueCount(): int</text>
+  <text x="3106.0" y="2292.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">hasIssues(): boolean</text>
+  <text x="3106.0" y="2307.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">clear(): void</text>
+  <text x="3106.0" y="2322.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
 </g>
 <g id="LazyInitValidator">
   <title>LazyInitValidator [CLASS]</title>
@@ -3274,22 +3298,22 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="Phase1DetectorSet">
   <title>Phase1DetectorSet [CLASS]</title>
-  <rect class="node-rect" x="2248.0" y="1694.3" width="180.0" height="250.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="2338.0" y="1716.3" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">Phase1DetectorSet</text>
-  <line x1="2248.0" y1="1738.3" x2="2428.0" y2="1738.3" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2256.0" y="1751.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">visibility: VisibilityMoni…</text>
-  <text x="2256.0" y="1766.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">livelock: LivelockDetector</text>
-  <text x="2256.0" y="1781.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">race: RaceConditionDetector</text>
-  <text x="2256.0" y="1796.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">threadLocal: ThreadLocalMo…</text>
-  <text x="2256.0" y="1811.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">busyWait: BusyWaitDetector</text>
-  <text x="2256.0" y="1826.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">atomicity: AtomicityValida…</text>
-  <text x="2256.0" y="1841.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+2 more)</text>
-  <line x1="2248.0" y1="1855.3" x2="2428.0" y2="1855.3" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2256.0" y="1868.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">from(AsyncTestConfig): Pha…</text>
-  <text x="2256.0" y="1883.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">from(AsyncTestConfig, Asyn…</text>
-  <text x="2256.0" y="1898.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedOrNew(T, Supplier&lt;T&gt;…</text>
-  <text x="2256.0" y="1913.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">printReports(): void</text>
-  <text x="2256.0" y="1928.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">collectReports(): Map&lt;Stri…</text>
+  <rect class="node-rect" x="2648.0" y="1694.3" width="180.0" height="250.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="2738.0" y="1716.3" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">Phase1DetectorSet</text>
+  <line x1="2648.0" y1="1738.3" x2="2828.0" y2="1738.3" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2656.0" y="1751.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">visibility: VisibilityMoni…</text>
+  <text x="2656.0" y="1766.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">livelock: LivelockDetector</text>
+  <text x="2656.0" y="1781.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">race: RaceConditionDetector</text>
+  <text x="2656.0" y="1796.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">threadLocal: ThreadLocalMo…</text>
+  <text x="2656.0" y="1811.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">busyWait: BusyWaitDetector</text>
+  <text x="2656.0" y="1826.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">atomicity: AtomicityValida…</text>
+  <text x="2656.0" y="1841.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+2 more)</text>
+  <line x1="2648.0" y1="1855.3" x2="2828.0" y2="1855.3" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2656.0" y="1868.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">from(AsyncTestConfig): Pha…</text>
+  <text x="2656.0" y="1883.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">from(AsyncTestConfig, Asyn…</text>
+  <text x="2656.0" y="1898.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedOrNew(T, Supplier&lt;T&gt;…</text>
+  <text x="2656.0" y="1913.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">printReports(): void</text>
+  <text x="2656.0" y="1928.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">collectReports(): Map&lt;Stri…</text>
 </g>
 <g id="SelfGuard">
   <title>SelfGuard [CLASS]</title>
@@ -3719,12 +3743,12 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="904.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAccess(Object, Objec…</text>
   <text x="904.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+16 more)</text>
 </g>
-<rect x="3052.0" y="2503.0" width="220.0" height="100.0" rx="6" fill="#ffffff" stroke="#d1d5db" stroke-width="1" filter="url(#nodeShadow)"/>
-<text x="3068.0" y="2523.0" font-family="sans-serif" font-size="11" font-weight="bold" fill="#374151">Legend</text>
-<line x1="3068.0" y1="2547.0" x2="3104.0" y2="2547.0" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="8,4" marker-end="url(#marker-hollow-1d4ed8)"/>
-<text x="3112.0" y="2551.0" font-family="sans-serif" font-size="11" fill="#374151">implements</text>
-<line x1="3068.0" y1="2571.0" x2="3104.0" y2="2571.0" stroke="#374151" stroke-width="2" marker-end="url(#marker-open-374151)"/>
-<text x="3112.0" y="2575.0" font-family="sans-serif" font-size="11" fill="#374151">has</text>
+<rect x="3102.0" y="2503.0" width="220.0" height="100.0" rx="6" fill="#ffffff" stroke="#d1d5db" stroke-width="1" filter="url(#nodeShadow)"/>
+<text x="3118.0" y="2523.0" font-family="sans-serif" font-size="11" font-weight="bold" fill="#374151">Legend</text>
+<line x1="3118.0" y1="2547.0" x2="3154.0" y2="2547.0" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="8,4" marker-end="url(#marker-hollow-1d4ed8)"/>
+<text x="3162.0" y="2551.0" font-family="sans-serif" font-size="11" fill="#374151">implements</text>
+<line x1="3118.0" y1="2571.0" x2="3154.0" y2="2571.0" stroke="#374151" stroke-width="2" marker-end="url(#marker-open-374151)"/>
+<text x="3162.0" y="2575.0" font-family="sans-serif" font-size="11" fill="#374151">has</text>
 <script type="text/javascript">
 <![CDATA[
 document.addEventListener('DOMContentLoaded', () => {
@@ -3790,6 +3814,6 @@ document.addEventListener('DOMContentLoaded', () => {
 ]]>
 </script>
 <a class="diagram-attribution" href="https://github.com/PIsberg/codekarta" target="_blank" rel="noopener noreferrer">
-  <text x="3272.0" y="2621.0" text-anchor="end" font-family="sans-serif" font-size="11" fill="#6b7280" text-decoration="underline">Created with https://github.com/PIsberg/codekarta</text>
+  <text x="3322.0" y="2621.0" text-anchor="end" font-family="sans-serif" font-size="11" fill="#6b7280" text-decoration="underline">Created with https://github.com/PIsberg/codekarta</text>
 </a>
 </svg>

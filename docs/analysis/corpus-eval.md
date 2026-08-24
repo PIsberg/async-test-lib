@@ -109,10 +109,12 @@ library rather than observed by it, and are declared here so a reader does not h
   25 or 26 is the detector being correct on both, not variance. It cannot appear in this table
   today: that detector is recording-fed and its exposure here is zero, so it becomes live only if a
   recording lane is added ([#310](https://github.com/PIsberg/async-test-lib/issues/310)).
-- **Crash counts move, findings do not.** The three subjects whose corruption surfaces as a thrown
-  exception (`stopWatch_splitAndGet`, `guavaStopwatch_startStop`, `minMaxPriorityQueue_addAndPoll`)
-  report different crash counts on every run and every platform. That column is a symptom of
-  scheduling, not a measurement. Consecutive runs on one platform produce identical finding rows.
+- **Crash counts move, findings do not.** Corruption in a documented-unsafe subject can surface as
+  a thrown exception instead of as a finding, and which subjects do that, and how often, changes
+  with the scheduler. `stopWatch_splitAndGet`, `guavaStopwatch_startStop` and
+  `minMaxPriorityQueue_addAndPoll` throw on most runs; the commons maps throw occasionally. That
+  column is a symptom, not a measurement, and the gate does not read it per subject. Consecutive
+  runs on one platform produce identical finding rows.
 
 Anything else that differs between two cells is worth an issue.
 
