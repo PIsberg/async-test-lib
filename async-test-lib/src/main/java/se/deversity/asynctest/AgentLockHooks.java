@@ -295,13 +295,13 @@ public final class AgentLockHooks {
         return stamp;
     }
 
-    /** Weaves {@code StampedLock.unlockWrite(long)}. @param receiver the lock @param stamp the stamp */
+    /** Weaves {@code StampedLock.unlockWrite(long)}. @param receiver the lock @param stamp the write stamp being released, as the acquire returned it */
     public static void unlockWrite(StampedLock receiver, long stamp) {
         HeldLocks.released(receiver, false);
         receiver.unlockWrite(stamp);
     }
 
-    /** Weaves {@code StampedLock.unlockRead(long)}. @param receiver the lock @param stamp the stamp */
+    /** Weaves {@code StampedLock.unlockRead(long)}. @param receiver the lock @param stamp the read stamp being released, as the acquire returned it */
     public static void unlockRead(StampedLock receiver, long stamp) {
         HeldLocks.released(receiver, true);
         receiver.unlockRead(stamp);
@@ -313,7 +313,7 @@ public final class AgentLockHooks {
      * because the lock is not reentrant.
      *
      * @param receiver the lock
-     * @param stamp    the stamp
+     * @param stamp    the stamp being released, whichever mode acquired it
      */
     public static void unlock(StampedLock receiver, long stamp) {
         HeldLocks.released(receiver, false);
