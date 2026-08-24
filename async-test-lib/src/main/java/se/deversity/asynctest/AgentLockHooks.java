@@ -7,6 +7,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.locks.StampedLock;
 
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
@@ -34,6 +35,16 @@ import se.deversity.vibetags.annotations.AIContract;
  * writer then share a lockset, while a write made under the read view stays unguarded, because a
  * lock that admits other readers guards no write.
  *
+ * <h2>StampedLock</h2>
+ *
+ * <p>{@link StampedLock} implements no locking interface, so its call sites get their own hooks:
+ * the lock object is the lockset identity, exclusive for a write stamp, shared for a read stamp,
+ * released by the {@code unlock*} and conversion hooks. An optimistic read records nothing,
+ * because it holds nothing; its correctness lives in the {@code validate()} protocol, which a
+ * lockset cannot judge, so code relying on it stays a {@code PROMPT}-tier prompt to verify. The
+ * {@code asReadLock()}/{@code asWriteLock()} views resolve to the owning {@code StampedLock} the
+ * way read-write views resolve to theirs.
+ *
  * <h2>Ordering</h2>
  *
  * <p>Acquisition is recorded <em>after</em> the lock is taken and release <em>before</em> it is
@@ -52,8 +63,8 @@ import se.deversity.vibetags.annotations.AIContract;
 @AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures are matched by CollectionAccessWeaver.lockSubstitutions and cannot change independently of it. The acquire-after / release-before ordering is a safety property, not a style choice - recording a lock as held before it is actually held would make another thread's racing access read as guarded, which is the one error direction this library must never take. Every hook must perform the original operation and propagate its exceptions unchanged.")
 public final class AgentLockHooks {
 
-    /** Which read-write lock a view belongs to, and whether it admits other holders. */
-    private record View(ReadWriteLock owner, boolean shared) {
+    /** Which lock a view belongs to, and whether it admits other holders. */
+    private record View(Object owner, boolean shared) {
     }
 
     /**
@@ -107,7 +118,7 @@ public final class AgentLockHooks {
         return view;
     }
 
-    private static void remember(Lock view, ReadWriteLock owner, boolean shared) {
+    private static void remember(Lock view, Object owner, boolean shared) {
         if (view == null) {
             return;
         }
@@ -189,5 +200,186 @@ public final class AgentLockHooks {
     public static void unlock(Lock receiver) {
         noteReleased(receiver);
         receiver.unlock();
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // StampedLock. It implements no locking interface: writeLock() hands back a long, so neither
+    // the Lock entries nor the view entries above can see it, and code guarded by one read as
+    // unguarded. The lock object itself is the lockset identity, exclusive for a write stamp and
+    // shared for a read stamp; an optimistic read is deliberately nothing, because it holds
+    // nothing - its correctness lives in the validate() protocol, which a lockset cannot judge.
+    // StampedLock is not reentrant, so a thread holds at most one entry for it, which is what
+    // makes the mode-blind unlock(long) and the conversions exact: whatever entry exists is the
+    // one being released or converted.
+    // ------------------------------------------------------------------------------------------
+
+    /** Weaves {@code StampedLock.writeLock()}. @param receiver the lock @return the stamp */
+    public static long writeLock(StampedLock receiver) {
+        long stamp = receiver.writeLock();
+        HeldLocks.acquired(receiver, false);
+        return stamp;
+    }
+
+    /** Weaves {@code StampedLock.readLock()}. @param receiver the lock @return the stamp */
+    public static long readLock(StampedLock receiver) {
+        long stamp = receiver.readLock();
+        HeldLocks.acquired(receiver, true);
+        return stamp;
+    }
+
+    /** Weaves {@code StampedLock.writeLockInterruptibly()}. @param receiver the lock @return the stamp @throws InterruptedException if interrupted while waiting */
+    public static long writeLockInterruptibly(StampedLock receiver) throws InterruptedException {
+        long stamp = receiver.writeLockInterruptibly();
+        HeldLocks.acquired(receiver, false);
+        return stamp;
+    }
+
+    /** Weaves {@code StampedLock.readLockInterruptibly()}. @param receiver the lock @return the stamp @throws InterruptedException if interrupted while waiting */
+    public static long readLockInterruptibly(StampedLock receiver) throws InterruptedException {
+        long stamp = receiver.readLockInterruptibly();
+        HeldLocks.acquired(receiver, true);
+        return stamp;
+    }
+
+    /** Weaves {@code StampedLock.tryWriteLock()}. @param receiver the lock @return the stamp, 0 for none */
+    public static long tryWriteLock(StampedLock receiver) {
+        long stamp = receiver.tryWriteLock();
+        if (stamp != 0L) {
+            HeldLocks.acquired(receiver, false);
+        }
+        return stamp;
+    }
+
+    /** Weaves {@code StampedLock.tryReadLock()}. @param receiver the lock @return the stamp, 0 for none */
+    public static long tryReadLock(StampedLock receiver) {
+        long stamp = receiver.tryReadLock();
+        if (stamp != 0L) {
+            HeldLocks.acquired(receiver, true);
+        }
+        return stamp;
+    }
+
+    /**
+     * Weaves {@code StampedLock.tryWriteLock(long, TimeUnit)}.
+     *
+     * @param receiver the lock
+     * @param time     how long to wait
+     * @param unit     the unit of {@code time}
+     * @return the stamp, 0 for none
+     * @throws InterruptedException if interrupted while waiting
+     */
+    public static long tryWriteLock(StampedLock receiver, long time, TimeUnit unit)
+            throws InterruptedException {
+        long stamp = receiver.tryWriteLock(time, unit);
+        if (stamp != 0L) {
+            HeldLocks.acquired(receiver, false);
+        }
+        return stamp;
+    }
+
+    /**
+     * Weaves {@code StampedLock.tryReadLock(long, TimeUnit)}.
+     *
+     * @param receiver the lock
+     * @param time     how long to wait
+     * @param unit     the unit of {@code time}
+     * @return the stamp, 0 for none
+     * @throws InterruptedException if interrupted while waiting
+     */
+    public static long tryReadLock(StampedLock receiver, long time, TimeUnit unit)
+            throws InterruptedException {
+        long stamp = receiver.tryReadLock(time, unit);
+        if (stamp != 0L) {
+            HeldLocks.acquired(receiver, true);
+        }
+        return stamp;
+    }
+
+    /** Weaves {@code StampedLock.unlockWrite(long)}. @param receiver the lock @param stamp the write stamp being released, as the acquire returned it */
+    public static void unlockWrite(StampedLock receiver, long stamp) {
+        HeldLocks.released(receiver, false);
+        receiver.unlockWrite(stamp);
+    }
+
+    /** Weaves {@code StampedLock.unlockRead(long)}. @param receiver the lock @param stamp the read stamp being released, as the acquire returned it */
+    public static void unlockRead(StampedLock receiver, long stamp) {
+        HeldLocks.released(receiver, true);
+        receiver.unlockRead(stamp);
+    }
+
+    /**
+     * Weaves {@code StampedLock.unlock(long)}, whose stamp does not say which mode it releases.
+     * The release falls back to whatever entry the thread holds for this lock, which is exact
+     * because the lock is not reentrant.
+     *
+     * @param receiver the lock
+     * @param stamp    the stamp being released, whichever mode acquired it
+     */
+    public static void unlock(StampedLock receiver, long stamp) {
+        HeldLocks.released(receiver, false);
+        receiver.unlock(stamp);
+    }
+
+    /**
+     * Weaves {@code StampedLock.tryConvertToWriteLock(long)}. On success the thread's entry for
+     * this lock, whatever mode it was in (or none, for an optimistic stamp), becomes exclusive.
+     *
+     * @param receiver the lock
+     * @param stamp    the stamp to convert
+     * @return the write stamp, 0 for failure
+     */
+    public static long tryConvertToWriteLock(StampedLock receiver, long stamp) {
+        long converted = receiver.tryConvertToWriteLock(stamp);
+        if (converted != 0L) {
+            HeldLocks.released(receiver, false);
+            HeldLocks.acquired(receiver, false);
+        }
+        return converted;
+    }
+
+    /**
+     * Weaves {@code StampedLock.tryConvertToReadLock(long)}.
+     *
+     * @param receiver the lock
+     * @param stamp    the stamp to convert
+     * @return the read stamp, 0 for failure
+     */
+    public static long tryConvertToReadLock(StampedLock receiver, long stamp) {
+        long converted = receiver.tryConvertToReadLock(stamp);
+        if (converted != 0L) {
+            HeldLocks.released(receiver, false);
+            HeldLocks.acquired(receiver, true);
+        }
+        return converted;
+    }
+
+    /**
+     * Weaves {@code StampedLock.tryConvertToOptimisticRead(long)}. A successful conversion
+     * releases whatever was held; an optimistic stamp holds nothing, so nothing is pushed.
+     *
+     * @param receiver the lock
+     * @param stamp    the stamp to convert
+     * @return the observation stamp, 0 for failure
+     */
+    public static long tryConvertToOptimisticRead(StampedLock receiver, long stamp) {
+        long converted = receiver.tryConvertToOptimisticRead(stamp);
+        if (converted != 0L) {
+            HeldLocks.released(receiver, false);
+        }
+        return converted;
+    }
+
+    /** Weaves {@code StampedLock.asReadLock()}. @param receiver the lock @return its read view */
+    public static Lock asReadLock(StampedLock receiver) {
+        Lock view = receiver.asReadLock();
+        remember(view, receiver, true);
+        return view;
+    }
+
+    /** Weaves {@code StampedLock.asWriteLock()}. @param receiver the lock @return its write view */
+    public static Lock asWriteLock(StampedLock receiver) {
+        Lock view = receiver.asWriteLock();
+        remember(view, receiver, false);
+        return view;
     }
 }

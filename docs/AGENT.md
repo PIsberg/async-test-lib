@@ -206,10 +206,12 @@ Three limits worth knowing before switching it on:
 - **Guarding works, and has to.** Monitor weaving is installed alongside, so a collection touched
   only inside a `synchronized` block reports nothing even though the test never declared the lock.
   Lock weaving rides along too: a `Lock.lock()`/`unlock()` call site in woven code feeds the same
-  lockset, and `ReadWriteLock.readLock()`/`writeLock()` call sites resolve each view to its owner,
-  in shared mode for the read side, so a collection guarded by a `ReentrantLock` or a
-  `ReentrantReadWriteLock` reports nothing either. A lock acquired only inside unwoven code still
-  needs `AsyncTestContext.holdingLock(...)`.
+  lockset, `ReadWriteLock.readLock()`/`writeLock()` call sites resolve each view to its owner,
+  in shared mode for the read side, and `StampedLock`'s own call shapes are modelled the same way
+  (write stamps exclusive, read stamps shared, optimistic reads deliberately nothing), so a
+  collection guarded by a `ReentrantLock`, a `ReentrantReadWriteLock` or a `StampedLock` reports
+  nothing either. A lock acquired only inside unwoven code still needs
+  `AsyncTestContext.holdingLock(...)`.
 - **Thread-safe types are skipped.** A receiver from `java.util.concurrent`, a
   `Collections.synchronizedX` wrapper, a `Hashtable` or a `Vector` synchronizes where nothing can
   be woven, so recording it would report every shared use. Those calls are delegated and never
