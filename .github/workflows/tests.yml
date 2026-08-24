@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java-version: [ '21', '25' ]
+        java-version: [ '21', '25', '26' ]
         os: [ ubuntu-latest, windows-latest, macos-latest ]
 
     # Slow/shared CI runners (e.g. 3-core macOS/windows-latest runners) can turn ~121
@@ -66,6 +66,10 @@ jobs:
             keys.openpgp.org:443
             keyserver.ubuntu.com:443
             objects.githubusercontent.com:443
+            # Only the JDKs the runner image already caches are free. 26 is not cached, so
+            # setup-java downloads it from a GitHub release asset, and without this host the
+            # step fails before a single test runs.
+            release-assets.githubusercontent.com:443
             repo.maven.apache.org:443
             repo1.maven.org:443
             storage.googleapis.com:443
@@ -130,7 +134,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java-version: [ '21', '25' ]
+        java-version: [ '21', '25', '26' ]
 
     steps:
       - name: Harden the runner (Block unexpected outbound calls)
@@ -143,6 +147,9 @@ jobs:
             api.github.com:443
             github.com:443
             objects.githubusercontent.com:443
+            # 26 is not cached in the runner image, so setup-java fetches it from a GitHub
+            # release asset; without this host the step fails before anything is built.
+            release-assets.githubusercontent.com:443
             repo.maven.apache.org:443
             repo1.maven.org:443
 

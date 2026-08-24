@@ -143,6 +143,10 @@ import se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadResourceSaturationDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadMonitorSerializationDetector;
 import se.deversity.asynctest.diagnostics.ThreadLocalCacheDegradationDetector;
+import se.deversity.asynctest.diagnostics.ScopeJoinerMisuseDetector;
+import se.deversity.asynctest.diagnostics.ScopeConfigurationMisuseDetector;
+import se.deversity.asynctest.diagnostics.ScopeResultEscapeDetector;
+import se.deversity.asynctest.diagnostics.LazyCollectionMisuseDetector;
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
@@ -356,6 +360,10 @@ final class DetectorRegistry {
     final @Nullable VirtualThreadResourceSaturationDetector          virtualThreadResourceSaturationDetector;
     final @Nullable VirtualThreadMonitorSerializationDetector        virtualThreadMonitorSerializationDetector;
     final @Nullable ThreadLocalCacheDegradationDetector              threadLocalCacheDegradationDetector;
+    final @Nullable ScopeJoinerMisuseDetector scopeJoinerMisuseDetector;
+    final @Nullable ScopeConfigurationMisuseDetector scopeConfigurationMisuseDetector;
+    final @Nullable ScopeResultEscapeDetector scopeResultEscapeDetector;
+    final @Nullable LazyCollectionMisuseDetector lazyCollectionMisuseDetector;
 
     /**
      * Instantiates detectors based on the enabled flags in {@code cfg}.
@@ -553,6 +561,10 @@ final class DetectorRegistry {
         virtualThreadResourceSaturationDetector          = cfg.detectVirtualThreadResourceSaturation          ? new VirtualThreadResourceSaturationDetector()          : null;
         virtualThreadMonitorSerializationDetector        = cfg.detectVirtualThreadMonitorSerialization        ? new VirtualThreadMonitorSerializationDetector()        : null;
         threadLocalCacheDegradationDetector              = cfg.detectThreadLocalCacheDegradation              ? new ThreadLocalCacheDegradationDetector()              : null;
+        scopeJoinerMisuseDetector = cfg.detectScopeJoinerMisuse ? new ScopeJoinerMisuseDetector() : null;
+        scopeConfigurationMisuseDetector = cfg.detectScopeConfigurationMisuse ? new ScopeConfigurationMisuseDetector() : null;
+        scopeResultEscapeDetector = cfg.detectScopeResultEscape ? new ScopeResultEscapeDetector() : null;
+        lazyCollectionMisuseDetector = cfg.detectLazyCollectionMisuse ? new LazyCollectionMisuseDetector() : null;
     }
 
     /**
@@ -1068,6 +1080,22 @@ final class DetectorRegistry {
         ifIssue(threadLocalCacheDegradationDetector,
                 ThreadLocalCacheDegradationDetector::analyze,
                 ThreadLocalCacheDegradationDetector.Report::hasIssues, out);
+
+        ifIssue(scopeJoinerMisuseDetector,
+                ScopeJoinerMisuseDetector::analyze,
+                ScopeJoinerMisuseDetector.Report::hasIssues, out);
+
+        ifIssue(scopeConfigurationMisuseDetector,
+                ScopeConfigurationMisuseDetector::analyze,
+                ScopeConfigurationMisuseDetector.Report::hasIssues, out);
+
+        ifIssue(scopeResultEscapeDetector,
+                ScopeResultEscapeDetector::analyze,
+                ScopeResultEscapeDetector.Report::hasIssues, out);
+
+        ifIssue(lazyCollectionMisuseDetector,
+                LazyCollectionMisuseDetector::analyze,
+                LazyCollectionMisuseDetector.Report::hasIssues, out);
 
         lastGrades = out.grades();
         return out.reports();

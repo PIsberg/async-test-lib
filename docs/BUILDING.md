@@ -46,9 +46,10 @@ mvn clean install
 
 Run locally without a license key with `-Dlicense.mock.mode=true`. CI activates mock mode by itself.
 
-**CI builds on JDK 21 and 25.** The JDK 26 static-analysis blocker is gone — `pmd.version` is now
-pinned to 7.26.0, which reports 0 `LooseCoupling` violations where 7.17.0 reported 243. See
-[docs/QUALITY_GATES.md](QUALITY_GATES.md#build-with-jdk-21-or-25-not-26) for what was measured.
+**CI builds on JDK 21, 25 and 26.** The JDK 26 static-analysis blocker is gone — `pmd.version` is
+now pinned to 7.26.0, which reports 0 `LooseCoupling` violations where 7.17.0 reported 243, and the
+test suite runs on 26 in `tests.yml` and the e2e consumer fixture. See
+[docs/QUALITY_GATES.md](QUALITY_GATES.md#build-with-jdk-21-25-or-26) for what was measured.
 
 `forkEvery = 1` means each test class gets its own JVM. Nested classes matching `*$*` are excluded
 from direct discovery — they run only via JUnit's `EngineTestKit` in meta-tests such as

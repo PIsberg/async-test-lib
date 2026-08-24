@@ -150,3 +150,7 @@ se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$LambdaLostUpdate
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$VirtualThreadResourceSaturation
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$VirtualThreadMonitorSerialization
 se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ThreadLocalCacheDegradation
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ScopeJoinerMisuse
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ScopeConfigurationMisuse
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$ScopeResultEscape
+se.deversity.asynctest.spi.adapters.LegacyDetectorFactories$LazyCollectionMisuse

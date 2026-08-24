@@ -154,5 +154,9 @@
         <module>143-vthread-resource-saturation</module>
         <module>144-vthread-monitor-serialization</module>
         <module>145-threadlocal-cache-degradation</module>
+        <module>146-scope-joiner-misuse</module>
+        <module>147-scope-configuration-misuse</module>
+        <module>148-scope-result-escape</module>
+        <module>149-lazy-collection-misuse</module>
     </modules>
 </project>

@@ -143,6 +143,10 @@ import se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadResourceSaturationDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadMonitorSerializationDetector;
 import se.deversity.asynctest.diagnostics.ThreadLocalCacheDegradationDetector;
+import se.deversity.asynctest.diagnostics.ScopeJoinerMisuseDetector;
+import se.deversity.asynctest.diagnostics.ScopeConfigurationMisuseDetector;
+import se.deversity.asynctest.diagnostics.ScopeResultEscapeDetector;
+import se.deversity.asynctest.diagnostics.LazyCollectionMisuseDetector;
 import se.deversity.asynctest.spi.Detector;
 import se.deversity.asynctest.spi.DetectorFactory;
 
@@ -1336,6 +1340,42 @@ public final class LegacyDetectorFactories {
         @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectThreadLocalCacheDegradation; }
         @Override public Detector create(AsyncTestConfig c) {
             return new LegacyDetectorAdapter<>(new ThreadLocalCacheDegradationDetector(), DetectorType.THREAD_LOCAL_CACHE_DEGRADATION, "ThreadLocalCacheDegradation");
+        }
+    }
+
+    /** Factory for {@link ScopeJoinerMisuseDetector}. */
+    public static final class ScopeJoinerMisuse implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.SCOPE_JOINER_MISUSE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectScopeJoinerMisuse; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new ScopeJoinerMisuseDetector(), DetectorType.SCOPE_JOINER_MISUSE, "ScopeJoinerMisuse");
+        }
+    }
+
+    /** Factory for {@link ScopeConfigurationMisuseDetector}. */
+    public static final class ScopeConfigurationMisuse implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.SCOPE_CONFIGURATION_MISUSE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectScopeConfigurationMisuse; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new ScopeConfigurationMisuseDetector(), DetectorType.SCOPE_CONFIGURATION_MISUSE, "ScopeConfigurationMisuse");
+        }
+    }
+
+    /** Factory for {@link ScopeResultEscapeDetector}. */
+    public static final class ScopeResultEscape implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.SCOPE_RESULT_ESCAPE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectScopeResultEscape; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new ScopeResultEscapeDetector(), DetectorType.SCOPE_RESULT_ESCAPE, "ScopeResultEscape");
+        }
+    }
+
+    /** Factory for {@link LazyCollectionMisuseDetector}. */
+    public static final class LazyCollectionMisuse implements DetectorFactory {
+        @Override public DetectorType type() { return DetectorType.LAZY_COLLECTION_MISUSE; }
+        @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.detectLazyCollectionMisuse; }
+        @Override public Detector create(AsyncTestConfig c) {
+            return new LegacyDetectorAdapter<>(new LazyCollectionMisuseDetector(), DetectorType.LAZY_COLLECTION_MISUSE, "LazyCollectionMisuse");
         }
     }
 }

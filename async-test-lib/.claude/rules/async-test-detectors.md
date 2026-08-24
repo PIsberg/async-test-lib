@@ -4,7 +4,7 @@ paths: ["**/diagnostics/**"]
 
 ## Conventions for every detector in this package
 
-These hold for all 142 detectors and are therefore stated once here rather than restated as a
+These hold for all 146 detectors and are therefore stated once here rather than restated as a
 per-class `@AITestDriven` annotation — one annotation per detector cost one `<element>` line each
 in the always-loaded `<scoped_rules>` index of `CLAUDE.md`.
 
@@ -72,6 +72,9 @@ a performance budget) are annotated individually and appear below.
 ### se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/LambdaLostUpdateDetectorTest.java
 
+### se.deversity.asynctest.diagnostics.LazyCollectionMisuseDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/LazyCollectionMisuseDetectorTest.java
+
 ### se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/LazyConstantMisuseDetectorTest.java
 
@@ -89,6 +92,15 @@ a performance budget) are annotated individually and appear below.
 
 ### se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/RecordMutableComponentLeakDetectorTest.java
+
+### se.deversity.asynctest.diagnostics.ScopeConfigurationMisuseDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/ScopeConfigurationMisuseDetectorTest.java
+
+### se.deversity.asynctest.diagnostics.ScopeJoinerMisuseDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/ScopeJoinerMisuseDetectorTest.java
+
+### se.deversity.asynctest.diagnostics.ScopeResultEscapeDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/ScopeResultEscapeDetectorTest.java
 
 ### se.deversity.asynctest.diagnostics.SharedByteBufferDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/SharedByteBufferDetectorTest.java
@@ -213,6 +225,10 @@ a performance budget) are annotated individually and appear below.
 - **Strategy**: OTHER
 - **Note**: ConcurrentHashMap keyed on lambda identity plus captured name; events are appended to a copy-on-write list. The rule groups by observed pre-value and needs no ordering. holdsLock is sampled on the recording thread at record time, which is the only place it means anything.
 
+### se.deversity.asynctest.diagnostics.LazyCollectionMisuseDetector
+- **Strategy**: OTHER
+- **Note**: One state object per collection name and element key in a ConcurrentHashMap; counters are atomics and waiter sets are concurrent. The per-thread stack of in-flight computations is a ThreadLocal ArrayDeque, so it is touched by exactly one thread and needs no synchronisation. Dependency edges accumulate in a synchronized LinkedHashSet and are walked once in analyze(), after the run has quiesced.
+
 ### se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector
 - **Strategy**: OTHER
 - **Note**: Per-constant state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id sets are ConcurrentHashMap.newKeySet(); reports are synchronized lists.
@@ -236,6 +252,18 @@ a performance budget) are annotated individually and appear below.
 ### se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector
 - **Strategy**: OTHER
 - **Note**: Per-instance state in ConcurrentHashMap keyed on identity hash; the first-sight fingerprint map is populated once under computeIfAbsent and read-only afterwards; thread sets are ConcurrentHashMap.newKeySet(); tracking is capped by MAX_INSTANCES with a LongAdder drop counter.
+
+### se.deversity.asynctest.diagnostics.ScopeConfigurationMisuseDetector
+- **Strategy**: OTHER
+- **Note**: One immutable-after-open state object per scope id in a ConcurrentHashMap; counters inside it are atomics. Scope lifetimes are ordered by a single AtomicLong sequence rather than the wall clock, so overlap is decided by program order and never by clock granularity or drift.
+
+### se.deversity.asynctest.diagnostics.ScopeJoinerMisuseDetector
+- **Strategy**: OTHER
+- **Note**: One state object per joiner identity in a ConcurrentHashMap. The in-flight onComplete count is an atomic counter whose peak is raised with a CAS retry loop, so a peak observed under contention is never lower than the true peak. Findings are recorded as flags set from the recording threads and read once in analyze(), after the run has quiesced.
+
+### se.deversity.asynctest.diagnostics.ScopeResultEscapeDetector
+- **Strategy**: OTHER
+- **Note**: One state object per scope id and per result-handle identity, both in ConcurrentHashMaps. Close and read are ordered by a single AtomicLong sequence rather than the wall clock, so 'read after close' is decided by program order and never by clock granularity. Reader thread names accumulate in a concurrent set and are read once in analyze().
 
 ### se.deversity.asynctest.diagnostics.SharedByteBufferDetector
 - **Strategy**: OTHER

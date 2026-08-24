@@ -46,7 +46,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java-version: [ '21', '25' ]
+        java-version: [ '21', '25', '26' ]
 
     # The fixture now runs one @AsyncTest round per detector, so its wall-clock is dominated
     # by ~127 short concurrent rounds rather than by any single test. Shared CI runners can
@@ -67,6 +67,10 @@ jobs:
             api.github.com:443
             github.com:443
             objects.githubusercontent.com:443
+            # Only the JDKs the runner image already caches are free. 26 is not cached, so
+            # setup-java downloads it from a GitHub release asset, and without this host the
+            # step fails before the fixture runs at all.
+            release-assets.githubusercontent.com:443
             repo.maven.apache.org:443
             repo1.maven.org:443
 

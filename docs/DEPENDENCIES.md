@@ -58,7 +58,7 @@ behind them.
 | Error Prone + NullAway | `error-prone.version`, `nullaway.version` | Compile-time bug patterns, plus nullness enforcement of the JSpecify annotations. A concurrency library that NPEs in somebody's suite is its own counterexample. |
 | Checkstyle | `checkstyle.version`, `maven-checkstyle-plugin.version` | Style gate. |
 | SpotBugs + FindSecBugs | `spotbugs.version`, `findsecbugs.version` | Bytecode-level bug and security-smell detection. |
-| PMD | `pmd.version`, `maven-pmd-plugin.version` | Static analysis. Pinned to a version whose `LooseCoupling` rule is JDK-26-clean — see [QUALITY_GATES.md](QUALITY_GATES.md#build-with-jdk-21-or-25-not-26) for the measurement. |
+| PMD | `pmd.version`, `maven-pmd-plugin.version` | Static analysis. Pinned to a version whose `LooseCoupling` rule is JDK-26-clean — see [QUALITY_GATES.md](QUALITY_GATES.md#build-with-jdk-21-25-or-26) for the measurement. |
 | JaCoCo | `jacoco-maven-plugin.version` | Line/branch coverage feeding the codecov gate. |
 | PITest + its JUnit 5 plugin | `pitest-maven.version`, `pitest-junit5-plugin.version` | Mutation testing, 75% threshold — coverage that proves the assertions bite, not just that lines ran. |
 | CycloneDX | `cyclonedx-maven-plugin.version` | Generates the SBOM published with each release (`sbom.yml`). |

@@ -365,5 +365,15 @@ public enum DetectorType {
     /** Detects a monitor serialising a large virtual-thread fan-out - the throughput limit JEP 491 left behind when it removed pinning. */
     VIRTUAL_THREAD_MONITOR_SERIALIZATION,
     /** Detects a ThreadLocal that was a bounded cache under a pool and became a per-task allocator under virtual threads. */
-    THREAD_LOCAL_CACHE_DEGRADATION
+    THREAD_LOCAL_CACHE_DEGRADATION,
+
+    // Phase 24: JDK 26 structured concurrency and lazy constants (1.9.7+)
+    /** Detects misuse of the JEP 525 StructuredTaskScope.Joiner contract - racy accumulation in onComplete, a partial read in onTimeout, a joiner reused across scopes. */
+    SCOPE_JOINER_MISUSE,
+    /** Detects misuse of the JEP 525 StructuredTaskScope Configuration lambda - a discarded configuration, a missing or impossible timeout, a thread factory shared by overlapping scopes. */
+    SCOPE_CONFIGURATION_MISUSE,
+    /** Detects a StructuredTaskScope result list or subtask read after its scope closed or off the owner thread - the escape JDK 26's List return types made easy. */
+    SCOPE_RESULT_ESCAPE,
+    /** Detects misuse of the JEP 526 lazy collections List.ofLazy and Map.ofLazy - circular element dependencies, a non-deterministic or null-producing mapping function. */
+    LAZY_COLLECTION_MISUSE
 }

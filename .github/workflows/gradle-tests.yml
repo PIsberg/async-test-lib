@@ -24,7 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         # Gradle 8.13 requires Java 21 or earlier as the daemon JVM.
-        # Java 25 compatibility is already covered by the Maven workflow.
+        # Java 25 and 26 compatibility is already covered by the Maven workflow.
         java-version: [ '21' ]
 
     steps:
@@ -340,7 +340,7 @@ jobs:
       fail-fast: false
       matrix:
         # Gradle 8.13 requires Java 21 or earlier as the daemon JVM.
-        # Java 25 compatibility is already covered by the Maven workflow.
+        # Java 25 and 26 compatibility is already covered by the Maven workflow.
         java-version: [ '21' ]
 
     steps:
