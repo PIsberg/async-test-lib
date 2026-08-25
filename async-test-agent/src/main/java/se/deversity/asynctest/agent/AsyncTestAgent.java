@@ -326,8 +326,15 @@ public final class AsyncTestAgent {
         ElementMatcher<? super TypeDescription> typeIgnore = ignoreMatcher(options.excludes());
         ElementMatcher<? super ClassLoader> bootstrapIgnore = ElementMatchers.isBootstrapClassLoader();
 
+        // Only the dynamic-attach path needs the coverage check: premain weaves at load time,
+        // so "loaded but never consulted" is an empty set by construction.
+        AttachCoverageReport.Discovery discovery =
+                retransform ? new AttachCoverageReport.Discovery() : null;
         AgentBuilder builder = new AgentBuilder.Default()
-                .with(new DiagnosticListener(options.debug()));
+                .with(discovery == null
+                        ? new DiagnosticListener(options.debug())
+                        : new AgentBuilder.Listener.Compound(
+                                new DiagnosticListener(options.debug()), discovery));
         if (retransform) {
             // Dynamic attach: re-weave already-loaded classes. Neither Advice inlining nor the
             // field weaver adds new members, so disableClassFormatChanges() keeps
@@ -410,6 +417,18 @@ public final class AsyncTestAgent {
                     return woven;
                 })
                 .installOn(inst);
+
+        // Say which already-loaded classes the transformer was never handed. Nothing above can
+        // report them: Byte Buddy calls a listener for a type it wove, ignored or failed on, and
+        // calls nothing at all for one it never saw, which is why #321 stayed invisible through
+        // an afternoon of otherwise healthy logs. Prints nothing when the set is empty, which is
+        // the expected outcome now that discovery reiterates.
+        if (discovery != null) {
+            AttachCoverageReport.report(
+                    AttachCoverageReport.unconsulted(inst, discovery.consulted(),
+                            typeIgnore, typeMatcher(options.includes())),
+                    options.debug());
+        }
     }
 
     /**
