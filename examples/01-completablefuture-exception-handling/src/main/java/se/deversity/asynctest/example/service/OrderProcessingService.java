@@ -5,6 +5,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 /**
  * Real-world order processing service that asynchronously fetches order details
@@ -64,6 +65,33 @@ public class OrderProcessingService {
     // When exceptions are unhandled, failed orders are never recorded
     private final Map<String, String> failedOrders = new ConcurrentHashMap<>();
 
+    private volatile BiConsumer<CompletableFuture<?>, String> onFutureCreated = (future, name) -> { };
+
+    private volatile CompletionObserver onFutureCompleted = (future, name, success) -> { };
+
+    private volatile HandlerObserver onExceptionHandler = (future, name) -> { };
+
+    /** Told when a monitored chain finishes, and whether it finished normally. */
+    @FunctionalInterface
+    public interface CompletionObserver {
+        /**
+         * @param future  the chain that finished
+         * @param name    its label
+         * @param success true if it completed normally
+         */
+        void completed(CompletableFuture<?> future, String name, boolean success);
+    }
+
+    /** Told when a chain has an exception handler attached to it. */
+    @FunctionalInterface
+    public interface HandlerObserver {
+        /**
+         * @param future the chain
+         * @param name   its label
+         */
+        void handlerRegistered(CompletableFuture<?> future, String name);
+    }
+
     public OrderProcessingService() {
         this.inventoryService = new InventoryService();
         this.paymentService = new PaymentService();
@@ -81,6 +109,43 @@ public class OrderProcessingService {
      * If any step fails, the entire chain fails silently.
      */
     public CompletableFuture<Void> processOrder(String orderId) {
+        String name = "processOrder:" + orderId;
+        CompletableFuture<Void> chain = buildChain(orderId);
+            // PROBLEM: No .exceptionally() to handle failures!
+            // When exception occurs, failedOrders is never updated
+
+        onFutureCreated.accept(chain, name);
+        chain.whenComplete((ignored, failure) ->
+                onFutureCompleted.completed(chain, name, failure == null));
+        return chain;
+    }
+
+    /**
+     * The same chain with the missing handler put back.
+     *
+     * <p>A failing order is recorded in {@code failedOrders} instead of vanishing, so the two
+     * maps together still account for every order the caller asked about.
+     *
+     * @param orderId the order
+     * @return a future that completes normally whether the order succeeded or failed
+     */
+    public CompletableFuture<Void> processOrderHandled(String orderId) {
+        String name = "processOrderHandled:" + orderId;
+        CompletableFuture<Void> chain = buildChain(orderId)
+            .exceptionally(failure -> {
+                Throwable cause = failure.getCause() != null ? failure.getCause() : failure;
+                failedOrders.put(orderId, cause.getMessage());
+                return null;
+            });
+
+        onFutureCreated.accept(chain, name);
+        onExceptionHandler.handlerRegistered(chain, name);
+        chain.whenComplete((ignored, failure) ->
+                onFutureCompleted.completed(chain, name, failure == null));
+        return chain;
+    }
+
+    private CompletableFuture<Void> buildChain(String orderId) {
         return CompletableFuture.supplyAsync(() -> inventoryService.checkStock(orderId), executor)
             // BUG: No exception handling here!
             // If checkStock throws, this exception propagates unhandled
@@ -92,8 +157,22 @@ public class OrderProcessingService {
             })
             .thenCompose(this::composeAsyncChain)
             .thenAccept(result -> processedOrders.put(orderId, result));
-            // PROBLEM: No .exceptionally() to handle failures!
-            // When exception occurs, failedOrders is never updated
+    }
+
+    /**
+     * Installs the hooks CompletableFutureExceptionDetector needs. No-ops by default, so
+     * production behaviour is unchanged whether or not a test is watching.
+     *
+     * @param created  called with each chain as it is built
+     * @param completed called when a chain finishes, with whether it finished normally
+     * @param handlerRegistered called when a chain has an exception handler attached
+     */
+    public void observeFutures(BiConsumer<CompletableFuture<?>, String> created,
+                               CompletionObserver completed,
+                               HandlerObserver handlerRegistered) {
+        this.onFutureCreated = created;
+        this.onFutureCompleted = completed;
+        this.onExceptionHandler = handlerRegistered;
     }
 
     /**
@@ -137,8 +216,30 @@ public class OrderProcessingService {
         return Map.copyOf(processedOrders);
     }
 
+    /**
+     * The same batch through the handled chain, so every order ends up in one map or the other.
+     *
+     * @param orderIds the orders
+     * @return the orders that succeeded
+     */
+    public Map<String, OrderResult> processMultipleOrdersHandled(java.util.List<String> orderIds) {
+        var futures = orderIds.stream()
+            .map(this::processOrderHandled)
+            .toArray(CompletableFuture[]::new);
+
+        CompletableFuture.allOf(futures).join();
+        return Map.copyOf(processedOrders);
+    }
+
     public Map<String, String> getFailedOrders() {
         return Map.copyOf(failedOrders);
+    }
+
+    /**
+     * {@return how many orders have been processed successfully}
+     */
+    public int getProcessedOrderCount() {
+        return processedOrders.size();
     }
 
     public void shutdown() {

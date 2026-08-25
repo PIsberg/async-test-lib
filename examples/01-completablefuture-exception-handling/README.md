@@ -48,24 +48,32 @@ The test passes because it expects the exception and catches it. Sequential exec
 
 ### 2. Run with @AsyncTest (FAILS - exposes the real bug)
 
-Change the test annotation:
-```java
-@AsyncTest(threads = 10, invocations = 50, detectAll = true)
-void testProcessMultipleOrders_Concurrent() {
-    // Now fails - shows data loss under concurrent load
-}
-```
+Remove `@Disabled` from `testProcessMultipleOrders_Concurrent_WITH_ASYNC_TEST` and run:
 
 ```bash
 cd example
 mvn clean test
-# ❌ Tests fail: "Processed: 0, Failed: 0 ==> expected: <5> but was: <0>"
 ```
 
-**8 concurrent threads failed** - ALL orders were lost! The system ends up with:
-- `processedOrders`: 0 entries (futures completed exceptionally)
-- `failedOrders`: 0 entries (exceptions were never caught)
-- **Data loss**: 5 orders disappeared completely
+```
+COMPLETABLEFUTURE EXCEPTION HANDLING ISSUES DETECTED:
+  Unhandled Exceptions:
+    - processOrder:ORD-001: completed exceptionally without exception handler
+    - processOrder:ORD-004: completed exceptionally without exception handler
+    ...
+```
+
+`failOn = FailOn.LOW` is what turns that report into a failed run.
+
+The orders behind those lines are simply gone. `processedOrders` never received them, because
+the chain never reached `thenAccept`; `failedOrders` never received them either, because nothing
+in the chain catches anything. `testProcessMultipleOrders_failedOrdersVanish` pins that with no
+detector involved.
+
+**This example was the odd one out in issue #346.** Its `@Disabled` sat on a plain `@Test`, with
+the `@AsyncTest` annotation commented out on the line above, so it was never part of the enabled
+run at all, and its reason said "fails with @AsyncTest" - a claim about an annotation that was
+not there. There is one now.
 
 ## The Root Cause
 
@@ -134,8 +142,10 @@ public synchronized boolean checkStock(String orderId) {  // Added synchronized
 - **`OrderProcessingService.java`** - Buggy production code with unhandled async exceptions
 - **`OrderProcessingServiceTest.java`** - Tests that demonstrate the problem
   - `testProcessMultipleOrders_Sequential()` - Passes with @Test
-  - `testProcessMultipleOrders_Concurrent()` - Fails with @AsyncTest
-  - Commented solution showing the fixed implementation
+  - `testProcessMultipleOrders_failedOrdersVanish()` - the accounting hole, no detector needed
+  - `testProcessMultipleOrders_Concurrent_WITH_ASYNC_TEST()` - the `@AsyncTest` demonstration
+  - `testProcessOrderHandled_isTheFix()` - and the fix, which is a real method now rather than a
+    commented-out class
 - **`pom.xml`** - Maven dependencies (JUnit 5 + async-test-lib)
 
 ## Key Takeaways
@@ -148,20 +158,21 @@ public synchronized boolean checkStock(String orderId) {  // Added synchronized
 
 ## Try It Yourself
 
-1. Run `mvn clean test` - tests pass with @Test
-2. Change `@Test` to `@AsyncTest(threads = 10, invocations = 50, detectAll = true)` in the concurrent test
-3. Run `mvn clean test` again - watch it fail with detailed detector reports
-4. Uncomment the fixed service in `OrderProcessingServiceTest.java` and test it
-5. See the solution pass with @AsyncTest
+1. Run `mvn clean test` - the enabled tests pass
+2. Remove `@Disabled` from `testProcessMultipleOrders_Concurrent_WITH_ASYNC_TEST`
+3. Run `mvn clean test` again - watch it fail with the detector's report
+4. Swap `processMultipleOrders` for `processMultipleOrdersHandled` in that body
+5. Run it once more - the chains now carry a handler, and the report is empty
 
 ## What the Library Detectors Find
 
-When running with `@AsyncTest(detectAll = true)`, these detectors are triggered:
+The demonstration switches on **one** detector, `detectCompletableFutureExceptions`, and that is
+the only one that can report. It is fed through `OrderProcessingService.observeFutures`, which
+tells it when each chain is built, when it finishes, and whether it finished normally; the hooks
+default to no-ops, so the production path never touches the test library.
 
-- **CompletableFutureExceptionDetector**: Flags unhandled exceptions in async chains
-- **LivelockDetector**: Detects threads waiting without progress
-- **RaceConditionDetector**: Finds unsynchronized access to `callCount`
-- **DeadlockDetector**: Monitors for circular lock dependencies
-- **VisibilityMonitor**: Checks for missing volatile keywords
-
-The detailed reports show exactly where the concurrency bugs are, making it easy to fix the root cause rather than guessing.
+The service has other problems - `InventoryService.callCount` is an unsynchronized `int`
+incremented from every thread, which is a lost-update race - and switching on
+`detectRaceConditions` and recording those accesses would report them. This example does not,
+because a demonstration that names one detector and switches on all 146 cannot say which one
+found what.
