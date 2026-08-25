@@ -3,7 +3,9 @@ package se.deversity.asynctest.example;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
+import se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector;
 import se.deversity.asynctest.example.service.BackgroundWorker;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -32,8 +34,26 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * WHY @AsyncTest DETECTS:
  * DaemonThreadHygieneDetector.recordThread() is called for every new thread.
- * After all invocations, it checks which recorded threads are still alive and
- * not marked as daemon, reporting them as hygiene violations.
+ * After all invocations, it checks which recorded threads are STILL ALIVE and
+ * not marked as daemon, and reports those.
+ *
+ * "Still alive" is the part this example used to miss. A thread that has already
+ * terminated cannot hold the JVM open, so the detector deliberately says nothing
+ * about it - and the task the demonstration started was a thousand additions,
+ * over in microseconds, dead long before analysis. Enabling the demonstration
+ * reported nothing, however many threads it started. See issue #346.
+ *
+ * So the demonstration starts pollers instead: background threads that keep
+ * running until they are told to stop, which is what a background worker
+ * usually is and the only shape in which a missing daemon flag costs anything.
+ * @AfterEach stops them.
+ *
+ * WHY THIS DEMONSTRATION SETS useVirtualThreads = false:
+ * A platform thread inherits the daemon flag of the thread that created it, and
+ * virtual threads are always daemon. Under the default runner every
+ * `new Thread(...)` started from a test body is therefore already a daemon
+ * thread, and this detector has nothing to report however wrong the service is.
+ * See issue #352.
  *
  * FIX:
  * Call thread.setDaemon(true) before thread.start(), or use a ThreadFactory
@@ -46,6 +66,15 @@ class BackgroundWorkerTest {
     @BeforeEach
     void setUp() {
         worker = new BackgroundWorker();
+    }
+
+    /**
+     * Stops every poller this test started. Without it the non-daemon threads would keep the
+     * JVM alive, which is the bug working as advertised and no way to run a build.
+     */
+    @AfterEach
+    void stopPollers() {
+        worker.shutdown();
     }
 
     // -------------------------------------------------------------------------
@@ -71,6 +100,64 @@ class BackgroundWorkerTest {
         t.join(2000);
     }
 
+    /**
+     * The detector's positive direction: a non-daemon thread that is still running when the
+     * report is taken.
+     */
+    @Test
+    void testDaemonThreadHygieneDetector_liveNonDaemonThread_reports() {
+        DaemonThreadHygieneDetector detector = new DaemonThreadHygieneDetector();
+
+        Thread poller = worker.startPoller("live");
+        detector.recordThread(poller, "background-poller");
+
+        assertTrue(detector.analyze().hasIssues(),
+                "a non-daemon thread still alive at analysis time blocks JVM exit");
+    }
+
+    /**
+     * And the other direction, twice over, because there are two ways to be fine: be a daemon,
+     * or be finished.
+     */
+    @Test
+    void testDaemonThreadHygieneDetector_finishedThread_isSilent() throws Exception {
+        DaemonThreadHygieneDetector detector = new DaemonThreadHygieneDetector();
+
+        Thread quick = worker.start("quick", () -> { });
+        detector.recordThread(quick, "background-worker");
+        quick.join(2000);
+
+        assertFalse(quick.isAlive(), "the task was a no-op, so the thread is done");
+        assertFalse(detector.analyze().hasIssues(),
+                "a thread that has terminated cannot hold the JVM open");
+    }
+
+    @Test
+    void testDaemonThreadHygieneDetector_liveDaemonThread_isSilent() throws Exception {
+        DaemonThreadHygieneDetector detector = new DaemonThreadHygieneDetector();
+        CountDownLatch release = new CountDownLatch(1);
+
+        Thread daemon = new Thread(() -> {
+            try {
+                release.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "daemon-poller");
+        daemon.setDaemon(true);
+        daemon.start();
+        try {
+            detector.recordThread(daemon, "daemon-poller");
+
+            assertTrue(daemon.isAlive(), "still waiting, so still alive");
+            assertFalse(detector.analyze().hasIssues(),
+                    "a daemon thread does not block JVM exit, however long it runs");
+        } finally {
+            release.countDown();
+            daemon.join(2000);
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Part 2: @AsyncTest — exposes the concurrency bug
     // -------------------------------------------------------------------------
@@ -86,17 +173,18 @@ class BackgroundWorkerTest {
      * 3. To fix: add thread.setDaemon(true) in BackgroundWorker.start()
      */
     @Disabled("Remove @Disabled to see the bug detected by DaemonThreadHygieneDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectDaemonThreadHygiene = true, failOn = FailOn.LOW)
+    // useVirtualThreads = false is not decoration. A platform thread inherits the daemon flag
+    // of the thread that created it, and virtual threads are always daemon, so under the default
+    // runner every `new Thread(...)` started from a test body is already a daemon thread and this
+    // detector has nothing to report. See issue #352.
+    @AsyncTest(threads = 8, invocations = 5, detectAll = false, useVirtualThreads = false,
+            detectDaemonThreadHygiene = true, failOn = FailOn.LOW)
     void testStart_concurrent_detectsNonDaemonThread() {
-        Thread t = worker.start("async-" + Thread.currentThread().threadId(), () -> {
-            // Simulate short background work
-            long sum = 0;
-            for (int i = 0; i < 1000; i++) sum += i;
-            if (sum < 0) throw new RuntimeException("unreachable");
-        });
+        // A poller, not a thousand additions. The detector reports non-daemon threads that are
+        // still alive when the run is analysed, and the old task was over in microseconds.
+        Thread poller = worker.startPoller("async-" + Thread.currentThread().threadId());
 
-        // Instrument the detector with the newly started thread
         AsyncTestContext.daemonThreadHygieneDetector()
-                .recordThread(t, "background-worker");
+                .recordThread(poller, "background-poller");
     }
 }
