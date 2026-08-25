@@ -3,10 +3,15 @@ package se.deversity.asynctest.example;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
+import se.deversity.asynctest.diagnostics.CompletableFutureCommonPoolBlockingDetector;
 import se.deversity.asynctest.example.service.ReportService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -40,8 +45,16 @@ import static org.junit.jupiter.api.Assertions.*;
  * CompletableFutureCommonPoolBlockingDetector records the blocking .get() call
  * made on a common-pool thread and reports the pool starvation pattern.
  *
- * DETECTORS TRIGGERED:
- *   CompletableFutureCommonPoolBlockingDetector — primary: blocking on common pool
+ * It is deliberately narrow: recordBlockingCall ignores any future it was not first
+ * told about through recordCommonPoolSubmission, because waiting on a future from an
+ * executor you own starves nobody and is ordinary code. Both calls therefore have to
+ * happen, in that order, from inside the code doing the work; ReportService.observeCommonPool
+ * is the seam that arranges it.
+ *
+ * DETECTOR ENABLED HERE:
+ *   CompletableFutureCommonPoolBlockingDetector — a wait on a common-pool future, from
+ *   inside the common pool. It is the only one this demonstration switches on, so it is
+ *   the only one that can report.
  *
  * FIX: supply a dedicated ExecutorService to all supplyAsync() calls.
  */
@@ -73,18 +86,87 @@ class ReportServiceTest {
         assertNotNull(r2);
     }
 
+    /**
+     * The detector's positive direction, driven by the real service: a future submitted to the
+     * common pool and then waited on from inside that pool.
+     */
+    @Test
+    void testGenerateReport_commonPoolWait_reports() {
+        var detector = new CompletableFutureCommonPoolBlockingDetector();
+        wire(detector);
+
+        service.generateReport("R-100");
+
+        assertTrue(detector.analyze().hasIssues(),
+                "a get() on a common-pool future, from a common-pool thread, is the bug");
+    }
+
+    /**
+     * And the other direction, which is the whole point of the detector's narrowness: a wait on
+     * a future that was <em>not</em> submitted to the common pool is not a finding. Blocking a
+     * thread you own is ordinary code.
+     */
+    @Test
+    void testWait_onFutureFromADedicatedExecutor_isSilent() {
+        var detector = new CompletableFutureCommonPoolBlockingDetector();
+        ExecutorService dedicated = Executors.newSingleThreadExecutor();
+        try {
+            CompletableFuture<String> future =
+                    CompletableFuture.supplyAsync(() -> "data", dedicated);
+            // Never registered as a common-pool submission, because it is not one.
+            detector.recordBlockingCall(future, Thread.currentThread(), "Future.get");
+            future.join();
+        } finally {
+            dedicated.shutdown();
+        }
+
+        assertFalse(detector.analyze().hasIssues(),
+                "waiting on a future from your own executor starves nobody");
+    }
+
+    private void wire(CompletableFutureCommonPoolBlockingDetector detector) {
+        service.observeCommonPool(
+                (future, name) ->
+                        detector.recordCommonPoolSubmission(future, Thread.currentThread(), name),
+                (future, callType) ->
+                        detector.recordBlockingCall(future, Thread.currentThread(), callType));
+    }
+
     // -----------------------------------------------------------------------
     // Part 2: @AsyncTest — exposes common-pool blocking
     // -----------------------------------------------------------------------
 
+    /**
+     * The bug: eight threads each ask for a report. Every report runs on the common pool and,
+     * from inside it, waits on another common-pool task. The pool has one worker per core and
+     * every parallel stream in the JVM shares it.
+     *
+     * To see the detection:
+     * 1. Remove @Disabled
+     * 2. Run this test — it fails with, for each common-pool worker,
+     *      Thread 'ForkJoinPool.commonPool-worker-1' made blocking call (Future.get) inside
+     *      CompletableFuture 'fetchData' running on the common ForkJoinPool
+     * 3. Fix: pass a dedicated Executor to every supplyAsync() that may block
+     */
     @Disabled("Remove @Disabled to see common-pool blocking detected by CompletableFutureCommonPoolBlockingDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCFCommonPoolBlocking = true, failOn = FailOn.LOW)
+    // invocations is 5 rather than 50 only to keep the output readable: the detector emits one
+    // line per blocking call with no deduplication, so 400 executions produce 400 near-identical
+    // lines. That is issue #351, not a property of this example; put it back up once it is fixed.
+    @AsyncTest(threads = 8, invocations = 5, detectAll = false,
+            detectCFCommonPoolBlocking = true, failOn = FailOn.LOW)
     void testGenerateReport_concurrent_detectsPoolBlocking() {
-        // Inform the detector that we are about to block on the common pool
-        AsyncTestContext.get().cfCommonPoolBlockingMonitor()
-                .recordBlockingCall(null, Thread.currentThread(), "fetchData.get");
+        // This demonstration used to call recordBlockingCall(null, ...) from the test body.
+        // The detector returns immediately on a null future, and ignores any future it was not
+        // first told about through recordCommonPoolSubmission, so the call was a no-op twice
+        // over and the run reported nothing. See issue #346.
+        var detector = AsyncTestContext.cfCommonPoolBlockingMonitor();
+        service.observeCommonPool(
+                (future, name) ->
+                        detector.recordCommonPoolSubmission(future, Thread.currentThread(), name),
+                (future, callType) ->
+                        detector.recordBlockingCall(future, Thread.currentThread(), callType));
 
-        String result = service.generateReport("R-" + Thread.currentThread().getId());
-        assertNotNull(result, "Report must not be null");
+        assertNotNull(service.generateReport("R-" + Thread.currentThread().threadId()),
+                "Report must not be null");
     }
 }
