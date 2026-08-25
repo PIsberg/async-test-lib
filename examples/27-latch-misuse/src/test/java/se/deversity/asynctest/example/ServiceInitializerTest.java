@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 import se.deversity.asynctest.example.service.ServiceInitializer;
@@ -50,11 +51,15 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * WHY @AsyncTest DETECTS THE ISSUE:
  * LatchMisuseDetector tracks the initial count, countDown() calls, and
- * await() calls across invocations and reports when countDown() is called
- * more times than the latch was initialized with.
+ * await() calls, and reports when countDown() is called more times than the
+ * latch was initialized with. ServiceInitializer.observeLatch hands it those
+ * three facts from where they happen: the construction, every countDown, and
+ * the await. failOn = FailOn.LOW turns the finding into a failed run.
  *
- * DETECTORS TRIGGERED:
- * LatchMisuseDetector — standalone, instantiated directly in the test.
+ * DETECTOR ENABLED HERE:
+ * LatchMisuseDetector — more countDown() calls than the latch was built for.
+ * It is the only one this demonstration switches on, so it is the only one that
+ * can report.
  *
  * FIX:
  * Remove countDown() from the catch block. Only the finally block should
@@ -63,7 +68,6 @@ import static org.junit.jupiter.api.Assertions.*;
 class ServiceInitializerTest {
 
     private ServiceInitializer initializer;
-    private final LatchMisuseDetector detector = new LatchMisuseDetector();
 
     @BeforeEach
     void setUp() {
@@ -99,6 +103,43 @@ class ServiceInitializerTest {
         assertEquals(0, latch.getCount());
     }
 
+    /**
+     * The detector's positive direction, driven by the real service: three services, one of
+     * them failing, four countDown() calls on a latch built for three.
+     */
+    @Test
+    void testInitialize_realRun_recordsExtraCountDown() throws Exception {
+        LatchMisuseDetector detector = new LatchMisuseDetector();
+        wire(detector);
+
+        initializer.initialize(3);
+
+        assertFalse(detector.analyze().extraCountDowns.isEmpty(),
+                "a failing service counts down twice, so the latch gets 4 calls for a count of 3");
+    }
+
+    /**
+     * And the other direction, on the same service with the extra call removed. A detector that
+     * still reported here would be flagging correct latch use.
+     */
+    @Test
+    void testInitializeFixed_realRun_isSilent() throws Exception {
+        LatchMisuseDetector detector = new LatchMisuseDetector();
+        wire(detector);
+
+        initializer.initializeFixed(3);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "exactly one countDown() per task is correct use, not a finding");
+    }
+
+    private void wire(LatchMisuseDetector detector) {
+        initializer.observeLatch(
+                (latch, count) -> detector.registerLatch(latch, "service-startup-latch", count),
+                detector::recordCountDown,
+                detector::recordAwait);
+    }
+
     // -------------------------------------------------------------------------
     // Part 2: @AsyncTest — exposes the extra countDown() via LatchMisuseDetector
     // -------------------------------------------------------------------------
@@ -114,55 +155,21 @@ class ServiceInitializerTest {
      * 3. Fix: remove latch.countDown() from the catch block
      */
     @Disabled("Remove @Disabled to see latch misuse detected by LatchMisuseDetector")
-    @AsyncTest(threads = 4, invocations = 20, failOn = FailOn.LOW)
-    void testInitialize_concurrent_detectsExtraCountDowns() {
-        int serviceCount = 3;
-        CountDownLatch latch = new CountDownLatch(serviceCount);
+    @AsyncTest(threads = 4, invocations = 20, detectAll = false,
+            detectLatchMisuse = true, failOn = FailOn.LOW)
+    void testInitialize_concurrent_detectsExtraCountDowns() throws Exception {
+        // This demonstration used to hand-record four countDown() calls into a locally
+        // constructed detector and assert on the result, without ever calling the service. It
+        // proved the detector's arithmetic, which was never in doubt, and told the library
+        // nothing: failOn had no finding to gate on. See issue #346.
+        LatchMisuseDetector detector = AsyncTestContext.latchMisuseDetector();
+        initializer.observeLatch(
+                (latch, count) -> detector.registerLatch(latch, "service-startup-latch", count),
+                detector::recordCountDown,
+                detector::recordAwait);
 
-        // Register the latch with the detector
-        detector.registerLatch(latch, "service-startup-latch", serviceCount);
-
-        // Simulate service-0 (succeeds): one countDown
-        detector.recordCountDown(latch);
-
-        // Simulate service-1 (fails): countDown in catch AND finally — two calls
-        detector.recordCountDown(latch); // catch block
-        detector.recordCountDown(latch); // finally block
-
-        // Simulate service-2 (succeeds): one countDown
-        detector.recordCountDown(latch);
-
-        // Record that someone awaited this latch
-        detector.recordAwait(latch);
-
-        // Analyze — detector should report extra countDown() calls
-        LatchMisuseDetector.LatchMisuseReport report = detector.analyze();
-        assertTrue(report.hasIssues(),
-            "Expected extra countDown() calls to be detected.\n" + report);
-        assertFalse(report.extraCountDowns.isEmpty(),
-            "Expected extraCountDowns to be populated.\n" + report);
-    }
-
-    /**
-     * Fixed version: countDown() is called exactly once per service task,
-     * only in the finally block. No extra calls, no premature unblocking.
-     */
-    @Test
-    void testInitialize_fixedCountDownOnce_noMisuseDetected() {
-        int serviceCount = 3;
-        CountDownLatch latch = new CountDownLatch(serviceCount);
-
-        detector.registerLatch(latch, "fixed-startup-latch", serviceCount);
-
-        // All three services call countDown() exactly once (fixed: only in finally)
-        detector.recordCountDown(latch); // service-0 success
-        detector.recordCountDown(latch); // service-1 failure — only finally fires
-        detector.recordCountDown(latch); // service-2 success
-
-        detector.recordAwait(latch);
-
-        LatchMisuseDetector.LatchMisuseReport report = detector.analyze();
-        assertFalse(report.hasIssues(),
-            "No latch misuse expected when each task calls countDown() exactly once.\n" + report);
+        // BUG: service-1 throws, so its task counts down in the catch block and again in the
+        // finally block. The latch was built for 3 and receives 4.
+        initializer.initialize(3);
     }
 }
