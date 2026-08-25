@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`ConcurrentMapComputeRecursionDetector` described a failure mode that no longer happens, and
+  now describes the one that does.** Its report claimed the consequence of a recursive
+  `compute*` was an infinite loop (Java 8) or a thread deadlocking against its own bin lock.
+  Measured on JDK 26, neither occurs: on an absent key `ConcurrentHashMap` parks a reservation
+  node and throws `IllegalStateException("Recursive update")` before the nested mapping function
+  runs, and on a present key the bin holds a real node whose monitor the re-entry re-acquires,
+  monitors being reentrant, so the nested call completes and the outer return value silently
+  overwrites what it stored. Guava's `Cache.asMap()` is a third outcome and does hang.
+  The detector can only ever observe the middle case, because its evidence is a
+  `recordComputeStart` raised from inside a nested mapping function that ran, and that turns out
+  to be the case worth having: the other two announce themselves with a stack trace or a hung
+  build. The javadoc, the report text, the `@AsyncTest` attribute doc, `docs/USAGE.md` and the
+  example's README now state the measured split (#341).
+
+- **The recording lane gives that detector a real denominator, taking the lane to eight.** The
+  pair uses `merge` on a seeded key, which is the only same-key shape that reaches the nested
+  mapping function, so both recordings come from a function that actually executed rather than
+  from a hand-written call at the site. 240 of 240 nested functions ran with nothing thrown at
+  the lane's own six threads and forty invocations (#341).
+
+- **Example 40's README and test no longer promise an outcome that does not occur.** Its
+  re-entry is on a *different* key, which the detector does not report and which, measured over
+  200 fresh maps, ran and returned 198 times and threw twice. The prose says so, and the
+  detection gap is tracked in #343.
+
 ### Added
 
 - **The corpus recording lane gives seven detectors a denominator instead of four.**

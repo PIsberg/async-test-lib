@@ -109,6 +109,15 @@ class CorpusRecordingLaneTest {
     /** Documented thread-safe, recorded identically to the row above. */
     private final Cache<String, String> caffeineCache = Caffeine.newBuilder().maximumSize(64).build();
 
+    /** The key both merge rows re-enter on, seeded before the run so neither takes the absent path. */
+    private static final String RECURSION_KEY = "recursion-key";
+
+    /** The map whose remapping function merges the same key again: the loud recursion row. */
+    private final Cache<String, String> recursiveCache = seededCache();
+
+    /** The twin whose remapping function stays out of the map: the silent recursion row. */
+    private final Cache<String, String> selfContainedCache = seededCache();
+
     /** A second Caffeine instance, so the computeIfAbsent row cannot borrow the other's state. */
     private final Cache<String, String> caffeineAtomicCache =
             Caffeine.newBuilder().maximumSize(64).build();
@@ -466,16 +475,82 @@ class CorpusRecordingLaneTest {
         LEAKED.add(buffer);
     }
 
+    // --- ConcurrentMapComputeRecursion -------------------------------------------------------
+
     /**
-     * Runs a racy operation on an unmodified JDK instance without failing the run.
+     * A {@code merge} whose remapping function merges the same key again, which really re-enters.
      *
-     * <p>The same trade {@code CorpusEvalTest.unsafeOperation} makes, and for the same reason:
-     * corrupting a {@code MessageDigest} or a {@code Mac} from six threads can surface as a
-     * thrown exception out of the JDK's own buffer arithmetic rather than as a detector finding,
-     * and that outcome is part of what the eval measures. The {@code record*} call is
-     * deliberately outside this, so the expectation stays a function of the recorded calls even
-     * on a run where the subject threw.
+     * <p>This row exists because the obvious version of it does not work, and the difference is
+     * the whole point ({@link Corpus} carries the measurement). A nested
+     * {@code computeIfAbsent} on an <em>absent</em> key never reaches the inner mapping function:
+     * the bin holds a reservation node and {@code ConcurrentHashMap} throws
+     * {@code IllegalStateException("Recursive update")} first, so the second
+     * {@code recordComputeStart} the detector needs could only be written by hand at the call
+     * site. On a key that is already <em>present</em> the bin holds a real node, the re-entry
+     * re-acquires its monitor, and a monitor is reentrant: the nested call runs to completion and
+     * the outer return value then overwrites what it stored.
+     *
+     * <p>So both {@code recordComputeStart} calls here are raised from inside a mapping function
+     * that actually executed, which is what the detector's contract asks for and what makes this
+     * an observed row rather than a constructed one. Measured before it was written: 240 of 240
+     * nested mapping functions ran, with no exception, at exactly this lane's six threads and
+     * forty invocations.
+     *
+     * <p>The key is seeded when the cache is built rather than by the body, because a body that
+     * seeded it would take the absent-key path on its first execution and throw.
      */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_caffeineAsMap_recursiveMerge() {
+        CorpusRecorder.countBodyExecution();
+        ConcurrentMap<String, String> view = recursiveCache.asMap();
+        Thread self = Thread.currentThread();
+        view.merge(RECURSION_KEY, "outer", (oldOuter, newOuter) -> {
+            AsyncTestContext.concurrentMapComputeRecursionDetector()
+                    .recordComputeStart(view, RECURSION_KEY, self, "caffeine-recursive");
+            try {
+                return view.merge(RECURSION_KEY, "inner", (oldInner, newInner) -> {
+                    AsyncTestContext.concurrentMapComputeRecursionDetector()
+                            .recordComputeStart(view, RECURSION_KEY, self, "caffeine-recursive");
+                    try {
+                        return "nested";
+                    } finally {
+                        AsyncTestContext.concurrentMapComputeRecursionDetector()
+                                .recordComputeEnd(view, RECURSION_KEY, self);
+                    }
+                });
+            } finally {
+                AsyncTestContext.concurrentMapComputeRecursionDetector()
+                        .recordComputeEnd(view, RECURSION_KEY, self);
+            }
+        });
+    }
+
+    /**
+     * The same call, the same recording, and a remapping function that stays out of the map.
+     *
+     * <p>Identical in every respect the detector can see except the one it is looking for: one
+     * {@code recordComputeStart} per body execution, each closed by its {@code recordComputeEnd},
+     * so the slot is never occupied twice. This is what a correct {@code merge} looks like, and
+     * it is the direction that catches a detector keyed on the map rather than on the map, key
+     * and thread together: six threads merging the same key concurrently is not recursion.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_caffeineAsMap_selfContainedMerge() {
+        CorpusRecorder.countBodyExecution();
+        ConcurrentMap<String, String> view = selfContainedCache.asMap();
+        Thread self = Thread.currentThread();
+        view.merge(RECURSION_KEY, "outer", (oldValue, newValue) -> {
+            AsyncTestContext.concurrentMapComputeRecursionDetector()
+                    .recordComputeStart(view, RECURSION_KEY, self, "caffeine-self-contained");
+            try {
+                return oldValue.length() > 64 ? newValue : oldValue + '+';
+            } finally {
+                AsyncTestContext.concurrentMapComputeRecursionDetector()
+                        .recordComputeEnd(view, RECURSION_KEY, self);
+            }
+        });
+    }
+
     /**
      * {@return a fresh HmacSHA256 initialised with the shared key}
      *
@@ -490,6 +565,30 @@ class CorpusRecordingLaneTest {
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
             throw new IllegalStateException("HmacSHA256 is a required JDK algorithm", e);
         }
+    }
+
+    /**
+     * Runs a racy operation on an unmodified JDK instance without failing the run.
+     *
+     * <p>The same trade {@code CorpusEvalTest.unsafeOperation} makes, and for the same reason:
+     * corrupting a {@code MessageDigest} or a {@code Mac} from six threads can surface as a
+     * thrown exception out of the JDK's own buffer arithmetic rather than as a detector finding,
+     * and that outcome is part of what the eval measures. The {@code record*} call is
+     * deliberately outside this, so the expectation stays a function of the recorded calls even
+     * on a run where the subject threw.
+     */
+    /**
+     * {@return a cache whose recursion key already holds a value}
+     *
+     * <p>{@code merge} only calls its remapping function when the key is present. An unseeded
+     * cache would make the first body execution a plain put, recording nothing, and on
+     * {@code computeIfAbsent} the absent-key path is the one that throws instead of re-entering.
+     * Seeding at construction removes both, so every body execution takes the same path.
+     */
+    private static Cache<String, String> seededCache() {
+        Cache<String, String> cache = Caffeine.newBuilder().maximumSize(64).build();
+        cache.put(RECURSION_KEY, "seed");
+        return cache;
     }
 
     private static void toleratingCorruption(Runnable operation) {

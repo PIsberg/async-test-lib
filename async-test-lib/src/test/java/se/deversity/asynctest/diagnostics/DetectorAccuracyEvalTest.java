@@ -11,6 +11,8 @@ import javax.crypto.Mac;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
@@ -749,6 +751,89 @@ class DetectorAccuracyEvalTest {
                         + "alone excused a double initialization at class scope: both threads "
                         + "missed the check, both created, and the extra instance kept running. A "
                         + "published value that keeps being written is a side effect, not a value");
+    }
+
+    // ---- ConcurrentMapComputeRecursionDetector ----
+
+    /**
+     * A real re-entry, driven through a real {@code ConcurrentHashMap} rather than recorded by
+     * hand (#341).
+     *
+     * <p>The sibling unit test drives the detector by calling {@code recordComputeStart} twice
+     * directly, which pins the rule but says nothing about whether the shape it describes can
+     * happen. This does: the nested {@code merge} runs inside the outer one's remapping function,
+     * so both recordings are raised from inside a mapping function that really executed.
+     *
+     * <p>{@code merge} on a key that is already present is the shape that gets there.
+     * {@code computeIfAbsent} on an absent key does not: the bin holds a reservation node and
+     * {@code ConcurrentHashMap} throws {@code IllegalStateException("Recursive update")} before
+     * the inner function runs, which is the reason this pair uses {@code merge} and the reason
+     * the detector never sees that other shape. Here the bin holds a real node whose monitor the
+     * re-entry re-acquires, monitors are reentrant, and the nested update is quietly overwritten
+     * by the outer return value.
+     */
+    @Test
+    @DisplayName("compute recursion: a merge whose function re-enters the same key fires (#341)")
+    void computeRecursionFiresOnAMergeThatReallyReEnters() {
+        ConcurrentMapComputeRecursionDetector detector =
+                new ConcurrentMapComputeRecursionDetector();
+        ConcurrentMap<String, String> map = new ConcurrentHashMap<>();
+        map.put("k", "seed");
+        Thread self = Thread.currentThread();
+
+        map.merge("k", "outer", (oldOuter, newOuter) -> {
+            detector.recordComputeStart(map, "k", self, "cache");
+            try {
+                return map.merge("k", "inner", (oldInner, newInner) -> {
+                    detector.recordComputeStart(map, "k", self, "cache");
+                    try {
+                        return "nested";
+                    } finally {
+                        detector.recordComputeEnd(map, "k", self);
+                    }
+                });
+            } finally {
+                detector.recordComputeEnd(map, "k", self);
+            }
+        });
+
+        assertTrue(detector.analyze().hasIssues(),
+                "The nested merge ran inside the outer one's remapping function, so the same map, "
+                        + "key and thread were inside a compute at once. If this is silent the "
+                        + "detector has stopped seeing the only re-entry shape that reaches a "
+                        + "mapping function at all, and its exposure is zero however many "
+                        + "hand-written recordings still pass");
+    }
+
+    /**
+     * The twin: the same call, recorded the same way, with a function that stays out of the map.
+     *
+     * <p>Without this half, a detector that reported every {@code recordComputeStart} would pass
+     * the row above. The recorded shape is identical except for the one thing the detector is
+     * looking for, so what separates them is re-entry and nothing else.
+     */
+    @Test
+    @DisplayName("compute recursion: a merge whose function stays out of the map is silent (#341)")
+    void computeRecursionSilentWhenTheFunctionDoesNotReEnter() {
+        ConcurrentMapComputeRecursionDetector detector =
+                new ConcurrentMapComputeRecursionDetector();
+        ConcurrentMap<String, String> map = new ConcurrentHashMap<>();
+        map.put("k", "seed");
+        Thread self = Thread.currentThread();
+
+        map.merge("k", "outer", (oldValue, newValue) -> {
+            detector.recordComputeStart(map, "k", self, "cache");
+            try {
+                return oldValue + '+';
+            } finally {
+                detector.recordComputeEnd(map, "k", self);
+            }
+        });
+
+        assertFalse(detector.analyze().hasIssues(),
+                "One start, one end, no re-entry. A merge whose remapping function does not touch "
+                        + "the map is the correct use of it, and reporting it would make the "
+                        + "detector fire on every instrumented compute*");
     }
 
     // ---- SharedMessageDigestDetector ----

@@ -445,7 +445,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 141: exposure zero, nothing said in
-either direction. That is now measured for seven of them, in a third lane, and the separation
+either direction. That is now measured for eight of them, in a third lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -479,6 +479,7 @@ other.
 | `SharedJsonMapperReconfigDetector` | 1 | 1 | 1 | 1 |
 | `SharedMessageDigestDetector` | 1 | 1 | 1 | 1 |
 | `SharedStatefulCryptoDetector` | 1 | 1 | 1 | 1 |
+| `ConcurrentMapComputeRecursionDetector` | 1 | 1 | 1 | 1 |
 
 **It found something on its first run.** `CacheConcurrencyDetector` decided thread safety with
 `instanceof ConcurrentHashMap` — one implementation rather than the contract — so Caffeine's
@@ -533,19 +534,44 @@ per-thread `Mac` with the shared one, and dropping the release each flipped exac
 FIRED and left the others alone. A MUST_STAY_SILENT row that stays silent when the thing it is
 about is removed is measuring nothing.
 
-`ConcurrentMapComputeRecursionDetector` was a named candidate and is deliberately not here. The
-detector fires on a second `recordComputeStart` for the same map, key and thread, and the only
-faithful way to record one is from inside a mapping function that re-enters the map on its own
-key, which the JVM never lets happen. Probed against Caffeine's `asMap()`: the nested call throws
-`IllegalStateException("Recursive update")` deterministically, and it throws *before* invoking the
-inner mapping function, so the recording the detector needs can only be written by hand at the call
-site. That is a constructed row rather than an observed one, and a row that cannot state a
-structural expectation belongs in the group-level gate instead
+**The eighth row, and the measurement that made it possible**
 ([#341](https://github.com/PIsberg/async-test-lib/issues/341)).
+`ConcurrentMapComputeRecursionDetector` was the fourth candidate of the wave above and was left
+out, because the obvious body does not work: a nested `computeIfAbsent` on an absent key never
+reaches the inner mapping function, so the second `recordComputeStart` the detector needs could
+only be written by hand at the call site. A constructed row, not an observed one.
 
-That is the argument for the lane in one line. Seven detectors of 146 is not coverage; it is the
-first seven rows of a table that had none, and the first four were enough to find a defect that had
-been shipping and to settle a modelling question that had been open since the fourth wave.
+Probing the rest of the matrix found the shape that does work. Same-key re-entry, JDK 26:
+
+| Implementation | Method | Inner function ran | Outcome |
+|---|---|---|---|
+| `ConcurrentHashMap` | `computeIfAbsent`, `compute` (absent key) | no | `IllegalStateException: Recursive update` |
+| `ConcurrentHashMap` | `merge` (present key) | **yes** | returned normally |
+| Caffeine `asMap()` | `computeIfAbsent`, `compute` (absent key) | no | `IllegalStateException: Recursive update` |
+| Caffeine `asMap()` | `merge` (present key) | **yes** | returned normally |
+| `ConcurrentSkipListMap` | all three | **yes** | returned normally |
+| `ConcurrentReferenceHashMap` | all three | **yes** | returned normally |
+| Guava `Cache.asMap()` | all three | no | deadlocked, never returned |
+
+The split is a bin-level fact. On an absent key the bin holds a `ReservationNode` and the re-entry
+is refused; on a present key it holds a real node whose monitor the re-entry re-acquires, and a
+monitor is reentrant, so the nested call completes and the outer return value then overwrites what
+it stored. That is a lost update with nothing thrown and nothing logged.
+
+Which reframes what the detector is for. It can only ever observe the middle rows, because its
+evidence is a `recordComputeStart` raised from inside a nested mapping function that ran. The
+exception rows arrive as a stack trace naming their own cause and the Guava row arrives as a hung
+build; both report themselves. The silent one does not, and it is exactly what is left. The
+detector's own text used to claim the opposite outcome, an infinite loop or a self-deadlock on the
+bin lock, and neither happens on a supported JDK; it now states the measured split.
+
+The pair uses Caffeine's `asMap().merge` on a seeded key, and at this lane's own six threads and
+forty invocations, 240 of 240 nested mapping functions ran with nothing thrown.
+
+That is the argument for the lane in one line. Eight detectors of 146 is not coverage; it is the
+first eight rows of a table that had none, and they have already been enough to find a defect that
+had been shipping, to settle a modelling question that had been open since the fourth wave, and to
+correct a detector that was describing a failure mode the platform stopped having.
 
 
 ## Reproducing it
