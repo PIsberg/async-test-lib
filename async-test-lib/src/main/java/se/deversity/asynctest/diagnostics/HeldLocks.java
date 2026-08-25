@@ -129,7 +129,7 @@ public final class HeldLocks {
      *
      * @param lock   the lock object; {@code null} is ignored
      * @param shared {@code true} for a read lock, {@code false} for exclusive ownership
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public static void acquired(@Nullable Object lock, boolean shared) {
         if (lock != null) {
@@ -157,7 +157,7 @@ public final class HeldLocks {
      *
      * @param lock   the lock object; {@code null} is ignored
      * @param shared the mode passed to {@link #acquired(Object, boolean)}
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public static void released(@Nullable Object lock, boolean shared) {
         if (lock != null) {
@@ -221,7 +221,7 @@ public final class HeldLocks {
      * thread can intersect sets instead of comparing digests. See {@link #members(long)}.
      *
      * @param forWrite whether the access being recorded is a write
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public static long lockFingerprint(boolean forWrite) {
         return FRAMES.get().registeredFingerprint(forWrite);
@@ -239,7 +239,7 @@ public final class HeldLocks {
      * modify the returned array.
      *
      * @param fingerprint a value from {@link #lockFingerprint(boolean)}
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public static int @Nullable [] members(long fingerprint) {
         return fingerprint == 0L ? NONE : LocksetRegistry.members(fingerprint);
@@ -249,7 +249,7 @@ public final class HeldLocks {
      * Forgets every registered lockset. Called when the telemetry registry starts a run: every
      * consumer resolves members as events arrive, so nothing from an earlier run needs them.
      *
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public static void forgetRegisteredLocksets() {
         LocksetRegistry.clear();

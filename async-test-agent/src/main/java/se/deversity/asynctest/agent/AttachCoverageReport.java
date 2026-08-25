@@ -32,7 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * classes are woven as they load, and the set of classes loaded before the transformer exists is
  * empty by definition.
  *
- * @since 1.10.0
+ * @since 1.9.8
  */
 final class AttachCoverageReport {
 

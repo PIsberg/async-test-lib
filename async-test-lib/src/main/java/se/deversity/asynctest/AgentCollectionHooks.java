@@ -36,7 +36,7 @@ import se.deversity.vibetags.annotations.AIContract;
  * end by performing the original call. A hook that swallows the call would silently change the
  * behaviour of the code under test, which is the one thing a test library may never do.
  *
- * @since 1.10.0
+ * @since 1.9.8
  */
 @API(status = Status.INTERNAL)
 @AIContract(reason = "Called from bytecode the agent rewrites, not from source: the method names and erased signatures are matched by CollectionAccessWeaver and cannot change independently of it. Every hook must end by performing the original operation and must never throw on the recording path - it runs inside the user's code, so an exception here surfaces as a failure in their test. Recording is best-effort by design: no context, a disabled detector, or a type the library knows is thread-safe all mean record nothing and delegate.")

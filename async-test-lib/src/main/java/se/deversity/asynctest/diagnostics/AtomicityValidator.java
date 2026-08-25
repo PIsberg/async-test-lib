@@ -610,7 +610,7 @@ public class AtomicityValidator {
      * @param threadId        the thread that made the access
      * @param lockFingerprint the locks that thread held at the access, 0 for none
      * @param volatileField   whether the field is declared {@code volatile}
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
                                             boolean isWrite, long threadId,
@@ -632,7 +632,7 @@ public class AtomicityValidator {
      * @param lockFingerprint the locks that thread held at the access, 0 for none
      * @param volatileField   whether the field is declared {@code volatile}
      * @param constantTag     the constant this write stored, {@code Integer.MIN_VALUE} for none
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
                                             boolean isWrite, long threadId, long lockFingerprint,
@@ -652,7 +652,7 @@ public class AtomicityValidator {
      * @param volatileField   whether the field is declared {@code volatile}
      * @param constantTag     the constant this write stored, {@code Integer.MIN_VALUE} for none
      * @param identity        {@code System.identityHashCode} of the owner, 0 for statics
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
                                             boolean isWrite, long threadId, long lockFingerprint,
@@ -682,7 +682,7 @@ public class AtomicityValidator {
      * @param volatileField   whether the field is declared {@code volatile}
      * @param constantTag     the constant this write stored, {@code Integer.MIN_VALUE} for none
      * @param identity        {@code System.identityHashCode} of the owner, 0 for statics
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
                                             boolean isWrite, long threadId, long lockFingerprint,
@@ -868,7 +868,7 @@ public class AtomicityValidator {
      * arrives is what makes the answer independent of that ordering.
      *
      * @param fieldName the field to forget, as it appears in reports
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public void forgetField(String fieldName) {
         if (fieldName == null || fieldName.isBlank()) {
