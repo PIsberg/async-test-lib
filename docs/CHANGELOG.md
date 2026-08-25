@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The corpus recording lane gives seven detectors a denominator instead of four.**
+  `SharedMessageDigestDetector`, `SharedStatefulCryptoDetector` and `ResourceLeakDetector` each
+  gain a `MUST_FIRE` / `MUST_STAY_SILENT` pair over unmodified JDK and Netty subjects. The three
+  vary the axis the first four did not: the digest pair differs by a lock (one instance, six
+  threads, one row holding the digest's own monitor), the crypto pair by confinement (one shared
+  `Mac` against one per thread), and the resource pair by the release call itself (a Netty
+  `ByteBuf` acquired and released against the identical lifecycle without the release). Each
+  silent row was driven red first, by removing exactly the thing it is about.
+  `ConcurrentMapComputeRecursionDetector` was a named candidate and is deliberately absent: a
+  nested same-key `computeIfAbsent` throws before the inner mapping function runs, so the
+  recording it needs cannot be observed, only constructed (#338, follow-up in #341).
+
 ### Changed
 
 - **A static reference store now carries the value it published, and a static single-check cache

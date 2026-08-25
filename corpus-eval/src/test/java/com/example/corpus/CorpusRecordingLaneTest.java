@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.apache.commons.collections4.map.LRUMap;
@@ -18,7 +20,10 @@ import se.deversity.asynctest.AsyncTestContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.text.SimpleDateFormat;
@@ -26,6 +31,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.List;
+import java.util.Collections;
+import java.util.ArrayList;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.security.InvalidKeyException;
 
 /**
  * The recording lane: the same libraries, with test bodies that cooperate.
@@ -55,6 +66,35 @@ class CorpusRecordingLaneTest {
     static final int INVOCATIONS = 40;
 
     private static final Map<String, String> PAYLOAD = Map.of("key", "value");
+
+    /** The bytes both crypto pairs feed their instance, so the two rows differ only in sharing. */
+    private static final byte[] PAYLOAD_BYTES = "corpus".getBytes(StandardCharsets.UTF_8);
+
+    /** The HMAC key, fixed so the confined and shared rows build identical instances. */
+    private static final byte[] HMAC_KEY = "corpus-key".getBytes(StandardCharsets.UTF_8);
+
+    /** One SHA-256 for the whole run, used with nothing held: the loud digest row. */
+    private static MessageDigest sharedDigest;
+
+    /** The same sharing with every access inside synchronized (guardedDigest): the silent row. */
+    private static MessageDigest guardedDigest;
+
+    /** One HmacSHA256 for the whole run: the loud crypto row. */
+    private static Mac sharedMac;
+
+    /** A Mac per thread, so no instance is ever recorded from two: the silent crypto row. */
+    private static final ThreadLocal<Mac> CONFINED_MAC = ThreadLocal.withInitial(
+            CorpusRecordingLaneTest::newMac);
+
+    /**
+     * Holds every buffer the leak row deliberately does not release.
+     *
+     * <p>Netty reclaims an unreleased unpooled heap buffer through the collector, and a
+     * collected buffer could hand its identity hash to a later one, which is the key the
+     * detector tracks instances by. Keeping a strong reference makes each leaked instance a
+     * distinct row for the whole run, so the count the gate reads is the count the body made.
+     */
+    private static final List<ByteBuf> LEAKED = Collections.synchronizedList(new ArrayList<>());
 
     /** Configured once and never again: the pattern Jackson's own javadoc asks for. */
     private final ObjectMapper configuredMapper =
@@ -91,8 +131,12 @@ class CorpusRecordingLaneTest {
     private static Connection hoisted;
 
     @BeforeAll
-    static void installRecorder() throws SQLException {
+    static void installRecorder() throws SQLException, NoSuchAlgorithmException {
         CorpusRecorder.install();
+
+        sharedDigest = MessageDigest.getInstance("SHA-256");
+        guardedDigest = MessageDigest.getInstance("SHA-256");
+        sharedMac = newMac();
 
         HikariConfig config = new HikariConfig();
         config.setDataSource(new StubDataSource());
@@ -298,5 +342,161 @@ class CorpusRecordingLaneTest {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.jdbcConnectionSharedDetector()
                 .recordAccess(hoisted, "hoisted-conn", Thread.currentThread());
+    }
+
+    // --- SharedMessageDigest -----------------------------------------------------------------
+
+    /**
+     * One SHA-256 instance, six threads, nothing held while it is used.
+     *
+     * <p>The detector fires when one JCA instance is recorded from more than one thread with no
+     * lock held across every access. Six threads on a barrier meet both halves by construction,
+     * so the finding is owed by the recorded calls rather than by an interleaving. The subject is
+     * the JDK's own {@code MessageDigest}, whose class javadoc states that instances are not
+     * safe for use by multiple threads without external synchronization.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_messageDigest_sharedAcrossThreads() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.sharedMessageDigestDetector()
+                .recordAccess(sharedDigest, "shared-sha256", Thread.currentThread());
+        toleratingCorruption(() -> sharedDigest.update(PAYLOAD_BYTES));
+    }
+
+    /**
+     * The same instance, the same six threads, and the external synchronization the javadoc asks
+     * for.
+     *
+     * <p>The evidence handed to the detector is identical in every respect but one: every access
+     * happens while this thread holds the digest's own monitor, which
+     * {@code SelfGuard.TrackedInstance} sees through {@code Thread.holdsLock} without any agent
+     * attached. That leaves a non-empty candidate lock set across every recorded access, so the
+     * multi-thread half of the rule is met and the unguarded half is not. A detector that fires
+     * here is telling someone who fixed their race that it is still broken.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_messageDigest_guardedByItsOwnMonitor() {
+        CorpusRecorder.countBodyExecution();
+        synchronized (guardedDigest) {
+            AsyncTestContext.sharedMessageDigestDetector()
+                    .recordAccess(guardedDigest, "guarded-sha256", Thread.currentThread());
+            guardedDigest.update(PAYLOAD_BYTES);
+        }
+    }
+
+    // --- SharedStatefulCrypto ----------------------------------------------------------------
+
+    /**
+     * One HmacSHA256 shared by every thread: the running MAC state is one object's field.
+     *
+     * <p>The loud half of a pair that differs by confinement rather than by locking, so between
+     * the two crypto pairs both documented fixes are covered. {@code Mac} is stateful across
+     * {@code update} and {@code doFinal}, and its javadoc makes no thread-safety promise.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_mac_sharedAcrossThreads() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.sharedStatefulCryptoDetector()
+                .recordAccess(sharedMac, "shared-hmac", Thread.currentThread());
+        toleratingCorruption(() -> sharedMac.update(PAYLOAD_BYTES));
+    }
+
+    /**
+     * A {@code Mac} per thread, which is what confinement looks like in the access stream.
+     *
+     * <p>Same class, same calls, same number of recordings; the only difference is that no
+     * instance is ever recorded from a second thread, so the rule's first clause is never met.
+     * This is the direction that catches a detector keyed on the class rather than on the
+     * instance: one keyed on {@code Mac} would report six correct threads as a race.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_mac_confinedToOneThreadEach() {
+        CorpusRecorder.countBodyExecution();
+        Mac mine = CONFINED_MAC.get();
+        AsyncTestContext.sharedStatefulCryptoDetector()
+                .recordAccess(mine, "confined-hmac", Thread.currentThread());
+        mine.update(PAYLOAD_BYTES);
+    }
+
+    // --- ResourceLeak ------------------------------------------------------------------------
+
+    /**
+     * A Netty buffer acquired and released inside the same body execution.
+     *
+     * <p>The detector reports an instance whose opens outnumber its closes, or one still open
+     * when the run is analysed. A fresh buffer per execution, released before the body returns,
+     * gives every tracked instance exactly one open and one close and leaves none open, which is
+     * a structural claim rather than a timing one: no other thread ever touches this buffer, so
+     * no interleaving can change either count.
+     *
+     * <p>Per execution rather than one shared buffer on purpose. A single shared instance would
+     * have its {@code currentlyOpen} flag set by whichever thread wrote last, and a run that
+     * happened to end on an acquire would report a still-open resource on correct code. That
+     * would be a flaky row, which is worse than an absent one.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_nettyByteBuf_releasedAfterUse() {
+        CorpusRecorder.countBodyExecution();
+        ByteBuf buffer = Unpooled.buffer(16);
+        AsyncTestContext.resourceLeakDetector()
+                .registerResource(buffer, "released-bytebuf", "ByteBuf");
+        AsyncTestContext.resourceLeakDetector().recordResourceOpened(buffer, "released-bytebuf");
+        buffer.writeInt(1);
+        buffer.release();
+        AsyncTestContext.resourceLeakDetector().recordResourceClosed(buffer, "released-bytebuf");
+    }
+
+    /**
+     * The same buffer lifecycle with the release left out: Netty's canonical leak.
+     *
+     * <p>Identical recorded calls minus the close, which is precisely the thing the detector is
+     * supposed to notice. {@code ByteBuf} is reference counted and the caller owns the release;
+     * an unreleased buffer is a leak whatever else the program does, so the finding follows from
+     * the counts rather than from a race. The buffers are unpooled and heap-backed, so what
+     * leaks here is reclaimed by the collector rather than by an allocator.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_nettyByteBuf_neverReleased() {
+        CorpusRecorder.countBodyExecution();
+        ByteBuf buffer = Unpooled.buffer(16);
+        AsyncTestContext.resourceLeakDetector()
+                .registerResource(buffer, "leaked-bytebuf", "ByteBuf");
+        AsyncTestContext.resourceLeakDetector().recordResourceOpened(buffer, "leaked-bytebuf");
+        buffer.writeInt(1);
+        LEAKED.add(buffer);
+    }
+
+    /**
+     * Runs a racy operation on an unmodified JDK instance without failing the run.
+     *
+     * <p>The same trade {@code CorpusEvalTest.unsafeOperation} makes, and for the same reason:
+     * corrupting a {@code MessageDigest} or a {@code Mac} from six threads can surface as a
+     * thrown exception out of the JDK's own buffer arithmetic rather than as a detector finding,
+     * and that outcome is part of what the eval measures. The {@code record*} call is
+     * deliberately outside this, so the expectation stays a function of the recorded calls even
+     * on a run where the subject threw.
+     */
+    /**
+     * {@return a fresh HmacSHA256 initialised with the shared key}
+     *
+     * <p>Both crypto rows build their instances the same way, so the only difference the
+     * detector can see between them is how many threads reach one instance.
+     */
+    private static Mac newMac() {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(HMAC_KEY, "HmacSHA256"));
+            return mac;
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            throw new IllegalStateException("HmacSHA256 is a required JDK algorithm", e);
+        }
+    }
+
+    private static void toleratingCorruption(Runnable operation) {
+        try {
+            operation.run();
+        } catch (RuntimeException thrown) {
+            CorpusRecorder.recordCrash(thrown);
+        }
     }
 }

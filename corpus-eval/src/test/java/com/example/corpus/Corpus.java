@@ -28,6 +28,15 @@ final class Corpus {
     private static final String SPRING = "spring-core:7.0.9";
     private static final String HIKARI = "HikariCP:7.0.2";
 
+    /**
+     * The platform itself, for subjects that ship with it.
+     *
+     * <p>Read from {@link Runtime#version()} rather than written down. Every other constant here
+     * is a literal that has to be re-pinned when the pom moves, and one of them silently did not;
+     * the JDK is the one library whose version this module can simply ask for, so it does.
+     */
+    private static final String JDK = "jdk:" + Runtime.version().feature();
+
     private static final List<Subject> SUBJECTS = List.of(
 
             // --- Documented NOT thread-safe: sharing one instance across threads is a real defect.
@@ -358,7 +367,69 @@ final class Corpus {
                     "one connection is checked out once and then used by every thread without "
                             + "ever being released, which is the bug a pool exists to prevent. "
                             + "The pool is correct and the caller defeated it, so the finding is "
-                            + "owed however thread-safe HikariDataSource itself is")
+                            + "owed however thread-safe HikariDataSource itself is"),
+
+            // --- SharedMessageDigest: the pair differs by a lock, not by an instance. Both rows
+            //     share one digest with six threads; only one of them holds its monitor.
+
+            new RecordingSubject("recorded_messageDigest_sharedAcrossThreads", JDK,
+                    "java.security.MessageDigest",
+                    DetectorType.SHARED_MESSAGE_DIGEST, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one SHA-256 instance is recorded from six threads with nothing held, which "
+                            + "is both halves of the detector's rule met by construction. The "
+                            + "JDK's own javadoc says a MessageDigest is not safe for use by "
+                            + "multiple threads without external synchronization"),
+
+            new RecordingSubject("recorded_messageDigest_guardedByItsOwnMonitor", JDK,
+                    "java.security.MessageDigest",
+                    DetectorType.SHARED_MESSAGE_DIGEST, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same instance and the same six threads, with every access inside "
+                            + "synchronized on the digest itself. That is the external "
+                            + "synchronization the javadoc asks for, and Thread.holdsLock sees it "
+                            + "with no agent attached, so the candidate lock set never empties"),
+
+            // --- SharedStatefulCrypto: the same question answered by confinement instead, so
+            //     between the two crypto pairs both documented fixes have a row.
+
+            new RecordingSubject("recorded_mac_sharedAcrossThreads", JDK,
+                    "javax.crypto.Mac",
+                    DetectorType.SHARED_STATEFUL_CRYPTO, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one HmacSHA256 carries its running state in one object's fields and is "
+                            + "recorded from six threads with nothing held. Mac's javadoc makes "
+                            + "no thread-safety promise, and interleaved update() calls corrupt "
+                            + "the MAC rather than failing loudly"),
+
+            new RecordingSubject("recorded_mac_confinedToOneThreadEach", JDK,
+                    "javax.crypto.Mac",
+                    DetectorType.SHARED_STATEFUL_CRYPTO, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a Mac per thread, built the same way and recorded the same number of times. "
+                            + "No instance is ever recorded from a second thread, so the rule's "
+                            + "first clause is never met; a detector keyed on the class rather "
+                            + "than the instance would report six correct threads as a race"),
+
+            // --- ResourceLeak: reference counting, where the caller owns the release. The pair
+            //     differs by exactly the call the detector is looking for.
+
+            new RecordingSubject("recorded_nettyByteBuf_releasedAfterUse", NETTY,
+                    "io.netty.buffer.ByteBuf",
+                    DetectorType.RESOURCE_LEAKS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a fresh buffer per body execution, acquired and released before the body "
+                            + "returns, so every tracked instance has one open, one close and is "
+                            + "not open at analysis. No other thread touches it, so no "
+                            + "interleaving can move either count"),
+
+            new RecordingSubject("recorded_nettyByteBuf_neverReleased", NETTY,
+                    "io.netty.buffer.ByteBuf",
+                    DetectorType.RESOURCE_LEAKS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the identical lifecycle with the release left out. A ByteBuf is reference "
+                            + "counted and the caller owns the release, so opens outnumbering "
+                            + "closes is a leak whatever the schedule did")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()
