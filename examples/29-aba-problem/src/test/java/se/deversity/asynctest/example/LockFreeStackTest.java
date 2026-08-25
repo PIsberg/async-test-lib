@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.ABAProblemDetector;
 import se.deversity.asynctest.example.service.LockFreeStack;
@@ -28,19 +29,31 @@ import static org.junit.jupiter.api.Assertions.*;
  * CAS-swaps head from A to head.next. If another thread pops A, pops B,
  * then pushes A back before the first thread's CAS executes:
  *   - The first thread's CAS sees head == A (matches expected) — succeeds
- *   - But A.next now points to a stale or recycled node
- *   - The stack silently loses elements or links to freed memory
+ *   - But A.next now points somewhere else entirely
+ *   - The stack silently loses elements
+ *
+ * WHY THE FREE LIST MATTERS:
+ * A stack that allocates a fresh node on every push cannot produce ABA in Java.
+ * The popped node is garbage and the next push returns a reference that has
+ * never been head, so the stale CAS fails and retries, which is correct. ABA
+ * needs the same node back, and the usual reason it comes back is an
+ * allocation-avoidance pool. LockFreeStack has one, and
+ * testPop_recyclesTheNode_soPushHandsTheSameOneBack pins that it works.
  *
  * WHY @Test PASSES:
- * Single-threaded tests never interleave push/pop operations, so the ABA
- * cycle (A → B → A) never occurs. Functional correctness is unaffected.
+ * Single-threaded tests never interleave push/pop across threads, so no thread
+ * is holding a stale head across a cycle. Functional correctness is unaffected.
  *
  * WHY @AsyncTest DETECTS THE ISSUE:
- * ABAProblemDetector tracks value-change history and detects A → B → A cycles,
- * plus CAS operations that succeeded despite such a cycle having occurred.
+ * ABAProblemDetector is recording-fed: it tracks the value history it is handed
+ * and looks for A → B → A cycles, plus CAS operations that succeeded despite
+ * one. LockFreeStack.observeHead reports each successful head CAS from inside
+ * push() and pop(), so the history is the stack's own, not a script.
  *
- * DETECTORS TRIGGERED:
- * ABAProblemDetector — standalone, instantiated directly in the test.
+ * DETECTOR ENABLED HERE:
+ * ABAProblemDetector — a head that returned to a reference it just left. It is
+ * the only one this demonstration switches on, so it is the only one that can
+ * report.
  *
  * FIX:
  * Replace AtomicReference with AtomicStampedReference. Each CAS compares
@@ -50,12 +63,70 @@ import static org.junit.jupiter.api.Assertions.*;
 class LockFreeStackTest {
 
     private LockFreeStack<String> stack;
-    private final ABAProblemDetector detector = new ABAProblemDetector();
 
     @BeforeEach
     void setUp() {
         stack = new LockFreeStack<>();
-        detector.reset();
+    }
+
+    /**
+     * The detector's positive direction, driven by the real stack: a push followed by a pop
+     * takes the head from A to B and back to A, which is the cycle it looks for.
+     */
+    @Test
+    void testPushThenPop_headReturnsToItsPreviousNode_reports() {
+        ABAProblemDetector detector = new ABAProblemDetector();
+        stack.push("bottom");
+        stack.observeHead(
+                (from, to) -> detector.recordValueChange("head", from, to),
+                (expected, updated) ->
+                        detector.recordCASAttempt("head", expected, updated, true, expected));
+
+        stack.push("top");
+        stack.pop();
+
+        assertFalse(detector.analyzeABA().variablesWithCycles.isEmpty(),
+                "head went A to B and back to A, which is the cycle");
+    }
+
+    /**
+     * And the other direction: a head that only ever moves forward has no cycle to report.
+     */
+    @Test
+    void testPushesOnly_headNeverReturns_isSilent() {
+        ABAProblemDetector detector = new ABAProblemDetector();
+        stack.observeHead(
+                (from, to) -> detector.recordValueChange("head", from, to),
+                (expected, updated) ->
+                        detector.recordCASAttempt("head", expected, updated, true, expected));
+
+        stack.push("a");
+        stack.push("b");
+        stack.push("c");
+
+        assertFalse(detector.analyzeABA().hasIssues(),
+                "a head that only moves forward is not an ABA cycle");
+    }
+
+    /**
+     * The free list is the reason ABA is reachable here at all, so it is worth pinning: a
+     * popped node really does come back on the next push.
+     */
+    @Test
+    void testPop_recyclesTheNode_soPushHandsTheSameOneBack() {
+        stack.push("first");
+
+        Object[] popped = new Object[1];
+        stack.observeHead((from, to) -> { }, (expected, updated) -> popped[0] = expected);
+        stack.pop();
+
+        Object[] pushedHead = new Object[1];
+        stack.observeHead((from, to) -> pushedHead[0] = to, (expected, updated) -> { });
+        stack.push("second");
+
+        assertNotNull(popped[0], "the pop reported the node it removed");
+        assertSame(popped[0], pushedHead[0],
+                "the node popped came back off the free list, which is what makes ABA possible");
     }
 
     // -------------------------------------------------------------------------
@@ -112,24 +183,23 @@ class LockFreeStackTest {
      * 3. Fix: use AtomicStampedReference<Node<T>> instead of AtomicReference
      */
     @Disabled("Remove @Disabled to see ABA problem detected by ABAProblemDetector")
-    @AsyncTest(threads = 4, invocations = 50, failOn = FailOn.LOW)
+    @AsyncTest(threads = 4, invocations = 20, detectAll = false,
+            detectABAProblem = true, failOn = FailOn.LOW)
     void testPop_concurrent_detectsABAProblem() {
-        // Simulate the A → B → A cycle on the "head" variable:
-        // Step 1: head is NodeX (value "task-A")
-        detector.recordValueChange("head", null, "task-A");
-        // Step 2: head changes to NodeY (task-A popped, task-B pushed)
-        detector.recordValueChange("head", "task-A", "task-B");
-        // Step 3: head changes back to NodeX (task-B popped, task-A re-pushed)
-        detector.recordValueChange("head", "task-B", "task-A");
+        // This demonstration used to write out three recordValueChange calls and one
+        // recordCASAttempt by hand, into a locally constructed detector, and assert on the
+        // result. LockFreeStack was never touched, and the detector detectABAProblem creates
+        // received nothing, so failOn had no finding to gate on. See issue #346.
+        ABAProblemDetector detector = AsyncTestContext.abaProblemDetector();
+        stack.observeHead(
+                (from, to) -> detector.recordValueChange("head", from, to),
+                (expected, updated) ->
+                        detector.recordCASAttempt("head", expected, updated, true, expected));
 
-        // Thread A's CAS: expected=task-A, new=null (A.next was null originally)
-        // This succeeds because head == task-A — but the structure is now corrupt
-        boolean casSucceeded = true; // in real code, CAS returns true here
-        detector.recordCASAttempt("head", "task-A", null, casSucceeded, "task-A");
-
-        ABAProblemDetector.ABAReport report = detector.analyzeABA();
-        assertTrue(report.hasIssues(),
-            "Expected ABA problem to be detected.\n" + report);
+        // Four threads pushing and popping the same shared stack. Nodes come back off the free
+        // list, so the head really does return to a reference it held a moment ago.
+        stack.push("task-" + Thread.currentThread().threadId());
+        stack.pop();
     }
 
     /**
