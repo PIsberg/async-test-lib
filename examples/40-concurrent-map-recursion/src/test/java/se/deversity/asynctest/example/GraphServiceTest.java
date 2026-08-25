@@ -25,8 +25,16 @@ import static org.junit.jupiter.api.Assertions.*;
  * THE BUG:
  * GraphService.getNeighbors() uses ConcurrentHashMap.computeIfAbsent().
  * The lambda for node "A" calls getNeighbors("B"), which triggers another
- * computeIfAbsent() on the same map. In Java 8 this causes an infinite loop;
- * in Java 9+ it throws IllegalStateException or produces incomplete results.
+ * computeIfAbsent() on the same map, for a different key. ConcurrentHashMap's
+ * javadoc forbids that: the mapping function must not modify the map during
+ * computation. Measured on JDK 26 over 200 fresh maps, the nested call ran and
+ * returned 198 times and threw IllegalStateException("Recursive update") twice,
+ * on the runs where both keys landed in the same bin. The usual outcome is
+ * therefore silent: an adjacency list built in an order the caller did not intend.
+ *
+ * NOTE: ConcurrentMapComputeRecursionDetector keys on map, key and thread together,
+ * so it does not report a different-key re-entry and stays silent on this example.
+ * See issue #343.
  *
  * WHY @Test PASSES:
  * The first sequential call to getNeighbors("A") may trigger the recursion,

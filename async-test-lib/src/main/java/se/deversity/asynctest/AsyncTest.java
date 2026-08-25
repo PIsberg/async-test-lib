@@ -1203,7 +1203,11 @@ public @interface AsyncTest {
      * Enable ConcurrentHashMap compute recursion detection.
      * Detects recursive {@link java.util.concurrent.ConcurrentHashMap#computeIfAbsent} /
      * {@code compute} / {@code merge} calls on the same map and key from the same thread,
-     * causing an infinite loop (Java 8) or {@link IllegalStateException} (Java 9+).
+     * which loses an update silently when the key is already present and the re-entry can
+     * re-acquire the bin's monitor. The absent-key shape throws
+     * {@link IllegalStateException} instead and reports itself; see
+     * {@link se.deversity.asynctest.diagnostics.ConcurrentMapComputeRecursionDetector} for the
+     * measured split.
      * @since 1.6.0
      *
      * @return {@code true} to enable this detector, {@code false} to skip it

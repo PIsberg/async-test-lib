@@ -429,7 +429,53 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the identical lifecycle with the release left out. A ByteBuf is reference "
                             + "counted and the caller owns the release, so opens outnumbering "
-                            + "closes is a leak whatever the schedule did")
+                            + "closes is a leak whatever the schedule did"),
+
+            // --- ConcurrentMapComputeRecursion: the pair differs by whether the mapping function
+            //     touches its own map. Reaching this one at all took a measurement (#341).
+            //
+            //     A nested computeIfAbsent on an ABSENT key never reaches the inner mapping
+            //     function: ConcurrentHashMap parks a reservation node in the bin and throws
+            //     IllegalStateException("Recursive update") first, so the second
+            //     recordComputeStart could only ever be written by hand at the call site. On a
+            //     key that is PRESENT the bin holds a real node, the re-entry re-acquires its
+            //     monitor, and a monitor is reentrant: the nested call completes and the outer
+            //     return value silently overwrites what it stored. That is the shape below, and
+            //     it is the one shape of the three the platform does not report by itself.
+            //
+            //     Measured on JDK 26 before these rows were written, same-key re-entry:
+            //       ConcurrentHashMap          computeIfAbsent/compute  ISE, inner never ran
+            //       ConcurrentHashMap          merge (present key)      inner ran, returned
+            //       Caffeine asMap             computeIfAbsent/compute  ISE, inner never ran
+            //       Caffeine asMap             merge (present key)      inner ran, returned
+            //       ConcurrentSkipListMap      all three                inner ran, returned
+            //       ConcurrentReferenceHashMap all three                inner ran, returned
+            //       Guava Cache.asMap          all three                deadlocked, never returned
+            //     and at this lane's own shape, 240 of 240 nested mapping functions ran with no
+            //     exception thrown.
+
+            new RecordingSubject("recorded_caffeineAsMap_recursiveMerge", CAFFEINE,
+                    "com.github.benmanes.caffeine.cache.Cache",
+                    DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the remapping function merges the same key on the same map, and because the "
+                            + "key is present the re-entry re-acquires a reentrant monitor rather "
+                            + "than hitting a reservation node. Both recordComputeStart calls are "
+                            + "therefore raised from inside a mapping function that really ran, "
+                            + "which is what the detector's contract asks for. The class is "
+                            + "thread-safe and the caller is still wrong: the nested update is "
+                            + "overwritten by the outer one and lost with nothing thrown"),
+
+            new RecordingSubject("recorded_caffeineAsMap_selfContainedMerge", CAFFEINE,
+                    "com.github.benmanes.caffeine.cache.Cache",
+                    DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same merge, recorded the same way, with a remapping function that stays "
+                            + "out of the map. One start per body execution, each closed by its "
+                            + "end, so the slot is never occupied twice. Six threads merging the "
+                            + "same key at once is contention, not recursion, and a detector "
+                            + "keyed on the map alone rather than on map, key and thread would "
+                            + "report it")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()
