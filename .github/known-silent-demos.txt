@@ -1,0 +1,21 @@
+# Demonstrations that pass when enabled, and are known to.
+#
+# example-demos.yml fails when a @Disabled example demonstration PASSES in every run, because
+# its @Disabled reason tells a reader to remove @Disabled to see a detection. The entries below
+# are the ones that do that today, measured over three full reactor runs on 2026-08-26. They are
+# listed here rather than tolerated silently: a job whose failures are all expected gets ignored
+# within a month, and a job with no record of what it is ignoring is worse.
+#
+# Adding a line here is the escalation path, and it needs a reason and an issue. Removing one is
+# the goal. A line whose demonstration starts firing again is reported as a warning, not a
+# failure - these are timing-dependent, so one green week is not proof.
+#
+# Format: <class-fqn>#<method>   # why
+#
+# Tracked in #362.
+
+se.deversity.asynctest.example.PerformanceCountersTest#testRecordRequest_concurrent_detectsFalseSharing   # FalseSharingDetector is behind an experimental gate and is silent unless -Dasync-test.experimental.false-sharing=true, which the examples do not set. Structural, not timing.
+se.deversity.asynctest.example.PoliteRetryLockServiceTest#testAcquireLock_concurrent_detectsLivelock       # timing-dependent: fired in 1 of 3 runs in the 2026-08-25 audit, 0 of 3 on 2026-08-26.
+se.deversity.asynctest.example.TryLockMisuseTest#test_concurrent_detectsTryLockMisuse                      # timing-dependent: fired in 1 of 3 runs in the 2026-08-25 audit, 0 of 3 on 2026-08-26.
+se.deversity.asynctest.example.LegacyServiceTest#test_concurrent_detectsPinning                            # timing-dependent, and JDK-dependent: carrier pinning under synchronized is not reproducible on every JVM.
+se.deversity.asynctest.example.VirtualWorkerServiceTest#test_concurrent_detectsCarrierExhaustion           # timing-dependent, and machine-dependent: exhaustion needs more blocked carriers than this runner has cores.

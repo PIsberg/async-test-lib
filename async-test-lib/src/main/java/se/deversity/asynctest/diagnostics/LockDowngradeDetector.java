@@ -49,7 +49,7 @@ import java.util.concurrent.locks.ReadWriteLock;
  * {@code Violation} for it, so a run with both detectors enabled and both fed reports the upgrade
  * twice. Keeping it here is deliberate: a caller who instruments only this detector would
  * otherwise silently lose the finding. Merging the two is an API change — {@code DetectorType}
- * is locked — and is tracked separately.
+ * is locked — and is tracked in issue #361.
  *
  * <h2>Correct downgrade pattern (not flagged)</h2>
  * <ol>

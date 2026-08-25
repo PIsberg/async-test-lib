@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A weekly job runs the disabled example demonstrations, which nothing did.** Each one says, in
+  its `@Disabled` reason, "Remove @Disabled to see X detected by YDetector", and that sentence was
+  unchecked: an audit on 2026-08-25 enabled all 97 by hand and 72 passed. `ExampleDisabledDemoTest`
+  closed the static half - every disabled `@AsyncTest` sets `failOn`, so it *can* fail - but all 27
+  in #346 passed that check while reporting nothing.
+
+  `example-demos.yml` enables every demonstration without editing a file, using JUnit's own
+  `junit.jupiter.conditions.deactivate`, runs the examples reactor three times, and
+  `.github/scripts/disabled_demo_report.py` sorts every demonstration by what happened to it. The
+  inversion is the design: **a demonstration that passes is the finding**, which is why it cannot
+  live in the examples pipeline, which asserts the opposite. Three runs, because a few
+  demonstrations are inherently probabilistic and three was the minimum that separated "never
+  fires" from "fires sometimes"; only a demonstration that passes in *every* run fails the job.
+
+  Measured over three full runs on 2026-08-26: 69 fired every run, 5 passed every run, 2 passed in
+  some runs, 21 failed for a reason other than their detector's finding, 0 never ran. All 27 from
+  #346 are in the first group. The 5 are recorded in `.github/known-silent-demos.txt` with a reason
+  each and tracked in #362, printed with their count on every run so the debt stays visible in a
+  green job's log rather than in nobody's head; the 21 are #363. The script carries a
+  `--self-test` the workflow runs first, because a job whose entire output is "nothing passed" is
+  worthless if its parser has quietly stopped matching (#359).
+
 - **`LockDowngradeDetector` detects the unsafe downgrade, which is what its name promised and
   nothing did.** It reported read-to-write upgrades only — the condition
   `LockUpgradeDeadlockDetector` already covers — and its own javadoc listed the correct downgrade
