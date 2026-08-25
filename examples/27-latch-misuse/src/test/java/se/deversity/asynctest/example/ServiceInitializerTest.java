@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -106,14 +107,22 @@ class ServiceInitializerTest {
     /**
      * The detector's positive direction, driven by the real service: three services, one of
      * them failing, four countDown() calls on a latch built for three.
+     *
+     * <p>The wait matters. initialize() returns as soon as the latch reaches zero, which is
+     * after three calls; the fourth is the bug and lands a moment later, on a pool thread. That
+     * gap is the defect, not a test artefact, so the test waits for the call it is asserting
+     * about rather than assuming it has already happened.
      */
     @Test
     void testInitialize_realRun_recordsExtraCountDown() throws Exception {
         LatchMisuseDetector detector = new LatchMisuseDetector();
-        wire(detector);
+        CountDownLatch fourCalls = new CountDownLatch(4);
+        wire(detector, fourCalls);
 
         initializer.initialize(3);
 
+        assertTrue(fourCalls.await(5, TimeUnit.SECONDS),
+                "expected 4 countDown() calls: three services, one of which counts twice");
         assertFalse(detector.analyze().extraCountDowns.isEmpty(),
                 "a failing service counts down twice, so the latch gets 4 calls for a count of 3");
     }
@@ -125,18 +134,24 @@ class ServiceInitializerTest {
     @Test
     void testInitializeFixed_realRun_isSilent() throws Exception {
         LatchMisuseDetector detector = new LatchMisuseDetector();
-        wire(detector);
+        CountDownLatch threeCalls = new CountDownLatch(3);
+        wire(detector, threeCalls);
 
         initializer.initializeFixed(3);
 
+        assertTrue(threeCalls.await(5, TimeUnit.SECONDS),
+                "expected exactly one countDown() per service");
         assertFalse(detector.analyze().hasIssues(),
                 "exactly one countDown() per task is correct use, not a finding");
     }
 
-    private void wire(LatchMisuseDetector detector) {
+    private void wire(LatchMisuseDetector detector, CountDownLatch calls) {
         initializer.observeLatch(
                 (latch, count) -> detector.registerLatch(latch, "service-startup-latch", count),
-                detector::recordCountDown,
+                latch -> {
+                    detector.recordCountDown(latch);
+                    calls.countDown();
+                },
                 detector::recordAwait);
     }
 
