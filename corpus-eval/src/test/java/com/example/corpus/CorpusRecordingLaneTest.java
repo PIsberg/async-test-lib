@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import org.apache.commons.collections4.map.LRUMap;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -13,9 +15,16 @@ import org.springframework.util.ConcurrentReferenceHashMap;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
@@ -68,20 +77,85 @@ class CorpusRecordingLaneTest {
     private final ConcurrentReferenceHashMap<String, String> referenceMap =
             new ConcurrentReferenceHashMap<>();
 
+    /**
+     * A pool of exactly one, so every thread in the run gets the same physical connection.
+     *
+     * <p>Sized deliberately. A pool as large as the thread count would give each thread its own
+     * connection and the row would prove nothing; one connection makes the reuse across threads
+     * the thing being measured. Nothing blocks on I/O - the connections are inert - so waiting
+     * for a checkout costs nothing and the result does not depend on how fast the runner is.
+     */
+    private static HikariDataSource pool;
+
+    /** Checked out once and never returned: the hoisted handle the second row shares. */
+    private static Connection hoisted;
+
     @BeforeAll
-    static void installRecorder() {
+    static void installRecorder() throws SQLException {
         CorpusRecorder.install();
+
+        HikariConfig config = new HikariConfig();
+        config.setDataSource(new StubDataSource());
+        config.setMaximumPoolSize(1);
+        config.setMinimumIdle(1);
+        config.setPoolName("corpus-pool");
+        pool = new HikariDataSource(config);
+
+        HikariConfig hoistedConfig = new HikariConfig();
+        hoistedConfig.setDataSource(new StubDataSource());
+        hoistedConfig.setMaximumPoolSize(1);
+        hoistedConfig.setPoolName("corpus-hoisted-pool");
+        hoistedPool = new HikariDataSource(hoistedConfig);
+        hoisted = hoistedPool.getConnection().unwrap(Connection.class);
     }
+
+    /** Kept so the hoisted connection's own pool can be closed with it. */
+    private static HikariDataSource hoistedPool;
+
+    /**
+     * The premise the pooled row's silence depends on, measured rather than assumed.
+     *
+     * <p>A MUST_STAY_SILENT row is only evidence if the detector had something to be silent
+     * about. If the pool had handed each thread its own connection, or if only one thread had
+     * ever touched it, the detector would short-circuit before reaching the rule under test and
+     * the row would pass for the wrong reason. These two record what actually happened, and
+     * {@link #thePooledRowsPremiseHeld()} refuses the result if it did not.
+     */
+    private static final Set<Integer> PHYSICAL_CONNECTIONS = ConcurrentHashMap.newKeySet();
+
+    private static final Set<Long> THREADS_THAT_USED_THE_POOL = ConcurrentHashMap.newKeySet();
 
     @AfterAll
     static void reportAndGate() {
         CorpusRecorder.uninstall();
+        thePooledRowsPremiseHeld();
+        pool.close();
+        hoistedPool.close();
         CorpusLane lane = CorpusLane.current();
         Path report = CorpusReport.writeRecording(
                 CorpusRecorder.findings(), THREADS, INVOCATIONS, lane);
         System.out.println("Corpus recording-lane report written to " + report.toAbsolutePath());
         System.out.println(CorpusReport.recordingSummary(CorpusRecorder.findings(), lane));
         CorpusGates.checkRecordingLane(CorpusRecorder.findings(), lane);
+    }
+
+    /**
+     * Refuses a pass the pooled row would not have earned.
+     *
+     * <p>Its claim is that one physical connection reached many threads and drew no finding. Both
+     * halves have to be true for the silence to mean anything: one connection, and more than one
+     * thread. Without this, a pool that quietly opened six connections would produce the same
+     * green result and the row would be measuring nothing.
+     */
+    private static void thePooledRowsPremiseHeld() {
+        assertEquals(1, PHYSICAL_CONNECTIONS.size(),
+                "the pool is sized to one so that every thread gets the same physical connection; "
+                        + "with more than one, the silent row proves nothing about reuse across "
+                        + "threads. Saw " + PHYSICAL_CONNECTIONS.size() + " distinct connections");
+        assertTrue(THREADS_THAT_USED_THE_POOL.size() > 1,
+                "that one connection has to reach more than one thread, or the detector "
+                        + "short-circuits before it reaches the rule under test and the silence "
+                        + "is not evidence. Saw " + THREADS_THAT_USED_THE_POOL.size() + " thread(s)");
     }
 
     // --- SharedJsonMapperReconfig ------------------------------------------------------------
@@ -178,5 +252,51 @@ class CorpusRecordingLaneTest {
     void recorded_caffeineAsMap_computeIfAbsent() {
         CorpusRecorder.countBodyExecution();
         caffeineAtomicCache.asMap().computeIfAbsent("key", key -> "computed");
+    }
+
+    // --- JdbcConnectionShared ----------------------------------------------------------------
+
+    /**
+     * The pool doing its job: one physical connection, many threads, one at a time.
+     *
+     * <p>The pool holds a single connection, so every thread in the run genuinely gets the same
+     * physical handle - which is the whole point. HikariCP will not hand a checked-out connection
+     * to a second thread, so no two ever hold it simultaneously, and the body says so by
+     * recording a release. That makes the silence structural: it follows from the pool's checkout
+     * discipline, not from how the threads happened to interleave.
+     *
+     * <p>The handle is unwrapped first because each checkout returns a fresh proxy. Recording
+     * those would make every checkout look like a different resource, and the reuse this row
+     * exists to measure would be invisible.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_hikariPool_checkoutPerThread() {
+        CorpusRecorder.countBodyExecution();
+        try (Connection pooled = pool.getConnection()) {
+            Connection physical = pooled.unwrap(Connection.class);
+            PHYSICAL_CONNECTIONS.add(System.identityHashCode(physical));
+            THREADS_THAT_USED_THE_POOL.add(Thread.currentThread().threadId());
+            AsyncTestContext.jdbcConnectionSharedDetector()
+                    .recordAccess(physical, "hikari-conn", Thread.currentThread());
+            AsyncTestContext.jdbcConnectionSharedDetector()
+                    .recordRelease(physical, Thread.currentThread());
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * The bug the pool exists to prevent: one connection hoisted out and shared.
+     *
+     * <p>Checked out once in {@code @BeforeAll} and never returned, so every thread uses the same
+     * handle at the same time. Nothing is released, so the detector keeps the stricter model and
+     * reports it. HikariDataSource is thread-safe and the caller defeated it, which is exactly the
+     * distinction this pair exists to draw.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_hoistedConnection_sharedAcrossThreads() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.jdbcConnectionSharedDetector()
+                .recordAccess(hoisted, "hoisted-conn", Thread.currentThread());
     }
 }

@@ -398,8 +398,8 @@ shape the settled single-check rule excuses.
 - **Forty-two classes from seven libraries is not an ecosystem study.** It bounds the
   false-positive rate at the tier that gates builds, over a stated denominator, and it does not
   support a claim about the JVM ecosystem.
-- **138 detectors of 146 are not measured here at all.** Their exposure in every lane is zero, so
-  this corpus says nothing about them in either direction. Three more are measured in the
+- **137 detectors of 146 are not measured here at all.** Their exposure in every lane is zero, so
+  this corpus says nothing about them in either direction. Four more are measured in the
   recording lane below, which is a different eval over a different denominator and is reported
   separately for that reason.
 - **A noise column of zero is a measurement, not a guarantee.** All twenty-two documented-safe
@@ -449,6 +449,7 @@ other.
 | Detector | Must fire | ...did | Must stay silent | ...did |
 |---|---:|---:|---:|---:|
 | `CacheConcurrencyDetector` | 1 | 1 | 1 | 1 |
+| `JdbcConnectionSharedDetector` | 1 | 1 | 1 | 1 |
 | `NonAtomicConcurrentMapUpdateDetector` | 1 | 1 | 1 | 1 |
 | `SharedJsonMapperReconfigDetector` | 1 | 1 | 1 | 1 |
 
@@ -461,9 +462,30 @@ not, and nothing compared the two. It now asks `ConcurrentMap`, plus the legacy 
 collections that keep the same promise by taking their own monitor. The twin still fires: a plain
 `HashMap` read and written from a cache position is what the detector is for.
 
-That is the argument for the lane in one line. Three detectors of 146 is not coverage; it is the
-first three rows of a table that had none, and it was enough to find a defect that had been
-shipping.
+**And it settled a question the corpus had been deferring.** `JdbcConnectionSharedDetector`
+reports a `Connection` reached from more than one thread, and a connection pool hands the same
+physical connection to different threads over its lifetime by design - so the pool, which is the
+fix the detector's own message recommends, drew a HIGH finding for working exactly as intended.
+That is why HikariCP was left out of the fourth wave of subjects: there was no way to tell the two
+apart, and a subject producing a finding that is neither a true positive nor noise belongs in
+neither column.
+
+The distinction the detector was missing is the one JDBC actually states: at most one thread *at a
+time*, not one thread ever. It now takes a release marker, `recordRelease(resource, thread)`, and
+when ownership is modelled it reports only threads that held the resource simultaneously. A caller
+that never records a release keeps the old behaviour exactly, because a test that never said when
+a thread let go has told the detector nothing about overlap, and the safe reading of that silence
+is the stricter one.
+
+The pair is sized so the silent half cannot pass for the wrong reason. The pool holds exactly one
+connection, so every thread in the run gets the same physical handle - and the lane asserts that
+premise rather than assuming it: one connection identity, more than one thread. Without that
+check, a pool that quietly opened six connections would produce the same green result while
+measuring nothing.
+
+That is the argument for the lane in one line. Four detectors of 146 is not coverage; it is the
+first four rows of a table that had none, and it was enough to find a defect that had been
+shipping and to settle a modelling question that had been open since the fourth wave.
 
 
 ## Reproducing it

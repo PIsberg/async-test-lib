@@ -26,6 +26,7 @@ final class Corpus {
     private static final String CAFFEINE = "caffeine:3.2.4";
     private static final String NETTY = "netty-buffer:4.2.17.Final";
     private static final String SPRING = "spring-core:7.0.9";
+    private static final String HIKARI = "HikariCP:7.0.2";
 
     private static final List<Subject> SUBJECTS = List.of(
 
@@ -335,7 +336,29 @@ final class Corpus {
                     DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "computeIfAbsent is the atomic primitive that fixes the row above, so the "
-                            + "body has no check-then-act to record and the detector has no input")
+                            + "body has no check-then-act to record and the detector has no input"),
+            // --- JdbcConnectionShared: a pool is the documented fix, and used to be reported
+            //     as the defect. Deferred from #302 until a recording lane existed, because
+            //     this detector is recording-fed and had an exposure of zero without one.
+
+            new RecordingSubject("recorded_hikariPool_checkoutPerThread", HIKARI,
+                    "com.zaxxer.hikari.HikariDataSource",
+                    DetectorType.JDBC_CONNECTION_SHARED, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the pool hands one physical connection to many threads over the run, one at "
+                            + "a time, and each body records its release. That is the per-thread "
+                            + "checkout the detector's own message recommends, and the silence is "
+                            + "guaranteed by HikariCP's checkout discipline rather than by "
+                            + "timing: a checked-out connection is not handed to a second thread"),
+
+            new RecordingSubject("recorded_hoistedConnection_sharedAcrossThreads", HIKARI,
+                    "com.zaxxer.hikari.HikariDataSource",
+                    DetectorType.JDBC_CONNECTION_SHARED, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one connection is checked out once and then used by every thread without "
+                            + "ever being released, which is the bug a pool exists to prevent. "
+                            + "The pool is correct and the caller defeated it, so the finding is "
+                            + "owed however thread-safe HikariDataSource itself is")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()

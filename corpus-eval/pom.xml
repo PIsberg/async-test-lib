@@ -27,6 +27,8 @@
         <caffeine.version>3.2.4</caffeine.version>
         <netty.version>4.2.17.Final</netty.version>
         <spring.version>7.0.9</spring.version>
+        <hikaricp.version>7.0.2</hikaricp.version>
+        <slf4j.version>2.0.17</slf4j.version>
         <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
         <maven-dependency-plugin.version>3.9.0</maven-dependency-plugin.version>
@@ -100,6 +102,25 @@
             <groupId>org.springframework</groupId>
             <artifactId>spring-core</artifactId>
             <version>${spring.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- A real connection pool, for the recording lane only. It is the one subject that
+             cannot be exercised without something to pool, which is why it is not in the two
+             unmodified lanes: those claim no line of the subject is ours, and a stub DataSource
+             would break that claim. The recording lane's body is ours by construction, and the
+             code deciding which thread holds which connection is still entirely HikariCP's. -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>${hikaricp.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- HikariCP logs through SLF4J and warns on every pool operation without a binding.
+             The no-op binding keeps the corpus output readable; nothing here asserts on logs. -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-nop</artifactId>
+            <version>${slf4j.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
