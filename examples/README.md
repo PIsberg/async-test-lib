@@ -71,7 +71,7 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 31 | [Lock Order Violation](31-lock-order-violation/) | `LockOrderValidator` | Transfer service acquires account locks in source-first order — two concurrent opposite transfers create a circular dependency | 🔴 Critical |
 | 32 | [RW Lock Starvation](32-rwlock-starvation/) | `ReadWriteLockMonitor` | Non-fair `ReentrantReadWriteLock(false)` lets readers cut ahead of waiting writers indefinitely — writes never complete | 🟡 High |
 | 33 | [1.5.0/1.6.0 Feature Tour](33-1.5.0-feature-tour/) | *(tour, not a bug)* | Runnable tour of the public API: `Preset`, `threadCounts`, `replaySeed`, `awaitAsync`, scoped listeners, `MarkdownFormatter` | 🟢 Low |
-| 34 | [Blocking Queue](34-blocking-queue/) | `BlockingQueueDetector` | `offer()` silently drops items when the bounded queue is full; `poll()` NPE on null return | 🟡 High |
+| 34 | [Blocking Queue](34-blocking-queue/) | `BlockingQueueDetector` | Fire-and-forget `offer()` holds a bounded queue at capacity and discards the rejected items; `poll()` NPE on null return | 🟡 High |
 | 35 | [Calendar Misuse](35-calendar-misuse/) | `CalendarDetector` | Shared `Calendar` instance mutated concurrently produces wrong date conversions | 🔴 Critical |
 | 36 | [Cache Concurrency](36-cache-concurrency/) | `CacheConcurrencyDetector` | Plain `HashMap` used as a concurrent cache causes data loss and `ConcurrentModificationException` | 🔴 Critical |
 | 37 | [CF Chain Issues](37-cf-chain/) | `CompletableFutureChainDetector` | Fire-and-forget `CompletableFuture` chains swallow exceptions silently | 🟡 High |
@@ -87,7 +87,7 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 47 | [Double-Checked Locking](47-double-checked-locking/) | `DoubleCheckedLockingDetector` | DCL without `volatile` — partially constructed singleton visible to other threads | 🔴 Critical |
 | 48 | [Exchanger Misuse](48-exchanger-misuse/) | `ExchangerDetector` | Odd-numbered callers leave one thread blocked in `exchange()` without a partner | 🟡 High |
 | 49 | [Executor Shutdown Leak](49-executor-shutdown/) | `ExecutorShutdownDetector` | `ExecutorService` created but `shutdown()` never called — threads leak per test run | 🟡 High |
-| 50 | [ForkJoin Pool Blocking](50-fork-join-pool/) | `ForkJoinPoolDetector` | Blocking I/O inside `ForkJoinPool.commonPool()` task starves work-stealing threads | 🟡 High |
+| 50 | [Fork Without Join](50-fork-join-pool/) | `ForkJoinPoolDetector` | A forked half is never joined, so a *sorted* list comes back missing elements and a task's exception is lost | 🟡 High |
 | 51 | [ForkJoin Task Blocking](51-fork-join-task-blocking/) | `ForkJoinTaskBlockingDetector` | `Thread.sleep()` inside `RecursiveTask.compute()` pins ForkJoin worker thread | 🟡 High |
 | 52 | [HTTP Client Concurrency](52-http-client-concurrency/) | `HttpClientConcurrencyDetector` | `HttpClient.newHttpClient()` per request wastes connections and bypasses pooling | 🟢 Low |
 | 53 | [InheritableThreadLocal Misuse](53-inheritable-thread-local/) | `InheritableThreadLocalMisuseDetector` | Thread pools inherit stale context from previous requests via `InheritableThreadLocal` | 🟡 High |
