@@ -348,6 +348,21 @@ public final class AsyncTestAgent {
                     .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                     .with(AgentBuilder.RedefinitionStrategy.BatchAllocator.ForFixedSize
                             .ofSize(RETRANSFORM_BATCH_SIZE))
+                    // Reiterating, not the default SinglePass, and the ordering of these two
+                    // calls is the builder's, not a preference: with(BatchAllocator) narrows to
+                    // the interface that declares with(DiscoveryStrategy).
+                    //
+                    // Byte Buddy's HYBRID description strategy describes an already-loaded class
+                    // by reflection, and reflection eagerly resolves every field and method
+                    // signature type - so describing a class here LOADS the types it names.
+                    // Those loads happen on this thread, inside the circularity lock doInstall
+                    // holds for the whole pass, and ExecutingTransformer returns NO_TRANSFORMATION
+                    // for them without calling any listener. SinglePass took its
+                    // getAllLoadedClasses() snapshot before they existed, so retransformation
+                    // never revisits them either: woven by nothing, with no error and no log
+                    // line anywhere. Reiterating re-queries the loaded set until it stops
+                    // growing, which is the pass that picks them up.
+                    .with(AgentBuilder.RedefinitionStrategy.DiscoveryStrategy.Reiterating.INSTANCE)
                     .with(new AgentBuilder.RedefinitionStrategy.Listener.Compound(
                             AgentBuilder.RedefinitionStrategy.Listener.BatchReallocator.splitting(),
                             new RetransformDiagnosticListener(options.debug())))
