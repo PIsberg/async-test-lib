@@ -46,6 +46,28 @@ mvn clean install
 
 Run locally without a license key with `-Dlicense.mock.mode=true`. CI activates mock mode by itself.
 
+**`.mvn/maven.config` sets the transfer-retry flag every invocation inherits.** On 2026-08-25 the
+Examples Reactor shard 1/4 failed on `Unresolveable build extension:
+central-publishing-maven-plugin` while the other three shards succeeded in the same run against the
+same pom. A build extension resolves before the reactor is read, so nothing in the build could
+recover from it. The knob that was missing is narrower than it looks: both transports already retry
+three times by default: `DEFAULT_HTTP_RETRY_HANDLER_COUNT` is `3` in `maven-resolver-api`, and
+`AbstractHttpClientWagon` reads `Integer.getInteger(key, 3)`. What both default to *off* is
+`retryHandler.requestSentEnabled`, which governs a request whose bytes already went out. Setting
+the count to 3 changes nothing; that flag is the fix.
+
+Both property families are set because Maven 3.9 resolves through
+`maven-resolver-transport-http`, which reads `aether.connector.http.*` and contains no reference
+to any `maven.wagon.*` key (`maven-core` 3.9.9 maps none across), while Maven 3.8 ships only the
+wagon transport and reads the other. Two traps in that file, both verified by running them:
+Maven 3.8 has **no comment syntax** there and aborts on a `#` line before the build starts, and a
+CRLF checkout appends a carriage return to the value, so `true` arrives as `true\r` and
+`Boolean.getBoolean` reads it as false. `.gitattributes` pins `.mvn/*.config` to `eol=lf`, and
+`MavenTransferRetryTest` fails on a comment, on a CR, and on a workflow step that invokes Maven
+after a `cd` or under `working-directory:`. Maven finds `.mvn` by walking up from the working
+directory, not from the `-f` argument, so `mvn -f examples/pom.xml` from the root still inherits
+it but a step that moves first does not.
+
 **CI builds on JDK 21, 25 and 26.** The JDK 26 static-analysis blocker is gone — `pmd.version` is
 now pinned to 7.26.0, which reports 0 `LooseCoupling` violations where 7.17.0 reported 243, and the
 test suite runs on 26 in `tests.yml` and the e2e consumer fixture. See
