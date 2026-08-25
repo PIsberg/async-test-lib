@@ -89,7 +89,7 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 49 | [Executor Shutdown Leak](49-executor-shutdown/) | `ExecutorShutdownDetector` | `ExecutorService` created but `shutdown()` never called — threads leak per test run | 🟡 High |
 | 50 | [Fork Without Join](50-fork-join-pool/) | `ForkJoinPoolDetector` | A forked half is never joined, so a *sorted* list comes back missing elements and a task's exception is lost | 🟡 High |
 | 51 | [ForkJoin Task Blocking](51-fork-join-task-blocking/) | `ForkJoinTaskBlockingDetector` | `Thread.sleep()` inside `RecursiveTask.compute()` pins ForkJoin worker thread | 🟡 High |
-| 52 | [HTTP Client Concurrency](52-http-client-concurrency/) | `HttpClientConcurrencyDetector` | `HttpClient.newHttpClient()` per request wastes connections and bypasses pooling | 🟢 Low |
+| 52 | [HTTP Client Concurrency](52-http-client-concurrency/) | `HttpClientConcurrencyDetector` | `sendAsync()` whose future is discarded: the request is sent and nothing ever establishes whether it worked, on a client built per call | 🟢 Low |
 | 53 | [InheritableThreadLocal Misuse](53-inheritable-thread-local/) | `InheritableThreadLocalMisuseDetector` | Thread pools inherit stale context from previous requests via `InheritableThreadLocal` | 🟡 High |
 | 54 | [JDBC Connection Shared](54-jdbc-connection-shared/) | `JdbcConnectionSharedDetector` | Single `Connection` shared across threads — concurrent queries corrupt each other | 🔴 Critical |
 | 55 | [Lazy Init Race](55-lazy-init-race/) | `LazyInitRaceDetector` | Unsynchronized null-check lazy init — multiple threads create separate instances | 🔴 Critical |
