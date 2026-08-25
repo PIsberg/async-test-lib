@@ -59,8 +59,8 @@ Remove `@Disabled` from `testReserveItem_concurrent_detectsRaceCondition()` and 
 
 ```bash
 mvn clean test
-# Assertion fails: stock goes negative
-# RaceConditionDetector reports unsynchronized concurrent writes
+# RaceConditionDetector reports unsynchronized concurrent writes, and failOn = LOW
+# turns that finding into a failed run
 ```
 
 Expected output:
@@ -71,30 +71,34 @@ allow threads to overwrite each other's changes, producing lost updates, stale r
 and silently wrong results
 
 Concurrent write hotspots:
-  - InventoryService@1a2b3c.stock: 8 writes observed across 8 threads
+  - ConcurrentHashMap@1bf5609d.WIDGET-42: 8 writes observed across 8 threads
 
 Unsynchronized access sequences:
-  - InventoryService@1a2b3c.stock: thread 17 write followed by thread 18 write
-```
-
-And the assertion failure:
-
-```
-AssertionError: Stock went to -6 — race condition over-committed inventory
+  - ConcurrentHashMap@1bf5609d.WIDGET-42: thread 81 write followed by thread 74 read
 ```
 
 ## How the Detector Works
 
-`RaceConditionDetector` is a **Phase 1 detector** activated by
-`detectRaceConditions = true`. It tracks cross-thread read and write access events
-recorded on shared objects and fields, then analyses the timeline for:
+`RaceConditionDetector` is activated by `detectRaceConditions = true`, and it is
+**recording-fed**: it sees nothing the code under test does not hand it, through
+`recordFieldRead` and `recordFieldWrite`. `InventoryService.observeStockAccess`
+installs those two methods on either side of the race window, so the read before the
+check and the write after it are reported from the threads that made them. The hooks
+are no-ops by default, so the production path never touches the test library.
+
+Recording around `reserveItem` from the test body instead would report a balanced
+read and write per body execution with the check nowhere in between — which is not
+the shape the detector is looking for, and is why this demonstration reported nothing
+before issue #346.
+
+With the accesses recorded, the detector analyses the timeline for:
 
 1. **Concurrent write hotspots**: the same field written by two or more threads
-2. **Unsafe access sequences**: a write on thread A immediately followed by a write
-   on thread B (no synchronization barrier between them)
+2. **Unsafe access sequences**: an access on thread A followed by an access on thread B
+   with at least one write and no lock in common
 
-After all invocation rounds complete, the detector prints a report showing which
-field was accessed from how many threads and in what order, identifying the race.
+Accesses are paired only within one invocation round: the runner orders rounds, so a
+cross-round pair has a happens-before edge and cannot race.
 
 ## The Fix
 

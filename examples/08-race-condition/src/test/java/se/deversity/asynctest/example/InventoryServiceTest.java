@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.example.service.InventoryService;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,20 +40,16 @@ import static org.junit.jupiter.api.Assertions.*;
  * stock between the check and the write, so the balance is always consistent.
  *
  * WHY @AsyncTest DETECTS THE ISSUE:
- * RaceConditionDetector is a Phase 1 detector (activated by detectRaceConditions = true).
- * The test body calls:
+ * RaceConditionDetector is activated by {@code detectRaceConditions = true}, and it is
+ * recording-fed: it only sees the accesses the code under test hands it, through
+ * {@code recordFieldRead} / {@code recordFieldWrite}. The demonstration wires those two
+ * methods into InventoryService.observeStockAccess, so the read on either side of the
+ * check and the write after it are reported from the threads that made them. The detector
+ * pairs accesses within one invocation round and reports the field as a write hotspot.
  *
- *   RaceConditionDetector detector = (RaceConditionDetector) AsyncTestContext.get()
- *       .getClass().getDeclaredField("...") ...
- *
- * RaceConditionDetector is a Phase 1 detector. It is created automatically when
- * {@code detectRaceConditions = true} and its report is printed after the test run.
- * The library also detects the observable symptom: the final stock assertion fails
- * because over-reservation drove the balance negative.
- *
- * DETECTORS TRIGGERED:
- * RaceConditionDetector — concurrent writes to the stock field with no synchronization;
- * Observable symptom — stock goes negative (more units reserved than stocked)
+ * DETECTOR ENABLED HERE:
+ * RaceConditionDetector — concurrent writes to the stock entry with no synchronization.
+ * It is the only one this demonstration switches on, so it is the only one that can report.
  *
  * FIX:
  * Replace the three-step read-check-write with an atomic CAS loop:
@@ -127,46 +124,29 @@ class InventoryServiceTest {
      * before any of them decrements the balance. All of them then write back a
      * stale value, driving the stock negative and over-committing inventory.
      *
-     * RaceConditionDetector is a Phase 1 detector activated by
-     * {@code detectRaceConditions = true}. It tracks cross-thread field accesses
-     * recorded with {@code recordFieldRead} and {@code recordFieldWrite}.
-     * The detector instance can be obtained from the current test context, and the
-     * test body also records explicit access events on the shared service to help
-     * the detector build the access timeline.
-     *
-     * The observable symptom — stock going negative — is also caught directly by the
-     * assertion at the end of the test body.
+     * RaceConditionDetector tracks cross-thread field accesses recorded with
+     * {@code recordFieldRead} and {@code recordFieldWrite}. The hooks are installed on the
+     * service so the read and the write are reported from inside reserveItem, on either side
+     * of the race window, rather than around the call where the check would be invisible.
      *
      * To see the detection:
      * 1. Remove @Disabled
-     * 2. Run this test — the @AsyncTest will fail with a stock-negative assertion,
-     *    and RaceConditionDetector will report the unsynchronized concurrent writes
-     * 3. Fix: replace reserveItem() with reserveItemFixed() in the test body
+     * 2. Run this test — it fails with a RaceConditionDetector finding naming the stock entry
+     *    as a write hotspot: "8 writes observed across 8 threads"
+     * 3. Fix: replace reserveItem() with reserveItemFixed(), whose CAS loop makes the check and
+     *    the update indivisible
      */
     @Disabled("Remove @Disabled to see race condition detected by RaceConditionDetector")
     @AsyncTest(threads = 8, invocations = 100, detectRaceConditions = true, failOn = FailOn.LOW)
     void testReserveItem_concurrent_detectsRaceCondition() {
-        // Record the field read so RaceConditionDetector can track cross-thread access.
-        // The detector instance is obtained from the current Phase 1 context.
-        int stockBefore = service.getStock(SKU);
-
-        // Record the read on the shared service object / "stock" field
-        // RaceConditionDetector is a Phase 1 detector: it is created automatically
-        // when detectRaceConditions = true and its report is printed after the run.
-        // We can also get a local reference to record access events explicitly:
-        //
-        //   RaceConditionDetector detector = ...  (no static accessor in AsyncTestContext)
-        //
-        // The observable symptom speaks for itself: the assertion below will fail
-        // when the race drives stock negative.
+        // RaceConditionDetector is recording-fed: nothing reaches it unless the code under test
+        // says which object and field it touched. This demonstration used to record nothing at
+        // all and relied on an assertion that could not fail, so enabling it printed an empty
+        // report and passed. See issue #346.
+        var detector = AsyncTestContext.raceConditionDetector();
+        service.observeStockAccess(detector::recordFieldRead, detector::recordFieldWrite);
 
         service.reserveItem(SKU, 1); // BUG: check-then-update without synchronization
-
-        // Observable race symptom: stock can go negative when multiple threads all
-        // pass the check with the same stale value and all write stale decrements.
-        int stockAfter = service.getStock(SKU);
-        assertTrue(stockAfter >= -INITIAL_STOCK,
-                "Stock went to " + stockAfter + " — race condition over-committed inventory");
     }
 
     /**
