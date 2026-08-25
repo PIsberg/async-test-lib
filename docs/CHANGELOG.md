@@ -23,8 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   demonstrations are inherently probabilistic and three was the minimum that separated "never
   fires" from "fires sometimes"; only a demonstration that passes in *every* run fails the job.
 
-  Measured over three full runs on 2026-08-26: 69 fired every run, 5 passed every run, 2 passed in
-  some runs, 21 failed for a reason other than their detector's finding, 0 never ran. All 27 from
+  Measured over three full runs on 2026-08-26, across 98 demonstrations: 70 fired every run, 5
+  passed every run, 2 passed in some runs, 21 failed for a reason other than their detector's
+  finding, 0 never ran. All 27 from
   #346 are in the first group. The 5 are recorded in `.github/known-silent-demos.txt` with a reason
   each and tracked in #362, printed with their count on every run so the debt stays visible in a
   green job's log rather than in nobody's head; the 21 are #363. The script carries a

@@ -51,22 +51,38 @@ def disabled_demonstrations(repo_root):
         for i, line in enumerate(lines):
             if not DISABLED.match(line):
                 continue
+            # Walk forward past whatever annotations sit between @Disabled and the method,
+            # counting parentheses rather than reading line by line: the examples wrap long
+            # reason strings and long @AsyncTest attribute lists over several lines, and a
+            # line-at-a-time scan treated the second line of a wrapped @Disabled("...") as
+            # ordinary code and gave up. It did, on
+            # examples/01-completablefuture-exception-handling, which is exactly the kind of
+            # silent under-count this whole job exists to stop.
             saw_async_test = False
-            for j in range(i + 1, min(i + 40, len(lines))):
-                candidate = lines[j].strip()
-                if ASYNC_TEST.match(lines[j]):
-                    saw_async_test = True
-                if not saw_async_test:
-                    if candidate.startswith("@") or candidate.startswith("//") or not candidate:
-                        continue
-                    break                       # @Disabled on something that is not a demo
-                if candidate.startswith("@"):
+            depth = 0
+            in_annotation = False
+            for j in range(i, min(i + 60, len(lines))):
+                text = lines[j]
+                candidate = text.strip()
+                if j == i or (depth == 0 and candidate.startswith("@")):
+                    in_annotation = True
+                    if ASYNC_TEST.match(text):
+                        saw_async_test = True
+                if in_annotation:
+                    depth += text.count("(") - text.count(")")
+                    if depth <= 0:
+                        depth = 0
+                        in_annotation = False
                     continue
-                method = METHOD.match(lines[j])
+                if not candidate or candidate.startswith("//") or candidate.startswith("*"):
+                    continue
+                if not saw_async_test:
+                    break                       # @Disabled on something that is not a demo
+                method = METHOD.match(text)
                 if method:
                     found[(class_fqn, method.group(1))] = (
                         f"{java.relative_to(repo_root).as_posix()}:{i + 1}")
-                    break
+                break
     return found
 
 
@@ -187,8 +203,20 @@ def self_test(repo_root):
     demos = disabled_demonstrations(repo_root)
     if len(demos) < 50:
         failures.append(f"the source scan found only {len(demos)} disabled demonstrations under "
-                        "examples/; it found 97 when this was written, so it has probably "
+                        "examples/; it found 98 when this was written, so it has probably "
                         "stopped matching")
+
+    # A @Disabled whose reason wraps onto a second line. The first version of this scanner read
+    # that continuation as ordinary code and gave up on the method, so this demonstration was
+    # missing from the report entirely - the silent under-count the job exists to prevent,
+    # committed inside the job itself. Named rather than counted, so the case cannot drift away.
+    wrapped = ("se.deversity.asynctest.example.OrderProcessingServiceTest",
+               "testProcessMultipleOrders_Concurrent_WITH_ASYNC_TEST")
+    if wrapped not in demos:
+        failures.append(f"{wrapped[0]}.{wrapped[1]} was not found. Its @Disabled reason wraps "
+                        "onto a second line, which is the case this scanner used to miss. If "
+                        "that example changed, point this check at another wrapped @Disabled "
+                        "rather than deleting it")
 
     for failure in failures:
         print(f"::error::self-test: {failure}")

@@ -394,11 +394,13 @@ Measured over three full runs on 2026-08-26:
 
 | | count |
 |---|---:|
-| fired every run | 69 |
+| fired every run | 70 |
 | passed every run, all five on the known list | 5 |
 | passed in some runs | 2 |
 | failed for a reason other than the detector's finding | 21 |
 | never ran, or still skipped | 0 |
+
+98 disabled demonstrations in all.
 
 All 27 from #346 are in the first row. The five on the known list (#362) are the ones #346
 recorded as "fires in one or two runs of three"; on this hardware they fired in none. One of them,
