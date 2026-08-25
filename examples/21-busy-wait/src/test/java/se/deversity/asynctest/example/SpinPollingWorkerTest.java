@@ -1,10 +1,10 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.BusyWaitDetector;
 import se.deversity.asynctest.example.service.SpinPollingWorker;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -18,37 +18,35 @@ import static org.junit.jupiter.api.Assertions.*;
  * DETECTOR: BusyWaitDetector
  * ========================================================================
  *
- * This test demonstrates a common performance anti-pattern where:
+ * This test demonstrates a performance anti-pattern where:
  * - A sequential @Test PASSES (correct results, no spin visible)
- * - The same test with @AsyncTest + BusyWaitDetector reveals the
- *   CPU-intensive spin loop created by tight polling
+ * - The same code under @AsyncTest reveals the CPU burned by tight polling
  *
  * THE BUG:
- * SpinPollingWorker processes tasks by spinning in a tight while loop:
+ * SpinPollingWorker.awaitTask() waits for the next task by polling in a tight loop
+ * with no back-off:
  *
- *     while (!taskQueue.isEmpty()) {
- *         result = taskQueue.poll();
+ *     for (long spins = 0; spins < maxSpins; spins++) {
+ *         String task = taskQueue.poll();
+ *         if (task != null) return task;
+ *         // no onSpinWait, no yield, no park
  *     }
  *
- * Under concurrent load with multiple threads all calling process():
- *   - Each thread burns 100% of its CPU slice polling an empty queue
- *   - No CPU is released to threads that have real work to do
- *   - Latency spikes across the entire application
- *   - BusyWaitDetector reports spin iterations exceeding the threshold
+ * With more workers than tasks, the workers that lose the race burn a core for the
+ * whole budget while the winners do the real work.
  *
  * WHY @Test PASSES:
- * Single-threaded access finishes the queue quickly and returns. There
- * are no other threads to starve, so the spin is invisible.
+ * A single thread that submits a task and then asks for one always finds it on the
+ * first poll. The loop exits after one iteration, far below the detector's threshold.
  *
  * WHY @AsyncTest DETECTS THE ISSUE:
- * With many threads all calling processInstrumented() simultaneously and
- * each iteration calling detector.recordLoopIteration(), the detector
- * accumulates spin counts across threads. Once any thread exceeds
- * SPIN_THRESHOLD_ITERATIONS (10,000) the loop is flagged as busy-waiting.
- * The @AfterEach assertion verifies that the detector found issues.
+ * Eight threads share four tasks. The four that come up empty spin their full budget,
+ * recording an iteration each time, and BusyWaitDetector flags any thread whose
+ * iteration count passed SPIN_THRESHOLD_ITERATIONS (10,000) before the loop exited.
  *
- * DETECTORS TRIGGERED:
- * BusyWaitDetector — Primary: tight polling loop without yielding
+ * DETECTOR ENABLED HERE:
+ * BusyWaitDetector — tight polling loop without yielding. It is the only one this
+ * demonstration switches on, so it is the only one that can report.
  *
  * FIX:
  * - Replace ConcurrentLinkedQueue + spin with LinkedBlockingQueue.take()
@@ -56,36 +54,19 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class SpinPollingWorkerTest {
 
+    /** Comfortably past BusyWaitDetector's 10,000-iteration spin threshold. */
+    private static final long SPIN_BUDGET = 25_000L;
+
     private SpinPollingWorker worker;
-    private BusyWaitDetector busyWaitDetector;
-    // Flag to guard the @AfterEach assertion so it only runs after the
-    // @AsyncTest invocation (not after the plain @Test methods).
-    private volatile boolean runningAsyncTest = false;
 
     @BeforeEach
     void setUp() {
         worker = new SpinPollingWorker();
-        busyWaitDetector = new BusyWaitDetector();
-
-        // Pre-load enough tasks that at least one thread iterates past the
-        // BusyWaitDetector spin threshold (10,000 iterations) in a single burst.
-        for (int i = 0; i < 20_000; i++) {
+        // Fewer tasks than the demonstration has threads, which is the whole point: the
+        // workers that lose the race are the ones that spin.
+        for (int i = 0; i < 4; i++) {
             worker.submit("task-" + i);
         }
-    }
-
-    /**
-     * After the @AsyncTest run completes, verify the detector captured the
-     * spin loop. @AfterEach runs once after all threads and invocations finish.
-     */
-    @AfterEach
-    void verifyBusyWaitDetected() {
-        if (!runningAsyncTest) {
-            return;
-        }
-        BusyWaitDetector.BusyWaitReport report = busyWaitDetector.analyzeBusyWaiting();
-        assertTrue(report.hasIssues(),
-                "BusyWaitDetector should have flagged the spin loop.\n" + report);
     }
 
     // -------------------------------------------------------------------------
@@ -94,25 +75,67 @@ class SpinPollingWorkerTest {
 
     @Test
     void testProcess_singleThread_drainsQueue() {
-        // Drain the queue sequentially: all tasks are consumed, no spin pressure.
         worker.process();
-        // After draining, further calls return null (queue is empty)
-        assertNull(worker.process());
+        assertNull(worker.process(), "queue is empty after a drain");
     }
 
     @Test
     void testProcess_emptyQueue_returnsNull() {
-        SpinPollingWorker emptyWorker = new SpinPollingWorker();
-        assertNull(emptyWorker.process());
+        assertNull(new SpinPollingWorker().process());
     }
 
     @Test
-    void testSubmitThenProcess_singleThread_returnsResult() {
+    void testAwaitTask_taskAvailable_returnsOnFirstPoll() {
         SpinPollingWorker fresh = new SpinPollingWorker();
         fresh.submit("hello");
-        fresh.submit("world");
-        String result = fresh.process();
-        assertNotNull(result);
+
+        long[] iterations = {0};
+        String claimed = fresh.awaitTask(SPIN_BUDGET, () -> iterations[0]++, () -> { });
+
+        assertEquals("hello", claimed);
+        assertEquals(1, iterations[0], "a waiting task is found on the first poll, so there is no spin");
+    }
+
+    @Test
+    void testAwaitTask_emptyQueue_spinsTheWholeBudget() {
+        SpinPollingWorker empty = new SpinPollingWorker();
+
+        long[] iterations = {0};
+        String claimed = empty.awaitTask(SPIN_BUDGET, () -> iterations[0]++, () -> { });
+
+        assertNull(claimed);
+        assertEquals(SPIN_BUDGET, iterations[0],
+                "this is the bug: " + SPIN_BUDGET + " polls of an empty queue, no back-off");
+    }
+
+    /**
+     * The single-threaded spin is real, but a BusyWaitDetector reading it alone still
+     * reports it: the threshold is about iteration count, not about thread count. This
+     * pins the detector's positive direction without needing the concurrent run.
+     */
+    @Test
+    void testAwaitTask_spinIsVisibleToTheDetector() {
+        BusyWaitDetector detector = new BusyWaitDetector();
+        new SpinPollingWorker().awaitTask(
+                SPIN_BUDGET, detector::recordLoopIteration, detector::recordYield);
+
+        assertTrue(detector.analyzeBusyWaiting().hasIssues(),
+                "a " + SPIN_BUDGET + "-iteration spin is past the 10,000 threshold");
+    }
+
+    /**
+     * The other direction: a loop that finds its task immediately must stay silent, or the
+     * detector would flag every loop in the program.
+     */
+    @Test
+    void testAwaitTask_noSpin_isSilent() {
+        BusyWaitDetector detector = new BusyWaitDetector();
+        SpinPollingWorker fresh = new SpinPollingWorker();
+        fresh.submit("hello");
+        fresh.awaitTask(SPIN_BUDGET, detector::recordLoopIteration, detector::recordYield);
+
+        assertFalse(detector.analyzeBusyWaiting().hasIssues(),
+                "one poll that found work is not a busy-wait");
     }
 
     // -------------------------------------------------------------------------
@@ -120,28 +143,24 @@ class SpinPollingWorkerTest {
     // -------------------------------------------------------------------------
 
     /**
-     * The bug: with many threads all calling processInstrumented() the tight
-     * poll loop drives recordLoopIteration() past the spin threshold.
-     * BusyWaitDetector captures the spin events and the @AfterEach assertion
-     * verifies the detection fired.
+     * The bug: eight threads compete for four tasks, so at least four of them poll an empty
+     * queue for the whole budget. BusyWaitDetector reports the threads that spun past the
+     * threshold, and failOn = LOW turns that finding into a failed run.
      *
      * To see the detection:
      * 1. Remove @Disabled
-     * 2. Run this test — @AfterEach will assert that BusyWaitDetector
-     *    flagged the spin loop
+     * 2. Run this test — it fails with a BusyWaitDetector finding naming the spinning threads
      * 3. Fix: replace ConcurrentLinkedQueue + spin with LinkedBlockingQueue.take()
      */
     @Disabled("Remove @Disabled to see busy-waiting detected by BusyWaitDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectBusyWaiting = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 5, detectAll = false, detectBusyWaiting = true, failOn = FailOn.LOW)
     void testProcess_concurrent_detectsBusyWaiting() {
-        runningAsyncTest = true;
-        // Each thread drains whatever is left in the shared queue via the
-        // instrumented path, recording every loop iteration for the detector.
-        // The first thread(s) to run will process many thousands of tasks,
-        // driving the iteration count past the 10,000-iteration spin threshold.
-        worker.processInstrumented(
-                busyWaitDetector::recordLoopIteration,
-                busyWaitDetector::recordYield);
+        // The detector has to be the one the run owns. This demonstration used to record into a
+        // locally constructed BusyWaitDetector, which the library never reads, so failOn had
+        // nothing to gate on however hard the threads spun. See issue #346.
+        BusyWaitDetector detector = AsyncTestContext.busyWaitDetector();
+
+        worker.awaitTask(SPIN_BUDGET, detector::recordLoopIteration, detector::recordYield);
     }
 
     /**

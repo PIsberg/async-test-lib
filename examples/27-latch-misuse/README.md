@@ -46,6 +46,22 @@ LATCH MISUSE DETECTED:
     - Use try/finally to guarantee countDown() is called: try { doWork(); } finally { latch.countDown(); }
 ```
 
+`failOn = FailOn.LOW` turns that report into a failed run.
+
+## How the Detector Is Fed
+
+`LatchMisuseDetector` is **recording-fed**. It compares countDown() calls against the count the
+latch was built with, so it has to be told about the construction, about every call, and about the
+await. `ServiceInitializer.observeLatch` reports all three from where they happen; the hooks
+default to no-ops, so the production path never touches the test library.
+
+The detector also has to be **the one the run owns**, from
+`AsyncTestContext.latchMisuseDetector()`. Before issue #346 this demonstration recorded four
+countDown() calls by hand into a locally constructed detector and asserted on the result, without
+ever calling `ServiceInitializer`. It proved the detector's arithmetic, which was never in doubt,
+and told the library nothing, so `failOn` had no finding to gate on and enabling the demonstration
+left it green.
+
 ## The Solution
 
 Move `countDown()` **exclusively** to the `finally` block. This guarantees

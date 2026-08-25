@@ -1,10 +1,10 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.InterruptMonitor;
 import se.deversity.asynctest.example.service.BackgroundWorker;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -46,16 +46,18 @@ import static org.junit.jupiter.api.Assertions.*;
  * during normal execution, so the buggy catch block is never reached.
  *
  * WHY @AsyncTest DETECTS THE ISSUE:
- * The test body explicitly interrupts the current thread before calling
- * doWork(), then records the swallowed event with InterruptMonitor via
- * recordIgnoredException(). Since Thread.currentThread().interrupt() is
- * not called inside doWork(), the monitor reports "ignored
- * InterruptedException" for every affected thread. The @AfterEach
- * assertion verifies that detection fired.
+ * The test body interrupts the current thread before calling doWork(), so
+ * Thread.sleep() throws immediately. BackgroundWorker.observeInterrupts wires
+ * recordInterruptException and recordInterruptRestored into the catch blocks,
+ * and the monitor records what it finds there: sleep() has already cleared the
+ * flag, and doWork() never puts it back, so the event is stored as caught and
+ * not restored. The report names BackgroundWorker.doWork and the line, and
+ * failOn = FailOn.LOW turns it into a failed run.
  *
- * DETECTORS TRIGGERED:
- * InterruptMonitor — Primary: InterruptedException swallowed without
- *                    restoring the interrupted flag
+ * DETECTOR ENABLED HERE:
+ * InterruptMonitor — InterruptedException swallowed without restoring the
+ * interrupted flag. It is the only one this demonstration switches on, so it is
+ * the only one that can report.
  *
  * FIX:
  * Add Thread.currentThread().interrupt() inside every
@@ -64,29 +66,50 @@ import static org.junit.jupiter.api.Assertions.*;
 class BackgroundWorkerTest {
 
     private BackgroundWorker worker;
-    private InterruptMonitor interruptMonitor;
-    // Guard flag so the @AfterEach assertion only runs after the @AsyncTest.
-    private volatile boolean runningAsyncTest = false;
 
     @BeforeEach
     void setUp() {
         worker = new BackgroundWorker();
-        interruptMonitor = new InterruptMonitor();
+        Thread.interrupted();   // clear any flag a previous test left on this thread
     }
 
     /**
-     * After the @AsyncTest run completes, verify the monitor detected
-     * swallowed interrupts. @AfterEach runs once after all threads and
-     * invocations finish.
+     * Pins the monitor's positive direction without needing the concurrent run: an
+     * InterruptedException caught with the flag left cleared is the bug, and the monitor must
+     * say so.
      */
-    @AfterEach
-    void verifyInterruptMishandlingDetected() {
-        if (!runningAsyncTest) {
-            return;
-        }
-        InterruptMonitor.InterruptReport report = interruptMonitor.analyzeInterruptHandling();
-        assertTrue(report.hasIssues(),
-                "InterruptMonitor should have flagged the swallowed InterruptedException.\n" + report);
+    @Test
+    void testInterruptMonitor_swallowedInterrupt_reports() {
+        InterruptMonitor monitor = new InterruptMonitor();
+        BackgroundWorker swallower = new BackgroundWorker();
+        swallower.observeInterrupts(
+                monitor::recordInterruptException, monitor::recordInterruptRestored);
+
+        Thread.currentThread().interrupt();
+        swallower.doWork();
+        Thread.interrupted();
+
+        assertTrue(monitor.analyzeInterruptHandling().hasIssues(),
+                "an interrupt caught and not restored is the bug this monitor exists for");
+    }
+
+    /**
+     * And the other direction: the catch-and-restore idiom is the recommended fix, so a monitor
+     * that reported it would be arguing against its own advice.
+     */
+    @Test
+    void testInterruptMonitor_restoredInterrupt_isSilent() {
+        InterruptMonitor monitor = new InterruptMonitor();
+        BackgroundWorker restorer = new BackgroundWorker();
+        restorer.observeInterrupts(
+                monitor::recordInterruptException, monitor::recordInterruptRestored);
+
+        Thread.currentThread().interrupt();
+        restorer.doWorkFixed();
+        Thread.interrupted();
+
+        assertFalse(monitor.analyzeInterruptHandling().hasIssues(),
+                "restoring the flag inside the catch block is the fix, not a finding");
     }
 
     // -------------------------------------------------------------------------
@@ -124,35 +147,37 @@ class BackgroundWorkerTest {
      * The bug: when this thread is interrupted before doWork() calls
      * Thread.sleep(), sleep() throws InterruptedException immediately.
      * The catch block in doWork() swallows it without restoring the flag.
-     * recordIgnoredException() records the swallowed interrupt so the
-     * @AfterEach assertion can verify that detection fired.
+     * The hook inside the catch block records it, and because the flag is
+     * already gone by then the monitor stores it as ignored.
      *
      * To see the detection:
      * 1. Remove @Disabled
-     * 2. Run this test — @AfterEach will assert that InterruptMonitor
-     *    flagged threads that swallowed InterruptedException
+     * 2. Run this test — it fails with, for every worker thread,
+     *      interrupt caught but not restored at BackgroundWorker.doWork(BackgroundWorker.java:54)
      * 3. Fix: add Thread.currentThread().interrupt() inside the catch
      *    block in BackgroundWorker.doWork()
      */
     @Disabled("Remove @Disabled to see interrupt swallowing detected by InterruptMonitor")
     @AsyncTest(threads = 6, invocations = 10, detectAll = false, detectInterruptMishandling = true, failOn = FailOn.LOW)
     void testDoWork_concurrent_detectsInterruptSwallowing() {
-        runningAsyncTest = true;
+        // The monitor has to be the one the run owns. This demonstration used to record into a
+        // locally constructed InterruptMonitor and assert on it from @AfterEach; the library
+        // never reads that instance, so failOn had nothing to gate on and enabling the test left
+        // it green. See issue #346.
+        InterruptMonitor monitor = AsyncTestContext.interruptMonitor();
+        worker.observeInterrupts(
+                monitor::recordInterruptException, monitor::recordInterruptRestored);
 
-        // Interrupt this thread so that Thread.sleep() inside doWork()
-        // throws InterruptedException immediately.
+        // Interrupt this thread so Thread.sleep() inside doWork() throws immediately.
         Thread.currentThread().interrupt();
 
-        // doWork() catches InterruptedException but does NOT restore the flag.
+        // BUG: doWork() catches InterruptedException and does not restore the flag. The hook
+        // fires inside the catch block, where isInterrupted() is already false because sleep()
+        // cleared it, so the monitor records the interrupt as caught and not restored.
         worker.doWork();
 
-        // At this point Thread.isInterrupted() is false — the interrupt was swallowed.
-        // Record the ignored exception so the monitor can report it.
-        interruptMonitor.recordIgnoredException(
-                "BackgroundWorker.doWork — sleep interrupted but flag not restored");
-
-        // After the @AsyncTest run, @AfterEach calls analyzeInterruptHandling()
-        // and asserts: "Thread 'xxx': ignored InterruptedException - BackgroundWorker.doWork"
+        // Leave the thread clean for whatever the runner does with it next.
+        Thread.interrupted();
     }
 
     /**

@@ -2,6 +2,7 @@ package se.deversity.asynctest.example.service;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 
 /**
  * Inventory management service that reserves stock for orders.
@@ -12,9 +13,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * threads can all pass the check before any of them writes the new value — they all
  * decrement the same initial stock, driving the balance well below zero.
  *
- * RaceConditionDetector is a Phase 1 detector (activated by {@code detectRaceConditions = true}).
- * It analyses cross-thread field access patterns recorded by the test body to identify
- * concurrent writes to shared fields that lack synchronization.
+ * RaceConditionDetector (activated by {@code detectRaceConditions = true}) is recording-fed:
+ * it analyses only the cross-thread field accesses it is handed. See
+ * {@link #observeStockAccess(BiConsumer, BiConsumer)} for the seam that hands them over.
  *
  * FIX: Replace the three-step read-check-write sequence with a single atomic
  * compare-and-swap loop on an {@link AtomicInteger}, or use {@code synchronized}
@@ -38,6 +39,15 @@ public class InventoryService {
     private final AtomicInteger totalReserved = new AtomicInteger(0);
 
     /**
+     * Called with the backing map and the SKU before the stock level is read. A no-op unless a
+     * test installs a hook through {@link #observeStockAccess(BiConsumer, BiConsumer)}.
+     */
+    private volatile BiConsumer<Object, String> onStockRead = (map, sku) -> { };
+
+    /** Called with the backing map and the SKU before the decremented level is written. */
+    private volatile BiConsumer<Object, String> onStockWrite = (map, sku) -> { };
+
+    /**
      * Loads initial stock for a SKU. Thread-safe: called only during setup.
      */
     public void loadStock(String sku, int quantity) {
@@ -58,6 +68,7 @@ public class InventoryService {
      * @return {@code true} if reservation succeeded; {@code false} if insufficient stock
      */
     public boolean reserveItem(String sku, int quantity) {
+        onStockRead.accept(stock, sku);
         Integer current = stock.get(sku);           // STEP 1: read
         if (current == null || current < quantity) { // STEP 2: check
             return false;
@@ -65,9 +76,27 @@ public class InventoryService {
         // --- RACE WINDOW ---
         // Another thread may decrement stock between STEP 2 and STEP 3.
         // Both threads see current >= quantity, both proceed to STEP 3.
+        onStockWrite.accept(stock, sku);
         stock.put(sku, current - quantity);          // STEP 3: write (over-committed!)
         totalReserved.addAndGet(quantity);
         return true;
+    }
+
+    /**
+     * Installs the hooks RaceConditionDetector needs. No-ops by default, so production
+     * behaviour is unchanged whether or not a test is watching.
+     *
+     * <p>The calls sit <em>inside</em> {@link #reserveItem(String, int)}, on either side of the
+     * race window, because that is the only place the read and the write are separable. Recording
+     * around the call from the test body would report one read and one write per body execution
+     * with the check nowhere in between, which is not the shape the detector is looking for.
+     *
+     * @param onRead  called with the backing map and the SKU before the stock level is read
+     * @param onWrite called with the backing map and the SKU before the new level is written
+     */
+    public void observeStockAccess(BiConsumer<Object, String> onRead, BiConsumer<Object, String> onWrite) {
+        this.onStockRead = onRead;
+        this.onStockWrite = onWrite;
     }
 
     /**

@@ -3,18 +3,24 @@ package se.deversity.asynctest.example.service;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
- * A task-queue worker that polls for work in a tight spin loop.
+ * A task-queue worker that waits for work by spinning instead of blocking.
  *
- * BUG: The worker continuously calls taskQueue.isEmpty() and taskQueue.poll()
- * in a hot loop without ever yielding or parking the thread. This burns 100%
- * of a CPU core for the entire wait duration and starves other threads on
- * the same core from making progress.
+ * <p>BUG: {@link #awaitTask(long, Runnable, Runnable)} polls an empty queue in a tight loop with
+ * no {@code Thread.onSpinWait()}, no {@code yield}, and no park. A worker that loses the race for
+ * the next task burns a whole core for the length of its spin budget, and it burns it while other
+ * threads have real work to do. Adaptive locks do spin before parking, which is why this shape
+ * survives review; the bug is a spin budget large enough to matter with nothing to fall back to.
  *
- * BusyWaitDetector flags the loop as a busy-wait hotspot when the iteration
- * count exceeds the spin threshold.
+ * <p>BusyWaitDetector flags a loop once one thread's iteration count passes the spin threshold
+ * (10,000) before the loop exits.
  *
- * FIX: Replace the spin loop with a blocking take() on a LinkedBlockingQueue,
- * or use wait()/notify() so the thread is parked at zero CPU cost while idle.
+ * <p>FIX: block on {@code LinkedBlockingQueue.take()}, which parks the thread at zero CPU cost
+ * until an element arrives, or use {@code wait()}/{@code notify()} to the same effect.
+ *
+ * <p>INSTRUMENTATION: BusyWaitDetector is recording-fed. The two {@code Runnable} hooks on
+ * {@code awaitTask} are how a caller tells it where the loop iterated and where it exited; they
+ * are plain {@code java.util.function} types, so the production path never imports the test
+ * library. This is the seam, not the bug.
  */
 public class SpinPollingWorker {
 
@@ -24,18 +30,21 @@ public class SpinPollingWorker {
 
     /**
      * Submits a task to the queue for processing.
+     *
+     * @param task the task payload
      */
     public void submit(String task) {
         taskQueue.offer(task);
     }
 
     /**
-     * Processes pending tasks using a tight spin loop.
+     * Drains every task currently queued and returns the last one.
      *
-     * BUG: This method spins continuously calling isEmpty() and poll()
-     * without any yielding, sleeping, or parking. Under concurrent load,
-     * every worker thread wastes its entire time slice on polling even when
-     * the queue is empty, leaving no CPU for threads doing real work.
+     * <p>This is the sequential path: it stops as soon as the queue is empty, so it never spins
+     * and never reaches the detector's threshold. That is exactly why the sequential tests below
+     * are quiet - the bug needs a second thread to be visible.
+     *
+     * @return the last task polled, or null if the queue was already empty
      */
     public String process() {
         String result = null;
@@ -47,32 +56,50 @@ public class SpinPollingWorker {
     }
 
     /**
-     * Processes tasks using a tight spin loop, invoking {@code loopCallback}
-     * on each iteration so callers can instrument the spin (e.g. record to a
-     * BusyWaitDetector) without the service importing any test-scoped types.
+     * Waits for the next task by spinning on the queue.
      *
-     * @param loopCallback called once per poll iteration (may be null)
-     * @param yieldCallback called once after the loop exits (may be null)
-     * @return the last task polled, or null if the queue was empty
+     * <p>BUG: the loop performs no back-off of any kind. Every iteration is a full poll of a
+     * lock-free queue, and a worker that finds nothing keeps the core busy for the whole budget.
+     * With more pollers than tasks, the losers spend their entire time slice discovering that
+     * there is still nothing to do.
+     *
+     * @param maxSpins     how many times to poll before giving up
+     * @param onIteration  called once per poll (may be null)
+     * @param onExit       called once as the loop exits, whether or not a task was found (may be null)
+     * @return the task claimed, or null if the budget ran out first
      */
-    public String processInstrumented(Runnable loopCallback, Runnable yieldCallback) {
-        String result = null;
-
-        while (!taskQueue.isEmpty()) {
-            result = taskQueue.poll();
-            if (loopCallback != null) loopCallback.run();
+    public String awaitTask(long maxSpins, Runnable onIteration, Runnable onExit) {
+        for (long spins = 0; spins < maxSpins && running; spins++) {
+            if (onIteration != null) onIteration.run();
+            String task = taskQueue.poll();
+            if (task != null) {
+                lastResult = task;
+                if (onExit != null) onExit.run();
+                return task;
+            }
+            // BUG: no Thread.onSpinWait(), no Thread.yield(), no park - just poll again.
         }
-
-        if (yieldCallback != null) yieldCallback.run();
-
-        lastResult = result;
-        return result;
+        if (onExit != null) onExit.run();
+        return null;
     }
 
+    /**
+     * {@return the number of tasks still queued}
+     */
+    public int pending() {
+        return taskQueue.size();
+    }
+
+    /**
+     * {@return the last task this worker claimed, or null}
+     */
     public String getLastResult() {
         return lastResult;
     }
 
+    /**
+     * Stops the spin loop, so a worker parked in {@link #awaitTask} returns at its next iteration.
+     */
     public void stop() {
         running = false;
     }

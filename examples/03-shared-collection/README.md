@@ -56,8 +56,16 @@ Sequentially, `ArrayList` and `HashMap` are correct and fast. Nothing about the 
 wrong, because nothing about the code *is* wrong until a second thread arrives.
 
 `@AsyncTest` puts N threads on `recordEvent` behind a barrier; `SharedCollectionDetector`
-reports the unsynchronized collection reached from more than one thread, and the assertion
-on the final count usually fails too.
+reports the unsynchronized collection reached from more than one thread. Enabling the
+demonstration fails the run with two findings, one per collection, each naming 8 writing
+threads.
+
+`SharedCollectionDetector` is recording-fed and keys every access on the collection's
+identity, so it only sees sharing if it is handed the *same instance* the threads mutate.
+`getEvents()` returns a defensive copy, so recording that showed it 800 collections with one
+writer each and it said nothing. `EventAggregatorService.observeCollectionWrites` is the seam
+that hands over the live instance at the point of mutation; it defaults to a no-op, so the
+production path never touches the test library.
 
 See [`EventAggregatorServiceTest`](src/test/java/se/deversity/asynctest/example/EventAggregatorServiceTest.java).
 

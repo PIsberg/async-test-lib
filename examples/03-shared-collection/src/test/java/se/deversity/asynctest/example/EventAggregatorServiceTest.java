@@ -40,10 +40,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * (entries get dropped during concurrent array copies/resizes).
  * SharedCollectionDetector flags the unsafe concurrent writes to these collections.
  *
- * DETECTORS TRIGGERED:
- * ✅ SharedCollectionDetector — Primary: writes from multiple threads to non-thread-safe collections
- * ✅ ConcurrentModificationDetector — Secondary: read during concurrent write
- * ✅ RaceConditionDetector — Tertiary: unsynchronized compound read-modify-write
+ * DETECTOR ENABLED HERE:
+ * SharedCollectionDetector — writes from multiple threads to non-thread-safe collections.
+ * It is the only one the demonstration switches on, so it is the only one that can report.
  */
 class EventAggregatorServiceTest {
 
@@ -88,26 +87,31 @@ class EventAggregatorServiceTest {
     // -------------------------------------------------------------------------
 
     /**
-     * The bug: with 8 concurrent threads each adding 100 events, the ArrayList
-     * loses entries due to unsafe concurrent adds. SharedCollectionDetector reports
-     * the multi-thread write pattern and ConcurrentModificationDetector may fire
-     * when getEvents() iterates while another thread is still adding.
+     * The bug: 8 concurrent threads each add 100 events to the same ArrayList and merge into
+     * the same HashMap. SharedCollectionDetector reports both, naming the number of threads that
+     * wrote each one in a single round.
      *
      * To see the failure:
      * 1. Remove @Disabled
-     * 2. Run this test — it should be detected by SharedCollectionDetector
+     * 2. Run this test — it fails with a SharedCollectionDetector finding for event-log and
+     *    event-counts, each written by 8 threads
      * 3. To fix: replace ArrayList with CopyOnWriteArrayList or Collections.synchronizedList
      *            replace HashMap with ConcurrentHashMap
      */
     @Disabled("Remove @Disabled to see the bug detected by SharedCollectionDetector")
     @AsyncTest(threads = 8, invocations = 100, detectSharedCollections = true, failOn = FailOn.LOW)
     void testRecordEvent_concurrent_detectsSharedCollectionUse() {
+        // The recording has to name the collection the threads actually mutate. Recording
+        // service.getEvents() instead handed the detector a fresh defensive copy per call, so it
+        // saw 800 collections with one writer each rather than one collection with eight, and it
+        // reported nothing however long the test ran. See issue #346.
+        service.observeCollectionWrites((collection, operation) ->
+                AsyncTestContext.sharedCollectionMonitor()
+                        .recordWrite(collection, collection instanceof java.util.Map
+                                ? "event-counts" : "event-log", operation));
+
         String source = "source-" + Thread.currentThread().threadId() % 4;
         service.recordEvent(source, "event");
-
-        // Instrument the detector
-        AsyncTestContext.sharedCollectionMonitor()
-                .recordWrite(service.getEvents(), "event-log", "add");
     }
 
     /**

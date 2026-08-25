@@ -1,27 +1,31 @@
 # Busy Wait Example
 
-This example demonstrates a **real-world production bug** found in many worker services: **a tight spin loop that polls a queue instead of blocking**, wasting CPU and starving other threads.
+This example demonstrates a **real-world production bug** found in many worker services: **a tight
+spin loop that polls a queue instead of blocking**, wasting CPU and starving other threads.
 
 ## The Problem
 
-The `SpinPollingWorker` drains a task queue with a tight `while (!queue.isEmpty())` loop.
+`SpinPollingWorker.awaitTask()` waits for the next task by polling a `ConcurrentLinkedQueue` in a
+tight loop. `poll()` on a non-blocking queue returns instantly whether or not there is anything
+there, so a worker that comes up empty just asks again, and again, for its whole spin budget. The
+core it is on stays at 100% while it produces nothing.
 
-**The Bug**: Every call to `process()` spins in a hot loop calling `isEmpty()` and `poll()` in rapid succession. When the queue is empty, the loop exits immediately. But when multiple threads compete for tasks, each thread burns its entire CPU slice polling — leaving no CPU for threads that have real work to do.
+Adaptive locks really do spin before parking, which is why this shape survives review. The bug is a
+spin budget large enough to matter with no fallback to a blocking wait.
 
 ## Why It Happens
 
 ```java
 // BUGGY CODE (SpinPollingWorker.java):
-public String process() {
-    String result = null;
-    while (!taskQueue.isEmpty()) {  // ❌ tight spin — no yield, no park
-        result = taskQueue.poll();
+public String awaitTask(long maxSpins, ...) {
+    for (long spins = 0; spins < maxSpins && running; spins++) {
+        String task = taskQueue.poll();
+        if (task != null) { return task; }
+        // no Thread.onSpinWait(), no Thread.yield(), no park - just poll again
     }
-    return result;
+    return null;
 }
 ```
-
-Each iteration of the spin loop makes two calls (`isEmpty` and `poll`) that return instantly when the queue is empty. The CPU core assigned to this thread is at 100% utilisation for the entire duration, even though it is producing no useful output.
 
 ## How to Reproduce
 
@@ -30,51 +34,57 @@ Each iteration of the spin loop makes two calls (`isEmpty` and `poll`) that retu
 ```bash
 cd examples/21-busy-wait
 mvn clean test
-# Tests pass: no spin detected in single-threaded mode
+# Tests pass: one thread that submits a task and then asks for one finds it on the first poll
 ```
 
-The test passes because a single thread drains the queue quickly and returns. There are no other threads to starve, so the spin is invisible.
+The loop exits after a single iteration, far below the detector's 10,000-iteration threshold.
+Nothing about the code looks expensive until a second worker arrives.
 
 ### 2. Run with @AsyncTest (DETECTS the spin loop)
 
-Remove the `@Disabled` annotation from `testProcess_concurrent_detectsBusyWaiting()`:
-
-```java
-// Change this:
-@Disabled("Remove @Disabled to see busy-waiting detected by BusyWaitDetector")
-@AsyncTest(threads = 8, invocations = 50, detectAll = false, detectBusyWaiting = true)
-void testProcess_concurrent_detectsBusyWaiting() { ... }
-```
+Remove the `@Disabled` annotation from `testProcess_concurrent_detectsBusyWaiting()` and run:
 
 ```bash
 mvn clean test
-# BusyWaitDetector reports: "Thread N: spun X iterations over Yms at SpinPollingWorker.processInstrumented"
 ```
 
-With 8 threads all calling `processInstrumented()` simultaneously:
-- Each thread records every iteration via `detector.recordLoopIteration()`
-- Once a thread exceeds 10,000 consecutive iterations, the spin is flagged
-- `BusyWaitDetector.analyzeBusyWaiting()` reports the spin location and CPU time wasted
+Eight threads share four tasks, so at least four of them poll an empty queue for the whole budget:
 
-## The Root Cause
+```
+BUSY-WAITING DETECTED:
 
-`ConcurrentLinkedQueue` is a non-blocking collection. Its `isEmpty()` and `poll()` methods return immediately. A loop around them has no back-pressure: if the queue is empty the loop simply burns CPU doing nothing useful. Under concurrency:
+Spin loops:
+  - Thread 70: spun 25 000 iterations over 1ms at
+    se.deversity.asynctest.example.service.SpinPollingWorker.awaitTask(SpinPollingWorker.java:82)
+```
 
-1. 8 threads compete for the same shared queue
-2. Each thread calls `recordLoopIteration()` on every poll
-3. Threads exceed the 10,000-iteration spin threshold
-4. `BusyWaitDetector` reports the spin intensity and wasted CPU milliseconds
+`failOn = FailOn.LOW` turns that finding into a failed run. Without it the report is printed and
+the test stays green, which is the trap issue #346 was opened for.
+
+## How the Detector Works
+
+`BusyWaitDetector` is **recording-fed**: it counts what the code under test hands it. The two
+`Runnable` hooks on `awaitTask` are the seam - one per poll, one as the loop exits - and they are
+plain `java.util.function` types, so the production path never imports the test library.
+
+The count is per thread and it resets at every loop exit, so what the detector reports is one
+uninterrupted spin, not a total across the run. A thread that passes 10,000 iterations before its
+loop exits produces a finding; a thread that finds work on the first poll produces nothing.
+
+The detector has to be **the one the run owns**, from `AsyncTestContext.busyWaitDetector()`. This
+demonstration used to record into a locally constructed `BusyWaitDetector`, which the library never
+reads, so `failOn` had nothing to gate on however hard the threads spun.
 
 ## The Solution
 
 Replace the spin loop with a blocking primitive that parks the thread at zero CPU cost:
 
 ```java
-// FIXED CODE — use LinkedBlockingQueue.take():
+// FIXED CODE - use LinkedBlockingQueue.take():
 private final LinkedBlockingQueue<String> taskQueue = new LinkedBlockingQueue<>();
 
-public String processFixed() throws InterruptedException {
-    // Parks the thread until an element is available — zero CPU while idle
+public String awaitTaskFixed() throws InterruptedException {
+    // Parks the thread until an element is available - zero CPU while idle
     return taskQueue.take();
 }
 ```
@@ -83,30 +93,34 @@ Alternative fixes:
 
 ```java
 // Option 2: wait/notify inside synchronized block
-public synchronized String processWithWait() throws InterruptedException {
+public synchronized String awaitTaskWithWait() throws InterruptedException {
     while (taskQueue.isEmpty()) {
         wait(); // releases the monitor and parks the thread
     }
     return taskQueue.poll();
 }
 
-// Option 3: CompletableFuture for async result delivery
-// — eliminates the polling thread entirely
+// Option 3: a bounded spin that then blocks - what an adaptive lock does.
+// Spin a few dozen times with Thread.onSpinWait(), then fall back to take().
 ```
 
 ## Files in This Example
 
-- **`SpinPollingWorker.java`** — Buggy service with a tight spin-poll loop
-- **`SpinPollingWorkerTest.java`** — Tests that demonstrate the problem
-  - `testProcess_singleThread_drainsQueue()` — Passes with @Test
-  - `testProcess_concurrent_detectsBusyWaiting()` — Detects spin with @AsyncTest
-  - `testProcess_fixedWithBlockingQueue_singleThread()` — Shows the correct pattern
-- **`pom.xml`** — Maven dependencies (JUnit 5 + async-test-lib)
+- **`SpinPollingWorker.java`** - Buggy service with a tight spin-poll loop
+- **`SpinPollingWorkerTest.java`** - Tests that demonstrate the problem
+  - `testAwaitTask_taskAvailable_returnsOnFirstPoll()` - passes with `@Test`, one iteration
+  - `testAwaitTask_emptyQueue_spinsTheWholeBudget()` - pins the bug: 25,000 polls, no back-off
+  - `testAwaitTask_spinIsVisibleToTheDetector()` - the detector's positive direction
+  - `testAwaitTask_noSpin_isSilent()` - and its negative direction, so it is not flagging every loop
+  - `testProcess_concurrent_detectsBusyWaiting()` - detects the spin with `@AsyncTest`
+  - `testProcess_fixedWithBlockingQueue_singleThread()` - shows the correct pattern
+- **`pom.xml`** - Maven dependencies (JUnit 5 + async-test-lib)
 
 ## Key Takeaways
 
-1. **@Test gives false confidence**: Single-threaded polling exits quickly and looks fine
-2. **@AsyncTest finds the spin**: 8 threads × 50 invocations drives iteration counts past the spin threshold
-3. **Spin loops waste CPU**: Every iteration is a wasted call with no useful output when the queue is empty
-4. **Blocking beats spinning**: `LinkedBlockingQueue.take()` parks the thread at zero CPU cost while idle
-5. **Always yield or block**: If a loop must poll, add `Thread.yield()` or a brief sleep to give other threads a chance
+1. **@Test gives false confidence**: a single worker always finds its task on the first poll
+2. **@AsyncTest finds the spin**: more workers than tasks means somebody polls an empty queue
+3. **Spin loops waste CPU**: every iteration is a wasted call producing no output
+4. **Blocking beats spinning**: `LinkedBlockingQueue.take()` parks the thread at zero CPU cost
+5. **If a loop must poll, bound it and then block**: spin briefly with `Thread.onSpinWait()`, then
+   fall back to a blocking wait rather than burning the core
