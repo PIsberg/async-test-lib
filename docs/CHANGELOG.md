@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The harden-runner egress policy was doing nothing, and was breaking CI while it did.**
+  Three workflows wrote `allowed-endpoints` as a YAML folded scalar with explanatory `#` lines
+  indented inside the block. A block scalar has no comments, so the agent received
+  `... objects.githubusercontent.com:443 # Only the JDKs ... so # setup-java downloads it ...`
+  and tried to resolve the prose as domains. On `setup-java` it got NXDOMAIN and exited
+  `status=1/FAILURE`, reverting its network changes. Two consequences. The agent blocks nothing
+  once dead, so the step named "Block unexpected outbound calls" had no effect in `tests.yml`,
+  `e2e-tests.yml` and `fuzzing.yml` on every run. And the teardown often leaves DNS unusable
+  for the rest of the job, which is the real cause of the failures read as network flakes:
+  `Unresolveable build extension: central-publishing-maven-plugin` about a second into the
+  build, and `getaddrinfo EAI_AGAIN api.adoptium.net` in `Set up Java`. The transfer-retry
+  settings added for #339 address a different layer and cannot help a build whose DNS is gone;
+  they are kept, since they are correct on their own terms, but they were not the fix.
+  `HardenRunnerEndpointsTest` now requires every entry in every list to be a `host:port` pair.
+
 - **Every disabled example demonstration can now fail when it is enabled.** `failOn` defaults
   to `NONE`, which reports a detector finding without failing the run, and no example set it.
   Measured by enabling all 97 `@Disabled` demonstrations and running the examples reactor three
@@ -21,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   27 demonstrations still produce no finding at all in three runs and are tracked in #346; the
   cause differs per example and none of them is fixed by `failOn`.
+
 
 ### Changed
 
