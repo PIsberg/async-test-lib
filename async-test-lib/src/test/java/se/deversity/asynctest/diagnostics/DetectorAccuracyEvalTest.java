@@ -836,6 +836,95 @@ class DetectorAccuracyEvalTest {
                         + "detector fire on every instrumented compute*");
     }
 
+    /**
+     * A nested compute on a <em>different</em> key of the same map, which used to be excused
+     * (#343).
+     *
+     * <p>The shape example 40 ships to demonstrate this detector, and the one the detector could
+     * not see: its evidence used to be keyed on map, key and thread together, so a mapping
+     * function that reached the same map under another key was invisible. The contract it breaks
+     * is not key-scoped. {@code ConcurrentHashMap.computeIfAbsent} says "the mapping function
+     * must not modify this map", full stop.
+     *
+     * <p>Driven with {@code merge} over two seeded keys because that is deterministic. The
+     * {@code computeIfAbsent} version of the same shape depends on whether the two keys land in
+     * the same bin: measured over 200 fresh maps it ran and returned 198 times and threw twice,
+     * which is a fine thing to report and a poor thing to assert on.
+     */
+    @Test
+    @DisplayName("compute recursion: a nested compute on another key of the same map fires (#343)")
+    void computeRecursionFiresWhenTheFunctionReachesAnotherKeyOfTheSameMap() {
+        ConcurrentMapComputeRecursionDetector detector =
+                new ConcurrentMapComputeRecursionDetector();
+        ConcurrentMap<String, String> map = new ConcurrentHashMap<>();
+        map.put("outer", "seed");
+        map.put("inner", "seed");
+        Thread self = Thread.currentThread();
+
+        map.merge("outer", "v", (oldOuter, newOuter) -> {
+            detector.recordComputeStart(map, "outer", self, "cache");
+            try {
+                return map.merge("inner", "v", (oldInner, newInner) -> {
+                    detector.recordComputeStart(map, "inner", self, "cache");
+                    try {
+                        return "nested";
+                    } finally {
+                        detector.recordComputeEnd(map, "inner", self);
+                    }
+                });
+            } finally {
+                detector.recordComputeEnd(map, "outer", self);
+            }
+        });
+
+        assertTrue(detector.analyze().hasIssues(),
+                "The remapping function for 'outer' modified the same map under 'inner' while it "
+                        + "was still running. That is the documented prohibition, and it is the "
+                        + "shape most likely to be in code that ships because it usually returns "
+                        + "normally. Silence here is the excuse #343 removed, coming back");
+    }
+
+    /**
+     * The boundary that keeps the rule above from firing on ordinary code.
+     *
+     * <p>The same nesting, one map apart. A mapping function that consults or fills some
+     * <em>other</em> structure is not what the contract forbids, and it is common: a cache whose
+     * loader reads a second cache would report on every call if the rule keyed on the thread
+     * alone. This is the half that makes the cross-key rule safe to turn on by default.
+     */
+    @Test
+    @DisplayName("compute recursion: nesting into a different map is not reported (#343)")
+    void computeRecursionSilentWhenTheNestedComputeIsOnAnotherMap() {
+        ConcurrentMapComputeRecursionDetector detector =
+                new ConcurrentMapComputeRecursionDetector();
+        ConcurrentMap<String, String> outerMap = new ConcurrentHashMap<>();
+        ConcurrentMap<String, String> innerMap = new ConcurrentHashMap<>();
+        outerMap.put("k", "seed");
+        innerMap.put("k", "seed");
+        Thread self = Thread.currentThread();
+
+        outerMap.merge("k", "v", (oldOuter, newOuter) -> {
+            detector.recordComputeStart(outerMap, "k", self, "outer-cache");
+            try {
+                return innerMap.merge("k", "v", (oldInner, newInner) -> {
+                    detector.recordComputeStart(innerMap, "k", self, "inner-cache");
+                    try {
+                        return "nested";
+                    } finally {
+                        detector.recordComputeEnd(innerMap, "k", self);
+                    }
+                });
+            } finally {
+                detector.recordComputeEnd(outerMap, "k", self);
+            }
+        });
+
+        assertFalse(detector.analyze().hasIssues(),
+                "Two maps, so neither mapping function modified the map it was computing for. "
+                        + "ConcurrentHashMap's prohibition is per map; a detector that reported "
+                        + "this would fire on every layered cache in the world");
+    }
+
     // ---- SharedMessageDigestDetector ----
 
     @Test

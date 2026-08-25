@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`ConcurrentMapComputeRecursionDetector` now reports a mapping function that re-enters its
+  own map under any key, not only the key it is computing.** The rule was keyed on map, key and
+  thread together, and `ConcurrentHashMap`'s contract is not key-scoped: "the mapping function
+  must not modify this map". The cost was visible in this repository.
+  `examples/40-concurrent-map-recursion` is the detector's own example, its bug is a
+  different-key re-entry, and its detection test is `@Disabled`, so nothing had noticed that
+  removing `@Disabled` would not produce the finding its README promised. Measured over 200
+  fresh maps, that shape ran and returned 198 times and threw twice, on the runs where both keys
+  landed in the same bin, so the wider shape is also the quieter one. Nesting into a *different*
+  map is still not reported, and has a corpus row and a unit test holding that boundary: a
+  mapping function that fills some other cache is ordinary layered-cache code. The two findings
+  are listed separately in the report because their consequences differ (#343).
+
+- **Example 40 now demonstrates what it claims.** Its test recorded around `getNeighbors("A")`
+  rather than inside the mapping function, which is one balanced start and end per body
+  execution and no nesting at all, so it would have reported nothing under either rule.
+  `GraphService` exposes two no-op `Consumer<String>` hooks, the test wires them to the
+  detector, and the test sets `failOn = FailOn.HIGH, minTrust = TrustTier.PROMPT` because
+  `failOn` defaults to `NONE` and this detector is `PROMPT` tier. With `@Disabled` removed the
+  run now fails with the report naming both keys, which is what the README always said it
+  would (#343).
+
 ### Fixed
 
 - **`ConcurrentMapComputeRecursionDetector` described a failure mode that no longer happens, and

@@ -118,6 +118,18 @@ class CorpusRecordingLaneTest {
     /** The twin whose remapping function stays out of the map: the silent recursion row. */
     private final Cache<String, String> selfContainedCache = seededCache();
 
+    /** The map whose remapping function merges a DIFFERENT key of itself: the cross-key row. */
+    private final Cache<String, String> crossKeyCache = seededCache();
+
+    /** The outer map of the cross-map pair, whose function reaches the inner one. */
+    private final Cache<String, String> outerCache = seededCache();
+
+    /** The inner map of the cross-map pair, which is a different map and so not a finding. */
+    private final Cache<String, String> innerCache = seededCache();
+
+    /** The second key the cross-key row re-enters on, seeded alongside the first. */
+    private static final String OTHER_KEY = "other-key";
+
     /** A second Caffeine instance, so the computeIfAbsent row cannot borrow the other's state. */
     private final Cache<String, String> caffeineAtomicCache =
             Caffeine.newBuilder().maximumSize(64).build();
@@ -475,6 +487,78 @@ class CorpusRecordingLaneTest {
         LEAKED.add(buffer);
     }
 
+    /**
+     * A {@code merge} whose remapping function merges a <em>different</em> key of the same map.
+     *
+     * <p>The shape #343 opened the rule to, and the one most likely to be in code that ships:
+     * {@code ConcurrentHashMap}'s contract is "the mapping function must not modify this map",
+     * not "must not modify this key", and this version usually returns normally rather than
+     * throwing, so it survives review. Measured at this lane's own six threads and forty
+     * invocations before the row was written: 240 of 240 nested mapping functions ran, nothing
+     * thrown.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_caffeineAsMap_crossKeyMerge() {
+        CorpusRecorder.countBodyExecution();
+        ConcurrentMap<String, String> view = crossKeyCache.asMap();
+        Thread self = Thread.currentThread();
+        view.merge(RECURSION_KEY, "outer", (oldOuter, newOuter) -> {
+            AsyncTestContext.concurrentMapComputeRecursionDetector()
+                    .recordComputeStart(view, RECURSION_KEY, self, "caffeine-cross-key");
+            try {
+                return view.merge(OTHER_KEY, "inner", (oldInner, newInner) -> {
+                    AsyncTestContext.concurrentMapComputeRecursionDetector()
+                            .recordComputeStart(view, OTHER_KEY, self, "caffeine-cross-key");
+                    try {
+                        return "nested";
+                    } finally {
+                        AsyncTestContext.concurrentMapComputeRecursionDetector()
+                                .recordComputeEnd(view, OTHER_KEY, self);
+                    }
+                });
+            } finally {
+                AsyncTestContext.concurrentMapComputeRecursionDetector()
+                        .recordComputeEnd(view, RECURSION_KEY, self);
+            }
+        });
+    }
+
+    /**
+     * The same nesting, one map apart, which is the boundary the cross-key rule must respect.
+     *
+     * <p>This is the row that makes #343 safe to have on by default. A mapping function that
+     * fills some other cache is ordinary layered-cache code, and a rule keyed on the thread
+     * rather than on the map would report every one of them. The recorded calls are identical in
+     * number and nesting to the row above; only the receiver of the inner merge differs, which is
+     * exactly the thing that decides whether the contract was broken.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_caffeineTwoMaps_nestedMerge() {
+        CorpusRecorder.countBodyExecution();
+        ConcurrentMap<String, String> outer = outerCache.asMap();
+        ConcurrentMap<String, String> inner = innerCache.asMap();
+        Thread self = Thread.currentThread();
+        outer.merge(RECURSION_KEY, "outer", (oldOuter, newOuter) -> {
+            AsyncTestContext.concurrentMapComputeRecursionDetector()
+                    .recordComputeStart(outer, RECURSION_KEY, self, "caffeine-outer");
+            try {
+                return inner.merge(RECURSION_KEY, "inner", (oldInner, newInner) -> {
+                    AsyncTestContext.concurrentMapComputeRecursionDetector()
+                            .recordComputeStart(inner, RECURSION_KEY, self, "caffeine-inner");
+                    try {
+                        return "nested";
+                    } finally {
+                        AsyncTestContext.concurrentMapComputeRecursionDetector()
+                                .recordComputeEnd(inner, RECURSION_KEY, self);
+                    }
+                });
+            } finally {
+                AsyncTestContext.concurrentMapComputeRecursionDetector()
+                        .recordComputeEnd(outer, RECURSION_KEY, self);
+            }
+        });
+    }
+
     // --- ConcurrentMapComputeRecursion -------------------------------------------------------
 
     /**
@@ -588,6 +672,7 @@ class CorpusRecordingLaneTest {
     private static Cache<String, String> seededCache() {
         Cache<String, String> cache = Caffeine.newBuilder().maximumSize(64).build();
         cache.put(RECURSION_KEY, "seed");
+        cache.put(OTHER_KEY, "seed");
         return cache;
     }
 

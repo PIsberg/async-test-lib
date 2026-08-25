@@ -255,7 +255,7 @@ AsyncTestContext.inheritableThreadLocalMisuseMonitor() // InheritableThreadLocal
 | `detectAtomicNonAtomicUpdates` | boolean | true | Detect `get()` + `set()` on `Atomic*` without `compareAndSet()`, losing concurrent updates |
 | `detectSynchronizedCollectionIteration` | boolean | true | Detect `Collections.synchronized*` iterated without holding the wrapper lock |
 | `detectSharedFormatter` | boolean | true | Detect `Formatter`/`PrintWriter`/`PrintStream` accessed from multiple threads concurrently |
-| `detectConcurrentMapComputeRecursion` | boolean | true | Detect recursive `compute*`/`merge` on same key from same thread (a silently lost update when the key is present; the absent-key shape throws `IllegalStateException` and reports itself) |
+| `detectConcurrentMapComputeRecursion` | boolean | true | Detect a `compute*`/`merge` mapping function that re-enters its own map on the same thread, on the same key (the nested update is discarded) or on any other key (usually returns normally, leaving the map updated out of order). Nesting into a different map is not reported |
 | `detectSynchronizedOnLiteral` | boolean | true | Detect `synchronized` on interned `String` or cached `Integer`/`Long` [-128, 127] — JVM-wide shared monitor |
 | `detectPublicLockExposure` | boolean | true | Detect `synchronized(this)` on publicly accessible objects — enables external lock acquisition |
 | `detectForkJoinTaskBlocking` | boolean | true | Detect blocking calls (`sleep`/`wait`/`get`/IO) inside a `ForkJoinTask`, starving carrier threads |
