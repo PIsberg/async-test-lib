@@ -3,10 +3,14 @@ package se.deversity.asynctest.example;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
+import se.deversity.asynctest.diagnostics.CountDownLatchDetector;
 import se.deversity.asynctest.example.service.StartupCoordinator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -29,9 +33,17 @@ import static org.junit.jupiter.api.Assertions.*;
  * because there is no concurrent access.
  *
  * WHY @AsyncTest DETECTS:
- * With 8 threads each calling initialize(true) 50 times, countDown() is never
- * invoked. CountDownLatchDetector registers the latch, tracks countDown() calls,
- * and reports that the latch count never reached zero.
+ * Every thread calls initialize(true), so countDown() is never invoked, and every
+ * thread's waitForStartup() gives up. CountDownLatchDetector reports the latch
+ * whose await timed out.
+ *
+ * WHAT THE DETECTOR DOES NOT REPORT:
+ * A registered latch that never reached zero, on its own. It should not: a latch
+ * mid-flight looks exactly like that, and reporting it would flag every latch the
+ * moment it is created. hasIssues() gates on a wait that gave up, or on more
+ * countDown() calls than the latch was built for. This demonstration used to
+ * register the latch, skip the countDown and stop there, which is why enabling it
+ * reported nothing. See issue #346.
  *
  * FIX:
  * Always call latch.countDown() regardless of quickMode, ensuring every
@@ -76,6 +88,52 @@ class StartupCoordinatorTest {
                 "Three normal initializations should release the latch");
     }
 
+    /**
+     * The detector's positive direction: quick mode never counts down, so the wait gives up,
+     * and a wait that gave up is what this detector reports.
+     */
+    @Test
+    void testCountDownLatchDetector_awaitTimedOut_reports() throws Exception {
+        CountDownLatchDetector detector = new CountDownLatchDetector();
+        wire(detector);
+        detector.registerLatch(coordinator.getLatch(), "startup-latch", 3);
+
+        coordinator.initialize(true);   // BUG: no countDown
+        assertFalse(coordinator.waitForStartup(20, TimeUnit.MILLISECONDS),
+                "the latch is still at 3, so the wait must give up");
+
+        assertTrue(detector.analyze().hasIssues(),
+                "a wait that gave up on a latch that never reached zero is the finding");
+    }
+
+    /**
+     * And the other direction, on the same coordinator with the bug avoided. A latch that
+     * reaches zero and releases its waiter is a latch doing its job.
+     */
+    @Test
+    void testCountDownLatchDetector_latchReleased_isSilent() throws Exception {
+        CountDownLatchDetector detector = new CountDownLatchDetector();
+        wire(detector);
+        detector.registerLatch(coordinator.getLatch(), "startup-latch", 3);
+
+        coordinator.initialize(false);
+        coordinator.initialize(false);
+        coordinator.initialize(false);
+        assertTrue(coordinator.waitForStartup(1, TimeUnit.SECONDS),
+                "three countDown() calls release a latch built for three");
+
+        assertFalse(detector.analyze().hasIssues(),
+                "a latch that released its waiter is not a finding");
+    }
+
+    private void wire(CountDownLatchDetector detector) {
+        CountDownLatch latch = coordinator.getLatch();
+        coordinator.observeLatch(
+                () -> detector.recordCountDown(latch),
+                () -> detector.recordAwaitSuccess(latch),
+                () -> detector.recordTimeout(latch));
+    }
+
     // -------------------------------------------------------------------------
     // Part 2: @AsyncTest — exposes the concurrency bug
     // -------------------------------------------------------------------------
@@ -91,16 +149,24 @@ class StartupCoordinatorTest {
      * 3. To fix: always call latch.countDown() in initialize()
      */
     @Disabled("Remove @Disabled to see the bug detected by CountDownLatchDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCountDownLatchIssues = true, failOn = FailOn.LOW)
-    void testInitialize_concurrent_detectsMissingCountDown() {
-        // Register the latch with the detector before using it
-        AsyncTestContext.countDownLatchMonitor()
-                .registerLatch(coordinator.getLatch(), "startup-latch", 3);
+    @AsyncTest(threads = 8, invocations = 10, detectAll = false,
+            detectCountDownLatchIssues = true, failOn = FailOn.LOW)
+    void testInitialize_concurrent_detectsMissingCountDown() throws Exception {
+        CountDownLatchDetector monitor = AsyncTestContext.countDownLatchMonitor();
+        CountDownLatch latch = coordinator.getLatch();
+        coordinator.observeLatch(
+                () -> monitor.recordCountDown(latch),
+                () -> monitor.recordAwaitSuccess(latch),
+                () -> monitor.recordTimeout(latch));
+        monitor.registerLatch(latch, "startup-latch", 3);
 
-        // All threads use quickMode=true — countDown() is never called
+        // All threads use quickMode=true, so countDown() is never called.
         coordinator.initialize(true);
 
-        // Detector will observe: latch was registered with count=3,
-        // but recordCountDown() was never called → reports the issue
+        // And this is the step the demonstration used to skip. Registering a latch that never
+        // reaches zero is not a finding, and should not be: a latch mid-flight looks the same.
+        // The finding is a wait that gave up. See issue #346.
+        assertFalse(coordinator.waitForStartup(20, TimeUnit.MILLISECONDS),
+                "startup never completes, because quick mode never counts down");
     }
 }
