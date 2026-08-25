@@ -5,7 +5,7 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 ## What these prove, and what they do not
 
 Most examples ship the buggy service, a sequential `@Test` that passes on it, and an
-`@AsyncTest` that exposes the bug. **Those `@AsyncTest` demonstrations are `@Disabled`**: 99 of
+`@AsyncTest` that exposes the bug. **Those `@AsyncTest` demonstrations are `@Disabled`**: 96 of
 the 148 examples have one. That is deliberate: they demonstrate code that fails, so enabling
 them would make the examples pipeline permanently red. Each carries a reason saying so, and
 removing the annotation is the intended way to watch the bug surface.
@@ -93,7 +93,7 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 53 | [InheritableThreadLocal Misuse](53-inheritable-thread-local/) | `InheritableThreadLocalMisuseDetector` | Thread pools inherit stale context from previous requests via `InheritableThreadLocal` | 🟡 High |
 | 54 | [JDBC Connection Shared](54-jdbc-connection-shared/) | `JdbcConnectionSharedDetector` | Single `Connection` shared across threads — concurrent queries corrupt each other | 🔴 Critical |
 | 55 | [Lazy Init Race](55-lazy-init-race/) | `LazyInitRaceDetector` | Unsynchronized null-check lazy init — multiple threads create separate instances | 🔴 Critical |
-| 56 | [Lock Downgrade](56-lock-downgrade/) | `LockDowngradeDetector` | Write lock released before read lock acquired — gap lets another thread write in between | 🔴 Critical |
+| 56 | [Lock Downgrade](56-lock-downgrade/) | `LockDowngradeDetector` | Write lock released before read lock acquired, so another thread can write in the gap. The detector reports upgrades only, so this one has no disabled demonstration; see #355 | 🔴 Critical |
 | 57 | [Lock Leak](57-lock-leak/) | `LockLeakDetector` | Exception between `lock()` and `unlock()` leaves lock permanently held | 🔴 Critical |
 | 58 | [Missed Signal](58-missed-signal/) | `MissedSignalDetector` | `notify()` fired before `wait()` — signal lost, waiter blocks forever | 🔴 Critical |
 | 59 | [Mutable Map Key](59-mutable-map-key/) | `MutableMapKeyDetector` | Mutable object used as `HashMap` key; mutation after insertion makes entry unreachable | 🟡 High |
@@ -102,7 +102,7 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 62 | [Optimistic Read Validation](62-optimistic-read-validation/) | `OptimisticReadValidationDetector` | `StampedLock.tryOptimisticRead()` used without `validate()` — stale data returned silently | 🟡 High |
 | 63 | [Parallel Stream Side-Effects](63-parallel-stream/) | `ParallelStreamDetector` | `parallelStream().forEach()` mutates shared `ArrayList` — lost updates and CME | 🔴 Critical |
 | 64 | [Phaser Misuse](64-phaser-misuse/) | `PhaserDetector` | Fewer parties registered than threads that arrive — `IllegalStateException` or early termination | 🟡 High |
-| 65 | [Public Lock Exposure](65-public-lock-exposure/) | `PublicLockExposureDetector` | `getLock()` exposes internal `ReentrantLock` — external callers can hold it indefinitely | 🟡 High |
+| 65 | [Public Lock Exposure](65-public-lock-exposure/) | `PublicLockExposureDetector` | `synchronized` methods make the object its own lock, and the object is public API, so external callers can hold it indefinitely | 🟡 High |
 | 66 | [Reentrant Lock Imbalance](66-reentrant-lock/) | `ReentrantLockDetector` | `lock()` called twice, `unlock()` once — hold count stays at 1, starving all callers | 🔴 Critical |
 | 67 | [Resource Leak](67-resource-leak/) | `ResourceLeakDetector` | `InputStream` opened per call but never closed — file descriptor exhaustion | 🟡 High |
 | 68 | [Scheduled Executor Leak](68-scheduled-executor/) | `ScheduledExecutorDetector` | `ScheduledExecutorService` created but `shutdown()` never called — threads accumulate | 🟡 High |
