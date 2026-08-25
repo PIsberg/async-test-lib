@@ -5,7 +5,7 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 ## What these prove, and what they do not
 
 Most examples ship the buggy service, a sequential `@Test` that passes on it, and an
-`@AsyncTest` that exposes the bug. **Those `@AsyncTest` demonstrations are `@Disabled`**: 99 of
+`@AsyncTest` that exposes the bug. **Those `@AsyncTest` demonstrations are `@Disabled`**: 96 of
 the 148 examples have one. That is deliberate: they demonstrate code that fails, so enabling
 them would make the examples pipeline permanently red. Each carries a reason saying so, and
 removing the annotation is the intended way to watch the bug surface.
@@ -93,7 +93,7 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 53 | [InheritableThreadLocal Misuse](53-inheritable-thread-local/) | `InheritableThreadLocalMisuseDetector` | Thread pools inherit stale context from previous requests via `InheritableThreadLocal` | 🟡 High |
 | 54 | [JDBC Connection Shared](54-jdbc-connection-shared/) | `JdbcConnectionSharedDetector` | Single `Connection` shared across threads — concurrent queries corrupt each other | 🔴 Critical |
 | 55 | [Lazy Init Race](55-lazy-init-race/) | `LazyInitRaceDetector` | Unsynchronized null-check lazy init — multiple threads create separate instances | 🔴 Critical |
-| 56 | [Lock Downgrade](56-lock-downgrade/) | `LockDowngradeDetector` | Write lock released before read lock acquired — gap lets another thread write in between | 🔴 Critical |
+| 56 | [Lock Downgrade](56-lock-downgrade/) | `LockDowngradeDetector` | Write lock released before read lock acquired, so another thread can write in the gap. The detector reports upgrades only, so this one has no disabled demonstration; see #355 | 🔴 Critical |
 | 57 | [Lock Leak](57-lock-leak/) | `LockLeakDetector` | Exception between `lock()` and `unlock()` leaves lock permanently held | 🔴 Critical |
 | 58 | [Missed Signal](58-missed-signal/) | `MissedSignalDetector` | `notify()` fired before `wait()` — signal lost, waiter blocks forever | 🔴 Critical |
 | 59 | [Mutable Map Key](59-mutable-map-key/) | `MutableMapKeyDetector` | Mutable object used as `HashMap` key; mutation after insertion makes entry unreachable | 🟡 High |
