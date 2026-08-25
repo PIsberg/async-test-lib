@@ -1,5 +1,7 @@
 package se.deversity.asynctest.example.service;
 
+import java.util.function.Consumer;
+
 /**
  * Simulates a request-scoped service that stores the active request ID in a
  * {@link ThreadLocal} for downstream components to read without passing it
@@ -13,19 +15,26 @@ public class RequestScopedService {
 
     public static final ThreadLocal<String> REQUEST_ID = new ThreadLocal<>();
 
+    private volatile Runnable onSet = () -> { };
+
+    private volatile Consumer<String> onGet = value -> { };
+
     /**
      * Begin a new request scope. Stores {@code id} in the current thread's
      * {@code ThreadLocal} slot.
      */
     public void startRequest(String id) {
         REQUEST_ID.set(id);
+        onSet.run();
     }
 
     /**
      * Return the request ID bound to the current thread.
      */
     public String getCurrentId() {
-        return REQUEST_ID.get();
+        String value = REQUEST_ID.get();
+        onGet.accept(value);
+        return value;
     }
 
     /**
@@ -36,6 +45,28 @@ public class RequestScopedService {
      */
     public void endRequest() {
         // Intentionally missing: REQUEST_ID.remove();
+    }
+
+    /**
+     * End the request scope, properly.
+     *
+     * <p>The one line the buggy version leaves out. On a pooled thread this is the difference
+     * between the next request seeing its own id and seeing the previous one's.
+     */
+    public void endRequestFixed() {
+        REQUEST_ID.remove();
+    }
+
+    /**
+     * Installs the hooks ThreadLocalContaminationDetector needs. No-ops by default, so
+     * production behaviour is unchanged whether or not a test is watching.
+     *
+     * @param set called after the value is bound to the thread
+     * @param get called with whatever the read returned, including null
+     */
+    public void observeContext(Runnable set, Consumer<String> get) {
+        this.onSet = set;
+        this.onGet = get;
     }
 
     /**
