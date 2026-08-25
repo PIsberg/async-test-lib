@@ -154,6 +154,17 @@ common shape of a real race — it is why the README's own counter example repor
 this option existed. `fields=true` instruments the instruction stream instead, inserting a
 stack-neutral, branch-free observation call before each field instruction.
 
+The call carries the receiver, so the analysis can tell six threads racing on one object from six
+threads each using their own, and — for a store of a reference type — the value being stored. That
+last one is what lets the atomicity model tell an idempotent value apart from a side effect: a
+double-submit converges on its field exactly like a view cache does, and the difference is only
+visible in what the stored object does afterwards
+([#326](https://github.com/PIsberg/async-test-lib/issues/326)). A reference store is the one shape
+where the value is already on the operand stack in argument order, so `DUP2` reaches it in two
+instructions with nothing to undo; every other shape passes `null`, which the analysis reads as
+"not known" rather than as evidence. Only identity hashes leave the call — neither the receiver
+nor the stored value is retained.
+
 It is off by default because the cost scales with the instrumented surface, not with the number of
 accessors: every field read and write in every matched class emits an event. Pair it with
 `includes=` so the weaving lands on the code under test rather than on the whole classpath:

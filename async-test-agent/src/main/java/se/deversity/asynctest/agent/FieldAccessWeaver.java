@@ -444,13 +444,20 @@ final class FieldAccessWeaver {
 
 
         /**
-         * Leaves {@code System.identityHashCode(receiver)} on top of the stack, with the operands
-         * the field instruction needs still beneath it, in their original order.
+         * Leaves the receiver and, for a reference store, the value being stored on top.
          *
          * <p>Which instance a field belongs to is the difference between six threads racing on one
          * object and six threads each using their own. Without it a per-call object, a hasher, a
          * matcher, an iterator, aggregates by field name and reads as shared, which is a false
          * positive on code that is not even concurrent.
+         *
+         * <p>The stored value answers a different question (#326). An access stream that carries
+         * no values cannot tell an idempotent value apart from a side effect, so a double-submit
+         * shaped like a view cache converges on the field exactly like a cache and is excused for
+         * it. A reference store is the one shape where the value is already on the stack in the
+         * right place - {@code DUP2} leaves receiver and value in argument order with nothing to
+         * undo - so it costs two instructions and no scratch slot. Everything else passes
+         * {@code null}, and the analysis reads that as "not known" rather than as evidence.
          *
          * <p>Done with stack manipulation rather than a scratch local on purpose: a local would
          * grow {@code maxLocals} and put a write and a read of an undeclared slot into a method
@@ -461,13 +468,21 @@ final class FieldAccessWeaver {
         private void liftReceiver(boolean isWrite, String descriptor) {
             if (!isWrite) {
                 super.visitInsn(Opcodes.DUP);                 // obj -> obj, obj
+                super.visitInsn(Opcodes.ACONST_NULL);         //     -> obj, obj, null
             } else if (isCategoryTwo(descriptor)) {
                 super.visitInsn(Opcodes.DUP2_X1);             // obj, v1, v2 -> v1, v2, obj, v1, v2
                 super.visitInsn(Opcodes.POP2);                //             -> v1, v2, obj
                 super.visitInsn(Opcodes.DUP);                 //             -> v1, v2, obj, obj
+                super.visitInsn(Opcodes.ACONST_NULL);         //             -> ..., obj, obj, null
+            } else if (isReference(descriptor)) {
+                // The value is already where the hook wants it: DUP2 leaves (receiver, stored)
+                // in argument order, and the field instruction's own operands are untouched
+                // beneath, so unlike every other write shape this one needs no restore.
+                super.visitInsn(Opcodes.DUP2);                // obj, v -> obj, v, obj, v
             } else {
                 super.visitInsn(Opcodes.DUP2);                // obj, v -> obj, v, obj, v
                 super.visitInsn(Opcodes.POP);                 //        -> obj, v, obj
+                super.visitInsn(Opcodes.ACONST_NULL);         //        -> obj, v, obj, null
             }
         }
 
@@ -486,6 +501,11 @@ final class FieldAccessWeaver {
 
         private static boolean isCategoryTwo(String descriptor) {
             return "J".equals(descriptor) || "D".equals(descriptor);
+        }
+
+        /** {@return whether {@code descriptor} names a reference type, so its value is an Object} */
+        private static boolean isReference(String descriptor) {
+            return descriptor.charAt(0) == 'L' || descriptor.charAt(0) == '[';
         }
 
 
@@ -568,6 +588,11 @@ final class FieldAccessWeaver {
                     } else {
                         super.visitInsn(Opcodes.ACONST_NULL);
                     }
+                    // A static store's value sits alone on the stack with the receiver pushed
+                    // above it, so reaching it would need a SWAP and a shape this weaver has no
+                    // end-to-end coverage for. Left as "not known", which the analysis reads as
+                    // no evidence rather than as evidence of mutability.
+                    super.visitInsn(Opcodes.ACONST_NULL);
                 } else {
                     liftReceiver(isWrite, descriptor);
                 }
@@ -583,7 +608,8 @@ final class FieldAccessWeaver {
                         ? Opcodes.ICONST_1 : Opcodes.ICONST_0);
                 super.visitInsn(isStatic ? Opcodes.ICONST_1 : Opcodes.ICONST_0);
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "recordAccess",
-                        "(Ljava/lang/Object;Ljava/lang/Object;JLjava/lang/String;ZZIZZ)V", false);
+                        "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;"
+                                + "JLjava/lang/String;ZZIZZ)V", false);
                 if (isWrite && !isStatic) {
                     restoreReceiverBelowValue(descriptor);
                 }

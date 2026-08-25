@@ -235,6 +235,53 @@ public final class TelemetryRegistry {
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
                 volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method);
     }
+    /**
+     * Records a field access, with the reference the write stored in hand.
+     *
+     * <p>The one thing an access stream cannot say is <em>what</em> was stored, and that is the
+     * whole blind spot in the settled-cache excuse. A double-submit shaped like a view cache -
+     * {@code if (job == null) job = submit()} - converges on the field exactly like a cache does,
+     * because convergence is a property of the field and the defect is a property of the payload.
+     * Given the stored reference's identity, the analysis can ask whether the published object
+     * then went quiet, which is what an idempotent value does and a live job does not.
+     *
+     * <p>Only its identity hash travels; like the receiver, the value itself is never retained.
+     * {@code stored} is {@code null} for a read, for a primitive write, and wherever the weaver
+     * could not reach the value without disturbing the operand stack, and a 0 identity means "not
+     * known" rather than "not immutable" - the analysis keeps its previous answer there, because
+     * absence of evidence is not evidence.
+     *
+     * @param receiver          the object the field belongs to, or the declaring class for a
+     *                          static field, or {@code null} when the weaver had neither
+     * @param stored            the reference this write put in the field, or {@code null}
+     * @param methodMonitor     the monitor of the enclosing {@code synchronized} method, else
+     *                          {@code null}
+     * @param threadId          {@code Thread.currentThread().threadId()}
+     * @param qualifiedName     combined {@code declaringClass.field} identifier
+     * @param isWrite           {@code true} for a write access
+     * @param volatileField     whether the field is declared {@code volatile}
+     * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
+     * @param afterVolatileRead whether a volatile field of the owner was read first
+     * @param staticField       whether the field is static, so its identity stays 0
+     * @since 1.9.8
+     */
+    public static void recordAccess(@Nullable Object receiver, @Nullable Object stored,
+                                    @Nullable Object methodMonitor,
+                                    long threadId, String qualifiedName, boolean isWrite,
+                                    boolean volatileField, int constantTag,
+                                    boolean afterVolatileRead, boolean staticField) {
+        if (STOPPED.get()) {
+            return;
+        }
+        int identity = staticField || receiver == null ? 0 : System.identityHashCode(receiver);
+        int ownMonitor = receiver != null && Thread.holdsLock(receiver)
+                ? System.identityHashCode(receiver) : 0;
+        int method = methodMonitor == null ? 0 : System.identityHashCode(methodMonitor);
+        int storedIdentity = stored == null ? 0 : System.identityHashCode(stored);
+        BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
+                volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method,
+                storedIdentity);
+    }
 
     /**
      * Records a field access from a class name and method name.

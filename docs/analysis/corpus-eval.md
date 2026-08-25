@@ -328,6 +328,30 @@ rounds earns nothing and keeps its finding. What the rule deliberately does not 
 the stored value was safe to publish unsafely: a torn or stale value is visibility, not
 atomicity, and stays `ConstructorSafetyValidator` and `VisibilityMonitor` business.
 
+**The blind spot that rule left, and what closed it
+([#326](https://github.com/PIsberg/async-test-lib/issues/326)).** The settle rule reads
+convergence off the field, and convergence is a property of the field. A double-submit shaped
+like a view cache - `if (job == null) job = submit()` - produces the same access stream as
+Jackson's serializer cache: the same miss checks, the same racing stores, the same settled
+suffix of reads. It is excused, and the work was done twice. Idempotence and immutability are
+invisible in a stream that carries no values, so the shapes could not be separated at all.
+
+The weaver now captures one more thing for a reference store: the identity of the value it put
+in the field. A reference store is the one shape where the value is already on the operand stack
+in argument order, so `DUP2` reaches it in two instructions with nothing to undo and no scratch
+local, which keeps the frames the weaver deliberately does not recompute valid. With that, the
+excuse asks a second question - did the published object then go quiet - and answers it from the
+stream it already has, because every write already carries the identity of the object it belongs
+to. An effectively immutable value is written once and read from then on, which is what the JMM's
+final-field guarantee promises statically; a live job keeps writing.
+
+**Absence of evidence keeps the previous answer.** A stored identity of 0 - a primitive write, a
+shape the weaver could not reach, an older agent, or a payload of a type the agent does not weave,
+which includes every JDK class - means nothing is known, and nothing known must not become a
+finding. The rule only ever narrows, and only where there is something to narrow with. The corpus
+is the proof that it did not overreach: all twenty-two documented-safe subjects stayed silent and
+all twenty documented-unsafe ones stayed detected with the rule in place.
+
 Note which Jackson subjects stayed silent all along: `ObjectMapper` configured once and then
 shared, and `ObjectReader`. The mutant-factory contract that Jackson documents most strongly is
 the one the model reads correctly.
