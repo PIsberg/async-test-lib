@@ -79,6 +79,7 @@ read them for the reasoning, not as current reference.
 | [analysis/comparison.md](analysis/comparison.md) | How async-test differs from JUnit, stress tests, ThreadSanitizer |
 | [analysis/detector-accuracy-eval.md](analysis/detector-accuracy-eval.md) | Measured detector behavior on buggy code vs its synchronized twin, enforced by `DetectorAccuracyEvalTest` |
 | [analysis/corpus-eval.md](analysis/corpus-eval.md) | Measured detector behavior on 42 third-party classes with a documented thread-safety contract, with the exposure denominator every rate is over, produced by the standalone `corpus-eval` module |
+| [analysis/regression-sweep.md](analysis/regression-sweep.md) | What the downstream sweep is, the failure each of its rules prevents, and the result of the latest run: three unrelated consuming projects run against the artifact on Maven Central |
 | [analysis/codecov-troubleshooting.md](analysis/codecov-troubleshooting.md) | Coverage-upload troubleshooting |
 | [analysis/test-profiles-and-detector-gaps.md](analysis/test-profiles-and-detector-gaps.md) | Investigation: splitting the suite into a fast local tier and a CI-only e2e tier, and which bug classes the detectors miss |
 | [analysis/vibe-architecture-scorecard.md](analysis/vibe-architecture-scorecard.md) | Self-audit against the *Vibe Architecture* health scorecard (2026-08-15): 42 to 56 of 66, what each gate enforces, and the deferred decisions |

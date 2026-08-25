@@ -127,8 +127,13 @@ rule is not pedantry: a poisoned `~/.m2` once made a sweep read the wrong bytes 
 confident, wrong account of which release removed a detector constant. The preflight now compares
 sha1 against Maven Central before anything downstream is believed.
 
-The procedure, the per-repo traps and the numbers from the last sweep are in
+The rules, the failure each one prevents and the numbers from the latest sweep are in
+[the regression sweep write-up](docs/analysis/regression-sweep.md); the procedure itself is
 [the regression-test skill](.claude/skills/regression-test/SKILL.md).
+
+Latest run, **1.9.8 on 2026-08-25**: 2793 tests across the three projects, zero failures, and no
+change to any consumer beyond the version string. Two of the three were four releases behind, so
+one sweep exercised eleven new detectors and the whole agent lockset overhaul at once.
 
 
 ## ⚡ Quick Start
