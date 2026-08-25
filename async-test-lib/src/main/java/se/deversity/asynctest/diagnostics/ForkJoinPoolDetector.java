@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li><strong>Fork without join</strong> — reported when the caller says so via
  *       {@code recordForkWithoutJoin}. It is not inferred: {@code recordFork} and
  *       {@code recordJoin} accumulate per-pool counts that the analysis never compares.</li>
- *   <li><strong>Exception in forked tasks</strong> — from {@code recordTaskException}.</li>
+ *   <li><strong>Exception in forked tasks</strong> — from {@link #recordException(String, String, Throwable)}.</li>
  *   <li><strong>Work stealing</strong> — counted and shown, informational.</li>
  * </ul>
  *

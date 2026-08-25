@@ -28,7 +28,18 @@ daemon flag of the thread that created it, and virtual threads are always daemon
 default runner every `new Thread(...)` started from a test body is therefore already a daemon
 thread, and this detector has nothing to report however wrong the service is. Same service, same
 detector, same recording: with the default runner the demonstration passes with an empty report,
-and with `useVirtualThreads = false` it fails. That is issue #352.
+and with `useVirtualThreads = false` it fails. That was
+[#352](https://github.com/PIsberg/async-test-lib/issues/352). The runner no longer stays quiet
+about it: the first time a JVM runs a virtual-thread test with this detector enabled it logs
+
+```
+runner.detector.inert test=... detector=DaemonThreadHygieneDetector
+  reason="useVirtualThreads=true makes every thread created in the test body daemon by
+  inheritance, and this detector only reports non-daemon threads" hint="..."
+```
+
+at INFO, once, so a clean report from that configuration reads as "not observed" rather than
+"clean". The detector's javadoc and the `detectDaemonThreadHygiene` attribute say the same.
 
 ## How to Reproduce
 

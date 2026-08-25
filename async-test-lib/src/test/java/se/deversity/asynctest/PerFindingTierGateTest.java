@@ -11,6 +11,7 @@ import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.TrustTier;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -71,9 +72,19 @@ class PerFindingTierGateTest {
                 .testEvents();
     }
 
-    /** A record whose list component is genuinely mutated while two threads share it. */
+    /**
+     * A record whose list component is genuinely mutated while two threads share it.
+     *
+     * <p>The list is synchronized on purpose. With a bare {@code ArrayList} the fixture raced
+     * itself: two threads calling {@code add} can leave the size counter and the backing array
+     * disagreeing, and the body then died with {@code Index 1 out of bounds for length 0} before
+     * the {@code failOn} gate could speak — so the assertion below saw a fixture exception
+     * instead of the gate message, and this test failed precisely when its subject misbehaved
+     * most. The detector wants to see a write through a shared record's mutable component; it
+     * does not need that write to be unsafe. See issue #353.
+     */
     public static class ObservedMutationDummy {
-        private final List<String> items = new ArrayList<>();
+        private final List<String> items = Collections.synchronizedList(new ArrayList<>());
         private final Order order = new Order("A-1", items);
         private final AtomicInteger seq = new AtomicInteger();
 

@@ -35,7 +35,7 @@ The twin records the identical event stream through the detector's public record
 while the underlying code holds a real lock, uses CAS, or orders its locks consistently.
 Every recording happens from two live threads released by a CyclicBarrier.
 
-This is a recording-level eval of seventeen detectors, one of them behind an experimental gate, not a corpus study
+This is a recording-level eval of nineteen detectors, one of them behind an experimental gate, not a corpus study
 of all 142. It measures the analyzers' models, which is the property that decides whether
 a finding on your code means your code is wrong. Since the guard-on-self change the twins
 distinguish where the lock lives: guarding with the shared instance's own monitor
@@ -63,6 +63,8 @@ still invisible.
 | UncaughtExceptionHandlerDetector | fires (thread throws with no custom handler) | silent (same throw, handler installed) | genuine both-direction detector |
 | CompletableFutureCompletionLeakDetector | fires (future created, never completed) | silent (created and completed) | genuine both-direction detector |
 | ThreadLeakDetector | fires (thread started, still alive at analysis) | silent (joined and recorded as ended) | genuine both-direction detector; auto mode, which watches the global thread count, is off by default |
+| ConstructorSafetyValidator | fires (another thread reads a field before the constructor returns) | silent (ordinary constructor, read after it returned) | genuine both-direction detector since #357 removed the sub-microsecond rule, which fired on every fast constructor |
+| ThreadLocalMonitor | fires (set on two threads, never removed) | silent (`remove()` in a finally block) | genuine both-direction detector |
 
 Every buggy variant above fires. The twin column is the interesting one, and the twins that
 still fire on correct code now share a single cause: the guard is a lock nothing told the library

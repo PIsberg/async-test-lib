@@ -143,16 +143,17 @@ class ReportServiceTest {
      *
      * To see the detection:
      * 1. Remove @Disabled
-     * 2. Run this test — it fails with, for each common-pool worker,
+     * 2. Run this test — it fails with one line per common-pool worker, each carrying the
+     *    number of times that worker did it:
      *      Thread 'ForkJoinPool.commonPool-worker-1' made blocking call (Future.get) inside
-     *      CompletableFuture 'fetchData' running on the common ForkJoinPool
+     *      CompletableFuture 'fetchData' running on the common ForkJoinPool (x53)
      * 3. Fix: pass a dedicated Executor to every supplyAsync() that may block
      */
     @Disabled("Remove @Disabled to see common-pool blocking detected by CompletableFutureCommonPoolBlockingDetector")
-    // invocations is 5 rather than 50 only to keep the output readable: the detector emits one
-    // line per blocking call with no deduplication, so 400 executions produce 400 near-identical
-    // lines. That is issue #351, not a property of this example; put it back up once it is fixed.
-    @AsyncTest(threads = 8, invocations = 5, detectAll = false,
+    // invocations was held at 5 while the detector emitted one line per blocking call: 400 body
+    // executions produced 400 near-identical lines. The report now collapses identical findings
+    // and counts them, so this is back at 50. See issue #351.
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false,
             detectCFCommonPoolBlocking = true, failOn = FailOn.LOW)
     void testGenerateReport_concurrent_detectsPoolBlocking() {
         // This demonstration used to call recordBlockingCall(null, ...) from the test body.

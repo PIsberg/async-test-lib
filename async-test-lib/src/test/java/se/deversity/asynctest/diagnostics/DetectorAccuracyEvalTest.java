@@ -1570,4 +1570,106 @@ class DetectorAccuracyEvalTest {
                 "a thread that was joined and recorded as ended is not a leak; auto mode, which "
                         + "watches the global thread count, is off unless enableAutoMode() is called");
     }
+
+    // ---- ConstructorSafetyValidator ----
+
+    @Test
+    @DisplayName("constructor safety: an object another thread reaches mid-construction fires (true positive)")
+    void constructorSafetyFiresOnPublicationDuringConstruction() throws InterruptedException {
+        ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
+        Object escaping = new Object();
+        CountDownLatch published = new CountDownLatch(1);
+        CountDownLatch seen = new CountDownLatch(1);
+
+        Thread reader = new Thread(() -> {
+            try {
+                published.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            validator.recordFieldAccess(escaping, "name", System.nanoTime());
+            seen.countDown();
+        }, "constructor-safety-reader");
+        reader.setDaemon(true);
+        reader.start();
+
+        // Inside the "constructor": the reference escapes before construction ends.
+        validator.recordConstructionStart(escaping);
+        published.countDown();
+        assertTrue(seen.await(5, java.util.concurrent.TimeUnit.SECONDS),
+                "the reader thread must have run before this assertion means anything");
+        validator.recordConstructionEnd(escaping);
+        reader.join(2_000);
+
+        assertTrue(validator.validateConstructorSafety().hasIssues(),
+                "another thread read a field of the object before its constructor returned; "
+                        + "that is unsafe publication, the finding this validator exists for");
+    }
+
+    @Test
+    @DisplayName("constructor safety: an ordinary fast constructor stays silent (true negative, #357)")
+    void constructorSafetyStaysSilentOnAnOrdinaryConstructor() throws InterruptedException {
+        ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
+        Object settled = new Object();
+
+        // A constructor that assigns a few fields, instrumented start and end, and read only
+        // after it returned. This completes well inside a microsecond, which used to be
+        // reported as "possibly incomplete construction" on every ordinary object.
+        validator.recordConstructionStart(settled);
+        validator.recordConstructionEnd(settled);
+
+        Thread reader = new Thread(
+                () -> validator.recordFieldAccess(settled, "name", System.nanoTime()),
+                "constructor-safety-late-reader");
+        reader.start();
+        reader.join(2_000);
+
+        ConstructorSafetyValidator.ConstructorSafetyReport report =
+                validator.validateConstructorSafety();
+        assertFalse(report.hasIssues(),
+                "a read after the constructor returned is not unsafe publication. Report:\n" + report);
+        assertTrue(report.possiblyIncompleteConstructions.isEmpty(),
+                "elapsed time cannot tell a completed construction from an incomplete one, and "
+                        + "this one demonstrably completed. Report:\n" + report);
+    }
+
+    // ---- ThreadLocalMonitor ----
+
+    @Test
+    @DisplayName("thread local: set on two threads and never removed fires (true positive)")
+    void threadLocalMonitorFiresOnSetWithoutRemove() throws InterruptedException {
+        ThreadLocalMonitor monitor = new ThreadLocalMonitor();
+        ThreadLocal<String> requestUser = new ThreadLocal<>();
+        Runnable setOnly = () -> {
+            requestUser.set("user-" + Thread.currentThread().threadId());
+            monitor.recordThreadLocalInit(requestUser, "REQUEST_USER");
+        };
+        onTwoThreads(setOnly, setOnly);
+
+        assertTrue(monitor.analyzeThreadLocalLeaks().hasIssues(),
+                "a ThreadLocal set and never removed outlives its task on a pooled thread");
+    }
+
+    @Test
+    @DisplayName("thread local: the remove()-in-finally twin stays silent (true negative)")
+    void threadLocalMonitorStaysSilentWhenRemovedInFinally() throws InterruptedException {
+        ThreadLocalMonitor monitor = new ThreadLocalMonitor();
+        ThreadLocal<String> requestUser = new ThreadLocal<>();
+        Runnable setAndRemove = () -> {
+            requestUser.set("user-" + Thread.currentThread().threadId());
+            monitor.recordThreadLocalInit(requestUser, "REQUEST_USER");
+            try {
+                requestUser.get();
+            } finally {
+                requestUser.remove();
+                monitor.recordThreadLocalCleanup(requestUser);
+            }
+        };
+        onTwoThreads(setAndRemove, setAndRemove);
+
+        assertFalse(monitor.analyzeThreadLocalLeaks().hasIssues(),
+                "every set was matched by a remove() in a finally block; there is no leak to "
+                        + "report. Report:\n" + monitor.analyzeThreadLocalLeaks());
+    }
 }

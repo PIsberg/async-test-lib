@@ -9,6 +9,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`ConstructorSafetyValidator` reported "possibly incomplete construction" for every fast
+  constructor.** Any construction that finished in under a microsecond was added to
+  `possiblyIncompleteConstructions`, and a constructor that assigns three fields takes tens of
+  nanoseconds — so anyone who instrumented an ordinary constructor got a finding, next to which
+  the real one (`unsafeObjects`, another thread reaching the object before the constructor
+  returned) was buried. The rule was backwards in its own terms: the branch only ran when
+  `constructionComplete` was already true, so the construction demonstrably did complete, and
+  elapsed time cannot distinguish a completed construction from an incomplete one either way.
+  Removed. `possiblyIncompleteConstructions` keeps its other case, a construction started and
+  never completed, and its guard no longer depends on `System.nanoTime()` being positive, which
+  it is not required to be. `DetectorAccuracyEvalTest` pins both directions (#357).
+
+- **`ThreadLocalMonitor` counted body executions as threads, and called virtual threads
+  reused.** `threadsThatUsed` accumulated thread ids across the whole run, and the default
+  `useVirtualThreads = true` runner gives every body execution a fresh virtual thread — so
+  `threads = 8, invocations = 20` reported "160 reused thread(s)" for eight configured threads,
+  and the word "reused" described a mechanism that had not happened, since a virtual thread's
+  ThreadLocal map dies with the thread. The monitor now folds thread ids per invocation round
+  and reports the widest round, the way `SharedCollectionDetector` already did, and the finding
+  argues from the evidence it actually has: "set on N thread(s) with no matching remove(); on a
+  pooled thread the value outlives the task and the next task sees it". Both directions pinned
+  in `DetectorAccuracyEvalTest` (#349).
+
+- **`CompletableFutureCommonPoolBlockingDetector` emitted one report line per blocking call.**
+  A `threads = 8, invocations = 50` run printed the same sentence 400 times with a different
+  worker number. Findings now collapse on their text and carry a count (`... (x400)`), and the
+  number of distinct findings is bounded, with the drop reported rather than silent. The
+  recording path was also quadratic: `violations` was a `CopyOnWriteArrayList` appended to on
+  the very threads the detector watches, so N calls cost O(N²) element copies with nothing
+  capping N. `examples/38-cf-common-pool-blocking` goes back to `invocations = 50`, which had
+  been lowered to 5 only to keep the output readable (#351).
+
+- **`DaemonThreadHygieneDetector` is inert under the default runner, and now says so.** A
+  platform thread inherits its daemon flag from its creator and virtual threads are always
+  daemon, so with `useVirtualThreads = true` every `new Thread(...)` started from a test body is
+  already daemon and the detector's rule ("skip anything registered as daemon") never has
+  anything left to judge. The rule is correct; the configuration makes it silent. The runner now
+  logs `runner.detector.inert` at INFO, once per JVM and on the same terms as
+  `runner.agent.absent`, and the detector's javadoc and the `detectDaemonThreadHygiene`
+  attribute both say that a clean report from a virtual-thread run means "not observed" rather
+  than "clean". Pinned in `ConcurrencyRunnerLogContractTest`, in both directions: a
+  virtual-thread run announces it, a `useVirtualThreads = false` run does not (#352).
+
+- **`PerFindingTierGateTest.observedMutationTripsAVerdictOnlyGate` was flaky because its own
+  fixture raced an `ArrayList`.** Two threads calling `add` can leave the size counter and the
+  backing array disagreeing, and the body then died with `Index 1 out of bounds for length 0`
+  before the `failOn` gate could speak — so the assertion saw a fixture exception instead of the
+  gate message, and the test failed precisely when its subject misbehaved most. The record's
+  component is now a `Collections.synchronizedList`: still a mutable component held by a record,
+  still written through while shared, which is all the detector needs. The unsafety was never
+  part of what the test proves (#353).
+
+- **`ForkJoinPoolDetector`'s javadoc named `recordTaskException`, a method that does not
+  exist.** The method is `recordException`. That javadoc block is the authoritative statement of
+  what the detector reports — it was rewritten to drop two claims that had no code path — so a
+  reader instrumenting the exception path from it called a method that was not there. It is now
+  a `{@link}` with the full signature, which the javadoc build resolves, so the same mistake
+  cannot be made silently again (#360).
+
 - **The harden-runner egress policy was doing nothing, and was breaking CI while it did.**
   Three workflows wrote `allowed-endpoints` as a YAML folded scalar with explanatory `#` lines
   indented inside the block. A block scalar has no comments, so the agent received

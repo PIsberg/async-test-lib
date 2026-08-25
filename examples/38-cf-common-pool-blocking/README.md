@@ -44,6 +44,8 @@ Before issue #346 this example called `recordBlockingCall(null, ...)` from the t
 detector returns immediately on a null future, and would have ignored a real one that was never
 registered, so the call was a no-op twice over and the run reported nothing.
 
-One detail to be aware of when reading the output: the detector emits one line per blocking
-call, with no deduplication, so this demonstration uses `invocations = 5` rather than 50 purely
-to keep the report readable. That is issue #351, not a property of the example.
+This demonstration used `invocations = 5` rather than 50 for a while, purely to keep the report
+readable: the detector emitted one line per blocking call, so 400 body executions produced 400
+copies of the same sentence. The report now collapses identical findings and counts them
+(`... (x400)`), so `invocations = 50` is back. That was
+[#351](https://github.com/PIsberg/async-test-lib/issues/351).

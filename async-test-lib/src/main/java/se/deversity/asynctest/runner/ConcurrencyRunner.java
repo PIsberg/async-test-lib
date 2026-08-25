@@ -95,6 +95,22 @@ public class ConcurrencyRunner {
     static final java.util.concurrent.atomic.AtomicBoolean AGENT_ABSENCE_LOGGED =
             new java.util.concurrent.atomic.AtomicBoolean();
 
+    /**
+     * Said once per JVM, for the same reason as {@link #AGENT_ABSENCE_LOGGED}: a detector that
+     * is enabled but cannot observe anything in this configuration.
+     *
+     * <p>A platform thread inherits its daemon flag from the thread that created it, and virtual
+     * threads are always daemon. Under {@code useVirtualThreads = true} - the default - every
+     * {@code new Thread(...)} started from a test body is therefore already daemon before the
+     * body can get it wrong, and {@code DaemonThreadHygieneDetector} skips exactly those. A user
+     * who switches the detector on and gets a clean report has learned nothing, and has no way
+     * to tell that from a report meaning their code is fine. See issue #352.
+     *
+     * <p>Package-visible so the log-contract test can rearm it.
+     */
+    static final java.util.concurrent.atomic.AtomicBoolean DAEMON_HYGIENE_INERT_LOGGED =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
     /** See {@link #resolveTimeoutMultiplier()}. */
     private static final String TIMEOUT_MULTIPLIER_PROPERTY = "async-test.timeout.multiplier";
 
@@ -222,6 +238,22 @@ public class ConcurrencyRunner {
                     + "-Dasynctest.agent=fields=true (needs the async-test-agent artifact on the "
                     + "test classpath), attach -javaagent:async-test-agent-<version>.jar, or "
                     + "record accesses explicitly via AsyncTestContext\"",
+                invocationContext.getExecutable().getName());
+        }
+
+        // The daemon-hygiene detector is enabled and the runner is on virtual threads, which
+        // makes every thread the body creates daemon by inheritance — so the detector's rule
+        // ("skip anything that was already daemon") never has anything left to judge. Said
+        // once per JVM, at INFO, for the same reason as runner.agent.absent above: the user
+        // this affects does not have DEBUG on, and silence here reads as a clean bill of health.
+        if (config.detectDaemonThreadHygiene && config.useVirtualThreads
+                && DAEMON_HYGIENE_INERT_LOGGED.compareAndSet(false, true)) {
+            log.info("runner.detector.inert test={} detector=DaemonThreadHygieneDetector "
+                    + "reason=\"useVirtualThreads=true makes every thread created in the test "
+                    + "body daemon by inheritance, and this detector only reports non-daemon "
+                    + "threads\" hint=\"set @AsyncTest(useVirtualThreads = false) on the test "
+                    + "that instruments threads, or read the report as 'not observed' rather "
+                    + "than 'clean'\"",
                 invocationContext.getExecutable().getName());
         }
 

@@ -54,10 +54,11 @@ Objects accessed by multiple threads during construction:
 
 `failOn = FailOn.LOW` is what turns that report into a failed run.
 
-One thing to know when reading this validator's output: `hasIssues()` also covers
-`possiblyIncompleteConstructions`, which flags any construction that completed in under a
-microsecond - and an empty constructor completes in under a microsecond. The negative-direction
-test here therefore asserts on `unsafeObjects` specifically. See issue #357.
+This example used to carry a warning here: `possiblyIncompleteConstructions` flagged any
+construction that finished in under a microsecond, which is nearly all of them, so the validator
+produced a finding on correct code every time and the real one was buried next to the noise. That
+rule is gone ([#357](https://github.com/PIsberg/async-test-lib/issues/357)), and the
+negative-direction test now asserts on the whole report rather than on `unsafeObjects` alone.
 
 ## The Fix
 
