@@ -6,12 +6,20 @@ import java.util.concurrent.BlockingQueue;
 /**
  * BUGGY service that demonstrates blocking-queue misuse.
  *
- * BUG: offer() silently discards tasks when the queue is full (capacity = 5).
- *      poll() returns null when the queue is empty; calling toUpperCase() on
- *      null causes NullPointerException under concurrent load.
+ * <p>BUG: offer() returns false and discards the task when the queue is full (capacity = 5),
+ * and {@link #submitTask(String)}'s callers routinely ignore that return value. poll() returns
+ * null when the queue is empty, and {@link #processNext()} calls toUpperCase() on it without a
+ * guard, so an empty queue is a NullPointerException.
  *
- * FIX: Use put() on the producer side (blocks until space is available) and
- *      take() or a null-guarded poll(timeout, unit) on the consumer side.
+ * <p>FIX: Use put() on the producer side (blocks until space is available) and
+ * take() or a null-guarded poll(timeout, unit) on the consumer side.
+ *
+ * <p>A note on what the detector will and will not say about this. A rejected offer() is not
+ * itself a finding: {@code if (!q.offer(x)) retryLater(x);} is what correct backpressure looks
+ * like, and BlockingQueueDetector counts rejections without treating them as an issue, because
+ * treating them as one flagged every correct bounded queue. What it does gate on is saturation,
+ * a queue sitting at its bound, which is the shape that says the sizing or the drain rate is
+ * wrong. This example produces that, and the rejection count is visible alongside it.
  */
 public class WorkQueueService {
 
@@ -39,6 +47,13 @@ public class WorkQueueService {
 
     public int remainingCapacity() {
         return queue.remainingCapacity();
+    }
+
+    /**
+     * {@return the bound this queue was built with}
+     */
+    public int capacity() {
+        return CAPACITY;
     }
 
     public BlockingQueue<String> getQueue() {
