@@ -3,7 +3,7 @@ group = "se.deversity.async-test-lib"
 version = "1.0.0"
 java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }
 repositories { mavenLocal(); mavenCentral() }
-val asyncTestVersion = "1.9.7"
+val asyncTestVersion = "1.9.8"
 val junitVersion = "6.1.3"
 val junitPlatformVersion = "6.1.3"
 dependencies {

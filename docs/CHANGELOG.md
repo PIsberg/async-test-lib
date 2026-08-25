@@ -7,14 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.8] - 2026-08-25
+
 > Versioning note: as in 1.9.1, 1.9.4 and 1.9.5, this ships as a patch by explicit owner
 > decision. Strictly it is additive - four new detectors with their `@AsyncTest` attributes,
 > config fields and `AsyncTestContext` accessors, the `collections=true` agent option,
 > `JdbcConnectionSharedDetector.recordRelease`, and new overloads on `TelemetryRegistry`,
 > `TelemetryEventBuffer` and `AtomicityValidator` - which the SUPPORT_POLICY.md table would make
 > 1.10.0. Nothing was removed or changed incompatibly; the `@since` stamps written as 1.10.0 and
-> 1.11.0 while these were unreleased now read 1.9.8, and the japicmp baseline needs re-pinning
-> to 1.9.7 before the tag.
+> 1.11.0 while these were unreleased now read 1.9.8, and the japicmp baseline is re-pinned to
+> 1.9.7 (#336), which makes this the first release in five whose compatibility statement was
+> actually machine-checked against the version users are upgrading off.
 
 ### Added
 

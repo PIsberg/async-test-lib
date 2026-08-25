@@ -80,6 +80,13 @@ ALLOWLIST=(
   docs/QUICK_REFERENCE.md
   docs/DISTRIBUTION.md
   .claude/SKILL.md
+  # corpus-eval is standalone, so nothing in the reactor drags its pin along. CI installs the
+  # release under test into a job-local repository and then runs this module against whatever
+  # <async-test.version> names: leave it behind and Maven does not find that version locally,
+  # downloads the PREVIOUS release from Central, and the corpus measures the last release while
+  # reporting on this one. Same trap as examples/, and it would have fired for the first time at
+  # 1.9.8 - the module was created at 1.9.7 and has never been through a release until now.
+  corpus-eval/pom.xml
 )
 
 echo "Bumping $CURRENT -> $NEW"

@@ -478,10 +478,11 @@ jobs:
         run: mvn "-Dmaven.repo.local=.m2/repository" -DskipTests clean install
 
       # Measures what the detectors report on third-party classes whose javadoc states a
-      # thread-safety contract. Two lanes per run: the agent attached, and the same subjects
-      # with nothing attached as the control the exposure table rests on. The gates that must
-      # hold every run live in CorpusGates; the numbers are in the uploaded reports, one pair
-      # per JDK.
+      # thread-safety contract. Three lanes per run: the agent attached; the same subjects with
+      # nothing attached, as the control the exposure table rests on; and a recording lane whose
+      # bodies do call the recording API, which is a different measurement over a different
+      # denominator and writes its own report. The gates that must hold every run live in
+      # CorpusGates; the numbers are in the uploaded reports, one set per JDK.
       - name: Run corpus eval
         run: mvn "-Dmaven.repo.local=.m2/repository" -f corpus-eval/pom.xml test
 
@@ -494,6 +495,7 @@ jobs:
             corpus-eval/target/corpus-eval/
             corpus-eval/target/surefire-reports/
             corpus-eval/target/surefire-reports-agent-off/
+            corpus-eval/target/surefire-reports-recording/
           retention-days: 7
 
   e2e-summary:
