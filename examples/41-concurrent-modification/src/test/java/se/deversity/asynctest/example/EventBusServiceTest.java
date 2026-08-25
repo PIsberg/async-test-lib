@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.EventBusService;
 import org.junit.jupiter.api.BeforeEach;
@@ -77,7 +78,7 @@ class EventBusServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see concurrent-modification detected by ConcurrentModificationDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectConcurrentModifications = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectConcurrentModifications = true, failOn = FailOn.LOW)
     void testEventBus_concurrent_detectsModification() {
         var listeners = service.getListeners();
 

@@ -73,6 +73,106 @@ class ExampleDisabledDemoTest {
                         + "checking nothing.");
     }
 
+    /**
+     * Requires every switched-off demonstration to be able to fail once it is switched on.
+     *
+     * <p><strong>The failure this prevents, measured rather than imagined.</strong> On 2026-08-25
+     * every {@code @Disabled} demonstration in {@code examples/} was enabled and the reactor run:
+     * 72 of 97 <em>passed</em>. They advertise "Remove {@code @Disabled} to see X detected by
+     * YDetector", and a reader who followed that instruction got a green test. The reason is a
+     * default: {@link se.deversity.asynctest.FailOn} is {@code NONE}, which reports a finding
+     * without failing the run, and no example set it. Adding {@code failOn} took the count that
+     * fail reliably from 25 to 66.
+     *
+     * <p>So a demonstration that cannot fail is a demonstration that proves nothing, and the
+     * pipeline could never notice because these tests are disabled. This is the static half of
+     * that check: it costs nothing to run and it holds for every example, whereas actually
+     * enabling them all is a deliberate exercise rather than a build step.
+     *
+     * <p>{@code minTrust} is deliberately not required. Its default is
+     * {@link se.deversity.asynctest.diagnostics.TrustTier#ADVISORY}, the lowest tier, so every
+     * detector already passes that filter; requiring it would be cargo cult.
+     */
+    @Test
+    @DisplayName("every disabled @AsyncTest demonstration sets failOn, so enabling it can fail")
+    void disabledDemonstrationsCanActuallyFailWhenEnabled() {
+        Path examples = repoRoot().resolve("examples");
+        List<String> cannotFail = new ArrayList<>();
+        int checked = 0;
+
+        for (Path file : javaFilesUnder(examples)) {
+            List<String> lines = List.of(read(file).split("\r?\n", -1));
+            for (int i = 0; i < lines.size(); i++) {
+                if (!lines.get(i).strip().startsWith("@Disabled")) {
+                    continue;
+                }
+                String annotation = asyncTestAnnotationAfter(lines, i);
+                if (annotation == null) {
+                    continue;   // a @Disabled on something that is not an @AsyncTest demo
+                }
+                checked++;
+                if (!annotation.contains("failOn")) {
+                    cannotFail.add(repoRoot().relativize(file).toString().replace('\\', '/')
+                            + ":" + (i + 1));
+                }
+            }
+        }
+
+        assertTrue(cannotFail.isEmpty(),
+                "These disabled @AsyncTest demonstrations do not set failOn, so removing "
+                        + "@Disabled prints the detector report and leaves the test green - which "
+                        + "is the opposite of what their README tells a reader to expect:\n  "
+                        + String.join("\n  ", cannotFail)
+                        + "\nAdd failOn = FailOn.LOW to the @AsyncTest, as the other "
+                        + (checked - cannotFail.size()) + " do.");
+
+        assertTrue(checked > 0,
+                "No disabled @AsyncTest demonstrations were found at all. Either every "
+                        + "demonstration is enabled now, or this scan stopped matching and is "
+                        + "checking nothing.");
+    }
+
+    /**
+     * {@return the whole {@code @AsyncTest(...)} annotation following {@code start}, or null}
+     *
+     * <p>Accumulates lines until the parentheses balance, because the examples wrap long
+     * attribute lists over several lines and a line-at-a-time check would miss the attribute it
+     * is looking for.
+     */
+    private static String asyncTestAnnotationAfter(List<String> lines, int start) {
+        int at = -1;
+        for (int i = start + 1; i < Math.min(start + 12, lines.size()); i++) {
+            String line = lines.get(i).strip();
+            if (line.startsWith("@AsyncTest")) {
+                at = i;
+                break;
+            }
+            if (line.startsWith("void ") || line.contains(" void ")) {
+                return null;    // reached the method without finding one
+            }
+        }
+        if (at < 0) {
+            return null;
+        }
+        StringBuilder annotation = new StringBuilder();
+        int depth = 0;
+        for (int i = at; i < lines.size(); i++) {
+            String line = lines.get(i);
+            annotation.append(line);
+            for (char c : line.toCharArray()) {
+                if (c == '(') {
+                    depth++;
+                } else if (c == ')') {
+                    depth--;
+                }
+            }
+            if (depth <= 0) {
+                break;
+            }
+        }
+        return annotation.toString();
+    }
+
     // ---------------------------------------------------------------------
     // helpers
     // ---------------------------------------------------------------------

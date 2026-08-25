@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -22,7 +23,7 @@ class CompletableFutureBlockingCallbackTest {
     }
 
     @Disabled("Remove @Disabled to see the bug detected by CompletableFutureBlockingCallbackDetector")
-    @AsyncTest(threads = 2, invocations = 5, detectAll = false, detectCFBlockingCallback = true)
+    @AsyncTest(threads = 2, invocations = 5, detectAll = false, detectCFBlockingCallback = true, failOn = FailOn.LOW)
     void test_concurrent_detectsBlockingCallback() {
         var mon = AsyncTestContext.cfBlockingCallbackDetector();
         Thread thread = Thread.currentThread();

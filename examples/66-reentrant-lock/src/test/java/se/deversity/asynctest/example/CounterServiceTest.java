@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.CounterService;
 import org.junit.jupiter.api.BeforeEach;
@@ -77,7 +78,7 @@ class CounterServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see lock imbalance detected by ReentrantLockDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectReentrantLockIssues = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectReentrantLockIssues = true, failOn = FailOn.LOW)
     void testIncrement_concurrent_detectsLockImbalance() {
         // Register the lock with the detector
         AsyncTestContext.reentrantLockMonitor()

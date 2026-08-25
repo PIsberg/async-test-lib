@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.TokenSigner;
 import org.junit.jupiter.api.BeforeEach;
@@ -88,7 +89,7 @@ class TokenSignerTest {
      * 3. To fix: use a ThreadLocal<Mac> or a fresh Mac per call
      */
     @Disabled("Remove @Disabled to see the bug detected by SharedStatefulCryptoDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSharedStatefulCrypto = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSharedStatefulCrypto = true, failOn = FailOn.LOW)
     void test_concurrent_detectsSharedMac() {
         Thread thread = Thread.currentThread();
         AsyncTestContext.sharedStatefulCryptoDetector().recordAccess(signer.getMac(), "hmac-signer", thread);

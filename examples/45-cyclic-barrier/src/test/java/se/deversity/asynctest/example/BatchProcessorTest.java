@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.BatchProcessor;
 import org.junit.jupiter.api.BeforeEach;
@@ -97,7 +98,7 @@ class BatchProcessorTest {
      * 3. To fix: reset the barrier after the exception, or use Phaser
      */
     @Disabled("Remove @Disabled to see the bug detected by CyclicBarrierDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCyclicBarrierIssues = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCyclicBarrierIssues = true, failOn = FailOn.LOW)
     void testProcessPhase_concurrent_detectsBrokenBarrier() {
         // Register the barrier so the detector knows its configuration
         AsyncTestContext.cyclicBarrierMonitor()

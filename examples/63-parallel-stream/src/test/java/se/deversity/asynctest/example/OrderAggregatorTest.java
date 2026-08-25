@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.OrderAggregator;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,7 +41,7 @@ class OrderAggregatorTest {
     }
 
     @Disabled("Remove @Disabled to see bug detected by ParallelStreamDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectParallelStreamIssues = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectParallelStreamIssues = true, failOn = FailOn.LOW)
     void test_concurrent_detectsBug() {
         // Inform the detector that a parallel stream is being used
         AsyncTestContext.parallelStreamMonitor()

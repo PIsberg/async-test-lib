@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.RequestScopedService;
 
@@ -59,7 +60,7 @@ class RequestScopedServiceTest {
      * the previous one.
      */
     @Disabled("Remove @Disabled to see bug detected by ThreadLocalContaminationDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectThreadLocalContamination = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectThreadLocalContamination = true, failOn = FailOn.LOW)
     void test_concurrent_detectsContamination() {
         Thread thread = Thread.currentThread();
         String requestId = "req-" + thread.threadId() + "-" + System.nanoTime();

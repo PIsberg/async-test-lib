@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 import se.deversity.asynctest.example.service.ServiceInitializer;
 import org.junit.jupiter.api.AfterEach;
@@ -113,7 +114,7 @@ class ServiceInitializerTest {
      * 3. Fix: remove latch.countDown() from the catch block
      */
     @Disabled("Remove @Disabled to see latch misuse detected by LatchMisuseDetector")
-    @AsyncTest(threads = 4, invocations = 20)
+    @AsyncTest(threads = 4, invocations = 20, failOn = FailOn.LOW)
     void testInitialize_concurrent_detectsExtraCountDowns() {
         int serviceCount = 3;
         CountDownLatch latch = new CountDownLatch(serviceCount);

@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.ScopedContextService;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,7 +77,7 @@ class ScopedContextServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see unbound get() detected by ScopedValueMisuseDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectScopedValueMisuse = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectScopedValueMisuse = true, failOn = FailOn.LOW)
     void testGetCurrentUser_concurrent_detectsUnboundGet() {
         // Record that get() is called — without any prior recordBindingEntered()
         // This simulates calling getCurrentUser() from an unbound thread context

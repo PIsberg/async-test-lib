@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.PriorityQueueService;
 
@@ -59,7 +60,7 @@ class PriorityQueueServiceTest {
      * reported as starved.
      */
     @Disabled("Remove @Disabled to see bug detected by ThreadStarvationDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectThreadStarvation = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectThreadStarvation = true, failOn = FailOn.LOW)
     void test_concurrent_detectsStarvation() {
         var detector = AsyncTestContext.threadStarvationDetector();
 

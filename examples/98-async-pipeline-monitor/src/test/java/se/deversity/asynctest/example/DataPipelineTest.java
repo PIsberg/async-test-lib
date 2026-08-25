@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.DataPipeline;
 import org.junit.jupiter.api.BeforeEach;
@@ -80,7 +81,7 @@ class DataPipelineTest {
      * 3. To fix: add bounded BlockingQueue between stages for back-pressure
      */
     @Disabled("Remove @Disabled to see the bug detected by PipelineMonitor")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, monitorAsyncPipeline = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, monitorAsyncPipeline = true, failOn = FailOn.LOW)
     void test_concurrent_detectsPipelineImbalance() {
         se.deversity.asynctest.diagnostics.PipelineMonitor mon = AsyncTestContext.pipelineMonitor();
         mon.registerStage("parse");

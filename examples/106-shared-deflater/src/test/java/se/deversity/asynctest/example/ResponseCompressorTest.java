@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.ResponseCompressor;
 import org.junit.jupiter.api.BeforeEach;
@@ -83,7 +84,7 @@ class ResponseCompressorTest {
      * 3. To fix: use one Deflater per thread (ThreadLocal) with end() in finally
      */
     @Disabled("Remove @Disabled to see the bug detected by SharedDeflaterDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSharedDeflater = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSharedDeflater = true, failOn = FailOn.LOW)
     void test_concurrent_detectsSharedDeflater() {
         Thread thread = Thread.currentThread();
 

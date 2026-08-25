@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.example.service.HitCounterService;
 import org.junit.jupiter.api.AfterEach;
@@ -127,7 +128,7 @@ class HitCounterServiceTest {
      * 3. Fix: replace long[] with AtomicLong.incrementAndGet()
      */
     @Disabled("Remove @Disabled to see atomicity violation detected by AtomicityValidator")
-    @AsyncTest(threads = 10, invocations = 100, detectAll = false, detectAtomicityViolations = true)
+    @AsyncTest(threads = 10, invocations = 100, detectAll = false, detectAtomicityViolations = true, failOn = FailOn.LOW)
     void testIncrement_concurrent_detectsAtomicityViolation() {
         runningAsyncTest = true;
         String page = "/home";

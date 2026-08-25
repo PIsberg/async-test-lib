@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.DataFetchService;
 import org.junit.jupiter.api.BeforeEach;
@@ -73,7 +74,7 @@ class DataFetchServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see unclosed StructuredTaskScope detected by StructuredConcurrencyMisuseDetector")
-    @AsyncTest(threads = 8, invocations = 30, detectAll = false, detectStructuredConcurrencyIssues = true)
+    @AsyncTest(threads = 8, invocations = 30, detectAll = false, detectStructuredConcurrencyIssues = true, failOn = FailOn.LOW)
     void test_concurrent_detectsUnclosedScope() throws Exception {
         var detector = AsyncTestContext.get().structuredConcurrencyMisuseDetector();
 

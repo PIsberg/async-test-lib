@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.TaskRunnerService;
 import org.junit.jupiter.api.BeforeEach;
@@ -91,7 +92,7 @@ class TaskRunnerServiceTest {
      * 3. To fix: implement AutoCloseable and call executor.shutdown() in close()
      */
     @Disabled("Remove @Disabled to see the bug detected by ExecutorShutdownDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectExecutorShutdown = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectExecutorShutdown = true, failOn = FailOn.LOW)
     void testRunTask_concurrent_detectsMissingShutdown() {
         // Register the executor with the detector
         AsyncTestContext.executorShutdownMonitor()

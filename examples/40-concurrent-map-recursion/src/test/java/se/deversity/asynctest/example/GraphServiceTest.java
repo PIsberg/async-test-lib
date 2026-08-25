@@ -3,7 +3,6 @@ package se.deversity.asynctest.example;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
-import se.deversity.asynctest.diagnostics.TrustTier;
 import se.deversity.asynctest.example.service.GraphService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -91,11 +90,11 @@ class GraphServiceTest {
 
     @Disabled("Remove @Disabled to see the recursive compute fail the run, as the README describes")
     // failOn/minTrust are set so this test does what the README says it does. failOn defaults
-    // to NONE, which reports a finding without failing, and this detector is PROMPT tier, so
-    // without both of these the run prints the report and still goes green.
+    // to NONE, which reports a finding without failing the run. minTrust is left alone: its
+    // default is ADVISORY, the lowest tier, so every detector already passes that filter.
     @AsyncTest(threads = 8, invocations = 50, detectAll = false,
             detectConcurrentMapComputeRecursion = true,
-            failOn = FailOn.HIGH, minTrust = TrustTier.PROMPT)
+            failOn = FailOn.LOW)
     void testGetNeighbors_concurrent_detectsRecursion() {
         var map = service.getAdjacency();
 

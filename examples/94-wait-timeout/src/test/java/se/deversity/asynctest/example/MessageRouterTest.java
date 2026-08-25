@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.MessageRouter;
 import org.junit.jupiter.api.BeforeEach;
@@ -81,7 +82,7 @@ class MessageRouterTest {
      * 3. To fix: replace lock.wait() with lock.wait(5000) inside a while loop
      */
     @Disabled("Remove @Disabled to see the bug detected by WaitTimeoutDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectWaitTimeout = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectWaitTimeout = true, failOn = FailOn.LOW)
     void test_concurrent_detectsInfiniteWait() {
         Object lock = router.getLock();
         String threadName = Thread.currentThread().getName();

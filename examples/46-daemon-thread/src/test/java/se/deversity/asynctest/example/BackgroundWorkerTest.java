@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.BackgroundWorker;
 import org.junit.jupiter.api.BeforeEach;
@@ -85,7 +86,7 @@ class BackgroundWorkerTest {
      * 3. To fix: add thread.setDaemon(true) in BackgroundWorker.start()
      */
     @Disabled("Remove @Disabled to see the bug detected by DaemonThreadHygieneDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectDaemonThreadHygiene = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectDaemonThreadHygiene = true, failOn = FailOn.LOW)
     void testStart_concurrent_detectsNonDaemonThread() {
         Thread t = worker.start("async-" + Thread.currentThread().threadId(), () -> {
             // Simulate short background work

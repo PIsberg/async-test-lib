@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.InterruptMonitor;
 import se.deversity.asynctest.example.service.BackgroundWorker;
 import org.junit.jupiter.api.AfterEach;
@@ -134,7 +135,7 @@ class BackgroundWorkerTest {
      *    block in BackgroundWorker.doWork()
      */
     @Disabled("Remove @Disabled to see interrupt swallowing detected by InterruptMonitor")
-    @AsyncTest(threads = 6, invocations = 10, detectAll = false, detectInterruptMishandling = true)
+    @AsyncTest(threads = 6, invocations = 10, detectAll = false, detectInterruptMishandling = true, failOn = FailOn.LOW)
     void testDoWork_concurrent_detectsInterruptSwallowing() {
         runningAsyncTest = true;
 

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.VirtualWorkerService;
 
@@ -50,7 +51,7 @@ class VirtualWorkerServiceTest {
      * {@code Runtime.availableProcessors()}), the detector flags exhaustion.
      */
     @Disabled("Remove @Disabled to see bug detected by VirtualThreadCarrierExhaustionDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectVirtualThreadCarrierExhaustion = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectVirtualThreadCarrierExhaustion = true, failOn = FailOn.LOW)
     void test_concurrent_detectsCarrierExhaustion() {
         var detector = AsyncTestContext.virtualThreadCarrierExhaustionDetector();
         String reason = "synchronized-sleep";

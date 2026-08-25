@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.RecursiveCounter;
 import org.junit.jupiter.api.Disabled;
@@ -80,7 +81,7 @@ class RecursiveCounterTest {
      * 3. To fix: replace Thread.sleep() with ForkJoinPool.managedBlock()
      */
     @Disabled("Remove @Disabled to see the bug detected by ForkJoinTaskBlockingDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectForkJoinTaskBlocking = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectForkJoinTaskBlocking = true, failOn = FailOn.LOW)
     void testCompute_concurrent_detectsBlockingInTask() throws Exception {
         Thread current = Thread.currentThread();
 

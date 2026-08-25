@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.StartupCoordinator;
 import org.junit.jupiter.api.BeforeEach;
@@ -90,7 +91,7 @@ class StartupCoordinatorTest {
      * 3. To fix: always call latch.countDown() in initialize()
      */
     @Disabled("Remove @Disabled to see the bug detected by CountDownLatchDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCountDownLatchIssues = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCountDownLatchIssues = true, failOn = FailOn.LOW)
     void testInitialize_concurrent_detectsMissingCountDown() {
         // Register the latch with the detector before using it
         AsyncTestContext.countDownLatchMonitor()

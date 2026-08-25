@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.ExpensiveResourceFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,7 +40,7 @@ class ExpensiveResourceFactoryTest {
     }
 
     @Disabled("Remove @Disabled to see bug detected by LazyInitRaceDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectLazyInitRace = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectLazyInitRace = true, failOn = FailOn.LOW)
     void test_concurrent_detectsBug() {
         // Tell the detector about the null-check and initialization pattern.
         // wasNull=true simulates threads observing null before writing.

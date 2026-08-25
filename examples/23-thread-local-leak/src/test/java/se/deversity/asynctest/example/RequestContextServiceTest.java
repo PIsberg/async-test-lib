@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.ThreadLocalMonitor;
 import se.deversity.asynctest.example.service.RequestContextService;
 import org.junit.jupiter.api.AfterEach;
@@ -127,7 +128,7 @@ class RequestContextServiceTest {
      * 3. Fix: add a finally block that always calls endRequest()
      */
     @Disabled("Remove @Disabled to see ThreadLocal leak detected by ThreadLocalMonitor")
-    @AsyncTest(threads = 8, invocations = 20, detectAll = false, detectThreadLocalLeaks = true)
+    @AsyncTest(threads = 8, invocations = 20, detectAll = false, detectThreadLocalLeaks = true, failOn = FailOn.LOW)
     void testBeginRequest_concurrent_detectsThreadLocalLeak() {
         runningAsyncTest = true;
         String userId = "user-" + Thread.currentThread().threadId();

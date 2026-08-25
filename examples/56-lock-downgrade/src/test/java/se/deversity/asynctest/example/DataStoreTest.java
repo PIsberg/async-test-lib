@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.DataStore;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,7 +37,7 @@ class DataStoreTest {
     }
 
     @Disabled("Remove @Disabled to see bug detected by LockDowngradeDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectLockDowngrade = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectLockDowngrade = true, failOn = FailOn.LOW)
     void test_concurrent_detectsBug() {
         // Record the incorrect downgrade sequence: write acquired → write released → read acquired
         AsyncTestContext.lockDowngradeMonitor()

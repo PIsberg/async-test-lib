@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.FutureBlockingDetector;
 import se.deversity.asynctest.example.service.BatchProcessingService;
 import org.junit.jupiter.api.AfterEach;
@@ -115,7 +116,7 @@ class BatchProcessingServiceTest {
      * 3. Fix: submit subtasks to a dedicated separate executor
      */
     @Disabled("Remove @Disabled to see future-blocking starvation detected by FutureBlockingDetector")
-    @AsyncTest(threads = 4, invocations = 20)
+    @AsyncTest(threads = 4, invocations = 20, failOn = FailOn.LOW)
     void testProcessBatch_concurrent_detectsFutureBlockingStarvation() {
         ExecutorService pool = Executors.newFixedThreadPool(4);
 

@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.LazyInitValidator;
 import se.deversity.asynctest.example.service.ConfigurationSingleton;
 import org.junit.jupiter.api.BeforeEach;
@@ -104,7 +105,7 @@ class ConfigurationSingletonTest {
      * 3. Fix: add volatile to the instance field, or use the holder idiom
      */
     @Disabled("Remove @Disabled to see broken DCL detected by LazyInitValidator")
-    @AsyncTest(threads = 8, invocations = 100)
+    @AsyncTest(threads = 8, invocations = 100, failOn = FailOn.LOW)
     void testGetInstance_concurrent_detectsBrokenDCL() {
         // Simulate what concurrent threads would observe:
         // - Some threads see null (they entered before initialization completed)

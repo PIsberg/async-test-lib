@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.RequestCounterService;
 import org.junit.jupiter.api.BeforeEach;
@@ -100,7 +101,7 @@ class RequestCounterServiceTest {
      * 3. Fix: replace `synchronized (lock)` with ConcurrentHashMap.merge()
      */
     @Disabled("Remove @Disabled to see lock contention detected by LockContentionDetector")
-    @AsyncTest(threads = 12, invocations = 200, detectLockContention = true)
+    @AsyncTest(threads = 12, invocations = 200, detectLockContention = true, failOn = FailOn.LOW)
     void testRecordRequest_concurrent_detectsLockContention() {
         String endpoint = "/api/endpoint-" + (Thread.currentThread().threadId() % 4);
 

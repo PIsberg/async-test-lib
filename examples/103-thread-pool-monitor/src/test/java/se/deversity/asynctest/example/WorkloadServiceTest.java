@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.WorkloadService;
 import org.junit.jupiter.api.AfterEach;
@@ -90,7 +91,7 @@ class WorkloadServiceTest {
      * 3. To fix: increase pool size or use virtual threads
      */
     @Disabled("Remove @Disabled to see the bug detected by ThreadPoolMonitor")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, monitorThreadPool = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, monitorThreadPool = true, failOn = FailOn.LOW)
     void test_concurrent_detectsPoolSaturation() {
         var mon = AsyncTestContext.threadPoolMonitor();
         var pool = service.getPool();

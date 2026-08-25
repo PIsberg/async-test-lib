@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -35,7 +36,7 @@ class TryLockMisuseTest {
     }
 
     @Disabled("Remove @Disabled to see the bug detected by TryLockMisuseDetector")
-    @AsyncTest(threads = 2, invocations = 5, detectAll = false, detectTryLockMisuse = true)
+    @AsyncTest(threads = 2, invocations = 5, detectAll = false, detectTryLockMisuse = true, failOn = FailOn.LOW)
     void test_concurrent_detectsTryLockMisuse() {
         var mon = AsyncTestContext.tryLockMisuseDetector();
         Thread thread = Thread.currentThread();

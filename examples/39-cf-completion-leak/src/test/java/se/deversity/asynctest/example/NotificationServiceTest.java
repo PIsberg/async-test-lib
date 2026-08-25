@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.NotificationService;
 import org.junit.jupiter.api.BeforeEach;
@@ -75,7 +76,7 @@ class NotificationServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see completion leaks detected by CompletableFutureCompletionLeakDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCompletableFutureCompletionLeaks = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCompletableFutureCompletionLeaks = true, failOn = FailOn.LOW)
     void testNotify_concurrent_detectsCompletionLeak() {
         String message = "notification-" + Thread.currentThread().getId();
 

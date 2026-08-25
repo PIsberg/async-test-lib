@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every disabled example demonstration can now fail when it is enabled.** `failOn` defaults
+  to `NONE`, which reports a detector finding without failing the run, and no example set it.
+  Measured by enabling all 97 `@Disabled` demonstrations and running the examples reactor three
+  times: **72 of 97 passed**, while telling the reader "Remove @Disabled to see X detected by
+  YDetector". With `failOn = FailOn.LOW` on each, the number that fail reliably goes from 25 to
+  66. `ExampleDisabledDemoTest` now requires `failOn` on every disabled `@AsyncTest`
+  demonstration, so a new example cannot reintroduce a demo that proves nothing. `minTrust` is
+  deliberately not required: its default is `ADVISORY`, the lowest tier, so it filters nothing
+  (#346).
+
+  27 demonstrations still produce no finding at all in three runs and are tracked in #346; the
+  cause differs per example and none of them is fixed by `failOn`.
+
 ### Changed
 
 - **`ConcurrentMapComputeRecursionDetector` now reports a mapping function that re-enters its

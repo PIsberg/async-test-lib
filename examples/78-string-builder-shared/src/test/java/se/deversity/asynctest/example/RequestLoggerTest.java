@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.RequestLogger;
 import org.junit.jupiter.api.BeforeEach;
@@ -74,7 +75,7 @@ class RequestLoggerTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see concurrent StringBuilder access detected by StringBuilderDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectStringBuilderIssues = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectStringBuilderIssues = true, failOn = FailOn.LOW)
     void test_concurrent_detectsSharedBuilder() {
         var detector = AsyncTestContext.get().stringBuilderMonitor();
         var builder = logger.getRawBuilder();

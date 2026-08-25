@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.UserCacheService;
 import org.junit.jupiter.api.BeforeEach;
@@ -70,7 +71,7 @@ class UserCacheServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see HashMap cache race detected by CacheConcurrencyDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCacheConcurrency = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCacheConcurrency = true, failOn = FailOn.LOW)
     void testCache_concurrent_detectsRace() {
         var cache = service.getCache();
         String key = "user-" + Thread.currentThread().getId();

@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.WorkerPoolService;
 import org.junit.jupiter.api.AfterEach;
@@ -78,7 +79,7 @@ class WorkerPoolServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see default-factory issues detected by ThreadFactoryDetector")
-    @AsyncTest(threads = 8, invocations = 30, detectAll = false, detectThreadFactoryIssues = true)
+    @AsyncTest(threads = 8, invocations = 30, detectAll = false, detectThreadFactoryIssues = true, failOn = FailOn.LOW)
     void test_concurrent_detectsDefaultFactory() throws Exception {
         var detector = AsyncTestContext.get().threadFactoryMonitor();
 

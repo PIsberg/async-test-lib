@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.LogFormatterService;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,7 +72,7 @@ class LogFormatterServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see shared Formatter race detected by SharedFormatterDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSharedFormatter = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSharedFormatter = true, failOn = FailOn.LOW)
     void testFormatEntry_concurrent_detectsSharedFormatter() {
         // Record access on the shared Formatter instance — core anti-pattern
         AsyncTestContext.sharedFormatterMonitor()

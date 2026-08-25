@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.PositionTracker;
 import org.junit.jupiter.api.BeforeEach;
@@ -73,7 +74,7 @@ class PositionTrackerTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see unreleased StampedLock stamp detected by StampedLockDetector")
-    @AsyncTest(threads = 8, invocations = 30, detectAll = false, detectStampedLockIssues = true)
+    @AsyncTest(threads = 8, invocations = 30, detectAll = false, detectStampedLockIssues = true, failOn = FailOn.LOW)
     void test_concurrent_detectsUnreleasedStamp() {
         var detector = AsyncTestContext.get().stampedLockMonitor();
         var lock = tracker.getLock();

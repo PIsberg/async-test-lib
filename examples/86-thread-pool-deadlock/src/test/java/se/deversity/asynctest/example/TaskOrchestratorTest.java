@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.TaskOrchestrator;
 
@@ -59,7 +60,7 @@ class TaskOrchestratorTest {
      * tasks equal the pool size.
      */
     @Disabled("Remove @Disabled to see bug detected by ThreadPoolDeadlockDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectThreadPoolDeadlocks = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectThreadPoolDeadlocks = true, failOn = FailOn.LOW)
     void test_concurrent_detectsDeadlockRisk() {
         var detector = AsyncTestContext.threadPoolDeadlockDetector();
 

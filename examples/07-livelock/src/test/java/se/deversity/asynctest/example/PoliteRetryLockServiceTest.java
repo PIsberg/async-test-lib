@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.example.service.PoliteRetryLockService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -120,7 +121,7 @@ class PoliteRetryLockServiceTest {
      * 3. Fix: replace acquireLock() with acquireLockFixed() in the test body
      */
     @Disabled("Remove @Disabled to see livelock detected by LivelockDetector")
-    @AsyncTest(threads = 6, invocations = 30, detectLivelocks = true, timeoutMs = 10000)
+    @AsyncTest(threads = 6, invocations = 30, detectLivelocks = true, timeoutMs = 10000, failOn = FailOn.LOW)
     void testAcquireLock_concurrent_detectsLivelock() {
         String nodeId = "node-" + Thread.currentThread().threadId();
 

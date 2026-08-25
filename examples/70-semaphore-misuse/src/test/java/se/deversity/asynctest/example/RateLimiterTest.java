@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.RateLimiter;
 import org.junit.jupiter.api.BeforeEach;
@@ -75,7 +76,7 @@ class RateLimiterTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see permit leak detected by SemaphoreMisuseDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, monitorSemaphore = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, monitorSemaphore = true, failOn = FailOn.LOW)
     void testExecuteRequest_concurrent_detectsPermitLeak() {
         Semaphore sem = limiter.getSemaphore();
         String name = "rate-limiter-semaphore";
