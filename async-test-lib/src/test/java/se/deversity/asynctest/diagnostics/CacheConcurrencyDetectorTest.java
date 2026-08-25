@@ -168,4 +168,60 @@ class CacheConcurrencyDetectorTest {
         assertFalse(report.threadActivity.isEmpty());
         assertTrue(report.threadActivity.get("threaded-cache").contains("reader"));
     }
+
+    /**
+     * A cache that keeps the {@code ConcurrentMap} contract is not a non-thread-safe cache.
+     *
+     * <p>The check used to be {@code instanceof ConcurrentHashMap}, which is one implementation
+     * rather than the contract, so every other correct concurrent map was reported. This stands
+     * in for Caffeine's {@code asMap()} view, where the corpus eval's recording lane caught it:
+     * a {@code ConcurrentSkipListMap} is in the JDK, implements the same interface and is not a
+     * {@code ConcurrentHashMap}.
+     */
+    @Test
+    void aConcurrentMapThatIsNotAConcurrentHashMapIsStillThreadSafe() {
+        Map<String, String> cache = new java.util.concurrent.ConcurrentSkipListMap<>();
+        detector.registerCache(cache, "skiplist-cache");
+        detector.recordPut(cache, "skiplist-cache", "key", "value");
+        detector.recordGet(cache, "skiplist-cache", "key");
+
+        CacheConcurrencyDetector.CacheConcurrencyReport report = detector.analyze();
+
+        assertFalse(report.hasIssues(),
+                "a ConcurrentMap keeps its contract whatever its concrete class; reporting one "
+                        + "as a non-thread-safe cache is noise on correct code. Got: " + report);
+    }
+
+    /** The legacy synchronized collections keep the same promise by taking their own monitor. */
+    @Test
+    void aSynchronizedMapWrapperIsThreadSafe() {
+        Map<String, String> cache =
+                java.util.Collections.synchronizedMap(new java.util.HashMap<>());
+        detector.registerCache(cache, "wrapped-cache");
+        detector.recordPut(cache, "wrapped-cache", "key", "value");
+        detector.recordGet(cache, "wrapped-cache", "key");
+
+        assertFalse(detector.analyze().hasIssues(),
+                "every method of a synchronized wrapper takes the instance's own monitor, which "
+                        + "is the same promise ConcurrentMap makes by another route");
+    }
+
+    /**
+     * The twin: the fix must not silence the case the detector exists for.
+     *
+     * <p>A plain {@code HashMap} read and written from a cache position is exactly the defect,
+     * and it has to keep firing after the widening above - otherwise "no findings" would mean
+     * the detector stopped looking rather than that the code is correct.
+     */
+    @Test
+    void aPlainHashMapUsedAsACacheStillFires() {
+        Map<String, String> cache = new java.util.HashMap<>();
+        detector.registerCache(cache, "plain-cache");
+        detector.recordPut(cache, "plain-cache", "key", "value");
+        detector.recordGet(cache, "plain-cache", "key");
+
+        assertTrue(detector.analyze().hasIssues(),
+                "a HashMap read and written as a cache is the read/write race this detector "
+                        + "exists for, and widening the thread-safe set must not cover it");
+    }
 }
