@@ -2,6 +2,7 @@ package se.deversity.asynctest.example.service;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 /**
  * Global registry of active {@link EventEmitter} instances.
@@ -14,9 +15,29 @@ public class EventRegistry {
 
     private static final Set<EventEmitter> emitters = ConcurrentHashMap.newKeySet();
 
-    /** Registers an emitter. Called from the EventEmitter constructor — may be too early. */
+    private static volatile Consumer<EventEmitter> onRegistered = emitter -> { };
+
+    /**
+     * Registers an emitter and tells anybody listening.
+     *
+     * <p>Called from the EventEmitter constructor, which is too early: the listener receives a
+     * reference to an object whose fields have not been assigned yet. A registry that notifies
+     * synchronously is ordinary; a constructor that registers before it is finished is the bug.
+     *
+     * @param emitter the emitter registering itself
+     */
     public static void register(EventEmitter emitter) {
         emitters.add(emitter);
+        onRegistered.accept(emitter);
+    }
+
+    /**
+     * Installs a registration listener.
+     *
+     * @param listener called with each emitter as it registers, which is mid-construction
+     */
+    public static void observeRegistrations(Consumer<EventEmitter> listener) {
+        onRegistered = listener;
     }
 
     /** Unregisters an emitter. */

@@ -1,6 +1,9 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.AsyncTestContext;
+import se.deversity.asynctest.FailOn;
+import se.deversity.asynctest.diagnostics.CompletableFutureExceptionDetector;
 import se.deversity.asynctest.example.service.OrderProcessingService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,18 +36,23 @@ import static org.junit.jupiter.api.Assertions.*;
  * .join() throws CompletionException, and the test catches it or the assertion sees
  * fewer processed orders than expected - but it's somewhat deterministic.
  *
- * WHY @AsyncTest FAILS:
- * With 10+ concurrent threads hitting the service simultaneously:
- * - Many more orders fail due to race conditions on callCount
- * - Unhandled exceptions cascade through the system
- * - processedOrders map ends up with inconsistent state
- * - CompletableFutureExceptionDetector flags multiple unhandled async exceptions
- * - The test fails with CompletionException or assertion errors
+ * WHY @AsyncTest DETECTS IT:
+ * CompletableFutureExceptionDetector reports a chain that completed exceptionally
+ * with no exception handler registered on it. OrderProcessingService.observeFutures
+ * tells it when each chain is built, when it finishes, and whether it finished
+ * normally, so a chain that ends in an exception nobody attached a handler for is
+ * exactly what it sees.
  *
- * DETECTORS TRIGGERED:
- * ✅ CompletableFutureExceptionDetector - Primary detector for this example
- * ✅ RaceConditionDetector - Secondary detector for unsynchronized callCount
- * ✅ VisibilityMonitor - Tertiary detector for inconsistent state
+ * THIS EXAMPLE WAS THE ODD ONE OUT IN ISSUE #346:
+ * its @Disabled sat on a plain @Test, with the @AsyncTest annotation commented out
+ * on the line above, so it was never part of the enabled run at all. Its reason
+ * said "fails with @AsyncTest", a claim about an annotation that was not there.
+ * There is one now.
+ *
+ * DETECTOR ENABLED HERE:
+ * CompletableFutureExceptionDetector — a chain that completed exceptionally with no
+ * handler. It is the only one this demonstration switches on, so it is the only one
+ * that can report.
  */
 class OrderProcessingServiceTest {
 
@@ -132,63 +140,148 @@ class OrderProcessingServiceTest {
     }
 
     /**
-     * DEMONSTRATION: Run this with @AsyncTest to see the bug
-     *
-     * This test is DISABLED by default because it will fail in CI.
-     * Uncomment the annotations to see the problem manually.
-     *
-     * When enabled with @AsyncTest, this demonstrates:
-     * - Data loss: "Processed: 0, Failed: 0"
-     * - All orders disappear due to unhandled CompletableFuture exceptions
-     * - 8+ concurrent threads fail simultaneously
+     * The accounting hole, with no detector involved: an order whose chain failed is in neither
+     * map. The caller asked about five orders and can find fewer than five answers.
      */
+    @Test
+    void testProcessMultipleOrders_failedOrdersVanish() {
+        var orderIds = List.of("ORD-001", "ORD-002", "ORD-003", "ORD-004", "ORD-005");
 
-     //@AsyncTest(threads = 10, invocations = 50, detectAll = true)  // <-- Use @AsyncTest to see the bug
-    @Disabled("Demonstrates the bug - fails with @AsyncTest")
-     void testProcessMultipleOrders_Concurrent_WITH_ASYNC_TEST() {
-         var orderIds = List.of("ORD-001", "ORD-002", "ORD-003", "ORD-004", "ORD-005");
+        Map<String, OrderProcessingService.OrderResult> results;
+        try {
+            results = service.processMultipleOrders(orderIds);
+        } catch (Exception e) {
+            results = Map.of();     // allOf().join() rethrows whatever failed
+        }
 
-         Map<String, OrderProcessingService.OrderResult> results;
-         try {
-             results = service.processMultipleOrders(orderIds);
-         } catch (Exception e) {
-             results = Map.of();
-         }
-
-         int totalAccounted = results.size() + service.getFailedOrders().size();
-
-         // This WILL FAIL with @AsyncTest because orders are lost
-         assertEquals(orderIds.size(), totalAccounted,
-             "All orders should be accounted for, but unhandled exceptions cause data loss. " +
-             "Processed: " + results.size() + ", Failed: " + service.getFailedOrders().size());
-     }
-
+        assertTrue(results.size() + service.getFailedOrders().size() < orderIds.size(),
+                "at least one order is in neither map: " + results.size() + " processed, "
+                        + service.getFailedOrders().size() + " failed, of " + orderIds.size());
+    }
 
     /**
-     * SOLUTION TEST - This PASSES with @AsyncTest
-     * 
-     * This test shows what the FIXED version should look like.
-     * The fix is in the OrderProcessingServiceWithFix class (see comment below).
-     * 
-     * Uncomment this test and the fixed service to see the correct behavior.
+     * And with the handler put back, every order is accounted for.
      */
-    // @AsyncTest(threads = 10, invocations = 50, detectAll = true)
-    // void testProcessMultipleOrders_WithFix() {
-    //     var fixedService = new OrderProcessingServiceWithFix();
-    //     var orderIds = List.of("ORD-001", "ORD-002", "ORD-003", "ORD-004", "ORD-005");
-    //
-    //     Map<String, OrderProcessingServiceWithFix.OrderResult> results =
-    //         fixedService.processMultipleOrders(orderIds);
-    //
-    //     // With proper exception handling, ALL orders are accounted for
-    //     // (either in processedOrders or failedOrders)
-    //     int total = results.size() + fixedService.getFailedOrders().size();
-    //     assertEquals(orderIds.size(), total,
-    //         "All orders should be accounted for (processed or failed)");
-    //
-    //     fixedService.shutdown();
-    // }
+    @Test
+    void testProcessMultipleOrdersHandled_everyOrderIsAccountedFor() {
+        var orderIds = List.of("ORD-001", "ORD-002", "ORD-003", "ORD-004", "ORD-005");
+
+        Map<String, OrderProcessingService.OrderResult> results =
+                service.processMultipleOrdersHandled(orderIds);
+
+        assertEquals(orderIds.size(), results.size() + service.getFailedOrders().size(),
+                "processed plus failed should be every order asked about");
+    }
+
+    /**
+     * The detector's positive direction: a chain that completed exceptionally with no handler
+     * registered on it.
+     */
+    @Test
+    void testCompletableFutureExceptionDetector_unhandledChain_reports() {
+        CompletableFutureExceptionDetector detector = new CompletableFutureExceptionDetector();
+        wire(detector);
+
+        try {
+            service.processMultipleOrders(
+                    List.of("ORD-001", "ORD-002", "ORD-003", "ORD-004", "ORD-005"));
+        } catch (Exception expected) {
+            // allOf().join() rethrows; the finding is about the chain, not this call
+        }
+
+        assertTrue(detector.analyze().hasIssues(),
+                "a chain that completed exceptionally with no handler is the finding");
+    }
+
+    /**
+     * And the other direction: the same orders through the handled chain. A handler is
+     * registered, nothing completes exceptionally, and there is nothing to report.
+     */
+    @Test
+    void testCompletableFutureExceptionDetector_handledChain_isSilent() {
+        CompletableFutureExceptionDetector detector = new CompletableFutureExceptionDetector();
+        wire(detector);
+
+        service.processMultipleOrdersHandled(
+                List.of("ORD-001", "ORD-002", "ORD-003", "ORD-004", "ORD-005"));
+
+        assertFalse(detector.analyze().hasIssues(),
+                "a chain with an exceptionally() on it is the fix, not a finding");
+    }
+
+    private void wire(CompletableFutureExceptionDetector detector) {
+        service.observeFutures(
+                detector::recordFutureCreated,
+                (future, name, success) -> detector.recordFutureCompleted(future, name, success),
+                (future, name) -> detector.recordExceptionHandled(future, name, null));
+    }
+
+    /**
+     * The demonstration.
+     *
+     * <p>This one is different from every other example in the sweep, and issue #346 says so:
+     * its @Disabled sat on a plain @Test with the @AsyncTest annotation commented out above it,
+     * so it was never part of the enabled run at all. Its reason string said "fails with
+     * @AsyncTest", which was not something that could be checked, because there was no
+     * @AsyncTest.
+     *
+     * <p>There is one now, and the detector it names is wired to the chains the service actually
+     * builds.
+     *
+     * To see the detection:
+     * 1. Remove @Disabled
+     * 2. Run this test — it fails with
+     *      processOrder:ORD-003: completed exceptionally without exception handler
+     * 3. Fix: processOrderHandled(), which is the same chain with .exceptionally() on the end
+     */
+    @Disabled("Remove @Disabled to see unhandled async exceptions detected by "
+            + "CompletableFutureExceptionDetector")
+    @AsyncTest(threads = 10, invocations = 5, detectAll = false,
+            detectCompletableFutureExceptions = true, failOn = FailOn.LOW)
+    void testProcessMultipleOrders_Concurrent_WITH_ASYNC_TEST() {
+        CompletableFutureExceptionDetector detector =
+                AsyncTestContext.completableFutureExceptionDetector();
+        service.observeFutures(
+                detector::recordFutureCreated,
+                (future, name, success) -> detector.recordFutureCompleted(future, name, success),
+                (future, name) -> detector.recordExceptionHandled(future, name, null));
+
+        var orderIds = List.of("ORD-001", "ORD-002", "ORD-003", "ORD-004", "ORD-005");
+        try {
+            service.processMultipleOrders(orderIds);
+        } catch (Exception expected) {
+            // allOf().join() rethrows whatever failed. Swallowing it here is the point: this is
+            // what the calling code does, and it is why the failed order is never recorded.
+        }
+    }
+
+    /**
+     * The fix, and it is not a commented-out class any more.
+     *
+     * <p>This block used to hold a commented-out test against an OrderProcessingServiceWithFix
+     * that did not exist, under a heading saying it passes with @AsyncTest - a claim about code
+     * nobody could run. The fix now lives on the service itself, as processOrderHandled(), and
+     * testProcessMultipleOrdersHandled_everyOrderIsAccountedFor and
+     * testCompletableFutureExceptionDetector_handledChain_isSilent run against it on every
+     * build.
+     *
+     * <p>The difference is one line:
+     * <pre>{@code
+     * .exceptionally(failure -> {
+     *     failedOrders.put(orderId, cause(failure).getMessage());
+     *     return null;
+     * });
+     * }</pre>
+     */
+    @Test
+    void testProcessOrderHandled_isTheFix() {
+        service.processOrderHandled("ORD-003").join();
+
+        assertEquals(1, service.getFailedOrders().size() + service.getProcessedOrderCount(),
+                "the order ended up in one map or the other, which is all the fix promises");
+    }
 }
+
 
 /**
  * ============================================================================
