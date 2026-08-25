@@ -3,6 +3,7 @@ package se.deversity.asynctest.example;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
+import se.deversity.asynctest.diagnostics.WeakReferenceRaceDetector;
 import se.deversity.asynctest.example.service.WeakCacheEntry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -33,9 +34,16 @@ import static org.junit.jupiter.api.Assertions.*;
  * effectively does not exist.
  *
  * WHY @AsyncTest DETECTS:
- * Under concurrency WeakReferenceRaceDetector tracks both get() calls per thread.
- * When some threads see null (referent collected) while others saw non-null on the
- * same reference, the detector flags the unsafe double-get pattern.
+ * WeakReferenceRaceDetector reports two things. One is a reference that returned
+ * non-null on one thread and null on another, which needs the collector to
+ * actually collect. The other is a get() result used without a null check, which
+ * needs nothing at all: it is a property of the code.
+ *
+ * This example used to aim at the first, and the test held a strong reference to
+ * the payload in a field, so the referent could never be collected and the report
+ * was empty three runs out of three. See issue #346. It now aims at the second,
+ * recorded from inside process() at the point where the unchecked use happens,
+ * which is deterministic.
  *
  * FIX:
  * Assign ref.get() to a local variable once: T val = ref.get(); if (val != null) { val.doWork(); }
@@ -76,6 +84,73 @@ class WeakCacheEntryTest {
         assertEquals("counter-cache", entry.getName());
     }
 
+    /**
+     * The bug, made deterministic: the reference is cleared between the two get() calls, which
+     * is exactly what the collector is entitled to do, and process() throws.
+     */
+    @Test
+    void testProcess_referentClearedBetweenTheTwoGets_throwsNullPointerException() {
+        AtomicInteger gets = new AtomicInteger();
+        entry.observeReference(result -> {
+            if (gets.incrementAndGet() == 1) {
+                entry.getRef().clear();      // stand in for a GC cycle landing right here
+            }
+        }, () -> { });
+
+        assertThrows(NullPointerException.class, () -> entry.process(),
+                "the second get() returned null and nothing checked it");
+    }
+
+    /**
+     * And the fixed version under the same treatment: one get(), one null check, a strong
+     * local reference for the rest of the method. Clearing the WeakReference afterwards
+     * changes nothing.
+     */
+    @Test
+    void testProcessFixed_referentClearedAfterTheGet_completes() {
+        entry.observeReference(result -> entry.getRef().clear(), () -> { });
+
+        assertDoesNotThrow(() -> entry.processFixed());
+        assertEquals(1, payload.count.get(), "the work still happened");
+    }
+
+    /**
+     * The detector's positive direction: a get() result used without a null check.
+     */
+    @Test
+    void testWeakReferenceRaceDetector_uncheckedUse_reports() {
+        WeakReferenceRaceDetector detector = new WeakReferenceRaceDetector();
+        wire(detector);
+
+        entry.process();
+
+        assertTrue(detector.analyze().hasIssues(),
+                "using a get() result without checking it is the finding");
+    }
+
+    /**
+     * And the other direction: one get(), checked, used. Nothing to report, and a detector
+     * that fired here would fire on every correct use of a WeakReference.
+     */
+    @Test
+    void testWeakReferenceRaceDetector_checkedUse_isSilent() {
+        WeakReferenceRaceDetector detector = new WeakReferenceRaceDetector();
+        wire(detector);
+
+        entry.processFixed();
+
+        assertFalse(detector.analyze().hasIssues(),
+                "get() into a local, null-checked, then used is the correct idiom");
+    }
+
+    private void wire(WeakReferenceRaceDetector detector) {
+        entry.observeReference(
+                result -> detector.recordGet(entry.getRef(), entry.getName(), result,
+                        Thread.currentThread()),
+                () -> detector.recordNullDereference(entry.getRef(), entry.getName(),
+                        Thread.currentThread()));
+    }
+
     // -------------------------------------------------------------------------
     // Part 2: @AsyncTest — exposes the weak reference race
     // -------------------------------------------------------------------------
@@ -91,22 +166,28 @@ class WeakCacheEntryTest {
      * 3. To fix: assign ref.get() to a local variable inside process()
      */
     @Disabled("Remove @Disabled to see the bug detected by WeakReferenceRaceDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectWeakReferenceRace = true, failOn = FailOn.LOW)
+    // invocations is 1 to keep the report readable. The detector joins every recording thread's
+    // name into one line with no deduplication, so 400 executions produce a single line listing
+    // 400 thread names. That is issue #351; put the number back once it is fixed.
+    @AsyncTest(threads = 8, invocations = 1, detectAll = false,
+            detectWeakReferenceRace = true, failOn = FailOn.LOW)
     void test_concurrent_detectsWeakReferenceRace() {
-        WeakReference<Counter> ref = entry.getRef();
-        Object result = ref.get();
+        // The detector's two findings are a get() result used without a null check, and a
+        // reference that returned non-null on one thread and null on another. This
+        // demonstration used to aim at the second, which needs the collector to actually
+        // collect - and the test held a strong reference to the payload in a field, so it never
+        // could. Empty report, three runs out of three. See issue #346.
+        //
+        // The first finding needs no collector at all: it is a property of the code, and
+        // process() has it. Recording it from inside process(), where the unchecked use is,
+        // makes the demonstration deterministic.
+        WeakReferenceRaceDetector detector = AsyncTestContext.weakReferenceRaceDetector();
+        entry.observeReference(
+                result -> detector.recordGet(entry.getRef(), entry.getName(), result,
+                        Thread.currentThread()),
+                () -> detector.recordNullDereference(entry.getRef(), entry.getName(),
+                        Thread.currentThread()));
 
-        // Instrument: record the get() result (may be null if GC collected)
-        AsyncTestContext.weakReferenceRaceDetector()
-                .recordGet(ref, "counter-cache", result, Thread.currentThread());
-
-        if (result != null) {
-            // Call process() — internally does the unsafe double-get
-            entry.process();
-        } else {
-            // Referent was collected — record the null dereference risk
-            AsyncTestContext.weakReferenceRaceDetector()
-                    .recordNullDereference(ref, "counter-cache", Thread.currentThread());
-        }
+        entry.process();   // BUG: two gets, the second used unchecked
     }
 }
