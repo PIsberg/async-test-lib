@@ -48,15 +48,34 @@ void testDoWork_concurrent_detectsInterruptSwallowing() { ... }
 
 ```bash
 mvn clean test
-# InterruptMonitor reports:
-#   "Thread 'xxx': ignored InterruptedException - BackgroundWorker.doWork — sleep interrupted but flag not restored"
+# InterruptMonitor reports, for every worker thread:
+#   "Thread async-test-worker-12 (74): interrupt caught but not restored at
+#    se.deversity.asynctest.example.service.BackgroundWorker.doWork(BackgroundWorker.java:54)"
 ```
 
 With 6 threads each explicitly interrupting themselves before calling `doWork()`:
-- `Thread.sleep()` throws `InterruptedException` immediately
+- `Thread.sleep()` throws `InterruptedException` immediately, clearing the flag
 - The catch block inside `doWork()` swallows it
-- `interruptMonitor.recordIgnoredException()` records the swallowed interrupt
 - `analyzeInterruptHandling()` reports all threads that silently discarded the interrupt
+- `failOn = FailOn.LOW` turns that finding into a failed run
+
+## How the Detector Is Fed
+
+`InterruptMonitor` is **recording-fed**, and the question it answers is narrow: between catching
+an `InterruptedException` and leaving the catch block, did anybody put the flag back?
+`BackgroundWorker.observeInterrupts` installs the two hooks *inside* the catch blocks, one at the
+top and one after `Thread.currentThread().interrupt()`. Recording from the test body after
+`doWork()` returns could not tell a swallowed interrupt from one that was never thrown.
+
+`recordInterruptException` reads `Thread.isInterrupted()` at the moment it is called, so it has to
+be called from inside the catch block for the answer to mean anything. Pass it as a method
+reference rather than wrapping it in a lambda: the monitor infers the call site from the stack, and
+an extra lambda frame makes the report name the test instead of the buggy line.
+
+The monitor also has to be **the one the run owns**, from `AsyncTestContext.interruptMonitor()`. A
+locally constructed `new InterruptMonitor()` is never read by the library, so `failOn` has nothing
+to gate on and enabling the demonstration leaves it green. That was this example's fault before
+issue #346.
 
 ## The Root Cause
 

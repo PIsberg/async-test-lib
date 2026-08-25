@@ -2,6 +2,7 @@ package se.deversity.asynctest.example.service;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 /**
  * A background worker that performs periodic work in a loop and supports
@@ -29,6 +30,12 @@ public class BackgroundWorker {
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final AtomicInteger workCount = new AtomicInteger(0);
 
+    /** Called from inside a catch (InterruptedException) block, before any flag restore. */
+    private volatile Consumer<InterruptedException> onInterruptCaught = exception -> { };
+
+    /** Called immediately after Thread.currentThread().interrupt() restores the flag. */
+    private volatile Runnable onInterruptRestored = () -> { };
+
     /**
      * Performs one unit of work with a short sleep between iterations.
      *
@@ -44,6 +51,7 @@ public class BackgroundWorker {
             Thread.sleep(10); // simulates I/O wait or periodic delay
             workCount.incrementAndGet();
         } catch (InterruptedException e) {
+            onInterruptCaught.accept(e);
             // BUG: interrupt flag is NOT restored.
             // Callers that interrupt this thread to request shutdown will
             // find the flag already gone after this catch block exits.
@@ -64,8 +72,27 @@ public class BackgroundWorker {
             Thread.sleep(10);
             workCount.incrementAndGet();
         } catch (InterruptedException e) {
+            onInterruptCaught.accept(e);
             Thread.currentThread().interrupt(); // ✅ restore the interrupted flag
+            onInterruptRestored.run();
         }
+    }
+
+    /**
+     * Installs the hooks InterruptMonitor needs. No-ops by default, so production behaviour is
+     * unchanged whether or not a test is watching.
+     *
+     * <p>The calls sit <em>inside</em> the catch blocks, because what the monitor is looking for
+     * is whether the flag was put back between catching the exception and leaving the block.
+     * Recording from the test body after doWork() returns cannot tell a swallowed interrupt from
+     * one that was never thrown.
+     *
+     * @param onCaught   called with the exception at the top of every catch block
+     * @param onRestored called after the interrupted flag has been restored
+     */
+    public void observeInterrupts(Consumer<InterruptedException> onCaught, Runnable onRestored) {
+        this.onInterruptCaught = onCaught;
+        this.onInterruptRestored = onRestored;
     }
 
     /**
