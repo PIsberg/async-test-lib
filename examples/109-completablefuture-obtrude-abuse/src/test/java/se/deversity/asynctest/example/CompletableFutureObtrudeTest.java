@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -29,7 +30,7 @@ class CompletableFutureObtrudeTest {
     }
 
     @Disabled("Remove @Disabled to see the bug detected by CompletableFutureObtrudeDetector")
-    @AsyncTest(threads = 4, invocations = 10, detectAll = false, detectCompletableFutureObtrudeAbuse = true)
+    @AsyncTest(threads = 4, invocations = 10, detectAll = false, detectCompletableFutureObtrudeAbuse = true, failOn = FailOn.LOW)
     void test_concurrent_detectsObtrudeAbuse() {
         var mon = AsyncTestContext.completableFutureObtrudeDetector();
         Thread thread = Thread.currentThread();

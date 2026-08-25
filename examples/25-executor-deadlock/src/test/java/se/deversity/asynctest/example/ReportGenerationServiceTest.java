@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector;
 import se.deversity.asynctest.example.service.ReportGenerationService;
 import org.junit.jupiter.api.AfterEach;
@@ -121,7 +122,7 @@ class ReportGenerationServiceTest {
      * 3. Fix: submit subtasks to a dedicated separate executor
      */
     @Disabled("Remove @Disabled to see executor self-deadlock detected by ExecutorDeadlockDetector")
-    @AsyncTest(threads = 4, invocations = 20)
+    @AsyncTest(threads = 4, invocations = 20, failOn = FailOn.LOW)
     void testGenerateReport_concurrent_detectsExecutorDeadlock() {
         ExecutorService singleThreadExec = Executors.newSingleThreadExecutor();
 

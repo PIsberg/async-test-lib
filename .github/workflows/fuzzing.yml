@@ -35,6 +35,10 @@ jobs:
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: block
+          # GitHub serves release assets from release-assets.githubusercontent.com. Without
+          # it the Jazzer CLI download dies on "curl: (7) Failed to connect", the fuzz step
+          # is skipped, and the job fails. Every scheduled run from at least 2026-06-29 to
+          # 2026-08-10 died here, so nothing was fuzzed in that window.
           allowed-endpoints: >
             agent.api.stepsecurity.io:443
             api.adoptium.net:443
@@ -42,10 +46,6 @@ jobs:
             github.com:443
             github-releases.githubusercontent.com:443
             objects.githubusercontent.com:443
-            # GitHub serves release assets from release-assets.githubusercontent.com. Without
-            # it the Jazzer CLI download dies on "curl: (7) Failed to connect", the fuzz step
-            # is skipped, and the job fails. Every scheduled run from at least 2026-06-29 to
-            # 2026-08-10 died here, so nothing was fuzzed in that window.
             release-assets.githubusercontent.com:443
             repo.maven.apache.org:443
             repo1.maven.org:443

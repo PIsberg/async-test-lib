@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.SharedResourceManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -72,7 +73,7 @@ class SharedResourceManagerTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see exposed lock detected by PublicLockExposureDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectPublicLockExposure = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectPublicLockExposure = true, failOn = FailOn.LOW)
     void testAccessResource_concurrent_detectsExposedLock() {
         // Record the lock object being published externally — the core anti-pattern
         AsyncTestContext.publicLockExposureMonitor()

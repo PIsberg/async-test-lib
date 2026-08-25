@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.LegacyService;
 
@@ -53,7 +54,7 @@ class LegacyServiceTest {
      * start/end pairs and reports threads that were pinned during blocking ops.
      */
     @Disabled("Remove @Disabled to see bug detected by VirtualThreadPinningDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectVirtualThreadPinning = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectVirtualThreadPinning = true, failOn = FailOn.LOW)
     void test_concurrent_detectsPinning() {
         var detector = AsyncTestContext.virtualThreadPinningDetector();
         Thread thread = Thread.currentThread();

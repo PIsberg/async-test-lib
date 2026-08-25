@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.WorkQueueService;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,7 +77,7 @@ class WorkQueueServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see blocking-queue drops detected by BlockingQueueDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectBlockingQueueIssues = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectBlockingQueueIssues = true, failOn = FailOn.LOW)
     void testWorkQueue_concurrent_detectsDrops() {
         var queue = service.getQueue();
 

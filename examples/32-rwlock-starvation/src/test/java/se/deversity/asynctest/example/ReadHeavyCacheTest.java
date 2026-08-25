@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.ReadHeavyCache;
 import org.junit.jupiter.api.BeforeEach;
@@ -115,7 +116,7 @@ class ReadHeavyCacheTest {
      * 3. Fix: change ReentrantReadWriteLock(false) to ReentrantReadWriteLock(true)
      */
     @Disabled("Remove @Disabled to see writer starvation detected by ReadWriteLockMonitor")
-    @AsyncTest(threads = 8, invocations = 100, monitorReadWriteLockFairness = true)
+    @AsyncTest(threads = 8, invocations = 100, monitorReadWriteLockFairness = true, failOn = FailOn.LOW)
     void testCache_concurrent_detectsWriterStarvation() {
         ReentrantReadWriteLock rwLock = (ReentrantReadWriteLock) cache.getLock();
 

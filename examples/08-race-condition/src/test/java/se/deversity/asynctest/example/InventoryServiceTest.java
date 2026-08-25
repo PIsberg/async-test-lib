@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.example.service.InventoryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -143,7 +144,7 @@ class InventoryServiceTest {
      * 3. Fix: replace reserveItem() with reserveItemFixed() in the test body
      */
     @Disabled("Remove @Disabled to see race condition detected by RaceConditionDetector")
-    @AsyncTest(threads = 8, invocations = 100, detectRaceConditions = true)
+    @AsyncTest(threads = 8, invocations = 100, detectRaceConditions = true, failOn = FailOn.LOW)
     void testReserveItem_concurrent_detectsRaceCondition() {
         // Record the field read so RaceConditionDetector can track cross-thread access.
         // The detector instance is obtained from the current Phase 1 context.

@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.EventListenerService;
 import org.junit.jupiter.api.BeforeEach;
@@ -87,7 +88,7 @@ class EventListenerServiceTest {
      * 3. To fix: use a static factory that registers the instance after construction
      */
     @Disabled("Remove @Disabled to see the bug detected by ThisEscapeDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectThisEscape = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectThisEscape = true, failOn = FailOn.LOW)
     void test_concurrent_detectsThisEscape() {
         Thread thread = Thread.currentThread();
         List<Object> registry = new CopyOnWriteArrayList<>();

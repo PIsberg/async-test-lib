@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.HealthCheckService;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,7 +77,7 @@ class HealthCheckServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see executor leak detected by ScheduledExecutorDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectScheduledExecutorIssues = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectScheduledExecutorIssues = true, failOn = FailOn.LOW)
     void testStartChecks_concurrent_detectsExecutorLeak() {
         // Start checks — creates a new executor and never shuts it down
         service.startChecks();

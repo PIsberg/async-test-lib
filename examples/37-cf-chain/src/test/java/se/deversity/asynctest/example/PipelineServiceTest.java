@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.PipelineService;
 import org.junit.jupiter.api.BeforeEach;
@@ -80,7 +81,7 @@ class PipelineServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see unawaited CF chains detected by CompletableFutureChainDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCompletableFutureChainIssues = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCompletableFutureChainIssues = true, failOn = FailOn.LOW)
     void testPipeline_concurrent_detectsUnawaitedChain() {
         String input = "item-" + Thread.currentThread().getId();
 

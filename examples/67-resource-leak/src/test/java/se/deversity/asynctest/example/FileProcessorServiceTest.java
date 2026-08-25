@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.FileProcessorService;
 import org.junit.jupiter.api.BeforeEach;
@@ -73,7 +74,7 @@ class FileProcessorServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see stream leak detected by ResourceLeakDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectResourceLeaks = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectResourceLeaks = true, failOn = FailOn.LOW)
     void testProcessFile_concurrent_detectsStreamLeak() {
         // Call the service — internally creates a stream that is never closed
         service.processFile("concurrent-file.txt");

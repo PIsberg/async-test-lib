@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.TokenGenerator;
 import org.junit.jupiter.api.BeforeEach;
@@ -73,7 +74,7 @@ class TokenGeneratorTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see shared Random detected by SharedRandomDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSharedRandom = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSharedRandom = true, failOn = FailOn.LOW)
     void testGenerateToken_concurrent_detectsSharedRandom() {
         // Register the shared static Random with the detector
         AsyncTestContext.sharedRandomMonitor()

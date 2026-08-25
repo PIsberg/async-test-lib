@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.AuditLogger;
 import org.junit.jupiter.api.BeforeEach;
@@ -82,7 +83,7 @@ class AuditLoggerTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see shared SDF race detected by SimpleDateFormatDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSimpleDateFormatIssues = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSimpleDateFormatIssues = true, failOn = FailOn.LOW)
     void testFormatTimestamp_concurrent_detectsSharedSdf() {
         SimpleDateFormat sdf = AuditLogger.getSdf();
 

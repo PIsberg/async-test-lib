@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.TaskQueue;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,7 +38,7 @@ class TaskQueueTest {
     }
 
     @Disabled("Remove @Disabled to see bug detected by NotifyWithoutMonitorDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectNotifyWithoutMonitor = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectNotifyWithoutMonitor = true, failOn = FailOn.LOW)
     void test_concurrent_detectsBug() {
         // Record the notify() attempt on the queue object without holding its monitor.
         // Thread.holdsLock(queue) is false here — that is the bug.

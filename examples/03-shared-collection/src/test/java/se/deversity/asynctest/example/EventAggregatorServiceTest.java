@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.EventAggregatorService;
 import org.junit.jupiter.api.BeforeEach;
@@ -99,7 +100,7 @@ class EventAggregatorServiceTest {
      *            replace HashMap with ConcurrentHashMap
      */
     @Disabled("Remove @Disabled to see the bug detected by SharedCollectionDetector")
-    @AsyncTest(threads = 8, invocations = 100, detectSharedCollections = true)
+    @AsyncTest(threads = 8, invocations = 100, detectSharedCollections = true, failOn = FailOn.LOW)
     void testRecordEvent_concurrent_detectsSharedCollectionUse() {
         String source = "source-" + Thread.currentThread().threadId() % 4;
         service.recordEvent(source, "event");

@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.SessionCache;
 import org.junit.jupiter.api.BeforeEach;
@@ -86,7 +87,7 @@ class SessionCacheTest {
      * 3. To fix: replace getOrCreate with computeIfAbsent
      */
     @Disabled("Remove @Disabled to see the bug detected by NonAtomicConcurrentMapUpdateDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectConcurrentMapCheckThenAct = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectConcurrentMapCheckThenAct = true, failOn = FailOn.LOW)
     void test_concurrent_detectsCheckThenAct() {
         Thread thread = Thread.currentThread();
         String userId = "user-shared";

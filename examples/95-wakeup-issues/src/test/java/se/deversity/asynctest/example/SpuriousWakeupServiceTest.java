@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.SpuriousWakeupService;
 import org.junit.jupiter.api.BeforeEach;
@@ -81,7 +82,7 @@ class SpuriousWakeupServiceTest {
      * 3. To fix: change if(!ready) to while(!ready) in waitUntilReady()
      */
     @Disabled("Remove @Disabled to see the bug detected by WakeupDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectWakeupIssues = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectWakeupIssues = true, failOn = FailOn.LOW)
     void test_concurrent_detectsSpuriousWakeup() {
         Object monitor = service.getMonitor();
         String name = Thread.currentThread().getName();

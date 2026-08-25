@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.ABAProblemDetector;
 import se.deversity.asynctest.example.service.LockFreeStack;
 import org.junit.jupiter.api.BeforeEach;
@@ -111,7 +112,7 @@ class LockFreeStackTest {
      * 3. Fix: use AtomicStampedReference<Node<T>> instead of AtomicReference
      */
     @Disabled("Remove @Disabled to see ABA problem detected by ABAProblemDetector")
-    @AsyncTest(threads = 4, invocations = 50)
+    @AsyncTest(threads = 4, invocations = 50, failOn = FailOn.LOW)
     void testPop_concurrent_detectsABAProblem() {
         // Simulate the A → B → A cycle on the "head" variable:
         // Step 1: head is NodeX (value "task-A")

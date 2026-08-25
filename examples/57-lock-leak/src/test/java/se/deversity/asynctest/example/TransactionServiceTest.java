@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.TransactionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,7 +41,7 @@ class TransactionServiceTest {
     }
 
     @Disabled("Remove @Disabled to see bug detected by LockLeakDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectLockLeaks = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectLockLeaks = true, failOn = FailOn.LOW)
     void test_concurrent_detectsBug() {
         // Register the lock and record acquire/release to let the detector track it
         AsyncTestContext.lockLeakMonitor().registerLock(service.lock, "TransactionService.lock");

@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.HttpApiClient;
 import org.junit.jupiter.api.BeforeEach;
@@ -83,7 +84,7 @@ class HttpApiClientTest {
      * 3. To fix: store the HttpClient as a static final field in HttpApiClient
      */
     @Disabled("Remove @Disabled to see the bug detected by HttpClientConcurrencyDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectHttpClientIssues = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectHttpClientIssues = true, failOn = FailOn.LOW)
     void testFetchUrl_concurrent_detectsClientPerRequest() {
         // Simulate what fetchUrl() does: create a new client per invocation
         HttpClient newClient = HttpClient.newHttpClient();

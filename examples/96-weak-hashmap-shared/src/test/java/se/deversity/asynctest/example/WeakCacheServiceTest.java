@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.WeakCacheService;
 import org.junit.jupiter.api.BeforeEach;
@@ -81,7 +82,7 @@ class WeakCacheServiceTest {
      * 3. To fix: wrap cache in Collections.synchronizedMap()
      */
     @Disabled("Remove @Disabled to see the bug detected by WeakHashMapSharedDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectWeakHashMapShared = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectWeakHashMapShared = true, failOn = FailOn.LOW)
     void test_concurrent_detectsSharedWeakHashMap() {
         Object key = new Object();
         Thread thread = Thread.currentThread();

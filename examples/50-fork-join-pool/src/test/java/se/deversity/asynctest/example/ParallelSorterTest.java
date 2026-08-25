@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.ParallelSorter;
 import org.junit.jupiter.api.BeforeEach;
@@ -88,7 +89,7 @@ class ParallelSorterTest {
      * 3. To fix: use ManagedBlocker or a separate executor for blocking work
      */
     @Disabled("Remove @Disabled to see the bug detected by ForkJoinPoolDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectForkJoinPoolIssues = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectForkJoinPoolIssues = true, failOn = FailOn.LOW)
     void testSortAsync_concurrent_detectsCommonPoolBlocking() throws Exception {
         ForkJoinPool pool = ForkJoinPool.commonPool();
 

@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.RequestContextHolder;
 import org.junit.jupiter.api.AfterEach;
@@ -100,7 +101,7 @@ class RequestContextHolderTest {
      * 3. To fix: use plain ThreadLocal with explicit propagation, or ScopedValue
      */
     @Disabled("Remove @Disabled to see the bug detected by InheritableThreadLocalMisuseDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectInheritableThreadLocalMisuse = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectInheritableThreadLocalMisuse = true, failOn = FailOn.LOW)
     void testGetRequestId_concurrent_detectsStaleContext() {
         // Mark this thread as a pool thread so the detector knows context may be stale
         AsyncTestContext.inheritableThreadLocalMisuseMonitor()

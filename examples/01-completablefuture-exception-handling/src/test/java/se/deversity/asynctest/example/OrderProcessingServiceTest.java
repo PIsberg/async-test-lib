@@ -144,7 +144,7 @@ class OrderProcessingServiceTest {
      */
 
      //@AsyncTest(threads = 10, invocations = 50, detectAll = true)  // <-- Use @AsyncTest to see the bug
-     @Disabled("Demonstrates the bug - fails with @AsyncTest")
+    @Disabled("Demonstrates the bug - fails with @AsyncTest")
      void testProcessMultipleOrders_Concurrent_WITH_ASYNC_TEST() {
          var orderIds = List.of("ORD-001", "ORD-002", "ORD-003", "ORD-004", "ORD-005");
 

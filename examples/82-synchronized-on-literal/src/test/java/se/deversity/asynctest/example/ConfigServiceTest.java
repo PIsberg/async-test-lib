@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.ConfigService;
 import org.junit.jupiter.api.BeforeEach;
@@ -68,7 +69,7 @@ class ConfigServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see literal lock detected by SynchronizedOnLiteralDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSynchronizedOnLiteral = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSynchronizedOnLiteral = true, failOn = FailOn.LOW)
     void test_concurrent_detectsLiteralLock() {
         var detector = AsyncTestContext.get().synchronizedOnLiteralMonitor();
 

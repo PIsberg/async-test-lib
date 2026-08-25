@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.CoordinationService;
 import org.junit.jupiter.api.BeforeEach;
@@ -85,7 +86,7 @@ class CoordinationServiceTest {
      * 3. To fix: replace the three primitives with a single ReentrantLock + Condition
      */
     @Disabled("Remove @Disabled to see the bug detected by SynchronizerMonitor")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, monitorSynchronizers = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, monitorSynchronizers = true, failOn = FailOn.LOW)
     void test_concurrent_detectsOverSynchronization() {
         var mon = AsyncTestContext.synchronizerMonitor();
         var semaphore = service.getSemaphore();

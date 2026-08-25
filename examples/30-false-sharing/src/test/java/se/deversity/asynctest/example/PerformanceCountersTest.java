@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.PerformanceCounters;
 import org.junit.jupiter.api.BeforeEach;
@@ -109,7 +110,7 @@ class PerformanceCountersTest {
      * 3. Fix: annotate each field with @Contended, or switch to LongAdder
      */
     @Disabled("Remove @Disabled to see false sharing detected by FalseSharingDetector")
-    @AsyncTest(threads = 8, invocations = 200, detectFalseSharing = true)
+    @AsyncTest(threads = 8, invocations = 200, detectFalseSharing = true, failOn = FailOn.LOW)
     void testRecordRequest_concurrent_detectsFalseSharing() {
         // Different threads update different fields — but they all share a cache line
         long tid = Thread.currentThread().threadId();

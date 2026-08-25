@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.HitCounter;
 import org.junit.jupiter.api.BeforeEach;
@@ -83,7 +84,7 @@ class HitCounterTest {
      * 3. To fix: replace counter.set(counter.get() + 1) with counter.incrementAndGet()
      */
     @Disabled("Remove @Disabled to see the bug detected by AtomicNonAtomicUpdateDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectAtomicNonAtomicUpdates = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectAtomicNonAtomicUpdates = true, failOn = FailOn.LOW)
     void test_concurrent_detectsNonAtomicUpdate() {
         var mon = AsyncTestContext.atomicNonAtomicUpdateMonitor();
         var raw = counter.getCounter();

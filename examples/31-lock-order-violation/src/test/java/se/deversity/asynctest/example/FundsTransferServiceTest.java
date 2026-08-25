@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.FundsTransferService;
 import se.deversity.asynctest.example.service.FundsTransferService.Account;
@@ -105,7 +106,7 @@ class FundsTransferServiceTest {
      * 3. Fix: always lock the lower-ID account first
      */
     @Disabled("Remove @Disabled to see lock order violation detected by LockOrderValidator")
-    @AsyncTest(threads = 8, invocations = 50, validateLockOrder = true)
+    @AsyncTest(threads = 8, invocations = 50, validateLockOrder = true, failOn = FailOn.LOW)
     void testTransfer_concurrent_detectsLockOrderViolation() {
         // Alternate the transfer direction across threads to produce both orderings
         boolean forward = Thread.currentThread().threadId() % 2 == 0;

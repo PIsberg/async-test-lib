@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.ReminderService;
 
@@ -55,7 +56,7 @@ class ReminderServiceTest {
      * never called, the detector flags the timer as leaking.
      */
     @Disabled("Remove @Disabled to see bug detected by TimerDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectTimerIssues = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectTimerIssues = true, failOn = FailOn.LOW)
     void test_concurrent_detectsTimerIssues() {
         var detector = AsyncTestContext.timerMonitor();
         String timerName = "reminder-timer";

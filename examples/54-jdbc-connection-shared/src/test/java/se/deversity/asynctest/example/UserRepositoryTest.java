@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,7 +49,7 @@ class UserRepositoryTest {
     }
 
     @Disabled("Remove @Disabled to see bug detected by JdbcConnectionSharedDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectJdbcConnectionShared = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectJdbcConnectionShared = true, failOn = FailOn.LOW)
     void test_concurrent_detectsBug() {
         // Record the shared connection being accessed from this thread
         AsyncTestContext.jdbcConnectionSharedDetector()

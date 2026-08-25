@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -40,7 +41,7 @@ class LockUpgradeDeadlockTest {
     }
 
     @Disabled("Remove @Disabled to see the bug detected by LockUpgradeDeadlockDetector")
-    @AsyncTest(threads = 2, invocations = 5, detectAll = false, detectLockUpgradeDeadlock = true)
+    @AsyncTest(threads = 2, invocations = 5, detectAll = false, detectLockUpgradeDeadlock = true, failOn = FailOn.LOW)
     void test_concurrent_detectsLockUpgradeDeadlock() {
         var mon = AsyncTestContext.lockUpgradeDeadlockDetector();
         Thread thread = Thread.currentThread();

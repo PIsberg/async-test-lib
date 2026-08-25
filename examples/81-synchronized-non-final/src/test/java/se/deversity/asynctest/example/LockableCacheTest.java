@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.LockableCache;
 import org.junit.jupiter.api.BeforeEach;
@@ -69,7 +70,7 @@ class LockableCacheTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see non-final lock detected by SynchronizedNonFinalDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSynchronizedNonFinal = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSynchronizedNonFinal = true, failOn = FailOn.LOW)
     void test_concurrent_detectsNonFinalLock() {
         var detector = AsyncTestContext.get().synchronizedNonFinalDetector();
 

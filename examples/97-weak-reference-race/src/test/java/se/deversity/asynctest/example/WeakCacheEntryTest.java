@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.WeakCacheEntry;
 import org.junit.jupiter.api.BeforeEach;
@@ -90,7 +91,7 @@ class WeakCacheEntryTest {
      * 3. To fix: assign ref.get() to a local variable inside process()
      */
     @Disabled("Remove @Disabled to see the bug detected by WeakReferenceRaceDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectWeakReferenceRace = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectWeakReferenceRace = true, failOn = FailOn.LOW)
     void test_concurrent_detectsWeakReferenceRace() {
         WeakReference<Counter> ref = entry.getRef();
         Object result = ref.get();

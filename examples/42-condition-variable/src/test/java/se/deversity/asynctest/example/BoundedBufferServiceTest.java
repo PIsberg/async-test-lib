@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.BoundedBufferService;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,7 +77,7 @@ class BoundedBufferServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see signal() misuse detected by ConditionVariableDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectConditionVariableIssues = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectConditionVariableIssues = true, failOn = FailOn.LOW)
     void testBuffer_concurrent_detectsMissedSignal() throws InterruptedException {
         var notEmpty = service.getNotEmpty();
         var notFull  = service.getNotFull();

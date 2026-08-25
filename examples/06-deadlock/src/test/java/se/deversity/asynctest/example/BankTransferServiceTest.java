@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.example.service.BankTransferService;
 import se.deversity.asynctest.example.service.BankTransferService.Account;
 import org.junit.jupiter.api.BeforeEach;
@@ -122,7 +123,7 @@ class BankTransferServiceTest {
      * 3. Fix: replace transfer() with transferFixed() in the test body
      */
     @Disabled("Remove @Disabled to see deadlock detected by DeadlockDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectDeadlocks = true, timeoutMs = 5000)
+    @AsyncTest(threads = 8, invocations = 50, detectDeadlocks = true, timeoutMs = 5000, failOn = FailOn.LOW)
     void testTransfer_concurrent_detectsDeadlock() {
         // Alternate transfer direction based on thread ID — reliably creates A→B and
         // B→A transfers in parallel, forming a circular-wait deadlock.

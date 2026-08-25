@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.IdGenerator;
 import org.junit.jupiter.api.BeforeEach;
@@ -85,7 +86,7 @@ class IdGeneratorTest {
      * 3. To fix: call ThreadLocalRandom.current() per use; never cache it
      */
     @Disabled("Remove @Disabled to see the bug detected by ThreadLocalRandomMisuseDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectThreadLocalRandomMisuse = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectThreadLocalRandomMisuse = true, failOn = FailOn.LOW)
     void test_concurrent_detectsCachedReferenceUsedAcrossThreads() {
         Thread thread = Thread.currentThread();
 

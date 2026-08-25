@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.ReportService;
 import org.junit.jupiter.api.BeforeEach;
@@ -77,7 +78,7 @@ class ReportServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see common-pool blocking detected by CompletableFutureCommonPoolBlockingDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCFCommonPoolBlocking = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCFCommonPoolBlocking = true, failOn = FailOn.LOW)
     void testGenerateReport_concurrent_detectsPoolBlocking() {
         // Inform the detector that we are about to block on the common pool
         AsyncTestContext.get().cfCommonPoolBlockingMonitor()

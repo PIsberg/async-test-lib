@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.BusyWaitDetector;
 import se.deversity.asynctest.example.service.SpinPollingWorker;
 import org.junit.jupiter.api.AfterEach;
@@ -131,7 +132,7 @@ class SpinPollingWorkerTest {
      * 3. Fix: replace ConcurrentLinkedQueue + spin with LinkedBlockingQueue.take()
      */
     @Disabled("Remove @Disabled to see busy-waiting detected by BusyWaitDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectBusyWaiting = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectBusyWaiting = true, failOn = FailOn.LOW)
     void testProcess_concurrent_detectsBusyWaiting() {
         runningAsyncTest = true;
         // Each thread drains whatever is left in the shared queue via the

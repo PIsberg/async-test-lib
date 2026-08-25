@@ -50,9 +50,9 @@ this example exists to show:
   `GraphService` exposes two no-op `Consumer<String>` hooks for that; the test
   wires them to the detector, and the production path never touches the library.
 - **`failOn` defaults to `NONE`,** which reports a finding without failing the
-  run, and this detector is `PROMPT` tier. The test therefore sets
-  `failOn = FailOn.HIGH, minTrust = TrustTier.PROMPT`. Without both, the report is
-  printed and the run still goes green.
+  run. Every disabled demonstration in `examples/` therefore sets
+  `failOn = FailOn.LOW`; without it, removing `@Disabled` prints the report and
+  leaves the test green. `ExampleDisabledDemoTest` now requires that.
 
 **Fix**: precompute the full graph outside any `computeIfAbsent()` lambda, or
 use a plain `HashMap` with external synchronization so recursion is safe.

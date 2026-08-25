@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.DataPipelineService;
 import org.junit.jupiter.api.BeforeEach;
@@ -74,7 +75,7 @@ class DataPipelineServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see unclosed streams detected by StreamClosingDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectStreamClosing = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectStreamClosing = true, failOn = FailOn.LOW)
     void test_concurrent_detectsUnclosedStream() {
         var detector = AsyncTestContext.get().streamClosingDetector();
 

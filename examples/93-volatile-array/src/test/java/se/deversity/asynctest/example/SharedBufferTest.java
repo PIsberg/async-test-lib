@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.SharedBuffer;
 
@@ -51,7 +52,7 @@ class SharedBufferTest {
      * threads write to the same (volatile) array the detector flags it.
      */
     @Disabled("Remove @Disabled to see bug detected by VolatileArrayDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectVolatileArrayIssues = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectVolatileArrayIssues = true, failOn = FailOn.LOW)
     void test_concurrent_detectsVolatileArrayIssue() {
         var detector = AsyncTestContext.volatileArrayMonitor();
         int[] raw = buffer.getBuffer();

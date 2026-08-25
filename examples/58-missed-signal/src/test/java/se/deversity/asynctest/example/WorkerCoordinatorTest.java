@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.WorkerCoordinator;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,7 +36,7 @@ class WorkerCoordinatorTest {
     }
 
     @Disabled("Remove @Disabled to see bug detected by MissedSignalDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectMissedSignals = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectMissedSignals = true, failOn = FailOn.LOW)
     void test_concurrent_detectsBug() {
         // Record a notify() being sent on the "ready" condition
         AsyncTestContext.missedSignalDetector()

@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.DataSyncService;
 import org.junit.jupiter.api.BeforeEach;
@@ -77,7 +78,7 @@ class DataSyncServiceTest {
      * 3. To fix: redesign so callers always arrive in matched pairs
      */
     @Disabled("Remove @Disabled to see the bug detected by ExchangerDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectExchangerIssues = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectExchangerIssues = true, failOn = FailOn.LOW)
     void testExchangeData_concurrent_detectsTimeout() {
         // Register the exchanger so the detector can track it by identity
         AsyncTestContext.exchangerMonitor()

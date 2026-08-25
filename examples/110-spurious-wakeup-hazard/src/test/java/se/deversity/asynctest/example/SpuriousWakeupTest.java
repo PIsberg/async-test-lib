@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -28,7 +29,7 @@ class SpuriousWakeupTest {
     }
 
     @Disabled("Remove @Disabled to see the bug detected by SpuriousWakeupDetector")
-    @AsyncTest(threads = 2, invocations = 5, detectAll = false, detectSpuriousWakeupHazard = true)
+    @AsyncTest(threads = 2, invocations = 5, detectAll = false, detectSpuriousWakeupHazard = true, failOn = FailOn.LOW)
     void test_concurrent_detectsSpuriousWakeupHazard() throws InterruptedException {
         var mon = AsyncTestContext.spuriousWakeupHazardDetector();
         Thread thread = Thread.currentThread();

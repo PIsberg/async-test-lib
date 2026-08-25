@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.example.service.TaskScheduler;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,7 +77,7 @@ class TaskSchedulerTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see shared mutable lambda capture detected by StatefulLambdaDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectStatefulLambda = true)
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectStatefulLambda = true, failOn = FailOn.LOW)
     void test_concurrent_detectsStatefulLambda() {
         var detector = AsyncTestContext.get().statefulLambdaDetector();
 
