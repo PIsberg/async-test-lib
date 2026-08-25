@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.ThreadLocalMonitor;
 import se.deversity.asynctest.example.service.RequestContextService;
@@ -41,15 +42,16 @@ import static org.junit.jupiter.api.Assertions.*;
  * is always set before it is read, so the correct user is returned.
  *
  * WHY @AsyncTest DETECTS THE ISSUE:
- * ThreadLocalMonitor tracks every recordThreadLocalInit() and
- * recordThreadLocalAccess() call. When the ThreadLocal is initialized
- * (set) but recordThreadLocalCleanup() is never called, the monitor
- * flags it as "missing cleanup" and — when multiple threads used the
- * same ThreadLocal — as a "likely leak across reused threads".
- * The @AfterEach assertion verifies that detection fired.
+ * ThreadLocalMonitor is recording-fed: it tracks the lifecycle the code under
+ * test reports through recordThreadLocalInit(), recordThreadLocalAccess() and
+ * recordThreadLocalCleanup(). RequestContextService.observeLifecycle wires those
+ * three to the set, the get and the remove, so a ThreadLocal that was set and
+ * never removed shows up as exactly that. failOn = FailOn.LOW turns the finding
+ * into a failed run.
  *
- * DETECTORS TRIGGERED:
- * ThreadLocalMonitor — Primary: ThreadLocal set without remove()
+ * DETECTOR ENABLED HERE:
+ * ThreadLocalMonitor — ThreadLocal set without remove(). It is the only one this
+ * demonstration switches on, so it is the only one that can report.
  *
  * FIX:
  * - Always call endRequest() (which calls CURRENT_USER.remove()) in a
@@ -58,31 +60,19 @@ import static org.junit.jupiter.api.Assertions.*;
 class RequestContextServiceTest {
 
     private RequestContextService service;
-    private ThreadLocalMonitor threadLocalMonitor;
-    // Guard flag so the @AfterEach assertion only runs after the @AsyncTest.
-    private volatile boolean runningAsyncTest = false;
 
     @BeforeEach
     void setUp() {
         service = new RequestContextService();
-        threadLocalMonitor = new ThreadLocalMonitor();
     }
 
     /**
-     * After the @AsyncTest run completes, verify the monitor detected the
-     * uncleaned ThreadLocal. @AfterEach runs once after all threads and
-     * invocations finish.
+     * The ThreadLocal is static, so a test that leaves a value behind would hand it to the next
+     * one. Removed directly rather than through endRequest(), which would fire the cleanup hook.
      */
     @AfterEach
-    void verifyThreadLocalLeakDetected() {
-        if (!runningAsyncTest) {
-            // Ensure no stale state leaks between plain @Test methods
-            service.endRequest();
-            return;
-        }
-        ThreadLocalMonitor.ThreadLocalReport report = threadLocalMonitor.analyzeThreadLocalLeaks();
-        assertTrue(report.hasIssues(),
-                "ThreadLocalMonitor should have flagged the missing remove().\n" + report);
+    void clearThreadLocal() {
+        RequestContextService.threadLocal().remove();
     }
 
     // -------------------------------------------------------------------------
@@ -109,6 +99,51 @@ class RequestContextServiceTest {
         assertNull(service.getRequestUserId());
     }
 
+    /**
+     * Pins the monitor's positive direction without needing the concurrent run: a set with no
+     * remove is the leak, and the monitor must say so.
+     */
+    @Test
+    void testThreadLocalMonitor_setWithoutRemove_reports() {
+        ThreadLocalMonitor monitor = new ThreadLocalMonitor();
+        RequestContextService leaky = new RequestContextService();
+        leaky.observeLifecycle(
+                () -> monitor.recordThreadLocalInit(RequestContextService.threadLocal(), "REQUEST_USER"),
+                () -> monitor.recordThreadLocalAccess(RequestContextService.threadLocal()),
+                () -> monitor.recordThreadLocalCleanup(RequestContextService.threadLocal()));
+
+        leaky.beginRequest("alice");
+        leaky.getRequestUserId();
+        // no endRequest()
+
+        assertTrue(monitor.analyzeThreadLocalLeaks().hasIssues(),
+                "a ThreadLocal set and never removed is the leak this monitor exists for");
+    }
+
+    /**
+     * And the other direction: the same lifecycle with the remove in place must stay silent, or
+     * the monitor would flag every correct use of a ThreadLocal.
+     */
+    @Test
+    void testThreadLocalMonitor_setThenRemove_isSilent() {
+        ThreadLocalMonitor monitor = new ThreadLocalMonitor();
+        RequestContextService tidy = new RequestContextService();
+        tidy.observeLifecycle(
+                () -> monitor.recordThreadLocalInit(RequestContextService.threadLocal(), "REQUEST_USER"),
+                () -> monitor.recordThreadLocalAccess(RequestContextService.threadLocal()),
+                () -> monitor.recordThreadLocalCleanup(RequestContextService.threadLocal()));
+
+        try {
+            tidy.beginRequest("alice");
+            tidy.getRequestUserId();
+        } finally {
+            tidy.endRequest();
+        }
+
+        assertFalse(monitor.analyzeThreadLocalLeaks().hasIssues(),
+                "a ThreadLocal that was removed is not a leak");
+    }
+
     // -------------------------------------------------------------------------
     // Part 2: @AsyncTest — exposes the ThreadLocal not cleaned up
     // -------------------------------------------------------------------------
@@ -119,40 +154,36 @@ class RequestContextServiceTest {
      * initialized on multiple threads but never cleaned up.
      * The monitor's analyzeThreadLocalLeaks() report flags it as a
      * likely leak across reused threads.
-     * The @AfterEach assertion verifies that detection fired after the run.
      *
      * To see the detection:
      * 1. Remove @Disabled
-     * 2. Run this test — @AfterEach will assert that ThreadLocalMonitor
-     *    flagged "REQUEST_USER" as missing cleanup across multiple threads
+     * 2. Run this test — it fails with
+     *      REQUEST_USER: accessed by N thread(s) without remove()
+     *      REQUEST_USER: value crossed N reused thread(s)
+     *    N counts distinct thread ids, and the runner gives every body execution its own
+     *    virtual thread, so it is the number of executions rather than the 8 configured
+     *    threads. See issue #349.
      * 3. Fix: add a finally block that always calls endRequest()
      */
     @Disabled("Remove @Disabled to see ThreadLocal leak detected by ThreadLocalMonitor")
     @AsyncTest(threads = 8, invocations = 20, detectAll = false, detectThreadLocalLeaks = true, failOn = FailOn.LOW)
     void testBeginRequest_concurrent_detectsThreadLocalLeak() {
-        runningAsyncTest = true;
-        String userId = "user-" + Thread.currentThread().threadId();
+        // The monitor has to be the one the run owns. This demonstration used to record into a
+        // locally constructed ThreadLocalMonitor and assert on it from @AfterEach; the library
+        // never reads that instance, so failOn had nothing to gate on and enabling the test left
+        // it green. See issue #346.
+        ThreadLocalMonitor monitor = AsyncTestContext.threadLocalMonitor();
+        ThreadLocal<String> threadLocal = RequestContextService.threadLocal();
+        service.observeLifecycle(
+                () -> monitor.recordThreadLocalInit(threadLocal, "REQUEST_USER"),
+                () -> monitor.recordThreadLocalAccess(threadLocal),
+                () -> monitor.recordThreadLocalCleanup(threadLocal));
 
-        // Record that the ThreadLocal is being initialized on this thread.
-        // Uses the same shared ThreadLocalMonitor so all threads contribute
-        // to a single aggregate lifecycle report.
-        threadLocalMonitor.recordThreadLocalInit(
-                RequestContextService.threadLocal(), "REQUEST_USER");
+        service.beginRequest("user-" + Thread.currentThread().threadId());
+        assertNotNull(service.getRequestUserId());
 
-        // Set the value — this is the buggy path that never calls endRequest()
-        service.beginRequest(userId);
-
-        // Record an access so the monitor tracks which threads used this ThreadLocal
-        threadLocalMonitor.recordThreadLocalAccess(RequestContextService.threadLocal());
-
-        // Read the user (should be this thread's userId in a single-thread run)
-        String observed = service.getRequestUserId();
-        assertNotNull(observed);
-
-        // BUG: endRequest() / CURRENT_USER.remove() is NOT called.
-        // threadLocalMonitor.recordThreadLocalCleanup() is never called.
-        // After the @AsyncTest run, @AfterEach calls analyzeThreadLocalLeaks()
-        // and asserts "REQUEST_USER: accessed by N threads without remove()".
+        // BUG: endRequest() is never called, so CURRENT_USER.remove() never happens and the
+        // cleanup hook never fires. The value stays on the thread for whatever runs next.
     }
 
     /**

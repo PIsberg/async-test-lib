@@ -62,7 +62,27 @@ With 8 threads each calling `beginRequest()` but never `endRequest()`:
 - `ThreadLocalMonitor.recordThreadLocalInit()` tracks each initialization
 - `recordThreadLocalAccess()` tracks which threads used the ThreadLocal
 - `recordThreadLocalCleanup()` is never called
-- `analyzeThreadLocalLeaks()` flags "REQUEST_USER" as missing cleanup and reports cross-thread contamination
+- `analyzeThreadLocalLeaks()` flags "REQUEST_USER" as missing cleanup and reports cross-thread
+  contamination
+- `failOn = FailOn.LOW` turns that finding into a failed run
+
+## How the Detector Is Fed
+
+`ThreadLocalMonitor` is **recording-fed**, and what it looks for is a lifecycle: a set with no
+matching remove. `RequestContextService.observeLifecycle` installs three `Runnable` hooks at the
+`set`, the `get` and the `remove`, so the lifecycle the monitor sees is the one the service
+actually performs. The hooks default to no-ops, so the production path never touches the test
+library.
+
+The monitor also has to be **the one the run owns**, from `AsyncTestContext.threadLocalMonitor()`.
+A locally constructed `new ThreadLocalMonitor()` is never read by the library, so `failOn` has
+nothing to gate on and enabling the demonstration leaves it green. That was this example's fault
+before issue #346.
+
+One thing to read carefully in the report: the thread count is the number of distinct thread ids
+that touched the ThreadLocal. `@AsyncTest` runs on virtual threads by default, one per body
+execution, so with `threads = 8, invocations = 20` the count reads 160 rather than 8, and those
+threads are not reused at all. See issue #349.
 
 ## The Root Cause
 
