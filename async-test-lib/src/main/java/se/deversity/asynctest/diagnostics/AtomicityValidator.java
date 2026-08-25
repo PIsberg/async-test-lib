@@ -959,7 +959,19 @@ public class AtomicityValidator {
                         || (locks.sawUnguardedAccess()
                             && !locks.isSafePublication()
                             && !locks.writesOnlyOneConstant());
-                if (sawUnguarded && groupIdentity != 0 && locks != null) {
+                // The per-instance excuses need a group that is one object's accesses. Identity 0
+                // normally is not: it is the "not known" bucket, where every pre-agent caller's
+                // accesses pool together, and excusing a pool of unrelated receivers because the
+                // pool settled would be unsound. A static field is the exception (#337). Its
+                // identity is 0 by construction rather than by ignorance - there is no receiver
+                // to hash, so the declaring class stands in - and the group really is one field
+                // of one class. What tells the two apart in the record is the stored value: only
+                // the weaver reports a non-zero stored identity, and for an identity-0 group only
+                // a static reference store can carry one. A pre-agent caller, an older agent, a
+                // primitive or a shape the weaver cannot reach all report 0 and keep exactly the
+                // answer they had.
+                if (sawUnguarded && locks != null
+                        && (groupIdentity != 0 || carriesPublishedValueEvidence(copy))) {
                     FieldGuard guard = locks;
                     boolean handOff = Boolean.TRUE.equals(corroborated.get(groupIdentity));
                     boolean excused = excusedIdentities.computeIfAbsent(groupIdentity,
@@ -1340,6 +1352,31 @@ public class AtomicityValidator {
             }
         }
         return true;
+    }
+
+    /**
+     * {@return whether any write in this field's history carried the identity of what it stored}
+     *
+     * <p>The discriminator that lets the identity-0 group reach the per-instance excuses at all
+     * (#337). Identity 0 is two different situations wearing the same number: a static field,
+     * whose receiver does not exist, and an access recorded without a receiver, whose receiver is
+     * merely unknown. Only the first can produce a non-zero stored identity, because only the
+     * weaver reports one and the weaver always supplies a real receiver for an instance access.
+     *
+     * <p>Being evidence-gated is what keeps this conservative in the direction that matters. The
+     * excuses can now silence a static single-check cache, but only for a run where the agent
+     * actually observed what was published; with nothing observed, the group keeps reporting
+     * exactly as it did before, which is what every caller that predates the value evidence gets.
+     *
+     * @param history every access recorded for the field
+     */
+    private static boolean carriesPublishedValueEvidence(List<FieldAccessRecord> history) {
+        for (FieldAccessRecord access : history) {
+            if (access.write && access.identity == 0 && access.storedIdentity != 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

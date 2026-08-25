@@ -159,11 +159,14 @@ threads each using their own, and — for a store of a reference type — the va
 last one is what lets the atomicity model tell an idempotent value apart from a side effect: a
 double-submit converges on its field exactly like a view cache does, and the difference is only
 visible in what the stored object does afterwards
-([#326](https://github.com/PIsberg/async-test-lib/issues/326)). A reference store is the one shape
-where the value is already on the operand stack in argument order, so `DUP2` reaches it in two
-instructions with nothing to undo; every other shape passes `null`, which the analysis reads as
-"not known" rather than as evidence. Only identity hashes leave the call — neither the receiver
-nor the stored value is retained.
+([#326](https://github.com/PIsberg/async-test-lib/issues/326)). An instance reference store is the
+shape where the value is already on the operand stack in argument order, so `DUP2` reaches it in
+two instructions with nothing to undo. A static reference store needs one instruction more,
+`DUP; LDC class; SWAP`, because the value sits alone with the class constant pushed above it
+([#337](https://github.com/PIsberg/async-test-lib/issues/337)); without that, class-scope
+lazy-init was the one double-submit shape the value evidence could not reach. Every other shape
+passes `null`, which the analysis reads as "not known" rather than as evidence. Only
+identity hashes leave the call — neither the receiver nor the stored value is retained.
 
 It is off by default because the cost scales with the instrumented surface, not with the number of
 accessors: every field read and write in every matched class emits an event. Pair it with

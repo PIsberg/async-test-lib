@@ -2,6 +2,8 @@ package se.deversity.asynctest.agent;
 
 import com.example.agentfixture.DirectFieldMutationBean;
 import com.example.agentfixture.GuardedFieldMutationBean;
+import com.example.agentfixture.StaticLazyCacheBean;
+import com.example.agentfixture.StaticLazySubmitBean;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -12,13 +14,20 @@ import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.telemetry.TelemetryBridge;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Set;
+import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -209,5 +218,169 @@ class FieldWeavingEndToEndTest {
                         + "objectref for the monitor instruction: a wrong value, or an "
                         + "IllegalMonitorStateException reaching this assertion, means the "
                         + "operand stack was corrupted.");
+    }
+
+    /**
+     * The verifier's verdict on the {@code PUTSTATIC} sequence (#337).
+     *
+     * <p>Reaching a static store's value needs {@code DUP; LDC class; SWAP}, because a static
+     * store has only the value on the stack and the class constant has to end up above it. That
+     * is a different shape from every other write the weaver handles, and getting it wrong does
+     * not produce a wrong answer, it produces a class the JVM refuses to load. So this asserts
+     * the boring thing on purpose: the class loads, the method runs, and it computes what it
+     * computed before instrumentation. A {@code VerifyError} on the first call would be the
+     * failure, and it cannot be caught by inspecting bytecode - only by running it.
+     */
+    @Test
+    @DisplayName("a static reference store survives the verifier and still stores the right value")
+    void staticReferenceStoreIsWovenWithoutBreakingTheClass() {
+        StaticLazyCacheBean.reset();
+
+        StaticLazyCacheBean.Snapshot first = StaticLazyCacheBean.lookup(42, () -> { });
+        StaticLazyCacheBean.Snapshot second = StaticLazyCacheBean.lookup(99, () -> { });
+
+        assertEquals(42, first.size(),
+                "The PUTSTATIC was woven with DUP, a class constant and SWAP ahead of it. The "
+                        + "original value must be left untouched at the bottom of the stack for "
+                        + "the store itself; a different size here means the swap put the class "
+                        + "constant in the field.");
+        assertSame(first, second,
+                "The second call must hit the filled cache. A different instance means the store "
+                        + "did not take effect, so the woven sequence consumed the value the "
+                        + "PUTSTATIC was supposed to store.");
+        assertSame(first, StaticLazyCacheBean.peek(),
+                "The GETSTATIC is woven too, and must leave the field's value as it found it.");
+    }
+
+    /**
+     * The silent half of the static pair (#337): a class-scope cache whose value goes quiet.
+     *
+     * <p>Both threads are held at the miss point until the other arrives, so the double miss is
+     * deterministic rather than hoped for: both read {@code null}, both build a snapshot, and one
+     * store is lost. That is exactly the access stream a lost update produces, and the field
+     * alone cannot tell the two apart. What settles it is what was published, and until the
+     * weaver reached a {@code PUTSTATIC}'s value nothing in the pipeline carried that.
+     *
+     * <p>The rounds are driven by hand, with a flush before each boundary, because the drain is
+     * asynchronous: an event stamped after the epoch moved would land in the wrong round and the
+     * convergence this asserts would be measured against a stream nobody produced.
+     */
+    @Test
+    @DisplayName("a static single-check cache whose value goes quiet is not reported (#337)")
+    void staticSingleCheckCacheWithQuiescentValueIsSilent() throws Exception {
+        StaticLazyCacheBean.reset();
+        AtomicityValidator validator = new AtomicityValidator();
+        Set<Long> workerThreadIds = ConcurrentHashMap.newKeySet();
+
+        try (TelemetryBridge bridge =
+                     TelemetryBridge.activateWithFilter(validator, workerThreadIds::contains)) {
+            validator.markInvocationStart();
+            CyclicBarrier bothMissed = new CyclicBarrier(2);
+            onTwoWorkers(workerThreadIds,
+                    () -> StaticLazyCacheBean.lookup(7, () -> awaitQuietly(bothMissed)));
+            TelemetryRegistry.flush();
+
+            for (int round = 0; round < 3; round++) {
+                validator.markInvocationStart();
+                onTwoWorkers(workerThreadIds, StaticLazyCacheBean::peek);
+                TelemetryRegistry.flush();
+            }
+        }
+
+        assertFalse(validator.analyzeAtomicity().hasIssues(),
+                "The static field warmed in one round and was then read from two threads for "
+                        + "three quiet rounds, and neither published snapshot was ever written "
+                        + "again. That is the single-check cache the settle excuse exists for. "
+                        + "If this fires, the PUTSTATIC's stored identity is not reaching "
+                        + "AtomicityValidator: check FieldAccessWeaver.liftStaticReceiver still "
+                        + "emits DUP/class/SWAP for a reference descriptor, and that "
+                        + "carriesPublishedValueEvidence still lets the identity-0 group reach "
+                        + "the excuses. Findings were: "
+                        + validator.analyzeAtomicity().unsafeFieldAccesses);
+    }
+
+    /**
+     * The loud half (#337): the same field shape, a payload that keeps working.
+     *
+     * <p>Identical access stream on the static field itself - same forced double miss, same lost
+     * store, same quiet rounds afterwards - and the opposite verdict, because the job that lost
+     * the race keeps writing its own state. This is the pair's whole point: a detector that
+     * silences the cache above by silencing static fields in general would pass that test and
+     * fail this one.
+     */
+    @Test
+    @DisplayName("a static lazy-init whose value keeps mutating is still reported (#337)")
+    void staticLazyInitWithLiveValueStillFires() throws Exception {
+        StaticLazySubmitBean.reset();
+        AtomicityValidator validator = new AtomicityValidator();
+        Set<Long> workerThreadIds = ConcurrentHashMap.newKeySet();
+        List<StaticLazySubmitBean.Job> created = Collections.synchronizedList(new ArrayList<>());
+
+        try (TelemetryBridge bridge =
+                     TelemetryBridge.activateWithFilter(validator, workerThreadIds::contains)) {
+            validator.markInvocationStart();
+            CyclicBarrier bothMissed = new CyclicBarrier(2);
+            onTwoWorkers(workerThreadIds,
+                    () -> created.add(StaticLazySubmitBean.submit(() -> awaitQuietly(bothMissed))));
+            TelemetryRegistry.flush();
+
+            for (int round = 0; round < 3; round++) {
+                validator.markInvocationStart();
+                onTwoWorkers(workerThreadIds, () -> {
+                    StaticLazySubmitBean.peek();
+                    // Every job that was created is still running, the winner and the loser
+                    // alike. The loser is the one nothing will ever read.
+                    for (StaticLazySubmitBean.Job job : List.copyOf(created)) {
+                        job.advance();
+                    }
+                });
+                TelemetryRegistry.flush();
+            }
+        }
+
+        assertTrue(validator.analyzeAtomicity().hasIssues(),
+                "The static field settled exactly as the quiescent cache does, so convergence "
+                        + "alone would excuse it. The jobs it published keep writing their own "
+                        + "state after the round that published them, which is a side effect and "
+                        + "not a value, so the excuse must not be granted. Silence here means the "
+                        + "static store's value evidence is being ignored, or that static fields "
+                        + "are being excused wholesale.");
+    }
+
+    /** Runs {@code body} on two fresh threads, registering both as workers, and waits. */
+    private static void onTwoWorkers(Set<Long> workerThreadIds, Runnable body)
+            throws InterruptedException {
+        CountDownLatch done = new CountDownLatch(2);
+        for (int t = 0; t < 2; t++) {
+            new Thread(() -> {
+                workerThreadIds.add(Thread.currentThread().threadId());
+                try {
+                    body.run();
+                } finally {
+                    done.countDown();
+                }
+            }, "static-worker-" + t).start();
+        }
+        assertTrue(done.await(10, TimeUnit.SECONDS), "worker threads did not finish");
+    }
+
+    /**
+     * Waits at the barrier, turning a failure into a test failure rather than a silent pass.
+     *
+     * <p>If this timed out the two threads would no longer miss together, the field would warm
+     * from one thread, and the silent assertion above would pass for a reason that has nothing
+     * to do with what it claims to measure.
+     */
+    private static void awaitQuietly(CyclicBarrier barrier) {
+        try {
+            barrier.await(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted waiting for the twin miss", e);
+        } catch (BrokenBarrierException | TimeoutException e) {
+            throw new IllegalStateException(
+                    "the two threads did not reach the miss point together, so the double miss "
+                            + "this test depends on never happened", e);
+        }
     }
 }

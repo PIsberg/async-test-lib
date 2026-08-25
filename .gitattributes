@@ -1,0 +1,5 @@
+# Maven reads .mvn/*.config verbatim; a CRLF checkout would append a carriage return to the
+# last token on each line, turning -D...=true into the string "true\r", which Boolean.getBoolean
+# reads as false. Pin LF so the flags mean the same thing on the Windows CI legs.
+.mvn/maven.config text eol=lf
+.mvn/jvm.config text eol=lf

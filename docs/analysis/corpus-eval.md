@@ -445,7 +445,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 141: exposure zero, nothing said in
-either direction. That is now measured for three of them, in a third lane, and the separation
+either direction. That is now measured for seven of them, in a third lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -475,7 +475,10 @@ other.
 | `CacheConcurrencyDetector` | 1 | 1 | 1 | 1 |
 | `JdbcConnectionSharedDetector` | 1 | 1 | 1 | 1 |
 | `NonAtomicConcurrentMapUpdateDetector` | 1 | 1 | 1 | 1 |
+| `ResourceLeakDetector` | 1 | 1 | 1 | 1 |
 | `SharedJsonMapperReconfigDetector` | 1 | 1 | 1 | 1 |
+| `SharedMessageDigestDetector` | 1 | 1 | 1 | 1 |
+| `SharedStatefulCryptoDetector` | 1 | 1 | 1 | 1 |
 
 **It found something on its first run.** `CacheConcurrencyDetector` decided thread safety with
 `instanceof ConcurrentHashMap` — one implementation rather than the contract — so Caffeine's
@@ -507,9 +510,42 @@ premise rather than assuming it: one connection identity, more than one thread. 
 check, a pool that quietly opened six connections would produce the same green result while
 measuring nothing.
 
-That is the argument for the lane in one line. Four detectors of 146 is not coverage; it is the
-first four rows of a table that had none, and it was enough to find a defect that had been
-shipping and to settle a modelling question that had been open since the fourth wave.
+**The second wave: three more pairs, and what each is for**
+([#338](https://github.com/PIsberg/async-test-lib/issues/338)). The first four rows came from one
+shape: a documented-unsafe receiver against a documented-safe one, recorded identically. The three
+added next vary the axis instead, so the lane says something about the fixes as well as the
+defects.
+
+`SharedMessageDigestDetector` gets a pair that differs by a **lock**: one SHA-256 instance, the
+same six threads on both rows, and one of them holds the digest's own monitor across every access.
+`SelfGuard` sees that through `Thread.holdsLock` with no agent attached, so the candidate lock set
+never empties and the silence is the guard-on-self probe doing its job. `SharedStatefulCryptoDetector`
+gets one that differs by **confinement**: an `HmacSHA256` shared by six threads against a `Mac` per
+thread, built identically and recorded the same number of times. That is the direction that catches
+a detector keyed on the class rather than on the instance, which would report six correct threads
+as a race. `ResourceLeakDetector` gets one that differs by the **release call itself**: a Netty
+`ByteBuf` acquired and released inside one body execution, against the identical lifecycle with the
+release left out. Both subjects are the JDK's own or Netty's, unmodified, and no new dependency was
+needed for any of them.
+
+Each silent row was driven red before being trusted: removing the `synchronized`, replacing the
+per-thread `Mac` with the shared one, and dropping the release each flipped exactly its own row to
+FIRED and left the others alone. A MUST_STAY_SILENT row that stays silent when the thing it is
+about is removed is measuring nothing.
+
+`ConcurrentMapComputeRecursionDetector` was a named candidate and is deliberately not here. The
+detector fires on a second `recordComputeStart` for the same map, key and thread, and the only
+faithful way to record one is from inside a mapping function that re-enters the map on its own
+key, which the JVM never lets happen. Probed against Caffeine's `asMap()`: the nested call throws
+`IllegalStateException("Recursive update")` deterministically, and it throws *before* invoking the
+inner mapping function, so the recording the detector needs can only be written by hand at the call
+site. That is a constructed row rather than an observed one, and a row that cannot state a
+structural expectation belongs in the group-level gate instead
+([#341](https://github.com/PIsberg/async-test-lib/issues/341)).
+
+That is the argument for the lane in one line. Seven detectors of 146 is not coverage; it is the
+first seven rows of a table that had none, and the first four were enough to find a defect that had
+been shipping and to settle a modelling question that had been open since the fourth wave.
 
 
 ## Reproducing it

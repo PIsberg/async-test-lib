@@ -454,10 +454,12 @@ final class FieldAccessWeaver {
          * <p>The stored value answers a different question (#326). An access stream that carries
          * no values cannot tell an idempotent value apart from a side effect, so a double-submit
          * shaped like a view cache converges on the field exactly like a cache and is excused for
-         * it. A reference store is the one shape where the value is already on the stack in the
-         * right place - {@code DUP2} leaves receiver and value in argument order with nothing to
-         * undo - so it costs two instructions and no scratch slot. Everything else passes
-         * {@code null}, and the analysis reads that as "not known" rather than as evidence.
+         * it. An instance reference store is the shape where the value is already on the stack in
+         * the right place - {@code DUP2} leaves receiver and value in argument order with nothing
+         * to undo - so it costs two instructions and no scratch slot. A primitive or category-2
+         * store passes {@code null} here, and the analysis reads that as "not known" rather than
+         * as evidence. The static reference store reaches its value too, one instruction further
+         * along; see {@link #liftStaticReceiver}.
          *
          * <p>Done with stack manipulation rather than a scratch local on purpose: a local would
          * grow {@code maxLocals} and put a write and a read of an undeclared slot into a method
@@ -483,6 +485,45 @@ final class FieldAccessWeaver {
                 super.visitInsn(Opcodes.DUP2);                // obj, v -> obj, v, obj, v
                 super.visitInsn(Opcodes.POP);                 //        -> obj, v, obj
                 super.visitInsn(Opcodes.ACONST_NULL);         //        -> obj, v, obj, null
+            }
+        }
+
+        /**
+         * Leaves the declaring class and, for a reference store, the value being stored on top.
+         *
+         * <p>The static counterpart of {@link #liftReceiver}. There is no receiver to lift: the
+         * declaring class stands in for it, its identity stays 0 on the hook side exactly as
+         * before, and its monitor is what a static {@code synchronized} method somewhere up the
+         * stack would be holding.
+         *
+         * <p>The value is the part that used to be given up (#337). A static store has only the
+         * value on the stack, with the class constant pushed above it, so unlike {@code PUTFIELD}
+         * the two are in the wrong order and {@code DUP2} cannot fix it. {@code DUP; class; SWAP}
+         * can: it copies the value, pushes the class above the copy, and exchanges the top two,
+         * leaving the original value untouched at the bottom for the {@code PUTSTATIC} that
+         * follows. Both exchanged operands are references, so they are category 1 and
+         * {@code SWAP} is legal on them; without that guarantee the instruction would be
+         * rejected by the verifier, which is why only reference descriptors take this path.
+         *
+         * <p>Everything else keeps passing {@code null}: a primitive store's value is not an
+         * object to identify, a category-2 store cannot be swapped at all, and a
+         * {@code GETSTATIC} has no value on the stack yet. The analysis reads {@code null} as
+         * "not known" rather than as evidence, so those shapes keep the answer they had.
+         */
+        private void liftStaticReceiver(String owner, boolean isWrite, String descriptor) {
+            boolean liftValue = isWrite && isReference(descriptor);
+            if (liftValue) {
+                super.visitInsn(Opcodes.DUP);                 // v -> v, v
+            }
+            if (classConstantsUsable) {
+                super.visitLdcInsn(Type.getObjectType(owner));
+            } else {
+                super.visitInsn(Opcodes.ACONST_NULL);
+            }
+            if (liftValue) {
+                super.visitInsn(Opcodes.SWAP);                // v, v, class -> v, class, v
+            } else {
+                super.visitInsn(Opcodes.ACONST_NULL);
             }
         }
 
@@ -580,19 +621,7 @@ final class FieldAccessWeaver {
                 boolean isWrite = write;
                 boolean isStatic = isStaticAccess;
                 if (isStatic) {
-                    // The declaring class stands in for the receiver: its identity stays 0 on
-                    // the hook side, exactly the old behaviour, while its monitor is what a
-                    // static synchronized method somewhere up the stack would be holding.
-                    if (classConstantsUsable) {
-                        super.visitLdcInsn(Type.getObjectType(owner));
-                    } else {
-                        super.visitInsn(Opcodes.ACONST_NULL);
-                    }
-                    // A static store's value sits alone on the stack with the receiver pushed
-                    // above it, so reaching it would need a SWAP and a shape this weaver has no
-                    // end-to-end coverage for. Left as "not known", which the analysis reads as
-                    // no evidence rather than as evidence of mutability.
-                    super.visitInsn(Opcodes.ACONST_NULL);
+                    liftStaticReceiver(owner, isWrite, descriptor);
                 } else {
                     liftReceiver(isWrite, descriptor);
                 }
