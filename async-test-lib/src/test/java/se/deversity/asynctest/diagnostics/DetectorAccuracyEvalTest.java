@@ -684,6 +684,73 @@ class DetectorAccuracyEvalTest {
                         + "finding. The rule only narrows where there is evidence to narrow with");
     }
 
+    /**
+     * A static single-check cache whose value goes quiet stays silent (#337).
+     *
+     * <p>The silent half of the static pair. Same shape as the instance view cache above, one
+     * scope up: {@code if (INSTANCE == null) INSTANCE = create()} at class level. A static
+     * field's receiver identity is 0 by construction, because the declaring class stands in for
+     * a receiver it does not have, so this also pins that the value rule reads the same on the
+     * identity-0 group as on a per-instance one.
+     *
+     * <p>Until the weaver reached a {@code PUTSTATIC}'s value this row could not exist: every
+     * static store reported a stored identity of 0, which the rule reads as no evidence, so both
+     * halves of the pair took the identity-0 path and neither said anything about the value.
+     */
+    @Test
+    @DisplayName("atomicity: a static single-check cache whose value goes quiet stays silent (#337)")
+    void atomicityStaticSingleCheckCacheWithQuiescentValueIsSilent() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.markInvocationStart();
+        agentAccess(validator, "Registry.INSTANCE", false, 1, NO_LOCKS, 0);
+        agentAccess(validator, "Registry.INSTANCE", false, 2, NO_LOCKS, 0);
+        agentStore(validator, "Registry.INSTANCE", 1, 0, 901);
+        agentStore(validator, "Registry.INSTANCE", 2, 0, 902);
+        for (int round = 0; round < 2; round++) {
+            validator.markInvocationStart();
+            agentAccess(validator, "Registry.INSTANCE", false, 1, NO_LOCKS, 0);
+            agentAccess(validator, "Registry.INSTANCE", false, 2, NO_LOCKS, 0);
+        }
+        assertFalse(validator.analyze().hasIssues(),
+                "The static field converged and neither published instance was written again, "
+                        + "which is what an effectively immutable singleton looks like. The #313 "
+                        + "settle excuse is owed here exactly as it is on an instance field, and "
+                        + "the static value evidence #337 adds must not take it away");
+    }
+
+    /**
+     * A static lazy-init whose published value keeps mutating fires (#337).
+     *
+     * <p>The loud half, and the reason #337 was worth closing. The access stream on
+     * {@code Registry.INSTANCE} is identical to the quiescent cache above, because convergence is
+     * a property of the field and not of the payload. What differs is that the losing instance
+     * keeps writing its own state after publication, so the class-scope miss check submitted the
+     * work twice. Before the {@code PUTSTATIC} carried its value, this row was excused.
+     */
+    @Test
+    @DisplayName("atomicity: a static lazy-init whose value keeps mutating fires (#337)")
+    void atomicityStaticLazyInitWithLiveValueStillFires() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.markInvocationStart();
+        agentAccess(validator, "Registry.INSTANCE", false, 1, NO_LOCKS, 0);
+        agentAccess(validator, "Registry.INSTANCE", false, 2, NO_LOCKS, 0);
+        agentStore(validator, "Registry.INSTANCE", 1, 0, 911);
+        agentStore(validator, "Registry.INSTANCE", 2, 0, 912);
+        for (int round = 0; round < 2; round++) {
+            validator.markInvocationStart();
+            agentAccess(validator, "Registry.INSTANCE", false, 1, NO_LOCKS, 0);
+            agentAccess(validator, "Registry.INSTANCE", false, 2, NO_LOCKS, 0);
+            // The instance that lost the race is still working: its own state moves after the
+            // round that published it, which no effectively immutable singleton's does.
+            agentAccess(validator, "Registry.state", true, 1, NO_LOCKS, 911);
+        }
+        assertTrue(validator.analyze().hasIssues(),
+                "The static field settled exactly as the quiescent singleton does, so convergence "
+                        + "alone excused a double initialization at class scope: both threads "
+                        + "missed the check, both created, and the extra instance kept running. A "
+                        + "published value that keeps being written is a side effect, not a value");
+    }
+
     // ---- SharedMessageDigestDetector ----
 
     @Test

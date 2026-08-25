@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A static reference store now carries the value it published, and a static single-check cache
+  can earn the settle excuse.** The weaver reached the stored value for `PUTFIELD` only; a
+  `PUTSTATIC` of a reference type reported "not known", because a static store has just the value
+  on the stack with the class constant pushed above it, and reaching it needs
+  `DUP; LDC class; SWAP` rather than `DUP2`. Two things followed. The narrowing #326 added never
+  reached `if (INSTANCE == null) INSTANCE = create()` at class scope, which is the same
+  double-submit defect one scope up. And the per-instance excuses were gated on a non-zero
+  receiver identity, which a static field never has, so the settle rule was not consulted for one
+  either: every raced static field reported, whatever it published. `AtomicityValidator` now lets
+  the identity-0 group reach those excuses when the group carries stored-value evidence, which
+  only a weaver-observed static reference store can produce. A caller that records nothing about
+  the value, an older agent, a primitive store and every pre-agent overload all report 0 and keep
+  the answer they had (#337).
+
+### Fixed
+
+- **CI Maven invocations retry a transfer whose bytes already went out.** A build-extension
+  resolution failed on one examples shard while three others succeeded in the same run against
+  the same pom, and Maven resolves extensions before the reactor is read, so nothing in the build
+  could recover. Both transports already retried three times, so raising the count would have
+  changed nothing; what both default to off is `retryHandler.requestSentEnabled`. It is set in
+  `.mvn/maven.config`, for both the `aether.connector.http.*` family Maven 3.9 reads and the
+  `maven.wagon.http.*` family Maven 3.8 reads, so no job has to remember it (#339).
+
 ## [1.9.8] - 2026-08-25
 
 > Versioning note: as in 1.9.1, 1.9.4 and 1.9.5, this ships as a patch by explicit owner
