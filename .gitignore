@@ -31,3 +31,5 @@ evals/results/
 # 53 MB for this repository, regenerated in one command, and specific to
 # whichever working copy produced it.
 .axiom/
+__pycache__/
+*.pyc
