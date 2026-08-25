@@ -12,6 +12,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -103,6 +105,43 @@ class ExampleCoverageTest {
         assertTrue(missing.isEmpty(),
                 "The index table in examples/README.md is how anyone finds an example, so an "
                         + "unlisted one may as well not exist. Missing rows for: " + missing);
+    }
+
+    /**
+     * A prose claim in {@code examples/README.md} about how many examples there are.
+     *
+     * <p>Two alternatives, both anchored on a word, so a version number or a detector count
+     * cannot match. The first catches "the 148 examples" and "99 of the 148 examples"; the
+     * second catches "builds all 148 and runs their enabled tests", where the noun arrives
+     * too late for the first to reach it.
+     */
+    private static final Pattern EXAMPLE_COUNT =
+            Pattern.compile("\\b(\\d{2,4}) examples\\b|builds all (\\d{2,4})\\b");
+
+    @Test
+    @DisplayName("examples/README.md states the real number of examples")
+    void proseExampleCountsMatchTheDirectoriesOnDisk() {
+        Path root = repoRoot();
+        int expected = exampleDirs(root).size();
+        String readme = read(root.resolve("examples/README.md"));
+
+        List<String> wrong = new ArrayList<>();
+        Matcher m = EXAMPLE_COUNT.matcher(readme);
+        while (m.find()) {
+            String digits = m.group(1) != null ? m.group(1) : m.group(2);
+            if (Integer.parseInt(digits) != expected) {
+                wrong.add(m.group().trim() + " (should be " + expected + ")");
+            }
+        }
+
+        assertTrue(wrong.isEmpty(),
+                "examples/README.md states an example count that is not " + expected + ", which "
+                        + "is how many example directories exist. Stale claims: " + wrong
+                        + ". This is the same failure mode DetectorCatalogCoverageTest exists to "
+                        + "prevent for detector counts: a number a reader can check in a minute, "
+                        + "and that costs more trust than its size deserves when it fails. It "
+                        + "drifted to 134 while 148 directories were on disk, which is what #323 "
+                        + "was opened for.");
     }
 
     // ------------------------------------------------------------------ helpers
