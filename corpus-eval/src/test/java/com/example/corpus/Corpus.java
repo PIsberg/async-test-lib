@@ -474,8 +474,37 @@ final class Corpus {
                             + "out of the map. One start per body execution, each closed by its "
                             + "end, so the slot is never occupied twice. Six threads merging the "
                             + "same key at once is contention, not recursion, and a detector "
-                            + "keyed on the map alone rather than on map, key and thread would "
-                            + "report it")
+                            + "keyed on the map alone rather than on the nesting would report it"),
+
+            // --- ConcurrentMapComputeRecursion, the cross-key half (#343). The rule used to be
+            //     same-key only, so a mapping function that reached its own map under another
+            //     key was invisible - which is the shape example 40 ships to demonstrate this
+            //     detector. ConcurrentHashMap's contract is "the mapping function must not
+            //     modify this map", not "must not modify this key".
+            //
+            //     Measured at this lane's own six threads and forty invocations: 240 of 240
+            //     nested mapping functions ran with nothing thrown, for both rows below.
+
+            new RecordingSubject("recorded_caffeineAsMap_crossKeyMerge", CAFFEINE,
+                    "com.github.benmanes.caffeine.cache.Cache",
+                    DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the remapping function merges a different key of the same map while the "
+                            + "first key is still being computed. The contract it breaks is not "
+                            + "key-scoped, and this version usually returns normally rather than "
+                            + "throwing, which is why it survives review and why it is worth "
+                            + "reporting: the map is updated in an order the caller did not "
+                            + "intend, silently"),
+
+            new RecordingSubject("recorded_caffeineTwoMaps_nestedMerge", CAFFEINE,
+                    "com.github.benmanes.caffeine.cache.Cache",
+                    DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the identical nesting one map apart. A mapping function that fills some "
+                            + "other cache is ordinary layered-cache code, and the prohibition is "
+                            + "per map, so this must stay silent. It is the row that makes the "
+                            + "cross-key rule safe to have on by default: a detector keyed on the "
+                            + "thread rather than the map would report every layered cache")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()

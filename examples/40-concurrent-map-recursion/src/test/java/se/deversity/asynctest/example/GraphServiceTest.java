@@ -2,6 +2,8 @@ package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
+import se.deversity.asynctest.FailOn;
+import se.deversity.asynctest.diagnostics.TrustTier;
 import se.deversity.asynctest.example.service.GraphService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -87,23 +89,28 @@ class GraphServiceTest {
     // Part 2: @AsyncTest — exposes recursive computeIfAbsent
     // -----------------------------------------------------------------------
 
-    @Disabled("Remove @Disabled to see recursive computeIfAbsent detected by ConcurrentMapComputeRecursionDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectConcurrentMapComputeRecursion = true)
+    @Disabled("Remove @Disabled to see the recursive compute fail the run, as the README describes")
+    // failOn/minTrust are set so this test does what the README says it does. failOn defaults
+    // to NONE, which reports a finding without failing, and this detector is PROMPT tier, so
+    // without both of these the run prints the report and still goes green.
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false,
+            detectConcurrentMapComputeRecursion = true,
+            failOn = FailOn.HIGH, minTrust = TrustTier.PROMPT)
     void testGetNeighbors_concurrent_detectsRecursion() {
         var map = service.getAdjacency();
-        String key = "A"; // "A" triggers the recursive compute
 
-        // Record compute start before entering the buggy method
-        AsyncTestContext.get().concurrentMapComputeRecursionMonitor()
-                .recordComputeStart(map, key, Thread.currentThread(), "adjacency-map");
+        // The recording has to happen INSIDE the mapping function, because that is what the
+        // detector's contract asks for and it is the only place the nesting is visible. Recording
+        // around service.getNeighbors("A") instead would see one balanced start/end per body
+        // execution and nothing nested, which is what this test used to do and why it reported
+        // nothing however long it ran.
+        service.observeComputes(
+                key -> AsyncTestContext.get().concurrentMapComputeRecursionMonitor()
+                        .recordComputeStart(map, key, Thread.currentThread(), "adjacency-map"),
+                key -> AsyncTestContext.get().concurrentMapComputeRecursionMonitor()
+                        .recordComputeEnd(map, key, Thread.currentThread()));
 
-        try {
-            List<String> neighbors = service.getNeighbors(key);
-            assertNotNull(neighbors, "neighbors must not be null");
-        } finally {
-            // Record compute end regardless of outcome
-            AsyncTestContext.get().concurrentMapComputeRecursionMonitor()
-                    .recordComputeEnd(map, key, Thread.currentThread());
-        }
+        List<String> neighbors = service.getNeighbors("A");
+        assertNotNull(neighbors, "neighbors must not be null");
     }
 }

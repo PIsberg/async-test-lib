@@ -1204,8 +1204,10 @@ public @interface AsyncTest {
      * Detects recursive {@link java.util.concurrent.ConcurrentHashMap#computeIfAbsent} /
      * {@code compute} / {@code merge} calls on the same map and key from the same thread,
      * which loses an update silently when the key is already present and the re-entry can
-     * re-acquire the bin's monitor. The absent-key shape throws
-     * {@link IllegalStateException} instead and reports itself; see
+     * re-acquire the bin's monitor. A re-entry on any <em>other</em> key of the same map is
+     * reported too, because the contract is "the mapping function must not modify this map"
+     * rather than one key of it; nesting into a different map is not. The absent-key shape
+     * throws {@link IllegalStateException} instead and reports itself; see
      * {@link se.deversity.asynctest.diagnostics.ConcurrentMapComputeRecursionDetector} for the
      * measured split.
      * @since 1.6.0

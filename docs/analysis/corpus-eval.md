@@ -479,7 +479,7 @@ other.
 | `SharedJsonMapperReconfigDetector` | 1 | 1 | 1 | 1 |
 | `SharedMessageDigestDetector` | 1 | 1 | 1 | 1 |
 | `SharedStatefulCryptoDetector` | 1 | 1 | 1 | 1 |
-| `ConcurrentMapComputeRecursionDetector` | 1 | 1 | 1 | 1 |
+| `ConcurrentMapComputeRecursionDetector` | 2 | 2 | 2 | 2 |
 
 **It found something on its first run.** `CacheConcurrencyDetector` decided thread safety with
 `instanceof ConcurrentHashMap` — one implementation rather than the contract — so Caffeine's
@@ -568,10 +568,39 @@ bin lock, and neither happens on a supported JDK; it now states the measured spl
 The pair uses Caffeine's `asMap().merge` on a seeded key, and at this lane's own six threads and
 forty invocations, 240 of 240 nested mapping functions ran with nothing thrown.
 
+**And then the rule turned out to be too narrow**
+([#343](https://github.com/PIsberg/async-test-lib/issues/343)). The detector keyed its evidence on
+map, key and thread together, so it reported a re-entry only when the nested call used the *same*
+key. `ConcurrentHashMap`'s contract is not key-scoped: "the mapping function must not modify this
+map". The cost was visible in the repository itself. `examples/40-concurrent-map-recursion` is this
+detector's own example, its bug is a different-key re-entry (`getNeighbors("A")` calls
+`getNeighbors("B")`), and its detection test is `@Disabled`, so nothing had ever noticed that
+removing `@Disabled` would not produce the finding the README promised.
+
+Measured over 200 fresh maps, single thread, nested `computeIfAbsent` on a different key: it ran
+and returned **198 times** and threw twice, on the runs where both keys landed in the same bin. So
+the wider shape is not only real, it is the quieter of the two, and quieter is what this detector
+is for.
+
+The rule now asks whether the thread was already inside a compute on *this map*, whichever key.
+Two rows guard the boundary rather than one: a nested merge on a different key of the same map
+must fire, and the identical nesting one map apart must stay silent. That second row is what makes
+the change safe to have on by default, because a mapping function that fills some other cache is
+ordinary layered-cache code and a rule keyed on the thread alone would report every one of them.
+Both were measured at the lane's own shape first: 240 of 240 nested functions ran, nothing thrown.
+
+The example was fixed in the same change, and it is worth saying how, because the failure was not
+in the detector alone. Its test recorded around `getNeighbors("A")` rather than inside the mapping
+function, which is one balanced start and end per body execution and no nesting at all: it would
+have reported nothing under either rule. `GraphService` now exposes two no-op `Consumer<String>`
+hooks, the test wires them to the detector, and with `@Disabled` removed the run fails with the
+report naming both keys.
+
 That is the argument for the lane in one line. Eight detectors of 146 is not coverage; it is the
 first eight rows of a table that had none, and they have already been enough to find a defect that
-had been shipping, to settle a modelling question that had been open since the fourth wave, and to
-correct a detector that was describing a failure mode the platform stopped having.
+had been shipping, to settle a modelling question that had been open since the fourth wave, to
+correct a detector that was describing a failure mode the platform stopped having, and to catch an
+example demonstrating a bug its own detector could not see.
 
 
 ## Reproducing it
