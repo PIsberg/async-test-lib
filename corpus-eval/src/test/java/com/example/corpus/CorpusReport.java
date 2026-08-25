@@ -103,6 +103,195 @@ final class CorpusReport {
     }
 
     /**
+     * Renders the recording lane, whose columns answer a different question.
+     *
+     * <p>The other lanes ask what unmodified code draws. This one asks whether a detector's model
+     * separates correct usage from incorrect usage when both are handed the same shape of
+     * evidence, so the table is organised as pairs and prints the expectation next to the result.
+     * Keeping it in its own file is deliberate: merging these numbers into the unmodified ones
+     * would let a rate measured over cooperating bodies be read as a rate over untouched code.
+     *
+     * @param findings    what the detectors reported
+     * @param threads     threads per subject
+     * @param invocations rounds per subject
+     * @param lane        the lane that ran
+     * @return the file written
+     */
+    static Path writeRecording(List<CorpusRecorder.Finding> findings,
+                               int threads,
+                               int invocations,
+                               CorpusLane lane) {
+        StringBuilder out = new StringBuilder();
+        out.append("# Corpus eval run - recording lane\n\n")
+                .append("The subjects are the same unmodified third-party classes the other lanes ")
+                .append("use. What differs is the test body, which calls the recording API the ")
+                .append("way a user following `AsyncTestContext` would. These numbers are a ")
+                .append("different measurement over a different denominator and must not be ")
+                .append("merged into the unmodified lanes'.\n\n")
+                .append("- Lane: ").append(lane.propertyValue()).append('\n')
+                .append("- JVM: ").append(System.getProperty("java.version"))
+                .append(" (").append(System.getProperty("java.vm.name")).append(")\n")
+                .append("- OS: ").append(System.getProperty("os.name"))
+                .append(' ').append(System.getProperty("os.version"))
+                .append(" (").append(System.getProperty("os.arch")).append(")\n")
+                .append("- Configuration: threads=").append(threads)
+                .append(", invocations=").append(invocations)
+                .append(", detectAll=true, agent=(not attached, on purpose)\n")
+                .append("- Body executions: ").append(CorpusRecorder.bodyExecutions()).append("\n\n");
+
+        out.append("## Per subject\n\n")
+                .append("| Subject | Library | Detector | Class contract | Expected | Observed | Result |\n")
+                .append("|---|---|---|---|---|---|---|\n");
+
+        for (RecordingSubject subject : Corpus.recordingSubjects()) {
+            String detectorClass = DetectorExposure.classOf(subject.detector());
+            List<CorpusRecorder.Finding> mine = findings.stream()
+                    .filter(finding -> finding.subject().equals(subject.testMethod()))
+                    .filter(finding -> finding.detector().equals(detectorClass))
+                    .toList();
+            boolean fired = !mine.isEmpty();
+            boolean shouldFire = subject.expectation() == RecordingSubject.Expectation.MUST_FIRE;
+            out.append("| `").append(subject.testMethod()).append("` | ")
+                    .append(subject.library()).append(" | `")
+                    .append(detectorClass).append("` | ")
+                    .append(subject.contract()).append(" | ")
+                    .append(subject.expectation()).append(" | ")
+                    .append(fired ? "fired (" + mine.size() + ")" : "silent").append(" | ")
+                    .append(fired == shouldFire ? "as stated" : "**MISMATCH**").append(" |\n");
+        }
+
+        out.append("\nWhy each row must come out as it does:\n\n");
+        for (RecordingSubject subject : Corpus.recordingSubjects()) {
+            out.append("- `").append(subject.testMethod()).append("` - ")
+                    .append(subject.rationale()).append(".\n");
+        }
+
+        out.append('\n').append(recordingExposure(findings, lane));
+        out.append('\n').append(recordingSummary(findings, lane));
+
+        Path target = Path.of("target", "corpus-eval", lane.reportFile());
+        try {
+            Files.createDirectories(target.getParent());
+            Files.writeString(target, out.toString(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException("could not write the recording-lane report", e);
+        }
+        return target;
+    }
+
+    /**
+     * The recording lane's exposure, which cannot borrow the other lanes' framing.
+     *
+     * <p>There the denominator is the subject's documented contract, because the body does
+     * nothing but share the instance. Here the body cooperates and the contract is beside the
+     * point: {@code recorded_concurrentReferenceHashMap_checkThenAct} is a thread-safe class
+     * used wrongly, and counting it as a "safe subject with a finding" would read as a false
+     * positive when it is the opposite. So the per-detector table is organised by what each row
+     * claims must happen.
+     *
+     * @param findings what the detectors reported
+     * @param lane     the lane that ran
+     * @return the exposure section
+     */
+    static String recordingExposure(List<CorpusRecorder.Finding> findings, CorpusLane lane) {
+        long subjects = Corpus.recordingSubjects().size();
+
+        StringBuilder out = new StringBuilder("## Detector exposure\n\n")
+                .append("Exposure here is not the whole RECORDING feed. A detector is exposed ")
+                .append("only if a subject actually records to it; claiming all 141 because the ")
+                .append("lane records to some of them would trade one unreadable denominator ")
+                .append("for another.\n\n")
+                .append("| Feed | Detectors | Exposed in this lane | Subject-detector pairs exposed | Pairs with a finding |\n")
+                .append("|---|---:|---:|---:|---:|\n");
+
+        long exposedTotal = 0;
+        long pairsTotal = 0;
+        long firedPairsTotal = 0;
+        for (DetectorFeed feed : DetectorFeed.values()) {
+            Set<DetectorType> ofFeed = DetectorExposure.fedBy(feed);
+            long exposed = ofFeed.stream().filter(type -> DetectorExposure.isExposed(type, lane)).count();
+            long pairs = exposed * subjects;
+            long fired = firedPairs(findings, feed);
+            exposedTotal += exposed;
+            pairsTotal += pairs;
+            firedPairsTotal += fired;
+            out.append("| ").append(feed).append(" | ").append(ofFeed.size()).append(" | ")
+                    .append(exposed).append(" | ").append(pairs).append(" | ").append(fired).append(" |\n");
+        }
+        out.append("| **Total** | **").append(DetectorTrust.DETECTOR_COUNT).append("** | **")
+                .append(exposedTotal).append("** | **").append(pairsTotal).append("** | **")
+                .append(firedPairsTotal).append("** |\n\n");
+
+        out.append("Per detector this lane records to, counted by what each subject claims:\n\n")
+                .append("| Detector | Subjects | Must fire | ...that did | Must stay silent | ...that did |\n")
+                .append("|---|---:|---:|---:|---:|---:|\n");
+
+        for (DetectorType type : Corpus.recordedDetectors()) {
+            List<RecordingSubject> mine = Corpus.recordingSubjects().stream()
+                    .filter(subject -> subject.detector() == type)
+                    .toList();
+            long mustFire = mine.stream()
+                    .filter(s -> s.expectation() == RecordingSubject.Expectation.MUST_FIRE).count();
+            long didFire = mine.stream()
+                    .filter(s -> s.expectation() == RecordingSubject.Expectation.MUST_FIRE)
+                    .filter(s -> firedFor(findings, s)).count();
+            long mustBeSilent = mine.size() - mustFire;
+            long wasSilent = mine.stream()
+                    .filter(s -> s.expectation() == RecordingSubject.Expectation.MUST_STAY_SILENT)
+                    .filter(s -> !firedFor(findings, s)).count();
+            out.append("| `").append(DetectorExposure.classOf(type)).append("` | ")
+                    .append(mine.size()).append(" | ")
+                    .append(mustFire).append(" | ").append(didFire).append(" | ")
+                    .append(mustBeSilent).append(" | ").append(wasSilent).append(" |\n");
+        }
+        return out.toString();
+    }
+
+    /**
+     * {@return the recording lane's summary}
+     *
+     * <p>Both directions are counted separately, because a single "subjects passing" number
+     * hides the failure that matters: a detector that fires on everything scores full marks on
+     * the MUST_FIRE half and zero on the other, and the total would look like a near miss.
+     *
+     * @param findings what the detectors reported
+     * @param lane     the lane that ran
+     */
+    static String recordingSummary(List<CorpusRecorder.Finding> findings, CorpusLane lane) {
+        long mustFire = Corpus.recordingSubjects().stream()
+                .filter(s -> s.expectation() == RecordingSubject.Expectation.MUST_FIRE).count();
+        long mustBeSilent = Corpus.recordingSubjects().size() - mustFire;
+        long firedAsStated = Corpus.recordingSubjects().stream()
+                .filter(s -> s.expectation() == RecordingSubject.Expectation.MUST_FIRE)
+                .filter(s -> firedFor(findings, s)).count();
+        long silentAsStated = Corpus.recordingSubjects().stream()
+                .filter(s -> s.expectation() == RecordingSubject.Expectation.MUST_STAY_SILENT)
+                .filter(s -> !firedFor(findings, s)).count();
+
+        return "## Summary\n\n"
+                + "| Measure | Value |\n|---|---|\n"
+                + row("Lane", lane.propertyValue())
+                + row("Detectors recorded to", Corpus.recordedDetectors().size()
+                      + " of " + DetectorTrust.DETECTOR_COUNT)
+                + row("Detectors exposed at all", DetectorExposure.exposed(lane).size()
+                      + " of " + DetectorTrust.DETECTOR_COUNT)
+                + row("Subjects whose recorded calls oblige a finding", mustFire)
+                + row("...that produced one", firedAsStated)
+                + row("Subjects whose recorded calls are correct usage", mustBeSilent)
+                + row("...that stayed silent", silentAsStated)
+                + row("Total findings", findings.size())
+                + "\n";
+    }
+
+    /** {@return whether {@code subject}'s own detector reported on it} */
+    private static boolean firedFor(List<CorpusRecorder.Finding> findings, RecordingSubject subject) {
+        String detectorClass = DetectorExposure.classOf(subject.detector());
+        return findings.stream()
+                .anyMatch(finding -> finding.subject().equals(subject.testMethod())
+                        && finding.detector().equals(detectorClass));
+    }
+
+    /**
      * The exposure section: what this lane could have fed, per feed and per detector.
      *
      * <p>The per-detector rows are the ones an evaluating team asks for. A zero in the "with a

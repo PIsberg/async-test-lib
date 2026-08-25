@@ -22,10 +22,12 @@ import java.util.Set;
  *       the woven field and collection streams are the agent's output;
  *   <li>{@link DetectorFeed#ZERO_CONFIG} - fed in both, because a {@code ThreadMXBean} scan and a
  *       thread dump need nothing from the test;
- *   <li>{@link DetectorFeed#RECORDING} - fed in neither. The corpus calls no {@code record*} or
- *       {@code register*} API by design: the whole point is that no line of the subject library
- *       and no line of the test cooperates with the detector. So 137 of the 142 have an exposure
- *       of zero here and this eval says nothing whatever about them.
+ *   <li>{@link DetectorFeed#RECORDING} - fed in neither unmodified lane. Those two call no
+ *       {@code record*} or {@code register*} API by design: the whole point is that no line of
+ *       the subject library and no line of the test cooperates with the detector. In the
+ *       recording lane a detector is exposed only if a subject actually records to it - the set
+ *       {@code Corpus.recordedDetectors()} names - and not merely because it belongs to the
+ *       feed. Claiming all 137 there would trade one unreadable denominator for another.
  * </ul>
  *
  * <p>The classification itself is the library's, not this module's, and its own gate
@@ -42,14 +44,19 @@ final class DetectorExposure {
         return switch (DetectorFeeds.feedOf(type)) {
             case ZERO_CONFIG -> true;
             case AGENT -> lane == CorpusLane.AGENT_ON;
-            case RECORDING -> false;
+            // Exposure is what a lane actually feeds, not what it could feed in principle. The
+            // recording lane records to a named handful, and the rest of the feed is as
+            // unexposed there as it is in the other two.
+            case RECORDING -> lane == CorpusLane.RECORDING
+                    && Corpus.recordedDetectors().contains(type);
         };
     }
 
     /** {@return the detectors {@code lane} can feed, agent-fed first, in declaration order} */
     static Set<DetectorType> exposed(CorpusLane lane) {
         Set<DetectorType> result = new LinkedHashSet<>();
-        for (DetectorFeed feed : new DetectorFeed[] {DetectorFeed.AGENT, DetectorFeed.ZERO_CONFIG}) {
+        for (DetectorFeed feed : new DetectorFeed[] {
+                DetectorFeed.AGENT, DetectorFeed.ZERO_CONFIG, DetectorFeed.RECORDING}) {
             for (DetectorType type : DetectorFeeds.fedBy(feed)) {
                 if (isExposed(type, lane)) {
                     result.add(type);

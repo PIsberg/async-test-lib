@@ -398,10 +398,10 @@ shape the settled single-check rule excuses.
 - **Forty-two classes from seven libraries is not an ecosystem study.** It bounds the
   false-positive rate at the tier that gates builds, over a stated denominator, and it does not
   support a claim about the JVM ecosystem.
-- **141 detectors of 146 are not measured here at all.** Their exposure in both lanes is zero, so
-  this corpus says nothing about them in either direction. Measuring them needs a lane whose test
-  bodies record what they did, which is a different eval with a different denominator
-  ([#310](https://github.com/PIsberg/async-test-lib/issues/310)).
+- **138 detectors of 146 are not measured here at all.** Their exposure in every lane is zero, so
+  this corpus says nothing about them in either direction. Three more are measured in the
+  recording lane below, which is a different eval over a different denominator and is reported
+  separately for that reason.
 - **A noise column of zero is a measurement, not a guarantee.** All twenty-two documented-safe
   classes produce nothing, and each of the last three went quiet because a specific idiom became
   a rule the analyzer can check, never because a threshold moved. A correct class guarded by a
@@ -418,11 +418,59 @@ shape the settled single-check rule excuses.
 - **The corpus classes are subjects, not endorsements.** They are on the test classpath of a
   standalone module and reach neither the reactor nor any published artifact.
 
+## The recording lane: a denominator for detectors the corpus cannot reach
+
+The bullet above used to end this document's account of the 141: exposure zero, nothing said in
+either direction. That is now measured for three of them, in a third lane, and the separation
+matters more than the number.
+
+**What it is.** The same unmodified third-party classes, with test bodies that call the recording
+API the way a user following `AsyncTestContext` would. It attaches no agent, on purpose: with both
+feeds live a finding could have come from either, and every assertion here depends on each finding
+being attributable to a `record*` call the body made. It writes its own report,
+`corpus-eval-recording.md`, and its numbers are never merged into the two above.
+
+**Why its ground truth is different.** In the unmodified lanes the class's own javadoc decides
+whether a finding is noise, because the body does nothing but share the instance. Here the body
+cooperates, and the contract is no longer the question:
+`recorded_concurrentReferenceHashMap_checkThenAct` uses a class Spring documents as thread-safe
+and uses it with a get-then-put, which is a genuine lost update. Counting that as "a safe subject
+with a finding" would read as a false positive when it is the opposite. So each row states what
+the body records and what must therefore happen, and the class contract rides along as context.
+
+**Why its assertions are stronger.** `CorpusEvalTest` gates only at the group level, because
+whether one particular race is observed in one particular run is probabilistic. A recording-fed
+detector's verdict is not: it is a function of the calls the body made. So each subject declares
+`MUST_FIRE` or `MUST_STAY_SILENT` and `CorpusGates` holds it to that, per subject, in both
+directions. Every detector gets a pair, because one direction alone proves nothing — a detector
+that fires on everything passes the MUST_FIRE half, and one that was never wired up passes the
+other.
+
+| Detector | Must fire | ...did | Must stay silent | ...did |
+|---|---:|---:|---:|---:|
+| `CacheConcurrencyDetector` | 1 | 1 | 1 | 1 |
+| `NonAtomicConcurrentMapUpdateDetector` | 1 | 1 | 1 | 1 |
+| `SharedJsonMapperReconfigDetector` | 1 | 1 | 1 | 1 |
+
+**It found something on its first run.** `CacheConcurrencyDetector` decided thread safety with
+`instanceof ConcurrentHashMap` — one implementation rather than the contract — so Caffeine's
+`asMap()` view, whose javadoc says in as many words that it is a thread-safe map, was reported as
+a "non-thread-safe cache", and so were Guava's cache, a `ConcurrentSkipListMap` and any user's own
+`ConcurrentMap`. The agent path had already learned to ask the interface; the recording path had
+not, and nothing compared the two. It now asks `ConcurrentMap`, plus the legacy synchronized
+collections that keep the same promise by taking their own monitor. The twin still fires: a plain
+`HashMap` read and written from a cache position is what the detector is for.
+
+That is the argument for the lane in one line. Three detectors of 146 is not coverage; it is the
+first three rows of a table that had none, and it was enough to find a defect that had been
+shipping.
+
+
 ## Reproducing it
 
 ```bash
 mvn install -DskipTests -Djacoco.skip=true    # the reactor, so the module can resolve the version
-mvn -f corpus-eval/pom.xml test               # writes both lanes under corpus-eval/target/corpus-eval/
+mvn -f corpus-eval/pom.xml test               # writes all three lanes under corpus-eval/target/corpus-eval/
 ```
 
 The generated reports carry the lane, the JVM, the OS, the configuration, the exposure tables and

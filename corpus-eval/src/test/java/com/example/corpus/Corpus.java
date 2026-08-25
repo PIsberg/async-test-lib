@@ -1,7 +1,11 @@
 package com.example.corpus;
 
+import se.deversity.asynctest.DetectorType;
+
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -268,6 +272,72 @@ final class Corpus {
                     "org/springframework/util/ConcurrentReferenceHashMap.java:51")
     );
 
+    /**
+     * The recording lane's subjects: the same libraries, with bodies that cooperate.
+     *
+     * <p>Every row is a both-directions pair with its twin, because one direction on its own
+     * proves nothing. A detector that fires on everything passes a MUST_FIRE row; a detector
+     * that was never wired up passes a MUST_STAY_SILENT row. Only the pair says the model works.
+     */
+    private static final List<RecordingSubject> RECORDING_SUBJECTS = List.of(
+
+            // --- SharedJsonMapperReconfig: the cleanest both-directions case in the corpus.
+            //     The two Jackson mappers are separate instances of the same class, and the only
+            //     difference between them is whether the body reconfigures one after sharing it.
+
+            new RecordingSubject("recorded_objectMapper_reconfigureWhileWriting", JACKSON,
+                    "com.fasterxml.jackson.databind.ObjectMapper",
+                    DetectorType.SHARED_JSON_MAPPER_RECONFIG, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the body records a config mutation after every thread has recorded a use, "
+                            + "which is the detector's stated precondition. Jackson documents the "
+                            + "mapper as thread-safe once configured, and reconfiguring a shared "
+                            + "one is the exception its own javadoc names"),
+
+            new RecordingSubject("recorded_objectMapper_configuredThenShared", JACKSON,
+                    "com.fasterxml.jackson.databind.ObjectMapper",
+                    DetectorType.SHARED_JSON_MAPPER_RECONFIG, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the body records uses and never a mutation, so config-then-use - the "
+                            + "documented correct pattern - has no precondition to meet"),
+
+            // --- CacheConcurrency: a documented-unsafe map and a documented-safe one, recorded
+            //     identically. The detector has only the map to tell them apart.
+
+            new RecordingSubject("recorded_lruMap_getAndPut", COLLECTIONS4,
+                    "org.apache.commons.collections4.map.LRUMap",
+                    DetectorType.CACHE_CONCURRENCY, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "reads and writes are recorded against a map its own javadoc says is not "
+                            + "synchronized, which is the read/write race the detector exists for"),
+
+            new RecordingSubject("recorded_caffeineAsMap_getAndPut", CAFFEINE,
+                    "com.github.benmanes.caffeine.cache.Cache",
+                    DetectorType.CACHE_CONCURRENCY, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same reads and writes against a view whose javadoc promises a "
+                            + "thread-safe map. The receiver implements ConcurrentMap and keeps "
+                            + "the contract; a finding here is noise on correct code"),
+
+            // --- ConcurrentMapCheckThenAct: this pair is about the usage, not the class. Both
+            //     receivers are documented thread-safe, and only one body is wrong.
+
+            new RecordingSubject("recorded_concurrentReferenceHashMap_checkThenAct", SPRING,
+                    "org.springframework.util.ConcurrentReferenceHashMap",
+                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "get-then-put on one key from six threads. Each call is atomic and the pair "
+                            + "is not, which is the lost update the detector reports; the class "
+                            + "is thread-safe and the caller is still wrong"),
+
+            new RecordingSubject("recorded_caffeineAsMap_computeIfAbsent", CAFFEINE,
+                    "com.github.benmanes.caffeine.cache.Cache",
+                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "computeIfAbsent is the atomic primitive that fixes the row above, so the "
+                            + "body has no check-then-act to record and the detector has no input")
+    );
+
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()
             .collect(Collectors.toUnmodifiableMap(Subject::testMethod, Function.identity()));
 
@@ -284,5 +354,25 @@ final class Corpus {
 
     static long count(Contract contract) {
         return SUBJECTS.stream().filter(subject -> subject.contract() == contract).count();
+    }
+
+    /** {@return the recording lane's subjects} */
+    static List<RecordingSubject> recordingSubjects() {
+        return RECORDING_SUBJECTS;
+    }
+
+    /** {@return the detectors the recording lane records to, which is its whole denominator} */
+    static Set<DetectorType> recordedDetectors() {
+        return RECORDING_SUBJECTS.stream()
+                .map(RecordingSubject::detector)
+                .collect(Collectors.toCollection(() -> EnumSet.noneOf(DetectorType.class)));
+    }
+
+    /** {@return the recording subject for {@code testMethod}, or {@code null}} */
+    static RecordingSubject recordingByTestMethod(String testMethod) {
+        return RECORDING_SUBJECTS.stream()
+                .filter(subject -> subject.testMethod().equals(testMethod))
+                .findFirst()
+                .orElse(null);
     }
 }
