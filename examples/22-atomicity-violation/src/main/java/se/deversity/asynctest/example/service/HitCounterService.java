@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example.service;
 
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongConsumer;
 
 /**
  * A per-page hit counter that tracks request counts for each URL path.
@@ -24,6 +25,12 @@ public class HitCounterService {
 
     private final ConcurrentHashMap<String, long[]> counts = new ConcurrentHashMap<>();
 
+    /** Called with the value read at the top of the compound operation. */
+    private volatile LongConsumer onCountRead = value -> { };
+
+    /** Called with the value stored at the bottom of the compound operation. */
+    private volatile LongConsumer onCountWrite = value -> { };
+
     /**
      * Records one hit for the given page path.
      *
@@ -37,7 +44,28 @@ public class HitCounterService {
      */
     public void increment(String page) {
         long[] cell = counts.computeIfAbsent(page, k -> new long[]{0L});
-        cell[0] = cell[0] + 1;   // BUG: non-atomic read + write on shared array element
+        long current = cell[0];       // BUG step 1: read
+        onCountRead.accept(current);
+        long next = current + 1;      // BUG step 2: add, on a value another thread may already have moved
+        cell[0] = next;               // BUG step 3: write, clobbering whatever landed in between
+        onCountWrite.accept(next);
+    }
+
+    /**
+     * Installs the hooks AtomicityValidator needs. No-ops by default, so production behaviour is
+     * unchanged whether or not a test is watching.
+     *
+     * <p>The calls sit <em>inside</em> {@link #increment(String)}, at the read and at the write,
+     * because those are the two ends of the window the validator is looking for. Recording around
+     * the call from the test body would report two extra reads through {@link #getCount(String)}
+     * and never the value that was actually stored.
+     *
+     * @param onRead  called with the value read, before the add
+     * @param onWrite called with the value stored, after the write
+     */
+    public void observeCountAccess(LongConsumer onRead, LongConsumer onWrite) {
+        this.onCountRead = onRead;
+        this.onCountWrite = onWrite;
     }
 
     /**

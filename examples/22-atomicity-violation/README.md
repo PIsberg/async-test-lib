@@ -61,16 +61,33 @@ mvn clean test
 
 With 10 threads all calling `increment("/home")` simultaneously:
 - `AtomicityValidator` tracks every `recordFieldAccess("count", ...)` call
-- When it detects mixed reads and writes from different threads on the same field name, it flags a TOCTOU window
-- The report shows the compound operation name and field involved
+- When it detects mixed reads and writes from different threads on the same field name within one
+  invocation round, it flags a TOCTOU window
+- `failOn = FailOn.LOW` turns that finding into a failed run
+
+## How the Detector Is Fed
+
+`AtomicityValidator` is **recording-fed**: it sees nothing the code under test does not hand it.
+`HitCounterService.observeCountAccess` installs two `LongConsumer` hooks *inside* `increment()`,
+one at the read and one at the write, so the value actually stored is what reaches the validator.
+The hooks default to no-ops, so the production path never touches the test library.
+
+Two details this example was getting wrong before issue #346:
+
+- The validator has to be **the one the run owns**, from `AsyncTestContext.atomicityValidator()`.
+  A locally constructed `new AtomicityValidator()` is never read by the library, so `failOn` has
+  nothing to gate on and enabling the demonstration leaves it green.
+- Recording *around* `increment()` would report two extra reads through `getCount()` and never the
+  value that was stored, which is a different access pattern from the one the bug is made of.
 
 ## The Root Cause
 
 Under concurrent stress:
-1. 10 threads simultaneously execute `long before = service.getCount(page)`
+1. 10 threads simultaneously read the same `cell[0]`
 2. Multiple threads read the same value before any writes land
-3. Each computes `before + 1` independently, then writes the same result
-4. `AtomicityValidator` observes that the same field was read by multiple threads, then written by multiple threads, all within overlapping "increment" compound operations
+3. Each computes `current + 1` independently, then writes the same result
+4. `AtomicityValidator` observes that the same field was read by multiple threads, then written by
+   multiple threads, inside one harness-ordered round
 
 ## The Solution
 

@@ -1,10 +1,10 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.example.service.HitCounterService;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -41,14 +41,16 @@ import static org.junit.jupiter.api.Assertions.*;
  * concurrent reader to observe the intermediate state.
  *
  * WHY @AsyncTest DETECTS THE ISSUE:
- * AtomicityValidator tracks every recordFieldAccess() call across all
- * threads. When it observes that the same field name ("count") was both
- * read and written by multiple threads, it reports a TOCTOU (time-of-
- * check-to-time-of-use) violation and a mixed read/write unsynchronised
- * access. The @AfterEach assertion verifies that detection fired.
+ * AtomicityValidator is recording-fed: it sees the accesses the code under test
+ * hands it through recordFieldAccess(). HitCounterService.observeCountAccess
+ * wires the read and the write inside increment(), so when the same field name
+ * ("count") is read and written by several threads within one invocation round,
+ * it reports a mixed read/write compound access and a TOCTOU window. failOn =
+ * FailOn.LOW turns that finding into a failed run.
  *
- * DETECTORS TRIGGERED:
- * AtomicityValidator — Primary: non-atomic read-modify-write on "count"
+ * DETECTOR ENABLED HERE:
+ * AtomicityValidator — non-atomic read-modify-write on "count". It is the only
+ * one this demonstration switches on, so it is the only one that can report.
  *
  * FIX:
  * - Replace long[] cell with AtomicLong and call cell.incrementAndGet()
@@ -57,29 +59,43 @@ import static org.junit.jupiter.api.Assertions.*;
 class HitCounterServiceTest {
 
     private HitCounterService service;
-    private AtomicityValidator atomicityValidator;
-    // Guard flag so the @AfterEach assertion only runs after the @AsyncTest.
-    private volatile boolean runningAsyncTest = false;
 
     @BeforeEach
     void setUp() {
         service = new HitCounterService();
-        atomicityValidator = new AtomicityValidator();
     }
 
     /**
-     * After the @AsyncTest run completes, verify the validator detected
-     * the non-atomic compound operation. @AfterEach runs once after all
-     * threads and invocations finish.
+     * Pins the validator's positive direction without needing the concurrent run: two threads
+     * that read the same value and both write it back is the lost update, and the validator
+     * must say so.
      */
-    @AfterEach
-    void verifyAtomicityViolationDetected() {
-        if (!runningAsyncTest) {
-            return;
-        }
-        AtomicityValidator.AtomicityReport report = atomicityValidator.analyzeAtomicity();
-        assertTrue(report.hasIssues(),
-                "AtomicityValidator should have flagged the non-atomic read-modify-write.\n" + report);
+    @Test
+    void testAtomicityValidator_interleavedReadModifyWrite_reports() {
+        AtomicityValidator validator = new AtomicityValidator();
+
+        validator.recordFieldAccess("count", 42L, false, 1L);   // thread 1 reads 42
+        validator.recordFieldAccess("count", 42L, false, 2L);   // thread 2 reads the same 42
+        validator.recordFieldAccess("count", 43L, true, 1L);    // thread 1 stores 43
+        validator.recordFieldAccess("count", 43L, true, 2L);    // thread 2 stores 43, losing one
+
+        assertTrue(validator.analyzeAtomicity().hasIssues(),
+                "a read-modify-write interleaved across two threads is the violation");
+    }
+
+    /**
+     * And the other direction: one thread doing the same sequence is just arithmetic. A validator
+     * that reported this would report every counter in the program.
+     */
+    @Test
+    void testAtomicityValidator_singleThreadReadModifyWrite_isSilent() {
+        AtomicityValidator validator = new AtomicityValidator();
+
+        validator.recordFieldAccess("count", 42L, false, 1L);
+        validator.recordFieldAccess("count", 43L, true, 1L);
+
+        assertFalse(validator.analyzeAtomicity().hasIssues(),
+                "one thread cannot race itself");
     }
 
     // -------------------------------------------------------------------------
@@ -119,34 +135,31 @@ class HitCounterServiceTest {
      * the same page, the read-add-write sequence is not atomic.
      * AtomicityValidator captures the interleaved field accesses and
      * reports the compound operation as a TOCTOU race.
-     * The @AfterEach assertion verifies that detection fired after the run.
      *
      * To see the detection:
      * 1. Remove @Disabled
-     * 2. Run this test — @AfterEach will assert that AtomicityValidator
-     *    flagged "count" as a non-atomic compound operation
+     * 2. Run this test — it fails with
+     *      count: mixed read/write compound access across 10 threads
+     *      count: state changed between check/use windows on 10 threads
      * 3. Fix: replace long[] with AtomicLong.incrementAndGet()
      */
     @Disabled("Remove @Disabled to see atomicity violation detected by AtomicityValidator")
     @AsyncTest(threads = 10, invocations = 100, detectAll = false, detectAtomicityViolations = true, failOn = FailOn.LOW)
     void testIncrement_concurrent_detectsAtomicityViolation() {
-        runningAsyncTest = true;
-        String page = "/home";
+        // The validator has to be the one the run owns. This demonstration used to record into a
+        // locally constructed AtomicityValidator and assert on it from @AfterEach; the library
+        // never reads that instance, so failOn had nothing to gate on and enabling the test left
+        // it green. See issue #346.
+        AtomicityValidator validator = AsyncTestContext.atomicityValidator();
 
-        // Record a read of the current count. Multiple threads will call
-        // this concurrently, all reading the same shared "count" field.
-        long before = service.getCount(page);
-        atomicityValidator.recordFieldAccess("count", before, false);  // read
+        // Recorded inside increment(), at the read and at the write, rather than around the call:
+        // the value stored is the evidence, and getCount() before and after would report two
+        // extra reads and never that value.
+        service.observeCountAccess(
+                value -> validator.recordFieldAccess("count", value, false),
+                value -> validator.recordFieldAccess("count", value, true));
 
-        // Perform the non-atomic read-modify-write
-        service.increment(page);
-
-        // Record a write. Because many threads interleave their reads and
-        // writes on the same "count" field, analyzeAtomicity() will detect
-        // "count: mixed read/write compound access across N threads" and
-        // "count: state changed between check/use windows on N threads".
-        long after = service.getCount(page);
-        atomicityValidator.recordFieldAccess("count", after, true);    // write
+        service.increment("/home");   // BUG: non-atomic read-modify-write
     }
 
     /**
