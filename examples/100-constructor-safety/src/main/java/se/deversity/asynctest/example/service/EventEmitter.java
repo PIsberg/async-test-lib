@@ -2,6 +2,7 @@ package se.deversity.asynctest.example.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Emits named events to registered listeners.
@@ -18,6 +19,10 @@ import java.util.List;
  */
 public class EventEmitter {
 
+    private static volatile Consumer<EventEmitter> onConstructionStart = emitter -> { };
+
+    private static volatile Consumer<EventEmitter> onConstructionEnd = emitter -> { };
+
     private String name;
     private List<String> listeners;
 
@@ -26,10 +31,28 @@ public class EventEmitter {
      * Bug: registers 'this' before fields are initialized.
      */
     public EventEmitter(String name) {
-        // BUG: this escapes before name and listeners are set
+        onConstructionStart.accept(this);
+        // BUG: this escapes before name and listeners are set. Anything the registry does with
+        // the reference from here on is looking at a half-built object.
         EventRegistry.register(this);
         this.name = name;
         this.listeners = new ArrayList<>();
+        onConstructionEnd.accept(this);
+    }
+
+    /**
+     * Installs the hooks ConstructorSafetyValidator needs. No-ops by default, so production
+     * behaviour is unchanged whether or not a test is watching.
+     *
+     * <p>Static, because the object does not exist yet when the first one has to fire.
+     *
+     * @param start called with {@code this} at the top of the constructor
+     * @param end   called with {@code this} once every field is set
+     */
+    public static void observeConstruction(Consumer<EventEmitter> start,
+                                           Consumer<EventEmitter> end) {
+        onConstructionStart = start;
+        onConstructionEnd = end;
     }
 
     /** Emits an event to all listeners. */

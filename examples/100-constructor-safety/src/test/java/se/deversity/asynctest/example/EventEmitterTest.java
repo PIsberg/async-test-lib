@@ -3,6 +3,7 @@ package se.deversity.asynctest.example;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
+import se.deversity.asynctest.diagnostics.ConstructorSafetyValidator;
 import se.deversity.asynctest.example.service.EventEmitter;
 import se.deversity.asynctest.example.service.EventRegistry;
 import org.junit.jupiter.api.AfterEach;
@@ -32,10 +33,17 @@ import static org.junit.jupiter.api.Assertions.*;
  * by the time any single-threaded test uses it.
  *
  * WHY @AsyncTest DETECTS:
- * With multiple threads each constructing an EventEmitter concurrently,
- * ConstructorSafetyValidator tracks construction start vs. completion and
- * field access timestamps, reporting objects whose fields were accessed before
- * construction was marked complete.
+ * ConstructorSafetyValidator compares the accessing thread against the
+ * constructing one, and reports a field touched by a different thread before the
+ * constructor finished. That comparison is why this example used to report
+ * nothing: it recorded against a sentinel Object that the emitter knew nothing
+ * about, and did every recording on one thread, so a single-threaded sequence
+ * could never be unsafe publication. See issue #346.
+ *
+ * The registration listener is what makes it real. EventRegistry notifies
+ * listeners when an emitter registers, the emitter registers from inside its own
+ * constructor, and the listener reads the emitter from another thread - which is
+ * a thread seeing a fully-typed reference whose fields are still null.
  *
  * FIX:
  * Move EventRegistry.register(this) to the last line of the constructor, after
@@ -76,6 +84,83 @@ class EventEmitterTest {
         assertTrue(EventRegistry.getAll().contains(emitter));
     }
 
+    /**
+     * The bug itself, with no detector involved: a registration listener that reads the emitter
+     * from another thread sees a fully-typed reference whose name is null. The constructor has
+     * not reached the assignment yet.
+     */
+    @Test
+    void testConstructor_registrationListenerSeesAHalfBuiltObject() {
+        String[] observed = {"not yet read"};
+        EventRegistry.observeRegistrations(emitter -> readFrom(emitter, name -> observed[0] = name));
+
+        new EventEmitter("fully-built");
+
+        assertNull(observed[0],
+                "the listener held a reference to an EventEmitter whose name field was still null");
+    }
+
+    /**
+     * The validator's positive direction: a thread other than the constructing one touching a
+     * field before construction completes.
+     */
+    @Test
+    void testConstructorSafetyValidator_accessDuringConstruction_reports() {
+        ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
+        EventEmitter.observeConstruction(
+                validator::recordConstructionStart, validator::recordConstructionEnd);
+        EventRegistry.observeRegistrations(emitter -> readFrom(emitter, name -> {
+            validator.recordFieldAccess(emitter, "name", System.nanoTime());
+        }));
+
+        new EventEmitter("escaping");
+
+        assertTrue(validator.validateConstructorSafety().hasIssues(),
+                "another thread reached the object before its constructor finished");
+    }
+
+    /**
+     * And the other direction: the same field, read by another thread, after the constructor
+     * has returned. Nothing was published early, so there is nothing to report.
+     *
+     * <p>The assertion is on {@code unsafeObjects} rather than {@code hasIssues()} on purpose.
+     * {@code hasIssues()} also covers {@code possiblyIncompleteConstructions}, which flags any
+     * construction that completed in under a microsecond - and an empty constructor completes in
+     * under a microsecond. That heuristic fires here for a reason unrelated to publication; see
+     * issue #357.
+     */
+    @Test
+    void testConstructorSafetyValidator_accessAfterConstruction_isNotUnsafePublication() {
+        ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
+        EventEmitter.observeConstruction(
+                validator::recordConstructionStart, validator::recordConstructionEnd);
+
+        EventEmitter emitter = new EventEmitter("settled");
+        readFrom(emitter, name -> {
+            validator.recordFieldAccess(emitter, "name", System.nanoTime());
+            assertEquals("settled", name, "by now the constructor has finished");
+        });
+
+        assertTrue(validator.validateConstructorSafety().unsafeObjects.isEmpty(),
+                "a read after the constructor returned is not unsafe publication");
+    }
+
+    /**
+     * Reads {@code emitter.getName()} on a different thread and hands the result to
+     * {@code sink}, waiting for it. Different thread on purpose: unsafe publication is about who
+     * can see the object, and the constructing thread can always see its own.
+     */
+    private static void readFrom(EventEmitter emitter, java.util.function.Consumer<String> sink) {
+        Thread reader = new Thread(() -> sink.accept(emitter.getName()), "registry-listener");
+        reader.start();
+        try {
+            reader.join(5000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted waiting for the reader", e);
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Part 2: @AsyncTest — exposes the this-escape
     // -------------------------------------------------------------------------
@@ -90,27 +175,32 @@ class EventEmitterTest {
      * 2. Run this test
      * 3. To fix: move EventRegistry.register(this) to the last line of the constructor
      */
+    /**
+     * The bug: every thread constructs an emitter that registers itself before it is built, and
+     * the registration listener reads it from somewhere else.
+     *
+     * To see the detection:
+     * 1. Remove @Disabled
+     * 2. Run this test — it fails with
+     *      EventEmitter: Accessed by 1 threads during construction
+     * 3. Fix: move EventRegistry.register(this) to the last line of the constructor
+     */
     @Disabled("Remove @Disabled to see the bug detected by ConstructorSafetyValidator")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, validateConstructorSafety = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 5, detectAll = false,
+            validateConstructorSafety = true, failOn = FailOn.LOW)
     void test_concurrent_detectsThisEscape() {
-        var validator = AsyncTestContext.constructorSafetyValidator();
+        // This demonstration used to record against a sentinel Object created in the test body,
+        // never touching the emitter, and did every recording on one thread. The validator
+        // compares the accessing thread against the constructing one, so a single-threaded
+        // sequence can never be unsafe publication and the report was empty. See issue #346.
+        ConstructorSafetyValidator validator = AsyncTestContext.constructorSafetyValidator();
+        EventEmitter.observeConstruction(
+                validator::recordConstructionStart, validator::recordConstructionEnd);
+        EventRegistry.observeRegistrations(emitter -> readFrom(emitter, name ->
+                validator.recordFieldAccess(emitter, "name", System.nanoTime())));
 
-        // Instrument: mark construction start BEFORE calling new EventEmitter()
-        // We instrument a sentinel object to represent the about-to-be-constructed emitter
-        Object sentinel = new Object();
-        validator.recordConstructionStart(sentinel);
-
-        EventEmitter emitter = new EventEmitter("emitter-" + Thread.currentThread().getName());
-
-        // Instrument: record field access while construction may be incomplete
-        validator.recordFieldAccess(sentinel, "name", System.nanoTime());
-        String name = emitter.getName(); // could be null if accessed too early
-
-        // Instrument: mark construction end
-        validator.recordConstructionEnd(sentinel);
-
-        if (name != null) {
-            emitter.emit("event");
-        }
+        // The constructor registers `this` before assigning its fields, so the listener above
+        // runs - on another thread - while name is still null.
+        new EventEmitter("emitter-" + Thread.currentThread().threadId());
     }
 }
