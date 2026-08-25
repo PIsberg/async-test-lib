@@ -57,7 +57,7 @@ This is measured rather than asserted. Two evals run each covered detector again
 *and* against a synchronized twin that records the identical event stream while holding a real
 lock, and the results are published in
 [analysis/detector-accuracy-eval.md](analysis/detector-accuracy-eval.md).
-`DetectorAccuracyEvalTest` covers nineteen detectors, one per mechanism class, with the per-detector
+`DetectorAccuracyEvalTest` covers twenty detectors, one per mechanism class, with the per-detector
 outcome in that document. `SharedTypeAccuracyEvalTest` covers the whole `SHARED_*` family, the 19 that watch a
 non-thread-safe JDK type: 19 of 19 fire on unguarded sharing, and 17 of 19 stay silent both on the
 `synchronized (instance)` twin and on a twin guarded by a declared `ReentrantLock`. The same 17

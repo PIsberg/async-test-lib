@@ -35,7 +35,7 @@ The twin records the identical event stream through the detector's public record
 while the underlying code holds a real lock, uses CAS, or orders its locks consistently.
 Every recording happens from two live threads released by a CyclicBarrier.
 
-This is a recording-level eval of nineteen detectors, one of them behind an experimental gate, not a corpus study
+This is a recording-level eval of twenty detectors, one of them behind an experimental gate, not a corpus study
 of all 142. It measures the analyzers' models, which is the property that decides whether
 a finding on your code means your code is wrong. Since the guard-on-self change the twins
 distinguish where the lock lives: guarding with the shared instance's own monitor
@@ -65,6 +65,7 @@ still invisible.
 | ThreadLeakDetector | fires (thread started, still alive at analysis) | silent (joined and recorded as ended) | genuine both-direction detector; auto mode, which watches the global thread count, is off by default |
 | ConstructorSafetyValidator | fires (another thread reads a field before the constructor returns) | silent (ordinary constructor, read after it returned) | genuine both-direction detector since #357 removed the sub-microsecond rule, which fired on every fast constructor |
 | ThreadLocalMonitor | fires (set on two threads, never removed) | silent (`remove()` in a finally block) | genuine both-direction detector |
+| LockDowngradeDetector | fires (write released before the read lock was taken, **and** another thread observed taking the write lock in the gap) | silent on the correct downgrade however contended, and silent on the same shape with nobody in the gap | evidence-gated since #355: the shape alone is also correct code that writes one thing and later reads another, so it is not reported without an observed writer. Deliberate false negative |
 
 Every buggy variant above fires. The twin column is the interesting one, and the twins that
 still fire on correct code now share a single cause: the guard is a lock nothing told the library

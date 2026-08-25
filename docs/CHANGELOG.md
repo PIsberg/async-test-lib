@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`LockDowngradeDetector` detects the unsafe downgrade, which is what its name promised and
+  nothing did.** It reported read-to-write upgrades only — the condition
+  `LockUpgradeDeadlockDetector` already covers — and its own javadoc listed the correct downgrade
+  as "not flagged" without mentioning the incorrect one. The missing case is releasing the write
+  lock *before* acquiring the read lock: the lock is free in between, so what comes back from the
+  read need not be what was written. The correct downgrade takes the read lock while the write
+  lock is still held.
+
+  The finding is evidence-gated on purpose. "Released write, then acquired read" is also what
+  correct code produces when a thread writes one thing and later reads something unrelated, and
+  nothing in the recorded events distinguishes the two, so reporting on the shape alone would
+  flag correct code. It is reported when another thread is observed taking the write lock inside
+  the gap — a fact about the run, and the exact condition that makes the downgrade unsafe. The
+  cost is a false negative on a gap nobody entered, which is the trade this library states rather
+  than hides. Three directions are pinned in `DetectorAccuracyEvalTest`: fires with a writer in
+  the gap, silent on the correct downgrade however contended, silent on the shape alone.
+  `examples/56-lock-downgrade` has its demonstration back, and it fails when enabled: 40, 45 and
+  44 of 160 downgrade-shaped sequences had a writer inside the gap, over three runs.
+
+  The upgrade finding stays, and now says in the javadoc that it duplicates
+  `LockUpgradeDeadlockDetector`; removing the duplicate is an API change, since `DetectorType` is
+  locked, and is tracked separately. Upgrade findings also collapse to one line per lock with a
+  count, the way #351 required of the common-pool detector (#355).
+
 ### Fixed
 
 - **`ConstructorSafetyValidator` reported "possibly incomplete construction" for every fast

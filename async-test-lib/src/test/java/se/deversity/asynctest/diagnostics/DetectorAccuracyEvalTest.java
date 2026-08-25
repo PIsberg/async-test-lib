@@ -1571,6 +1571,74 @@ class DetectorAccuracyEvalTest {
                         + "watches the global thread count, is off unless enableAutoMode() is called");
     }
 
+    // ---- LockDowngradeDetector ----
+
+    @Test
+    @DisplayName("lock downgrade: releasing write before taking read, with a writer in the gap, fires (#355)")
+    void lockDowngradeFiresWhenAWriterIsObservedInsideTheGap() throws InterruptedException {
+        LockDowngradeDetector detector = new LockDowngradeDetector();
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+
+        detector.recordWriteLockAcquired(lock, "store");
+        detector.recordWriteLockReleased(lock, "store");     // the gap opens
+        Thread interloper = new Thread(() -> {
+            detector.recordWriteLockAcquired(lock, "store"); // and is used
+            detector.recordWriteLockReleased(lock, "store");
+        }, "interloper");
+        interloper.start();
+        interloper.join(5_000);
+        detector.recordReadLockAcquired(lock, "store");      // the gap closes
+        detector.recordReadLockReleased(lock, "store");
+
+        assertTrue(detector.analyze().hasIssues(),
+                "the lock was free between the write release and the read acquire, and another "
+                        + "thread wrote in it; the read need not return what the writer wrote");
+    }
+
+    @Test
+    @DisplayName("lock downgrade: the correct downgrade stays silent however contended (#355)")
+    void lockDowngradeStaysSilentOnTheCorrectDowngrade() throws InterruptedException {
+        LockDowngradeDetector detector = new LockDowngradeDetector();
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+
+        detector.recordWriteLockAcquired(lock, "store");
+        detector.recordReadLockAcquired(lock, "store");      // read taken while write is held
+        detector.recordWriteLockReleased(lock, "store");
+        Thread interloper = new Thread(() -> {
+            detector.recordWriteLockAcquired(lock, "store");
+            detector.recordWriteLockReleased(lock, "store");
+        }, "interloper");
+        interloper.start();
+        interloper.join(5_000);
+        detector.recordReadLockReleased(lock, "store");
+
+        assertFalse(detector.analyze().hasIssues(),
+                "there is no moment at which the downgrading thread holds neither lock, so no "
+                        + "gap exists for a writer to enter: " + detector.analyze());
+    }
+
+    @Test
+    @DisplayName("lock downgrade: the same shape with nobody in the gap stays silent (pinned false negative)")
+    void lockDowngradeStaysSilentWithoutAnObservedWriter() {
+        LockDowngradeDetector detector = new LockDowngradeDetector();
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+
+        detector.recordWriteLockAcquired(lock, "store");
+        detector.recordWriteLockReleased(lock, "store");
+        detector.recordReadLockAcquired(lock, "store");
+        detector.recordReadLockReleased(lock, "store");
+
+        assertFalse(detector.analyze().hasIssues(),
+                "a write, a release and a later read is also what correct code produces when "
+                        + "the read is unrelated, and the records cannot tell the two apart. "
+                        + "This false negative buys the absence of a finding on correct code; "
+                        + "if the detector ever learns to distinguish them, flip this assertion "
+                        + "and update detector-accuracy-eval.md");
+    }
+
     // ---- ConstructorSafetyValidator ----
 
     @Test
