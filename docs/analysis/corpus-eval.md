@@ -328,6 +328,30 @@ rounds earns nothing and keeps its finding. What the rule deliberately does not 
 the stored value was safe to publish unsafely: a torn or stale value is visibility, not
 atomicity, and stays `ConstructorSafetyValidator` and `VisibilityMonitor` business.
 
+**The blind spot that rule left, and what closed it
+([#326](https://github.com/PIsberg/async-test-lib/issues/326)).** The settle rule reads
+convergence off the field, and convergence is a property of the field. A double-submit shaped
+like a view cache - `if (job == null) job = submit()` - produces the same access stream as
+Jackson's serializer cache: the same miss checks, the same racing stores, the same settled
+suffix of reads. It is excused, and the work was done twice. Idempotence and immutability are
+invisible in a stream that carries no values, so the shapes could not be separated at all.
+
+The weaver now captures one more thing for a reference store: the identity of the value it put
+in the field. A reference store is the one shape where the value is already on the operand stack
+in argument order, so `DUP2` reaches it in two instructions with nothing to undo and no scratch
+local, which keeps the frames the weaver deliberately does not recompute valid. With that, the
+excuse asks a second question - did the published object then go quiet - and answers it from the
+stream it already has, because every write already carries the identity of the object it belongs
+to. An effectively immutable value is written once and read from then on, which is what the JMM's
+final-field guarantee promises statically; a live job keeps writing.
+
+**Absence of evidence keeps the previous answer.** A stored identity of 0 - a primitive write, a
+shape the weaver could not reach, an older agent, or a payload of a type the agent does not weave,
+which includes every JDK class - means nothing is known, and nothing known must not become a
+finding. The rule only ever narrows, and only where there is something to narrow with. The corpus
+is the proof that it did not overreach: all twenty-two documented-safe subjects stayed silent and
+all twenty documented-unsafe ones stayed detected with the rule in place.
+
 Note which Jackson subjects stayed silent all along: `ObjectMapper` configured once and then
 shared, and `ObjectReader`. The mutant-factory contract that Jackson documents most strongly is
 the one the model reads correctly.
@@ -398,10 +422,10 @@ shape the settled single-check rule excuses.
 - **Forty-two classes from seven libraries is not an ecosystem study.** It bounds the
   false-positive rate at the tier that gates builds, over a stated denominator, and it does not
   support a claim about the JVM ecosystem.
-- **141 detectors of 146 are not measured here at all.** Their exposure in both lanes is zero, so
-  this corpus says nothing about them in either direction. Measuring them needs a lane whose test
-  bodies record what they did, which is a different eval with a different denominator
-  ([#310](https://github.com/PIsberg/async-test-lib/issues/310)).
+- **137 detectors of 146 are not measured here at all.** Their exposure in every lane is zero, so
+  this corpus says nothing about them in either direction. Four more are measured in the
+  recording lane below, which is a different eval over a different denominator and is reported
+  separately for that reason.
 - **A noise column of zero is a measurement, not a guarantee.** All twenty-two documented-safe
   classes produce nothing, and each of the last three went quiet because a specific idiom became
   a rule the analyzer can check, never because a threshold moved. A correct class guarded by a
@@ -418,11 +442,81 @@ shape the settled single-check rule excuses.
 - **The corpus classes are subjects, not endorsements.** They are on the test classpath of a
   standalone module and reach neither the reactor nor any published artifact.
 
+## The recording lane: a denominator for detectors the corpus cannot reach
+
+The bullet above used to end this document's account of the 141: exposure zero, nothing said in
+either direction. That is now measured for three of them, in a third lane, and the separation
+matters more than the number.
+
+**What it is.** The same unmodified third-party classes, with test bodies that call the recording
+API the way a user following `AsyncTestContext` would. It attaches no agent, on purpose: with both
+feeds live a finding could have come from either, and every assertion here depends on each finding
+being attributable to a `record*` call the body made. It writes its own report,
+`corpus-eval-recording.md`, and its numbers are never merged into the two above.
+
+**Why its ground truth is different.** In the unmodified lanes the class's own javadoc decides
+whether a finding is noise, because the body does nothing but share the instance. Here the body
+cooperates, and the contract is no longer the question:
+`recorded_concurrentReferenceHashMap_checkThenAct` uses a class Spring documents as thread-safe
+and uses it with a get-then-put, which is a genuine lost update. Counting that as "a safe subject
+with a finding" would read as a false positive when it is the opposite. So each row states what
+the body records and what must therefore happen, and the class contract rides along as context.
+
+**Why its assertions are stronger.** `CorpusEvalTest` gates only at the group level, because
+whether one particular race is observed in one particular run is probabilistic. A recording-fed
+detector's verdict is not: it is a function of the calls the body made. So each subject declares
+`MUST_FIRE` or `MUST_STAY_SILENT` and `CorpusGates` holds it to that, per subject, in both
+directions. Every detector gets a pair, because one direction alone proves nothing — a detector
+that fires on everything passes the MUST_FIRE half, and one that was never wired up passes the
+other.
+
+| Detector | Must fire | ...did | Must stay silent | ...did |
+|---|---:|---:|---:|---:|
+| `CacheConcurrencyDetector` | 1 | 1 | 1 | 1 |
+| `JdbcConnectionSharedDetector` | 1 | 1 | 1 | 1 |
+| `NonAtomicConcurrentMapUpdateDetector` | 1 | 1 | 1 | 1 |
+| `SharedJsonMapperReconfigDetector` | 1 | 1 | 1 | 1 |
+
+**It found something on its first run.** `CacheConcurrencyDetector` decided thread safety with
+`instanceof ConcurrentHashMap` — one implementation rather than the contract — so Caffeine's
+`asMap()` view, whose javadoc says in as many words that it is a thread-safe map, was reported as
+a "non-thread-safe cache", and so were Guava's cache, a `ConcurrentSkipListMap` and any user's own
+`ConcurrentMap`. The agent path had already learned to ask the interface; the recording path had
+not, and nothing compared the two. It now asks `ConcurrentMap`, plus the legacy synchronized
+collections that keep the same promise by taking their own monitor. The twin still fires: a plain
+`HashMap` read and written from a cache position is what the detector is for.
+
+**And it settled a question the corpus had been deferring.** `JdbcConnectionSharedDetector`
+reports a `Connection` reached from more than one thread, and a connection pool hands the same
+physical connection to different threads over its lifetime by design - so the pool, which is the
+fix the detector's own message recommends, drew a HIGH finding for working exactly as intended.
+That is why HikariCP was left out of the fourth wave of subjects: there was no way to tell the two
+apart, and a subject producing a finding that is neither a true positive nor noise belongs in
+neither column.
+
+The distinction the detector was missing is the one JDBC actually states: at most one thread *at a
+time*, not one thread ever. It now takes a release marker, `recordRelease(resource, thread)`, and
+when ownership is modelled it reports only threads that held the resource simultaneously. A caller
+that never records a release keeps the old behaviour exactly, because a test that never said when
+a thread let go has told the detector nothing about overlap, and the safe reading of that silence
+is the stricter one.
+
+The pair is sized so the silent half cannot pass for the wrong reason. The pool holds exactly one
+connection, so every thread in the run gets the same physical handle - and the lane asserts that
+premise rather than assuming it: one connection identity, more than one thread. Without that
+check, a pool that quietly opened six connections would produce the same green result while
+measuring nothing.
+
+That is the argument for the lane in one line. Four detectors of 146 is not coverage; it is the
+first four rows of a table that had none, and it was enough to find a defect that had been
+shipping and to settle a modelling question that had been open since the fourth wave.
+
+
 ## Reproducing it
 
 ```bash
 mvn install -DskipTests -Djacoco.skip=true    # the reactor, so the module can resolve the version
-mvn -f corpus-eval/pom.xml test               # writes both lanes under corpus-eval/target/corpus-eval/
+mvn -f corpus-eval/pom.xml test               # writes all three lanes under corpus-eval/target/corpus-eval/
 ```
 
 The generated reports carry the lane, the JVM, the OS, the configuration, the exposure tables and

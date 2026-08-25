@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -182,7 +183,7 @@ public class CacheConcurrencyDetector {
             int writes = state.writeCount.get();
 
             // Check for concurrent read/write on non-concurrent map
-            boolean isConcurrentMap = state.cache instanceof ConcurrentHashMap;
+            boolean isConcurrentMap = synchronizesItself(state.cache);
             if (!isConcurrentMap && reads > 0 && writes > 0) {
                 report.concurrentReadWrite.add(String.format(
                     "%s: concurrent reads (%d) and writes (%d) on non-thread-safe cache",
@@ -213,6 +214,31 @@ public class CacheConcurrencyDetector {
         }
 
         return report;
+    }
+
+    /**
+     * {@return whether {@code cache}'s own type answers for thread safety}
+     *
+     * <p>Asked of the interface, not of the concrete class. This used to be
+     * {@code instanceof ConcurrentHashMap}, which is the one implementation rather than the
+     * contract: Caffeine's {@code asMap()} view, Guava's cache, a {@code ConcurrentSkipListMap}
+     * and a user's own {@code ConcurrentMap} all keep the same promise and were all reported as
+     * a "non-thread-safe cache". The corpus eval's recording lane caught it on Caffeine, whose
+     * javadoc says in as many words that the view is a thread-safe map.
+     *
+     * <p>{@code ConcurrentMap} is a contract its implementor has to keep, wherever it lives, so
+     * this is both narrower than a package prefix and more general than a class check. The
+     * legacy synchronized collections carry the same promise by a different route - every method
+     * takes the instance's own monitor - and are listed for the same reason
+     * {@code AgentCollectionHooks} lists them on the woven path. The two paths now give the same
+     * answer to the same question.
+     *
+     * @param cache the registered cache
+     */
+    private static boolean synchronizesItself(Map<?, ?> cache) {
+        return cache instanceof ConcurrentMap
+                || cache instanceof java.util.Hashtable
+                || cache.getClass().getName().startsWith("java.util.Collections$Synchronized");
     }
 
     /**

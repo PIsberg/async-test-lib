@@ -143,4 +143,87 @@ class JdbcConnectionSharedDetectorTest {
                     return null;
                 });
     }
+
+    /**
+     * A pooled connection handed to one thread at a time is the documented fix, not the defect.
+     *
+     * <p>Six threads use the same physical connection over the run, and each says when it is
+     * done. No two ever hold it at once, which is exactly what a pool guarantees, so a finding
+     * here would flag the correct pattern this detector's own message recommends.
+     */
+    @Test
+    void sequentialReuseAcrossThreadsIsNotSharing() throws Exception {
+        JdbcConnectionSharedDetector detector = new JdbcConnectionSharedDetector();
+        Connection pooled = stubConnection();
+
+        for (int i = 0; i < 6; i++) {
+            Thread worker = new Thread(() -> {
+                detector.recordAccess(pooled, "pool-conn", Thread.currentThread());
+                detector.recordRelease(pooled, Thread.currentThread());
+            }, "worker-" + i);
+            worker.start();
+            worker.join();
+        }
+
+        assertFalse(detector.analyze().hasIssues(),
+                "a connection checked out and returned by one thread at a time is a pool doing "
+                        + "its job; the JDBC rule is one thread at a time, not one thread ever");
+    }
+
+    /** The twin: modelling ownership must not silence two threads actually holding it at once. */
+    @Test
+    void twoThreadsHoldingAtOnceStillFires() throws Exception {
+        JdbcConnectionSharedDetector detector = new JdbcConnectionSharedDetector();
+        Connection shared = stubConnection();
+
+        Thread first = new Thread(
+                () -> detector.recordAccess(shared, "shared-conn", Thread.currentThread()), "first");
+        first.start();
+        first.join();
+        // No release from "first": it is still holding when the second thread takes it.
+        Thread second = new Thread(() -> {
+            detector.recordAccess(shared, "shared-conn", Thread.currentThread());
+            detector.recordRelease(shared, Thread.currentThread());
+        }, "second");
+        second.start();
+        second.join();
+
+        assertTrue(detector.analyze().hasIssues(),
+                "the second thread took the connection while the first still held it, which is "
+                        + "the overlap the detector exists for; recording a release elsewhere "
+                        + "must not excuse it");
+    }
+
+    /**
+     * A caller that never models ownership keeps exactly the behaviour it had.
+     *
+     * <p>The release marker is additive, and silence about ownership is not evidence of
+     * correctness: a test that never said when a thread let go has told the detector nothing,
+     * so it keeps the stricter reading.
+     */
+    @Test
+    void withoutAnyReleaseTheOlderModelStands() throws Exception {
+        JdbcConnectionSharedDetector detector = new JdbcConnectionSharedDetector();
+        Connection connection = stubConnection();
+
+        for (int i = 0; i < 2; i++) {
+            Thread worker = new Thread(
+                    () -> detector.recordAccess(connection, "conn", Thread.currentThread()),
+                    "legacy-" + i);
+            worker.start();
+            worker.join();
+        }
+
+        assertTrue(detector.analyze().hasIssues(),
+                "no release was ever recorded, so nothing says these accesses did not overlap "
+                        + "and the detector must keep reporting them");
+    }
+
+    /** {@return an inert Connection; the detector only ever takes its identity and its type} */
+    private static Connection stubConnection() {
+        return (Connection) java.lang.reflect.Proxy.newProxyInstance(
+                JdbcConnectionSharedDetectorTest.class.getClassLoader(),
+                new Class<?>[] {Connection.class},
+                (proxy, method, args) -> null);
+    }
 }

@@ -27,6 +27,8 @@
         <caffeine.version>3.2.4</caffeine.version>
         <netty.version>4.2.17.Final</netty.version>
         <spring.version>7.0.9</spring.version>
+        <hikaricp.version>7.0.2</hikaricp.version>
+        <slf4j.version>2.0.17</slf4j.version>
         <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
         <maven-dependency-plugin.version>3.9.0</maven-dependency-plugin.version>
@@ -102,6 +104,25 @@
             <version>${spring.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- A real connection pool, for the recording lane only. It is the one subject that
+             cannot be exercised without something to pool, which is why it is not in the two
+             unmodified lanes: those claim no line of the subject is ours, and a stub DataSource
+             would break that claim. The recording lane's body is ours by construction, and the
+             code deciding which thread holds which connection is still entirely HikariCP's. -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>${hikaricp.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- HikariCP logs through SLF4J and warns on every pool operation without a binding.
+             The no-op binding keeps the corpus output readable; nothing here asserts on logs. -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-nop</artifactId>
+            <version>${slf4j.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -145,6 +166,12 @@
                         <id>default-test</id>
                         <goals><goal>test</goal></goals>
                         <configuration>
+                            <!-- The recording lane has its own execution below; running it here
+                                 too would attach the agent to it and make its findings ambiguous
+                                 between the woven stream and the body's own recorded calls. -->
+                            <excludes>
+                                <exclude>**/CorpusRecordingLaneTest.java</exclude>
+                            </excludes>
                             <!-- The agent is attached at JVM startup rather than self-attached
                                  from the first @AsyncTest, and that is a measurement decision,
                                  not a style one. A self-attach happens partway through the run,
@@ -167,6 +194,31 @@
                                      without it three of the nine documented-unsafe subjects
                                      reported nothing at all. -->
                                 <asynctest.agent>fields=true,collections=true</asynctest.agent>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </execution>
+                    <!-- Lane three: nothing attached, and the bodies cooperate. A different
+                         measurement over a different denominator, which is why it writes its own
+                         report and never merges into the other two. The corpus records nothing by
+                         hand, which is what makes its findings attributable to unmodified code and
+                         also what leaves 137 of the 142 detectors with an exposure of zero in both
+                         other lanes. This lane gives a named handful of them a denominator, by
+                         calling the recording API the way a user following AsyncTestContext does.
+                         The agent stays detached on purpose: with both feeds live a finding could
+                         have come from either, and every assertion here depends on each finding
+                         being attributable to a record* call the body made. -->
+                    <execution>
+                        <id>recording</id>
+                        <phase>test</phase>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <includes>
+                                <include>**/CorpusRecordingLaneTest.java</include>
+                            </includes>
+                            <reportsDirectory>${project.build.directory}/surefire-reports-recording</reportsDirectory>
+                            <systemPropertyVariables>
+                                <license.mock.mode>true</license.mock.mode>
+                                <corpus.lane>recording</corpus.lane>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>

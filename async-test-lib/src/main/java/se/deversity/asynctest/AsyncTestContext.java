@@ -800,7 +800,7 @@ public final class AsyncTestContext {
      * close the round in progress. Touches only this context's own detector instances, never the
      * {@code ThreadLocal}, so install/uninstall symmetry is unaffected.
      *
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public void markInvocationStart() {
         if (sharedCollectionDetector != null) {

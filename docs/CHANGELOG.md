@@ -7,7 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+> Versioning note: as in 1.9.1, 1.9.4 and 1.9.5, this ships as a patch by explicit owner
+> decision. Strictly it is additive - four new detectors with their `@AsyncTest` attributes,
+> config fields and `AsyncTestContext` accessors, the `collections=true` agent option,
+> `JdbcConnectionSharedDetector.recordRelease`, and new overloads on `TelemetryRegistry`,
+> `TelemetryEventBuffer` and `AtomicityValidator` - which the SUPPORT_POLICY.md table would make
+> 1.10.0. Nothing was removed or changed incompatibly; the `@since` stamps written as 1.10.0 and
+> 1.11.0 while these were unreleased now read 1.9.8, and the japicmp baseline needs re-pinning
+> to 1.9.7 before the tag.
+
 ### Added
+
+- **A recording lane in the corpus eval, so some of the 141 get a denominator.** The corpus
+  records nothing by hand, which is what makes its findings attributable to unmodified third-party
+  code and also what left 141 of the 146 detectors with an exposure of zero: for 96% of the roster
+  "no false positive from detector X" and "X never ran" were the same row. A third lane runs the
+  same libraries with bodies that call the recording API the way a user following
+  `AsyncTestContext` does. It attaches no agent on purpose - with both feeds live a finding could
+  have come from either - and writes its own report, never merged into the other two.
+
+  Its ground truth is not the class contract, because the body cooperates: Spring's
+  `ConcurrentReferenceHashMap` used with a get-then-put is a thread-safe class and a wrong caller,
+  and counting that as "a safe subject with a finding" would read as a false positive when it is
+  the opposite. Each subject states `MUST_FIRE` or `MUST_STAY_SILENT` with the argument for why
+  that follows from its recorded calls, and every detector gets both halves - a `MUST_FIRE` row
+  alone is passed by a detector that fires on everything, and its twin by one that was never wired
+  up. Those expectations are assertable per subject, unlike the unmodified lanes': a
+  recording-fed detector's verdict is a function of the recorded calls, not of how the scheduler
+  interleaved them. Four detectors, eight rows, 8 of 8 as stated.
+
+- **`JdbcConnectionSharedDetector.recordRelease(resource, thread)`.** The JDBC rule is one thread
+  at a time, not one thread ever, and the detector could only see the second. A connection pool -
+  the fix its own message recommends - hands the same physical connection to different threads over
+  its lifetime by design, and drew a HIGH finding for it. Recording a release says when a thread
+  let go, and once ownership is modelled only threads that held the resource simultaneously are
+  reported. A caller that never records a release keeps today's behaviour exactly: a test that
+  never said when a thread let go has said nothing about overlap, and the safe reading of that
+  silence is the stricter one. Proved both ways on a real HikariCP pool in the recording lane.
+
 
 - **Four detectors for the JDK 26 concurrency surface (142 -> 146).** JEP 525 (Structured
   Concurrency, sixth preview) and JEP 526 (Lazy Constants, second preview) both moved work out of
@@ -197,6 +234,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pins in both directions.
 
 ### Fixed
+
+- **A dynamic attach silently missed the classes it loaded itself.** Three sets exist, not two:
+  the classes loaded before the attach, the ones loaded after it, and the ones the attach's own
+  retransformation pass loads while running. Byte Buddy describes an already-loaded class through
+  the reflection API, and reflection eagerly resolves every field and method signature type, so
+  describing a class *loads the types it names* - on the attaching thread, inside the circularity
+  lock, where the transformer declines without calling any listener, and after the default
+  `SinglePass` discovery already took its snapshot. Woven by nothing, with no error and no log
+  line. In `corpus-eval`, running its two test classes in the other order took detection from 20 of
+  20 to 6 of 20 because the missing types were the test class's own field signatures. The install
+  now discovers with `RedefinitionStrategy.DiscoveryStrategy.Reiterating`, and after a dynamic
+  attach the agent diffs what the transformer was handed against `getAllLoadedClasses()` and names
+  anything left, so the next such gap is a line in the log rather than an afternoon of probes.
+
+- **`CacheConcurrencyDetector` asked for one implementation instead of the contract.** Thread
+  safety was decided with `instanceof ConcurrentHashMap`, so Caffeine's `asMap()` view - whose
+  javadoc says in as many words that it is a thread-safe map - Guava's cache, a
+  `ConcurrentSkipListMap` and any user's own `ConcurrentMap` were all reported as a
+  "non-thread-safe cache". The agent path had already learned to ask the interface; the recording
+  path had not, and nothing compared the two. Found by the recording lane on its first run.
+
+- **A double-submit shaped like a view cache is no longer excused as a settled cache.** The
+  settled single-check rule reads convergence off the field, and convergence is a property of the
+  field: `if (job == null) job = submit()` produces the same access stream as Jackson's serializer
+  cache - same miss checks, same racing stores, same settled reads - and the work was done twice.
+  The weaver now captures the identity of the value a reference store put in the field, which
+  `DUP2` reaches in two instructions with nothing to undo, and the excuse additionally requires
+  that no field of a published value was written after the round that published it. A stored
+  identity of 0 - a primitive write, a shape the weaver could not reach, an older agent, or a JDK
+  payload the agent does not weave - means nothing is known and keeps the previous answer. The
+  corpus is the proof it did not overreach: 0 of 22 documented-safe subjects and 20 of 20
+  documented-unsafe ones, unchanged.
+
 
 - **The corpus eval now reads clean: zero findings on all 22 documented-thread-safe classes,
   with all 20 documented-not-thread-safe classes still detected, on every platform.** The three

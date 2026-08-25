@@ -78,6 +78,24 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Java
+        id: setup-java
+        # JDK 26 is on no runner image yet, so this leg resolves and downloads it from
+        # api.adoptium.net on every run, while 21 and 25 come from the image cache. The action
+        # has no retry of its own, so one DNS blip fails the job before a line of code runs:
+        # "Error: Java setup process failed due to: getaddrinfo EAI_AGAIN api.adoptium.net",
+        # seen on 2026-08-25 in a leg that had passed on the previous commit and in 21 of the
+        # 22 preceding JDK 26 job runs. continue-on-error hands that case to the retry below.
+        # A genuine outage or a wrong version still fails the job, because the retry does not
+        # carry continue-on-error.
+        continue-on-error: true
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Set up Java (retry after a transient resolver failure)
+        if: steps.setup-java.outcome == 'failure'
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           java-version: ${{ matrix.java-version }}
@@ -428,6 +446,24 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Java
+        id: setup-java
+        # JDK 26 is on no runner image yet, so this leg resolves and downloads it from
+        # api.adoptium.net on every run, while 21 and 25 come from the image cache. The action
+        # has no retry of its own, so one DNS blip fails the job before a line of code runs:
+        # "Error: Java setup process failed due to: getaddrinfo EAI_AGAIN api.adoptium.net",
+        # seen on 2026-08-25 in a leg that had passed on the previous commit and in 21 of the
+        # 22 preceding JDK 26 job runs. continue-on-error hands that case to the retry below.
+        # A genuine outage or a wrong version still fails the job, because the retry does not
+        # carry continue-on-error.
+        continue-on-error: true
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Set up Java (retry after a transient resolver failure)
+        if: steps.setup-java.outcome == 'failure'
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           java-version: ${{ matrix.java-version }}

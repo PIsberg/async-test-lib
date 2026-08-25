@@ -171,7 +171,7 @@ public class SharedCollectionDetector {
      * {@code ConcurrencyRunner} before every round; a caller that never calls it measures one
      * round, which is what the manual API did before.
      *
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public void markInvocationStart() {
         for (CollectionState state : collections.values()) {

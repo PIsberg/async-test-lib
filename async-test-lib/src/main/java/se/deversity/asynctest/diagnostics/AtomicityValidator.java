@@ -69,9 +69,19 @@ public class AtomicityValidator {
         /** Whether the access happened while the receiver was still exclusive to its builder. */
         final boolean exclusivePhase;
 
+        /**
+         * {@code System.identityHashCode} of the reference this write stored, 0 when it stored no
+         * reference or the weaver could not reach it.
+         *
+         * <p>The only value evidence in an otherwise value-free stream, and it exists for one
+         * question: did the thing that was published then go quiet. A 0 means "not known", never
+         * "not immutable" - see {@link #settledSingleCheckCache}.
+         */
+        final int storedIdentity;
+
         FieldAccessRecord(long threadId, boolean write, long epoch, boolean ownerKnown,
                           int identity, long fingerprint, int ownMonitor, int methodMonitor,
-                          boolean exclusivePhase) {
+                          boolean exclusivePhase, int storedIdentity) {
             this.threadId = threadId;
             this.write = write;
             this.epoch = epoch;
@@ -81,6 +91,7 @@ public class AtomicityValidator {
             this.ownMonitor = ownMonitor;
             this.methodMonitor = methodMonitor;
             this.exclusivePhase = exclusivePhase;
+            this.storedIdentity = storedIdentity;
         }
     }
 
@@ -404,6 +415,21 @@ public class AtomicityValidator {
 
     private final Map<String, CompoundOperation> activeOperations = new ConcurrentHashMap<>();
     private final Map<String, List<FieldAccessRecord>> fieldHistory = new ConcurrentHashMap<>();
+
+    /**
+     * The last round in which each object had a field of its own written.
+     *
+     * <p>Maintained as events arrive rather than scanned for at analysis time: the question
+     * {@link #everyPublishedValueWentQuiet} asks is "did this published object then go quiet",
+     * and answering it by walking every field's history per candidate would be quadratic in the
+     * event count on a path that already handles millions.
+     *
+     * <p>Keyed by identity hash, with the collision hazard that carries: two objects sharing a
+     * hash merge here, which can deny a settle excuse that was owed. That direction costs a
+     * finding on correct code rather than silence on a defect, and it is the same keying every
+     * other per-instance rule in this class already uses.
+     */
+    private final Map<Integer, Long> lastOwnWriteEpoch = new ConcurrentHashMap<>();
     /**
      * Per-field lockset: the locks held at every recorded access to that field.
      *
@@ -584,7 +610,7 @@ public class AtomicityValidator {
      * @param threadId        the thread that made the access
      * @param lockFingerprint the locks that thread held at the access, 0 for none
      * @param volatileField   whether the field is declared {@code volatile}
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
                                             boolean isWrite, long threadId,
@@ -606,7 +632,7 @@ public class AtomicityValidator {
      * @param lockFingerprint the locks that thread held at the access, 0 for none
      * @param volatileField   whether the field is declared {@code volatile}
      * @param constantTag     the constant this write stored, {@code Integer.MIN_VALUE} for none
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
                                             boolean isWrite, long threadId, long lockFingerprint,
@@ -626,7 +652,7 @@ public class AtomicityValidator {
      * @param volatileField   whether the field is declared {@code volatile}
      * @param constantTag     the constant this write stored, {@code Integer.MIN_VALUE} for none
      * @param identity        {@code System.identityHashCode} of the owner, 0 for statics
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
                                             boolean isWrite, long threadId, long lockFingerprint,
@@ -656,45 +682,106 @@ public class AtomicityValidator {
      * @param volatileField   whether the field is declared {@code volatile}
      * @param constantTag     the constant this write stored, {@code Integer.MIN_VALUE} for none
      * @param identity        {@code System.identityHashCode} of the owner, 0 for statics
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
                                             boolean isWrite, long threadId, long lockFingerprint,
                                             int ownMonitor, int methodMonitor,
                                             boolean volatileField, int constantTag, int identity) {
-        boolean exclusive = false;
-        if (fieldName != null && !fieldName.isBlank()) {
-            // Whether the receiver is still exclusive to the thread building it travels on the
-            // record (#312). The locksets are fed unconditionally: whether construction
-            // accesses are excused is decided at analysis time, where the corroboration the
-            // excuse needs — the receiver staying shared across later rounds — is visible.
-            exclusive = inExclusivePhase(identity, threadId);
-            // Per instance, not just per field. One WeakEntry in a striped cache is written under
-            // its own segment's lock every time; merging the entries makes those locks disagree
-            // and collapses an intersection that is consistent for every object taken alone.
-            FieldGuard guard = fieldLocks.computeIfAbsent(guardKey(fieldName, identity),
-                    ignored -> new FieldGuard());
-            if (volatileField) {
-                guard.noteVolatile();
-            }
-            if (isWrite) {
-                guard.noteWriteConstant(constantTag);
-            }
-            guard.noteAccess(lockFingerprint, ownMonitor, methodMonitor, isWrite);
-        }
+        boolean exclusive = noteGuard(fieldName, isWrite, lockFingerprint, ownMonitor,
+                methodMonitor, volatileField, constantTag, identity, threadId);
         record(fieldName, value, isWrite, threadId, null, false, lockFingerprint, identity,
-                ownMonitor, methodMonitor, exclusive);
+                ownMonitor, methodMonitor, exclusive, 0);
+    }
+
+    /**
+     * Feeds the per-instance lockset for one access.
+     *
+     * <p>Extracted so the two public overloads share it verbatim rather than by copy: the newer
+     * one differs only in carrying the stored value, and a second copy of this bookkeeping would
+     * be a twin waiting to drift.
+     *
+     * @param fieldName       the field
+     * @param isWrite         {@code true} for a write
+     * @param lockFingerprint the locks that thread held at the access
+     * @param ownMonitor      identity hash of the receiver when its monitor was held, else 0
+     * @param methodMonitor   identity hash of the enclosing synchronized method's monitor, else 0
+     * @param volatileField   whether the field is declared {@code volatile}
+     * @param constantTag     the constant this write stored
+     * @param identity        identity hash of the owner, 0 for statics
+     * @param threadId        the accessing thread
+     * @return whether the receiver was still exclusive to the thread building it
+     */
+    private boolean noteGuard(String fieldName, boolean isWrite, long lockFingerprint,
+                              int ownMonitor, int methodMonitor, boolean volatileField,
+                              int constantTag, int identity, long threadId) {
+        if (fieldName == null || fieldName.isBlank()) {
+            return false;
+        }
+        // Whether the receiver is still exclusive to the thread building it travels on the
+        // record (#312). The locksets are fed unconditionally: whether construction
+        // accesses are excused is decided at analysis time, where the corroboration the
+        // excuse needs - the receiver staying shared across later rounds - is visible.
+        boolean exclusive = inExclusivePhase(identity, threadId);
+        // Per instance, not just per field. One WeakEntry in a striped cache is written under
+        // its own segment's lock every time; merging the entries makes those locks disagree
+        // and collapses an intersection that is consistent for every object taken alone.
+        FieldGuard guard = fieldLocks.computeIfAbsent(guardKey(fieldName, identity),
+                ignored -> new FieldGuard());
+        if (volatileField) {
+            guard.noteVolatile();
+        }
+        if (isWrite) {
+            guard.noteWriteConstant(constantTag);
+        }
+        guard.noteAccess(lockFingerprint, ownMonitor, methodMonitor, isWrite);
+        return exclusive;
+    }
+    /**
+     * Records a field access, with the identity of the reference the write stored.
+     *
+     * <p>The evidence the settled-cache excuse was missing. Convergence is a property of the
+     * field, and the defect a double-submit hides is a property of the payload, so an access
+     * stream that carries no values cannot tell {@code if (view == null) view = new View(this)}
+     * from {@code if (job == null) job = submit()}. Both miss-check, both race, both settle. What
+     * separates them is what happens to the stored object afterwards: an idempotent value goes
+     * quiet, and a live job does not.
+     *
+     * @param fieldName       the field, as it should appear in the report
+     * @param value           the value read or written, may be {@code null}
+     * @param isWrite         {@code true} for a write
+     * @param threadId        the thread that made the access
+     * @param lockFingerprint the locks that thread held at the access, 0 for none
+     * @param ownMonitor      identity hash of the receiver when its monitor was held, else 0
+     * @param methodMonitor   identity hash of the enclosing synchronized method's monitor, else 0
+     * @param volatileField   whether the field is declared {@code volatile}
+     * @param constantTag     the constant this write stored, {@code Integer.MIN_VALUE} for none
+     * @param identity        {@code System.identityHashCode} of the owner, 0 for statics
+     * @param storedIdentity  {@code System.identityHashCode} of the reference this write stored,
+     *                        0 when it stored no reference or the weaver could not reach it
+     * @since 1.9.8
+     */
+    public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
+                                            boolean isWrite, long threadId, long lockFingerprint,
+                                            int ownMonitor, int methodMonitor,
+                                            boolean volatileField, int constantTag, int identity,
+                                            int storedIdentity) {
+        boolean exclusive = noteGuard(fieldName, isWrite, lockFingerprint, ownMonitor,
+                methodMonitor, volatileField, constantTag, identity, threadId);
+        record(fieldName, value, isWrite, threadId, null, false, lockFingerprint, identity,
+                ownMonitor, methodMonitor, exclusive, storedIdentity);
     }
 
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint) {
         record(fieldName, value, isWrite, threadId, owner, ownerKnown, lockFingerprint, 0, 0, 0,
-                false);
+                false, 0);
     }
 
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint,
-                        int identity, int ownMonitor, int methodMonitor, boolean exclusivePhase) {
+                        int identity, int ownMonitor, int methodMonitor, boolean exclusivePhase,
+                        int storedIdentity) {
         if (!enabled || fieldName == null || fieldName.isBlank()) {
             return;
         }
@@ -720,7 +807,12 @@ public class AtomicityValidator {
         synchronized (history) {
             history.add(new FieldAccessRecord(threadId, isWrite, invocationEpoch.get(),
                     ownerKnown, identity, lockFingerprint, ownMonitor, methodMonitor,
-                    exclusivePhase));
+                    exclusivePhase, isWrite ? storedIdentity : 0));
+            // Index the owner's own writes as they arrive, so asking "did this published object
+            // then go quiet" later costs a map lookup rather than a scan of every history.
+            if (isWrite && identity != 0) {
+                lastOwnWriteEpoch.merge(identity, invocationEpoch.get(), Math::max);
+            }
         }
 
         for (CompoundOperation operation : activeOperations.values()) {
@@ -776,7 +868,7 @@ public class AtomicityValidator {
      * arrives is what makes the answer independent of that ordering.
      *
      * @param fieldName the field to forget, as it appears in reports
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public void forgetField(String fieldName) {
         if (fieldName == null || fieldName.isBlank()) {
@@ -1204,8 +1296,50 @@ public class AtomicityValidator {
         // that kept executing for the required rounds after the field's last write, during which
         // the field was demonstrably never raced again, is the same convergence measured on the
         // only clock left. A race in the closing rounds earns nothing and keeps its finding.
-        return fieldShowsSettledReads
+        boolean settled = fieldShowsSettledReads
                 || invocationEpoch.get() - lastWriteEpoch >= quietRoundsNeeded;
+        // Convergence alone is not enough (#326): it is a property of the field, and a
+        // double-submit's defect is a property of what was stored.
+        return settled && everyPublishedValueWentQuiet(history, identity);
+    }
+    /**
+     * The value-level half of the settle rule (#326).
+     *
+     * <p>{@return whether every reference this field published then went quiet}
+     *
+     * <p>Convergence is a property of the field; the defect a double-submit hides is a property
+     * of the payload. {@code if (view == null) view = new View(this)} and
+     * {@code if (job == null) job = submit()} produce the same access stream - both miss-check,
+     * both race, both settle - and the second one submitted the work twice. What separates them
+     * is what the published object does next: an effectively immutable value is written once and
+     * read from then on, which is what the JMM's final-field guarantee promises statically, while
+     * a live job keeps mutating.
+     *
+     * <p>So the excuse additionally requires that no field of a published value was written after
+     * the round that published it. The evidence is the woven stream itself: every write already
+     * carries the identity of the object it belongs to, and this asks whether that object is one
+     * this field published.
+     *
+     * <p><strong>Absence of evidence keeps the previous answer.</strong> A stored identity of 0 -
+     * a primitive write, a shape the weaver could not reach, an older agent, or a payload of a
+     * type the agent does not weave, which includes every JDK class - means nothing is known, and
+     * nothing known must not become a finding. The rule only ever narrows, and only where there
+     * is something to narrow with.
+     *
+     * @param history  every access recorded for the field
+     * @param identity the instance being judged
+     */
+    private boolean everyPublishedValueWentQuiet(List<FieldAccessRecord> history, int identity) {
+        for (FieldAccessRecord access : history) {
+            if (!access.write || access.identity != identity || access.storedIdentity == 0) {
+                continue;
+            }
+            Long lastWrite = lastOwnWriteEpoch.get(access.storedIdentity);
+            if (lastWrite != null && lastWrite > access.epoch) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -1227,6 +1361,10 @@ public class AtomicityValidator {
         activeOperations.clear();
         fieldHistory.clear();
         fieldLocks.clear();
+        // Per run, like everything else here. A stale entry would answer "this object was still
+        // being written" about an object from a previous invocation, denying a settle excuse the
+        // current run earned.
+        lastOwnWriteEpoch.clear();
         atomicityViolations.clear();
         receiverStates.clear();
         invocationEpoch.set(0);

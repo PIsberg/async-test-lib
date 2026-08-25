@@ -10,7 +10,15 @@ package com.example.corpus;
  * observe nothing from them, and {@link CorpusGates} asserts exactly that. A finding there would
  * mean the feed classification is wrong, not that the code under test got worse.
  *
- * <p>Surefire sets {@code corpus.lane} per execution; a plain {@code mvn test} runs both.
+ * <p>A third lane runs {@link CorpusRecordingLaneTest} over the same libraries with bodies that
+ * do cooperate. It is a different measurement over a different denominator and must never be
+ * merged into the other two: its subjects are still unmodified third-party classes, but the test
+ * body calls the recording API the way a user following {@code AsyncTestContext} would, which is
+ * exactly what the other lanes refuse to do. Without it, 137 of the 142 detectors have an
+ * exposure of zero in every lane and "no false positive from detector X" and "X never ran" stay
+ * the same row for 96% of the roster.
+ *
+ * <p>Surefire sets {@code corpus.lane} per execution; a plain {@code mvn test} runs all three.
  */
 enum CorpusLane {
 
@@ -18,7 +26,17 @@ enum CorpusLane {
     AGENT_ON("agent-on", "corpus-eval.md"),
 
     /** Nothing attached, nothing recorded: only the JVM and the harness can feed a detector. */
-    AGENT_OFF("agent-off", "corpus-eval-agent-off.md");
+    AGENT_OFF("agent-off", "corpus-eval-agent-off.md"),
+
+    /**
+     * Nothing attached, and the body records what it did.
+     *
+     * <p>The agent stays detached on purpose. With both feeds live a finding could have come
+     * from either, and the point of this lane is that every finding in it is attributable to a
+     * {@code record*} call the test made - which is what lets its assertions be structural
+     * rather than probabilistic.
+     */
+    RECORDING("recording", "corpus-eval-recording.md");
 
     private final String propertyValue;
     private final String reportFile;
@@ -47,6 +65,7 @@ enum CorpusLane {
             }
         }
         throw new IllegalStateException("-Dcorpus.lane=" + configured + " names no lane; expected "
-                + AGENT_ON.propertyValue + " or " + AGENT_OFF.propertyValue);
+                + AGENT_ON.propertyValue + ", " + AGENT_OFF.propertyValue + " or "
+                + RECORDING.propertyValue);
     }
 }

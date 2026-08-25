@@ -154,6 +154,17 @@ common shape of a real race — it is why the README's own counter example repor
 this option existed. `fields=true` instruments the instruction stream instead, inserting a
 stack-neutral, branch-free observation call before each field instruction.
 
+The call carries the receiver, so the analysis can tell six threads racing on one object from six
+threads each using their own, and — for a store of a reference type — the value being stored. That
+last one is what lets the atomicity model tell an idempotent value apart from a side effect: a
+double-submit converges on its field exactly like a view cache does, and the difference is only
+visible in what the stored object does afterwards
+([#326](https://github.com/PIsberg/async-test-lib/issues/326)). A reference store is the one shape
+where the value is already on the operand stack in argument order, so `DUP2` reaches it in two
+instructions with nothing to undo; every other shape passes `null`, which the analysis reads as
+"not known" rather than as evidence. Only identity hashes leave the call — neither the receiver
+nor the stored value is retained.
+
 It is off by default because the cost scales with the instrumented surface, not with the number of
 accessors: every field read and write in every matched class emits an event. Pair it with
 `includes=` so the weaving lands on the code under test rather than on the whole classpath:
@@ -262,7 +273,7 @@ single test class's `@BeforeAll`.
 `@Advice` only inlines a method-entry prologue — it adds no fields, methods, or interfaces —
 the class schema is unchanged and retransformation is safe. **Verified empirically**
 (`SelfAttachTest`): accessors of classes loaded *before* the attach are re-woven in place,
-exactly like classes loaded afterwards.
+exactly like classes loaded afterwards, and so are the classes the attach loads while it runs.
 
 **A class the JVM refuses does not cost the others their weaving.** `retransformClasses` is
 all-or-nothing per call, and some classes cannot be re-verified at all: Netty's optional logger
@@ -282,19 +293,45 @@ If detectors go quiet after an attach, that line is the first thing to look for.
 [the corpus eval](analysis/corpus-eval.md#what-the-corpus-taught-the-model-in-four-rounds), where
 the defect cost 874 of 1074 instrumented classes and the whole documented-unsafe detection column.
 
-**Self-attach weaves what loads after it, and that can depend on test order.** Retransformation
-covers the classes that are already loaded *at the moment of the attach*, and load-time weaving
-covers everything after. What neither covers is a class loaded between the two in a way the
-transformer never sees, and in a suite with more than one test class the attach point is decided
-by whichever test runs first. The corpus eval measured the cost: running its two test classes in
-the other order moved detection of documented-unsafe subjects from 20 of 20 to 6 of 20, with the
-subject classes built in field initializers never woven and nothing logged
-([#316](https://github.com/PIsberg/async-test-lib/issues/316)). `-Dsurefire.runOrder=reversealphabetical`
-reproduces it exactly, down to the per-subject event counts.
+**The attach loads classes of its own, and those used to be lost.** There are three sets, not
+two. Retransformation covers what is already loaded at the moment of the attach; load-time weaving
+covers everything loaded afterwards; and in between sits a set nobody thinks about — the classes
+the retransformation pass itself loads while it runs. Byte Buddy describes an already-loaded class
+through the reflection API, and reflection eagerly resolves every field and method signature type,
+so describing a class *loads the types it names*. Those loads happen on the attaching thread while
+Byte Buddy holds its circularity lock, where the transformer declines without calling any listener,
+and the default `DiscoveryStrategy.SinglePass` took its snapshot of the loaded classes before they
+existed. Woven by nothing, with no error and no log line.
 
-If a suite's results have to be comparable across machines, attach with the launch flag rather
-than by self-attach: `premain` installs before any application class exists, so nothing depends on
-which test runs first. `corpus-eval/pom.xml` does exactly this and gates on it.
+It was expensive and it looked like file order. The corpus eval measured it: running its two test
+classes in the other order moved detection of documented-unsafe subjects from 20 of 20 to 6 of 20,
+because the classes that went missing were the test class's own field types — `MutableInt` and
+`MutableLong` were never consulted while 56 other `commons-lang3` types wove normally
+([#316](https://github.com/PIsberg/async-test-lib/issues/316),
+[#321](https://github.com/PIsberg/async-test-lib/issues/321)).
+
+The agent now discovers with `RedefinitionStrategy.DiscoveryStrategy.Reiterating`, which re-queries
+the loaded set until it stops growing and so picks up whatever the pass loaded. Pinned by
+`SelfAttachTest.classLoadedByTheAttachItself_isStillWoven`, which fails on the unfixed agent.
+
+**And if a class is ever missed again, the agent says so.** The reason the above took an afternoon
+to find is that there was no line to look for. After a dynamic attach the agent now diffs the type
+names the transformer was handed against `getAllLoadedClasses()`, filtered by the same ignore and
+`includes` matchers the install used, and names whatever is left:
+
+```
+[ASYNC-TEST-AGENT] 1 already-loaded class(es) were never handed to the transformer, so they are
+woven by nothing and invisible to every agent-fed detector. ...
+[ASYNC-TEST-AGENT]   com.example.probe.Payload
+```
+
+A healthy attach prints nothing. Pinned by `AttachCoverageReportTest`; `premain` skips the check,
+where the set is empty by construction.
+
+If a suite's results have to be comparable across machines, attach with the launch flag anyway:
+`premain` installs before any application class exists, so nothing depends on which test runs
+first and the whole question above never arises. `corpus-eval/pom.xml` does exactly this and gates
+on it.
 
 **Idempotency and interaction with `-javaagent`.** All three entry points share a single
 at-most-once install gate (an `AtomicBoolean` CAS). If the agent was already attached — via a

@@ -15,7 +15,7 @@ import org.apiguardian.api.API.Status;
  * printed for readers in {@code docs/DETECTOR_CATALOG.md}; {@code DetectorFeedCoverageTest} keeps
  * the three in step.
  *
- * @since 1.10.0
+ * @since 1.9.8
  */
 @API(status = Status.EXPERIMENTAL)
 public enum DetectorFeed {

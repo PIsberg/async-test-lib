@@ -33,7 +33,7 @@
 - **One annotation** — `@AsyncTest` hammers your code with N threads × M invocations using a `CyclicBarrier` to force maximum contention. No executor boilerplate, no manual `CountDownLatch`, no `Thread.join` loops.
 - **146 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types, JDBC sharing, MessageDigest/SecureRandom/Cipher integrity, and more — all on by default (`detectAll = true`), or pick a `Preset` for a curated subset. Deadlock detection needs zero configuration; most other detectors observe what the test body records explicitly or what the optional agent weaves, and the runner says so at INFO the first time agent-backed detection is inactive. Measured firing behavior, including where detectors flag correct-but-shared code, is published in [the detector-accuracy eval](docs/analysis/detector-accuracy-eval.md).
 - **JUnit native, 5 and 6** — zero required configuration, no special JVM flags. `@AsyncTest` is a JUnit `@TestTemplate`, so it works from Kotlin, Groovy, Scala and Clojure too, each proven on every build by [a consumer fixture](consumer-fixture-langs/README.md); the per-language notes are in [docs/JVM_LANGUAGES.md](docs/JVM_LANGUAGES.md). Supported range: **Jupiter 5.9.3 through 6.1.2**, verified per release by a [CI matrix](.github/workflows/e2e-tests.yml) that runs the consumer fixture against every version in it — see [the compatibility table](docs/BUILDING.md#junit-compatibility). Keep whichever Jupiter your project already declares; yours wins over the library's transitive one. An optional Java agent, shipped as a separate `async-test-agent` artifact, weaves accesses with Byte Buddy so detectors observe reads and writes without hand-written hooks. It weaves JavaBean accessors by default; add `fields=true` to weave direct field instructions too, which is what makes a bare `counter++` inside a method observable. Attach it with `-javaagent:async-test-agent.jar=fields=true`, or let the runner attach it for you with `-Dasynctest.agent=fields=true` so you need not resolve the jar's path. Default usage needs no agent, and the core artifact does not carry Byte Buddy.
-- **Every finding says how far to trust it** - each of the 146 detectors carries a trust tier, printed above its report and carried through the JSON and SARIF output. `VERDICT` means a finding proves the code wrong and is backed by a measured case that fires on the bug and stays silent on its correctly synchronized twin; `PROMPT` means the detector saw a pattern it cannot fully model, so go and look. `@AsyncTest(failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT)` is a merge gate that fails only on the measured end of that scale, while everything else still gets reported. The tiers live in code and a gate refuses to promote one without the evidence: [the detector-accuracy eval](docs/analysis/detector-accuracy-eval.md). What that scale is worth on code nobody here wrote is measured separately, on 42 classes from commons-lang3, commons-collections4, Guava, Jackson, Caffeine, Netty and Spring whose own javadoc states a thread-safety contract: all 20 documented as not thread-safe were caught, none of the 22 documented as safe for concurrent use drew a `VERDICT`-tier HIGH or CRITICAL finding, and three of those 22 drew a `PROMPT`-tier finding, each traced to a named gap in the lock model and each with an open issue. The eval prints its denominator first, because only 5 of the 146 detectors can see anything at all in code that records nothing: the method, the misses and what the numbers do not support are in [the corpus eval](docs/analysis/corpus-eval.md).
+- **Every finding says how far to trust it** - each of the 146 detectors carries a trust tier, printed above its report and carried through the JSON and SARIF output. `VERDICT` means a finding proves the code wrong and is backed by a measured case that fires on the bug and stays silent on its correctly synchronized twin; `PROMPT` means the detector saw a pattern it cannot fully model, so go and look. `@AsyncTest(failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT)` is a merge gate that fails only on the measured end of that scale, while everything else still gets reported. The tiers live in code and a gate refuses to promote one without the evidence: [the detector-accuracy eval](docs/analysis/detector-accuracy-eval.md). What that scale is worth on code nobody here wrote is measured separately, on 42 classes from commons-lang3, commons-collections4, Guava, Jackson, Caffeine, Netty and Spring whose own javadoc states a thread-safety contract: all 20 documented as not thread-safe were caught, and none of the 22 documented as safe for concurrent use drew a finding of any kind. See [Evidence](#evidence-what-has-been-measured-and-on-whose-code).
 - **CI-ready out of the box** — ship JUnit XML reports, machine-readable JSON, or `AssertionError` fail-gates directly to GitHub Actions, Jenkins, and GitLab CI.
 
 <div align="center">
@@ -45,6 +45,91 @@
 </div>
 
 ---
+
+---
+
+## Evidence: what has been measured, and on whose code
+
+A concurrency detector is easy to make loud and hard to make right, so this project publishes two
+independent bodies of evidence and the denominator each was measured over. Neither is a claim
+about the JVM ecosystem. Both are reproducible from this repository.
+
+### The corpus: 42 classes nobody here wrote
+
+`corpus-eval/` runs `@AsyncTest` over 42 classes from commons-lang3, commons-collections4, Guava,
+Jackson, Caffeine, Netty and Spring whose **own javadoc states a thread-safety contract**. That sentence is the ground truth, quoted in the corpus table with the file and line
+it came from, so a reader can check the classification without trusting this project. A finding on
+a class documented as thread-safe is noise; a finding on one documented as not thread-safe is a
+true positive. Nothing is inferred from how the code looks.
+
+| | Result |
+|---|---|
+| Documented not thread-safe | 20 of 20 detected |
+| Documented thread-safe, with any finding at all | **0 of 22** |
+| Documented thread-safe, with a `VERDICT`-tier HIGH or CRITICAL | **0 of 22** |
+
+The zero was not tuned. Each of the findings that used to sit in that column was traced to
+something the model could not see, filed as an issue, and closed by a rule that names an idiom and
+ships a twin pair in both directions: `ConcurrentReferenceHashMap`'s hint read re-established
+under its own lock, Netty's pool metadata built while the receiver is still exclusive to its
+builder, Jackson's racy single-check cache recognised by how it converges, and Guava's
+`synchronized`-method fields that compile to a flag and no monitor instruction. Detection stayed
+at the full unsafe group through every one of them, which is the number that matters while
+chasing the noise column: a rule that quietens a false positive by weakening detection has not
+fixed anything.
+
+**The eval prints its denominator before any rate**, because a finding count on its own cannot
+tell "no false positive from detector X" apart from "X never ran". In code that records nothing,
+only 5 of the 146 detectors can see anything at all, and saying so is the difference between a
+measurement and a marketing number. A third lane exists for exactly that reason: it records what
+the body did, the way a user following `AsyncTestContext` would, and gives four more detectors a
+denominator over subjects that must fire and twins that must stay silent. It is where HikariCP
+joins the corpus as an eighth library, because a connection pool is the one subject that cannot
+be exercised without something to pool.
+
+The method, the misses, the four platforms it was run on and what the numbers do not support are
+in [the corpus eval](docs/analysis/corpus-eval.md).
+
+### Three real projects, on every release
+
+The library's own CI proves the library builds. It does not prove the library can be *upgraded
+to*, which is a different claim and the one that has actually failed here before. So every release
+is swept through three unrelated projects that use `@AsyncTest` for their own reasons, each with
+its own concurrency surface, its own build system and its own idea of what a hard test is:
+
+| Project | What it is | Concurrency it puts under `@AsyncTest` | Build |
+|---|---|---|---|
+| [**BlindBean**](https://github.com/PIsberg/blindbean) | Fully homomorphic encryption for Java, over Microsoft SEAL through Project Panama's FFM | 7 test classes, 29 methods: ciphertext lifecycle and close races, key rotation under load, the Paillier signed path, and the FHE native bridge, where a data race crosses into C++ and out of the JVM's reach | Maven |
+| [**VibeTags**](https://github.com/PIsberg/vibetags) | AI guardrails for Java: an annotation processor that generates agent-facing rule files from `@AI*` annotations | 5 test classes: the guardrail file writer, the module sidecar, the write cache and the logger, all of which are written concurrently by an annotation processor running inside javac | Maven **and** Gradle, both declared separately and bumped together |
+| [**Skill3**](https://github.com/PIsberg/skill3) | A fully local AI skill relearner | 1 test class, 8 methods: shared `ObjectMapper`, process-resource management, a parallel retrieval path and several stateless-under-concurrency claims | Gradle |
+
+Why these three are worth more than a bigger number of synthetic cases:
+
+- **None of them is a test fixture.** They were written to do a job, and their concurrency is
+  whatever that job required. A fixture written to exercise a detector will exercise it; a
+  homomorphic-encryption library will not politely arrange itself around one.
+- **They span the two failure directions.** BlindBean's FHE bridge is native code where a race
+  produces a segfault rather than a wrong answer, and VibeTags' processor runs inside javac, where
+  the threading model is somebody else's. Both are places a false positive is expensive, because
+  the maintainer cannot easily prove the detector wrong.
+- **Two build systems, and both are run.** VibeTags declares the dependency in Maven and in Gradle
+  separately. Bumping one and not the other leaves its two tiers on different detector engines,
+  so the sweep bumps both or neither, and runs both.
+- **The tag matters, and the sweep knows it.** Most of VibeTags' `@AsyncTest` classes carry
+  `@Tag("e2e")`. A plain `mvn test` reports 957 green tests having run one of its five async
+  classes, which would sign off on a bump that never touched the other four. The sweep runs
+  `-Pe2e` and counts the async classes that actually ran, from the result XML rather than from the
+  console: Gradle prints `BUILD SUCCESSFUL` without listing a single test, so stdout cannot answer
+  the question at all.
+
+The sweep bumps each consumer to the **published** artifact, never to a working-tree build. That
+rule is not pedantry: a poisoned `~/.m2` once made a sweep read the wrong bytes and produce a
+confident, wrong account of which release removed a detector constant. The preflight now compares
+sha1 against Maven Central before anything downstream is believed.
+
+The procedure, the per-repo traps and the numbers from the last sweep are in
+[the regression-test skill](.claude/skills/regression-test/SKILL.md).
+
 
 ## ⚡ Quick Start
 
@@ -150,6 +235,7 @@
 
 ## Table of Contents
 
+- [Evidence: what has been measured, and on whose code](#evidence-what-has-been-measured-and-on-whose-code)
 - [What is async-test?](#what-is-async-test)
 - [Detectors](#detectors)
 - [Configuration](#configuration)

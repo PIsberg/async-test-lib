@@ -2,6 +2,7 @@ package com.example.corpus;
 
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -47,6 +48,119 @@ final class CorpusGates {
         } else {
             theAgentFedSetIsSilentWithoutTheAgent(findings);
         }
+    }
+
+    /**
+     * The recording lane's gates, which are stronger than the unmodified lanes' on purpose.
+     *
+     * <p>There, whether one particular race is observed in one particular run is probabilistic,
+     * so detection is asserted only at the group level. Here a detector's verdict is a function
+     * of the {@code record*} calls the body made, so each subject's stated outcome is a
+     * structural claim and is asserted per subject, in both directions. The false-positive rule
+     * is the same absolute one either way.
+     *
+     * @param findings what the detectors reported
+     * @param lane     the lane that produced them
+     */
+    static void checkRecordingLane(List<CorpusRecorder.Finding> findings, CorpusLane lane) {
+        everyRecordingSubjectIsExercised();
+        everyRecordingFindingIsAttributed(findings);
+        theAgentIsAttachedTheWayThisLaneRequires(lane);
+        everyRecordedDetectorIsExposed(lane);
+        everyReportingDetectorWasExposed(findings, lane);
+        everySubjectGotTheOutcomeItsRecordedCallsOblige(findings);
+    }
+
+    /** A recording test method without a row would be a subject with no stated expectation. */
+    private static void everyRecordingSubjectIsExercised() {
+        Set<String> exercised = Arrays.stream(CorpusRecordingLaneTest.class.getDeclaredMethods())
+                .filter(method -> method.isAnnotationPresent(AsyncTest.class))
+                .map(Method::getName)
+                .collect(Collectors.toUnmodifiableSet());
+        Set<String> declared = Corpus.recordingSubjects().stream()
+                .map(RecordingSubject::testMethod)
+                .collect(Collectors.toUnmodifiableSet());
+
+        assertEquals(declared, exercised,
+                "every @AsyncTest method in the recording lane must have a RecordingSubject row "
+                        + "and every row a method");
+    }
+
+    private static void everyRecordingFindingIsAttributed(List<CorpusRecorder.Finding> findings) {
+        List<String> orphans = findings.stream()
+                .map(CorpusRecorder.Finding::subject)
+                .filter(subject -> Corpus.recordingByTestMethod(subject) == null)
+                .distinct()
+                .toList();
+        assertTrue(orphans.isEmpty(), "findings attributed to no recording subject: " + orphans);
+    }
+
+    /**
+     * A detector the lane records to must be exposed, or its row in the report is a lie.
+     *
+     * <p>This is the structural half the issue asks for. If a detector's feed classification
+     * changes, or a subject is pointed at a detector nothing feeds, the report would print a
+     * denominator for something that could never have spoken - which is the exact failure the
+     * exposure table exists to prevent, reintroduced from the other side.
+     *
+     * @param lane the lane that ran
+     */
+    private static void everyRecordedDetectorIsExposed(CorpusLane lane) {
+        List<String> unexposed = Corpus.recordedDetectors().stream()
+                .filter(type -> !DetectorExposure.isExposed(type, lane))
+                .map(Enum::name)
+                .toList();
+
+        assertTrue(unexposed.isEmpty(),
+                "these detectors are recorded to by a subject in this lane but DetectorExposure "
+                        + "says nothing here can feed them, so every rate the report prints for "
+                        + "them is measured over a denominator that does not exist: " + unexposed);
+    }
+
+    /**
+     * Each subject got the outcome its own recorded calls oblige, in both directions.
+     *
+     * <p>Reported together rather than one assertion per subject: a change to a detector's model
+     * usually moves several rows at once, and seeing which pairs broke is the difference between
+     * a diagnosis and a rerun.
+     *
+     * @param findings what the detectors reported
+     */
+    private static void everySubjectGotTheOutcomeItsRecordedCallsOblige(
+            List<CorpusRecorder.Finding> findings) {
+        List<String> wrong = new ArrayList<>();
+        for (RecordingSubject subject : Corpus.recordingSubjects()) {
+            String detectorClass = DetectorExposure.classOf(subject.detector());
+            boolean fired = findings.stream()
+                    .anyMatch(finding -> finding.subject().equals(subject.testMethod())
+                            && finding.detector().equals(detectorClass));
+
+            boolean shouldFire = subject.expectation() == RecordingSubject.Expectation.MUST_FIRE;
+            if (fired == shouldFire) {
+                continue;
+            }
+            wrong.add((shouldFire ? "SILENT but must fire: " : "FIRED but must stay silent: ")
+                    + subject.testMethod() + " [" + detectorClass + "] - "
+                    + subject.rationale()
+                    + (fired ? "; it said: " + evidenceFor(findings, subject, detectorClass) : ""));
+        }
+
+        assertTrue(wrong.isEmpty(),
+                "the recording lane's expectations follow from the calls each body makes, not "
+                        + "from how the scheduler interleaved them, so every one of these is a "
+                        + "change in what the detector concludes: " + String.join(" | ", wrong));
+    }
+
+    /** {@return what the detector said about {@code subject}, for a failure message} */
+    private static String evidenceFor(List<CorpusRecorder.Finding> findings,
+                                      RecordingSubject subject,
+                                      String detectorClass) {
+        return findings.stream()
+                .filter(finding -> finding.subject().equals(subject.testMethod())
+                        && finding.detector().equals(detectorClass))
+                .map(finding -> finding.tier() + "/" + finding.severity() + " " + finding.message())
+                .findFirst()
+                .orElse("-");
     }
 
     /** A test method without a corpus row would be a subject with no documented contract. */
@@ -145,8 +259,10 @@ final class CorpusGates {
                             + "the order Surefire happens to run the test classes in");
         } else {
             assertFalse(launched,
-                    "the control lane must have nothing attached; a -javaagent flag here would "
-                            + "make its silence meaningless");
+                    "this lane must have nothing attached. In the control lane a -javaagent flag "
+                            + "would make its silence meaningless; in the recording lane it would "
+                            + "make every finding ambiguous between the agent's stream and the "
+                            + "body's own recorded calls");
         }
     }
 

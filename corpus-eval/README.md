@@ -1,7 +1,7 @@
 # corpus-eval
 
-Measures what the 142 detectors report on 42 third-party classes with a documented
-thread-safety contract, and how many of the 142 the run could feed at all. The write-up, with the
+Measures what the 146 detectors report on 42 third-party classes with a documented
+thread-safety contract, and how many of the 146 the run could feed at all. The write-up, with the
 numbers and what they do and do not support, is
 [docs/analysis/corpus-eval.md](../docs/analysis/corpus-eval.md).
 
@@ -18,29 +18,33 @@ mvn install -DskipTests -Djacoco.skip=true    # so the module can resolve the cu
 mvn -f corpus-eval/pom.xml test
 ```
 
-A run executes the same subjects twice, and writes one report per lane under
-`target/corpus-eval/`:
+A run executes three lanes and writes one report per lane under `target/corpus-eval/`:
 
 | Lane | Report | What it is |
 |---|---|---|
 | `agent-on` | `corpus-eval.md` | The agent attached as `fields=true,collections=true`. Every number the write-up quotes comes from here. |
 | `agent-off` | `corpus-eval-agent-off.md` | The same subjects with nothing attached. The control: `DetectorFeeds` says the two agent-fed detectors have no input without the agent, so this lane must observe nothing from them, and `CorpusGates` asserts it. |
+| `recording` | `corpus-eval-recording.md` | The same libraries, with bodies that call the recording API. A different measurement over a different denominator, which is why it writes its own report and is never merged into the other two. |
 
 Those files are the source of truth for a given run; the document under `docs/` is a copy of one.
 
 The attached lane uses `-javaagent:` at JVM startup rather than the library's self-attach, and
-`CorpusGates` fails the run if that changes. Self-attach happens partway through the run and weaves
-only what loads after it, so which subjects the agent can see depends on which test class Surefire
-runs first. That ordering differs between a developer machine and a CI runner, and it moved this
-eval from 20 of 20 documented-unsafe subjects detected to 6 of 20 with nothing else changed;
-`-Dsurefire.runOrder=reversealphabetical` reproduces it. A launch flag takes the file order out of
-the measurement.
+`CorpusGates` fails the run if that changes. This module is where the self-attach defect in
+[#321](https://github.com/PIsberg/async-test-lib/issues/321) was measured: the attach's own
+retransformation pass loads the classes it describes, those loads were handed to no transformer
+and covered by no snapshot, and detection moved from 20 of 20 documented-unsafe subjects to 6 of
+20 with nothing else changed. The agent now discovers with `DiscoveryStrategy.Reiterating` and
+reports any class it never consulted, so the underlying gap is closed - but a launch flag still
+takes the file order out of the measurement entirely, and that is worth keeping for a number
+other people are asked to trust.
 
 ## Exposure, and why the reports lead with it
 
-A finding count with no denominator cannot be read. The corpus records nothing by hand, so 137 of
-the 142 detectors are never fed here at all, and their zero means "never ran", not "looked and
-found nothing". Each report therefore prints, before any rate: how many detectors the lane could
+A finding count with no denominator cannot be read. The two unmodified lanes record nothing by
+hand, so 141 of the 146 detectors are never fed there at all, and their zero means "never ran",
+not "looked and found nothing". The recording lane exists to move a named handful out of that
+column, and it counts a detector as exposed only if a subject actually records to it - claiming
+the whole feed would trade one unreadable denominator for another. Each report therefore prints, before any rate: how many detectors the lane could
 feed, split by `DetectorFeed`, and per exposed detector how many documented-safe and
 documented-unsafe subjects it was exposed to. `CorpusGates` fails the run if a detector reports
 that the feed table says cannot be fed, so those denominators are checked rather than asserted.
@@ -74,3 +78,26 @@ by the test body itself is reported. It runs in the attached lane only.
    documented-thread-safe subject draws a VERDICT-tier HIGH or CRITICAL finding, if a detector the
    feed table says cannot be fed reports anyway, or if the control lane hears from the agent-fed
    pair.
+
+## Adding a recording-lane subject
+
+Different rules, because the body cooperates and the class contract is no longer the ground truth.
+
+1. Add subjects **in pairs**. One direction proves nothing: a `MUST_FIRE` row alone is passed by a
+   detector that fires on everything, and a `MUST_STAY_SILENT` row alone by one that was never
+   wired up. Both halves should hand the detector the same shape of evidence and differ only in
+   the thing it is supposed to notice.
+2. Add two `RecordingSubject` rows to `Corpus.java` naming the `DetectorType`, the expectation and
+   the rationale. The rationale is printed in the report and in the failure message, so write it
+   as the argument for why that outcome follows from the recorded calls - not as a restatement of
+   the expectation.
+3. Add the `@AsyncTest` methods to `CorpusRecordingLaneTest`, named exactly as the rows'
+   `testMethod`. Call `CorpusRecorder.countBodyExecution()` first, and register a shared subject
+   once for the run rather than per worker: a per-thread `registerX` scatters one subject across
+   duplicate entries and the cross-thread contention becomes invisible exactly when it is real.
+4. Check the expectation really is structural. If it depends on a particular interleaving being
+   observed, it belongs in the unmodified lanes' group-level gate instead - a flaky gate is worse
+   than no gate.
+5. Run it. `CorpusGates.checkRecordingLane` fails if a method has no row, if a row has no method,
+   if a recorded-to detector is not exposed, or if any subject's outcome differs from what its
+   row states.

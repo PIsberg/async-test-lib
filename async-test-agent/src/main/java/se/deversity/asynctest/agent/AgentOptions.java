@@ -184,7 +184,7 @@ final class AgentOptions {
      * way a class that keeps its state in a {@code HashMap} is visible at all, because the map's
      * own writes happen in {@code java.util}, where nothing is woven.
      *
-     * @since 1.10.0
+     * @since 1.9.8
      */
     boolean collections() {
         return collections;

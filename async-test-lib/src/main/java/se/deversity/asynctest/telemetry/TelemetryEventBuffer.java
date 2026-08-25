@@ -84,7 +84,7 @@ public final class TelemetryEventBuffer {
          * @param isWrite         true if it was a write access
          * @param lockFingerprint identifies the set of locks the producer held at the access
          * @param volatileField   whether the accessed field is declared {@code volatile}
-         * @since 1.10.0
+         * @since 1.9.8
          */
         default void onEvent(long threadId, @Nullable String targetField, boolean isWrite,
                              long lockFingerprint, boolean volatileField) {
@@ -101,7 +101,7 @@ public final class TelemetryEventBuffer {
          * @param volatileField   whether the field is declared {@code volatile}
          * @param constantTag     the constant stored, or {@code Integer.MIN_VALUE} for "not a
          *                        knowable constant"
-         * @since 1.10.0
+         * @since 1.9.8
          */
         default void onEvent(long threadId, @Nullable String targetField, boolean isWrite,
                              long lockFingerprint, boolean volatileField, int constantTag) {
@@ -118,7 +118,7 @@ public final class TelemetryEventBuffer {
          * @param volatileField   whether the field is declared {@code volatile}
          * @param constantTag     the constant stored, {@code Integer.MIN_VALUE} for none
          * @param identity        {@code System.identityHashCode} of the owner, 0 for statics
-         * @since 1.10.0
+         * @since 1.9.8
          */
         default void onEvent(long threadId, @Nullable String targetField, boolean isWrite,
                              long lockFingerprint, boolean volatileField, int constantTag,
@@ -137,7 +137,7 @@ public final class TelemetryEventBuffer {
          * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
          * @param identity          identity hash of the owner, 0 for statics
          * @param afterVolatileRead whether a volatile field of the owner was read first
-         * @since 1.10.0
+         * @since 1.9.8
          */
         default void onEvent(long threadId, @Nullable String targetField, boolean isWrite,
                              long lockFingerprint, boolean volatileField, int constantTag,
@@ -166,7 +166,7 @@ public final class TelemetryEventBuffer {
          * @param afterVolatileRead whether a volatile field of the owner was read first
          * @param ownMonitor        identity hash of the receiver when its monitor was held, else 0
          * @param methodMonitor     identity hash of the synchronized method's monitor, else 0
-         * @since 1.10.0
+         * @since 1.9.8
          */
         default void onEvent(long threadId, @Nullable String targetField, boolean isWrite,
                              long lockFingerprint, boolean volatileField, int constantTag,
@@ -174,6 +174,36 @@ public final class TelemetryEventBuffer {
                              int methodMonitor) {
             onEvent(threadId, targetField, isWrite, lockFingerprint, volatileField, constantTag,
                     identity, afterVolatileRead);
+        }
+
+        /**
+         * Invoked for a drained event, also carrying the identity of the reference it stored.
+         *
+         * <p>{@code default} for the same reason as every overload above: implementations are
+         * lambdas, and a second abstract method would break all of them. Not overriding it keeps
+         * the previous behaviour exactly, which also means an older agent - one whose weaver does
+         * not capture stored values - degrades to it rather than to something wrong.
+         *
+         * @param threadId          producer thread
+         * @param targetField       field or method identifier
+         * @param isWrite           true for a write
+         * @param lockFingerprint   locks held at the access
+         * @param volatileField     whether the field is declared {@code volatile}
+         * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
+         * @param identity          identity hash of the owner, 0 for statics
+         * @param afterVolatileRead whether a volatile field of the owner was read first
+         * @param ownMonitor        identity hash of the receiver when its monitor was held, else 0
+         * @param methodMonitor     identity hash of the synchronized method's monitor, else 0
+         * @param storedIdentity    identity hash of the reference this write stored, 0 when the
+         *                          write stored no reference or the weaver could not reach it
+         * @since 1.9.8
+         */
+        default void onEvent(long threadId, @Nullable String targetField, boolean isWrite,
+                             long lockFingerprint, boolean volatileField, int constantTag,
+                             int identity, boolean afterVolatileRead, int ownMonitor,
+                             int methodMonitor, int storedIdentity) {
+            onEvent(threadId, targetField, isWrite, lockFingerprint, volatileField, constantTag,
+                    identity, afterVolatileRead, ownMonitor, methodMonitor);
         }
     }
 
@@ -193,6 +223,7 @@ public final class TelemetryEventBuffer {
         boolean afterVolatileRead;
         int ownMonitor;
         int methodMonitor;
+        int storedIdentity;
     }
 
     private static final VarHandle SEQ_VH;
@@ -296,7 +327,7 @@ public final class TelemetryEventBuffer {
      * @param isWrite         {@code true} for a write access, {@code false} for a read
      * @param lockFingerprint identifies the locks held at the access, 0 for none
      * @param volatileField   whether the accessed field is declared {@code volatile}
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public void publish(long threadId, String targetField, boolean isWrite, long lockFingerprint,
                         boolean volatileField) {
@@ -313,7 +344,7 @@ public final class TelemetryEventBuffer {
      * @param volatileField   whether the accessed field is declared {@code volatile}
      * @param constantTag     the constant this write stored, or {@code Integer.MIN_VALUE} when the
      *                        write stored something the weaver could not read as a constant
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public void publish(long threadId, String targetField, boolean isWrite, long lockFingerprint,
                         boolean volatileField, int constantTag) {
@@ -330,7 +361,7 @@ public final class TelemetryEventBuffer {
      * @param volatileField   whether the accessed field is declared {@code volatile}
      * @param constantTag     the constant this write stored, {@code Integer.MIN_VALUE} for none
      * @param identity        {@code System.identityHashCode} of the owning instance, 0 for statics
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public void publish(long threadId, String targetField, boolean isWrite, long lockFingerprint,
                         boolean volatileField, int constantTag, int identity) {
@@ -349,7 +380,7 @@ public final class TelemetryEventBuffer {
      * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
      * @param identity          identity hash of the owner, 0 for statics
      * @param afterVolatileRead whether a volatile field of the owner was read first
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public void publish(long threadId, String targetField, boolean isWrite, long lockFingerprint,
                         boolean volatileField, int constantTag, int identity,
@@ -371,11 +402,44 @@ public final class TelemetryEventBuffer {
      * @param afterVolatileRead whether a volatile field of the owner was read first
      * @param ownMonitor        identity hash of the receiver when its monitor was held, else 0
      * @param methodMonitor     identity hash of the enclosing synchronized method's monitor, else 0
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public void publish(long threadId, String targetField, boolean isWrite, long lockFingerprint,
                         boolean volatileField, int constantTag, int identity,
                         boolean afterVolatileRead, int ownMonitor, int methodMonitor) {
+        publish(threadId, targetField, isWrite, lockFingerprint, volatileField, constantTag,
+                identity, afterVolatileRead, ownMonitor, methodMonitor, 0);
+    }
+
+    /**
+     * Publishes an event that also carries the identity of the reference it stored.
+     *
+     * <p>An access stream that carries no values cannot tell an idempotent value apart from a
+     * side effect, and that is the whole blind spot in the settled-cache excuse: a double-submit
+     * shaped like a view cache - {@code if (job == null) job = submit()} - converges on the field
+     * exactly like a cache does, because convergence is a property of the field and the defect is
+     * a property of what was stored. One int of value evidence is what lets the analysis ask
+     * whether the published object then went quiet, which is what an idempotent value does and a
+     * live job does not.
+     *
+     * @param threadId          producer thread
+     * @param targetField       field or method identifier
+     * @param isWrite           {@code true} for a write access
+     * @param lockFingerprint   locks held at the access, 0 for none
+     * @param volatileField     whether the accessed field is declared {@code volatile}
+     * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
+     * @param identity          identity hash of the owner, 0 for statics
+     * @param afterVolatileRead whether a volatile field of the owner was read first
+     * @param ownMonitor        identity hash of the receiver when its monitor was held, else 0
+     * @param methodMonitor     identity hash of the enclosing synchronized method's monitor, else 0
+     * @param storedIdentity    identity hash of the reference this write stored, 0 when the write
+     *                          stored no reference or the weaver could not reach it
+     * @since 1.9.8
+     */
+    public void publish(long threadId, String targetField, boolean isWrite, long lockFingerprint,
+                        boolean volatileField, int constantTag, int identity,
+                        boolean afterVolatileRead, int ownMonitor, int methodMonitor,
+                        int storedIdentity) {
         long fullSinceNanos = 0L;
         int spins = 0;
         for (;;) {
@@ -419,6 +483,7 @@ public final class TelemetryEventBuffer {
                 event.afterVolatileRead = afterVolatileRead;
                 event.ownMonitor = ownMonitor;
                 event.methodMonitor = methodMonitor;
+                event.storedIdentity = storedIdentity;
                 // Release fence: consumer will not observe the event until this store completes.
                 SEQ_VH.setRelease(event, seq);
                 return;
@@ -460,7 +525,8 @@ public final class TelemetryEventBuffer {
             }
             callback.onEvent(event.threadId, event.targetField, event.isWrite,
                     event.lockFingerprint, event.volatileField, event.constantTag, event.identity,
-                    event.afterVolatileRead, event.ownMonitor, event.methodMonitor);
+                    event.afterVolatileRead, event.ownMonitor, event.methodMonitor,
+                    event.storedIdentity);
             localCursor = next;
             next++;
             count++;

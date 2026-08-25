@@ -111,7 +111,7 @@ public final class TelemetryRegistry {
      * @param qualifiedName combined {@code declaringClass.field} identifier
      * @param isWrite       {@code true} for a write access
      * @param volatileField whether the field is declared {@code volatile}
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public static void recordAccess(long threadId, String qualifiedName, boolean isWrite,
                                     boolean volatileField) {
@@ -132,7 +132,7 @@ public final class TelemetryRegistry {
      * @param isWrite       {@code true} for a write access
      * @param volatileField whether the field is declared {@code volatile}
      * @param constantTag   the constant stored, or {@code Integer.MIN_VALUE} for "not a constant"
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public static void recordAccess(long threadId, String qualifiedName, boolean isWrite,
                                     boolean volatileField, int constantTag) {
@@ -153,7 +153,7 @@ public final class TelemetryRegistry {
      * @param isWrite       {@code true} for a write access
      * @param volatileField whether the field is declared {@code volatile}
      * @param constantTag   the constant stored, or {@code Integer.MIN_VALUE} for "not a constant"
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public static void recordAccess(int identity, long threadId, String qualifiedName,
                                     boolean isWrite, boolean volatileField, int constantTag) {
@@ -175,7 +175,7 @@ public final class TelemetryRegistry {
      * @param volatileField     whether the field is declared {@code volatile}
      * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
      * @param afterVolatileRead whether a volatile field of the owner was read first
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public static void recordAccess(int identity, long threadId, String qualifiedName,
                                     boolean isWrite, boolean volatileField, int constantTag,
@@ -219,7 +219,7 @@ public final class TelemetryRegistry {
      * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
      * @param afterVolatileRead whether a volatile field of the owner was read first
      * @param staticField       whether the field is static, so its identity stays 0
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public static void recordAccess(@Nullable Object receiver, @Nullable Object methodMonitor,
                                     long threadId, String qualifiedName, boolean isWrite,
@@ -234,6 +234,53 @@ public final class TelemetryRegistry {
         int method = methodMonitor == null ? 0 : System.identityHashCode(methodMonitor);
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
                 volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method);
+    }
+    /**
+     * Records a field access, with the reference the write stored in hand.
+     *
+     * <p>The one thing an access stream cannot say is <em>what</em> was stored, and that is the
+     * whole blind spot in the settled-cache excuse. A double-submit shaped like a view cache -
+     * {@code if (job == null) job = submit()} - converges on the field exactly like a cache does,
+     * because convergence is a property of the field and the defect is a property of the payload.
+     * Given the stored reference's identity, the analysis can ask whether the published object
+     * then went quiet, which is what an idempotent value does and a live job does not.
+     *
+     * <p>Only its identity hash travels; like the receiver, the value itself is never retained.
+     * {@code stored} is {@code null} for a read, for a primitive write, and wherever the weaver
+     * could not reach the value without disturbing the operand stack, and a 0 identity means "not
+     * known" rather than "not immutable" - the analysis keeps its previous answer there, because
+     * absence of evidence is not evidence.
+     *
+     * @param receiver          the object the field belongs to, or the declaring class for a
+     *                          static field, or {@code null} when the weaver had neither
+     * @param stored            the reference this write put in the field, or {@code null}
+     * @param methodMonitor     the monitor of the enclosing {@code synchronized} method, else
+     *                          {@code null}
+     * @param threadId          {@code Thread.currentThread().threadId()}
+     * @param qualifiedName     combined {@code declaringClass.field} identifier
+     * @param isWrite           {@code true} for a write access
+     * @param volatileField     whether the field is declared {@code volatile}
+     * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
+     * @param afterVolatileRead whether a volatile field of the owner was read first
+     * @param staticField       whether the field is static, so its identity stays 0
+     * @since 1.9.8
+     */
+    public static void recordAccess(@Nullable Object receiver, @Nullable Object stored,
+                                    @Nullable Object methodMonitor,
+                                    long threadId, String qualifiedName, boolean isWrite,
+                                    boolean volatileField, int constantTag,
+                                    boolean afterVolatileRead, boolean staticField) {
+        if (STOPPED.get()) {
+            return;
+        }
+        int identity = staticField || receiver == null ? 0 : System.identityHashCode(receiver);
+        int ownMonitor = receiver != null && Thread.holdsLock(receiver)
+                ? System.identityHashCode(receiver) : 0;
+        int method = methodMonitor == null ? 0 : System.identityHashCode(methodMonitor);
+        int storedIdentity = stored == null ? 0 : System.identityHashCode(stored);
+        BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
+                volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method,
+                storedIdentity);
     }
 
     /**
@@ -285,7 +332,7 @@ public final class TelemetryRegistry {
      * it. The fact is static, so recording it repeatedly is harmless and the set only grows.
      *
      * @param qualifiedName the plain field a volatile write publishes
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public static void publishedByVolatile(String qualifiedName) {
         PUBLISHED_BY_VOLATILE.add(qualifiedName);
@@ -301,7 +348,7 @@ public final class TelemetryRegistry {
      * The weaver emits this where it sees the binding, which is a static fact about the class.
      *
      * @param qualifiedName the field bound to atomic access
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public static void atomicallyManaged(String qualifiedName) {
         ATOMICALLY_MANAGED.add(qualifiedName);
@@ -311,7 +358,7 @@ public final class TelemetryRegistry {
      * {@return whether {@code qualifiedName} is mutated through atomic operations}
      *
      * @param qualifiedName the field to ask about
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public static boolean isAtomicallyManaged(String qualifiedName) {
         return ATOMICALLY_MANAGED.contains(qualifiedName);
@@ -321,7 +368,7 @@ public final class TelemetryRegistry {
      * {@return whether a volatile write is known to publish {@code qualifiedName}}
      *
      * @param qualifiedName the field to ask about
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public static boolean isPublishedByVolatile(String qualifiedName) {
         return PUBLISHED_BY_VOLATILE.contains(qualifiedName);
@@ -471,7 +518,7 @@ public final class TelemetryRegistry {
      * <p>Cumulative for the life of the JVM and never reset, so a harness that reports it should
      * read it once at the end of the run.
      *
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public static long droppedEvents() {
         return BUFFER.droppedCount();
@@ -487,7 +534,7 @@ public final class TelemetryRegistry {
      *
      * <p>Cumulative for the life of the JVM.
      *
-     * @since 1.10.0
+     * @since 1.9.8
      */
     public static long publishedEvents() {
         return BUFFER.publishedCount();

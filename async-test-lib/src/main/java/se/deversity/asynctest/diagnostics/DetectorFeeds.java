@@ -30,7 +30,7 @@ import java.util.Set;
  * {@link DetectorFeed#ZERO_CONFIG} rows carry the same weight a {@code PROMPT} trust tier does:
  * stated, reviewed, and cheap to challenge, with the deciding source named in the catalog.
  *
- * @since 1.10.0
+ * @since 1.9.8
  */
 @AIKeepInSync(
     mirrors = {

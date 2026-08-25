@@ -360,6 +360,21 @@ class DetectorAccuracyEvalTest {
                 false, Integer.MIN_VALUE, identity);
     }
 
+    /**
+     * A write that stores a named reference, so the value evidence #326 added is exercised.
+     *
+     * @param validator      the validator under test
+     * @param field          the field written
+     * @param threadId       the writing thread
+     * @param identity       identity of the object the field belongs to
+     * @param storedIdentity identity of the reference stored, as the weaver would report it
+     */
+    private static void agentStore(AtomicityValidator validator, String field, long threadId,
+                                   int identity, int storedIdentity) {
+        validator.recordFieldAccessUnderLocks(field, null, true, threadId, NO_LOCKS, 0, 0,
+                false, Integer.MIN_VALUE, identity, storedIdentity);
+    }
+
     @Test
     @DisplayName("atomicity: a hint read re-read under the write lock is silent (#311)")
     void atomicityHintReadsReReadUnderTheWriteLockAreSilent() {
@@ -577,6 +592,96 @@ class DetectorAccuracyEvalTest {
         assertTrue(validator.analyze().hasIssues(),
                 "One quiet round is not convergence, it is a short run. Silence here must be "
                         + "earned by evidence the field settled, so the default stays a finding");
+    }
+
+
+    /**
+     * A view cache stores a value that then goes quiet, and stays excused (#326).
+     *
+     * <p>The silent half of the pair. Two threads miss the check and both create a view; one
+     * store is lost, costing one extra object. Neither published view is written again, which is
+     * what an effectively immutable value looks like in the access stream, so the settle excuse
+     * that #313 established still applies with the value evidence in hand.
+     */
+    @Test
+    @DisplayName("atomicity: a settled cache whose stored value goes quiet stays silent (#326)")
+    void atomicitySettledCacheWithQuiescentValueIsSilent() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.markInvocationStart();
+        agentAccess(validator, "holder.view", false, 1, NO_LOCKS, 60);
+        agentAccess(validator, "holder.view", false, 2, NO_LOCKS, 60);
+        agentStore(validator, "holder.view", 1, 60, 601);
+        agentStore(validator, "holder.view", 2, 60, 602);
+        // Both views are built and never touched again; the holder keeps being read.
+        for (int round = 0; round < 2; round++) {
+            validator.markInvocationStart();
+            agentAccess(validator, "holder.view", false, 1, NO_LOCKS, 60);
+            agentAccess(validator, "holder.view", false, 2, NO_LOCKS, 60);
+        }
+        assertFalse(validator.analyze().hasIssues(),
+                "The field converged and neither published view was ever written again, which is "
+                        + "what an idempotent value looks like. The #313 excuse is still owed, "
+                        + "and the value evidence #326 adds must not take it away");
+    }
+
+    /**
+     * A double-submit converges on the field and keeps mutating its payload, and fires (#326).
+     *
+     * <p>The loud half, and the blind spot #326 named. The access stream on {@code holder.job} is
+     * identical to the view cache above - same miss checks, same racing stores, same settled
+     * reads afterwards - because convergence is a property of the field. What differs is what was
+     * stored: the submitted job keeps writing its own state after publication, so it was a side
+     * effect rather than a value, and the work was done twice.
+     */
+    @Test
+    @DisplayName("atomicity: a settled cache whose stored value keeps mutating fires (#326)")
+    void atomicityDoubleSubmitShapedLikeACacheStillFires() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.markInvocationStart();
+        agentAccess(validator, "holder.job", false, 1, NO_LOCKS, 70);
+        agentAccess(validator, "holder.job", false, 2, NO_LOCKS, 70);
+        agentStore(validator, "holder.job", 1, 70, 701);
+        agentStore(validator, "holder.job", 2, 70, 702);
+        for (int round = 0; round < 2; round++) {
+            validator.markInvocationStart();
+            agentAccess(validator, "holder.job", false, 1, NO_LOCKS, 70);
+            agentAccess(validator, "holder.job", false, 2, NO_LOCKS, 70);
+            // The losing submission is still running: its own state moves after publication,
+            // which no idempotent value's does.
+            agentAccess(validator, "job.state", true, 1, NO_LOCKS, 701);
+        }
+        assertTrue(validator.analyze().hasIssues(),
+                "The field settled exactly as a view cache does, so convergence alone excused a "
+                        + "double-submit: two threads both missed and both submitted, and the "
+                        + "extra job kept running. A published value that keeps being written is "
+                        + "a side effect, not an idempotent value");
+    }
+
+    /**
+     * With no value evidence the answer is the one #313 gave, not a stricter one.
+     *
+     * <p>A stored identity of 0 means the weaver could not reach the value - a primitive write,
+     * an older agent, or a payload of a type the agent does not weave, which includes every JDK
+     * class. Absence of evidence must not become a finding, or the corpus's twenty-two
+     * documented-safe subjects would go loud again on nothing at all.
+     */
+    @Test
+    @DisplayName("atomicity: no value evidence keeps the previous answer (#326)")
+    void atomicityWithoutValueEvidenceKeepsTheSettledExcuse() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.markInvocationStart();
+        agentAccess(validator, "holder.opaque", false, 1, NO_LOCKS, 80);
+        agentAccess(validator, "holder.opaque", false, 2, NO_LOCKS, 80);
+        agentAccess(validator, "holder.opaque", true, 1, NO_LOCKS, 80);
+        agentAccess(validator, "holder.opaque", true, 2, NO_LOCKS, 80);
+        for (int round = 0; round < 2; round++) {
+            validator.markInvocationStart();
+            agentAccess(validator, "holder.opaque", false, 1, NO_LOCKS, 80);
+            agentAccess(validator, "holder.opaque", false, 2, NO_LOCKS, 80);
+        }
+        assertFalse(validator.analyze().hasIssues(),
+                "Nothing is known about what was stored, and nothing known must not become a "
+                        + "finding. The rule only narrows where there is evidence to narrow with");
     }
 
     // ---- SharedMessageDigestDetector ----
