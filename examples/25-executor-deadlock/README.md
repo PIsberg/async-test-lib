@@ -36,13 +36,35 @@ the idle executor thread without conflict.
 2. Remove `@Disabled` from `testGenerateReport_concurrent_detectsExecutorDeadlock`.
 3. Run the test.
 
-`ExecutorDeadlockDetector` will report:
+`ExecutorDeadlockDetector` will report, and `failOn = FailOn.LOW` will turn that report into a
+failed run:
 
 ```
 EXECUTOR SELF-DEADLOCK DETECTED:
-  - report-single-thread-executor: all 1 worker(s) are waiting on sibling tasks while 1 task(s) remain queued
+  - report-executor: all 1 worker(s) are waiting on sibling tasks while 16 task(s) remain queued
   Fix: do not wait on sibling tasks from the same bounded executor
 ```
+
+## How the Detector Is Fed
+
+`ExecutorDeadlockDetector` is **recording-fed**. It needs four facts, and only one of them is
+interesting: that a *running* task has started waiting on a sibling. Nothing outside the code can
+supply that, which is why `ReportGenerationService.observeExecutor` installs the hooks inside the
+service; they default to no-ops, so the production path never touches the test library.
+
+The detector also has to be **the one the run owns**, from
+`AsyncTestContext.executorDeadlockDetector()`. Before issue #346 this demonstration recorded a
+lifecycle by hand into a locally constructed detector and asserted on it, without ever calling the
+service. It proved the detector's arithmetic, which was never in doubt, and told the library
+nothing, so `failOn` had no finding to gate on and enabling the demonstration left it green.
+
+## One thing this example does that production would not
+
+`generateReport()` waits with a timeout (`SUBTASK_TIMEOUT_MS`, 100ms) rather than an unbounded
+`Future.get()`. The shape this is drawn from has no timeout and the thread is gone for the life of
+the process. With a timeout, the request fails instead - every time, on every report - which is the
+same bug wearing a different symptom, and it is the difference between a demonstration and a hung
+build.
 
 ## The Solution
 
