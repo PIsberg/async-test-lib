@@ -73,10 +73,10 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="232.0" y="81.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">log: Logger</text>
   <text x="232.0" y="96.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">AGENT_ABSENCE_LOGGED: java…</text>
   <text x="232.0" y="111.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DAEMON_HYGIENE_INERT_LOGGE…</text>
-  <text x="232.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">TIMEOUT_MULTIPLIER_PROPERT…</text>
-  <text x="232.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">TIMEOUT_MULTIPLIER_ENV_VAR…</text>
-  <text x="232.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">QUIESCE_GRACE_PROPERTY: St…</text>
-  <text x="232.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+2 more)</text>
+  <text x="232.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DEADLOCK_INERT_LOGGED: jav…</text>
+  <text x="232.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">LIVELOCK_INERT_LOGGED: jav…</text>
+  <text x="232.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">TIMEOUT_MULTIPLIER_PROPERT…</text>
+  <text x="232.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+4 more)</text>
   <line x1="224.0" y1="185.0" x2="404.0" y2="185.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="232.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">execute(ReflectiveInvocati…</text>
   <text x="232.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">resolveTimeoutMultiplier()…</text>
@@ -84,7 +84,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="232.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">createBarrier(int, long, b…</text>
   <text x="232.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">runSingleInvocationRound(R…</text>
   <text x="232.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">buildMultiFailureError(Lis…</text>
-  <text x="232.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+15 more)</text>
+  <text x="232.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+16 more)</text>
 </g>
 <g id="LicenseGuard">
   <title>LicenseGuard [CLASS]</title>
