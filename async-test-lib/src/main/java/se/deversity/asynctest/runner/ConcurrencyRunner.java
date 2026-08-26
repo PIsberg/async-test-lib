@@ -135,6 +135,22 @@ public class ConcurrencyRunner {
     static final java.util.concurrent.atomic.AtomicBoolean DEADLOCK_INERT_LOGGED =
             new java.util.concurrent.atomic.AtomicBoolean();
 
+
+    /**
+     * Latches the one-shot announcement that {@code LivelockDetector} cannot see the runner's own
+     * workers.
+     *
+     * <p>The third of the JMX-fed detectors, and inert for the same reason as the two above:
+     * {@code captureSnapshot()} filters {@code ThreadMXBean.dumpAllThreads} down to the ids of the
+     * threads that called it, and a virtual thread is not in that dump, so the history it analyzes
+     * stays empty. {@code detectLivelocks} is {@code false} on the annotation but {@code detectAll}
+     * turns it on, which is the default, so this is not a rare configuration.
+     *
+     * <p>Package-visible so the log-contract test can rearm it.
+     */
+    static final java.util.concurrent.atomic.AtomicBoolean LIVELOCK_INERT_LOGGED =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
     /** See {@link #resolveTimeoutMultiplier()}. */
     private static final String TIMEOUT_MULTIPLIER_PROPERTY = "async-test.timeout.multiplier";
 
@@ -295,6 +311,20 @@ public class ConcurrencyRunner {
                     + "@AsyncTest(useVirtualThreads = false) on the test whose deadlock is "
                     + "between the runner's own threads, or read a clean report as 'not "
                     + "observed' rather than 'no deadlock'\"",
+                invocationContext.getExecutable().getName());
+        }
+
+        // The livelock detector is enabled and the runner is on virtual threads, so the thread
+        // dump it filters cannot contain the workers it is filtering for. Said once per JVM at
+        // INFO, for the same reason as the announcements above.
+        if (config.detectLivelocks && config.useVirtualThreads
+                && LIVELOCK_INERT_LOGGED.compareAndSet(false, true)) {
+            log.info("runner.detector.inert test={} detector=LivelockDetector "
+                    + "reason=\"dumpAllThreads() does not report virtual threads, and "
+                    + "useVirtualThreads=true, so the snapshots this detector filters for are "
+                    + "never in the dump\" hint=\"set @AsyncTest(useVirtualThreads = false) on "
+                    + "the test whose threads you want watched, or read a clean report as 'not "
+                    + "observed' rather than 'no livelock'\"",
                 invocationContext.getExecutable().getName());
         }
 

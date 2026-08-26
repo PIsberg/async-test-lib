@@ -22,6 +22,22 @@ import java.util.concurrent.ConcurrentHashMap;
  * - CPU usage (via getThreadCpuTime)
  * - Lock contention patterns
  * - Detection of circular waiting without actual deadlock
+ *
+ * <p><strong>What it cannot see: virtual threads.</strong> {@link #captureSnapshot()} takes
+ * {@code ThreadMXBean.dumpAllThreads} and keeps only the threads that have called it, which is
+ * how it learns which threads are running the test. A virtual thread is not in that dump, so with
+ * {@code @AsyncTest(useVirtualThreads = true)}, the default, the history stays empty and
+ * {@link #analyzeLivelocks()} returns a clean report whatever the code does. The runner says so
+ * once per JVM at INFO ({@code runner.detector.inert}). Setting
+ * {@code @AsyncTest(useVirtualThreads = false)} puts the workers in the dump.
+ *
+ * <p><strong>And what it will not report: a busy spin.</strong> {@code madeProgress} returns true
+ * for any RUNNABLE thread, deliberately, because a busy worker's measured CPU time can look flat
+ * when several snapshots land inside one clock tick and reporting those produced findings against
+ * healthy JVMs. A spin-retry loop that burns attempts without completing work is therefore not a
+ * finding here; the conditions that are are starvation, meaning BLOCKED or WAITING with flat CPU
+ * time, and rapid state cycling. {@code examples/07-livelock} measures the retry burn directly
+ * instead, and says so.
  */
 public class LivelockDetector {
     

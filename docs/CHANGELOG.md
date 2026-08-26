@@ -70,7 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are still printed in full above. This is what split #363's bucket of 21 into nine hangs that had
   a finding waiting and five that had nothing (#363).
 
-- **Two detectors were inert under the default runner, and now say so.** `DeadlockDetector` asks
+- **Three detectors were inert under the default runner, and now say so.** `DeadlockDetector` asks
   `ThreadMXBean.findDeadlockedThreads()` and `SleepInLockDetector` asks
   `ThreadMXBean.getThreadInfo(id)`; neither reports virtual threads, and `useVirtualThreads`
   defaults to `true`, so the workers colliding on your locks are not in any cycle JMX can close.
@@ -78,7 +78,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   time: silent with the default runner, `CIRCULAR DEADLOCK DETECTED` and `SLEEP-IN-LOCK PATTERNS
   DETECTED` with `useVirtualThreads = false`. Both detectors' javadoc now says what they cannot
   see, and the runner announces each once per JVM at INFO as `runner.detector.inert`, next to the
-  `DaemonThreadHygieneDetector` announcement from #352 (#363).
+  `DaemonThreadHygieneDetector` announcement from #352. `LivelockDetector` is the third, through
+  `dumpAllThreads`, and gets the same treatment; it is also documented as not reporting a busy
+  RUNNABLE spin at all, which is a separate limit and the reason `examples/07-livelock` measures
+  its retry burn directly instead (#363).
 
 - **21 example demonstrations failed for a reason other than their detector's finding, and none
   do now.** Ten let the subject's own corruption escape the test body - a shared

@@ -151,6 +151,13 @@ public @interface AsyncTest {
      * Monitors for threads that change state rapidly without making progress,
      * or threads that never get CPU time.
      *
+     * <p><strong>Needs {@code useVirtualThreads = false} to see the runner's own workers.</strong>
+     * {@code LivelockDetector} filters {@code ThreadMXBean.dumpAllThreads}, which does not report
+     * virtual threads, so with the default runner the history it analyzes stays empty and the
+     * report is clean whatever the code does. {@code detectAll} turns this detector on, so that is
+     * the usual configuration; the runner says so once per JVM at INFO
+     * ({@code runner.detector.inert}).
+     *
      * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#LIVELOCKS} instead of this per-detector boolean flag.

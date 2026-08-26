@@ -239,6 +239,53 @@ class ConcurrencyRunnerLogContractTest {
                 + "workers, so claiming the detector is inert would be false. Got: " + events());
     }
 
+    @Test
+    @DisplayName("a livelock-detecting run on virtual threads says the detector cannot see the workers")
+    void livelockInertnessIsAnnouncedOnceAtInfo() {
+        ConcurrencyRunner.LIVELOCK_INERT_LOGGED.set(false);
+
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(NarratedDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(NarratedDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        List<ILoggingEvent> announcements = appender.list.stream()
+            .filter(e -> e.getFormattedMessage().startsWith("runner.detector.inert"))
+            .filter(e -> e.getFormattedMessage().contains("detector=LivelockDetector"))
+            .toList();
+        assertEquals(1, announcements.size(),
+            "once per JVM, like the other two. Got: " + events());
+        ILoggingEvent announcement = announcements.get(0);
+        assertSame(Level.INFO, announcement.getLevel(),
+            "INFO, not DEBUG: detectAll turns this detector on, so the user affected is anyone "
+                + "who has not opted out, and they will not have DEBUG enabled");
+        String message = announcement.getFormattedMessage();
+        assertTrue(message.contains("dumpAllThreads"),
+            "the reason names the JMX call that cannot see virtual threads: " + message);
+    }
+
+    @Test
+    @DisplayName("the same run on platform threads makes no claim about the livelock detector")
+    void platformThreadRunsDoNotClaimTheLivelockDetectorIsInert() {
+        ConcurrencyRunner.LIVELOCK_INERT_LOGGED.set(false);
+
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(PlatformThreadDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        assertTrue(events().stream().noneMatch(m -> m.contains("detector=LivelockDetector")),
+            "on platform threads the workers are in the dump, so the detector can see them and "
+                + "claiming otherwise would be false. Got: " + events());
+    }
+
     /** Runs under the extension so the narrative is produced by the real code path. */
     static class NarratedDummy {
         private final AtomicInteger counter = new AtomicInteger();

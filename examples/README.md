@@ -45,7 +45,7 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 04 | [Virtual Thread Context Leak](04-virtual-thread-context-leak/) | `VirtualThreadContextLeakDetector` | ThreadLocal leaks in virtual threads cause memory leaks | 🟡 High |
 | 05 | [Lock Contention](05-lock-contention/) | `LockContentionDetector` | Many threads competing for one monitor — wait time dominates, throughput collapses before the CPUs are busy | 🟡 High |
 | 06 | [Deadlock](06-deadlock/) | `DeadlockDetector` | Two threads acquire the same pair of locks in opposite order — circular wait, neither can proceed | 🔴 Critical |
-| 07 | [Livelock](07-livelock/) | `LivelockDetector` | Two nodes back off and retry without delay — threads stay active but make no progress | 🔴 Critical |
+| 07 | [Livelock](07-livelock/) | `LivelockDetector` (reports starvation, not a busy spin) | Two nodes back off and retry without delay — threads stay active but make no progress | 🔴 Critical |
 | 08 | [Race Condition](08-race-condition/) | `RaceConditionDetector` | Non-atomic check-then-update lets multiple threads pass the stock threshold, driving count negative | 🔴 Critical |
 | 10 | [Shared Non-Thread-Safe Types](10-shared-non-thread-safe-types/) | `SharedMatcherDetector`, `SharedDecimalFormatDetector`, `SharedMessageDigestDetector` | Shared `Matcher`, `DecimalFormat`, and `MessageDigest` fields silently produce wrong results under concurrent load | 🔴 Critical |
 | 11 | [Interrupt Swallowing](11-interrupt-swallowing/) | `InterruptSwallowingDetector` | `catch(InterruptedException)` without restoring the flag permanently suppresses cooperative cancellation | 🔴 Critical |
@@ -67,7 +67,7 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 27 | [Latch Misuse](27-latch-misuse/) | `LatchMisuseDetector` | `countDown()` in both `catch` and `finally` blocks causes premature latch completion and races to the next phase | 🟡 High |
 | 28 | [Unsafe Lazy Init](28-lazy-init/) | `LazyInitValidator` (standalone, not a `DetectorType`) | Double-checked locking without `volatile` — partially-constructed singleton visible to other threads | 🔴 Critical |
 | 29 | [ABA Problem](29-aba-problem/) | `ABAProblemDetector` | Lock-free stack CAS succeeds despite node being recycled — classic A→B→A problem corrupts the stack | 🔴 Critical |
-| 30 | [False Sharing](30-false-sharing/) | `FalseSharingDetector` | Adjacent `volatile long` fields on the same cache line cause coherence traffic between threads updating independent counters | 🟡 High |
+| 30 | [False Sharing](30-false-sharing/) | `FalseSharingDetector` (experimental, findings opt-in) | Adjacent `volatile long` fields on the same cache line cause coherence traffic between threads updating independent counters | 🟡 High |
 | 31 | [Lock Order Violation](31-lock-order-violation/) | `LockOrderValidator` | Transfer service acquires account locks in source-first order — two concurrent opposite transfers create a circular dependency | 🔴 Critical |
 | 32 | [RW Lock Starvation](32-rwlock-starvation/) | `ReadWriteLockMonitor` | Non-fair `ReentrantReadWriteLock(false)` lets readers cut ahead of waiting writers indefinitely — writes never complete | 🟡 High |
 | 33 | [1.5.0/1.6.0 Feature Tour](33-1.5.0-feature-tour/) | *(tour, not a bug)* | Runnable tour of the public API: `Preset`, `threadCounts`, `replaySeed`, `awaitAsync`, scoped listeners, `MarkdownFormatter` | 🟢 Low |
