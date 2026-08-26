@@ -35,6 +35,9 @@ class ExampleDisabledDemoTest {
     private static final Pattern DISABLED_ANNOTATION = Pattern.compile(
             "^\\s*@Disabled\\s*(\\((.*)\\))?\\s*$", Pattern.MULTILINE);
 
+    /** Matches a JUnit assertion or an explicit {@code fail(...)} call. */
+    private static final Pattern ASSERTION = Pattern.compile("\\b(assert\\w+|fail)\\s*\\(");
+
     @Test
     @DisplayName("every @Disabled in the examples carries a reason")
     void disabledDemonstrationsExplainThemselves() {
@@ -130,6 +133,97 @@ class ExampleDisabledDemoTest {
                 "No disabled @AsyncTest demonstrations were found at all. Either every "
                         + "demonstration is enabled now, or this scan stopped matching and is "
                         + "checking nothing.");
+    }
+
+    /**
+     * Requires a demonstration to leave the verdict to the run, not to its own body.
+     *
+     * <p><strong>The failure this prevents, measured rather than imagined.</strong> Two
+     * demonstrations analyzed a detector inside the test body and asserted on the result:
+     * {@code examples/26-future-blocking} and {@code examples/28-lazy-init}. Both were wrong in
+     * the same two ways, and each way hid the other.
+     *
+     * <p>The assertion races the run. Eight threads are inside one body at the barrier, and the
+     * first to reach {@code analyze()} sees only its own recording, so it asserts that a finding
+     * exists before the other seven have recorded anything. Nothing about the code under test
+     * decides whether that assertion holds.
+     *
+     * <p>And the detector was the wrong one. Both fed a locally constructed instance, which the
+     * runner never reads, so the {@code failOn} gate had nothing to gate on and the demonstration
+     * could not have failed on a finding however the subject behaved. That is the defect issue
+     * #346 catalogued fourteen times over, and these two escaped that audit for a reason worth
+     * remembering: the audit looked for demonstrations that <em>passed</em>, and these failed, on
+     * their own broken assertion. A demonstration failing for the wrong reason looks healthy from
+     * far enough away. See issue #363.
+     *
+     * <p>Narrow on purpose. Twenty-eight demonstrations assert something in their body and most
+     * are harmless, so the rule is not "no assertions in a demonstration"; it is that a
+     * demonstration must not both run the analysis and judge it. That pair cannot be right.
+     */
+    @Test
+    @DisplayName("no disabled demonstration analyzes a detector and asserts on it in its own body")
+    void demonstrationsDoNotJudgeTheirOwnDetector() {
+        Path examples = repoRoot().resolve("examples");
+        List<String> selfJudging = new ArrayList<>();
+        int checked = 0;
+
+        for (Path file : javaFilesUnder(examples)) {
+            List<String> lines = List.of(read(file).split("\r?\n", -1));
+            for (int i = 0; i < lines.size(); i++) {
+                if (!lines.get(i).strip().startsWith("@Disabled")) {
+                    continue;
+                }
+                if (asyncTestAnnotationAfter(lines, i) == null) {
+                    continue;   // a @Disabled on something that is not an @AsyncTest demo
+                }
+                checked++;
+                String body = demonstrationBodyAfter(lines, i);
+                if (body.contains(".analyze()") && ASSERTION.matcher(body).find()) {
+                    selfJudging.add(repoRoot().relativize(file).toString().replace('\\', '/')
+                            + ":" + (i + 1));
+                }
+            }
+        }
+
+        assertTrue(selfJudging.isEmpty(),
+                "These disabled demonstrations call analyze() and assert on the result inside "
+                        + "the test body:\n  " + String.join("\n  ", selfJudging)
+                        + "\nThe first thread through gets there before its peers have recorded "
+                        + "anything, so the assertion is about the scheduler rather than about "
+                        + "the code under test. Record into the detector the run owns "
+                        + "(AsyncTestContext.someDetector()) and let failOn decide.");
+
+        assertTrue(checked > 0,
+                "No disabled @AsyncTest demonstrations were found at all. Either every "
+                        + "demonstration is enabled now, or this scan stopped matching and is "
+                        + "checking nothing.");
+    }
+
+    /** {@return the source of the demonstration whose {@code @Disabled} sits at {@code start}} */
+    private static String demonstrationBodyAfter(List<String> lines, int start) {
+        StringBuilder body = new StringBuilder();
+        int depth = 0;
+        boolean opened = false;
+        for (int i = start; i < Math.min(start + 250, lines.size()); i++) {
+            String line = lines.get(i);
+            body.append(line).append('\n');
+            if (line.indexOf('{') >= 0) {
+                opened = true;
+            }
+            if (opened) {
+                for (char c : line.toCharArray()) {
+                    if (c == '{') {
+                        depth++;
+                    } else if (c == '}') {
+                        depth--;
+                    }
+                }
+                if (depth <= 0) {
+                    break;
+                }
+            }
+        }
+        return body.toString();
     }
 
     /**

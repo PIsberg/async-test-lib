@@ -1742,7 +1742,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 70. Lock Downgrade Detector
 * **Severity**: `CRITICAL`
-* **Description**: Flags incorrect `ReentrantReadWriteLock` upgrade attempts — a thread holding a read lock that calls `writeLock().lock()` deadlocks immediately because the write lock cannot be granted while any read lock is held, including its own. The correct write-then-read downgrade pattern is not flagged.
+* **Description**: Flags the unsafe `ReentrantReadWriteLock` downgrade: a thread that releases the write lock and then acquires the read lock leaves a gap in which another thread can write, so the read need not return what the writer wrote. The finding is evidence-gated and reported only when another thread was observed taking the write lock inside that gap, because the shape alone is also what correct code produces when a thread writes one thing and later reads another. The correct write-then-read downgrade is not flagged. It also observes the read-to-write upgrade, but when `LockUpgradeDeadlockDetector` is enabled - which `detectAll` does - the observations are forwarded there and reported under that name instead, so one upgrade is one finding. With this detector alone, it reports the upgrade itself. See issue #361.
 * **Buggy Code**:
   ```java
   rwLock.readLock().lock();
@@ -2588,7 +2588,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 108. Lock Upgrade Deadlock Detector
 * **Severity**: `HIGH`
-* **Description**: Detects a thread attempting to acquire the write lock of a `ReentrantReadWriteLock` while it still holds that lock's read lock. `ReentrantReadWriteLock` does not support upgrading a read lock to a write lock on the same thread, so the attempt deadlocks permanently.
+* **Description**: Detects a thread attempting to acquire the write lock of a `ReentrantReadWriteLock` while it still holds that lock's read lock. `ReentrantReadWriteLock` does not support upgrading a read lock to a write lock on the same thread, so the attempt deadlocks permanently. This is the detector that reports that condition: `LockDowngradeDetector` observes it too, through its own recording API, and forwards what it records here when both are enabled, so a caller who instrumented either API gets exactly one finding under this name.
 * **Buggy Code**:
   ```java
   rwLock.readLock().lock();

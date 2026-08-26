@@ -78,18 +78,22 @@ class ScopedContextServiceTest {
 
     @Disabled("Remove @Disabled to see unbound get() detected by ScopedValueMisuseDetector")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectScopedValueMisuse = true, failOn = FailOn.LOW)
+
     void testGetCurrentUser_concurrent_detectsUnboundGet() {
-        // Record that get() is called — without any prior recordBindingEntered()
-        // This simulates calling getCurrentUser() from an unbound thread context
+        // get() with no preceding recordBindingEntered() is the whole finding: this thread is
+        // reading a ScopedValue it never bound.
         AsyncTestContext.scopedValueMisuseDetector()
                 .recordGetCalled(SV_NAME, Thread.currentThread());
 
-        // Call the buggy method — will throw IllegalStateException if unbound
+        // getCurrentUser() throws IllegalStateException precisely because there is no binding,
+        // which is the bug rather than a surprise. Nothing here asserts that a user comes back:
+        // the previous version did, and since no binding exists the assertion failed on all
+        // eight threads, so the demonstration failed on its own broken expectation instead of
+        // on ScopedValueMisuseDetector's finding. See issue #363.
         try {
-            String user = service.getCurrentUser();
-            assertNotNull(user, "User must not be null when binding exists");
-        } catch (IllegalStateException e) {
-            // Expected when called outside a binding — detector already recorded the issue
+            service.getCurrentUser();
+        } catch (IllegalStateException unbound) {
+            // Expected: this is what reading an unbound ScopedValue does.
         }
     }
 }

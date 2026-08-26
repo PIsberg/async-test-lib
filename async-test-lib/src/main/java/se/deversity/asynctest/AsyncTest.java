@@ -116,6 +116,17 @@ public @interface AsyncTest {
      * Enable deadlock detection with detailed lock analysis.
      * When test times out, provides information about which threads hold which locks.
      *
+     * <p><strong>The finding needs {@code useVirtualThreads = false} when the deadlock is
+     * between the runner's own workers.</strong> {@code DeadlockDetector} asks
+     * {@code ThreadMXBean.findDeadlockedThreads()}, which reports platform threads, so a
+     * circular monitor wait between virtual-thread workers is not a cycle it can close and the
+     * report comes back clean. Both this and {@code useVirtualThreads} default to on, so that
+     * is the usual configuration; the runner says so once per JVM at INFO
+     * ({@code runner.detector.inert}). The thread dump on the timeout path is unaffected and
+     * still shows the stuck threads. Read a clean report as "not observed" rather than "no
+     * deadlock". See {@code examples/06-deadlock}, which is silent one way and reports
+     * CIRCULAR DEADLOCK DETECTED the other, on the same subject.
+     *
      * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
      *     with {@link DetectorType#DEADLOCKS} instead of this per-detector boolean flag.
@@ -139,6 +150,13 @@ public @interface AsyncTest {
      * Enable livelock and starvation detection.
      * Monitors for threads that change state rapidly without making progress,
      * or threads that never get CPU time.
+     *
+     * <p><strong>Needs {@code useVirtualThreads = false} to see the runner's own workers.</strong>
+     * {@code LivelockDetector} filters {@code ThreadMXBean.dumpAllThreads}, which does not report
+     * virtual threads, so with the default runner the history it analyzes stays empty and the
+     * report is clean whatever the code does. {@code detectAll} turns this detector on, so that is
+     * the usual configuration; the runner says so once per JVM at INFO
+     * ({@code runner.detector.inert}).
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}

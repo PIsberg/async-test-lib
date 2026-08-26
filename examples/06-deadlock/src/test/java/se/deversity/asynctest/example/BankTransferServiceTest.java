@@ -117,13 +117,22 @@ class BankTransferServiceTest {
      * threads. The report prints the full lock chain: which thread holds which lock and
      * which lock it is waiting for.
      *
+     * useVirtualThreads = false is not decoration. ThreadMXBean.findDeadlockedThreads()
+     * reports platform threads, so with the default virtual-thread workers the cycle here
+     * runs through threads JMX cannot put in it, and the detector returns a clean report
+     * while the round times out anyway. Measured both ways on this exact subject: silent
+     * with the default, "CIRCULAR DEADLOCK DETECTED" with the line below. See issue #363.
+     *
      * To see the detection:
      * 1. Remove @Disabled
-     * 2. Run this test — DeadlockDetector will report the circular lock dependency
+     * 2. Run this test — it times out, and the timeout names DeadlockDetector, whose report
+     *    above it carries the circular lock dependency and a full thread dump
      * 3. Fix: replace transfer() with transferFixed() in the test body
      */
-    @Disabled("Remove @Disabled to see deadlock detected by DeadlockDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectDeadlocks = true, timeoutMs = 5000, failOn = FailOn.LOW)
+    @Disabled("Remove @Disabled: the round times out on the deadlock, and the failure names "
+            + "DeadlockDetector's finding")
+    @AsyncTest(threads = 8, invocations = 50, useVirtualThreads = false,
+            detectDeadlocks = true, timeoutMs = 5000, failOn = FailOn.LOW)
     void testTransfer_concurrent_detectsDeadlock() {
         // Alternate transfer direction based on thread ID — reliably creates A→B and
         // B→A transfers in parallel, forming a circular-wait deadlock.

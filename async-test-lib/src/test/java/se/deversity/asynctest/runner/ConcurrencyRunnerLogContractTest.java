@@ -151,10 +151,12 @@ class ConcurrencyRunnerLogContractTest {
 
         List<ILoggingEvent> announcements = appender.list.stream()
             .filter(e -> e.getFormattedMessage().startsWith("runner.detector.inert"))
+            .filter(e -> e.getFormattedMessage().contains("detector=DaemonThreadHygieneDetector"))
             .toList();
         assertEquals(1, announcements.size(),
             "once per JVM, like runner.agent.absent: a suite of a thousand @AsyncTest methods "
-                + "must not repeat it. Got: " + events());
+                + "must not repeat it. Filtered by detector because more than one detector can "
+                + "be inert in the same run. Got: " + events());
         ILoggingEvent announcement = announcements.get(0);
         assertSame(Level.INFO, announcement.getLevel(),
             "INFO, not DEBUG: the user reading a clean daemon-hygiene report is exactly the "
@@ -179,10 +181,109 @@ class ConcurrencyRunnerLogContractTest {
             .testEvents()
             .assertStatistics(stats -> stats.succeeded(1));
 
-        assertTrue(events().stream().noneMatch(m -> m.startsWith("runner.detector.inert")),
+        assertTrue(events().stream().noneMatch(m -> m.contains("detector=DaemonThreadHygieneDetector")),
             "on platform threads a thread created in the body inherits the worker's non-daemon "
                 + "flag, so the detector can report; claiming otherwise would be false. Got: "
                 + events());
+    }
+
+    @Test
+    @DisplayName("a deadlock-detecting run on virtual threads says the detector cannot see the workers")
+    void deadlockInertnessIsAnnouncedOnceAtInfo() {
+        ConcurrencyRunner.DEADLOCK_INERT_LOGGED.set(false);
+
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(NarratedDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(NarratedDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        List<ILoggingEvent> announcements = appender.list.stream()
+            .filter(e -> e.getFormattedMessage().startsWith("runner.detector.inert"))
+            .filter(e -> e.getFormattedMessage().contains("detector=DeadlockDetector"))
+            .toList();
+        assertEquals(1, announcements.size(),
+            "once per JVM: a suite of a thousand @AsyncTest methods must not repeat it. Got: "
+                + events());
+        ILoggingEvent announcement = announcements.get(0);
+        assertSame(Level.INFO, announcement.getLevel(),
+            "INFO, not DEBUG: a clean deadlock report is the most reassuring output this "
+                + "library produces, and the user reading one will not have DEBUG enabled");
+        String message = announcement.getFormattedMessage();
+        assertTrue(message.contains("test="),
+            "the event names the test that triggered it: " + message);
+        assertTrue(message.contains("findDeadlockedThreads"),
+            "the reason names the JMX call that cannot see virtual threads: " + message);
+        assertTrue(message.contains("useVirtualThreads"),
+            "the hint names the setting that makes the detector able to see: " + message);
+    }
+
+    @Test
+    @DisplayName("the same run on platform threads makes no claim about the deadlock detector")
+    void platformThreadRunsDoNotClaimTheDeadlockDetectorIsInert() {
+        ConcurrencyRunner.DEADLOCK_INERT_LOGGED.set(false);
+
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(PlatformThreadDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        assertTrue(events().stream().noneMatch(m -> m.contains("detector=DeadlockDetector")),
+            "on platform threads findDeadlockedThreads() can close a cycle between the "
+                + "workers, so claiming the detector is inert would be false. Got: " + events());
+    }
+
+    @Test
+    @DisplayName("a livelock-detecting run on virtual threads says the detector cannot see the workers")
+    void livelockInertnessIsAnnouncedOnceAtInfo() {
+        ConcurrencyRunner.LIVELOCK_INERT_LOGGED.set(false);
+
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(NarratedDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(NarratedDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        List<ILoggingEvent> announcements = appender.list.stream()
+            .filter(e -> e.getFormattedMessage().startsWith("runner.detector.inert"))
+            .filter(e -> e.getFormattedMessage().contains("detector=LivelockDetector"))
+            .toList();
+        assertEquals(1, announcements.size(),
+            "once per JVM, like the other two. Got: " + events());
+        ILoggingEvent announcement = announcements.get(0);
+        assertSame(Level.INFO, announcement.getLevel(),
+            "INFO, not DEBUG: detectAll turns this detector on, so the user affected is anyone "
+                + "who has not opted out, and they will not have DEBUG enabled");
+        String message = announcement.getFormattedMessage();
+        assertTrue(message.contains("dumpAllThreads"),
+            "the reason names the JMX call that cannot see virtual threads: " + message);
+    }
+
+    @Test
+    @DisplayName("the same run on platform threads makes no claim about the livelock detector")
+    void platformThreadRunsDoNotClaimTheLivelockDetectorIsInert() {
+        ConcurrencyRunner.LIVELOCK_INERT_LOGGED.set(false);
+
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(PlatformThreadDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        assertTrue(events().stream().noneMatch(m -> m.contains("detector=LivelockDetector")),
+            "on platform threads the workers are in the dump, so the detector can see them and "
+                + "claiming otherwise would be false. Got: " + events());
     }
 
     /** Runs under the extension so the narrative is produced by the real code path. */

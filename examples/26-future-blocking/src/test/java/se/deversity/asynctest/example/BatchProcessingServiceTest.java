@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.FutureBlockingDetector;
 import se.deversity.asynctest.example.service.BatchProcessingService;
@@ -10,10 +11,12 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -46,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * blocking wait state while tasks remain queued — reporting starvation risk.
  *
  * DETECTORS TRIGGERED:
- * FutureBlockingDetector — standalone, instantiated directly in the test.
+ * FutureBlockingDetector — the run's own, from AsyncTestContext.futureBlockingDetector().
  *
  * FIX:
  * - Use a separate I/O thread pool for the per-item subtasks
@@ -56,7 +59,6 @@ import static org.junit.jupiter.api.Assertions.*;
 class BatchProcessingServiceTest {
 
     private BatchProcessingService service;
-    private final FutureBlockingDetector detector = new FutureBlockingDetector();
 
     @BeforeEach
     void setUp() {
@@ -116,27 +118,52 @@ class BatchProcessingServiceTest {
      * 3. Fix: submit subtasks to a dedicated separate executor
      */
     @Disabled("Remove @Disabled to see future-blocking starvation detected by FutureBlockingDetector")
-    @AsyncTest(threads = 4, invocations = 20, failOn = FailOn.LOW)
-    void testProcessBatch_concurrent_detectsFutureBlockingStarvation() {
-        ExecutorService pool = Executors.newFixedThreadPool(4);
+    @AsyncTest(threads = 4, invocations = 1, detectAll = false,
+            detectFutureBlocking = true, failOn = FailOn.LOW)
 
-        // Register the pool (4 threads max)
+    void testProcessBatch_concurrent_detectsFutureBlockingStarvation() {
+        ExecutorService pool = service.getWorkerPool();
+
+        // The detector has to be the run's own. This demonstration used to record into a
+        // locally constructed FutureBlockingDetector, which the library never reads, so failOn
+        // had nothing to gate on however the subject behaved. It then analyzed that local
+        // instance in its own body and asserted on the result, an assertion the first thread
+        // through always lost because its three peers had not recorded anything yet. Failing on
+        // that assertion is why the demonstration looked healthy to the audit in issue #346,
+        // which was looking for demonstrations that passed. See issues #346 and #363.
+        FutureBlockingDetector detector = AsyncTestContext.futureBlockingDetector();
         detector.registerExecutor(pool, "batch-worker-pool", 4);
 
-        // Simulate each of the 4 worker threads submitting a subtask and then blocking
+        // Starvation needs processBatch() to run ON the pool it submits to, which is the misuse
+        // the service documents. Called straight from here it would block outside the pool,
+        // where blocking is harmless, and nothing would starve. The detector is resolved on this
+        // thread first: AsyncTestContext is a ThreadLocal and a pool thread has none installed.
         detector.recordTaskSubmitted(pool);
-        detector.recordTaskStarted(pool);
+        Future<List<String>> outer = pool.submit(() -> {
+            detector.recordTaskStarted(pool);
+            detector.recordTaskSubmitted(pool);   // the subtask processBatch enqueues
+            detector.recordBlockingWait(pool);    // and then blocks on, holding a pool thread
+            try {
+                return service.processBatch(List.of("item-" + Thread.currentThread().threadId()));
+            } finally {
+                detector.recordTaskCompleted(pool);
+            }
+        });
 
-        // Each worker blocks waiting for a subtask
-        detector.recordTaskSubmitted(pool); // subtask enqueued
-        detector.recordBlockingWait(pool);  // this thread is now blocking on it
-
-        // With 4 threads all in blocking waits and 4 subtasks queued, the pool is starved.
-        FutureBlockingDetector.FutureBlockingReport report = detector.analyze();
-        assertTrue(report.hasIssues(),
-            "Expected future-blocking starvation to be detected.\n" + report);
-
-        pool.shutdownNow();
+        // One round is all there is to see: once the four workers are wedged the pool never
+        // recovers, so a second round would measure the wreckage rather than the bug. The wait
+        // is bounded and the timeout absorbed, because an exception escaping this body fails
+        // the run before the failOn gate reports the finding. tearDown() shuts the pool down;
+        // its threads are daemons.
+        try {
+            outer.get(250, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException starved) {
+            // All four workers are inside processBatch, blocked on subtasks that cannot start.
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException failed) {
+            // processBatch threw rather than blocked; the recorded lifecycle still stands.
+        }
     }
 
     /**
@@ -149,6 +176,11 @@ class BatchProcessingServiceTest {
             throws Exception {
         ExecutorService orchestratorPool = Executors.newFixedThreadPool(4);
         ExecutorService subtaskPool = Executors.newCachedThreadPool();
+
+        // Standalone here on purpose: this is an ordinary @Test with no @AsyncTest run to own a
+        // detector, so it constructs one and reads it directly. The demonstration above must not
+        // do that, and that is the whole of its comment.
+        FutureBlockingDetector detector = new FutureBlockingDetector();
 
         detector.registerExecutor(orchestratorPool, "orchestrator-pool", 4);
         detector.registerExecutor(subtaskPool, "subtask-pool", Integer.MAX_VALUE);

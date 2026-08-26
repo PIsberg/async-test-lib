@@ -2,20 +2,40 @@
 #
 # example-demos.yml fails when a @Disabled example demonstration PASSES in every run, because
 # its @Disabled reason tells a reader to remove @Disabled to see a detection. The entries below
-# are the ones that do that today, measured over three full reactor runs on 2026-08-26. They are
-# listed here rather than tolerated silently: a job whose failures are all expected gets ignored
-# within a month, and a job with no record of what it is ignoring is worse.
+# are the ones that do that today. They are listed here rather than tolerated silently: a job
+# whose failures are all expected gets ignored within a month, and a job with no record of what
+# it is ignoring is worse.
 #
 # Adding a line here is the escalation path, and it needs a reason and an issue. Removing one is
 # the goal. A line whose demonstration starts firing again is reported as a warning, not a
-# failure - these are timing-dependent, so one green week is not proof.
+# failure - some are timing-dependent, so one green week is not proof.
 #
 # Format: <class-fqn>#<method>   # why
 #
 # Tracked in #362.
-
-se.deversity.asynctest.example.PerformanceCountersTest#testRecordRequest_concurrent_detectsFalseSharing   # FalseSharingDetector is behind an experimental gate and is silent unless -Dasync-test.experimental.false-sharing=true, which the examples do not set. Structural, not timing.
-se.deversity.asynctest.example.PoliteRetryLockServiceTest#testAcquireLock_concurrent_detectsLivelock       # timing-dependent: fired in 1 of 3 runs in the 2026-08-25 audit, 0 of 3 on 2026-08-26.
-se.deversity.asynctest.example.TryLockMisuseTest#test_concurrent_detectsTryLockMisuse                      # timing-dependent: fired in 1 of 3 runs in the 2026-08-25 audit, 0 of 3 on 2026-08-26.
-se.deversity.asynctest.example.LegacyServiceTest#test_concurrent_detectsPinning                            # timing-dependent, and JDK-dependent: carrier pinning under synchronized is not reproducible on every JVM.
-se.deversity.asynctest.example.VirtualWorkerServiceTest#test_concurrent_detectsCarrierExhaustion           # timing-dependent, and machine-dependent: exhaustion needs more blocked carriers than this runner has cores.
+#
+# ---------------------------------------------------------------------------------------------
+# The list is empty. It held five entries between 2026-08-26 and the fix for #362, and none of
+# the five turned out to be what the file recorded them as. Kept here so the next person does not
+# re-derive it:
+#
+#   30-false-sharing        Structural, and correctly so: FalseSharingDetector's findings are off
+#                           unless -Dasync-test.experimental.false-sharing=true, because its
+#                           offsets are estimates the JVM's layout does not follow. The
+#                           demonstration is gone and both directions of the gate are pinned by
+#                           ordinary @Tests instead.
+#   07-livelock             Recorded as timing-dependent; it was three structural faults.
+#                           LivelockDetector treats RUNNABLE as progress on purpose, it reads
+#                           dumpAllThreads which excludes virtual threads, and the subject does
+#                           make progress under contention. The demonstration is gone; the retry
+#                           burn is measured directly.
+#   112-try-lock-misuse     Genuinely contention-dependent, and now deterministic: a thread
+#                           outside the run holds the lock, so tryLock() fails every time.
+#   92-virtual-thread-pinning   Not timing at all: synchronized stopped pinning in JDK 24 (JEP
+#                           491) and the detector says so. It fires on JDK 21, which is what
+#                           example-demos.yml runs; fifty rounds of a 10ms sleep behind one
+#                           monitor was what timed the round out before the gate.
+#   90-virtual-thread-carrier-exhaustion   Machine-dependent, and now not: the detector fires
+#                           when concurrently blocked virtual threads reach availableProcessors(),
+#                           so 8 threads fired on a 4-core runner and never on a 16-core
+#                           workstation. 64 threads clears any machine this is likely to run on.

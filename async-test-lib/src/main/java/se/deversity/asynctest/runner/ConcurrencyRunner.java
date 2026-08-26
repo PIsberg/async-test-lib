@@ -32,6 +32,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -109,6 +110,45 @@ public class ConcurrencyRunner {
      * <p>Package-visible so the log-contract test can rearm it.
      */
     static final java.util.concurrent.atomic.AtomicBoolean DAEMON_HYGIENE_INERT_LOGGED =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
+
+    /**
+     * Latches the one-shot announcement that {@code DeadlockDetector} cannot see the runner's
+     * own workers.
+     *
+     * <p>The detector asks {@code ThreadMXBean.findDeadlockedThreads()}, which reports platform
+     * threads. The runner's workers are virtual threads by default, so a circular monitor wait
+     * between them - which is the whole premise of {@code @AsyncTest}, eight threads colliding
+     * on one subject - is not in the cycle JMX can close, and the report comes back clean.
+     * Measured on {@code examples/06-deadlock}, whose subject deadlocks on a lock pair: silent
+     * with the default runner, "CIRCULAR DEADLOCK DETECTED" with
+     * {@code @AsyncTest(useVirtualThreads = false)}, same code both times.
+     *
+     * <p>Both flags default to on, so this is the configuration everybody runs. The thread dump
+     * the timeout path prints is still printed and still shows the stuck threads; what is
+     * missing is the finding, and with it the difference between "no deadlock" and "no deadlock
+     * that this can see". Announced for the same reason as the daemon-hygiene case below.
+     *
+     * <p>Package-visible so the log-contract test can rearm it.
+     */
+    static final java.util.concurrent.atomic.AtomicBoolean DEADLOCK_INERT_LOGGED =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
+
+    /**
+     * Latches the one-shot announcement that {@code LivelockDetector} cannot see the runner's own
+     * workers.
+     *
+     * <p>The third of the JMX-fed detectors, and inert for the same reason as the two above:
+     * {@code captureSnapshot()} filters {@code ThreadMXBean.dumpAllThreads} down to the ids of the
+     * threads that called it, and a virtual thread is not in that dump, so the history it analyzes
+     * stays empty. {@code detectLivelocks} is {@code false} on the annotation but {@code detectAll}
+     * turns it on, which is the default, so this is not a rare configuration.
+     *
+     * <p>Package-visible so the log-contract test can rearm it.
+     */
+    static final java.util.concurrent.atomic.AtomicBoolean LIVELOCK_INERT_LOGGED =
             new java.util.concurrent.atomic.AtomicBoolean();
 
     /** See {@link #resolveTimeoutMultiplier()}. */
@@ -254,6 +294,37 @@ public class ConcurrencyRunner {
                     + "threads\" hint=\"set @AsyncTest(useVirtualThreads = false) on the test "
                     + "that instruments threads, or read the report as 'not observed' rather "
                     + "than 'clean'\"",
+                invocationContext.getExecutable().getName());
+        }
+
+        // The deadlock detector is enabled and the runner is on virtual threads, so
+        // findDeadlockedThreads() cannot close a cycle that runs through the workers. Said once
+        // per JVM at INFO, for the same reason as the two announcements above: a clean deadlock
+        // report is the most reassuring output this library produces, and here it is not
+        // evidence of anything.
+        if (config.detectDeadlocks && config.useVirtualThreads
+                && DEADLOCK_INERT_LOGGED.compareAndSet(false, true)) {
+            log.info("runner.detector.inert test={} detector=DeadlockDetector "
+                    + "reason=\"findDeadlockedThreads() reports platform threads, and "
+                    + "useVirtualThreads=true means the workers colliding on your locks are "
+                    + "virtual, so a cycle between them is not found\" hint=\"set "
+                    + "@AsyncTest(useVirtualThreads = false) on the test whose deadlock is "
+                    + "between the runner's own threads, or read a clean report as 'not "
+                    + "observed' rather than 'no deadlock'\"",
+                invocationContext.getExecutable().getName());
+        }
+
+        // The livelock detector is enabled and the runner is on virtual threads, so the thread
+        // dump it filters cannot contain the workers it is filtering for. Said once per JVM at
+        // INFO, for the same reason as the announcements above.
+        if (config.detectLivelocks && config.useVirtualThreads
+                && LIVELOCK_INERT_LOGGED.compareAndSet(false, true)) {
+            log.info("runner.detector.inert test={} detector=LivelockDetector "
+                    + "reason=\"dumpAllThreads() does not report virtual threads, and "
+                    + "useVirtualThreads=true, so the snapshots this detector filters for are "
+                    + "never in the dump\" hint=\"set @AsyncTest(useVirtualThreads = false) on "
+                    + "the test whose threads you want watched, or read a clean report as 'not "
+                    + "observed' rather than 'no livelock'\"",
                 invocationContext.getExecutable().getName());
         }
 
@@ -927,6 +998,11 @@ public class ConcurrencyRunner {
      * set {@code timeoutAlreadyReported} first: the returned type satisfies
      * {@link #isTimeoutLike}, so the enclosing {@code catch (AssertionError)} would
      * otherwise route it through here a second time.
+     *
+     * <p>The message carries {@link #findingSummary}, which is the only place a timed-out run
+     * says whether any detector had an answer: the {@code failOn} gate is success-path-only,
+     * so the reports flushed above are all a reader gets, and in a parallel build they are
+     * hundreds of interleaved lines from the failure. See {@link #findingSummary}.
      */
     private static AssertionError timeoutError(long timeoutMs,
                                                @Nullable Throwable cause,
@@ -943,11 +1019,42 @@ public class ConcurrencyRunner {
         // analyzeAndGate (success-path-only) is never reached for this run.
         printPhase2Reports(phase2Analysis);
         AssertionError error = new RoundTimeoutError(
-            "Test timed out after " + timeoutMs + "ms. Possible deadlock, starvation, or visibility issue.");
+            "Test timed out after " + timeoutMs + "ms. Possible deadlock, starvation, or visibility issue."
+            + findingSummary(phase1, phase2Analysis));
         if (cause != null) {
             error.initCause(cause);
         }
         return error;
+    }
+
+    /**
+     * One sentence naming the detectors that had something to say before the timeout.
+     *
+     * <p><strong>Why the failure needs this.</strong> {@link #analyzeAndGate} runs on the
+     * success path only, so a run that timed out never reaches the {@code failOn} gate and
+     * its failure is the timeout, not the finding. The findings are printed to stderr by the
+     * caller, but a reader looking at a failing build sees the assertion message first and
+     * often only that, and under {@code -T 1C} the reports belong to whichever module happened
+     * to be writing at the time. Naming the detectors in the message is what makes "the round
+     * timed out" and "here is what was detected" the same sentence.
+     *
+     * <p>The empty case is reported explicitly rather than omitted. "No enabled detector
+     * produced a finding" is a different diagnosis from "a detector fired and you missed it",
+     * and silence cannot distinguish them: it is exactly the ambiguity that let 21 example
+     * demonstrations name a detector in their {@code @Disabled} reason while failing on a
+     * timeout, with nothing to say which of them had a finding waiting (issue #363).
+     *
+     * <p>Names only, not reports. The reports are already on stderr in full, and an assertion
+     * message that inlined them would push the timeout itself off the top of the console.
+     */
+    private static String findingSummary(Phase1DetectorSet phase1, Phase2Analysis phase2Analysis) {
+        Set<String> named = new LinkedHashSet<>(phase1.collectReports().keySet());
+        named.addAll(phase2Analysis.get().keySet());
+        if (named.isEmpty()) {
+            return " No enabled detector produced a finding before the timeout.";
+        }
+        return " " + named.size() + " detector finding(s) recorded before the timeout: "
+                + String.join(", ", named) + ". Full reports above.";
     }
 
     /**

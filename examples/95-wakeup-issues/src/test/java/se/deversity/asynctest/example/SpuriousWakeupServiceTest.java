@@ -81,7 +81,8 @@ class SpuriousWakeupServiceTest {
      * 2. Run this test
      * 3. To fix: change if(!ready) to while(!ready) in waitUntilReady()
      */
-    @Disabled("Remove @Disabled to see the bug detected by WakeupDetector")
+    @Disabled("Remove @Disabled: the round times out waiting for a signal that was already lost, and the failure "
+            + "names WakeupDetector's finding")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectWakeupIssues = true, failOn = FailOn.LOW)
     void test_concurrent_detectsSpuriousWakeup() {
         Object monitor = service.getMonitor();

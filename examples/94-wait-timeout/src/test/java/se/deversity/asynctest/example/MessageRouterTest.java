@@ -81,7 +81,8 @@ class MessageRouterTest {
      * 2. Run this test
      * 3. To fix: replace lock.wait() with lock.wait(5000) inside a while loop
      */
-    @Disabled("Remove @Disabled to see the bug detected by WaitTimeoutDetector")
+    @Disabled("Remove @Disabled: the round times out on a wait() that is never notified, and the failure "
+            + "names WaitTimeoutDetector's finding")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectWaitTimeout = true, failOn = FailOn.LOW)
     void test_concurrent_detectsInfiniteWait() {
         Object lock = router.getLock();

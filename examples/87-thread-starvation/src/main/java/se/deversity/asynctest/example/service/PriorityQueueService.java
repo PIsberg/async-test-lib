@@ -20,6 +20,18 @@ public class PriorityQueueService {
     private final Object sharedLock = new Object();
     private int processedCount = 0;
 
+    /**
+     * Called with the task id at the moment the task finally holds the shared lock and at the
+     * moment it lets go. No-ops by default, so production behaviour is unchanged whether or not
+     * a test is watching.
+     *
+     * <p>Starvation is the gap between "submitted" and "actually running", and that gap opens
+     * inside the pool thread, waiting on the monitor. A test can time the submit itself, but it
+     * cannot see the other end without this. This is the seam, not the bug.
+     */
+    private volatile java.util.function.Consumer<String> onTaskRunning = taskId -> { };
+    private volatile java.util.function.Consumer<String> onTaskDone = taskId -> { };
+
     public PriorityQueueService() {
         this.pool = Executors.newFixedThreadPool(4);
     }
@@ -31,10 +43,12 @@ public class PriorityQueueService {
     public Future<?> submitHighPriority(String taskId) {
         return pool.submit(() -> {
             synchronized (sharedLock) {
+                onTaskRunning.accept(taskId);
                 // Simulates slow high-priority work while holding the lock.
                 try { Thread.sleep(20); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
                 processedCount++;
             }
+            onTaskDone.accept(taskId);
         });
     }
 
@@ -45,10 +59,24 @@ public class PriorityQueueService {
     public Future<?> submitLowPriority(String taskId) {
         return pool.submit(() -> {
             synchronized (sharedLock) {
+                onTaskRunning.accept(taskId);
                 try { Thread.sleep(5); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
                 processedCount++;
             }
+            onTaskDone.accept(taskId);
         });
+    }
+
+    /**
+     * Installs the hooks a demonstration needs to time the wait a task actually suffered.
+     *
+     * @param running called with the task id on the pool thread, once it holds the shared lock
+     * @param done    called with the task id on the pool thread, once it has let the lock go
+     */
+    public void observeTaskPhases(java.util.function.Consumer<String> running,
+                                  java.util.function.Consumer<String> done) {
+        this.onTaskRunning = running;
+        this.onTaskDone = done;
     }
 
     public ExecutorService getPool() { return pool; }

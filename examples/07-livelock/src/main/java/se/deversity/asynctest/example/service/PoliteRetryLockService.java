@@ -14,8 +14,12 @@ import java.util.concurrent.atomic.AtomicReference;
  * they are busy spinning through the acquire-detect-release-retry cycle, consuming
  * CPU without making any forward progress.
  *
- * LivelockDetector observes repeated thread-state transitions and CPU-time growth
- * without corresponding work completion, flagging the threads as livelock candidates.
+ * LivelockDetector does NOT report this. Its rules are starvation (a thread that stays
+ * BLOCKED or WAITING with flat CPU time) and rapid state cycling; a thread spinning in this
+ * retry loop is RUNNABLE, and the detector treats RUNNABLE as progress on purpose, because a
+ * busy thread's CPU time can look flat across snapshots taken inside one clock tick. It also
+ * reads {@code ThreadMXBean.dumpAllThreads}, which does not report virtual threads, and the
+ * runner's workers are virtual by default. See the test class for what this example does show.
  *
  * FIX: Introduce a randomised exponential back-off delay before each retry:
  *   {@code Thread.sleep(ThreadLocalRandom.current().nextLong(minMs, maxMs))}
@@ -36,6 +40,17 @@ public class PoliteRetryLockService {
      * Used in tests to verify that work actually progressed.
      */
     private volatile int acquisitionCount = 0;
+
+    /**
+     * How many attempts found the lock already held and went round again with no delay.
+     *
+     * <p>The cost of this design is invisible from outside: {@code acquireLock} returns the same
+     * boolean whether it took one attempt or two hundred. Counting the contended attempts is
+     * what makes the burn observable to a test without a detector. This is instrumentation, not
+     * the bug.
+     */
+    private final java.util.concurrent.atomic.AtomicLong contendedAttempts =
+            new java.util.concurrent.atomic.AtomicLong();
 
     /**
      * Maximum number of retry attempts before giving up.
@@ -70,6 +85,7 @@ public class PoliteRetryLockService {
             // Under load all competing nodes hit this branch at the same time, all back
             // off to the top of the loop simultaneously, and re-contend in lock step.
             // No node ever makes progress.
+            contendedAttempts.incrementAndGet();
             Thread.yield();
             // No sleep here — zero-delay retry is what creates the livelock.
         }
@@ -118,6 +134,30 @@ public class PoliteRetryLockService {
 
     public int getAcquisitionCount() {
         return acquisitionCount;
+    }
+
+    /**
+     * {@return how many attempts so far found the lock held and retried immediately}
+     */
+    public long getContendedAttemptCount() {
+        return contendedAttempts.get();
+    }
+
+    /**
+     * Test seam: takes the lock on behalf of {@code nodeId} and keeps it until
+     * {@link #releaseLockAsNode()}, so a test can put a caller into contention on purpose
+     * rather than hoping the scheduler arranges it.
+     *
+     * @param nodeId the node the lock is taken for
+     * @return whether the lock was free and is now held
+     */
+    public boolean takeLockAsNode(String nodeId) {
+        return lockHolder.compareAndSet(null, nodeId);
+    }
+
+    /** Test seam: releases what {@link #takeLockAsNode(String)} took. */
+    public void releaseLockAsNode() {
+        lockHolder.set(null);
     }
 
     public String getLockHolder() {

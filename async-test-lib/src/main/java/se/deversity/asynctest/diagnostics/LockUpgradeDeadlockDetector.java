@@ -15,6 +15,12 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 /**
  * Detects attempts to upgrade a ReentrantReadWriteLock from a read lock to a write lock
  * on the same thread, which inevitably deadlocks.
+ *
+ * <p>This is the detector named for that condition, and the one that reports it. {@link
+ * LockDowngradeDetector} observes the same upgrade through its own recording API, and when both
+ * are enabled it forwards what it records here and leaves the finding to this class, so one
+ * upgrade produces one finding whichever API a caller instrumented. See {@link
+ * LockDowngradeDetector#deferUpgradeReportingTo} and issue #361.
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "ConcurrentHashMap tracks read lock ownership and violations.")
 @AITestDriven(

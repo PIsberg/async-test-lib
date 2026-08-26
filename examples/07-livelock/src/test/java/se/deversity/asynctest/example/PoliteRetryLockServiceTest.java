@@ -1,10 +1,7 @@
 package se.deversity.asynctest.example;
 
-import se.deversity.asynctest.AsyncTest;
-import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.example.service.PoliteRetryLockService;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -38,14 +35,13 @@ import static org.junit.jupiter.api.Assertions.*;
  * A single thread encounters no contention. The first CAS always succeeds,
  * the critical section runs immediately, and the method returns {@code true}.
  *
- * WHY @AsyncTest DETECTS THE ISSUE:
- * LivelockDetector captures thread-state snapshots at the end of each
- * invocation round. It looks for threads that:
- *   - Flip rapidly between RUNNABLE and other states (rapid state cycling)
- *   - Accumulate CPU time without completing work (no progress pattern)
- *   - Are never in BLOCKED state yet never make forward progress
- * Under 6 concurrent threads hitting the tight retry loop, many invocations
- * exhaust all MAX_RETRIES and return false — work does not progress.
+ * WHY LivelockDetector DOES NOT REPORT IT:
+ * Its rules are starvation (a thread that stays BLOCKED or WAITING with flat
+ * CPU time) and rapid state cycling. A thread spinning in this retry loop is
+ * RUNNABLE throughout, and the detector treats RUNNABLE as progress on purpose.
+ * It also reads ThreadMXBean.dumpAllThreads, which does not report virtual
+ * threads, and the runner's workers are virtual by default. Part 2 below says
+ * so in full, and measures the retry burn directly instead.
  *
  * DETECTORS TRIGGERED:
  * LivelockDetector — rapid state cycling and starvation in the retry loop
@@ -99,43 +95,76 @@ class PoliteRetryLockServiceTest {
     }
 
     // -------------------------------------------------------------------------
-    // Part 2: @AsyncTest — exposes the livelock
+    // Part 2: the retry burn, and why there is no @AsyncTest demonstration
     // -------------------------------------------------------------------------
 
     /**
-     * The bug: 6 threads all call acquireLock() with their own node IDs. Because
-     * all threads retry immediately on contention (zero-delay yield), they cycle
-     * through acquire-contend-yield-retry in lock-step. Many invocations exhaust
-     * all MAX_RETRIES attempts and return false, yet the threads were continuously
-     * RUNNABLE — the definition of a livelock.
+     * This example carried a disabled {@code @AsyncTest} promising "livelock detected by
+     * LivelockDetector". It never fired, and three separate things stood in the way, each of
+     * which would have been enough on its own. See issue #362.
      *
-     * LivelockDetector is a Phase 1 detector. It captures a snapshot of all
-     * thread states at the end of each invocation round and analyses them for
-     * rapid state-cycling and no-progress patterns. No manual instrumentation
-     * calls are needed in the test body.
+     * <p>LivelockDetector does not report a busy spin. Its rules are starvation, meaning a
+     * thread that stays BLOCKED or WAITING with flat CPU time, and rapid state cycling.
+     * {@code madeProgress} returns true for any RUNNABLE thread, deliberately: a busy worker's
+     * measured CPU time can look flat when several snapshots land inside one clock tick, and
+     * reporting those as stuck produced findings against healthy JVMs. A thread spinning in
+     * this retry loop is RUNNABLE the whole time.
      *
-     * To see the detection:
-     * 1. Remove @Disabled
-     * 2. Run this test — LivelockDetector will flag livelock candidates and
-     *    threads with no progress
-     * 3. Fix: replace acquireLock() with acquireLockFixed() in the test body
+     * <p>It reads {@code ThreadMXBean.dumpAllThreads}, which does not report virtual threads,
+     * and the runner's workers are virtual by default. Nothing about the workers reaches the
+     * detector's history at all.
+     *
+     * <p>And the subject makes progress under contention. One node wins the CAS on every cycle
+     * and runs its critical section, so {@code acquireLock} returns true; what is lost is the
+     * work all the other nodes threw away, and that is a throughput bug rather than a stall.
+     * The tests below measure it directly, which is what this example is actually good for.
      */
-    @Disabled("Remove @Disabled to see livelock detected by LivelockDetector")
-    @AsyncTest(threads = 6, invocations = 30, detectLivelocks = true, timeoutMs = 10000, failOn = FailOn.LOW)
-    void testAcquireLock_concurrent_detectsLivelock() {
-        String nodeId = "node-" + Thread.currentThread().threadId();
 
-        // Under 6-thread contention the tight retry loop spins up to MAX_RETRIES
-        // times without completing. LivelockDetector observes threads rapidly
-        // cycling between RUNNABLE states without making forward progress.
-        boolean acquired = service.acquireLock(nodeId);
+    @Test
+    void testAcquireLock_whileAnotherNodeHoldsTheLock_burnsEveryRetry() {
+        assertTrue(service.takeLockAsNode("node-holder"),
+                "the holder takes the free lock first");
+        try {
+            assertFalse(service.acquireLock("node-A"),
+                    "the lock is held for the whole call, so every attempt goes round again");
+            assertEquals(0, service.getAcquisitionCount(),
+                    "no critical section ran: two hundred attempts produced nothing");
+            assertTrue(service.getContendedAttemptCount() >= 200,
+                    "every retry hit the contended branch and yielded with no delay, which is "
+                            + "the cost this design hides behind a boolean. Contended attempts: "
+                            + service.getContendedAttemptCount());
+        } finally {
+            service.releaseLockAsNode();
+        }
+    }
 
-        // Many invocations will fail (return false) because the livelock exhausts
-        // all retry attempts — this assertion demonstrates the lack of progress.
-        // The real signal is in the LivelockDetector report, not this assertion.
-        if (!acquired) {
-            throw new AssertionError("Lock acquisition failed after MAX_RETRIES — "
-                    + "livelock: threads are active but no thread made progress");
+    @Test
+
+    void testAcquireLockFixed_whileAnotherNodeHoldsTheLock_sleepsInsteadOfSpinning()
+            throws InterruptedException {
+        assertTrue(service.takeLockAsNode("node-holder"), "the holder takes the free lock first");
+        try {
+            long before = service.getContendedAttemptCount();
+
+            Thread node = new Thread(() -> {
+                try {
+                    service.acquireLockFixed("node-A");
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }, "backing-off-node");
+            node.setDaemon(true);
+            node.start();
+            Thread.sleep(300);
+
+            assertEquals(before, service.getContendedAttemptCount(),
+                    "300ms of contention and not one zero-delay retry: the fixed version is "
+                            + "asleep between attempts, which is the whole difference. It is not "
+                            + "joined here because running it out to MAX_RETRIES would take "
+                            + "twenty seconds, which is also the point");
+            node.interrupt();
+        } finally {
+            service.releaseLockAsNode();
         }
     }
 

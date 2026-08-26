@@ -38,7 +38,8 @@ class ProducerConsumerServiceTest {
         assertNull(service.consume());
     }
 
-    @Disabled("Remove @Disabled to see bug detected by NestedMonitorLockoutDetector")
+    @Disabled("Remove @Disabled: the round times out on the nested monitor lockout, and the failure "
+            + "names NestedMonitorLockoutDetector's finding")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectNestedMonitorLockout = true, failOn = FailOn.LOW)
     void test_concurrent_detectsBug() {
         // Record acquiring lockA (outer monitor)

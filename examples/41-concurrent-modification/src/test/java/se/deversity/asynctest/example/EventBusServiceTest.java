@@ -7,6 +7,7 @@ import se.deversity.asynctest.example.service.EventBusService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import java.util.ConcurrentModificationException;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -79,24 +80,35 @@ class EventBusServiceTest {
 
     @Disabled("Remove @Disabled to see concurrent-modification detected by ConcurrentModificationDetector")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectConcurrentModifications = true, failOn = FailOn.LOW)
+
+
     void testEventBus_concurrent_detectsModification() {
         var listeners = service.getListeners();
+        var detector = AsyncTestContext.get().concurrentModificationMonitor();
+
+        // Registration is not optional. Every record* method on this detector starts with a
+        // lookup by System.identityHashCode and returns silently when the collection is
+        // unknown, so the previous version's recordings were all no-ops and the detector had
+        // nothing to report. That went unnoticed only because the raw ArrayList threw
+        // ConcurrentModificationException first and failed the run for a different reason.
+        // See issue #363.
+        detector.registerCollection(listeners, "event-listeners");
 
         // Half the threads register new listeners; half fire events
-        if (Thread.currentThread().getId() % 2 == 0) {
-            // Producer: record modification and add a listener
-            AsyncTestContext.get().concurrentModificationMonitor()
-                    .recordModification(listeners, "event-listeners", "add");
+        if (Thread.currentThread().threadId() % 2 == 0) {
+            detector.recordModification(listeners, "event-listeners", "add");
             service.register(() -> {/* listener */});
         } else {
-            // Consumer: record iteration start, fire event, record iteration end
-            AsyncTestContext.get().concurrentModificationMonitor()
-                    .recordIterationStarted(listeners, "event-listeners");
+            detector.recordIterationStarted(listeners, "event-listeners");
             try {
                 service.fireEvent();
+            } catch (ConcurrentModificationException caught) {
+                // The exception is the finding, so it is recorded rather than thrown. Letting it
+                // escape fails the run before the failOn gate is reached, and the reader gets
+                // java.util's stack trace where the detector's report should be.
+                detector.recordModificationDuringIteration(listeners, "event-listeners", "add");
             } finally {
-                AsyncTestContext.get().concurrentModificationMonitor()
-                        .recordIterationEnded(listeners, "event-listeners");
+                detector.recordIterationEnded(listeners, "event-listeners");
             }
         }
     }

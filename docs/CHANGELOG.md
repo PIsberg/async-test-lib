@@ -23,14 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   demonstrations are inherently probabilistic and three was the minimum that separated "never
   fires" from "fires sometimes"; only a demonstration that passes in *every* run fails the job.
 
-  Measured over three full runs on 2026-08-26, across 98 demonstrations: 70 fired every run, 5
-  passed every run, 2 passed in some runs, 21 failed for a reason other than their detector's
-  finding, 0 never ran. All 27 from
-  #346 are in the first group. The 5 are recorded in `.github/known-silent-demos.txt` with a reason
-  each and tracked in #362, printed with their count on every run so the debt stays visible in a
-  green job's log rather than in nobody's head; the 21 are #363. The script carries a
-  `--self-test` the workflow runs first, because a job whose entire output is "nothing passed" is
-  worthless if its parser has quietly stopped matching (#359).
+  The first measurement, over three full runs on 2026-08-26 across 98 demonstrations: 70 fired
+  every run, 5 passed every run (#362), 2 passed in some runs, 21 failed for a reason other than
+  their detector's finding (#363), 0 never ran. All 27 from #346 were in the first group. After
+  #362 and #363, over three runs of the same shape: 86 fire on the `failOn` gate, 8 hang with the
+  timeout naming their finding, 1 is JDK-bounded, and the other four rows are empty across 95
+  demonstrations. `.github/known-silent-demos.txt` is empty and keeps the record of what its five
+  entries turned out to be. The script carries a `--self-test` the workflow runs first, because a
+  job whose entire output is "nothing passed" is worthless if its parser has quietly stopped
+  matching (#359).
 
 - **`LockDowngradeDetector` detects the unsafe downgrade, which is what its name promised and
   nothing did.** It reported read-to-write upgrades only — the condition
@@ -52,11 +53,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   44 of 160 downgrade-shaped sequences had a writer inside the gap, over three runs.
 
   The upgrade finding stays, and now says in the javadoc that it duplicates
-  `LockUpgradeDeadlockDetector`; removing the duplicate is an API change, since `DetectorType` is
-  locked, and is tracked separately. Upgrade findings also collapse to one line per lock with a
+  `LockUpgradeDeadlockDetector`; the duplicate report is gone (see Fixed, #361), while retiring
+  one of the two `DetectorType` constants is an API change, since `DetectorType` is locked, and is
+  still tracked separately. Upgrade findings also collapse to one line per lock with a
   count, the way #351 required of the common-pool detector (#355).
 
+
 ### Fixed
+
+- **A round timeout now says what the detectors saw.** The `failOn` gate is success-path-only, so
+  a run that times out never reaches it: the failure was "Test timed out after 5000ms. Possible
+  deadlock, starvation, or visibility issue." and nothing in it said whether any detector had an
+  answer. The reports were flushed to stderr on the way out, which in a `-T 1C` reactor build is
+  hundreds of interleaved lines away from the failure. `RoundTimeoutError` now carries the names
+  of the detectors that produced a finding, or says plainly that none did. Names only; the reports
+  are still printed in full above. This is what split #363's bucket of 21 into nine hangs that had
+  a finding waiting and five that had nothing (#363).
+
+- **Three detectors were inert under the default runner, and now say so.** `DeadlockDetector` asks
+  `ThreadMXBean.findDeadlockedThreads()` and `SleepInLockDetector` asks
+  `ThreadMXBean.getThreadInfo(id)`; neither reports virtual threads, and `useVirtualThreads`
+  defaults to `true`, so the workers colliding on your locks are not in any cycle JMX can close.
+  Measured both ways on `examples/06-deadlock` and `examples/74-sleep-in-lock`, same subject each
+  time: silent with the default runner, `CIRCULAR DEADLOCK DETECTED` and `SLEEP-IN-LOCK PATTERNS
+  DETECTED` with `useVirtualThreads = false`. Both detectors' javadoc now says what they cannot
+  see, and the runner announces each once per JVM at INFO as `runner.detector.inert`, next to the
+  `DaemonThreadHygieneDetector` announcement from #352. `LivelockDetector` is the third, through
+  `dumpAllThreads`, and gets the same treatment; it is also documented as not reporting a busy
+  RUNNABLE spin at all, which is a separate limit and the reason `examples/07-livelock` measures
+  its retry burn directly instead (#363).
+
+- **21 example demonstrations failed for a reason other than their detector's finding, and none
+  do now.** Ten let the subject's own corruption escape the test body - a shared
+  `SimpleDateFormat` throwing `NumberFormatException`, a shared `Mac` throwing "arraycopy: length
+  -21 is negative", an unguarded `ArrayList` throwing `ConcurrentModificationException` - which
+  failed the run before the gate could report, so the reader got a `java.util` stack trace where
+  the detector's report should be. Those are evidence and are now recorded or absorbed. Eleven
+  hung: five of those were real defects (a balanced acquire/release pair
+  `ReentrantLockReport.hasIssues()` never gates on, a test body that took a `StampedLock` write
+  lock and then called a method that takes it again, a starvation wait measured as zero, and the
+  two JMX-blind detectors above), and the rest demonstrate a hang, keep it, and say so in their
+  `@Disabled` reason (#363).
+
+- **The five demonstrations on the known-silent list all fired, and not one was what the list said
+  it was.** `30-false-sharing` was structural: `FalseSharingDetector`'s findings are off unless
+  `-Dasync-test.experimental.false-sharing=true`, and `docs/DETECTOR_CATALOG.md` says its offsets
+  are estimates the JVM's layout does not follow, so the demonstration is gone and both directions
+  of the gate are pinned by ordinary `@Test`s instead. `07-livelock` was three structural faults,
+  not timing: `LivelockDetector` treats RUNNABLE as progress on purpose, it reads `dumpAllThreads`
+  which excludes virtual threads, and the subject does make progress under contention; the retry
+  burn is now measured directly. `112-try-lock-misuse` is deterministic now that a thread outside
+  the run holds the lock. `92-virtual-thread-pinning` was JDK 24's JEP 491, not timing.
+  `90-virtual-thread-carrier-exhaustion` fired at 8 threads on a 4-core runner and never on a
+  16-core one, because the detector's threshold is `availableProcessors()`; 64 threads clears any
+  machine this is likely to run on. `.github/known-silent-demos.txt` is empty (#362).
+
+- **`LockDowngradeDetector` and `LockUpgradeDeadlockDetector` no longer report the same upgrade
+  twice.** Both saw a thread taking the write lock while holding the read lock, and `detectAll`
+  enables both, so a run that fed either reported the condition twice, the second time under a
+  name that describes the opposite operation. Deleting the finding from `LockDowngradeDetector`
+  on its own would have been worse: the two have separate recording APIs, so a caller who
+  instruments only that one would have gone from a finding to a clean report with nothing to say
+  why. Instead the registry hands it the peer when both are enabled; from then on its recordings
+  are forwarded there and the upgrade is reported once, under the name that describes it. With
+  only `LockDowngradeDetector` enabled nothing changes and it keeps reporting. No API was removed:
+  retiring one of the two `DetectorType` constants is still an API change for a version that can
+  carry one (#361).
+
+- **Two more demonstrations recorded into a detector the runner never reads**, the last instances
+  of #346's first cause. `26-future-blocking` and `28-lazy-init` each fed a locally constructed
+  detector and then analyzed it in the test body and asserted on the result - an assertion the
+  first thread through always loses, because its peers have not recorded anything yet. They
+  escaped the #346 audit because that audit looked for demonstrations that *passed*, and these
+  failed. `ExampleDisabledDemoTest` now refuses the shape: a demonstration must not both run the
+  analysis and judge it (#363).
 
 - **`ConstructorSafetyValidator` reported "possibly incomplete construction" for every fast
   constructor.** Any construction that finished in under a microsecond was added to

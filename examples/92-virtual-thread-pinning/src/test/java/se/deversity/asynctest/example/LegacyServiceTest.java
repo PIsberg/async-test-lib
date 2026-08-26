@@ -53,8 +53,15 @@ class LegacyServiceTest {
      * completes, {@code recordUnpinEvent} is called. The detector correlates
      * start/end pairs and reports threads that were pinned during blocking ops.
      */
-    @Disabled("Remove @Disabled to see bug detected by VirtualThreadPinningDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectVirtualThreadPinning = true, failOn = FailOn.LOW)
+    @Disabled("Remove @Disabled on JDK 21-23 to see the pinning detected by "
+            + "VirtualThreadPinningDetector; on JDK 24+ synchronized no longer pins "
+            + "(JEP 491) and the detector says so instead")
+    // Two rounds rather than fifty. Every caller queues behind a 10ms sleep held under one
+    // monitor, so fifty rounds of eight threads took four seconds and timed the round out
+    // before the failOn gate was reached. The finding was there the whole time; the round
+    // just never finished. See issue #362.
+    @AsyncTest(threads = 8, invocations = 2, detectAll = false,
+            detectVirtualThreadPinning = true, failOn = FailOn.LOW)
     void test_concurrent_detectsPinning() {
         var detector = AsyncTestContext.virtualThreadPinningDetector();
         Thread thread = Thread.currentThread();

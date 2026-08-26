@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Detects incorrect {@link java.util.concurrent.locks.ReentrantReadWriteLock} downgrade and
@@ -45,11 +46,13 @@ import java.util.concurrent.locks.ReadWriteLock;
  * because the write lock cannot be granted while any read lock is held — including the one held
  * by the same thread.
  *
- * <p>{@link LockUpgradeDeadlockDetector} watches the same condition and produces a structured
- * {@code Violation} for it, so a run with both detectors enabled and both fed reports the upgrade
- * twice. Keeping it here is deliberate: a caller who instruments only this detector would
- * otherwise silently lose the finding. Merging the two is an API change — {@code DetectorType}
- * is locked — and is tracked in issue #361.
+ * <p>{@link LockUpgradeDeadlockDetector} watches the same condition, is named for it, and
+ * produces a structured {@code Violation} for it. When the registry has both, this detector
+ * forwards what it records there and leaves the upgrade out of its own report, so one upgrade is
+ * one finding whichever recording API the caller used; see {@link #deferUpgradeReportingTo}.
+ * When this detector is the only one enabled it keeps reporting the upgrade, because nothing
+ * else would. Issue #361. Retiring one of the two {@code DetectorType} constants outright is an
+ * API change and still belongs in a version that can carry one.
  *
  * <h2>Correct downgrade pattern (not flagged)</h2>
  * <ol>
@@ -126,6 +129,60 @@ public class LockDowngradeDetector {
 
     private final Map<Integer, LockState> locks = new ConcurrentHashMap<>();
 
+    /**
+     * Where to send upgrade observations instead of reporting them here, or {@code null} to
+     * report them here.
+     *
+     * <p>{@link LockUpgradeDeadlockDetector} watches the same condition and is named for it, so
+     * a run with both enabled and both fed reported it twice, once under a name that describes
+     * the opposite operation. Deleting the finding from this class was not an option on its own:
+     * the two have separate recording APIs, and a caller who instruments only this one and never
+     * calls {@code LockUpgradeDeadlockDetector.record*} would have gone from a finding to a
+     * clean report with nothing to say why.
+     *
+     * <p>So the registry hands this detector the other one when both are enabled, and from then
+     * on every read acquire, read release and write acquire recorded here is also recorded there.
+     * The finding then comes out once, from the detector that owns it, whichever API the caller
+     * used. With no peer set - only this detector enabled, or direct construction in a unit test
+     * - nothing changes and the upgrade is reported here, because nothing else will report it.
+     *
+     * <p>Issue #361. The full merge, which retires one of the two {@code DetectorType} constants,
+     * is an API change and still belongs in a version that can carry one.
+     */
+    private volatile @Nullable LockUpgradeDeadlockDetector upgradeReporter;
+
+    /**
+     * Hands upgrade reporting to {@code peer}, which is named for that condition.
+     *
+     * <p>Called by {@code DetectorRegistry} when both detectors are enabled. After this, upgrade
+     * observations are forwarded to {@code peer} and left out of this detector's own report; the
+     * unsafe downgrade, which is this detector's own subject, is unaffected.
+     *
+     * @param peer the detector that will report read-to-write upgrades, or {@code null} to keep
+     *             reporting them here
+     */
+    public void deferUpgradeReportingTo(@Nullable LockUpgradeDeadlockDetector peer) {
+        this.upgradeReporter = peer;
+    }
+
+    /**
+     * Mirrors one recorded event into {@link #upgradeReporter}, if there is one.
+     *
+     * <p>{@code LockUpgradeDeadlockDetector} takes a {@link ReentrantReadWriteLock} where this
+     * detector takes the {@link ReadWriteLock} interface, so anything else is silently not
+     * forwarded. That is not a gap worth closing: the upgrade deadlock is a property of
+     * {@code ReentrantReadWriteLock}'s own contract, and another implementation is free to
+     * support upgrading.
+     */
+    private void forward(ReadWriteLock lock, java.util.function.BiConsumer<
+            LockUpgradeDeadlockDetector, ReentrantReadWriteLock> event) {
+        LockUpgradeDeadlockDetector peer = upgradeReporter;
+        if (peer != null && lock instanceof ReentrantReadWriteLock reentrant) {
+            event.accept(peer, reentrant);
+        }
+    }
+
+
     private LockState stateFor(ReadWriteLock lock, String name) {
         return locks.computeIfAbsent(System.identityHashCode(lock), k -> {
             String resolved = name != null ? name : "rwlock@" + k;
@@ -141,6 +198,7 @@ public class LockDowngradeDetector {
      */
     public void recordReadLockAcquired(ReadWriteLock lock, String lockName) {
         if (lock == null) return;
+        forward(lock, (peer, rw) -> peer.recordReadLockAcquired(rw, lockName, Thread.currentThread()));
         LockState state = stateFor(lock, lockName);
         long tid = Thread.currentThread().threadId();
         // Acquiring read while already holding write is the valid downgrade step —
@@ -170,6 +228,7 @@ public class LockDowngradeDetector {
      */
     public void recordReadLockReleased(ReadWriteLock lock, String lockName) {
         if (lock == null) return;
+        forward(lock, (peer, rw) -> peer.recordReadLockReleased(rw, Thread.currentThread()));
         stateFor(lock, lockName).threadHolds.computeIfPresent(
             Thread.currentThread().threadId(), (k, h) -> {
                 if (h.read > 0) h.read--;
@@ -188,6 +247,11 @@ public class LockDowngradeDetector {
      */
     public void recordWriteLockAcquired(ReadWriteLock lock, String lockName) {
         if (lock == null) return;
+        // Forwarded before this detector's own bookkeeping, because the peer decides whether
+        // this is an upgrade from the read holders it has been told about, and those come from
+        // the same forwarding.
+        forward(lock, (peer, rw) ->
+                peer.recordWriteLockAcquisitionAttempt(rw, lockName, Thread.currentThread()));
         LockState state = stateFor(lock, lockName);
         long tid = Thread.currentThread().threadId();
         // Bumped before the per-thread work so a gap that is open right now, on another
@@ -239,9 +303,13 @@ public class LockDowngradeDetector {
      */
     public LockDowngradeReport analyze() {
         LockDowngradeReport report = new LockDowngradeReport();
+        boolean upgradesReportedElsewhere = upgradeReporter != null;
         for (LockState state : locks.values()) {
             int upgrades = state.upgradeAttempts.get();
-            if (upgrades > 0) {
+            // Counted either way, so a caller reading this detector directly still sees the
+            // number; only the report line stands down, and only when the detector named for
+            // the condition has been fed the same events. See deferUpgradeReportingTo.
+            if (upgrades > 0 && !upgradesReportedElsewhere) {
                 // One line per lock, with a count. It used to be one line per occurrence in a
                 // CopyOnWriteArrayList: a stress test producing the same upgrade on every body
                 // execution printed the same sentence hundreds of times, and each append copied

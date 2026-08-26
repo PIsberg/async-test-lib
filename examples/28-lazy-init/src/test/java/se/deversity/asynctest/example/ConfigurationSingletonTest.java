@@ -1,11 +1,8 @@
 package se.deversity.asynctest.example;
 
-import se.deversity.asynctest.AsyncTest;
-import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.LazyInitValidator;
 import se.deversity.asynctest.example.service.ConfigurationSingleton;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -36,13 +33,17 @@ import static org.junit.jupiter.api.Assertions.*;
  * Single-threaded access always completes construction before any read.
  * The missing volatile is never observable from a single thread.
  *
- * WHY @AsyncTest DETECTS THE ISSUE:
- * LazyInitValidator tracks concurrent accesses where some threads observed
- * null and others observed an initialized value, all without volatile or
- * synchronization — the signature of broken DCL.
+ * WHAT LazyInitValidator SAYS ABOUT IT:
+ * It reports a field that one thread observed as null and another observed as
+ * initialized, with neither volatile nor synchronization, which is the broken
+ * DCL fingerprint. It is a standalone helper rather than one of the library's
+ * detectors: it has no DetectorType and no DetectorRegistry entry, so a test
+ * drives it and reads it directly. That is also why this example has no
+ * @AsyncTest demonstration; Part 2 below says why in full.
  *
  * DETECTORS TRIGGERED:
- * LazyInitValidator — standalone, instantiated directly in the test.
+ * None. The wired detectors for this bug are DoubleCheckedLockingDetector
+ * (examples/47-double-checked-locking) and LazyInitRaceDetector.
  *
  * FIX:
  * - Declare {@code instance} as {@code volatile}
@@ -87,43 +88,75 @@ class ConfigurationSingletonTest {
     }
 
     // -------------------------------------------------------------------------
-    // Part 2: @AsyncTest — exposes broken DCL via LazyInitValidator
+    // Part 2: what LazyInitValidator reports, and why there is no demonstration
     // -------------------------------------------------------------------------
 
     /**
-     * The bug: without volatile on {@code instance}, a thread can observe a
-     * non-null reference to a partially-constructed singleton. Multiple threads
-     * will simultaneously see null (triggering initialization) and see the
-     * instance as initialized — the classic broken DCL fingerprint.
+     * This example carried a disabled {@code @AsyncTest} demonstration promising "broken DCL
+     * detected by LazyInitValidator". It could not deliver that, for a reason no instrumentation fixes:
+     * LazyInitValidator is not one of the library's detectors. There is no DetectorType for it,
+     * no attribute on {@code @AsyncTest} and no DetectorRegistry entry, so the runner never
+     * analyzes it and the failOn gate has nothing to gate on. It is a standalone helper a test drives and reads
+     * itself, which is what the tests below do.
      *
-     * LazyInitValidator detects unsynchronized, non-volatile lazy init fields
-     * accessed from multiple threads where some observed null.
+     * The demonstration also asserted on its own analyze() call inside the test body, where the
+     * first of eight threads through gets there before its peers have recorded anything. That
+     * assertion failed on every run, which is why the audit in issue #346 never listed this
+     * example: that audit was looking for demonstrations that passed. ExampleDisabledDemoTest
+     * now refuses the shape outright. See issue #363.
      *
-     * To see the detection:
-     * 1. Remove @Disabled
-     * 2. Run this test — LazyInitValidator will flag "instance"
-     * 3. Fix: add volatile to the instance field, or use the holder idiom
+     * The wired detectors for this bug have their own examples: DoubleCheckedLockingDetector in
+     * examples/47-double-checked-locking, which reports the broken DCL structure, and
+     * LazyInitRaceDetector, which reports an observed initialization race. Rather than add a
+     * third demonstration of one condition, this example keeps what it is good at: the subject,
+     * the two fixes, and both directions of what LazyInitValidator says about them.
      */
-    @Disabled("Remove @Disabled to see broken DCL detected by LazyInitValidator")
-    @AsyncTest(threads = 8, invocations = 100, failOn = FailOn.LOW)
-    void testGetInstance_concurrent_detectsBrokenDCL() {
-        // Simulate what concurrent threads would observe:
-        // - Some threads see null (they entered before initialization completed)
-        // - Others see an initialized value (they entered after)
-        // - None uses synchronized access or volatile for the outer null check
-        boolean isFirstThread = Thread.currentThread().threadId() % 3 == 0;
 
-        validator.recordAccess(
-            "instance",          // field name
-            isFirstThread,       // observedNull: true when thread races in before init
-            !isFirstThread,      // initializedValue: true when init is already visible
-            false,               // synchronizedAccess: outer check has NO synchronization
-            false                // volatileField: field is NOT volatile — the bug
-        );
+    @Test
+
+    void testLazyInitValidator_nonVolatileFieldSeenBothWays_reports() throws Exception {
+        // Two real threads, joined one after the other. The validator counts distinct accessing
+        // threads, so recording both observations from this thread would leave the count at one
+        // and report nothing, which is correct: one thread watching a field go from null to
+        // initialized is lazy initialization working.
+        Thread sawNull = new Thread(
+                () -> validator.recordAccess("instance", true, false, false, false), "saw-null");
+        sawNull.start();
+        sawNull.join(5_000);
+
+        Thread sawInitialized = new Thread(
+                () -> validator.recordAccess("instance", false, true, false, false), "saw-init");
+        sawInitialized.start();
+        sawInitialized.join(5_000);
 
         LazyInitValidator.LazyInitReport report = validator.analyze();
         assertTrue(report.hasIssues(),
-            "Expected broken DCL to be detected.\n" + report);
+            "one thread observed null and another observed it initialized, with neither "
+                    + "volatile nor synchronization: that is the broken DCL fingerprint.\n" + report);
+    }
+
+    @Test
+    void testLazyInitValidator_oneThreadOnly_isSilent() {
+        validator.recordAccess("instance", true, true, false, false);
+
+        LazyInitValidator.LazyInitReport report = validator.analyze();
+        assertFalse(report.hasIssues(),
+            "a single thread seeing the field go from null to initialized is lazy "
+                    + "initialization working, not a race.\n" + report);
+    }
+
+    /**
+     * The bug itself, with no detector involved: getInstance() reads the non-volatile field
+     * outside the lock, so nothing in the JMM orders the constructor's writes before the
+     * reference becomes visible. Single-threaded this always returns a complete object, which
+     * is exactly why the bug survives review.
+     */
+    @Test
+    void testGetInstance_singleThread_neverObservesAPartialObject() {
+        ConfigurationSingleton cfg = ConfigurationSingleton.getInstance();
+
+        assertNotNull(cfg.getEnvironment(), "environment is set in the constructor");
+        assertEquals("20", cfg.get("db.pool.size"), "properties are populated in the constructor");
     }
 
     /**
