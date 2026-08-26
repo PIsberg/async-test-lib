@@ -524,6 +524,17 @@ final class DetectorRegistry {
         completableFutureObtrudeDetector = cfg.detectCompletableFutureObtrudeAbuse ? new CompletableFutureObtrudeDetector() : null;
         spuriousWakeupHazardDetector     = cfg.detectSpuriousWakeupHazard          ? new SpuriousWakeupDetector()           : null;
         lockUpgradeDeadlockDetector      = cfg.detectLockUpgradeDeadlock           ? new LockUpgradeDeadlockDetector()      : null;
+
+        // One upgrade is one finding. LockDowngradeDetector sees the same read-to-write upgrade
+        // LockUpgradeDeadlockDetector is named for, and a run with both enabled and both fed
+        // reported it twice, the second time under a name that describes the opposite operation.
+        // Handing the peer over here rather than deleting the finding is what keeps a caller who
+        // instruments only the downgrade detector from silently losing it: their recordings are
+        // forwarded, so the finding comes out under the right name instead of not at all.
+        // See issue #361.
+        if (lockDowngradeDetector != null && lockUpgradeDeadlockDetector != null) {
+            lockDowngradeDetector.deferUpgradeReportingTo(lockUpgradeDeadlockDetector);
+        }
         tryLockMisuseDetector            = cfg.detectTryLockMisuse                 ? new TryLockMisuseDetector()            : null;
         cfBlockingCallbackDetector       = cfg.detectCFBlockingCallback            ? new CompletableFutureBlockingCallbackDetector() : null;
         // ---- Phase 16: JDK 25/26 preview-era concurrency detectors ----
