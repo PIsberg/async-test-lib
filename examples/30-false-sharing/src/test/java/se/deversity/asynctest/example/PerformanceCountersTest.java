@@ -1,11 +1,8 @@
 package se.deversity.asynctest.example;
 
-import se.deversity.asynctest.AsyncTest;
-import se.deversity.asynctest.FailOn;
-import se.deversity.asynctest.AsyncTestContext;
+import se.deversity.asynctest.diagnostics.FalseSharingDetector;
 import se.deversity.asynctest.example.service.PerformanceCounters;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -32,15 +29,17 @@ import static org.junit.jupiter.api.Assertions.*;
  * Single-threaded tests never cause cache-line contention. The fields behave
  * correctly regardless of memory layout.
  *
- * WHY @AsyncTest DETECTS THE ISSUE:
- * FalseSharingDetector tracks which threads access which fields and their
- * approximate memory offsets. When different threads access fields within
- * 64 bytes of each other, it reports the false-sharing pairs.
+ * WHAT FalseSharingDetector SAYS ABOUT IT:
+ * It tracks which threads access which fields and their approximate memory
+ * offsets, and reports pairs within 64 bytes of each other. Those offsets are
+ * estimates the JVM's real layout does not follow, so the findings are off
+ * unless -Dasync-test.experimental.false-sharing=true is set. Part 2 below pins
+ * both directions of that gate and says why this example has no @AsyncTest
+ * demonstration.
  *
  * DETECTORS TRIGGERED:
- * FalseSharingDetector — accessed via AsyncTestContext.falseSharingDetector()
- *                        (wired through DetectorRegistry, enabled via
- *                         detectFalseSharing = true in @AsyncTest).
+ * None by default. FalseSharingDetector is experimental and opt-in; see
+ * docs/DETECTOR_CATALOG.md.
  *
  * FIX:
  * - Use @Contended on each hot field to force JVM padding to a full cache line
@@ -91,45 +90,75 @@ class PerformanceCountersTest {
     }
 
     // -------------------------------------------------------------------------
-    // Part 2: @AsyncTest — exposes false sharing via FalseSharingDetector
+    // Part 2: the experimental gate, and why there is no @AsyncTest demonstration
     // -------------------------------------------------------------------------
 
     /**
-     * The performance bug: different threads update requestCount, errorCount,
-     * and latencySum simultaneously. Because all three fields share a cache line,
-     * every write from any thread invalidates the line for all other threads —
-     * causing expensive cache coherence traffic even though threads touch
-     * independent fields.
+     * This example carried a disabled {@code @AsyncTest} promising "false sharing detected by
+     * FalseSharingDetector". Enabling it produced a green test, every run, and the reason was
+     * not timing: the detector's findings are off unless
+     * {@code -Dasync-test.experimental.false-sharing=true} is set, which the examples do not set.
+     * That put it on {@code .github/known-silent-demos.txt} as the one structural entry. See
+     * issue #362.
      *
-     * FalseSharingDetector reports the adjacent field pairs accessed by
-     * different threads within the same 64-byte cache line.
+     * <p>Setting the property would have made the demonstration fail, and it is still not what
+     * this example should do. docs/DETECTOR_CATALOG.md is blunt about why the gate exists: cache
+     * line effects are not observable from pure Java, the detector estimates offsets by summing
+     * nominal type sizes in declaration order, and the JVM reorders fields, compresses
+     * references and honours {@code @Contended} padding, so the estimated offsets do not
+     * correspond to real memory layout. Its reports are not evidence of false sharing. Telling a
+     * reader to remove {@code @Disabled} and look at one would be teaching them to trust a
+     * number the library itself does not stand behind.
      *
-     * To see the detection:
-     * 1. Remove @Disabled
-     * 2. Run this test — FalseSharingDetector will report the contention pairs
-     * 3. Fix: annotate each field with @Contended, or switch to LongAdder
+     * <p>So the demonstration is gone and the gate is pinned instead, in both directions, by
+     * tests that run in CI. The bug is still here: PerformanceCounters still has three adjacent
+     * hot fields, and the fix below is still the fix.
      */
-    @Disabled("Remove @Disabled to see false sharing detected by FalseSharingDetector")
-    @AsyncTest(threads = 8, invocations = 200, detectFalseSharing = true, failOn = FailOn.LOW)
-    void testRecordRequest_concurrent_detectsFalseSharing() {
-        // Different threads update different fields — but they all share a cache line
-        long tid = Thread.currentThread().threadId();
 
-        if (tid % 3 == 0) {
-            // Thread group A: updates requestCount
-            counters.requestCount++;
-            AsyncTestContext.falseSharingDetector()
-                    .recordFieldAccess(counters, "requestCount", long.class);
-        } else if (tid % 3 == 1) {
-            // Thread group B: updates errorCount
-            counters.errorCount++;
-            AsyncTestContext.falseSharingDetector()
-                    .recordFieldAccess(counters, "errorCount", long.class);
-        } else {
-            // Thread group C: updates latencySum
-            counters.latencySum += 5;
-            AsyncTestContext.falseSharingDetector()
-                    .recordFieldAccess(counters, "latencySum", long.class);
+    @Test
+    void testFalseSharingDetector_silentByDefault() throws Exception {
+        FalseSharingDetector detector = new FalseSharingDetector();
+        recordTwoThreadsPerField(detector);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "without -" + FalseSharingDetector.EXPERIMENTAL_PROPERTY + "=true the detector "
+                        + "reports nothing, because an offset it guessed is not evidence");
+    }
+
+    @Test
+    void testFalseSharingDetector_reportsThePairOnceTheGateIsOpen() throws Exception {
+        FalseSharingDetector detector = new FalseSharingDetector();
+        recordTwoThreadsPerField(detector);
+
+        String previous = System.getProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        try {
+            // No re-run needed: recording happens whatever the property says, and only the
+            // analysis is gated.
+            assertTrue(detector.analyze().hasIssues(),
+                    "with the gate open the adjacent counters are reported as a pair");
+        } finally {
+            if (previous == null) {
+                System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+            } else {
+                System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, previous);
+            }
+        }
+    }
+
+    /**
+     * Two threads per field, because the detector only considers a field that more than one
+     * thread touched. Joined one at a time, so nothing here depends on the scheduler.
+     */
+    private void recordTwoThreadsPerField(FalseSharingDetector detector) throws Exception {
+        for (String field : new String[] {"requestCount", "errorCount"}) {
+            for (int i = 0; i < 2; i++) {
+                Thread t = new Thread(
+                        () -> detector.recordFieldAccess(counters, field, long.class),
+                        "toucher-" + field + "-" + i);
+                t.start();
+                t.join(5_000);
+            }
         }
     }
 

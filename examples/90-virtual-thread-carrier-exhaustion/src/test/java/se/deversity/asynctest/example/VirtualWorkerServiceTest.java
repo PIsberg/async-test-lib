@@ -50,8 +50,17 @@ class VirtualWorkerServiceTest {
      * of concurrent blocking events reaches the carrier count (default:
      * {@code Runtime.availableProcessors()}), the detector flags exhaustion.
      */
-    @Disabled("Remove @Disabled to see bug detected by VirtualThreadCarrierExhaustionDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectVirtualThreadCarrierExhaustion = true, failOn = FailOn.LOW)
+    @Disabled("Remove @Disabled to see carrier exhaustion detected by "
+            + "VirtualThreadCarrierExhaustionDetector")
+    // 64 threads, not 8, and one round rather than fifty. The detector fires when the number
+    // of virtual threads blocked at once reaches the carrier count, which is
+    // availableProcessors(): at 8 threads it fired on a 4-core CI runner and never on a
+    // 16-core workstation, which is why this demonstration was recorded as "machine-dependent"
+    // and baselined. 64 clears any machine anyone is likely to run this on, and it is the
+    // honest bound rather than a guarantee. Fifty rounds of a 10ms sleep behind one monitor
+    // took 4 seconds and timed the round out before the detector was consulted. See #362.
+    @AsyncTest(threads = 64, invocations = 1, detectAll = false,
+            detectVirtualThreadCarrierExhaustion = true, failOn = FailOn.LOW)
     void test_concurrent_detectsCarrierExhaustion() {
         var detector = AsyncTestContext.virtualThreadCarrierExhaustionDetector();
         String reason = "synchronized-sleep";
