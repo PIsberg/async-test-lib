@@ -65,7 +65,7 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 25 | [Executor Self-Deadlock](25-executor-deadlock/) | `ExecutorDeadlockDetector` | Task on a single-thread pool submits a subtask to the same pool and blocks waiting — the subtask never runs | 🔴 Critical |
 | 26 | [Future Blocking](26-future-blocking/) | `FutureBlockingDetector` | Pool workers call `Future.get()` on futures submitted to the same bounded pool — starvation when all threads block | 🔴 Critical |
 | 27 | [Latch Misuse](27-latch-misuse/) | `LatchMisuseDetector` | `countDown()` in both `catch` and `finally` blocks causes premature latch completion and races to the next phase | 🟡 High |
-| 28 | [Unsafe Lazy Init](28-lazy-init/) | `LazyInitValidator` | Double-checked locking without `volatile` — partially-constructed singleton visible to other threads | 🔴 Critical |
+| 28 | [Unsafe Lazy Init](28-lazy-init/) | `LazyInitValidator` (standalone, not a `DetectorType`) | Double-checked locking without `volatile` — partially-constructed singleton visible to other threads | 🔴 Critical |
 | 29 | [ABA Problem](29-aba-problem/) | `ABAProblemDetector` | Lock-free stack CAS succeeds despite node being recycled — classic A→B→A problem corrupts the stack | 🔴 Critical |
 | 30 | [False Sharing](30-false-sharing/) | `FalseSharingDetector` | Adjacent `volatile long` fields on the same cache line cause coherence traffic between threads updating independent counters | 🟡 High |
 | 31 | [Lock Order Violation](31-lock-order-violation/) | `LockOrderValidator` | Transfer service acquires account locks in source-first order — two concurrent opposite transfers create a circular dependency | 🔴 Critical |

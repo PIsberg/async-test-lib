@@ -8,6 +8,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import java.util.ConcurrentModificationException;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -76,6 +78,7 @@ class SyncListServiceTest {
 
     @Disabled("Remove @Disabled to see unsafe iteration detected by SynchronizedCollectionIterationDetector")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSynchronizedCollectionIteration = true, failOn = FailOn.LOW)
+
     void test_concurrent_detectsUnsafeIteration() {
         var detector = AsyncTestContext.get().synchronizedCollectionIterationMonitor();
         var items = service.getItems();
@@ -83,13 +86,21 @@ class SyncListServiceTest {
         // Register the wrapper once; detector deduplicates by identity.
         detector.recordWrapperCreated(items, "sync-items");
 
-        // Record that iteration is starting — the thread does NOT hold the lock.
-        // holdingLock = false triggers the violation in the detector.
-        boolean holdingLock = Thread.holdsLock(items);
-        detector.recordIterationStarted(items, Thread.currentThread(), holdingLock);
+        // Record that iteration is starting while the thread does NOT hold the lock.
+        // holdingLock = false is the violation the detector reports.
+        detector.recordIterationStarted(items, Thread.currentThread(), Thread.holdsLock(items));
 
-        // Perform the buggy unsynchronized iteration while other threads add().
-        service.add("item-" + Thread.currentThread().getName());
-        service.snapshot();
+        // The unsynchronized iteration below is the bug, and Collections.synchronizedList
+        // signals it by throwing ConcurrentModificationException out of snapshot(). Absorbed
+        // rather than propagated: an exception escaping this body fails the run before the
+        // failOn gate is reached, so the reader gets java.util's stack trace instead of
+        // SynchronizedCollectionIterationDetector's report. The finding is already recorded
+        // above and does not depend on the throw. See issue #363.
+        try {
+            service.add("item-" + Thread.currentThread().getName());
+            service.snapshot();
+        } catch (ConcurrentModificationException caught) {
+            // Exactly what an unguarded iteration over a synchronized wrapper does.
+        }
     }
 }

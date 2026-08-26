@@ -72,27 +72,32 @@ class UserCacheServiceTest {
 
     @Disabled("Remove @Disabled to see HashMap cache race detected by CacheConcurrencyDetector")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCacheConcurrency = true, failOn = FailOn.LOW)
+
     void testCache_concurrent_detectsRace() {
         var cache = service.getCache();
-        String key = "user-" + Thread.currentThread().getId();
+        String key = "user-" + Thread.currentThread().threadId();
         String value = "UserValue-" + key;
 
         // Register the cache once; detector deduplicates by map identity
         AsyncTestContext.get().cacheConcurrencyDetector()
                 .registerCache(cache, "user-cache");
 
-        // Write to the cache
-        AsyncTestContext.get().cacheConcurrencyDetector()
-                .recordPut(cache, "user-cache", key, value);
-        service.put(key, value);
+        // Nothing here asserts on what comes back out. A HashMap cache losing the entry it was
+        // just given is the bug, so asserting on it made this demonstration fail on its own
+        // assertion rather than on CacheConcurrencyDetector's finding, and a reader who removed
+        // @Disabled never saw the report they were sent here for. The same map can also throw
+        // out of its own resize, absorbed below for the same reason. See issue #363.
+        try {
+            AsyncTestContext.get().cacheConcurrencyDetector()
+                    .recordPut(cache, "user-cache", key, value);
+            service.put(key, value);
 
-        // Read from the cache — may race with another thread's structural modification
-        AsyncTestContext.get().cacheConcurrencyDetector()
-                .recordGet(cache, "user-cache", key);
-        String result = service.get(key);
-
-        // Under sequential execution this assertion always holds;
-        // under concurrency the map may be corrupted and get() returns null
-        assertNotNull(result, "Cache should return the value we just stored");
+            AsyncTestContext.get().cacheConcurrencyDetector()
+                    .recordGet(cache, "user-cache", key);
+            service.get(key);
+        } catch (RuntimeException corrupted) {
+            // Structural modification during a concurrent read, thrown by the map itself.
+            // Evidence, not a failure: the finding is already recorded above.
+        }
     }
 }

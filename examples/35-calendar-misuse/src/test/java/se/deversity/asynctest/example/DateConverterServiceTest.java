@@ -77,25 +77,30 @@ class DateConverterServiceTest {
 
     @Disabled("Remove @Disabled to see shared-Calendar race detected by CalendarDetector")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCalendarIssues = true, failOn = FailOn.LOW)
+
     void testConvertToDate_concurrent_detectsSharingBug() {
         Calendar cal = service.getCalendar();
 
-        // Register the shared Calendar with the detector
         AsyncTestContext.get().calendarMonitor()
                 .registerCalendar(cal, "date-converter-calendar");
 
-        // Record the set access (detector watches for concurrent set calls)
-        AsyncTestContext.get().calendarMonitor()
-                .recordSet(cal, "date-converter-calendar");
+        // Recorded, not thrown. A shared Calendar that loses the race throws out of its own
+        // internals, and an exception escaping this body fails the run before the failOn gate
+        // reports the finding, so the reader gets a java.util stack trace instead of the
+        // detector's report. See issue #363.
+        try {
+            AsyncTestContext.get().calendarMonitor()
+                    .recordSet(cal, "date-converter-calendar");
 
-        // Perform the buggy operation — each thread uses a different year
-        int year = 2000 + (int) (Thread.currentThread().getId() % 30);
-        Date result = service.convertToDate(year, Calendar.JANUARY, 1);
+            int year = 2000 + (int) (Thread.currentThread().threadId() % 30);
+            service.convertToDate(year, Calendar.JANUARY, 1);
 
-        // Record the get access
-        AsyncTestContext.get().calendarMonitor()
-                .recordGet(cal, "date-converter-calendar");
-
-        assertNotNull(result, "convertToDate must not return null");
+            AsyncTestContext.get().calendarMonitor()
+                    .recordGet(cal, "date-converter-calendar");
+        } catch (RuntimeException corrupted) {
+            AsyncTestContext.get().calendarMonitor()
+                    .recordError(cal, "date-converter-calendar",
+                            corrupted.getClass().getSimpleName());
+        }
     }
 }

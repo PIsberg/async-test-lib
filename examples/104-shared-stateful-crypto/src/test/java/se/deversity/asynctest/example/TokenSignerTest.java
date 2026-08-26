@@ -90,9 +90,22 @@ class TokenSignerTest {
      */
     @Disabled("Remove @Disabled to see the bug detected by SharedStatefulCryptoDetector")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSharedStatefulCrypto = true, failOn = FailOn.LOW)
+
     void test_concurrent_detectsSharedMac() {
         Thread thread = Thread.currentThread();
-        AsyncTestContext.sharedStatefulCryptoDetector().recordAccess(signer.getMac(), "hmac-signer", thread);
-        signer.sign("payload-" + thread.getName());
+        AsyncTestContext.sharedStatefulCryptoDetector()
+                .recordAccess(signer.getMac(), "hmac-signer", thread);
+
+        // A shared Mac interleaving update() and doFinal() corrupts its own buffer lengths and
+        // throws out of System.arraycopy ("length -21 is negative"). That is the bug, and it is
+        // absorbed rather than propagated: an exception escaping this body fails the run before
+        // the failOn gate is reached, so a reader who removed @Disabled got a sun.security stack
+        // trace where SharedStatefulCryptoDetector's report should be. The finding is the
+        // recorded access above, which does not depend on the throw. See issue #363.
+        try {
+            signer.sign("payload-" + thread.getName());
+        } catch (RuntimeException corrupted) {
+            // The shared Mac tore its own state. Evidence, not a failure.
+        }
     }
 }

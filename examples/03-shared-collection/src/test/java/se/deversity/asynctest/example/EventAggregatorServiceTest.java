@@ -100,6 +100,7 @@ class EventAggregatorServiceTest {
      */
     @Disabled("Remove @Disabled to see the bug detected by SharedCollectionDetector")
     @AsyncTest(threads = 8, invocations = 100, detectSharedCollections = true, failOn = FailOn.LOW)
+
     void testRecordEvent_concurrent_detectsSharedCollectionUse() {
         // The recording has to name the collection the threads actually mutate. Recording
         // service.getEvents() instead handed the detector a fresh defensive copy per call, so it
@@ -111,7 +112,17 @@ class EventAggregatorServiceTest {
                                 ? "event-counts" : "event-log", operation));
 
         String source = "source-" + Thread.currentThread().threadId() % 4;
-        service.recordEvent(source, "event");
+
+        // An unsynchronized HashMap.merge can lose its race with itself and throw
+        // ConcurrentModificationException out of its own modCount check, which happened in one
+        // reactor run of three. That is the bug, not a test failure, and letting it escape the
+        // body fails the run before the failOn gate reports SharedCollectionDetector's finding.
+        // Absorbed here; the writes have already been recorded by the seam above. See #363.
+        try {
+            service.recordEvent(source, "event");
+        } catch (RuntimeException corrupted) {
+            // ArrayList and HashMap tearing under concurrent structural modification.
+        }
     }
 
     /**

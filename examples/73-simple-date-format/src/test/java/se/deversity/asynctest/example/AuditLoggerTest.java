@@ -84,32 +84,29 @@ class AuditLoggerTest {
 
     @Disabled("Remove @Disabled to see shared SDF race detected by SimpleDateFormatDetector")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSimpleDateFormatIssues = true, failOn = FailOn.LOW)
+
     void testFormatTimestamp_concurrent_detectsSharedSdf() {
         SimpleDateFormat sdf = AuditLogger.getSdf();
 
-        // Register the shared formatter with the detector
         AsyncTestContext.simpleDateFormatMonitor()
                 .registerFormatter(sdf, "audit-logger-sdf");
 
-        // Record a concurrent format access
-        AsyncTestContext.simpleDateFormatMonitor()
-                .recordFormat(sdf, "audit-logger-sdf");
-
-        // Call the buggy format method — concurrent Calendar mutations corrupt results
-        String result = logger.formatTimestamp(new Date());
-        assertNotNull(result, "formatTimestamp must not return null");
-
-        // Also record a parse access to demonstrate both operations are affected
-        AsyncTestContext.simpleDateFormatMonitor()
-                .recordParse(sdf, "audit-logger-sdf");
-
+        // The corruption is recorded, not thrown. A shared SimpleDateFormat does not fail
+        // politely: a concurrent Calendar mutation comes back as a ParseException, as a
+        // NumberFormatException on a half-written buffer, or as an ArrayIndexOutOfBounds
+        // inside format() itself. Any of those escaping this body fails the run before the
+        // failOn gate is reached, so the reader gets a java.text stack trace where the
+        // detector's report should be, and the example proves the bug instead of the
+        // detector finding it. See issue #363.
         try {
-            Date parsed = logger.parseTimestamp(result);
-            assertNotNull(parsed, "parseTimestamp must not return null");
-        } catch (ParseException e) {
-            // Calendar corruption from concurrent access may cause ParseException
+            AsyncTestContext.simpleDateFormatMonitor().recordFormat(sdf, "audit-logger-sdf");
+            String formatted = logger.formatTimestamp(new Date());
+
+            AsyncTestContext.simpleDateFormatMonitor().recordParse(sdf, "audit-logger-sdf");
+            logger.parseTimestamp(formatted);
+        } catch (ParseException | RuntimeException corrupted) {
             AsyncTestContext.simpleDateFormatMonitor()
-                    .recordError(sdf, "audit-logger-sdf", "ParseException");
+                    .recordError(sdf, "audit-logger-sdf", corrupted.getClass().getSimpleName());
         }
     }
 }
