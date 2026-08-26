@@ -32,6 +32,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -927,6 +928,11 @@ public class ConcurrencyRunner {
      * set {@code timeoutAlreadyReported} first: the returned type satisfies
      * {@link #isTimeoutLike}, so the enclosing {@code catch (AssertionError)} would
      * otherwise route it through here a second time.
+     *
+     * <p>The message carries {@link #findingSummary}, which is the only place a timed-out run
+     * says whether any detector had an answer: the {@code failOn} gate is success-path-only,
+     * so the reports flushed above are all a reader gets, and in a parallel build they are
+     * hundreds of interleaved lines from the failure. See {@link #findingSummary}.
      */
     private static AssertionError timeoutError(long timeoutMs,
                                                @Nullable Throwable cause,
@@ -943,11 +949,42 @@ public class ConcurrencyRunner {
         // analyzeAndGate (success-path-only) is never reached for this run.
         printPhase2Reports(phase2Analysis);
         AssertionError error = new RoundTimeoutError(
-            "Test timed out after " + timeoutMs + "ms. Possible deadlock, starvation, or visibility issue.");
+            "Test timed out after " + timeoutMs + "ms. Possible deadlock, starvation, or visibility issue."
+            + findingSummary(phase1, phase2Analysis));
         if (cause != null) {
             error.initCause(cause);
         }
         return error;
+    }
+
+    /**
+     * One sentence naming the detectors that had something to say before the timeout.
+     *
+     * <p><strong>Why the failure needs this.</strong> {@link #analyzeAndGate} runs on the
+     * success path only, so a run that timed out never reaches the {@code failOn} gate and
+     * its failure is the timeout, not the finding. The findings are printed to stderr by the
+     * caller, but a reader looking at a failing build sees the assertion message first and
+     * often only that, and under {@code -T 1C} the reports belong to whichever module happened
+     * to be writing at the time. Naming the detectors in the message is what makes "the round
+     * timed out" and "here is what was detected" the same sentence.
+     *
+     * <p>The empty case is reported explicitly rather than omitted. "No enabled detector
+     * produced a finding" is a different diagnosis from "a detector fired and you missed it",
+     * and silence cannot distinguish them: it is exactly the ambiguity that let 21 example
+     * demonstrations name a detector in their {@code @Disabled} reason while failing on a
+     * timeout, with nothing to say which of them had a finding waiting (issue #363).
+     *
+     * <p>Names only, not reports. The reports are already on stderr in full, and an assertion
+     * message that inlined them would push the timeout itself off the top of the console.
+     */
+    private static String findingSummary(Phase1DetectorSet phase1, Phase2Analysis phase2Analysis) {
+        Set<String> named = new LinkedHashSet<>(phase1.collectReports().keySet());
+        named.addAll(phase2Analysis.get().keySet());
+        if (named.isEmpty()) {
+            return " No enabled detector produced a finding before the timeout.";
+        }
+        return " " + named.size() + " detector finding(s) recorded before the timeout: "
+                + String.join(", ", named) + ". Full reports above.";
     }
 
     /**
