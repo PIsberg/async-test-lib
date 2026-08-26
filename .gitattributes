@@ -3,3 +3,8 @@
 # reads as false. Pin LF so the flags mean the same thing on the Windows CI legs.
 .mvn/maven.config text eol=lf
 .mvn/jvm.config text eol=lf
+
+# The report script carries a shebang, and a CRLF checkout would make the interpreter line end
+# in a carriage return. It is only ever invoked as `python3 <path>` today, which survives that,
+# but pinning it costs nothing and removes the trap.
+.github/scripts/*.py text eol=lf

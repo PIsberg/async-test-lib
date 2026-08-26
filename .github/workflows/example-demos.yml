@@ -1,0 +1,135 @@
+name: Example demonstrations
+
+# Runs the @Disabled example demonstrations, which nothing else does.
+#
+# Each one says, in its @Disabled reason, "Remove @Disabled to see X detected by YDetector".
+# That sentence is the product's claim about itself, and until this job existed nothing checked
+# it: on 2026-08-25 an audit enabled all 97 by hand and 72 of them passed. ExampleDisabledDemoTest
+# checks the static half - every disabled @AsyncTest sets failOn, so it *can* fail - but it cannot
+# tell whether the detector the demonstration names would say anything. This is the dynamic half.
+#
+# The inversion is the whole design: a demonstration that PASSES is the finding. That is why this
+# cannot live in the examples pipeline, which asserts the opposite.
+#
+# Weekly rather than per-PR, for two reasons. It is slow: 148 modules, three times, and several
+# demonstrations now wait on real timeouts. And a few are inherently probabilistic - the original
+# audit ran three times precisely to separate "never fires" from "fires sometimes" - so a PR gate
+# that goes red on one flaky demonstration gets switched off within a week. Only a demonstration
+# that passes in EVERY run fails this job; the flaky ones are reported and do not.
+#
+# See issue #359.
+
+on:
+  schedule:
+    - cron: '0 5 * * 2'  # Every Tuesday at 05:00 UTC, a day after the fuzzing run
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: 'How many times to run the reactor (3 separates never-fires from sometimes-fires)'
+        required: false
+        default: '3'
+
+permissions:
+  contents: read
+
+jobs:
+  enabled-demos:
+    name: Disabled demonstrations, enabled
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Check the report script against known input
+        # Before spending two hours on 148 modules three times over. This job's entire output is
+        # the sentence "nothing passed", which is worthless if the parser has quietly stopped
+        # recognising surefire's shape - the same failure mode as the demonstrations themselves.
+        run: python3 .github/scripts/disabled_demo_report.py . --self-test
+
+      - name: Install the library
+        # The examples resolve async-test-lib from ~/.m2, not from the reactor, so this is not
+        # optional: without it they build against the last published version and this job would
+        # be measuring a release rather than the branch.
+        run: mvn -B install -DskipTests -Djacoco.skip=true
+
+      - name: Run every demonstration, with JUnit's DisabledCondition switched off
+        env:
+          # Through env: rather than interpolated into the script, and then checked: a
+          # workflow_dispatch input is text somebody typed, and this repository's rule is that
+          # such text is data. The check is not ceremony - the value becomes a loop bound.
+          REQUESTED_RUNS: ${{ github.event.inputs.runs }}
+        run: |
+          set -o pipefail
+          RUNS="${REQUESTED_RUNS:-3}"
+          case "$RUNS" in
+            1|2|3|4|5) ;;
+            *) echo "::error::runs must be 1-5, got '$RUNS'"; exit 1 ;;
+          esac
+          echo "RUNS=$RUNS" >> "$GITHUB_ENV"
+          for i in $(seq 1 "$RUNS"); do
+            echo "::group::Reactor run $i of $RUNS"
+            # -fae so one failing module does not stop the other 147; the failures are the
+            # expected outcome here, so the exit code is deliberately not the signal. The
+            # report script is.
+            mvn -B -f examples/pom.xml test -fae -T 1C \
+                -Dlicense.mock.mode=true \
+                -Djunit.jupiter.conditions.deactivate=org.junit.jupiter.engine.extension.DisabledCondition \
+                > "reactor-run-$i.log" 2>&1 || true
+            mkdir -p "surefire-run-$i"
+            # Copy rather than move: the next run overwrites target/, and each run's verdict has
+            # to survive to the comparison at the end.
+            find examples -path '*/target/surefire-reports/TEST-*.xml' -print0 \
+              | xargs -0 -I{} cp --parents {} "surefire-run-$i/" 2>/dev/null || true
+            echo "surefire reports captured: $(find "surefire-run-$i" -name 'TEST-*.xml' | wc -l)"
+            echo "::endgroup::"
+          done
+
+      - name: Report which demonstrations passed
+        run: |
+          DIRS=""
+          for i in $(seq 1 "${RUNS:-3}"); do
+            DIRS="$DIRS surefire-run-$i"
+          done
+          # tee is a pipeline, and a pipeline reports the LAST stage's status - which would make
+          # this job green whatever the script found. PIPESTATUS is the whole point of the
+          # explicit exit below; do not simplify it away.
+          python3 .github/scripts/disabled_demo_report.py . $DIRS | tee demo-report.txt
+          exit "${PIPESTATUS[0]}"
+        shell: bash
+
+      - name: Upload the report and the reactor logs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: example-demo-report
+          path: |
+            demo-report.txt
+            reactor-run-*.log
+          if-no-files-found: warn
+          retention-days: 30

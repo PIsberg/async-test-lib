@@ -123,11 +123,11 @@ class EventEmitterTest {
      * And the other direction: the same field, read by another thread, after the constructor
      * has returned. Nothing was published early, so there is nothing to report.
      *
-     * <p>The assertion is on {@code unsafeObjects} rather than {@code hasIssues()} on purpose.
-     * {@code hasIssues()} also covers {@code possiblyIncompleteConstructions}, which flags any
+     * <p>The assertion is on {@code hasIssues()}, which is the whole report. It used to be on
+     * {@code unsafeObjects} alone, because {@code possiblyIncompleteConstructions} flagged any
      * construction that completed in under a microsecond - and an empty constructor completes in
-     * under a microsecond. That heuristic fires here for a reason unrelated to publication; see
-     * issue #357.
+     * under a microsecond, so the validator produced a finding on correct code every time. That
+     * rule is gone (issue #357), and the stronger assertion is now the honest one.
      */
     @Test
     void testConstructorSafetyValidator_accessAfterConstruction_isNotUnsafePublication() {
@@ -141,8 +141,9 @@ class EventEmitterTest {
             assertEquals("settled", name, "by now the constructor has finished");
         });
 
-        assertTrue(validator.validateConstructorSafety().unsafeObjects.isEmpty(),
-                "a read after the constructor returned is not unsafe publication");
+        assertFalse(validator.validateConstructorSafety().hasIssues(),
+                "a read after the constructor returned is not unsafe publication: "
+                        + validator.validateConstructorSafety());
     }
 
     /**

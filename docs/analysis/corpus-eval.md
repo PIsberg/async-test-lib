@@ -11,7 +11,7 @@ day after closing the three model gaps it had left open
 [#313](https://github.com/PIsberg/async-test-lib/issues/313)): the noise column those gaps fed is
 now zero on every platform, and the numbers below are the ones that hold after all of it._
 
-The [detector-accuracy eval](detector-accuracy-eval.md) measures 17 of the 146 detectors against
+The [detector-accuracy eval](detector-accuracy-eval.md) measures 20 of the 146 detectors against
 twins written for the test. It answers "does the analyzer's model hold", and it cannot answer the
 question an evaluating team asks first: on code neither the library nor the test author wrote, does
 a finding mean something is wrong, and how much noise comes with it. This document answers that on

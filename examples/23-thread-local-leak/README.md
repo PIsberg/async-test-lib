@@ -55,7 +55,8 @@ void testBeginRequest_concurrent_detectsThreadLocalLeak() { ... }
 mvn clean test
 # ThreadLocalMonitor reports:
 #   "REQUEST_USER: accessed by 8 thread(s) without remove()"
-#   "REQUEST_USER: value crossed N reused thread(s)"
+#   "REQUEST_USER: set on 8 thread(s) with no matching remove(); on a pooled thread
+#    the value outlives the task and the next task sees it"
 ```
 
 With 8 threads each calling `beginRequest()` but never `endRequest()`:
@@ -79,10 +80,13 @@ A locally constructed `new ThreadLocalMonitor()` is never read by the library, s
 nothing to gate on and enabling the demonstration leaves it green. That was this example's fault
 before issue #346.
 
-One thing to read carefully in the report: the thread count is the number of distinct thread ids
-that touched the ThreadLocal. `@AsyncTest` runs on virtual threads by default, one per body
-execution, so with `threads = 8, invocations = 20` the count reads 160 rather than 8, and those
-threads are not reused at all. See issue #349.
+The thread count in the report is the widest single invocation round, not the whole run. That
+matters because `@AsyncTest` runs on virtual threads by default, one per body execution: counting
+distinct thread ids across the run reported 160 for `threads = 8, invocations = 20`, which is the
+number of body executions rather than the number of threads. Fixed in
+[#349](https://github.com/PIsberg/async-test-lib/issues/349), together with the wording of the
+leak line, which used to say the value "crossed N reused thread(s)" - under virtual threads
+nothing is reused, and the finding is the missing `remove()`, not the reuse.
 
 ## The Root Cause
 
@@ -137,7 +141,7 @@ public void handleRequest(String userId) {
 ## Key Takeaways
 
 1. **@Test gives false confidence**: Sequential tests always set before they read
-2. **@AsyncTest finds the leak**: 8 threads × 20 invocations accumulates leaked ThreadLocals across reused threads
+2. **@AsyncTest finds the leak**: 8 threads set the value in the same round and none of them removes it
 3. **Thread pool threads live forever**: Unlike request threads, pool threads survive between tasks and carry stale ThreadLocal data
 4. **Always pair set() with remove()**: Use `try-finally` to guarantee cleanup even in exception paths
 5. **Prefer ScopedValue (Java 21+)**: Automatically unbound at scope exit — no manual cleanup required

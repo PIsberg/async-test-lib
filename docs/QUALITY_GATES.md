@@ -360,6 +360,72 @@ in agreement: `build-helper-maven-plugin`'s `add-fuzz-test-source` execution in
 the harnesses into the ordinary test output, so the Jazzer classpath stays
 `async-test-lib/target/test-classes`.
 
+## Enabling the disabled example demonstrations
+
+Most examples disable their `@AsyncTest` demonstration on purpose: it demonstrates code that
+fails, so leaving it on would make the examples pipeline permanently red. The `@Disabled` reason
+carries the claim - "Remove @Disabled to see X detected by YDetector" - and until 2026-08-26
+nothing checked it. An audit on 2026-08-25 enabled all 97 by hand and **72 of them passed**. 41 of
+those were one missing default (`failOn` is `NONE`, which reports a finding without failing the
+run); the remaining 27 were 27 separate faults, tracked in #346.
+
+`ExampleDisabledDemoTest` closed the static half: every disabled `@AsyncTest` must set `failOn`,
+so it *can* fail. It cannot tell whether the detector the demonstration names would say anything,
+and all 27 passed that check while reporting nothing.
+
+`example-demos.yml` is the dynamic half. It enables every demonstration without editing a file,
+using JUnit's own switch, and runs the reactor three times:
+
+```bash
+mvn install -DskipTests -Djacoco.skip=true
+mvn -f examples/pom.xml test -fae -T 1C -Dlicense.mock.mode=true \
+    -Djunit.jupiter.conditions.deactivate=org.junit.jupiter.engine.extension.DisabledCondition
+```
+
+`.github/scripts/disabled_demo_report.py` then reads the surefire XML and sorts every
+demonstration into: fired every run, **passed every run**, passed every run and known to,
+passed in some runs, failed for a reason other than its detector's finding, still skipped, never
+ran. Only "passed every run, and not on the known list" fails the job.
+
+`.github/known-silent-demos.txt` is that known list, and it is a record of accepted debt rather
+than an exemption. A line needs a reason and an issue; the report prints the entries and their
+count on every run, in the log of a *green* job, so the debt cannot fade into the background.
+Measured over three full runs on 2026-08-26:
+
+| | count |
+|---|---:|
+| fired every run | 70 |
+| passed every run, all five on the known list | 5 |
+| passed in some runs | 2 |
+| failed for a reason other than the detector's finding | 21 |
+| never ran, or still skipped | 0 |
+
+98 disabled demonstrations in all.
+
+All 27 from #346 are in the first row. The five on the known list (#362) are the ones #346
+recorded as "fires in one or two runs of three"; on this hardware they fired in none. One of them,
+`30-false-sharing`, is structural rather than timing: `FalseSharingDetector` sits behind an
+experimental gate and is silent unless `-Dasync-test.experimental.false-sharing=true`. The 21 in
+the fourth row (#363) are the weaker defect the script separates out on purpose - they fail, so a
+reader who enables one does see something, but it is their own assertion or a round timeout rather
+than the detector's finding.
+
+Three details are deliberate, and each cost something to learn:
+
+- **A passing demonstration is the finding.** That is the opposite of what the examples pipeline
+  asserts, which is why this is a separate workflow rather than a flag on that one.
+- **Three runs, and only an all-runs pass fails.** Some demonstrations are inherently
+  probabilistic; the 2026-08-25 audit found five that fired in one or two runs of three. A gate
+  that goes red on one of those gets switched off within a week.
+- **Failing for the wrong reason is its own bucket.** A demonstration whose body assertion trips
+  before the detector is consulted is not silent, but it is not demonstrating its detector
+  either. That is a weaker defect and is reported without failing.
+
+Weekly rather than per-PR because it is slow: 148 modules, three times, several waiting on real
+timeouts. The script carries a `--self-test` that the workflow runs first, against known surefire
+input, because a job whose entire output is "nothing passed" is worthless if its parser has
+quietly stopped matching.
+
 ## Guardrail and review lanes
 
 The gates that keep the agent-facing layer honest, and the review lanes that read a PR before a
@@ -381,6 +447,7 @@ a property that held by habit into one that fails a build.
 | Load-test trend | `load-tests.yml` + `load-tests/tools/compare-baseline.sh` | push, PR, nightly 04:00 UTC | never; prints `::warning::` when a fresh sweep row exceeds 1.5x (median ms) or 2.0x (all-detector KB) of the newest committed baseline. A trend line, cross-machine, so warn-only by design |
 | Mutation | `mutation.yml` | Sundays, dispatch | the PIT score drops below the pom's `mutationThreshold` (74) |
 | Fuzzing | `fuzzing.yml` | Mondays, dispatch, and PRs touching the config surface or the harness | Jazzer finds an input that breaks `AsyncTestConfig.Builder`, or never reaches `INITED` |
+| Example demonstrations | `example-demos.yml` | Tuesdays, dispatch | a `@Disabled` example demonstration **passes** in every run once enabled. The inversion is the design, which is why it cannot live in the examples pipeline. See below |
 | Inquisitor | `inquisitor.yml` | PR | the adversarial reviewer (`.github/INQUISITOR.md`, model pinned in `.github/MODEL-ROSTER.md`) writes a violation against the committed law. Optional lane: skips loudly without `ANTHROPIC_API_KEY`, and the repository does not carry that secret by decision (2026-08-15: Copilot Free is the AI lane; nothing blocks on paid tokens) |
 | Copilot review | `copilot-review.yml` | PR opened | never; it requests a GitHub Copilot review, verifies the request was recorded, and reports SKIPPED otherwise (it did on PR #262: no review request was recorded, so Copilot code review is not active for this account yet). Advisory by design |
 | Instruction evals | `instruction-evals.yml` | PR touching the instruction files, dispatch | never; runs `evals/` on the Copilot CLI (`COPILOT_GITHUB_TOKEN` secret, the maintainer's Copilot Free quota) and prints the adherence table plus a `::warning::` per rule below its floor. Advisory by decision: each measured rule has an enforcing gate behind it, and those block. Skips loudly without the secret or on exhausted quota. First measured run 2026-08-15, locally: `evals/README.md` |

@@ -128,6 +128,62 @@ public class ThreadLocalMonitorTest {
         assertFalse(report.hasIssues(), "After reset() all state should be cleared");
     }
 
+    /**
+     * The count in a finding must be the number of threads that shared a round, not the number
+     * of body executions. Before {@code markInvocationStart} folded rounds, {@code threads = 8,
+     * invocations = 20} on the default virtual-thread runner reported 160 threads, because every
+     * body execution gets a fresh virtual thread with a fresh id. See issue #349.
+     */
+    @Test
+    void threadsAreCountedPerRoundNotAcrossTheWholeRun() throws InterruptedException {
+        ThreadLocalMonitor monitor = new ThreadLocalMonitor();
+        ThreadLocal<String> tl = new ThreadLocal<>();
+        monitor.recordThreadLocalInit(tl, "REQUEST_USER");
+
+        // Five rounds of two fresh threads each: ten distinct thread ids, two per round.
+        for (int round = 0; round < 5; round++) {
+            monitor.markInvocationStart();
+            Thread first  = new Thread(() -> monitor.recordThreadLocalAccess(tl));
+            Thread second = new Thread(() -> monitor.recordThreadLocalAccess(tl));
+            first.start();
+            second.start();
+            first.join();
+            second.join();
+        }
+
+        ThreadLocalMonitor.ThreadLocalReport report = monitor.analyzeThreadLocalLeaks();
+        String text = report.toString();
+
+        assertTrue(text.contains("2 thread(s)"),
+                "the widest round had two threads; the finding must say two, not ten. Report:\n" + text);
+        assertFalse(text.contains("10 thread(s)"),
+                "counting ids across rounds reports body executions as threads. Report:\n" + text);
+    }
+
+    /**
+     * The evidence line must not claim thread reuse. Under the default
+     * {@code useVirtualThreads = true} runner each body execution gets its own virtual thread,
+     * whose ThreadLocal map dies with it, so "value crossed N reused thread(s)" described a
+     * mechanism that did not happen. See issue #349.
+     */
+    @Test
+    void theLeakLineDoesNotClaimThreadsWereReused() throws InterruptedException {
+        ThreadLocalMonitor monitor = new ThreadLocalMonitor();
+        ThreadLocal<String> tl = new ThreadLocal<>();
+        monitor.recordThreadLocalInit(tl, "REQUEST_USER");
+        Thread other = new Thread(() -> monitor.recordThreadLocalAccess(tl));
+        other.start();
+        other.join();
+
+        String text = monitor.analyzeThreadLocalLeaks().toString();
+
+        assertFalse(text.contains("reused"),
+                "nothing observed here was reused; the finding is the missing remove(). Report:\n" + text);
+        assertTrue(text.contains("no matching remove()"),
+                "the line must argue from the missing remove(), which is the actual evidence. "
+                        + "Report:\n" + text);
+    }
+
     @Test
     void analyze_delegatesToAnalyzeThreadLocalLeaks() {
         ThreadLocalMonitor monitor = new ThreadLocalMonitor();

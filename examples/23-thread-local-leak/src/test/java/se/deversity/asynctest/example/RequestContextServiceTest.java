@@ -151,18 +151,18 @@ class RequestContextServiceTest {
     /**
      * The bug: with 8 threads each calling beginRequest() but never
      * endRequest(), the ThreadLocalMonitor records the ThreadLocal as
-     * initialized on multiple threads but never cleaned up.
-     * The monitor's analyzeThreadLocalLeaks() report flags it as a
-     * likely leak across reused threads.
+     * initialized on multiple threads and never cleaned up. The report flags the set with
+     * no matching remove().
      *
      * To see the detection:
      * 1. Remove @Disabled
      * 2. Run this test — it fails with
-     *      REQUEST_USER: accessed by N thread(s) without remove()
-     *      REQUEST_USER: value crossed N reused thread(s)
-     *    N counts distinct thread ids, and the runner gives every body execution its own
-     *    virtual thread, so it is the number of executions rather than the 8 configured
-     *    threads. See issue #349.
+     *      REQUEST_USER: accessed by 8 thread(s) without remove()
+     *      REQUEST_USER: set on 8 thread(s) with no matching remove(); on a pooled thread
+     *      the value outlives the task and the next task sees it
+     *    The count is the widest single round. It used to be every distinct thread id in the
+     *    run, which under the default virtual-thread runner is the number of body executions:
+     *    160 for this annotation. See issue #349.
      * 3. Fix: add a finally block that always calls endRequest()
      */
     @Disabled("Remove @Disabled to see ThreadLocal leak detected by ThreadLocalMonitor")

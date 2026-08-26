@@ -133,12 +133,74 @@ class ConcurrencyRunnerLogContractTest {
             "the hint names the artifact that closes the gap: " + message);
     }
 
+    @Test
+    @DisplayName("a daemon-hygiene run on virtual threads says the detector cannot see anything")
+    void daemonHygieneInertnessIsAnnouncedOnceAtInfo() {
+        ConcurrencyRunner.DAEMON_HYGIENE_INERT_LOGGED.set(false);
+
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(NarratedDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(NarratedDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        List<ILoggingEvent> announcements = appender.list.stream()
+            .filter(e -> e.getFormattedMessage().startsWith("runner.detector.inert"))
+            .toList();
+        assertEquals(1, announcements.size(),
+            "once per JVM, like runner.agent.absent: a suite of a thousand @AsyncTest methods "
+                + "must not repeat it. Got: " + events());
+        ILoggingEvent announcement = announcements.get(0);
+        assertSame(Level.INFO, announcement.getLevel(),
+            "INFO, not DEBUG: the user reading a clean daemon-hygiene report is exactly the "
+                + "user who will not have DEBUG enabled");
+        String message = announcement.getFormattedMessage();
+        assertTrue(message.contains("detector=DaemonThreadHygieneDetector"),
+            "the event names the detector that cannot observe anything: " + message);
+        assertTrue(message.contains("test="),
+            "the event names the test that triggered it: " + message);
+        assertTrue(message.contains("useVirtualThreads"),
+            "the reason names the setting that makes it inert: " + message);
+    }
+
+    @Test
+    @DisplayName("the same run on platform threads says nothing: the detector can see")
+    void platformThreadRunsDoNotClaimTheDetectorIsInert() {
+        ConcurrencyRunner.DAEMON_HYGIENE_INERT_LOGGED.set(false);
+
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(PlatformThreadDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        assertTrue(events().stream().noneMatch(m -> m.startsWith("runner.detector.inert")),
+            "on platform threads a thread created in the body inherits the worker's non-daemon "
+                + "flag, so the detector can report; claiming otherwise would be false. Got: "
+                + events());
+    }
+
     /** Runs under the extension so the narrative is produced by the real code path. */
     static class NarratedDummy {
         private final AtomicInteger counter = new AtomicInteger();
 
         @AsyncTest(threads = 3, invocations = 2)
         void narrated() {
+            counter.incrementAndGet();
+        }
+    }
+
+    /** The same run with the virtual-thread executor turned off. */
+    static class PlatformThreadDummy {
+        private final AtomicInteger counter = new AtomicInteger();
+
+        @AsyncTest(threads = 2, invocations = 1, useVirtualThreads = false)
+        void onPlatformThreads() {
             counter.incrementAndGet();
         }
     }

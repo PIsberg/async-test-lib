@@ -48,6 +48,21 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link se.deversity.asynctest.spi.DetectorFactory} SPI if you want it picked
  * up by {@link se.deversity.asynctest.spi.DetectorRegistry}.
  *
+ * <h2>It cannot see a thread created under {@code useVirtualThreads = true}</h2>
+ * A platform thread inherits its daemon flag from the thread that created it
+ * ({@code Thread(Runnable, String)} copies {@code parent.isDaemon()}), and virtual
+ * threads are always daemon. {@code ConcurrencyRunner} runs bodies on
+ * {@code Executors.newThreadPerTaskExecutor(Thread.ofVirtual()...)} whenever
+ * {@code useVirtualThreads} is true, which is the default — so every
+ * {@code new Thread(...)} started from a test body is already daemon before the body
+ * can get it wrong, and {@link #analyze()} skips anything registered as daemon. The
+ * rule is right; under that runner it simply never has anything to skip past.
+ *
+ * <p>To use this detector on threads a test body creates, set
+ * {@code @AsyncTest(useVirtualThreads = false)}. The runner announces the inert case
+ * once per JVM at INFO as {@code runner.detector.inert}. A clean report from a
+ * virtual-thread run means "not observed", not "clean". See issue #352.
+ *
  * @since 1.6.0
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Per-thread access map is a ConcurrentHashMap; first-registration-wins via putIfAbsent.")

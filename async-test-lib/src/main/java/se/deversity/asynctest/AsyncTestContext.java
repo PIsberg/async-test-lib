@@ -806,6 +806,9 @@ public final class AsyncTestContext {
         if (sharedCollectionDetector != null) {
             sharedCollectionDetector.markInvocationStart();
         }
+        if (registry.threadLocalMonitor != null) {
+            registry.threadLocalMonitor.markInvocationStart();
+        }
     }
 
     /**

@@ -1502,6 +1502,14 @@ public @interface AsyncTest {
      * registered with the detector that are still alive at analyze time — they will block
      * JVM exit and hang the test process. See
      * {@link se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector}.
+     *
+     * <p><strong>Needs {@code useVirtualThreads = false} to see anything a test body creates.</strong>
+     * A platform thread inherits its daemon flag from its creator and virtual threads are always
+     * daemon, so under the default virtual-thread runner every {@code new Thread(...)} started
+     * from a body is already daemon and this detector has nothing left to report. The runner
+     * says so once per JVM at INFO ({@code runner.detector.inert}). Set
+     * {@code useVirtualThreads = false} on the test that instruments threads.
+     *
      * @since 1.6.0
      *
      * @return {@code true} to enable this detector, {@code false} to skip it

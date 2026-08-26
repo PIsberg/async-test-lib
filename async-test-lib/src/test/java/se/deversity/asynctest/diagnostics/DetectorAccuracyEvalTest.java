@@ -1570,4 +1570,174 @@ class DetectorAccuracyEvalTest {
                 "a thread that was joined and recorded as ended is not a leak; auto mode, which "
                         + "watches the global thread count, is off unless enableAutoMode() is called");
     }
+
+    // ---- LockDowngradeDetector ----
+
+    @Test
+    @DisplayName("lock downgrade: releasing write before taking read, with a writer in the gap, fires (#355)")
+    void lockDowngradeFiresWhenAWriterIsObservedInsideTheGap() throws InterruptedException {
+        LockDowngradeDetector detector = new LockDowngradeDetector();
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+
+        detector.recordWriteLockAcquired(lock, "store");
+        detector.recordWriteLockReleased(lock, "store");     // the gap opens
+        Thread interloper = new Thread(() -> {
+            detector.recordWriteLockAcquired(lock, "store"); // and is used
+            detector.recordWriteLockReleased(lock, "store");
+        }, "interloper");
+        interloper.start();
+        interloper.join(5_000);
+        detector.recordReadLockAcquired(lock, "store");      // the gap closes
+        detector.recordReadLockReleased(lock, "store");
+
+        assertTrue(detector.analyze().hasIssues(),
+                "the lock was free between the write release and the read acquire, and another "
+                        + "thread wrote in it; the read need not return what the writer wrote");
+    }
+
+    @Test
+    @DisplayName("lock downgrade: the correct downgrade stays silent however contended (#355)")
+    void lockDowngradeStaysSilentOnTheCorrectDowngrade() throws InterruptedException {
+        LockDowngradeDetector detector = new LockDowngradeDetector();
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+
+        detector.recordWriteLockAcquired(lock, "store");
+        detector.recordReadLockAcquired(lock, "store");      // read taken while write is held
+        detector.recordWriteLockReleased(lock, "store");
+        Thread interloper = new Thread(() -> {
+            detector.recordWriteLockAcquired(lock, "store");
+            detector.recordWriteLockReleased(lock, "store");
+        }, "interloper");
+        interloper.start();
+        interloper.join(5_000);
+        detector.recordReadLockReleased(lock, "store");
+
+        assertFalse(detector.analyze().hasIssues(),
+                "there is no moment at which the downgrading thread holds neither lock, so no "
+                        + "gap exists for a writer to enter: " + detector.analyze());
+    }
+
+    @Test
+    @DisplayName("lock downgrade: the same shape with nobody in the gap stays silent (pinned false negative)")
+    void lockDowngradeStaysSilentWithoutAnObservedWriter() {
+        LockDowngradeDetector detector = new LockDowngradeDetector();
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+
+        detector.recordWriteLockAcquired(lock, "store");
+        detector.recordWriteLockReleased(lock, "store");
+        detector.recordReadLockAcquired(lock, "store");
+        detector.recordReadLockReleased(lock, "store");
+
+        assertFalse(detector.analyze().hasIssues(),
+                "a write, a release and a later read is also what correct code produces when "
+                        + "the read is unrelated, and the records cannot tell the two apart. "
+                        + "This false negative buys the absence of a finding on correct code; "
+                        + "if the detector ever learns to distinguish them, flip this assertion "
+                        + "and update detector-accuracy-eval.md");
+    }
+
+    // ---- ConstructorSafetyValidator ----
+
+    @Test
+    @DisplayName("constructor safety: an object another thread reaches mid-construction fires (true positive)")
+    void constructorSafetyFiresOnPublicationDuringConstruction() throws InterruptedException {
+        ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
+        Object escaping = new Object();
+        CountDownLatch published = new CountDownLatch(1);
+        CountDownLatch seen = new CountDownLatch(1);
+
+        Thread reader = new Thread(() -> {
+            try {
+                published.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            validator.recordFieldAccess(escaping, "name", System.nanoTime());
+            seen.countDown();
+        }, "constructor-safety-reader");
+        reader.setDaemon(true);
+        reader.start();
+
+        // Inside the "constructor": the reference escapes before construction ends.
+        validator.recordConstructionStart(escaping);
+        published.countDown();
+        assertTrue(seen.await(5, java.util.concurrent.TimeUnit.SECONDS),
+                "the reader thread must have run before this assertion means anything");
+        validator.recordConstructionEnd(escaping);
+        reader.join(2_000);
+
+        assertTrue(validator.validateConstructorSafety().hasIssues(),
+                "another thread read a field of the object before its constructor returned; "
+                        + "that is unsafe publication, the finding this validator exists for");
+    }
+
+    @Test
+    @DisplayName("constructor safety: an ordinary fast constructor stays silent (true negative, #357)")
+    void constructorSafetyStaysSilentOnAnOrdinaryConstructor() throws InterruptedException {
+        ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
+        Object settled = new Object();
+
+        // A constructor that assigns a few fields, instrumented start and end, and read only
+        // after it returned. This completes well inside a microsecond, which used to be
+        // reported as "possibly incomplete construction" on every ordinary object.
+        validator.recordConstructionStart(settled);
+        validator.recordConstructionEnd(settled);
+
+        Thread reader = new Thread(
+                () -> validator.recordFieldAccess(settled, "name", System.nanoTime()),
+                "constructor-safety-late-reader");
+        reader.start();
+        reader.join(2_000);
+
+        ConstructorSafetyValidator.ConstructorSafetyReport report =
+                validator.validateConstructorSafety();
+        assertFalse(report.hasIssues(),
+                "a read after the constructor returned is not unsafe publication. Report:\n" + report);
+        assertTrue(report.possiblyIncompleteConstructions.isEmpty(),
+                "elapsed time cannot tell a completed construction from an incomplete one, and "
+                        + "this one demonstrably completed. Report:\n" + report);
+    }
+
+    // ---- ThreadLocalMonitor ----
+
+    @Test
+    @DisplayName("thread local: set on two threads and never removed fires (true positive)")
+    void threadLocalMonitorFiresOnSetWithoutRemove() throws InterruptedException {
+        ThreadLocalMonitor monitor = new ThreadLocalMonitor();
+        ThreadLocal<String> requestUser = new ThreadLocal<>();
+        Runnable setOnly = () -> {
+            requestUser.set("user-" + Thread.currentThread().threadId());
+            monitor.recordThreadLocalInit(requestUser, "REQUEST_USER");
+        };
+        onTwoThreads(setOnly, setOnly);
+
+        assertTrue(monitor.analyzeThreadLocalLeaks().hasIssues(),
+                "a ThreadLocal set and never removed outlives its task on a pooled thread");
+    }
+
+    @Test
+    @DisplayName("thread local: the remove()-in-finally twin stays silent (true negative)")
+    void threadLocalMonitorStaysSilentWhenRemovedInFinally() throws InterruptedException {
+        ThreadLocalMonitor monitor = new ThreadLocalMonitor();
+        ThreadLocal<String> requestUser = new ThreadLocal<>();
+        Runnable setAndRemove = () -> {
+            requestUser.set("user-" + Thread.currentThread().threadId());
+            monitor.recordThreadLocalInit(requestUser, "REQUEST_USER");
+            try {
+                requestUser.get();
+            } finally {
+                requestUser.remove();
+                monitor.recordThreadLocalCleanup(requestUser);
+            }
+        };
+        onTwoThreads(setAndRemove, setAndRemove);
+
+        assertFalse(monitor.analyzeThreadLocalLeaks().hasIssues(),
+                "every set was matched by a remove() in a finally block; there is no leak to "
+                        + "report. Report:\n" + monitor.analyzeThreadLocalLeaks());
+    }
 }

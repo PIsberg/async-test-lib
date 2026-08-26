@@ -30,14 +30,11 @@ public class ConstructorSafetyValidator {
         volatile boolean constructionComplete = false;
         final AtomicInteger threadsThatAccessedDuringConstruction = new AtomicInteger(0);
         final Set<Long> accessingThreadIds = ConcurrentHashMap.newKeySet();
-        volatile long constructionStartTime = 0;
-        volatile long constructionEndTime = 0;
         final Map<String, FieldAccessInfo> fieldAccesses = new ConcurrentHashMap<>();
 
         ObjectState(String className, long constructingThreadId) {
             this.className = className;
             this.constructingThreadId = constructingThreadId;
-            this.constructionStartTime = System.nanoTime();
         }
     }
 
@@ -74,7 +71,6 @@ public class ConstructorSafetyValidator {
         ObjectState state = objects.get(id);
         if (state != null) {
             state.constructionComplete = true;
-            state.constructionEndTime = System.nanoTime();
         }
     }
     
@@ -102,8 +98,7 @@ public class ConstructorSafetyValidator {
         fieldInfo.accessingThreadIds.add(threadId);
         state.accessingThreadIds.add(threadId);
         
-        if (!state.constructionComplete && state.constructionStartTime > 0
-                && threadId != state.constructingThreadId) {
+        if (!state.constructionComplete && threadId != state.constructingThreadId) {
             // A thread other than the one still running the constructor can see this object:
             // unsafe publication. Comparing against the *constructing* thread is the whole
             // point — the previous check compared threadId to Thread.currentThread().threadId(),
@@ -131,23 +126,20 @@ public class ConstructorSafetyValidator {
                 ));
             }
             
-            if (!state.constructionComplete && state.constructionStartTime > 0) {
+            // Started and never completed. There used to be a second case here: a
+            // construction that finished in under a microsecond was reported as
+            // "possibly incomplete". It was backwards. Elapsed time cannot distinguish a
+            // completed construction from an incomplete one, the branch only ran when
+            // constructionComplete was already true so the construction demonstrably did
+            // complete, and a constructor that assigns three fields takes tens of
+            // nanoseconds — so every ordinary constructor a caller instrumented produced a
+            // finding, burying the real one (unsafeObjects) next to noise. See issue #357.
+            if (!state.constructionComplete) {
                 report.possiblyIncompleteConstructions.add(
                     state.className + " (construction started but never completed)"
                 );
             }
 
-            if (state.constructionComplete) {
-                long constructionTime = state.constructionEndTime - state.constructionStartTime;
-                
-                // Check if construction was very fast (suspicious, might not complete properly)
-                if (constructionTime < 1000) { // < 1 microsecond
-                    report.possiblyIncompleteConstructions.add(
-                        state.className + " (completed in " + constructionTime + "ns)"
-                    );
-                }
-            }
-            
             // Check for field races during construction
             for (Map.Entry<String, FieldAccessInfo> entry : state.fieldAccesses.entrySet()) {
                 FieldAccessInfo fieldInfo = entry.getValue();
@@ -186,7 +178,11 @@ public class ConstructorSafetyValidator {
     public static class ConstructorSafetyReport {
         /** Objects whose reference escaped their constructor. */
         public final Set<String> unsafeObjects = new HashSet<>();
-        /** Objects published before construction finished. */
+        /**
+         * Objects whose construction was recorded as started and never recorded as finished.
+         * Not part of {@link #hasIssues()}: a caller that instruments the start and forgets the
+         * end produces this without a defect, so it is context for a finding rather than one.
+         */
         public final Set<String> possiblyIncompleteConstructions = new HashSet<>();
         /** Fields read by another thread before the constructor returned. */
         public final Set<String> fieldsAccessedDuringConstruction = new HashSet<>();
@@ -224,7 +220,7 @@ public class ConstructorSafetyValidator {
             }
             
             if (!possiblyIncompleteConstructions.isEmpty()) {
-                sb.append("\nConstructions completed suspiciously fast (may be incomplete):\n");
+                sb.append("\nConstructions that started and never completed:\n");
                 for (String cons : possiblyIncompleteConstructions) {
                     sb.append("  - ").append(cons).append("\n");
                 }

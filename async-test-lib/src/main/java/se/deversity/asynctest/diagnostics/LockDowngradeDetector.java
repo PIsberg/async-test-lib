@@ -1,22 +1,55 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
 
 /**
  * Detects incorrect {@link java.util.concurrent.locks.ReentrantReadWriteLock} downgrade and
  * upgrade patterns.
  *
+ * <h2>The unsafe downgrade (detected, when the gap is observed being used)</h2>
+ * A downgrade is meant to hand a thread from the write lock to the read lock without letting go
+ * of the lock in between. Releasing the write lock first opens a gap:
+ * <pre>{@code
+ * lock.writeLock().lock();
+ * try { map.put(key, value); } finally { lock.writeLock().unlock(); }
+ * // gap: another thread can take the write lock here
+ * lock.readLock().lock();
+ * try { return map.get(key); } finally { lock.readLock().unlock(); }
+ * }</pre>
+ * The caller can read back a value it did not write. The correct form acquires the read lock
+ * <em>while still holding the write lock</em>, then releases the write lock, so there is no
+ * moment at which the thread holds neither.
+ *
+ * <p><strong>The finding is evidence-gated, deliberately.</strong> The recorded sequence
+ * "released write, then acquired read" is also what correct code produces when a thread writes
+ * one thing, releases, and later reads something unrelated under the read lock; nothing in the
+ * records distinguishes the two, and reporting on the shape alone would flag that correct code.
+ * So the shape alone is <em>not</em> a finding. It becomes one only when another thread was seen
+ * taking the write lock inside the gap, which is a fact about this run and the exact condition
+ * that makes the downgrade unsafe. The cost is a false negative: a run in which nobody happened
+ * to enter the gap reports nothing, even though the gap is there. Issue #355 is where that
+ * decision is written down, and {@code docs/analysis/detector-accuracy-eval.md} publishes it.
+ *
  * <h2>The upgrade problem (detected)</h2>
  * {@code ReentrantReadWriteLock} does <strong>not</strong> support read-to-write upgrade.
  * A thread holding a read lock that calls {@code writeLock().lock()} will deadlock immediately
  * because the write lock cannot be granted while any read lock is held — including the one held
  * by the same thread.
+ *
+ * <p>{@link LockUpgradeDeadlockDetector} watches the same condition and produces a structured
+ * {@code Violation} for it, so a run with both detectors enabled and both fed reports the upgrade
+ * twice. Keeping it here is deliberate: a caller who instruments only this detector would
+ * otherwise silently lose the finding. Merging the two is an API change — {@code DetectorType}
+ * is locked — and is tracked in issue #361.
  *
  * <h2>Correct downgrade pattern (not flagged)</h2>
  * <ol>
@@ -34,7 +67,7 @@ import java.util.concurrent.locks.ReadWriteLock;
  *     rwLock.readLock().lock();
  *     mon.recordReadLockAcquired(rwLock, "myLock");
  *     try {
- *         // BUG: upgrading read → write — will deadlock
+ *         // BUG: upgrading read to write — will deadlock
  *         mon.recordWriteLockAcquired(rwLock, "myLock");
  *         rwLock.writeLock().lock();
  *     } finally {
@@ -53,18 +86,40 @@ public class LockDowngradeDetector {
      * mid-downgrade state where a thread holds both locks: the read acquire
      * overwrote the write marker (flagging a legal reentrant write acquire as an
      * upgrade), and the write release then erased the read record entirely
-     * (missing a genuine read→write upgrade attempted after a downgrade).
+     * (missing a genuine read-to-write upgrade attempted after a downgrade).
      */
     private static final class Holds {
         int read;
         int write;
+        /**
+         * Set when this thread gave up its last write hold on this lock while holding no read
+         * lock: the gap of an unsafe downgrade is open. Cleared by the next recorded event from
+         * this thread on this lock, whatever it is, so only a read acquire that <em>immediately
+         * follows</em> the release counts. A thread that records other work on the lock in
+         * between has done something the records cannot tie back to the write.
+         */
+        boolean gapOpen;
+        /** {@link LockState#writeAcquireGeneration} at the moment the gap opened. */
+        long gapOpenedAtGeneration;
     }
 
     private static class LockState {
         final String name;
         final Map<Long, Holds> threadHolds = new ConcurrentHashMap<>();
         final AtomicInteger upgradeAttempts = new AtomicInteger(0);
-        final List<String> upgradeDetails  = new CopyOnWriteArrayList<>();
+        final AtomicReference<String> firstUpgradeThread = new AtomicReference<>();
+
+        /**
+         * Bumped on every write acquire, by any thread. A gap that opens at generation g and
+         * closes at a generation greater than g had a writer inside it, which is the evidence
+         * that turns a downgrade-shaped sequence into a finding.
+         */
+        final AtomicLong writeAcquireGeneration = new AtomicLong();
+        /** Downgrade-shaped sequences seen: released write, then acquired read. Context, not a finding. */
+        final AtomicInteger downgradeShapes = new AtomicInteger(0);
+        /** Of those, the ones another thread was observed writing inside. This is the finding. */
+        final AtomicInteger observedGaps = new AtomicInteger(0);
+        final AtomicReference<String> firstObservedGapThread = new AtomicReference<>();
 
         LockState(String name) { this.name = name; }
     }
@@ -92,6 +147,16 @@ public class LockDowngradeDetector {
         // recorded additively so the write hold is not forgotten.
         state.threadHolds.compute(tid, (k, h) -> {
             if (h == null) h = new Holds();
+            if (h.gapOpen && h.read == 0 && h.write == 0) {
+                // The second half of an unsafe downgrade: the write lock was released and the
+                // read lock is being taken now, with nothing of this thread's in between.
+                state.downgradeShapes.incrementAndGet();
+                if (state.writeAcquireGeneration.get() > h.gapOpenedAtGeneration) {
+                    state.observedGaps.incrementAndGet();
+                    state.firstObservedGapThread.compareAndSet(null, Thread.currentThread().getName());
+                }
+            }
+            h.gapOpen = false;
             h.read++;
             return h;
         });
@@ -108,6 +173,7 @@ public class LockDowngradeDetector {
         stateFor(lock, lockName).threadHolds.computeIfPresent(
             Thread.currentThread().threadId(), (k, h) -> {
                 if (h.read > 0) h.read--;
+                h.gapOpen = false;
                 return (h.read == 0 && h.write == 0) ? null : h;
             });
     }
@@ -124,17 +190,18 @@ public class LockDowngradeDetector {
         if (lock == null) return;
         LockState state = stateFor(lock, lockName);
         long tid = Thread.currentThread().threadId();
+        // Bumped before the per-thread work so a gap that is open right now, on another
+        // thread, closes against a generation that already counts this acquire.
+        state.writeAcquireGeneration.incrementAndGet();
         state.threadHolds.compute(tid, (k, h) -> {
             if (h == null) h = new Holds();
             // Upgrade = acquiring write while holding read but NOT write. Holding
             // write too (mid-downgrade) makes this a legal reentrant acquire.
             if (h.read > 0 && h.write == 0) {
                 state.upgradeAttempts.incrementAndGet();
-                state.upgradeDetails.add(String.format(
-                    "Thread '%s' attempted read→write upgrade on lock '%s' — "
-                    + "ReentrantReadWriteLock does not support upgrade; this will deadlock",
-                    Thread.currentThread().getName(), state.name));
+                state.firstUpgradeThread.compareAndSet(null, Thread.currentThread().getName());
             }
+            h.gapOpen = false;
             h.write++;
             return h;
         });
@@ -148,10 +215,20 @@ public class LockDowngradeDetector {
      */
     public void recordWriteLockReleased(ReadWriteLock lock, String lockName) {
         if (lock == null) return;
-        stateFor(lock, lockName).threadHolds.computeIfPresent(
+        LockState state = stateFor(lock, lockName);
+        state.threadHolds.computeIfPresent(
             Thread.currentThread().threadId(), (k, h) -> {
                 if (h.write > 0) h.write--;
-                return (h.read == 0 && h.write == 0) ? null : h;
+                if (h.write == 0 && h.read == 0) {
+                    // The thread now holds neither lock, having just held the write lock: the
+                    // gap of a downgrade that was not done in the safe order. A correct
+                    // downgrade takes the read lock first, so h.read > 0 here and nothing opens.
+                    h.gapOpen = true;
+                    h.gapOpenedAtGeneration = state.writeAcquireGeneration.get();
+                    return h;
+                }
+                h.gapOpen = false;
+                return h;
             });
     }
 
@@ -163,30 +240,63 @@ public class LockDowngradeDetector {
     public LockDowngradeReport analyze() {
         LockDowngradeReport report = new LockDowngradeReport();
         for (LockState state : locks.values()) {
-            report.upgradeAttempts.addAll(state.upgradeDetails);
+            int upgrades = state.upgradeAttempts.get();
+            if (upgrades > 0) {
+                // One line per lock, with a count. It used to be one line per occurrence in a
+                // CopyOnWriteArrayList: a stress test producing the same upgrade on every body
+                // execution printed the same sentence hundreds of times, and each append copied
+                // the whole array on the threads being watched. See issue #351.
+                report.upgradeAttempts.add(String.format(
+                    "Thread '%s' attempted read→write upgrade on lock '%s'%s — "
+                    + "ReentrantReadWriteLock does not support upgrade; this will deadlock",
+                    describe(state.firstUpgradeThread.get()), state.name,
+                    upgrades > 1 ? " (x" + upgrades + ")" : ""));
+            }
+
+            int observed = state.observedGaps.get();
+            if (observed > 0) {
+                report.unsafeDowngrades.add(String.format(
+                    "Lock '%s': %d unsafe downgrade(s) observed — a thread released the write "
+                    + "lock and then acquired the read lock, and another thread took the write "
+                    + "lock in between, so the read need not return what the writer wrote "
+                    + "(first seen on thread '%s'). %d downgrade-shaped sequence(s) were "
+                    + "recorded on this lock in all; the rest had no writer inside the gap and "
+                    + "are not reported.",
+                    state.name, observed, describe(state.firstObservedGapThread.get()),
+                    state.downgradeShapes.get()));
+            }
         }
         return report;
+    }
+
+    private static String describe(@Nullable String threadName) {
+        return threadName != null ? threadName : "unknown";
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class LockDowngradeReport {
         final List<String> upgradeAttempts = new ArrayList<>();
+        /** Downgrades whose gap another thread was observed writing inside. */
+        final List<String> unsafeDowngrades = new ArrayList<>();
 
         /**
          * {@return whether there are issues}
          */
         public boolean hasIssues() {
-            return !upgradeAttempts.isEmpty();
+            return !upgradeAttempts.isEmpty() || !unsafeDowngrades.isEmpty();
         }
 
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder("LOCK UPGRADE/DOWNGRADE ISSUES DETECTED:\n");
+            for (String issue : unsafeDowngrades) sb.append("  - ").append(issue).append("\n");
             for (String issue : upgradeAttempts) sb.append("  - ").append(issue).append("\n");
             sb.append("""
   Why: ReentrantReadWriteLock does not support upgrade (read→write). A thread holding a read lock that
        tries to acquire the write lock will deadlock against itself, since the write lock requires all
-       read locks to be released first — including its own.
+       read locks to be released first — including its own. The mirror image, releasing the write lock
+       before taking the read lock, is not a deadlock but a lost guarantee: the lock is free in between,
+       so what comes back from the read need not be what was written.
   Fix:
     - To upgrade: release the read lock, then acquire the write lock (re-validate the condition after)
     - For safe downgrade: acquire the read lock while still holding the write lock, THEN release the write lock

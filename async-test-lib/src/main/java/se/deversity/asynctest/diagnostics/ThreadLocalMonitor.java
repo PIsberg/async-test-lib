@@ -13,13 +13,34 @@ public class ThreadLocalMonitor {
     private static class ThreadLocalState {
         final String threadLocalName;
         final int threadLocalId;
+        /** Threads that touched this thread-local in the round in progress; folded at each round start. */
         final Set<Long> threadsThatUsed = ConcurrentHashMap.newKeySet();
+        /** The widest single round seen so far, which is what a finding reports. */
+        volatile int maxRoundThreads;
         volatile boolean initialized;
         volatile boolean cleanedUp;
 
         ThreadLocalState(String threadLocalName, int threadLocalId) {
             this.threadLocalName = threadLocalName;
             this.threadLocalId = threadLocalId;
+        }
+
+        /**
+         * Folds the round in progress into the per-round maximum and starts the next one.
+         *
+         * <p>Without this the set accumulated thread ids across the whole run, and
+         * {@code useVirtualThreads = true} - the default - gives every body execution a fresh
+         * virtual thread with a fresh id. A {@code threads = 8, invocations = 20} run therefore
+         * reported 160 threads, which is the number of body executions, not the number of
+         * threads the reader configured. Called on the runner thread between rounds, when no
+         * worker is running, and once more at analysis for the final round.
+         */
+        void foldRound() {
+            int seen = threadsThatUsed.size();
+            if (seen > maxRoundThreads) {
+                maxRoundThreads = seen;
+            }
+            threadsThatUsed.clear();
         }
     }
 
@@ -78,6 +99,23 @@ public class ThreadLocalMonitor {
         state.threadsThatUsed.add(threadId);
         threadLocalsByThread.computeIfAbsent(threadId, ignored -> ConcurrentHashMap.newKeySet()).add(state.threadLocalId);
     }
+
+    /**
+     * Marks the start of a new invocation round.
+     *
+     * <p>Threads are counted per round from here on: a thread that touched the thread-local in
+     * an earlier round is not counted together with one from this round, because the harness
+     * orders rounds and the two never coexisted. Called by {@code ConcurrencyRunner} before
+     * every round; a caller that never calls it measures one round, which is what the manual
+     * API did before.
+     *
+     * @since 1.9.9
+     */
+    public void markInvocationStart() {
+        for (ThreadLocalState state : threadLocals.values()) {
+            state.foldRound();
+        }
+    }
     /**
      * Analyses what has been recorded about thread local leaks and builds the report for it.
      *
@@ -87,17 +125,28 @@ public class ThreadLocalMonitor {
         ThreadLocalReport report = new ThreadLocalReport();
 
         for (ThreadLocalState state : threadLocals.values()) {
+            // The final round has not been folded by a round start.
+            state.foldRound();
+            int threads = state.maxRoundThreads;
+
             if (state.initialized && !state.cleanedUp) {
                 report.uncleanedThreadLocals.add(String.format(
                     "%s: accessed by %d thread(s) without remove()",
                     state.threadLocalName,
-                    state.threadsThatUsed.size()
+                    threads
                 ));
-                if (state.threadsThatUsed.size() > 1) {
+                if (threads > 1) {
+                    // Deliberately not "crossed N reused threads". Under the default
+                    // useVirtualThreads = true runner nothing is reused: each body execution
+                    // gets its own virtual thread, whose ThreadLocal map dies with it. The
+                    // finding is still right - a set with no remove leaks the moment the code
+                    // runs on a pooled platform thread - but arguing for it with reuse that did
+                    // not happen made the evidence line false. See issue #349.
                     report.likelyLeaks.add(String.format(
-                        "%s: value crossed %d reused thread(s)",
+                        "%s: set on %d thread(s) with no matching remove(); on a pooled thread "
+                        + "the value outlives the task and the next task sees it",
                         state.threadLocalName,
-                        state.threadsThatUsed.size()
+                        threads
                     ));
                 }
             }
@@ -147,7 +196,7 @@ public class ThreadLocalMonitor {
     public static class ThreadLocalReport {
         /** Thread-locals never removed before the thread was returned to its pool. */
         public final Set<String> uncleanedThreadLocals = new HashSet<>();
-        /** Thread-locals still set on pooled threads after the task finished. */
+        /** Thread-locals set by more than one thread in a round and never removed. */
         public final Set<String> likelyLeaks = new HashSet<>();
         /** Thread-locals whose stored value grew across reused threads. */
         public final Set<String> threadLocalAccumulation = new HashSet<>();
@@ -169,7 +218,7 @@ public class ThreadLocalMonitor {
 
             StringBuilder sb = new StringBuilder("THREADLOCAL LEAK RISKS DETECTED:\n");
             if (!likelyLeaks.isEmpty()) {
-                sb.append("\nLikely leaks across reused threads:\n");
+                sb.append("\nSet without remove(), on more than one thread:\n");
                 for (String leak : likelyLeaks) {
                     sb.append("  - ").append(leak).append('\n');
                 }

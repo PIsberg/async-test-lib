@@ -1,8 +1,12 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.AsyncTestContext;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.LockDowngradeDetector;
 import se.deversity.asynctest.example.service.DataStore;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -20,20 +24,24 @@ import static org.junit.jupiter.api.Assertions.*;
  * back a value it did not write. updateAndReadFixed() takes the read lock while
  * still holding the write lock, which is the correct downgrade.
  *
- * WHAT THE DETECTOR REPORTS, AND WHY THIS EXAMPLE HAS NO @AsyncTest DEMONSTRATION:
- * LockDowngradeDetector reports one thing: a thread acquiring the write lock while
- * it already holds the read lock, which is the upgrade ReentrantReadWriteLock
- * cannot grant. It reports nothing at all about downgrades, correct or incorrect -
- * its own javadoc lists the correct downgrade as "not flagged" and does not mention
- * the incorrect one.
+ * WHAT THE DETECTOR REPORTS:
+ * Two things. The unsafe downgrade above, and the read-to-write upgrade that
+ * ReentrantReadWriteLock cannot grant.
  *
- * This example used to carry a @Disabled @AsyncTest that recorded a write-acquire,
- * a write-release, a read-acquire and a read-release, and told the reader that
- * removing @Disabled would show the bad downgrade being detected. It does not, and
- * cannot: enabling it produced no report, three runs out of three. Rather than
- * change the example's subject to an upgrade - which is example 111, with its own
- * detector - the demonstration is gone and the detector's real behaviour is pinned
- * below, by tests that run on every build. The gap in the detector is issue #355.
+ * The downgrade finding is evidence-gated, and that is worth understanding before
+ * reading the demonstration. "Released the write lock, then took the read lock" is
+ * also the shape of perfectly correct code that writes one thing and later reads
+ * another, and nothing in the recorded events distinguishes the two. So the shape
+ * alone is not reported. It is reported when another thread was seen taking the
+ * write lock inside the gap, which is a fact about the run and the exact reason
+ * the downgrade is unsafe. Under @AsyncTest, with eight threads colliding on the
+ * same lock, that is what happens: a thread that has just released the write lock
+ * blocks in readLock().lock() behind whichever thread took it next.
+ *
+ * This example carried no demonstration for a while, because the detector reported
+ * upgrades only and the demonstration it used to have promised a detection that
+ * could not happen. That was issue #346; the gap in the detector was #355, now
+ * closed, and the demonstration is back.
  *
  * See also: examples/111-lock-upgrade-deadlock, which demonstrates the upgrade.
  */
@@ -108,22 +116,90 @@ class DataStoreTest {
     }
 
     /**
-     * And the incorrect downgrade is not a finding either, which is the gap. This test exists to
-     * pin that gap rather than to celebrate it: if issue #355 is fixed, this assertion flips, and
-     * flipping it is the point.
+     * The incorrect downgrade, on one thread, with nobody in the gap. Not a finding, and that is
+     * the deliberate part: on a single thread the recorded sequence is indistinguishable from a
+     * write followed by an unrelated read, which is correct code. See issue #355.
      */
     @Test
-    void testLockDowngradeDetector_incorrectDowngrade_isAlsoSilent() {
+    void testLockDowngradeDetector_incorrectDowngradeAlone_isSilent() {
         LockDowngradeDetector detector = new LockDowngradeDetector();
         wire(detector);
 
         store.updateAndRead("key", "value");
 
         assertFalse(detector.analyze().hasIssues(),
-                "LockDowngradeDetector reports upgrades only; the unsafe downgrade this example "
-                        + "is built around goes unreported. See issue #355. If this assertion "
-                        + "starts failing, the detector learned to see it - update the example "
-                        + "rather than the assertion.");
+                "one thread, nobody in the gap: nothing was observed being lost, and the shape "
+                        + "alone is also what correct code produces");
+    }
+
+    /**
+     * The same call with a writer actually getting into the gap. Driven by hand rather than by
+     * contention, so this runs on every build without depending on the scheduler.
+     */
+    @Test
+    void testLockDowngradeDetector_writerInsideTheGap_reports() throws Exception {
+        LockDowngradeDetector detector = new LockDowngradeDetector();
+        wire(detector);
+
+        Thread interloper = new Thread(() -> {
+            store.dataLock.writeLock().lock();
+            try {
+                detector.recordWriteLockAcquired(store.dataLock, "dataLock");
+            } finally {
+                detector.recordWriteLockReleased(store.dataLock, "dataLock");
+                store.dataLock.writeLock().unlock();
+            }
+        }, "interloper");
+
+        store.dataLock.writeLock().lock();
+        detector.recordWriteLockAcquired(store.dataLock, "dataLock");
+        store.dataLock.writeLock().unlock();
+        detector.recordWriteLockReleased(store.dataLock, "dataLock");   // the gap opens
+        interloper.start();
+        interloper.join(5_000);                                         // and is used
+        store.dataLock.readLock().lock();
+        detector.recordReadLockAcquired(store.dataLock, "dataLock");    // the gap closes
+        store.dataLock.readLock().unlock();
+        detector.recordReadLockReleased(store.dataLock, "dataLock");
+
+        LockDowngradeDetector.LockDowngradeReport report = detector.analyze();
+        assertTrue(report.hasIssues(),
+                "another thread held the write lock between the release and the read, so what "
+                        + "comes back need not be what was written. " + report);
+        assertTrue(report.toString().contains("unsafe downgrade"), report.toString());
+    }
+
+    // -------------------------------------------------------------------------
+    // Part 3: the demonstration
+    // -------------------------------------------------------------------------
+
+    /**
+     * The bug under contention.
+     *
+     * To see the detection:
+     * 1. Remove @Disabled
+     * 2. Run this test - it fails with
+     *      Lock 'dataLock': N unsafe downgrade(s) observed - a thread released the write
+     *      lock and then acquired the read lock, and another thread took the write lock
+     *      in between, so the read need not return what the writer wrote
+     * 3. Fix: call updateAndReadFixed(), which takes the read lock while still holding
+     *    the write lock
+     *
+     * The detector has to be the one the run owns, from AsyncTestContext. A locally
+     * constructed LockDowngradeDetector is never read by the library, so failOn would
+     * have nothing to gate on. See issue #346.
+     */
+    @Disabled("Remove @Disabled to see the unsafe downgrade detected by LockDowngradeDetector")
+    @AsyncTest(threads = 8, invocations = 20, detectAll = false,
+            detectLockDowngrade = true, failOn = FailOn.LOW)
+    void testUpdateAndRead_concurrent_detectsUnsafeDowngrade() {
+        LockDowngradeDetector detector = AsyncTestContext.lockDowngradeMonitor();
+        wire(detector);
+
+        // The return value is deliberately not asserted: reading back somebody else's value is
+        // the bug, and asserting on it would make this demonstration fail for a reason other
+        // than the detector's finding.
+        store.updateAndRead("shared-key", "value-" + Thread.currentThread().threadId());
     }
 
     private void wire(LockDowngradeDetector detector) {

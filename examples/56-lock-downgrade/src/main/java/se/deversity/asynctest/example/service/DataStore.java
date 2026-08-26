@@ -21,8 +21,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * <p><strong>A different bug entirely ({@link #readThenUpdate}):</strong> acquiring the write
  * lock while holding the read lock. ReentrantReadWriteLock does not support that: the write lock
  * waits for every read lock to be released, including the caller's own, so it waits forever.
- * This one is here because it is the only one {@code LockDowngradeDetector} reports. See the test
- * class and issue #355.
+ * This one is here because {@code LockDowngradeDetector} reports it too, alongside the unsafe
+ * downgrade above. See the test class and issue #355.
  */
 public class DataStore {
 
