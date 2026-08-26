@@ -40,7 +40,8 @@ class TransactionServiceTest {
         service.lock.unlock();
     }
 
-    @Disabled("Remove @Disabled to see bug detected by LockLeakDetector")
+    @Disabled("Remove @Disabled: the round times out because the leaked lock is never released, and the failure "
+            + "names LockLeakDetector's finding")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectLockLeaks = true, failOn = FailOn.LOW)
     void test_concurrent_detectsBug() {
         // Register the lock and record acquire/release to let the detector track it

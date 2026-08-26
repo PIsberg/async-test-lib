@@ -8,6 +8,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.TimeUnit;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -77,24 +79,35 @@ class CounterServiceTest {
     // Part 2: @AsyncTest — exposes lock hold-count imbalance
     // -----------------------------------------------------------------------
 
-    @Disabled("Remove @Disabled to see lock imbalance detected by ReentrantLockDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectReentrantLockIssues = true, failOn = FailOn.LOW)
-    void testIncrement_concurrent_detectsLockImbalance() {
-        // Register the lock with the detector
-        AsyncTestContext.reentrantLockMonitor()
-                .registerLock(service.lock, "counter-service-lock");
+    @Disabled("Remove @Disabled to see the leaked hold detected by ReentrantLockDetector")
+    @AsyncTest(threads = 8, invocations = 2, detectAll = false,
+            detectReentrantLockIssues = true, failOn = FailOn.LOW)
 
-        // Record acquire before calling the buggy method
-        AsyncTestContext.reentrantLockMonitor()
-                .recordLockAcquired(service.lock, Thread.currentThread().getName());
+    void testIncrement_concurrent_detectsLockImbalance() throws InterruptedException {
+        var detector = AsyncTestContext.reentrantLockMonitor();
+        detector.registerLock(service.lock, "counter-service-lock");
 
-        // Call the service — internally acquires twice, releases once
-        int value = service.increment();
-
-        // Record the single release that the finally block makes
-        AsyncTestContext.reentrantLockMonitor()
-                .recordLockReleased(service.lock, Thread.currentThread().getName());
-
-        assertTrue(value > 0, "Counter must be positive");
+        // Bounded, because increment() leaks a hold: it locks twice and unlocks once, so the
+        // count never reaches zero and every later caller parks in lock() forever. Calling it
+        // from all eight threads hung the round, and the round timed out before anything was
+        // analyzed.
+        //
+        // The timeout is also the only thing this detector gates on. ReentrantLockReport.
+        // hasIssues() is (timeouts or starvation); the acquire and release counts are recorded
+        // and printed but never trip it, which is why the previous version's balanced pair
+        // reported nothing even when it did run. A tryLock that expires on a counter whose
+        // critical section is one increment is the leaked hold seen from outside, and is the
+        // finding. See issue #363.
+        if (service.lock.tryLock(100, TimeUnit.MILLISECONDS)) {
+            try {
+                detector.recordLockAcquired(service.lock, Thread.currentThread().getName());
+                service.increment();
+            } finally {
+                detector.recordLockReleased(service.lock, Thread.currentThread().getName());
+                service.lock.unlock();
+            }
+        } else {
+            detector.recordLockTimeout(service.lock);
+        }
     }
 }

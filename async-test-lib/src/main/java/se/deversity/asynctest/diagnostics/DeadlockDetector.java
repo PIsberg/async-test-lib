@@ -18,6 +18,16 @@ import java.util.Set;
  * detector is created (e.g. leaked by an earlier test in a shared JVM) are excluded
  * from {@link #analyze()}, so only deadlocks that form during the monitored test are
  * reported. The static {@link #hasDeadlock()} remains a JVM-wide snapshot by design.
+ *
+ * <p><strong>What it cannot see: virtual threads.</strong> Every finding here comes from
+ * {@code ThreadMXBean.findDeadlockedThreads()}, which reports platform threads. A circular
+ * monitor wait between {@code @AsyncTest} workers running on virtual threads, which is the
+ * default, is therefore not a cycle this can close, and {@link #analyze()} returns a clean
+ * report. That is not the same as no deadlock, and the runner says so once per JVM at INFO
+ * ({@code runner.detector.inert}). {@link #printThreadDump()} is unaffected: it dumps every
+ * thread and is what the timeout path prints. Setting
+ * {@code @AsyncTest(useVirtualThreads = false)} puts the workers back on platform threads and
+ * the finding comes back, measured on {@code examples/06-deadlock} both ways.
  */
 public class DeadlockDetector {
 

@@ -75,7 +75,8 @@ class RateLimiterTest {
     // Part 2: @AsyncTest — exposes permit leak on exception
     // -----------------------------------------------------------------------
 
-    @Disabled("Remove @Disabled to see permit leak detected by SemaphoreMisuseDetector")
+    @Disabled("Remove @Disabled: the round times out once the leaked permits run out, and the failure "
+            + "names SemaphoreMisuseDetector's finding")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, monitorSemaphore = true, failOn = FailOn.LOW)
     void testExecuteRequest_concurrent_detectsPermitLeak() {
         Semaphore sem = limiter.getSemaphore();

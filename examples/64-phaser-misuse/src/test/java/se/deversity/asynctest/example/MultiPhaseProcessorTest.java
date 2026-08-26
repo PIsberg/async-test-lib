@@ -79,25 +79,39 @@ class MultiPhaseProcessorTest {
     // Part 2: @AsyncTest — exposes phaser party-count mismatch
     // -----------------------------------------------------------------------
 
-    @Disabled("Remove @Disabled to see phaser party mismatch detected by PhaserDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectPhaserIssues = true, failOn = FailOn.LOW)
-    void testRunPhase_concurrent_detectsPhaserMisuse() {
+    @Disabled("Remove @Disabled to see the short party count detected by PhaserDetector")
+    @AsyncTest(threads = 3, invocations = 1, detectAll = false,
+            detectPhaserIssues = true, failOn = FailOn.LOW)
+
+    void testRunPhase_concurrent_detectsPhaserMisuse() throws InterruptedException {
         Phaser phaser = processor.getPhaser();
+        var detector = AsyncTestContext.phaserMonitor();
 
-        // Register with the detector (2 parties declared, but 8 threads arrive)
-        AsyncTestContext.phaserMonitor()
-                .registerPhaser(phaser, "multi-phase-processor-phaser", 2);
+        detector.registerPhaser(phaser, "multi-phase-processor-phaser", 2);
+        detector.recordArriveAwaitAdvance(phaser);
 
-        // Record the arrive+await call that will exceed the registered count
-        AsyncTestContext.phaserMonitor()
-                .recordArriveAwaitAdvance(phaser);
+        // Three threads, two registered parties. Two of them pair up and advance the phase; the
+        // third has nobody left to pair with and sits in arriveAndAwaitAdvance() for good. That
+        // is the short registration, and it is deterministic at three threads in a way it was
+        // not at eight: with an even number everybody pairs off, so whether anything went wrong
+        // came down to whether concurrent arrivals happened to overshoot the party count. This
+        // demonstration timed out in two runs of three and passed in the other. See issue #363.
+        //
+        // The subject runs on a thread of its own so the wait can be given a deadline.
+        // arriveAndAwaitAdvance() does not respond to interrupts, so a stranded party can only
+        // be abandoned; the thread is a daemon for that reason and costs nothing after the JVM
+        // is done.
+        Thread party = new Thread(() -> processor.runPhase(0), "phase-party");
+        party.setDaemon(true);
+        party.start();
+        party.join(200);
 
-        // Perform the buggy phase operation — will cause timeout/termination
-        try {
-            processor.runPhase(0);
-        } catch (IllegalStateException e) {
-            // Record that the phaser terminated due to the excess arrival
-            AsyncTestContext.phaserMonitor().recordTermination(phaser);
+        if (party.isAlive()) {
+            // This party will never advance: recordTimeout is what PhaserDetector.hasIssues()
+            // gates on, and an arrival that never completes is the finding.
+            detector.recordTimeout(phaser);
+        } else {
+            detector.recordPhaseComplete(phaser, phaser.getPhase());
         }
     }
 }

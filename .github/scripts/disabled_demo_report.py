@@ -29,6 +29,13 @@ from pathlib import Path
 # assertion, or timed out, before the detector was consulted.
 GATE_MARKER = "at or above failOn="
 
+# The sentence ConcurrencyRunner puts on a RoundTimeoutError when the detectors had something to
+# say. The failOn gate is success-path-only, so a run that hangs cannot fail on a finding however
+# healthy it is; naming the detectors in the timeout is the closest a hanging demonstration gets
+# to keeping its @Disabled reason's promise, and 9 of them do. Distinguished from a body that
+# threw its own assertion, because those are different defects and only the second is one.
+TIMEOUT_WITH_FINDING_MARKER = "detector finding(s) recorded before the timeout"
+
 # Demonstrations already known to pass, with a reason and an issue. See the file's own header.
 BASELINE_FILE = ".github/known-silent-demos.txt"
 
@@ -122,7 +129,7 @@ def first_line(text):
 
 # A demonstration runs N times inside one @TestTemplate. Worse news wins: one failing
 # invocation means the demonstration failed, and only an all-green demonstration is a finding.
-PRECEDENCE = {"skipped": 0, "passed": 1, "other": 2, "gate": 3}
+PRECEDENCE = {"skipped": 0, "passed": 1, "other": 2, "named": 3, "gate": 4}
 
 
 def outcomes(run_dir):
@@ -146,7 +153,12 @@ def outcomes(run_dir):
                     status = "passed"
                 else:
                     text = (failure.get("message") or "") + (failure.text or "")
-                    status = "gate" if GATE_MARKER in text else "other:" + first_line(text)
+                    if GATE_MARKER in text:
+                        status = "gate"
+                    elif TIMEOUT_WITH_FINDING_MARKER in text:
+                        status = "named:" + first_line(text)
+                    else:
+                        status = "other:" + first_line(text)
             previous = seen.get(key)
             if previous is None or PRECEDENCE[status.split(":")[0]] > PRECEDENCE[previous.split(":")[0]]:
                 seen[key] = status
@@ -154,13 +166,16 @@ def outcomes(run_dir):
 
 
 FAKE_SUITE = """<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="selftest" tests="4">
+<testsuite name="selftest" tests="5">
   <testcase name="demoThatPassed()[1]" classname="x.Demo"/>
   <testcase name="demoOnTheGate()[1]" classname="x.Demo">
     <failure message="[AsyncTest] 2 detector finding(s) at or above failOn=LOW">stack</failure>
   </testcase>
   <testcase name="demoOnItsOwnAssertion()[1]" classname="x.Demo">
     <failure message="expected: &lt;true&gt; but was: &lt;false&gt;">trace</failure>
+  </testcase>
+  <testcase name="demoThatHungWithAFinding()[1]" classname="x.Demo">
+    <failure message="Test timed out after 5000ms. Possible deadlock, starvation, or visibility issue. 1 detector finding(s) recorded before the timeout: LockLeakDetector. Full reports above.">trace</failure>
   </testcase>
   <testcase name="demoStillSkipped" classname="x.Demo"><skipped message="Remove @Disabled"/></testcase>
   <testcase name="demoThatPassed()[2]" classname="x.Demo">
@@ -194,6 +209,8 @@ def self_test(repo_root):
     expect(seen.get(("x.Demo", "demoOnTheGate")), "gate", "a failOn-gate failure")
     expect(str(seen.get(("x.Demo", "demoOnItsOwnAssertion"))).split(":")[0], "other",
            "a failure that is not the gate")
+    expect(str(seen.get(("x.Demo", "demoThatHungWithAFinding"))).split(":")[0], "named",
+           "a timeout whose message names the detectors that had a finding")
     expect(seen.get(("x.Demo", "demoStillSkipped")), "skipped", "a still-skipped demonstration")
     # One green invocation and one timed-out invocation of the same demonstration: worse news
     # wins, or a demonstration that fails only sometimes would be filed as healthy.
@@ -251,7 +268,7 @@ def main(argv):
     runs = [outcomes(directory) for directory in run_dirs]
 
     always_passed, sometimes_passed, wrong_reason, never_ran, fired = [], [], [], [], []
-    still_skipped, expected_silent, recovered = [], [], []
+    still_skipped, expected_silent, recovered, named_timeout = [], [], [], []
     for key, location in sorted(demos.items()):
         statuses = [run.get(key, "not-run") for run in runs]
         label = f"{key[0]}.{key[1]}  ({location})"
@@ -267,6 +284,10 @@ def main(argv):
             fired.append(label)
             if key in known_silent:
                 recovered.append(label)
+        elif all(status.startswith(("gate", "named")) for status in statuses):
+            named = "; ".join(sorted({s.split(": ", 1)[-1] for s in statuses
+                                      if s.startswith("named")}))
+            named_timeout.append(f"{label}\n      {named}")
         else:
             reasons = "; ".join(sorted({s for s in statuses if s.startswith("other")}))
             wrong_reason.append(f"{label}\n      {reasons}")
@@ -275,6 +296,7 @@ def main(argv):
     print(f"Runs analysed: {len(runs)}")
     print()
     print(f"  fired every run (healthy):        {len(fired)}")
+    print(f"  hung, with the finding named:     {len(named_timeout)}")
     print(f"  passed every run (THE FINDING):   {len(always_passed)}")
     print(f"  passed every run, known silent:   {len(expected_silent)}")
     print(f"  passed in some runs (flaky):      {len(sometimes_passed)}")
@@ -289,8 +311,11 @@ def main(argv):
     section(f"Fired every run, though {BASELINE_FILE} expects them silent - delete those lines "
             "if it holds (they are timing-dependent, so one green week is not proof)", recovered)
     section("Passed in some runs - detection is real but timing-dependent", sometimes_passed)
-    section("Failed, but not on the detector's finding - an assertion in the body tripped first",
-            wrong_reason)
+    section("Timed out rather than reaching the failOn gate, but the timeout names the "
+            "detector's finding - the subject really does hang, and the reader is told what was "
+            "detected. Healthy, and reported so the count stays visible", named_timeout)
+    section("Failed, but not on the detector's finding - an assertion in the body tripped first, "
+            "or the round timed out with nothing detected", wrong_reason)
     section("Still skipped - the DisabledCondition deactivation did not reach this module, "
             "so nothing was measured about it", still_skipped)
     section("Never ran - the module did not report a result for them at all", never_ran)

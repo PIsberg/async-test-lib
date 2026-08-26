@@ -59,7 +59,8 @@ class TaskOrchestratorTest {
      * the signal the detector uses to identify the deadlock pattern when active
      * tasks equal the pool size.
      */
-    @Disabled("Remove @Disabled to see bug detected by ThreadPoolDeadlockDetector")
+    @Disabled("Remove @Disabled: the round times out on the nested-submission deadlock, and the failure "
+            + "names ThreadPoolDeadlockDetector's finding")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectThreadPoolDeadlocks = true, failOn = FailOn.LOW)
     void test_concurrent_detectsDeadlockRisk() {
         var detector = AsyncTestContext.threadPoolDeadlockDetector();

@@ -8,6 +8,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.TimeUnit;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -74,23 +76,42 @@ class PositionTrackerTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see unreleased StampedLock stamp detected by StampedLockDetector")
-    @AsyncTest(threads = 8, invocations = 30, detectAll = false, detectStampedLockIssues = true, failOn = FailOn.LOW)
-    void test_concurrent_detectsUnreleasedStamp() {
+    @AsyncTest(threads = 8, invocations = 2, detectAll = false,
+            detectStampedLockIssues = true, failOn = FailOn.LOW)
+
+    void test_concurrent_detectsUnreleasedStamp() throws InterruptedException {
         var detector = AsyncTestContext.get().stampedLockMonitor();
         var lock = tracker.getLock();
 
         detector.registerLock(lock, "position-lock");
 
-        // Record the write-lock acquisition; the service never calls unlockWrite.
-        long stamp = lock.writeLock();
-        detector.recordWriteLock(lock, "position-lock", stamp);
+        // The previous version took lock.writeLock() here and then called moveTo(), which takes
+        // it again. StampedLock is not reentrant, so the very first thread deadlocked against
+        // itself: nothing was recorded, and the round timed out with an empty report. See
+        // issue #363.
+        //
+        // Bounded, because moveTo() never gives the stamp back. The first caller returns and
+        // leaves the lock write-locked forever, so every later caller would park in writeLock().
+        // tryWriteLock asks the same question with a deadline, and its expiry is the leak
+        // observed from outside - which is what StampedLockReport.hasIssues() gates on.
+        long probe = lock.tryWriteLock(100, TimeUnit.MILLISECONDS);
+        if (probe == 0L) {
+            detector.recordStampNotReleased("position-lock", 0L);
+            return;
+        }
 
-        tracker.moveTo(
-            Thread.currentThread().getId(),
-            Thread.currentThread().getId() * 2.0
-        );
+        // Hand the probe straight back: moveTo() has to take the lock itself, because taking it
+        // and not releasing it is the bug being demonstrated.
+        lock.unlockWrite(probe);
 
-        // BUG: stamp is never released — notify the detector.
-        detector.recordStampNotReleased("position-lock", stamp);
+        tracker.moveTo(Thread.currentThread().threadId(),
+                Thread.currentThread().threadId() * 2.0);
+        detector.recordWriteLock(lock, "position-lock", 0L);
+
+        // Stamp 0 is not a placeholder: tryOptimisticRead() returns 0 while the lock is
+        // write-held, which is exactly the state moveTo() has just left behind.
+        if (lock.isWriteLocked()) {
+            detector.recordStampNotReleased("position-lock", lock.tryOptimisticRead());
+        }
     }
 }

@@ -112,6 +112,29 @@ public class ConcurrencyRunner {
     static final java.util.concurrent.atomic.AtomicBoolean DAEMON_HYGIENE_INERT_LOGGED =
             new java.util.concurrent.atomic.AtomicBoolean();
 
+
+    /**
+     * Latches the one-shot announcement that {@code DeadlockDetector} cannot see the runner's
+     * own workers.
+     *
+     * <p>The detector asks {@code ThreadMXBean.findDeadlockedThreads()}, which reports platform
+     * threads. The runner's workers are virtual threads by default, so a circular monitor wait
+     * between them - which is the whole premise of {@code @AsyncTest}, eight threads colliding
+     * on one subject - is not in the cycle JMX can close, and the report comes back clean.
+     * Measured on {@code examples/06-deadlock}, whose subject deadlocks on a lock pair: silent
+     * with the default runner, "CIRCULAR DEADLOCK DETECTED" with
+     * {@code @AsyncTest(useVirtualThreads = false)}, same code both times.
+     *
+     * <p>Both flags default to on, so this is the configuration everybody runs. The thread dump
+     * the timeout path prints is still printed and still shows the stuck threads; what is
+     * missing is the finding, and with it the difference between "no deadlock" and "no deadlock
+     * that this can see". Announced for the same reason as the daemon-hygiene case below.
+     *
+     * <p>Package-visible so the log-contract test can rearm it.
+     */
+    static final java.util.concurrent.atomic.AtomicBoolean DEADLOCK_INERT_LOGGED =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
     /** See {@link #resolveTimeoutMultiplier()}. */
     private static final String TIMEOUT_MULTIPLIER_PROPERTY = "async-test.timeout.multiplier";
 
@@ -255,6 +278,23 @@ public class ConcurrencyRunner {
                     + "threads\" hint=\"set @AsyncTest(useVirtualThreads = false) on the test "
                     + "that instruments threads, or read the report as 'not observed' rather "
                     + "than 'clean'\"",
+                invocationContext.getExecutable().getName());
+        }
+
+        // The deadlock detector is enabled and the runner is on virtual threads, so
+        // findDeadlockedThreads() cannot close a cycle that runs through the workers. Said once
+        // per JVM at INFO, for the same reason as the two announcements above: a clean deadlock
+        // report is the most reassuring output this library produces, and here it is not
+        // evidence of anything.
+        if (config.detectDeadlocks && config.useVirtualThreads
+                && DEADLOCK_INERT_LOGGED.compareAndSet(false, true)) {
+            log.info("runner.detector.inert test={} detector=DeadlockDetector "
+                    + "reason=\"findDeadlockedThreads() reports platform threads, and "
+                    + "useVirtualThreads=true means the workers colliding on your locks are "
+                    + "virtual, so a cycle between them is not found\" hint=\"set "
+                    + "@AsyncTest(useVirtualThreads = false) on the test whose deadlock is "
+                    + "between the runner's own threads, or read a clean report as 'not "
+                    + "observed' rather than 'no deadlock'\"",
                 invocationContext.getExecutable().getName());
         }
 

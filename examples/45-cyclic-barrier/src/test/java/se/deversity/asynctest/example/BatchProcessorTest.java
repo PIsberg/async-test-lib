@@ -97,7 +97,8 @@ class BatchProcessorTest {
      * 2. Run this test
      * 3. To fix: reset the barrier after the exception, or use Phaser
      */
-    @Disabled("Remove @Disabled to see the bug detected by CyclicBarrierDetector")
+    @Disabled("Remove @Disabled: the round times out on the broken barrier, and the failure "
+            + "names CyclicBarrierDetector's finding")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCyclicBarrierIssues = true, failOn = FailOn.LOW)
     void testProcessPhase_concurrent_detectsBrokenBarrier() {
         // Register the barrier so the detector knows its configuration
