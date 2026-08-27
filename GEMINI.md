@@ -88,6 +88,7 @@ Detailed per-element guardrails live in scoped rule files that load automaticall
 
 - `se.deversity.asynctest.AgentCollectionHooks` → `.gemini/rules/se-deversity-asynctest-AgentCollectionHooks.md`
 - `se.deversity.asynctest.AgentLockHooks` → `.gemini/rules/se-deversity-asynctest-AgentLockHooks.md`
+- `se.deversity.asynctest.AgentSharedInstanceHooks` → `.gemini/rules/se-deversity-asynctest-AgentSharedInstanceHooks.md`
 - `se.deversity.asynctest.AsyncAssert` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.AsyncFindings` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.AsyncTest` → `.gemini/rules/async-test-configuration.md`
