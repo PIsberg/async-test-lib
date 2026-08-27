@@ -176,11 +176,12 @@ Agent-feeding a detector works when one JDK method call carries everything the d
 is what the sixteen above have in common: a lock acquired, a formatter used, a permit taken. Three
 things stop the others, and each was checked against the code rather than assumed.
 
-**The rule would report correct code.** `ExecutorShutdownDetector` reports any executor that
-received a task and was not shut down before `analyze()` runs. That is the right answer when a test
-author instruments an executor they own, and the wrong one for a shared or injected pool, which is
-most pools in a real codebase. Pointing the agent at every executor in a woven program would bury
-its user, so it stays recording-only on purpose.
+**The detector needs a fact the substitution cannot supply.** `ExecutorShutdownDetector` reports an
+executor that was registered with it and then never shut down. Registration is the load-bearing
+half: a `submit` on an executor it has never seen records nothing, so feeding the agent's `submit`
+and `shutdown` calls alone would leave it silent rather than wrong. Registering creation means the
+`Executors` factory methods, which the static substitution path can now reach, so this one is a
+decision rather than a limit - see #387.
 
 **The call site is static.** This used to stop `SleepInLockDetector`, and no longer does: the
 substitution now has an `invokestatic` path, and `Thread.sleep` was its first user. `System.gc`,
