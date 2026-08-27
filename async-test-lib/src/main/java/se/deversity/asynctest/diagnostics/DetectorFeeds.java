@@ -71,7 +71,15 @@ public final class DetectorFeeds {
             DetectorType.CALENDAR,
             DetectorType.STRING_BUILDER,
             DetectorType.SHARED_DECIMAL_FORMAT,
-            DetectorType.SHARED_FORMATTER);
+            DetectorType.SHARED_FORMATTER,
+            // The coordination primitives. Sharing is the point of these, so what the detectors
+            // report is protocol misuse - a permit that never came back, an offer whose false
+            // return was discarded. Nobody instruments a semaphore three layers down in the
+            // class under test, which is why these were unreachable in practice.
+            DetectorType.SEMAPHORE,
+            DetectorType.COUNTDOWN_LATCH,
+            DetectorType.LATCH_MISUSE,
+            DetectorType.BLOCKING_QUEUE);
 
     /**
      * Fed by the JVM and the harness with no recording call.

@@ -459,6 +459,8 @@ public final class AsyncTestAgent {
                     new java.util.ArrayList<>(CollectionAccessWeaver.substitutions(hooks));
             all.addAll(CollectionAccessWeaver.lockSubstitutions(lockHooks));
             all.addAll(CollectionAccessWeaver.sharedInstanceSubstitutions(sharedHooks));
+            all.addAll(CollectionAccessWeaver.concurrencySubstitutions(
+                    Class.forName(CollectionAccessWeaver.concurrencyHooksClassName(), false, loader)));
             return all;
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException(

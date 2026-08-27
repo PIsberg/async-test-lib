@@ -14,6 +14,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -98,6 +101,9 @@ final class CollectionAccessWeaver {
 
     /** The library-side class holding the shared-instance hooks. */
     private static final String SHARED_HOOKS = LIBRARY_ROOT + "AgentSharedInstanceHooks";
+
+    /** The library-side class holding the coordination-primitive hooks. */
+    private static final String CONCURRENCY_HOOKS = LIBRARY_ROOT + "AgentConcurrencyUtilHooks";
 
     private CollectionAccessWeaver() {
     }
@@ -219,6 +225,29 @@ final class CollectionAccessWeaver {
             Entry.call(Formatter.class, "format", "format", String.class, Object[].class));
 
     /**
+     * The coordination table: {@code java.util.concurrent} primitives whose protocol can be
+     * misused.
+     *
+     * <p>Sharing is the point of these objects, so unlike the shared-instance table what matters
+     * is the operation and its outcome. {@code offer} and the timed {@code await} return a
+     * boolean that callers routinely discard, and that discarded boolean is the whole finding.
+     *
+     * <p>These are plumbing rather than domain types: a test author does not think to instrument
+     * a latch three layers down in the class under test, which is why the detectors for them were
+     * effectively unreachable before the substitution existed.
+     */
+    private static final List<Entry> CONCURRENCY_ENTRIES = List.of(
+            Entry.call(Semaphore.class, "acquire", "acquire"),
+            Entry.call(Semaphore.class, "tryAcquire", "tryAcquire"),
+            Entry.call(Semaphore.class, "release", "release"),
+            Entry.call(CountDownLatch.class, "countDown", "countDown"),
+            Entry.call(CountDownLatch.class, "await", "await"),
+            Entry.call(CountDownLatch.class, "await", "await", long.class, TimeUnit.class),
+            Entry.call(BlockingQueue.class, "offer", "offer", Object.class),
+            Entry.call(BlockingQueue.class, "poll", "poll"),
+            Entry.call(BlockingQueue.class, "put", "put", Object.class));
+
+    /**
      * One resolved rewrite: the call shape to match and the hook invocation that replaces it.
      *
      * <p>{@code callSiteDescriptor} is the hook's descriptor with the receiver parameter removed,
@@ -297,6 +326,15 @@ final class CollectionAccessWeaver {
         return List.of(new SubstitutionWrapper(targets(SHARED_INSTANCE_ENTRIES, sharedHooks)));
     }
 
+    /**
+     * {@return the coordination-primitive substitutions, in table order}
+     *
+     * @param concurrencyHooks the class holding the hooks, resolved in the weaving class loader
+     */
+    static List<AsmVisitorWrapper> concurrencySubstitutions(Class<?> concurrencyHooks) {
+        return List.of(new SubstitutionWrapper(targets(CONCURRENCY_ENTRIES, concurrencyHooks)));
+    }
+
     /** {@return the hook class name the substituted collection calls land in} */
     static String hooksClassName() {
         return HOOKS;
@@ -310,6 +348,11 @@ final class CollectionAccessWeaver {
     /** {@return the hook class name the substituted shared-instance calls land in} */
     static String sharedHooksClassName() {
         return SHARED_HOOKS;
+    }
+
+    /** {@return the hook class name the substituted coordination calls land in} */
+    static String concurrencyHooksClassName() {
+        return CONCURRENCY_HOOKS;
     }
 
     /** Applies one table of {@link Target}s to every method of a woven class. */

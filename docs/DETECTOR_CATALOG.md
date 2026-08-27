@@ -136,7 +136,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (12)
+### Agent-fed (16)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -150,10 +150,17 @@ cached in a field because building one is expensive, which is how a confined obj
 shared one. All six were reachable only through hand-written recording calls, so attaching the
 agent and writing a plain test produced silence from them.
 
+The coordination primitives joined last. Sharing is the point of a semaphore or a latch, so 
+what these report is protocol misuse rather than sharing: a permit that never came back, an 
+offer whose false return was discarded, a timed await that expired. They are plumbing, used 
+three layers down in the class under test, which is why nobody instruments them by hand and 
+why their detectors were unreachable in practice rather than merely inconvenient.
+
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
-`SharedDecimalFormatDetector`, `SharedFormatterDetector`
+`SharedDecimalFormatDetector`, `SharedFormatterDetector`, `SemaphoreMisuseDetector`,
+`CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`
 
 ### Zero-config (3)
 
@@ -163,7 +170,7 @@ call:
 
 `DeadlockDetector`, `LivelockDetector`, `StaticInitDeadlockDetector`
 
-### Recording-only (131)
+### Recording-only (127)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -171,12 +178,12 @@ recording is the feed:
 
 `VisibilityMonitor`, `FalseSharingDetector`, `WakeupDetector`, `ConstructorSafetyValidator`,
 `ABAProblemDetector`, `SynchronizerMonitor`, `ThreadPoolMonitor`,
-`MemoryOrderingMonitor`, `PipelineMonitor`, `ReadWriteLockMonitor`, `SemaphoreMisuseDetector`,
+`MemoryOrderingMonitor`, `PipelineMonitor`, `ReadWriteLockMonitor`,
 `CompletableFutureExceptionDetector`, `CompletableFutureCompletionLeakDetector`,
 `VirtualThreadPinningDetector`, `ThreadPoolDeadlockDetector`, `ConcurrentModificationDetector`,
-`SharedRandomDetector`, `BlockingQueueDetector`, `ConditionVariableDetector`,
+`SharedRandomDetector`, `ConditionVariableDetector`,
 `ParallelStreamDetector`, `ResourceLeakDetector`,
-`CountDownLatchDetector`, `CyclicBarrierDetector`, `ReentrantLockDetector`,
+`CyclicBarrierDetector`, `ReentrantLockDetector`,
 `VolatileArrayDetector`, `DoubleCheckedLockingDetector`, `WaitTimeoutDetector`,
 `LockContentionDetector`, `SynchronizedNonFinalDetector`, `MissedSignalDetector`,
 `LazyInitRaceDetector`, `PhaserDetector`, `StampedLockDetector`, `ExchangerDetector`,
@@ -209,7 +216,7 @@ recording is the feed:
 `SharedByteBufferDetector`, `SharedCharsetCoderDetector`, `SharedChecksumDetector`,
 `FileChannelPositionRaceDetector`, `SharedIteratorDetector`, `HighContentionAtomicDetector`,
 `SharedJsonMapperReconfigDetector`, `LazyConstantMisuseDetector`, `FinalFieldMutationDetector`,
-`SharedKdfDetector`, `LatchMisuseDetector`, `ExecutorDeadlockDetector`, `FutureBlockingDetector`,
+`SharedKdfDetector`, `ExecutorDeadlockDetector`, `FutureBlockingDetector`,
 `FlowPublisherConcurrencyDetector`, `ConfinedArenaThreadEscapeDetector`,
 `SharedMemorySegmentRaceDetector`, `VarHandleNonAtomicUpdateDetector`,
 `RecordMutableComponentLeakDetector`, `VirtualThreadPoolingDetector`,

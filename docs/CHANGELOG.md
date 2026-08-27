@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A leaked semaphore permit and a dropped queue offer are now caught with no instrumentation.**
+  `Semaphore`, `CountDownLatch` and `BlockingQueue` are plumbing: a test author instruments a
+  domain object because they suspect it, and nobody instruments a semaphore three layers down in
+  the class under test. That is why the four detectors for them were unreachable in practice rather
+  than merely inconvenient.
+
+  `AgentConcurrencyUtilHooks` substitutes `acquire`, `tryAcquire`, `release`, `countDown`, both
+  `await` overloads, `offer`, `poll` and `put`. Unlike the shared-instance family, sharing is the
+  whole point of these objects, so what the hooks record is the operation and its outcome: the
+  boolean an `offer` discards, and the timed `await` that expired, are the entire finding.
+
+  **19 of 146 detectors now work on code the user did not modify** - 16 agent-fed and 3
+  zero-config - against 5 at the start of the day. The corpus eval reports 0 findings from all 19
+  across 22 documented-thread-safe classes from seven third-party libraries.
+
+  The first version of the fixture proved something else by accident. It gave the semaphore four
+  permits and leaked every one, so the fifth `acquire` blocked forever and the round timed out
+  instead of reporting. The timeout message named the finding anyway - "1 detector finding(s)
+  recorded before the timeout: SemaphoreMisuseDetector" - which is the summary added earlier in
+  this release doing exactly its job. The fixture now holds far more permits than the run consumes,
+  because a leak demonstrated by deadlocking is demonstrated in the least useful way available.
+
 - **A cached `Calendar`, `StringBuilder`, `DecimalFormat` or `java.util.Formatter` is now caught
   too.** Second tranche of the same shape: each is expensive or awkward to build, so it gets
   hoisted to a field, and the class quietly stops being safe to call concurrently. Each had a

@@ -78,6 +78,7 @@ you are editing here.
   <scoped_rules>
     <note>Detailed per-element guardrails for the elements below live in scoped rule files that load automatically when the matching source file is opened. Consult the referenced file before modifying an element.</note>
     <element path="se.deversity.asynctest.AgentCollectionHooks" rules=".claude/rules/se-deversity-asynctest-AgentCollectionHooks.md"/>
+    <element path="se.deversity.asynctest.AgentConcurrencyUtilHooks" rules=".claude/rules/se-deversity-asynctest-AgentConcurrencyUtilHooks.md"/>
     <element path="se.deversity.asynctest.AgentLockHooks" rules=".claude/rules/se-deversity-asynctest-AgentLockHooks.md"/>
     <element path="se.deversity.asynctest.AgentSharedInstanceHooks" rules=".claude/rules/se-deversity-asynctest-AgentSharedInstanceHooks.md"/>
     <element path="se.deversity.asynctest.AsyncAssert" rules=".claude/rules/async-test-public-api.md"/>

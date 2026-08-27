@@ -113,12 +113,17 @@ class DetectorFeedCoverageTest {
         Set<DetectorType> wovenFed = EnumSet.noneOf(DetectorType.class);
         String sharedHooks = read(repoRoot().resolve(Path.of("async-test-lib", "src", "main",
                 "java", "se", "deversity", "asynctest", "AgentSharedInstanceHooks.java")));
-        String wovenHooks = lockHooks + sharedHooks;
+        String concurrencyHooks = read(repoRoot().resolve(Path.of("async-test-lib", "src",
+                "main", "java", "se", "deversity", "asynctest",
+                "AgentConcurrencyUtilHooks.java")));
+        String wovenHooks = lockHooks + sharedHooks + concurrencyHooks;
         for (String accessor : List.of("currentLockOrderValidator", "currentLockLeakDetector",
                 "currentTryLockMisuseDetector", "currentSimpleDateFormatDetector",
                 "currentSharedMatcherDetector", "currentSharedMessageDigestDetector",
                 "currentCalendarDetector", "currentStringBuilderDetector",
-                "currentSharedDecimalFormatDetector", "currentSharedFormatterDetector")) {
+                "currentSharedDecimalFormatDetector", "currentSharedFormatterDetector",
+                "currentSemaphoreMisuseDetector", "currentCountDownLatchDetector",
+                "currentLatchMisuseDetector", "currentBlockingQueueDetector")) {
             Class<?> fed;
             try {
                 fed = AsyncTestContext.class.getDeclaredMethod(accessor).getReturnType();

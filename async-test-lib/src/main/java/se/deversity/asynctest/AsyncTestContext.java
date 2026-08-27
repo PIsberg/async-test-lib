@@ -1738,6 +1738,29 @@ public final class AsyncTestContext {
         AsyncTestContext context = CURRENT.get();
         return context == null ? null : context.sharedFormatterDetector;
     }
+    /** {@return the {@link SemaphoreMisuseDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable SemaphoreMisuseDetector currentSemaphoreMisuseDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.semaphoreMisuseDetector;
+    }
+
+    /** {@return the {@link CountDownLatchDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable CountDownLatchDetector currentCountDownLatchDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.countDownLatchDetector;
+    }
+
+    /** {@return the {@link LatchMisuseDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable LatchMisuseDetector currentLatchMisuseDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.latchMisuseDetector;
+    }
+
+    /** {@return the {@link BlockingQueueDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable BlockingQueueDetector currentBlockingQueueDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.blockingQueueDetector;
+    }
 
     /**
      * Returns the {@link TimerDetector} for the current test.
