@@ -80,6 +80,63 @@ class LockUpgradeReportedOnceTest {
                         + findings.get("LockDowngradeDetector"));
     }
 
+
+    @Test
+    void withBothEnabled_anUnsafeDowngradeIsReportedOnce_byTheOtherDetector() throws Exception {
+        AsyncTestConfig cfg = AsyncTestConfig.builder()
+                .detectAll(false)
+                .detectLockDowngrade(true)
+                .detectLockUpgradeDeadlock(true)
+                .build();
+        DetectorRegistry registry = new DetectorRegistry(cfg);
+        assertNotNull(registry.lockDowngradeDetector);
+        assertNotNull(registry.lockUpgradeDeadlockDetector);
+
+        unsafeDowngradeWithAWriterInTheGap(registry.lockDowngradeDetector);
+
+        Map<String, String> findings = registry.analyzeAllNamed();
+        assertTrue(findings.containsKey("LockDowngradeDetector"),
+                "the unsafe downgrade is this detector's own subject and nothing else reports it. "
+                        + "Findings: " + findings.keySet());
+        assertFalse(findings.containsKey("LockUpgradeDeadlockDetector"),
+                "and the forwarding must not turn a downgrade into a second, wrong finding under "
+                        + "the upgrade detector's name: that would be the duplicate this whole "
+                        + "arrangement removed, running the other way. Findings: "
+                        + findings.keySet());
+    }
+
+    /**
+     * The unsafe downgrade, with a writer observed inside the gap.
+     *
+     * <p>Driven by hand rather than by contention, so it does not depend on the scheduler: the
+     * finding is evidence-gated and needs another thread to have taken the write lock between the
+     * release and the read, which is the fact that makes the downgrade unsafe.
+     */
+    private static void unsafeDowngradeWithAWriterInTheGap(LockDowngradeDetector detector)
+            throws InterruptedException {
+        ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+        Thread interloper = new Thread(() -> {
+            lock.writeLock().lock();
+            try {
+                detector.recordWriteLockAcquired(lock, "store");
+            } finally {
+                detector.recordWriteLockReleased(lock, "store");
+                lock.writeLock().unlock();
+            }
+        }, "interloper");
+
+        lock.writeLock().lock();
+        detector.recordWriteLockAcquired(lock, "store");
+        lock.writeLock().unlock();
+        detector.recordWriteLockReleased(lock, "store");     // the gap opens
+        interloper.start();
+        interloper.join(5_000);                              // and is used
+        lock.readLock().lock();
+        detector.recordReadLockAcquired(lock, "store");      // the gap closes
+        lock.readLock().unlock();
+        detector.recordReadLockReleased(lock, "store");
+    }
+
     /** The read-to-write upgrade, recorded only through {@link LockDowngradeDetector}'s API. */
     private static void upgradeThroughTheDowngradeDetector(LockDowngradeDetector detector) {
         ReentrantReadWriteLock lock = new ReentrantReadWriteLock();

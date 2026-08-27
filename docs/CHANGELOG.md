@@ -61,6 +61,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A leaked `ReentrantLock` hold recorded through `ReentrantLockDetector` is now reported.** That
+  detector has `recordLockAcquired` and `recordLockReleased`, keeps counts from them, prints those
+  counts, and gates on neither: `hasIssues()` is timeouts or starvation. A caller who instrumented
+  the pair the method names invite, and whose code leaked a hold, got a clean report and a
+  `failOn` gate that never tripped, and the class javadoc listed "Lock not released in finally
+  block" among what it detects.
+
+  `LockLeakDetector` already reports exactly that, both the imbalance and a lock still held when
+  analysis runs, so adding the finding here would have duplicated it - which is what #361 was
+  about. The records are forwarded instead: when both detectors are enabled, which `detectAll`
+  makes the default, every registration and record made through `ReentrantLockDetector` also
+  reaches `LockLeakDetector`, and the finding comes out once under the name that owns it. The
+  javadoc now says what this detector reports, what it only records as context, and where the leak
+  question is answered (#368).
+
+- **The two read-write lock detectors are pinned as covering one condition each, in every
+  enablement combination.** #361 removed the duplicate upgrade report; #369 asked whether the two
+  should then be merged into one `DetectorType`. They should not. Since #355 `LockDowngradeDetector`
+  owns the unsafe write-to-read downgrade, which nothing else reports, and
+  `LockUpgradeDeadlockDetector` owns the read-to-write upgrade. Those are different bugs with
+  different consequences and different fixes, and neither existing name describes both, so a merge
+  would mean deprecating two constants and adding a third for one fewer entry in a set of 146.
+  `LockUpgradeReportedOnceTest` now covers the matrix in both directions - an upgrade must not
+  appear under the downgrade detector's name, and a downgrade must not appear under the upgrade
+  detector's - so the separation is enforced rather than asserted in prose (#369).
+
 - **`DeadlockDetector` can now see a deadlock between the runner's own workers.** It asked
   `ThreadMXBean.findDeadlockedThreads()`, which reports platform threads, and `@AsyncTest` runs
   its workers on virtual threads by default, so the eight threads colliding on the code under test
