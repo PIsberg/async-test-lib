@@ -1,5 +1,7 @@
 package se.deversity.asynctest;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import java.security.MessageDigest;
 import java.text.NumberFormat;
 import java.text.ParseException;
@@ -253,6 +255,11 @@ public final class AgentSharedInstanceHooks {
      * @param args     the format arguments
      * @return the formatter, so the call chain is unchanged
      */
+    @SuppressFBWarnings("FORMAT_STRING_MANIPULATION")
+    // The format string is the call site's own and reaches the original method unchanged: this
+    // hook replaces the invocation, it does not compose the string. SpotBugs sees a non-literal
+    // format argument and cannot see that it is the same value the user already passed, so the
+    // finding is true of every substitution hook and false of all of them.
     public static Formatter format(Formatter receiver, String format, Object... args) {
         SharedFormatterDetector detector = AsyncTestContext.currentSharedFormatterDetector();
         if (detector != null) {
