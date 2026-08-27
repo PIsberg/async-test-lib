@@ -45,7 +45,7 @@ check something".
 | **PROMPT** | The detector saw a pattern it cannot fully model, most often a shared object whose lock it has no way to see. Correct code that shares an object produces the same signal as a race. | Open a ticket, not fail a build |
 | **ADVISORY** | A performance or hygiene note, not a correctness claim. | Read it, gate on nothing |
 
-**The tier is in the code, not in this document.** `DetectorTrust` classifies all 142, the runner
+**The tier is in the code, not in this document.** `DetectorTrust` classifies all 146, the runner
 prints the tier above every finding, every `Violation` carries it as a `trustTier` attribute, and
 `@AsyncTest(minTrust = TrustTier.VERDICT)` restricts the `failOn` gate to the tiers you name.
 `DetectorTrustCoverageTest` fails the build if a detector is unclassified, if a row names a
@@ -111,7 +111,7 @@ have excluded nothing, which is a race however many locks were involved.
 **Classified, but not all measured.** Every detector now carries a tier, because a finding with no
 tier is one a reader has to rank alone. Most carry PROMPT, which is the honest default rather than
 a result: it says nobody has measured that detector's silent-on-correct-code direction, not that
-the detector is wrong. The two evals measure 33 distinct detectors of 142 between them (three
+the detector is wrong. The two evals measure 33 distinct detectors of 146 between them (three
 appear in both), and extending them is mechanical rather than hard. Each new both-directions case
 either promotes a detector or writes down a limit, and both outcomes are worth having: the
 `CONCURRENT_MODIFICATIONS` pair, added with the tier mechanism, showed the detector firing on two
