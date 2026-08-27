@@ -61,6 +61,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CI no longer resolves the Maven Central publishing plugin before it can read the POM.**
+  `central-publishing-maven-plugin` sat in the root `<build><plugins>` with
+  `<extensions>true</extensions>`. A build extension is resolved while the project model is being
+  assembled: before any goal, before the transfer-retry settings #342 added, and before a single
+  test runs. So all 38 checks, on every OS and JDK, had to reach Maven Central for a plugin whose
+  only job is publishing to Maven Central, and one transient read killed the job outright with
+  `Unresolveable build extension` and `ProjectBuildingException`, which nothing inside the build
+  can recover from.
+
+  It cost three CI jobs in three days on three different runners: the Examples Reactor shard 1/4 on
+  2026-08-25, `Test Suite (21, ubuntu-latest)` on #370 and `Test Suite (21, windows-latest)` on
+  #375. Each time nothing was blocked, so it was a genuine transient that happened to be fatal
+  because of where the dependency sat. #342 made the fetch more likely to survive; this makes 37 of
+  the 38 jobs not need it.
+
+  The plugin moves to the `release` profile, which `publish.yml` already activates with
+  `mvn --batch-mode clean deploy -P release`. Verified from Maven's own debug output rather than by
+  reading the POM: `mvn -X -N validate` never mentions the plugin, and the same command with
+  `-P release` logs `Created new class realm extension>org.sonatype.central:central-publishing-maven-plugin:0.11.0`.
+  `NoBuildExtensionOutsideAProfileTest` pins both halves, including that `waitUntil=uploaded` from
+  #250 survived the move (#377).
+
 - **A leaked `ReentrantLock` hold recorded through `ReentrantLockDetector` is now reported.** That
   detector has `recordLockAcquired` and `recordLockReleased`, keeps counts from them, prints those
   counts, and gates on neither: `hasIssues()` is timeouts or starvation. A caller who instrumented
