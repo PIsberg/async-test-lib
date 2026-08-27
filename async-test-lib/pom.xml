@@ -148,7 +148,26 @@
                     </newVersion>
                     <parameter>
                         <onlyBinaryIncompatible>true</onlyBinaryIncompatible>
-                        <breakBuildOnBinaryIncompatibleModifications>true</breakBuildOnBinaryIncompatibleModifications>
+                        <!-- Semantic versioning, not "never break".
+
+                             breakBuildOnBinaryIncompatibleModifications stood here and failed
+                             the build on any binary-incompatible change whatever the version
+                             number said, which made 2.0.0 unbuildable: the release exists to
+                             remove what 1.x deprecated, and the gate would have refused the
+                             first removal. Measured on 2026-08-27 by setting the version to
+                             2.0.0 and deleting one deprecated accessor, which is exactly what
+                             the roadmap plans - BUILD FAILURE, "There is at least one
+                             incompatibility: AsyncTestContext.semaphoreMonitor():METHOD_REMOVED".
+
+                             breakBuildBasedOnSemanticVersioning permits what semver permits and
+                             nothing else. The same removal, measured the same way: 2.0.0 passes,
+                             1.10.0 fails with "indicate a minor change but binary incompatible
+                             changes found", 1.9.9 fails with the patch-change wording. Adding
+                             public API in a patch release still passes, because
+                             onlyBinaryIncompatible scopes this to breaks and an addition is not
+                             one - which matters here, where new detectors have shipped as patch
+                             releases four times. -->
+                        <breakBuildBasedOnSemanticVersioning>true</breakBuildBasedOnSemanticVersioning>
                         <ignoreMissingClasses>true</ignoreMissingClasses>
                         <!-- No excludes.
 

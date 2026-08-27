@@ -61,6 +61,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The japicmp gate made 2.0.0 unbuildable.** It ran with
+  `breakBuildOnBinaryIncompatibleModifications`, which fails on any binary-incompatible change
+  whatever the version number says. 2.0.0 exists to remove what 1.x deprecated, so the gate would
+  have refused its first removal, and nothing would have found that out before release day.
+
+  Measured on 2026-08-27 rather than reasoned about: setting the version to 2.0.0 and deleting one
+  deprecated accessor - `AsyncTestContext.semaphoreMonitor()`, which the roadmap names as a Train 3
+  removal - gave `BUILD FAILURE`, `There is at least one incompatibility:
+  AsyncTestContext.semaphoreMonitor():METHOD_REMOVED`.
+
+  `breakBuildBasedOnSemanticVersioning` replaces it and permits exactly what semver permits. The
+  same removal, measured the same way: 2.0.0 passes, 1.10.0 fails with "indicate a minor change but
+  binary incompatible changes found", 1.9.9 fails with the patch wording. Adding public API in a
+  patch release still passes, which matters here because new detectors have shipped as patch
+  releases four times. `JapicmpBaselineFreshnessTest` gained a second test so restoring the
+  unconditional flag fails rather than quietly re-blocking the major release.
+
 - **Seven deprecated `@AsyncTest` attributes told a caller to move without saying where to.**
   `detectSharedByteBuffer`, `detectSharedCharsetCoder`, `detectSharedChecksum`,
   `detectFileChannelPositionRace`, `detectSharedIterator`, `detectHighContentionAtomic` and
