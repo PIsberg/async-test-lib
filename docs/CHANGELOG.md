@@ -61,6 +61,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The migration guide migrated readers onto the API 2.0.0 removes.** Every detector example in
+  `docs/MIGRATION.md` used the deprecated boolean attributes - `validateLockOrder`,
+  `detectFalseSharing`, `detectABAProblem`, `validateConstructorSafety`, `monitorThreadPool` - so
+  the document whose job is to move people forward was teaching the surface with the shortest
+  remaining life. The examples now use `preset`, `includes` and `excludes`.
+
+  It also gained the migration it was missing. 2.0.0 removes what 1.x deprecated, and every
+  replacement already works in 1.x, so the whole migration can be done on the current version and
+  verified green before the version bump - which is the single most useful thing to know and was
+  written down nowhere. Alongside it, the cases where the obvious rewrite is wrong: four of the 42
+  `*Monitor()` accessors do not simply gain a `Detector` suffix (`semaphoreMonitor` becomes
+  `semaphoreMisuseDetector`, not `semaphoreDetector`), and `nestedMonitorLockoutMonitor` defeats a
+  global `Monitor` to `Detector` replace, which would rewrite the first occurrence too. Every
+  identifier and link in the guide was checked against the source rather than written from memory.
+
 - **The japicmp gate made 2.0.0 unbuildable.** It ran with
   `breakBuildOnBinaryIncompatibleModifications`, which fails on any binary-incompatible change
   whatever the version number says. 2.0.0 exists to remove what 1.x deprecated, so the gate would
