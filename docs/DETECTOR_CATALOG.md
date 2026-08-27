@@ -411,7 +411,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 8. Livelock Detector
 * **Severity**: `CRITICAL`
-* **Description**: Detects livelock (threads repeatedly changing state in response to each other without making progress) and thread starvation, using thread state transitions and CPU time sampled via `ThreadMXBean` to distinguish stalled threads from genuine deadlocks.
+* **Description**: Reports two things, and the name promises a third it does not deliver. It reports **starvation** (a thread whose recent snapshots are all BLOCKED or WAITING with flat CPU time) and **rapid state cycling** (five state changes in ten snapshots). It does **not** report a busy spin: `madeProgress()` treats any RUNNABLE thread as making progress, deliberately, because a busy worker's measured CPU time can look flat when several snapshots land inside one clock tick and reporting those produced findings against healthy JVMs. So a spin-retry loop burning attempts without completing work - which is what livelock usually means - is not a finding here; `LivelockDetectorTest` pins that. Samples via `ThreadMXBean.dumpAllThreads`, which does not report virtual threads, so on the default `@AsyncTest` runner nothing reaches its history at all and the runner announces `runner.detector.inert`. See issues #362, #367 and #373.
 * **Buggy Code**:
   ```java
   // Two threads politely "back off" forever, never making progress

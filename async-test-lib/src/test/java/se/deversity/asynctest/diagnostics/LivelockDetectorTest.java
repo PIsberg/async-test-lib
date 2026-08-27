@@ -90,6 +90,45 @@ public class LivelockDetectorTest {
                 "Single snapshot is insufficient for livelock/starvation detection");
     }
 
+    /**
+     * The limit the catalog used to describe backwards: a busy spin is not reported.
+     *
+     * <p>{@code madeProgress} returns true for any RUNNABLE thread, on purpose, because a busy
+     * worker's measured CPU time can look flat when several snapshots land inside one clock tick
+     * and reporting those produced findings against healthy JVMs. The consequence is that a
+     * spin-retry loop burning attempts without completing work - which is what the word livelock
+     * usually means - is not something this detector reports. {@code examples/07-livelock} was
+     * retired over exactly this in #362, and the catalog claimed the opposite until #373.
+     *
+     * <p>Pinned rather than written down, so the prose cannot drift back.
+     */
+    @Test
+    void aBusyRunnableThreadIsNotReported() throws Exception {
+        LivelockDetector detector = new LivelockDetector();
+
+        Thread spinner = new Thread(() -> {
+            long sink = 0;
+            for (int i = 0; i < 40; i++) {
+                for (int j = 0; j < 50_000; j++) {
+                    sink += j;                      // genuinely on the CPU between snapshots
+                }
+                if (sink == Long.MIN_VALUE) {
+                    throw new IllegalStateException("unreachable");
+                }
+                detector.captureSnapshot();
+            }
+        }, "busy-spinner");
+        spinner.start();
+        spinner.join(30_000);
+
+        LivelockDetector.LivelockReport report = detector.analyzeLivelocks();
+        assertFalse(report.hasIssues(),
+                "forty snapshots of a thread that was RUNNABLE throughout. This detector reports "
+                        + "starvation and rapid state cycling, not a busy spin, and a finding here "
+                        + "would be a false positive on a thread that was doing work the whole "
+                        + "time. Report: " + report);
+    }
+
     @Test
     void analyze_delegatesToAnalyzeLivelocks() {
         LivelockDetector detector = new LivelockDetector();

@@ -20,16 +20,17 @@ public class ThrottledService {
     private int requestCount = 0;
 
     /**
-     * Called from inside the synchronized block, immediately before the sleep, on the thread
-     * that holds the monitor. A no-op by default, so production behaviour is unchanged whether
-     * or not a test is watching.
+     * Called from inside the synchronized block, immediately before the sleep, on the thread that
+     * holds the monitor, and handed the monitor it holds. A no-op by default, so production
+     * behaviour is unchanged whether or not a test is watching.
      *
-     * <p>SleepInLockDetector answers "does the thread calling recordSleep hold a lock", by
-     * asking the JVM rather than by reading a stack trace. Recording from the test body, which
-     * is where the demonstration used to do it, asks that question outside the synchronized
-     * method and always gets no. This is the seam, not the bug.
+     * <p>SleepInLockDetector answers "does the thread calling recordSleep hold this monitor", and
+     * has the JVM confirm it with Thread.holdsLock. Recording from the test body, which is where
+     * the demonstration used to do it, asks that question outside the synchronized method and
+     * always gets no. Passing the monitor is what lets the answer work on a virtual thread, which
+     * is what the runner uses by default. This is the seam, not the bug.
      */
-    private volatile Runnable onSleepWhileHoldingTheLock = () -> { };
+    private volatile java.util.function.Consumer<Object> onSleepWhileHoldingTheLock = monitor -> { };
 
     /**
      * Rate-limited request processor.
@@ -41,7 +42,7 @@ public class ThrottledService {
 
         // BUG: "rate limiting" implemented as a sleep while holding the lock.
         // Every caller queues behind this sleep, killing throughput.
-        onSleepWhileHoldingTheLock.run();
+        onSleepWhileHoldingTheLock.accept(this);
         try {
             Thread.sleep(50);
         } catch (InterruptedException e) {
@@ -52,9 +53,10 @@ public class ThrottledService {
     /**
      * Installs the hook a demonstration needs to record the sleep from inside the lock.
      *
-     * @param onSleep run on the calling thread while it holds this object's monitor
+     * @param onSleep called on the calling thread, while it holds this object's monitor, with
+     *                that monitor as its argument
      */
-    public void observeSleepInLock(Runnable onSleep) {
+    public void observeSleepInLock(java.util.function.Consumer<Object> onSleep) {
         this.onSleepWhileHoldingTheLock = onSleep;
     }
 
