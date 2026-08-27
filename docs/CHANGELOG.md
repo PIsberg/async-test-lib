@@ -61,6 +61,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Seven deprecated `@AsyncTest` attributes told a caller to move without saying where to.**
+  `detectSharedByteBuffer`, `detectSharedCharsetCoder`, `detectSharedChecksum`,
+  `detectFileChannelPositionRace`, `detectSharedIterator`, `detectHighContentionAtomic` and
+  `detectSharedJsonMapperReconfig` carried `@Deprecated` with no `@deprecated` javadoc tag at all,
+  so the compiler warned about a removal the javadoc never explained. The other 139 attributes and
+  all 42 deprecated `AsyncTestContext` accessors already named their replacement; these seven were
+  added later and missed it.
+
+  Nothing was red, because this is not a question javadoc's own tooling asks: doclint checks that
+  tags are well formed, not that a deprecation has a destination.
+  `DeprecationsNameTheirReplacementTest` asks it, over all 188 deprecated public elements in the
+  published modules, and fails both when the tag is absent and when it announces a removal without
+  pointing at a successor. It matters more than usual here because 2.0.0 removes what 1.x
+  deprecated: the tag is the whole migration path.
+
 - **A leaked `ReentrantLock` hold recorded through `ReentrantLockDetector` is now reported.** That
   detector has `recordLockAcquired` and `recordLockReleased`, keeps counts from them, prints those
   counts, and gates on neither: `hasIssues()` is timeouts or starvation. A caller who instrumented
