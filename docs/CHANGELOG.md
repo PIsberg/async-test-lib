@@ -61,6 +61,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`StaticInitDeadlockDetector`'s live sample reported nothing, ever.** Its javadoc offers that
+  path as the one that works "with no instrumentation at all", and it filtered to threads whose
+  state is BLOCKED, WAITING or TIMED_WAITING. A thread stuck in a class-initialization deadlock is
+  inside its own `<clinit>` calling into the other class, which puts it in a native frame, and the
+  JVM reports that as RUNNABLE. Measured on the canonical A-waits-for-B pair, on JDK 21 and JDK 26,
+  platform and virtual threads alike: every case reports RUNNABLE with `<clinit>` on the stack. So
+  the filter excluded precisely the condition the detector is named for, and this was never a
+  virtual-thread problem alone.
+
+  Removing the filter on its own would have traded a false negative for a false positive, because
+  two threads each initializing a different class at the same instant is ordinary startup. What
+  separates that from a deadlock is not the state but whether it persists: normal initialization
+  finishes in microseconds. The sample is now taken twice, 150ms apart, and only threads still
+  inside the same class's initializer both times survive. The second sample is taken only when the
+  first already found two threads in two different initializers, so the ordinary case costs
+  nothing.
+
+  Virtual threads now reach the sample too, through the JSON thread dump `VirtualThreadLockGraph`
+  reads (#367); on a JDK whose dump omits thread state they are left out rather than guessed at,
+  because without a state a thread running an initializer cannot be told from one parked in it.
+  Both directions are pinned: a virtual-thread class-init deadlock is named in the report, and two
+  classes merely initializing concurrently are not (#376).
+
 - **A leaked `ReentrantLock` hold recorded through `ReentrantLockDetector` is now reported.** That
   detector has `recordLockAcquired` and `recordLockReleased`, keeps counts from them, prints those
   counts, and gates on neither: `hasIssues()` is timeouts or starvation. A caller who instrumented
