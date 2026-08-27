@@ -61,6 +61,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Two classes that looked like detectors and were never analyzed now say so, and a gate keeps
+  the list honest.** `diagnostics/` holds 149 public classes named `*Detector`, `*Validator` or
+  `*Monitor`. 146 are a `DetectorType`, are built by `DetectorRegistry` and can fail a test through
+  `failOn`. `LazyInitValidator` and `NotifyAllValidator` have the same shape and the same package
+  and the runner never calls `analyze()` on them, so instrumenting one and getting a clean report
+  from an `@AsyncTest` means only that nobody asked. `examples/28-lazy-init` promised a detection
+  from `LazyInitValidator` and lost its demonstration over it in #363; the cause took a while to
+  find precisely because the class looks like every other one in the directory.
+
+  Both javadocs now say the runner never analyzes them and name the wired detector to use instead.
+  `DetectorShapedClassesAreReachableTest` is the gate: every detector-shaped class is constructed
+  by `DetectorRegistry` or `ConcurrencyRunner`, or is on an allowlist that carries a reason and
+  whose entries must repeat that reason in their own javadoc. The existing coverage gates could not
+  catch this, because all three iterate `DetectorType.values()` and a class with no `DetectorType`
+  is invisible to them (#374).
+
 - **`SleepInLockDetector` works on the default runner.** Its question is "does the calling thread
   hold a monitor", and it asked `ThreadMXBean.getThreadInfo(id, true, true)`, which does not report
   virtual threads. `@AsyncTest` runs its workers on virtual threads by default, so the detector saw
