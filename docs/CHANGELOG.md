@@ -58,7 +58,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still tracked separately. Upgrade findings also collapse to one line per lock with a
   count, the way #351 required of the common-pool detector (#355).
 
-
 ### Fixed
 
 - **Two classes that looked like detectors and were never analyzed now say so, and a gate keeps
