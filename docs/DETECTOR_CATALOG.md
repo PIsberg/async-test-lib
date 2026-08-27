@@ -170,6 +170,29 @@ call:
 
 `DeadlockDetector`, `LivelockDetector`, `StaticInitDeadlockDetector`
 
+### Why the rest are recording-only
+
+Agent-feeding a detector works when one JDK method call carries everything the detector needs. That
+is what the sixteen above have in common: a lock acquired, a formatter used, a permit taken. Three
+things stop the others, and each was checked against the code rather than assumed.
+
+**The rule would report correct code.** `ExecutorShutdownDetector` reports any executor that
+received a task and was not shut down before `analyze()` runs. That is the right answer when a test
+author instruments an executor they own, and the wrong one for a shared or injected pool, which is
+most pools in a real codebase. Pointing the agent at every executor in a woven program would bury
+its user, so it stays recording-only on purpose.
+
+**The call site is static.** The substitution rewrites `invokevirtual` and `invokeinterface`.
+`Thread.sleep`, which is what `SleepInLockDetector` needs, is `invokestatic`, and so is
+`System.gc`. Nothing about that is unsafe - a static substitution is simpler than a virtual one,
+with no receiver on the stack - it is just work the weaver has not had.
+
+**The input is not a call.** `VisibilityMonitor` needs field reads and writes, which is the field
+weaver's stream rather than a call site. `ThreadPoolMonitor` and the `CompletableFuture` family
+need a task's start and completion, and a substituted `submit` sees neither: the task runs later,
+somewhere else. `LazyInitRaceDetector` and `ThisEscapeDetector` describe a shape in the code rather
+than any particular method, and no substitution can see a shape.
+
 ### Recording-only (127)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
