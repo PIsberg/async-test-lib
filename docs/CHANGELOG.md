@@ -7,7 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`SleepInLockDetector` was inert in every real run, and nothing said so.** Every `recordSleep`
+  returns early on a `monitoring` flag that defaults to `false`, and the only caller of
+  `startMonitoring()` anywhere was the detector's own unit test. `DetectorRegistry` constructed it,
+  `ifIssue` wired its report, `detectSleepInLock` defaulted to `true` - and it recorded nothing,
+  ever. A clean report meant only that nobody had asked. The registry now starts it.
+
 ### Added
+
+- **A sleep inside a lock is caught with no instrumentation, through the agent's first static
+  substitution.** Whether a `Thread.sleep` is a bug depends entirely on whether a lock was held,
+  which no stack trace records and `Thread.holdsLock` can only answer about an object you already
+  named. `HeldLocks` has known it all along, so the two halves only had to be introduced - except
+  that the substitution rewrote `invokevirtual` and `invokeinterface`, and `Thread.sleep` is
+  `invokestatic`, so the one call the detector exists for was the one it could not see (#386).
+
+  The weaver now has a static path. It is simpler than the virtual one rather than riskier: no
+  receiver on the stack, so the hook's descriptor is the call site's unchanged, and a static does
+  not dispatch on subtype, so the owner is matched exactly instead of by assignability.
+  **20 of 146 detectors now work on code the user did not modify**, against 5 at the start.
+
+  Two things had to be found by probing rather than reasoning. The hook first called
+  `recordSleep(millis)`, which resolves held monitors through `ThreadMXBean` - blind to virtual
+  threads, which the runner uses by default, so it answered "none" for every worker; it now names
+  the monitor and routes through `Thread.holdsLock`. And the positive fixture used a
+  `synchronized` method, which compiles to an access flag and emits no `MONITORENTER`, so the
+  lockset never learned the monitor was held. The fixture uses a `synchronized` block; the gap is
+  #388.
+
+  Both directions measured, and the negative decides whether this can ship at all: rate limiting,
+  back-off and polling are all sleeps outside a lock and vastly outnumber the bug, so
+  `SleepInLockWeavingSparesSleepOutsideLockTest` requires silence on the same substituted call with
+  the lock released first.
 
 - **A leaked semaphore permit and a dropped queue offer are now caught with no instrumentation.**
   `Semaphore`, `CountDownLatch` and `BlockingQueue` are plumbing: a test author instruments a

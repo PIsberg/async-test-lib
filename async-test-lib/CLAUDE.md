@@ -81,6 +81,7 @@ you are editing here.
     <element path="se.deversity.asynctest.AgentConcurrencyUtilHooks" rules=".claude/rules/se-deversity-asynctest-AgentConcurrencyUtilHooks.md"/>
     <element path="se.deversity.asynctest.AgentLockHooks" rules=".claude/rules/se-deversity-asynctest-AgentLockHooks.md"/>
     <element path="se.deversity.asynctest.AgentSharedInstanceHooks" rules=".claude/rules/se-deversity-asynctest-AgentSharedInstanceHooks.md"/>
+    <element path="se.deversity.asynctest.AgentSleepHooks" rules=".claude/rules/se-deversity-asynctest-AgentSleepHooks.md"/>
     <element path="se.deversity.asynctest.AsyncAssert" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.AsyncFindings" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.AsyncTest" rules=".claude/rules/async-test-configuration.md"/>

@@ -178,6 +178,34 @@ public final class HeldLocks {
     }
 
     /**
+     * {@return whether the calling thread currently holds any lock this class knows about}
+     *
+     * <p>{@link #holds(Object)} answers the question a detector asks about a named lock: was this
+     * access guarded by <em>that</em> one. This asks the question a detector asks about the
+     * thread: is it inside a critical section at all. Sleeping while holding a lock is a bug
+     * whichever lock it is, so naming one would be the wrong shape.
+     *
+     * <p>Reads only the calling thread's own frame, so it is a plain field read with no
+     * synchronisation and nothing to leak.
+     */
+    public static boolean anyHeld() {
+        return FRAMES.get().depth > 0;
+    }
+
+    /**
+     * {@return the most recently acquired lock this thread still holds, or {@code null}}
+     *
+     * <p>The innermost one rather than any one: a detector reporting a sleep under a lock wants
+     * the lock the code was actually inside, and that is the last one pushed.
+     *
+     * <p>Reads only the calling thread's own frame, so it is a plain array read.
+     */
+    public static @Nullable Object topHeld() {
+        Frame frame = FRAMES.get();
+        return frame.depth == 0 ? null : frame.locks[frame.depth - 1];
+    }
+
+    /**
      * Clears the calling thread's declared locks.
      *
      * <p>Called from {@code AsyncTestContext.uninstall()} so the set cannot outlive the invocation

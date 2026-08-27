@@ -105,6 +105,9 @@ final class CollectionAccessWeaver {
     /** The library-side class holding the coordination-primitive hooks. */
     private static final String CONCURRENCY_HOOKS = LIBRARY_ROOT + "AgentConcurrencyUtilHooks";
 
+    /** The library-side class holding the static-call hooks. */
+    private static final String STATIC_HOOKS = LIBRARY_ROOT + "AgentSleepHooks";
+
     private CollectionAccessWeaver() {
     }
 
@@ -119,16 +122,29 @@ final class CollectionAccessWeaver {
      */
     private record Entry(Class<?> declaredBy, String method, String hook,
                          @org.jspecify.annotations.Nullable Class<?> returning,
+                         boolean isStatic,
                          Class<?>... parameters) {
 
         /** An entry matched by name and arguments alone, whatever the call returns. */
         static Entry call(Class<?> declaredBy, String method, String hook, Class<?>... parameters) {
-            return new Entry(declaredBy, method, hook, null, parameters);
+            return new Entry(declaredBy, method, hook, null, false, parameters);
         }
 
         /** A no-argument entry matched by its exact return type as well. */
         static Entry view(Class<?> declaredBy, String method, String hook, Class<?> returning) {
-            return new Entry(declaredBy, method, hook, returning);
+            return new Entry(declaredBy, method, hook, returning, false);
+        }
+
+        /**
+         * A static invocation, matched on its owner exactly.
+         *
+         * <p>Simpler than the virtual case rather than riskier: there is no receiver on the
+         * stack, so the hook's descriptor is the call site's descriptor unchanged, and a static
+         * does not dispatch on subtype, so the owner must be the declaring class itself.
+         */
+        static Entry staticCall(Class<?> declaredBy, String method, String hook,
+                                Class<?>... parameters) {
+            return new Entry(declaredBy, method, hook, null, true, parameters);
         }
     }
 
@@ -248,6 +264,16 @@ final class CollectionAccessWeaver {
             Entry.call(BlockingQueue.class, "put", "put", Object.class));
 
     /**
+     * The static table: calls a detector's input maps onto that are not invoked on a receiver.
+     *
+     * <p>{@code Thread.sleep} is the reason this path exists. Whether a sleep is a bug depends
+     * entirely on whether a lock was held, which the lockset already knows and a stack trace
+     * never did, so the two halves only had to be introduced.
+     */
+    private static final List<Entry> STATIC_ENTRIES = List.of(
+            Entry.staticCall(Thread.class, "sleep", "sleep", long.class));
+
+    /**
      * One resolved rewrite: the call shape to match and the hook invocation that replaces it.
      *
      * <p>{@code callSiteDescriptor} is the hook's descriptor with the receiver parameter removed,
@@ -257,7 +283,7 @@ final class CollectionAccessWeaver {
      */
     private record Target(String methodName, String callSiteDescriptor,
                           TypeDescription receiverType, String hookOwnerInternalName,
-                          String hookMethodName, String hookDescriptor) {
+                          String hookMethodName, String hookDescriptor, boolean isStatic) {
     }
 
     private static List<Target> targets(List<Entry> entries, Class<?> hooks) {
@@ -266,23 +292,39 @@ final class CollectionAccessWeaver {
             Method hook = hookMethod(hooks, entry);
             Type hookType = Type.getType(hook);
             Type[] hookArguments = hookType.getArgumentTypes();
-            Type[] callSiteArguments = new Type[hookArguments.length - 1];
-            System.arraycopy(hookArguments, 1, callSiteArguments, 0, callSiteArguments.length);
+            // A virtual hook takes the receiver as its first parameter and the call site does
+            // not, so the call-site descriptor is the hook's with that parameter removed. A
+            // static hook has no receiver, so the two descriptors are the same.
+            Type[] callSiteArguments;
+            if (entry.isStatic()) {
+                callSiteArguments = hookArguments;
+            } else {
+                callSiteArguments = new Type[hookArguments.length - 1];
+                System.arraycopy(hookArguments, 1, callSiteArguments, 0, callSiteArguments.length);
+            }
             targets.add(new Target(
                     entry.method(),
                     Type.getMethodDescriptor(hookType.getReturnType(), callSiteArguments),
                     TypeDescription.ForLoadedType.of(entry.declaredBy()),
                     Type.getInternalName(hooks),
                     hook.getName(),
-                    hookType.getDescriptor()));
+                    hookType.getDescriptor(),
+                    entry.isStatic()));
         }
         return targets;
     }
 
     private static Method hookMethod(Class<?> hooks, Entry entry) {
-        Class<?>[] signature = new Class<?>[entry.parameters().length + 1];
-        signature[0] = entry.declaredBy();
-        System.arraycopy(entry.parameters(), 0, signature, 1, entry.parameters().length);
+        // A virtual hook takes the receiver first; a static one takes only the call's own
+        // arguments, because there is no receiver to hand over.
+        Class<?>[] signature;
+        if (entry.isStatic()) {
+            signature = entry.parameters().clone();
+        } else {
+            signature = new Class<?>[entry.parameters().length + 1];
+            signature[0] = entry.declaredBy();
+            System.arraycopy(entry.parameters(), 0, signature, 1, entry.parameters().length);
+        }
         try {
             return hooks.getMethod(entry.hook(), signature);
         } catch (NoSuchMethodException e) {
@@ -335,6 +377,15 @@ final class CollectionAccessWeaver {
         return List.of(new SubstitutionWrapper(targets(CONCURRENCY_ENTRIES, concurrencyHooks)));
     }
 
+    /**
+     * {@return the static-call substitutions, in table order}
+     *
+     * @param staticHooks the class holding the hooks, resolved in the weaving class loader
+     */
+    static List<AsmVisitorWrapper> staticSubstitutions(Class<?> staticHooks) {
+        return List.of(new SubstitutionWrapper(targets(STATIC_ENTRIES, staticHooks)));
+    }
+
     /** {@return the hook class name the substituted collection calls land in} */
     static String hooksClassName() {
         return HOOKS;
@@ -353,6 +404,11 @@ final class CollectionAccessWeaver {
     /** {@return the hook class name the substituted coordination calls land in} */
     static String concurrencyHooksClassName() {
         return CONCURRENCY_HOOKS;
+    }
+
+    /** {@return the hook class name the substituted static calls land in} */
+    static String staticHooksClassName() {
+        return STATIC_HOOKS;
     }
 
     /** Applies one table of {@link Target}s to every method of a woven class. */
@@ -425,9 +481,29 @@ final class CollectionAccessWeaver {
             // every operation.
             if (opcode == Opcodes.INVOKEVIRTUAL || opcode == Opcodes.INVOKEINTERFACE) {
                 for (Target target : targets) {
-                    if (name.equals(target.methodName())
+                    if (!target.isStatic()
+                            && name.equals(target.methodName())
                             && descriptor.equals(target.callSiteDescriptor())
                             && ownerIsAssignable(owner, target)) {
+                        super.visitMethodInsn(Opcodes.INVOKESTATIC,
+                                target.hookOwnerInternalName(), target.hookMethodName(),
+                                target.hookDescriptor(), false);
+                        return;
+                    }
+                }
+            }
+            // A static invocation. The owner is compared exactly rather than through
+            // assignability: a static does not dispatch on subtype, so Thread.sleep called
+            // through a subclass name is still Thread.sleep and any other owner is a different
+            // method that happens to share a name. No receiver is on the stack, so the
+            // substitution is stack-shape-neutral for the same reason the virtual one is, with
+            // one fewer thing to get wrong.
+            if (opcode == Opcodes.INVOKESTATIC) {
+                for (Target target : targets) {
+                    if (target.isStatic()
+                            && name.equals(target.methodName())
+                            && descriptor.equals(target.callSiteDescriptor())
+                            && owner.equals(target.receiverType().getInternalName())) {
                         super.visitMethodInsn(Opcodes.INVOKESTATIC,
                                 target.hookOwnerInternalName(), target.hookMethodName(),
                                 target.hookDescriptor(), false);

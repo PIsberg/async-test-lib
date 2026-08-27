@@ -136,7 +136,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (16)
+### Agent-fed (17)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -160,7 +160,7 @@ why their detectors were unreachable in practice rather than merely inconvenient
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
 `SharedDecimalFormatDetector`, `SharedFormatterDetector`, `SemaphoreMisuseDetector`,
-`CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`
+`CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`, `SleepInLockDetector`
 
 ### Zero-config (3)
 
@@ -182,10 +182,10 @@ author instruments an executor they own, and the wrong one for a shared or injec
 most pools in a real codebase. Pointing the agent at every executor in a woven program would bury
 its user, so it stays recording-only on purpose.
 
-**The call site is static.** The substitution rewrites `invokevirtual` and `invokeinterface`.
-`Thread.sleep`, which is what `SleepInLockDetector` needs, is `invokestatic`, and so is
-`System.gc`. Nothing about that is unsafe - a static substitution is simpler than a virtual one,
-with no receiver on the stack - it is just work the weaver has not had.
+**The call site is static.** This used to stop `SleepInLockDetector`, and no longer does: the
+substitution now has an `invokestatic` path, and `Thread.sleep` was its first user. `System.gc`,
+for `ExplicitGcDetector`, is a table entry away. What remains is that each static entry has to be
+worth its instruction, the same bar the virtual ones meet.
 
 **The input is not a call.** `VisibilityMonitor` needs field reads and writes, which is the field
 weaver's stream rather than a call site. `ThreadPoolMonitor` and the `CompletableFuture` family
@@ -193,7 +193,7 @@ need a task's start and completion, and a substituted `submit` sees neither: the
 somewhere else. `LazyInitRaceDetector` and `ThisEscapeDetector` describe a shape in the code rather
 than any particular method, and no substitution can see a shape.
 
-### Recording-only (127)
+### Recording-only (126)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -212,7 +212,7 @@ recording is the feed:
 `LazyInitRaceDetector`, `PhaserDetector`, `StampedLockDetector`, `ExchangerDetector`,
 `ScheduledExecutorDetector`, `ForkJoinPoolDetector`, `ThreadFactoryDetector`,
 `RaceConditionDetector`, `ThreadLocalMonitor`, `BusyWaitDetector`, `InterruptMonitor`,
-`ThreadLeakDetector`, `SleepInLockDetector`, `UnboundedQueueDetector`, `ThreadStarvationDetector`,
+`ThreadLeakDetector`, `UnboundedQueueDetector`, `ThreadStarvationDetector`,
 `TimerDetector`, `CopyOnWriteCollectionDetector`,
 `StructuredConcurrencyMisuseDetector`, `VirtualThreadContextLeakDetector`,
 `ScopedValueMisuseDetector`, `VirtualThreadCpuBoundTaskDetector`,

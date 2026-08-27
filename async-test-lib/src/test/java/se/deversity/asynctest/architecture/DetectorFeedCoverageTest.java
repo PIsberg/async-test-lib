@@ -116,14 +116,17 @@ class DetectorFeedCoverageTest {
         String concurrencyHooks = read(repoRoot().resolve(Path.of("async-test-lib", "src",
                 "main", "java", "se", "deversity", "asynctest",
                 "AgentConcurrencyUtilHooks.java")));
-        String wovenHooks = lockHooks + sharedHooks + concurrencyHooks;
+        String sleepHooks = read(repoRoot().resolve(Path.of("async-test-lib", "src", "main",
+                "java", "se", "deversity", "asynctest", "AgentSleepHooks.java")));
+        String wovenHooks = lockHooks + sharedHooks + concurrencyHooks + sleepHooks;
         for (String accessor : List.of("currentLockOrderValidator", "currentLockLeakDetector",
                 "currentTryLockMisuseDetector", "currentSimpleDateFormatDetector",
                 "currentSharedMatcherDetector", "currentSharedMessageDigestDetector",
                 "currentCalendarDetector", "currentStringBuilderDetector",
                 "currentSharedDecimalFormatDetector", "currentSharedFormatterDetector",
                 "currentSemaphoreMisuseDetector", "currentCountDownLatchDetector",
-                "currentLatchMisuseDetector", "currentBlockingQueueDetector")) {
+                "currentLatchMisuseDetector", "currentBlockingQueueDetector",
+                "currentSleepInLockDetector")) {
             Class<?> fed;
             try {
                 fed = AsyncTestContext.class.getDeclaredMethod(accessor).getReturnType();

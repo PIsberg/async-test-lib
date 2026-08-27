@@ -79,7 +79,11 @@ public final class DetectorFeeds {
             DetectorType.SEMAPHORE,
             DetectorType.COUNTDOWN_LATCH,
             DetectorType.LATCH_MISUSE,
-            DetectorType.BLOCKING_QUEUE);
+            DetectorType.BLOCKING_QUEUE,
+            // Thread.sleep is the agent's first static substitution. Whether a sleep is a bug
+            // depends entirely on whether a lock was held, which the lockset already knew and no
+            // stack trace records, so the two halves only had to be introduced.
+            DetectorType.SLEEP_IN_LOCK);
 
     /**
      * Fed by the JVM and the harness with no recording call.

@@ -1762,6 +1762,12 @@ public final class AsyncTestContext {
         return context == null ? null : context.blockingQueueDetector;
     }
 
+    /** {@return the {@link SleepInLockDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable SleepInLockDetector currentSleepInLockDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.sleepInLockDetector;
+    }
+
     /**
      * Returns the {@link TimerDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectTimerIssues = false}
