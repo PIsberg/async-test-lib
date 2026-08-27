@@ -4,11 +4,15 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.MonitorInfo;
 import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Enhanced deadlock detector that analyzes thread dumps and identifies
@@ -19,17 +23,26 @@ import java.util.Set;
  * from {@link #analyze()}, so only deadlocks that form during the monitored test are
  * reported. The static {@link #hasDeadlock()} remains a JVM-wide snapshot by design.
  *
- * <p><strong>What it cannot see: virtual threads.</strong> Every finding here comes from
- * {@code ThreadMXBean.findDeadlockedThreads()}, which reports platform threads. A circular
- * monitor wait between {@code @AsyncTest} workers running on virtual threads, which is the
- * default, is therefore not a cycle this can close, and {@link #analyze()} returns a clean
- * report. That is not the same as no deadlock, and the runner says so once per JVM at INFO
- * ({@code runner.detector.inert}). {@link #printThreadDump()} is unaffected: it dumps every
- * thread and is what the timeout path prints. Setting
- * {@code @AsyncTest(useVirtualThreads = false)} puts the workers back on platform threads and
- * the finding comes back, measured on {@code examples/06-deadlock} both ways.
+ * <p><strong>Virtual threads, and what it takes to see them.</strong>
+ * {@code ThreadMXBean.findDeadlockedThreads()} reports platform threads, so a circular monitor
+ * wait between {@code @AsyncTest} workers running on virtual threads, which is the default, is
+ * not a cycle it can close. {@link VirtualThreadLockGraph} closes it from a different source: the
+ * JVM's own JSON thread dump does include virtual threads and, on JDKs whose dump names the
+ * monitors each thread holds and is blocked on, carries the whole wait-for graph. The registry
+ * turns that scan on through {@link #enableVirtualThreadScan()} whenever the runner is on virtual
+ * threads, and the report then names both threads and both monitors.
+ *
+ * <p>Where the dump is thin - measured on JDK 21 and 24, against JDK 26 where it is not - the
+ * question cannot be answered and the report comes back clean. That is not the same as no
+ * deadlock, which is what {@link #canSeeVirtualThreadDeadlocks()} exists to let callers say, and
+ * what the runner announces once per JVM at INFO ({@code runner.detector.inert}). Setting
+ * {@code @AsyncTest(useVirtualThreads = false)} gets the finding on any JDK. See issue #367 and
+ * {@code examples/06-deadlock}, measured both ways.
  */
 public class DeadlockDetector {
+
+    /** Switches the virtual-thread scan off, for anyone who would rather have the milliseconds. */
+    public static final String VIRTUAL_SCAN_PROPERTY = "async-test.deadlock.virtual-scan";
 
     /**
      * Thread ids that were already deadlocked when this detector was created.
@@ -37,6 +50,68 @@ public class DeadlockDetector {
      * remain valid exclusion keys for the detector's lifetime.
      */
     private final Set<Long> preexistingDeadlockedThreads;
+
+    /**
+     * Cycles among virtual threads that were already deadlocked when this detector was created,
+     * keyed on their member names, or empty when the virtual scan is off or the JVM cannot answer.
+     *
+     * <p>The same exclusion the platform baseline above makes, for the same reason: in a JVM that
+     * reuses forks, a deadlock leaked by an earlier test never resolves, and reporting it against
+     * every later test would bury the one that caused it. Captured once, when the registry enables
+     * the scan.
+     */
+    private Set<Set<String>> preexistingVirtualCycles = Set.of();
+
+    /**
+     * Whether {@link #analyze()} should read the JVM's thread dump for virtual-thread cycles.
+     *
+     * <p>Off unless the registry turns it on, because it costs a thread dump and buys nothing on a
+     * platform-thread run: {@code findDeadlockedThreads()} already sees those cycles, and the scan
+     * deliberately drops any cycle without a virtual member so one deadlock stays one finding.
+     */
+    private volatile boolean virtualScanEnabled;
+
+    /**
+     * Whether a deadlock between virtual threads is visible on this JVM.
+     *
+     * <p>{@code ThreadMXBean.findDeadlockedThreads()} never sees one. The JVM's own JSON thread
+     * dump does, on JDKs whose dump names monitors, which is what this reports; measured absent on
+     * 21 and 24 and present on 26. The runner uses it to decide whether a clean deadlock report
+     * means "no deadlock" or "nobody could ask", and announces the second at INFO. See issue #367.
+     *
+     * @return {@code true} when a cycle among virtual threads would be reported here
+     */
+    public static boolean canSeeVirtualThreadDeadlocks() {
+        return VirtualThreadLockGraph.canSeeMonitors();
+    }
+
+    /**
+     * Turns on the virtual-thread scan and captures what was already deadlocked.
+     *
+     * <p>Called by {@code DetectorRegistry} when deadlock detection and virtual threads are both
+     * on, which is the default pair. Costs one thread dump here and one in {@link #analyze()};
+     * set {@code -Dasync-test.deadlock.virtual-scan=false} to keep the old behaviour, in which a
+     * deadlock between the runner's own workers is not reported at all.
+     */
+    public void enableVirtualThreadScan() {
+        if (!Boolean.parseBoolean(System.getProperty(VIRTUAL_SCAN_PROPERTY, "true"))) {
+            return;
+        }
+        virtualScanEnabled = true;
+        preexistingVirtualCycles = cycleKeys(VirtualThreadLockGraph.scan());
+    }
+
+    /** {@return each cycle reduced to the set of thread names in it} */
+    private static Set<Set<String>> cycleKeys(
+            Optional<List<VirtualThreadLockGraph.Cycle>> scan) {
+        Set<Set<String>> keys = new HashSet<>();
+        scan.ifPresent(cycles -> {
+            for (VirtualThreadLockGraph.Cycle cycle : cycles) {
+                keys.add(Set.copyOf(cycle.threadNames()));
+            }
+        });
+        return keys;
+    }
     /**
      * Creates a DeadlockDetector.
      */
@@ -103,7 +178,7 @@ public class DeadlockDetector {
                     continue;
                 }
 
-                java.util.List<ThreadInfo> cycle = new java.util.ArrayList<>();
+                List<ThreadInfo> cycle = new ArrayList<>();
                 long currentId = threadId;
                 Set<Long> path = new java.util.LinkedHashSet<>();
                 while (currentId >= 0 && !path.contains(currentId)) {
@@ -122,7 +197,7 @@ public class DeadlockDetector {
                             break;
                         }
                     }
-                    java.util.List<ThreadInfo> activeCycle = cycle.subList(startIdx, cycle.size());
+                    List<ThreadInfo> activeCycle = cycle.subList(startIdx, cycle.size());
                     for (ThreadInfo ti : activeCycle) {
                         visited.add(ti.getThreadId());
                     }
@@ -263,46 +338,90 @@ public class DeadlockDetector {
      */
     public DeadlockReport analyze() {
         long[] current = ManagementFactory.getThreadMXBean().findDeadlockedThreads();
-        if (current == null) {
-            return new DeadlockReport(false);
-        }
-        for (long id : current) {
-            if (!preexistingDeadlockedThreads.contains(id)) {
-                return new DeadlockReport(true);
+        if (current != null) {
+            for (long id : current) {
+                if (!preexistingDeadlockedThreads.contains(id)) {
+                    return new DeadlockReport(true);
+                }
             }
         }
-        return new DeadlockReport(false);
+        return new DeadlockReport(false, freshVirtualCycles());
+    }
+
+    /**
+     * {@return the virtual-thread cycles this run introduced, as report lines}
+     *
+     * <p>Empty when the scan is off, when this JVM's dump does not name monitors, or when nothing
+     * new is deadlocked. Those are three different situations and only the third is good news;
+     * the runner announces the second at INFO rather than letting it read as the third.
+     */
+    private List<String> freshVirtualCycles() {
+        if (!virtualScanEnabled) {
+            return List.of();
+        }
+        Optional<List<VirtualThreadLockGraph.Cycle>> scan = VirtualThreadLockGraph.scan();
+        if (scan.isEmpty()) {
+            return List.of();
+        }
+        List<String> lines = new ArrayList<>();
+        for (VirtualThreadLockGraph.Cycle cycle : scan.get()) {
+            if (preexistingVirtualCycles.contains(Set.copyOf(cycle.threadNames()))) {
+                continue;
+            }
+            lines.add(String.format("%s, each waiting for a monitor the next one holds (%s)",
+                    String.join(" -> ", cycle.threadNames()),
+                    String.join(", ", cycle.monitors())));
+        }
+        return lines;
     }
 
     public static class DeadlockReport {
         private final boolean deadlocked;
+        private final List<String> virtualThreadCycles;
         /**
          * Creates a DeadlockReport.
          *
          * @param deadlocked the {@code deadlocked} flag
          */
         public DeadlockReport(boolean deadlocked) {
+            this(deadlocked, List.of());
+        }
+
+        /**
+         * Creates a DeadlockReport that also carries cycles found among virtual threads.
+         *
+         * @param deadlocked the {@code deadlocked} flag, from the JMX query
+         * @param virtualThreadCycles one line per cycle read out of the JVM's own thread dump
+         */
+        public DeadlockReport(boolean deadlocked, List<String> virtualThreadCycles) {
             this.deadlocked = deadlocked;
+            this.virtualThreadCycles = List.copyOf(virtualThreadCycles);
         }
 
         /**
          * {@return whether there are issues}
          */
         public boolean hasIssues() {
-            return deadlocked;
+            return deadlocked || !virtualThreadCycles.isEmpty();
         }
 
         @Override
         public String toString() {
-            if (!deadlocked) {
+            if (!hasIssues()) {
                 return "No deadlocks detected.";
             }
+            String found = virtualThreadCycles.isEmpty()
+                    ? "  Circular lock dependency found between JVM threads.\n"
+                    : "  Circular lock dependency found between virtual threads, which\n"
+                      + "  ThreadMXBean.findDeadlockedThreads() does not report:\n"
+                      + virtualThreadCycles.stream()
+                              .map(c -> "    - " + c + "\n").collect(Collectors.joining());
             // The severity marker must live in the report itself: the runner infers a
             // finding's severity with IssueSeverity.fromReport(), and an untagged report
             // falls through to the HIGH default — which failOn = CRITICAL does not trip.
             // A deadlock is the canonical CRITICAL finding, so it must say so here.
             return IssueSeverity.CRITICAL.format() + ": DEADLOCK DETECTED\n"
-                + "  Circular lock dependency found between JVM threads.\n"
+                + found
                 + "  Why: Thread A holds lock X and waits for lock Y; Thread B holds lock Y and waits for lock X.\n"
                 + "       Neither can proceed — both are blocked forever.\n"
                 + "  Fix:\n"

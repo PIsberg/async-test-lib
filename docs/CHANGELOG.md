@@ -61,6 +61,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A leaked `ReentrantLock` hold recorded through `ReentrantLockDetector` is now reported.** That
+  detector has `recordLockAcquired` and `recordLockReleased`, keeps counts from them, prints those
+  counts, and gates on neither: `hasIssues()` is timeouts or starvation. A caller who instrumented
+  the pair the method names invite, and whose code leaked a hold, got a clean report and a
+  `failOn` gate that never tripped, and the class javadoc listed "Lock not released in finally
+  block" among what it detects.
+
+  `LockLeakDetector` already reports exactly that, both the imbalance and a lock still held when
+  analysis runs, so adding the finding here would have duplicated it - which is what #361 was
+  about. The records are forwarded instead: when both detectors are enabled, which `detectAll`
+  makes the default, every registration and record made through `ReentrantLockDetector` also
+  reaches `LockLeakDetector`, and the finding comes out once under the name that owns it. The
+  javadoc now says what this detector reports, what it only records as context, and where the leak
+  question is answered (#368).
+
+- **The two read-write lock detectors are pinned as covering one condition each, in every
+  enablement combination.** #361 removed the duplicate upgrade report; #369 asked whether the two
+  should then be merged into one `DetectorType`. They should not. Since #355 `LockDowngradeDetector`
+  owns the unsafe write-to-read downgrade, which nothing else reports, and
+  `LockUpgradeDeadlockDetector` owns the read-to-write upgrade. Those are different bugs with
+  different consequences and different fixes, and neither existing name describes both, so a merge
+  would mean deprecating two constants and adding a third for one fewer entry in a set of 146.
+  `LockUpgradeReportedOnceTest` now covers the matrix in both directions - an upgrade must not
+  appear under the downgrade detector's name, and a downgrade must not appear under the upgrade
+  detector's - so the separation is enforced rather than asserted in prose (#369).
+
+- **`DeadlockDetector` can now see a deadlock between the runner's own workers.** It asked
+  `ThreadMXBean.findDeadlockedThreads()`, which reports platform threads, and `@AsyncTest` runs
+  its workers on virtual threads by default, so the eight threads colliding on the code under test
+  were exactly the ones it could not put in a cycle. `examples/06-deadlock` deadlocks two accounts
+  on a lock pair and the report came back clean.
+
+  The JVM's own JSON thread dump does include virtual threads, and on JDKs whose dump names the
+  monitors each thread holds and is blocked on it carries the whole wait-for graph.
+  `VirtualThreadLockGraph` reads it, finds the cycles and reports them with both thread names and
+  both monitors, which is more than the old boolean said even when it worked. On the default
+  runner `06-deadlock` now reports
+  `async-test-worker-0 -> async-test-worker-1, each waiting for a monitor the next one holds
+  (BankTransferService$Account@724f138e, BankTransferService$Account@37eeec90)`.
+
+  Capability, not version: the lock fields are measured absent on JDK 21 and 24 and present on 26,
+  so the scan looks for them and says "cannot tell" when they are missing rather than carrying a
+  version table that goes stale. `DeadlockDetector.canSeeVirtualThreadDeadlocks()` exposes that
+  answer, and the `runner.detector.inert` announcement now fires only where it is false - on a JDK
+  that can see, claiming the detector is inert would be its own false statement. Monitors only: a
+  `ReentrantLock` deadlock parks rather than blocks and the dump names the blocker but not its
+  owner. Costs two thread dumps per run on virtual-thread runs, about 3ms each here; turn it off
+  with `-Dasync-test.deadlock.virtual-scan=false` (#367).
+
 - **A round timeout now says what the detectors saw.** The `failOn` gate is success-path-only, so
   a run that times out never reaches it: the failure was "Test timed out after 5000ms. Possible
   deadlock, starvation, or visibility issue." and nothing in it said whether any detector had an

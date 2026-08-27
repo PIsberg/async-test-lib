@@ -11,6 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.diagnostics.DeadlockDetector;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -189,6 +190,7 @@ class ConcurrencyRunnerLogContractTest {
 
     @Test
     @DisplayName("a deadlock-detecting run on virtual threads says the detector cannot see the workers")
+
     void deadlockInertnessIsAnnouncedOnceAtInfo() {
         ConcurrencyRunner.DEADLOCK_INERT_LOGGED.set(false);
 
@@ -207,6 +209,18 @@ class ConcurrencyRunnerLogContractTest {
             .filter(e -> e.getFormattedMessage().startsWith("runner.detector.inert"))
             .filter(e -> e.getFormattedMessage().contains("detector=DeadlockDetector"))
             .toList();
+
+        // Conditional on purpose, and the condition is the contract. Since issue #367 the
+        // detector reads virtual-thread cycles out of the JVM's own thread dump, on JDKs whose
+        // dump names monitors. Announcing inertness there would be false; not announcing it where
+        // the dump is thin would be the silent green. So the assertion is the equivalence, which
+        // holds on every JDK, rather than a fixed answer that would only hold on some.
+        if (DeadlockDetector.canSeeVirtualThreadDeadlocks()) {
+            assertTrue(announcements.isEmpty(),
+                "this JVM can read a virtual-thread deadlock out of its own thread dump, so "
+                    + "calling the detector inert would be false. Got: " + events());
+            return;
+        }
         assertEquals(1, announcements.size(),
             "once per JVM: a suite of a thousand @AsyncTest methods must not repeat it. Got: "
                 + events());
