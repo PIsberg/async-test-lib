@@ -117,11 +117,15 @@ class BankTransferServiceTest {
      * threads. The report prints the full lock chain: which thread holds which lock and
      * which lock it is waiting for.
      *
-     * useVirtualThreads = false is not decoration. ThreadMXBean.findDeadlockedThreads()
-     * reports platform threads, so with the default virtual-thread workers the cycle here
-     * runs through threads JMX cannot put in it, and the detector returns a clean report
-     * while the round times out anyway. Measured both ways on this exact subject: silent
-     * with the default, "CIRCULAR DEADLOCK DETECTED" with the line below. See issue #363.
+     * useVirtualThreads = false keeps this demonstration deterministic on every JDK, and the
+     * reason is worth reading. ThreadMXBean.findDeadlockedThreads() reports platform threads
+     * only, so with the default virtual-thread workers the cycle here runs through threads JMX
+     * cannot put in it. Since issue #367 DeadlockDetector also reads the JVM's own JSON thread
+     * dump, which does include virtual threads and, on JDKs whose dump names monitors, the
+     * monitor each one holds and waits for; on this machine's JDK 26 the demonstration fires on
+     * the default runner and names both Account objects. That dump is thin on JDK 21, which is
+     * what the weekly example-demos job pins, so the flag stays: a demonstration that only works
+     * on some of the JDKs the library supports is a poor demonstration. See issues #363 and #367.
      *
      * To see the detection:
      * 1. Remove @Disabled
