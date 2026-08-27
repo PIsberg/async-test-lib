@@ -47,9 +47,18 @@ import java.util.concurrent.atomic.AtomicReference;
  *       {@link #recordInitEnd}. A cycle in the resulting thread-waits-for-thread graph is a
  *       deadlock, not a slow start.</li>
  *   <li><strong>Live thread sample (HIGH, corroborating).</strong> With no instrumentation at
- *       all, {@link #analyze()} samples every live thread once and looks for {@code <clinit>}
+ *       all, {@link #analyze()} samples the live threads once and looks for {@code <clinit>}
  *       frames in threads that are blocked or waiting. Two threads parked inside two different
- *       class initializers is the signature, and the sample names the classes.</li>
+ *       class initializers is the signature, and the sample names the classes.
+ *
+ *       <p>Platform threads come from {@code Thread.getAllStackTraces()}. Virtual threads are not
+ *       in that walk, and {@code @AsyncTest} runs its workers on virtual threads by default, so
+ *       until issue #376 the zero-instrumentation path saw nothing the test itself did. They now
+ *       come from the JVM's own JSON thread dump through {@link VirtualThreadLockGraph}, on JDKs
+ *       whose dump carries a thread state; where it does not, virtual threads are left out rather
+ *       than guessed at, because a thread <em>running</em> a static initializer is not parked in
+ *       one. The recorded path below is unaffected either way: it is pure recording and has
+ *       always worked on any thread.</li>
  * </ul>
  *
  * <p>Usage:
@@ -82,6 +91,14 @@ public final class StaticInitDeadlockDetector {
 
     /** The JVM's own name for a static initializer frame. */
     private static final String CLINIT = "<clinit>";
+
+    /**
+     * How long to wait between the two samples.
+     *
+     * <p>Long enough that ordinary class initialization has finished, short enough that it is only
+     * ever paid when two threads already look stuck in two different initializers.
+     */
+    private static final long SECOND_SAMPLE_DELAY_MS = 150;
 
     private record Waiter(long threadId, String threadName, String requestedClass) { }
 
@@ -189,6 +206,130 @@ public final class StaticInitDeadlockDetector {
     }
 
     /**
+     * Sample the live threads, looking for threads parked inside a static initializer.
+     *
+     * <p><strong>Two samples, not one, and no thread-state filter.</strong> The filter this used
+     * to apply, report only threads whose state is BLOCKED or WAITING, excluded the exact
+     * condition this detector exists for. A thread stuck in a class-initialization deadlock is
+     * inside its own {@code <clinit>} calling into the other class, which puts it in a native
+     * frame, and the JVM reports that as RUNNABLE. Measured on the canonical A-waits-for-B pair on
+     * both JDK 21 and JDK 26, platform and virtual threads alike: all four report RUNNABLE with
+     * {@code <clinit>} on the stack. The corroborating path therefore reported nothing, ever.
+     * See issue #376.
+     *
+     * <p>Dropping the filter on its own would trade a false negative for a false positive, because
+     * two threads each initializing a different class at the same instant is ordinary startup.
+     * What separates the two is not the state but whether it persists: normal initialization
+     * finishes in microseconds. So the sample is taken twice, and only threads still inside the
+     * same class's initializer both times survive.
+     *
+     * <p>The second sample costs nothing in the ordinary case, because it is taken only when the
+     * first already found two threads in two different initializers, which is the shape worth
+     * looking twice at. The result is cached either way: a detector must not report a different
+     * answer each time it is asked.
+     */
+    private List<Parked> liveSample() {
+        List<Parked> cached = sample.get();
+        if (cached != null) return cached;
+
+        List<Parked> confirmed = List.of();
+        try {
+            List<Parked> first = parkedInInitializer();
+            if (spansTwoInitializers(first)) {
+                Thread.sleep(SECOND_SAMPLE_DELAY_MS);
+                confirmed = stillThere(first, parkedInInitializer());
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        } catch (RuntimeException ex) {
+            // A security manager, or a thread dying mid-walk, must not fail the test run: this
+            // sample is corroborating evidence, and losing it is strictly better than turning a
+            // detector into the reason the suite went red. Recorded rather than swallowed so a
+            // permanently empty sample is diagnosable.
+            log.debug("staticinit.sample.failed reason={}", ex.toString());
+        }
+        sample.compareAndSet(null, List.copyOf(confirmed));
+        return sample.get() == null ? List.of() : sample.get();
+    }
+
+    /** {@return whether these cover at least two threads in at least two different initializers} */
+    private static boolean spansTwoInitializers(List<Parked> parked) {
+        if (parked.size() < 2) return false;
+        Set<String> classes = new LinkedHashSet<>();
+        for (Parked p : parked) classes.add(p.initializingClass());
+        return classes.size() >= 2;
+    }
+
+    /** {@return the entries of first whose thread is still inside the same initializer} */
+    private static List<Parked> stillThere(List<Parked> first, List<Parked> second) {
+        Set<String> secondKeys = new LinkedHashSet<>();
+        for (Parked p : second) secondKeys.add(p.threadName() + " " + p.initializingClass());
+        List<Parked> survivors = new ArrayList<>();
+        for (Parked p : first) {
+            if (secondKeys.contains(p.threadName() + " " + p.initializingClass())) {
+                survivors.add(p);
+            }
+        }
+        return survivors;
+    }
+
+    /**
+     * One pass over the live threads, platform and virtual, with no state filter.
+     *
+     * <p>Platform threads come from {@code Thread.getAllStackTraces()}. Virtual threads are not in
+     * that walk, and the runner uses them by default, so they come from the JVM's own JSON thread
+     * dump through {@link VirtualThreadLockGraph}. On a JDK whose dump omits thread state that
+     * source yields nothing and only platform threads are sampled.
+     *
+     * @return every live thread currently inside a class initializer
+     */
+    private static List<Parked> parkedInInitializer() {
+        List<Parked> found = new ArrayList<>();
+        for (Map.Entry<Thread, StackTraceElement[]> e : Thread.getAllStackTraces().entrySet()) {
+            Thread t = e.getKey();
+            if (t.threadId() == Thread.currentThread().threadId()) continue;
+            for (StackTraceElement f : e.getValue()) {
+                if (CLINIT.equals(f.getMethodName())) {
+                    found.add(new Parked(t.getName(), t.getState(), f.getClassName()));
+                    break;
+                }
+            }
+        }
+        for (VirtualThreadLockGraph.DumpedThread thread :
+                VirtualThreadLockGraph.threadsWithState().orElse(List.of())) {
+            if (!thread.virtual()) continue;
+            for (String frame : thread.stack()) {
+                if (frame.contains(CLINIT)) {
+                    found.add(new Parked(thread.name(), stateOf(thread), classNameOf(frame)));
+                    break;
+                }
+            }
+        }
+        return found;
+    }
+
+    /** {@return the dumped thread's state, or RUNNABLE when this JDK names it something else} */
+    private static Thread.State stateOf(VirtualThreadLockGraph.DumpedThread thread) {
+        try {
+            return thread.state() == null ? Thread.State.RUNNABLE
+                    : Thread.State.valueOf(thread.state());
+        } catch (IllegalArgumentException unknown) {
+            return Thread.State.RUNNABLE;
+        }
+    }
+
+    /** {@return the class name out of a dumped frame such as a.b.C.[clinit](C.java:12)} */
+    private static String classNameOf(String frame) {
+        int paren = frame.indexOf('(');
+        String qualified = paren < 0 ? frame : frame.substring(0, paren);
+        int lastDot = qualified.lastIndexOf('.');
+        if (lastDot < 0) return qualified;
+        String withoutMethod = qualified.substring(0, lastDot);
+        int slash = withoutMethod.lastIndexOf('/');
+        return slash < 0 ? withoutMethod : withoutMethod.substring(slash + 1);
+    }
+
+    /**
      * Walk the thread-waits-for-thread graph and return every distinct cycle. An edge exists when
      * a waiting thread's requested class is currently held by a different thread.
      */
@@ -219,40 +360,7 @@ public final class StaticInitDeadlockDetector {
         return cycles;
     }
 
-    /**
-     * Sample every live thread once, looking for threads parked inside a static initializer.
-     * The result is cached: a detector must not report a different answer each time it is asked.
-     */
-    private List<Parked> liveSample() {
-        List<Parked> cached = sample.get();
-        if (cached != null) return cached;
 
-        List<Parked> found = new ArrayList<>();
-        try {
-            for (Map.Entry<Thread, StackTraceElement[]> e : Thread.getAllStackTraces().entrySet()) {
-                Thread t = e.getKey();
-                if (t.threadId() == Thread.currentThread().threadId()) continue;
-                Thread.State state = t.getState();
-                if (state != Thread.State.BLOCKED
-                        && state != Thread.State.WAITING
-                        && state != Thread.State.TIMED_WAITING) continue;
-                for (StackTraceElement f : e.getValue()) {
-                    if (CLINIT.equals(f.getMethodName())) {
-                        found.add(new Parked(t.getName(), state, f.getClassName()));
-                        break;
-                    }
-                }
-            }
-        } catch (RuntimeException ex) {
-            // A security manager, or a thread dying mid-walk, must not fail the test run: this
-            // sample is corroborating evidence, and losing it is strictly better than turning a
-            // detector into the reason the suite went red. Recorded rather than swallowed so a
-            // permanently empty sample is diagnosable.
-            log.debug("staticinit.sample.failed reason={}", ex.toString());
-        }
-        sample.compareAndSet(null, List.copyOf(found));
-        return sample.get() == null ? List.of() : sample.get();
-    }
 
     /**
      * {@return whether the platform's own deadlock finder sees anything}
