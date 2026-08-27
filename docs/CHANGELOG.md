@@ -60,6 +60,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The 2.0.0 roadmap said `AsyncTestConfig`'s boolean surface was deprecated. It never was.**
+  Train 3 lists "remove the deprecated public boolean fields/builder setters from
+  `AsyncTestConfig`", and the same document's Consumers rule requires every Train 3 removal to ship
+  deprecated first. Measured: ~146 `public final boolean detect*` fields and 140
+  `detect*(boolean)` builder setters, and not one of them carries `@Deprecated`. The clock the plan
+  depends on has never started, and the plan did not know it (#383).
+
+  The roadmap now says so, and says what the other items cost. The `@AsyncTest` attributes and the
+  `AsyncTestContext` accessors are ready - both deprecated, both naming their replacement - so a
+  smaller 2.0.0 is available without settling the `AsyncTestConfig` question at all. Its stale
+  "~110 deprecated boolean attributes" is now 146. The japicmp bullet is marked done rather than
+  planned, with what was measured.
+
 - **The migration guide migrated readers onto the API 2.0.0 removes.** Every detector example in
   `docs/MIGRATION.md` used the deprecated boolean attributes - `validateLockOrder`,
   `detectFalseSharing`, `detectABAProblem`, `validateConstructorSafety`, `monitorThreadPool` - so
