@@ -142,13 +142,27 @@ done behind the existing API. Only deletions must wait for 2.0.
 
 ### Train 3 — 2.0.0 (the breaking release, now small)
 
-By this point the breaking release is pure deletion and defaults:
+By this point the breaking release is pure deletion and defaults. A smaller 2.0.0 is available
+at any time and does not wait on the `AsyncTestConfig` decision: the 146 `@AsyncTest` attributes
+and the 42 `AsyncTestContext` accessors can be removed now, because both are deprecated and both
+name their replacement. Each item below says whether it is ready.
 
-* Remove the ~110 deprecated boolean attributes from `@AsyncTest`.
+* Remove the 146 deprecated boolean attributes from `@AsyncTest`. Ready: all 146 carry a
+  `@deprecated` tag naming `preset` / `includes` / `excludes` and a `DetectorType`, and
+  `DeprecationsNameTheirReplacementTest` keeps that true. Seven of them had no tag at all until
+  2026-08-27.
 * Remove the deprecated public boolean fields/builder setters from `AsyncTestConfig`
-  (the `EnumSet` is already the source of truth).
-* Remove the deprecated `*Monitor()` accessors from `AsyncTestContext` (renamed
-  `*Detector()` aliases shipped in 1.7).
+  (the `EnumSet` is already the source of truth). **Not ready, and the premise is wrong:** as of
+  2026-08-27 `AsyncTestConfig` carries ~146 `public final boolean detect*` fields and 140
+  `detect*(boolean)` builder setters, and *none of them is deprecated*. The Consumers rule below
+  requires a deprecation to ship first, so that clock has never started. Deciding it needs the
+  builder's replacement settled too: it has `includes`, `excludes` and `detectAll` but no
+  `preset(...)`, because preset resolution lives in `from(AsyncTest, int)` and never reaches the
+  builder. Tracked in issue #383.
+* Remove the 42 deprecated `*Monitor()` accessors from `AsyncTestContext` (renamed
+  `*Detector()` aliases shipped in 1.7). Ready: all 42 name their replacement. Four are not a
+  suffix swap and one defeats a global `Monitor` to `Detector` replace; `docs/MIGRATION.md` lists
+  them.
 * Delete whichever registry lost: either the legacy hand-wired path (SPI becomes the
   runtime) or the dead SPI duplication — decided during Train 2 based on how the
   id-keyed SPI shakes out.
@@ -157,12 +171,17 @@ By this point the breaking release is pure deletion and defaults:
 
 ## Overcoming the mechanical gates
 
-* **japicmp**: the gate is doing its job — keep it green through Trains 1–2. For the 2.0
-  branch, switch the plugin to semantic-versioning mode
-  (`<breakBuildBasedOnSemanticVersioning>true</breakBuildBasedOnSemanticVersioning>`),
-  which permits binary breaks exactly when the major version increments; alternatively keep
-  strict mode and enumerate each intentional break in `<excludes>` so removals stay
-  auditable. After the 2.0.0 release, re-pin `<oldVersion>` to 2.0.0.
+* **japicmp**: **done, 2026-08-27.** The plugin now runs in semantic-versioning mode
+  (`<breakBuildBasedOnSemanticVersioning>true</breakBuildBasedOnSemanticVersioning>`) on `main`,
+  not only on a 2.0 branch, because the previous setting
+  (`breakBuildOnBinaryIncompatibleModifications`) failed on any break whatever the version said,
+  which made 2.0.0 unbuildable rather than merely gated. Measured at the time of the change, with
+  the version set to 2.0.0 and `AsyncTestContext.semaphoreMonitor()` deleted: it failed with
+  `METHOD_REMOVED` before, passes after. The same removal still fails at 1.10.0 and at 1.9.9, and
+  adding public API in a patch release still passes, so nothing was weakened.
+  `JapicmpBaselineFreshnessTest` pins the setting and was verified to behave correctly at 2.0.0
+  (accepts a 1.9.8 baseline, rejects a stale 1.9.7). After the 2.0.0 release, re-pin
+  `<oldVersion>` to 2.0.0 — that step is itself gated by the same test.
 * **Branching**: release 1.7.0 from `main`, then cut a `1.x` maintenance branch. `main`
   moves to `2.0.0-SNAPSHOT` once Train 2 completes. Trains 1 and 2 merge to `main` and are
   released as ordinary 1.8/1.9 minors.

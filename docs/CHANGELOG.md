@@ -60,6 +60,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The 2.0.0 roadmap said `AsyncTestConfig`'s boolean surface was deprecated. It never was.**
+  Train 3 lists "remove the deprecated public boolean fields/builder setters from
+  `AsyncTestConfig`", and the same document's Consumers rule requires every Train 3 removal to ship
+  deprecated first. Measured: ~146 `public final boolean detect*` fields and 140
+  `detect*(boolean)` builder setters, and not one of them carries `@Deprecated`. The clock the plan
+  depends on has never started, and the plan did not know it (#383).
+
+  The roadmap now says so, and says what the other items cost. The `@AsyncTest` attributes and the
+  `AsyncTestContext` accessors are ready - both deprecated, both naming their replacement - so a
+  smaller 2.0.0 is available without settling the `AsyncTestConfig` question at all. Its stale
+  "~110 deprecated boolean attributes" is now 146. The japicmp bullet is marked done rather than
+  planned, with what was measured.
+
+- **The migration guide migrated readers onto the API 2.0.0 removes.** Every detector example in
+  `docs/MIGRATION.md` used the deprecated boolean attributes - `validateLockOrder`,
+  `detectFalseSharing`, `detectABAProblem`, `validateConstructorSafety`, `monitorThreadPool` - so
+  the document whose job is to move people forward was teaching the surface with the shortest
+  remaining life. The examples now use `preset`, `includes` and `excludes`.
+
+  It also gained the migration it was missing. 2.0.0 removes what 1.x deprecated, and every
+  replacement already works in 1.x, so the whole migration can be done on the current version and
+  verified green before the version bump - which is the single most useful thing to know and was
+  written down nowhere. Alongside it, the cases where the obvious rewrite is wrong: four of the 42
+  `*Monitor()` accessors do not simply gain a `Detector` suffix (`semaphoreMonitor` becomes
+  `semaphoreMisuseDetector`, not `semaphoreDetector`), and `nestedMonitorLockoutMonitor` defeats a
+  global `Monitor` to `Detector` replace, which would rewrite the first occurrence too. Every
+  identifier and link in the guide was checked against the source rather than written from memory.
+
+- **The japicmp gate made 2.0.0 unbuildable.** It ran with
+  `breakBuildOnBinaryIncompatibleModifications`, which fails on any binary-incompatible change
+  whatever the version number says. 2.0.0 exists to remove what 1.x deprecated, so the gate would
+  have refused its first removal, and nothing would have found that out before release day.
+
+  Measured on 2026-08-27 rather than reasoned about: setting the version to 2.0.0 and deleting one
+  deprecated accessor - `AsyncTestContext.semaphoreMonitor()`, which the roadmap names as a Train 3
+  removal - gave `BUILD FAILURE`, `There is at least one incompatibility:
+  AsyncTestContext.semaphoreMonitor():METHOD_REMOVED`.
+
+  `breakBuildBasedOnSemanticVersioning` replaces it and permits exactly what semver permits. The
+  same removal, measured the same way: 2.0.0 passes, 1.10.0 fails with "indicate a minor change but
+  binary incompatible changes found", 1.9.9 fails with the patch wording. Adding public API in a
+  patch release still passes, which matters here because new detectors have shipped as patch
+  releases four times. `JapicmpBaselineFreshnessTest` gained a second test so restoring the
+  unconditional flag fails rather than quietly re-blocking the major release.
+
+- **Seven deprecated `@AsyncTest` attributes told a caller to move without saying where to.**
+  `detectSharedByteBuffer`, `detectSharedCharsetCoder`, `detectSharedChecksum`,
+  `detectFileChannelPositionRace`, `detectSharedIterator`, `detectHighContentionAtomic` and
+  `detectSharedJsonMapperReconfig` carried `@Deprecated` with no `@deprecated` javadoc tag at all,
+  so the compiler warned about a removal the javadoc never explained. The other 139 attributes and
+  all 42 deprecated `AsyncTestContext` accessors already named their replacement; these seven were
+  added later and missed it.
+
+  Nothing was red, because this is not a question javadoc's own tooling asks: doclint checks that
+  tags are well formed, not that a deprecation has a destination.
+  `DeprecationsNameTheirReplacementTest` asks it, over all 188 deprecated public elements in the
+  published modules, and fails both when the tag is absent and when it announces a removal without
+  pointing at a successor. It matters more than usual here because 2.0.0 removes what 1.x
+  deprecated: the tag is the whole migration path.
+
 - **`StaticInitDeadlockDetector`'s live sample reported nothing, ever.** Its javadoc offers that
   path as the one that works "with no instrumentation at all", and it filtered to threads whose
   state is BLOCKED, WAITING or TIMED_WAITING. A thread stuck in a class-initialization deadlock is

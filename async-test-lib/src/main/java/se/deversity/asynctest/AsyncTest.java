@@ -1777,9 +1777,10 @@ public @interface AsyncTest {
      * @since 1.7.0
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#SHARED_BYTE_BUFFER} instead of this per-detector boolean flag.
      */
     @Deprecated
-
     boolean detectSharedByteBuffer() default true;
 
     /**
@@ -1790,9 +1791,10 @@ public @interface AsyncTest {
      * @since 1.7.0
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#SHARED_CHARSET_CODER} instead of this per-detector boolean flag.
      */
     @Deprecated
-
     boolean detectSharedCharsetCoder() default true;
 
     /**
@@ -1803,9 +1805,10 @@ public @interface AsyncTest {
      * @since 1.7.0
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#SHARED_CHECKSUM} instead of this per-detector boolean flag.
      */
     @Deprecated
-
     boolean detectSharedChecksum() default true;
 
     /**
@@ -1816,9 +1819,10 @@ public @interface AsyncTest {
      * @since 1.7.0
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#FILE_CHANNEL_POSITION_RACE} instead of this per-detector boolean flag.
      */
     @Deprecated
-
     boolean detectFileChannelPositionRace() default true;
 
     /**
@@ -1828,9 +1832,10 @@ public @interface AsyncTest {
      * @since 1.7.0
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#SHARED_ITERATOR} instead of this per-detector boolean flag.
      */
     @Deprecated
-
     boolean detectSharedIterator() default true;
 
     /**
@@ -1840,9 +1845,10 @@ public @interface AsyncTest {
      * @since 1.7.0
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#HIGH_CONTENTION_ATOMIC} instead of this per-detector boolean flag.
      */
     @Deprecated
-
     boolean detectHighContentionAtomic() default true;
 
     /**
@@ -1852,9 +1858,10 @@ public @interface AsyncTest {
      * @since 1.7.0
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
+     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
+     *     with {@link DetectorType#SHARED_JSON_MAPPER_RECONFIG} instead of this per-detector boolean flag.
      */
     @Deprecated
-
     boolean detectSharedJsonMapperReconfig() default true;
 
     /**

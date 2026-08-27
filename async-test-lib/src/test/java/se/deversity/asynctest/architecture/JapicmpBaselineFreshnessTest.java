@@ -149,6 +149,28 @@ class JapicmpBaselineFreshnessTest {
         return version[0] + "." + version[1] + "." + version[2];
     }
 
+    @Test
+    @DisplayName("the japicmp gate follows semantic versioning, so a major release can remove")
+    void theGateAllowsAMajorReleaseToRemove() {
+        String modulePom = read(repoRoot().resolve("async-test-lib/pom.xml"));
+
+        assertFalse(modulePom.contains("<breakBuildOnBinaryIncompatibleModifications>true"),
+                "async-test-lib/pom.xml fails japicmp on any binary-incompatible change "
+                        + "regardless of the version being built, which makes a major release "
+                        + "unbuildable: 2.0.0 exists to remove what 1.x deprecated, and this "
+                        + "setting refuses the first removal. Measured on 2026-08-27 at version "
+                        + "2.0.0 with one deprecated accessor deleted: BUILD FAILURE, "
+                        + "METHOD_REMOVED. Use breakBuildBasedOnSemanticVersioning, which "
+                        + "permits exactly what semver permits: the same removal passes at "
+                        + "2.0.0 and still fails at 1.10.0 and 1.9.9.");
+
+        assertTrue(modulePom.contains("<breakBuildBasedOnSemanticVersioning>true"),
+                "async-test-lib/pom.xml no longer asks japicmp to break the build on a version "
+                        + "number that understates the change. Without it a minor or patch "
+                        + "release can remove public API and ship, which is the failure the "
+                        + "gate exists to prevent. If the gate was removed on purpose, remove "
+                        + "this test in the same change and say why in the changelog.");
+    }
     private static String firstGroup(Pattern pattern, String text, String whenMissing) {
         Matcher m = pattern.matcher(text);
         assertTrue(m.find(), whenMissing);
