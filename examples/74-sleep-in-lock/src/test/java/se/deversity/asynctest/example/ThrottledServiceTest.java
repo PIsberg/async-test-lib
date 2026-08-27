@@ -74,30 +74,28 @@ class ThrottledServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see sleep-in-lock detected by SleepInLockDetector")
-    @AsyncTest(threads = 8, invocations = 2, useVirtualThreads = false, detectAll = false,
+    @AsyncTest(threads = 8, invocations = 2, detectAll = false,
             detectSleepInLock = true, failOn = FailOn.LOW)
+
 
     void test_concurrent_detectsSleepInLock() {
         var detector = AsyncTestContext.get().sleepInLockDetector();
         detector.startMonitoring();
 
-        // Recorded from inside the synchronized method, through the service's seam. The
-        // detector asks the JVM which monitors the calling thread holds, so recording from
-        // here - which is what this demonstration used to do - asks that question outside the
-        // lock and always gets no. Nothing was ever recorded, and the round timed out with an
-        // empty report. See issue #363.
+        // Recorded from inside the synchronized method, through the service's seam, and naming
+        // the monitor the seam hands over. Recording from here - which is what this
+        // demonstration used to do - asks the question outside the lock and always gets no.
         //
-        // useVirtualThreads = false on the annotation is the other half, and it is not
-        // decoration. The JVM answers that question through ThreadMXBean.getThreadInfo(id),
-        // which does not report virtual threads, so with the default runner the seam fires and
-        // the detector still sees no lock. Measured both ways on this subject: silent with the
-        // default, "SLEEP-IN-LOCK PATTERNS DETECTED" with the line below.
-        service.observeSleepInLock(() -> detector.recordSleep(50));
+        // Naming the monitor is also what lets this run on the default virtual-thread runner.
+        // The other recordSleep overload asks ThreadMXBean.getThreadInfo, which does not report
+        // virtual threads, so the seam fired and the detector still saw no lock; this example
+        // needed useVirtualThreads = false until Thread.holdsLock could be asked instead.
+        // See issues #363, #367 and #373.
+        service.observeSleepInLock(monitor -> detector.recordSleep(50, monitor));
 
-        // Two invocations, not twenty. Every caller queues behind a 50ms sleep, so eight
-        // threads cost 400ms per invocation and twenty of them exceeded the five-second budget
-        // before the detector could be analyzed. The collapse is the point and two rounds show
-        // it; twenty only show it more slowly.
+        // Two invocations, not twenty. Every caller queues behind a 50ms sleep, so eight threads
+        // cost 400ms per invocation and twenty of them exceeded the five-second budget before the
+        // detector could be analyzed. The collapse is the point and two rounds show it.
         service.processRequest("req-" + Thread.currentThread().getName());
     }
 }
