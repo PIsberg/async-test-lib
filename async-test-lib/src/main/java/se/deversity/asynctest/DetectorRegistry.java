@@ -535,6 +535,15 @@ final class DetectorRegistry {
         if (lockDowngradeDetector != null && lockUpgradeDeadlockDetector != null) {
             lockDowngradeDetector.deferUpgradeReportingTo(lockUpgradeDeadlockDetector);
         }
+
+        // findDeadlockedThreads() reports platform threads, so on the default runner the workers
+        // colliding on the code under test are exactly the ones it cannot put in a cycle, and a
+        // textbook circular wait came back clean. The JVM's own JSON thread dump does carry the
+        // wait-for graph on JDKs whose dump names monitors, so the detector reads it - but only
+        // when there is something to find there, because it costs a thread dump. See issue #367.
+        if (deadlockDetector != null && cfg.useVirtualThreads) {
+            deadlockDetector.enableVirtualThreadScan();
+        }
         tryLockMisuseDetector            = cfg.detectTryLockMisuse                 ? new TryLockMisuseDetector()            : null;
         cfBlockingCallbackDetector       = cfg.detectCFBlockingCallback            ? new CompletableFutureBlockingCallbackDetector() : null;
         // ---- Phase 16: JDK 25/26 preview-era concurrency detectors ----

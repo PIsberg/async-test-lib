@@ -297,17 +297,22 @@ public class ConcurrencyRunner {
                 invocationContext.getExecutable().getName());
         }
 
-        // The deadlock detector is enabled and the runner is on virtual threads, so
-        // findDeadlockedThreads() cannot close a cycle that runs through the workers. Said once
-        // per JVM at INFO, for the same reason as the two announcements above: a clean deadlock
-        // report is the most reassuring output this library produces, and here it is not
-        // evidence of anything.
+        // The deadlock detector is enabled, the runner is on virtual threads, and this JVM
+        // cannot answer the question for them: findDeadlockedThreads() reports platform threads
+        // and the JSON thread dump does not name monitors here either. Said once per JVM at INFO,
+        // for the same reason as the two announcements above: a clean deadlock report is the most
+        // reassuring output this library produces, and here it is not evidence of anything.
+        //
+        // The capability check is what keeps this honest in both directions. On a JDK whose dump
+        // does name monitors the detector reads the cycle out of it (issue #367) and nothing is
+        // announced, because nothing is inert.
         if (config.detectDeadlocks && config.useVirtualThreads
+                && !DeadlockDetector.canSeeVirtualThreadDeadlocks()
                 && DEADLOCK_INERT_LOGGED.compareAndSet(false, true)) {
             log.info("runner.detector.inert test={} detector=DeadlockDetector "
-                    + "reason=\"findDeadlockedThreads() reports platform threads, and "
-                    + "useVirtualThreads=true means the workers colliding on your locks are "
-                    + "virtual, so a cycle between them is not found\" hint=\"set "
+                    + "reason=\"findDeadlockedThreads() reports platform threads, and this "
+                    + "JVM's thread dump does not name monitors either, so a cycle between the "
+                    + "virtual workers cannot be seen here\" hint=\"set "
                     + "@AsyncTest(useVirtualThreads = false) on the test whose deadlock is "
                     + "between the runner's own threads, or read a clean report as 'not "
                     + "observed' rather than 'no deadlock'\"",

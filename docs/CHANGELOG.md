@@ -61,6 +61,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`DeadlockDetector` can now see a deadlock between the runner's own workers.** It asked
+  `ThreadMXBean.findDeadlockedThreads()`, which reports platform threads, and `@AsyncTest` runs
+  its workers on virtual threads by default, so the eight threads colliding on the code under test
+  were exactly the ones it could not put in a cycle. `examples/06-deadlock` deadlocks two accounts
+  on a lock pair and the report came back clean.
+
+  The JVM's own JSON thread dump does include virtual threads, and on JDKs whose dump names the
+  monitors each thread holds and is blocked on it carries the whole wait-for graph.
+  `VirtualThreadLockGraph` reads it, finds the cycles and reports them with both thread names and
+  both monitors, which is more than the old boolean said even when it worked. On the default
+  runner `06-deadlock` now reports
+  `async-test-worker-0 -> async-test-worker-1, each waiting for a monitor the next one holds
+  (BankTransferService$Account@724f138e, BankTransferService$Account@37eeec90)`.
+
+  Capability, not version: the lock fields are measured absent on JDK 21 and 24 and present on 26,
+  so the scan looks for them and says "cannot tell" when they are missing rather than carrying a
+  version table that goes stale. `DeadlockDetector.canSeeVirtualThreadDeadlocks()` exposes that
+  answer, and the `runner.detector.inert` announcement now fires only where it is false - on a JDK
+  that can see, claiming the detector is inert would be its own false statement. Monitors only: a
+  `ReentrantLock` deadlock parks rather than blocks and the dump names the blocker but not its
+  owner. Costs two thread dumps per run on virtual-thread runs, about 3ms each here; turn it off
+  with `-Dasync-test.deadlock.virtual-scan=false` (#367).
+
 - **A round timeout now says what the detectors saw.** The `failOn` gate is success-path-only, so
   a run that times out never reaches it: the failure was "Test timed out after 5000ms. Possible
   deadlock, starvation, or visibility issue." and nothing in it said whether any detector had an

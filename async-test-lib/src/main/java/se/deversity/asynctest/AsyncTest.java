@@ -116,16 +116,16 @@ public @interface AsyncTest {
      * Enable deadlock detection with detailed lock analysis.
      * When test times out, provides information about which threads hold which locks.
      *
-     * <p><strong>The finding needs {@code useVirtualThreads = false} when the deadlock is
-     * between the runner's own workers.</strong> {@code DeadlockDetector} asks
-     * {@code ThreadMXBean.findDeadlockedThreads()}, which reports platform threads, so a
-     * circular monitor wait between virtual-thread workers is not a cycle it can close and the
-     * report comes back clean. Both this and {@code useVirtualThreads} default to on, so that
-     * is the usual configuration; the runner says so once per JVM at INFO
-     * ({@code runner.detector.inert}). The thread dump on the timeout path is unaffected and
-     * still shows the stuck threads. Read a clean report as "not observed" rather than "no
-     * deadlock". See {@code examples/06-deadlock}, which is silent one way and reports
-     * CIRCULAR DEADLOCK DETECTED the other, on the same subject.
+     * <p><strong>A deadlock between the runner's own workers depends on the JDK.</strong>
+     * {@code DeadlockDetector} asks {@code ThreadMXBean.findDeadlockedThreads()}, which reports
+     * platform threads, so a circular monitor wait between virtual-thread workers is not a cycle
+     * it can close. Since 1.9.9 it also reads the JVM's own JSON thread dump, which does include
+     * virtual threads; on JDKs whose dump names the monitors each thread holds and waits for, the
+     * cycle is found and reported with both thread names and both monitors. That is measured
+     * present on JDK 26 and absent on 21 and 24. Where the dump is thin the report comes back
+     * clean, and the runner says so once per JVM at INFO ({@code runner.detector.inert}); read
+     * that as "not observed" rather than "no deadlock", and set {@code useVirtualThreads = false}
+     * to get the finding on any JDK. See {@code examples/06-deadlock}.
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
