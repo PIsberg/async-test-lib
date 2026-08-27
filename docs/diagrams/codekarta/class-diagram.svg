@@ -780,7 +780,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3600.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">matches(Matcher): boolean</text>
   <text x="3600.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">group(Matcher): String</text>
   <text x="3600.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordMatcher(Matcher): vo…</text>
-  <text x="3600.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+4 more)</text>
+  <text x="3600.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+11 more)</text>
 </g>
 <g id="AsyncAssert">
   <title>AsyncAssert [CLASS]</title>
@@ -883,7 +883,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3400.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedThreadLocalMonitor()…</text>
   <text x="3400.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedBusyWaitDetector(): …</text>
   <text x="3400.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedAtomicityValidator()…</text>
-  <text x="3400.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+209 more)</text>
+  <text x="3400.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+213 more)</text>
 </g>
 <g id="DetectorRegistry">
   <title>DetectorRegistry [CLASS]</title>

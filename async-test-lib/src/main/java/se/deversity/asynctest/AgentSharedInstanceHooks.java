@@ -1,14 +1,21 @@
 package se.deversity.asynctest;
 
 import java.security.MessageDigest;
+import java.text.NumberFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Date;
+import java.util.Formatter;
 import java.util.regex.Matcher;
 
+import se.deversity.asynctest.diagnostics.CalendarDetector;
+import se.deversity.asynctest.diagnostics.SharedDecimalFormatDetector;
+import se.deversity.asynctest.diagnostics.SharedFormatterDetector;
 import se.deversity.asynctest.diagnostics.SharedMatcherDetector;
 import se.deversity.asynctest.diagnostics.SharedMessageDigestDetector;
 import se.deversity.asynctest.diagnostics.SimpleDateFormatDetector;
+import se.deversity.asynctest.diagnostics.StringBuilderDetector;
 import se.deversity.vibetags.annotations.AIContract;
 
 /**
@@ -158,5 +165,100 @@ public final class AgentSharedInstanceHooks {
             // this costs a field read rather than the string concatenation a prettier name would.
             detector.recordAccess(receiver, receiver.getAlgorithm(), Thread.currentThread());
         }
+    }
+
+    /**
+     * Weaves {@code Calendar.get(int)}.
+     *
+     * @param receiver the calendar
+     * @param field    the field to read
+     * @return the field's value
+     */
+    public static int get(Calendar receiver, int field) {
+        CalendarDetector detector = AsyncTestContext.currentCalendarDetector();
+        if (detector != null) {
+            detector.recordGet(receiver, receiver.getClass().getName());
+        }
+        return receiver.get(field);
+    }
+
+    /**
+     * Weaves {@code Calendar.set(int, int)}.
+     *
+     * @param receiver the calendar
+     * @param field    the field to write
+     * @param value    the value to write
+     */
+    public static void set(Calendar receiver, int field, int value) {
+        CalendarDetector detector = AsyncTestContext.currentCalendarDetector();
+        if (detector != null) {
+            detector.recordSet(receiver, receiver.getClass().getName());
+        }
+        receiver.set(field, value);
+    }
+
+    /**
+     * Weaves {@code StringBuilder.append(String)}.
+     *
+     * @param receiver the builder
+     * @param value    the text to append
+     * @return the builder, so the call chain is unchanged
+     */
+    public static StringBuilder append(StringBuilder receiver, String value) {
+        recordBuilder(receiver);
+        return receiver.append(value);
+    }
+
+    /**
+     * Weaves {@code StringBuilder.append(int)}.
+     *
+     * @param receiver the builder
+     * @param value    the number to append
+     * @return the builder, so the call chain is unchanged
+     */
+    public static StringBuilder append(StringBuilder receiver, int value) {
+        recordBuilder(receiver);
+        return receiver.append(value);
+    }
+
+    private static void recordBuilder(StringBuilder receiver) {
+        StringBuilderDetector detector = AsyncTestContext.currentStringBuilderDetector();
+        if (detector != null) {
+            detector.recordAppend(receiver, receiver.getClass().getName());
+        }
+    }
+
+    /**
+     * Weaves {@code NumberFormat.format(double)}, which covers {@code DecimalFormat}.
+     *
+     * @param receiver the format
+     * @param value    the number to format
+     * @return the formatted text
+     */
+    public static String format(NumberFormat receiver, double value) {
+        SharedDecimalFormatDetector detector =
+                AsyncTestContext.currentSharedDecimalFormatDetector();
+        if (detector != null) {
+            detector.recordAccess(receiver, receiver.getClass().getName(),
+                    Thread.currentThread());
+        }
+        return receiver.format(value);
+    }
+
+    /**
+     * Weaves {@code java.util.Formatter.format(String, Object...)}.
+     *
+     * @param receiver the formatter
+     * @param format   the format string
+     * @param args     the format arguments
+     * @return the formatter, so the call chain is unchanged
+     */
+    public static Formatter format(Formatter receiver, String format, Object... args) {
+        SharedFormatterDetector detector = AsyncTestContext.currentSharedFormatterDetector();
+        if (detector != null) {
+            detector.recordAccess(receiver, receiver.getClass().getName(),
+                    Thread.currentThread());
+        }
+        return receiver.format(format, args);
     }
 }

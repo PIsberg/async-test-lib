@@ -2,8 +2,11 @@ package se.deversity.asynctest.agent;
 
 import java.lang.reflect.Method;
 import java.security.MessageDigest;
+import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Date;
+import java.util.Formatter;
 import java.util.regex.Matcher;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -202,7 +205,18 @@ final class CollectionAccessWeaver {
             Entry.call(Matcher.class, "group", "group"),
             Entry.call(MessageDigest.class, "update", "update", byte[].class),
             Entry.call(MessageDigest.class, "digest", "digest"),
-            Entry.call(MessageDigest.class, "digest", "digest", byte[].class));
+            Entry.call(MessageDigest.class, "digest", "digest", byte[].class),
+            Entry.call(Calendar.class, "get", "get", int.class),
+            Entry.call(Calendar.class, "set", "set", int.class, int.class),
+            // StringBuilder is final and its two commonest appends carry the whole pattern.
+            // String concatenation does not reach here: javac has compiled that to
+            // invokedynamic since JDK 9, so only an explicit builder a user shared is woven.
+            Entry.call(StringBuilder.class, "append", "append", String.class),
+            Entry.call(StringBuilder.class, "append", "append", int.class),
+            // NumberFormat rather than DecimalFormat: the abstract parent is what a field is
+            // usually typed as, and neither it nor any JDK subclass is thread safe.
+            Entry.call(NumberFormat.class, "format", "format", double.class),
+            Entry.call(Formatter.class, "format", "format", String.class, Object[].class));
 
     /**
      * One resolved rewrite: the call shape to match and the hook invocation that replaces it.

@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A cached `Calendar`, `StringBuilder`, `DecimalFormat` or `java.util.Formatter` is now caught
+  too.** Second tranche of the same shape: each is expensive or awkward to build, so it gets
+  hoisted to a field, and the class quietly stops being safe to call concurrently. Each had a
+  detector already, and each of those was reachable only through a hand-written `record` call.
+
+  With this, **15 of 146 detectors work on code the user did not modify** - 12 agent-fed and 3
+  zero-config - against 5 at the start of the day. The corpus eval reports 0 findings from all 15
+  across 22 documented-thread-safe classes from seven third-party libraries.
+
+  `StringBuilder` deserves its own note, because it is used constantly and correctly. Only an
+  explicit builder is woven: javac has compiled string concatenation to `invokedynamic` since JDK
+  9, so `"a" + b` never reaches the substitution. `NumberFormat` rather than `DecimalFormat`
+  anchors the number entry, because the abstract parent is what a field is usually typed as and no
+  JDK subclass of it is thread safe. `RunnerAllocationBudgetTest` still passes, which is the gate
+  that matters for six new entries on call sites this common.
+
 - **A `SimpleDateFormat` cached in a field is now caught with no instrumentation, and so are a
   shared `Matcher` and `MessageDigest`.** Hoisting a formatter to a field because constructing one
   is expensive, and thereby making the class unsafe to call concurrently, is one of the oldest bugs

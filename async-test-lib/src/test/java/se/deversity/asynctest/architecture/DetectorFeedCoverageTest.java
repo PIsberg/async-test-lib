@@ -116,7 +116,9 @@ class DetectorFeedCoverageTest {
         String wovenHooks = lockHooks + sharedHooks;
         for (String accessor : List.of("currentLockOrderValidator", "currentLockLeakDetector",
                 "currentTryLockMisuseDetector", "currentSimpleDateFormatDetector",
-                "currentSharedMatcherDetector", "currentSharedMessageDigestDetector")) {
+                "currentSharedMatcherDetector", "currentSharedMessageDigestDetector",
+                "currentCalendarDetector", "currentStringBuilderDetector",
+                "currentSharedDecimalFormatDetector", "currentSharedFormatterDetector")) {
             Class<?> fed;
             try {
                 fed = AsyncTestContext.class.getDeclaredMethod(accessor).getReturnType();

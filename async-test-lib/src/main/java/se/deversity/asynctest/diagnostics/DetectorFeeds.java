@@ -67,7 +67,11 @@ public final class DetectorFeeds {
             // calling thread are both in hand.
             DetectorType.SIMPLE_DATE_FORMAT,
             DetectorType.SHARED_MATCHER,
-            DetectorType.SHARED_MESSAGE_DIGEST);
+            DetectorType.SHARED_MESSAGE_DIGEST,
+            DetectorType.CALENDAR,
+            DetectorType.STRING_BUILDER,
+            DetectorType.SHARED_DECIMAL_FORMAT,
+            DetectorType.SHARED_FORMATTER);
 
     /**
      * Fed by the JVM and the harness with no recording call.

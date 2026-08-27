@@ -136,7 +136,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (8)
+### Agent-fed (12)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -152,7 +152,8 @@ agent and writing a plain test produced silence from them.
 
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
-`SharedMessageDigestDetector`
+`SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
+`SharedDecimalFormatDetector`, `SharedFormatterDetector`
 
 ### Zero-config (3)
 
@@ -162,7 +163,7 @@ call:
 
 `DeadlockDetector`, `LivelockDetector`, `StaticInitDeadlockDetector`
 
-### Recording-only (135)
+### Recording-only (131)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -182,7 +183,7 @@ recording is the feed:
 `ScheduledExecutorDetector`, `ForkJoinPoolDetector`, `ThreadFactoryDetector`,
 `RaceConditionDetector`, `ThreadLocalMonitor`, `BusyWaitDetector`, `InterruptMonitor`,
 `ThreadLeakDetector`, `SleepInLockDetector`, `UnboundedQueueDetector`, `ThreadStarvationDetector`,
-`CalendarDetector`, `TimerDetector`, `CopyOnWriteCollectionDetector`, `StringBuilderDetector`,
+`TimerDetector`, `CopyOnWriteCollectionDetector`,
 `StructuredConcurrencyMisuseDetector`, `VirtualThreadContextLeakDetector`,
 `ScopedValueMisuseDetector`, `VirtualThreadCpuBoundTaskDetector`,
 `VirtualThreadCarrierExhaustionDetector`, `HttpClientConcurrencyDetector`, `StreamClosingDetector`,
@@ -190,10 +191,10 @@ recording is the feed:
 `MutableMapKeyDetector`, `NestedMonitorLockoutDetector`, `LockDowngradeDetector`,
 `InheritableThreadLocalMisuseDetector`, `ThreadLocalContaminationDetector`,
 `AtomicNonAtomicUpdateDetector`, `SynchronizedCollectionIterationDetector`,
-`SharedFormatterDetector`, `ConcurrentMapComputeRecursionDetector`,
+`ConcurrentMapComputeRecursionDetector`,
 `SynchronizedOnLiteralDetector`, `PublicLockExposureDetector`, `ForkJoinTaskBlockingDetector`,
 `OptimisticReadValidationDetector`, `CompletableFutureCommonPoolBlockingDetector`,
-`SharedDecimalFormatDetector`, `WeakReferenceRaceDetector`,
+`WeakReferenceRaceDetector`,
 `StatefulLambdaDetector`, `InterruptSwallowingDetector`,
 `MdcContextLeakDetector`, `SystemPropertyMutationDetector`, `FutureIgnoredDetector`,
 `ExplicitGcDetector`, `DeprecatedThreadApiDetector`, `SharedXmlParserDetector`,

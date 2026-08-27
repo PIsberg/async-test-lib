@@ -1715,6 +1715,29 @@ public final class AsyncTestContext {
         AsyncTestContext context = CURRENT.get();
         return context == null ? null : context.sharedMessageDigestDetector;
     }
+    /** {@return the {@link CalendarDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable CalendarDetector currentCalendarDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.calendarDetector;
+    }
+
+    /** {@return the {@link StringBuilderDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable StringBuilderDetector currentStringBuilderDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.stringBuilderDetector;
+    }
+
+    /** {@return the {@link SharedDecimalFormatDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable SharedDecimalFormatDetector currentSharedDecimalFormatDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.sharedDecimalFormatDetector;
+    }
+
+    /** {@return the {@link SharedFormatterDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable SharedFormatterDetector currentSharedFormatterDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.sharedFormatterDetector;
+    }
 
     /**
      * Returns the {@link TimerDetector} for the current test.
