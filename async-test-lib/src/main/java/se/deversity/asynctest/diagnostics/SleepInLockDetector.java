@@ -73,8 +73,13 @@ public class SleepInLockDetector {
     }
 
     /**
-     * Record a Thread.sleep() call. The detector will check if the calling
-     * thread holds any locks and record an event if so.
+     * Record a {@code Thread.sleep()} call, letting the JVM say which monitors the caller holds.
+     *
+     * <p><strong>Platform threads only.</strong> This asks
+     * {@code ThreadMXBean.getThreadInfo(id, true, true)}, which does not report virtual threads,
+     * so on the default {@code @AsyncTest} runner it finds no lock however deep inside a
+     * {@code synchronized} block the caller is. Use {@link #recordSleep(long, Object)}, which
+     * names the monitor and works on any thread. See issue #373.
      *
      * @param sleepDurationMs the duration of the sleep in milliseconds
      */
@@ -90,18 +95,57 @@ public class SleepInLockDetector {
         ThreadInfo threadInfo = analyzeThreadLocks(currentThread);
 
         if (threadInfo.holdsLock) {
-            SleepInLockEvent event = new SleepInLockEvent(
+            record(new SleepInLockEvent(
                 threadInfo.lockName,
                 currentThread.getName(),
                 sleepDurationMs,
                 stackTrace,
                 threadInfo.lockType
-            );
-            synchronized (events) {
-                events.add(event);
-            }
-            eventCount.incrementAndGet();
+            ));
         }
+    }
+    /**
+     * Record a {@code Thread.sleep()} made while holding {@code monitor}.
+     *
+     * <p>Prefer this over {@link #recordSleep(long)}. That one asks the JVM which monitors the
+     * calling thread holds, through {@code ThreadMXBean.getThreadInfo(id)}, and that call does not
+     * report virtual threads - which is what {@code @AsyncTest} runs its workers on by default, so
+     * the detector saw no lock however deep inside a {@code synchronized} block the caller was.
+     * Measured on {@code examples/74-sleep-in-lock}: silent by default, reported with
+     * {@code useVirtualThreads = false}, same subject and same instrumentation. See issue #373.
+     *
+     * <p>{@link Thread#holdsLock(Object)} answers the same question exactly, on any thread and any
+     * JDK, for nothing. It is also stronger evidence than the other overload rather than weaker:
+     * the JVM confirms the specific claim, where the JMX path infers from whichever monitor
+     * {@code getLockedMonitors()} happens to return first. A caller that names a monitor it does
+     * not hold records nothing, so this cannot be used to assert a finding into existence.
+     *
+     * @param sleepDurationMs the duration of the sleep in milliseconds
+     * @param monitor the object whose monitor the caller believes it holds; ignored when it does
+     *                not, and when it is {@code null}
+     */
+    public void recordSleep(long sleepDurationMs, @Nullable Object monitor) {
+        if (!enabled || !monitoring || sleepDurationMs <= 0 || monitor == null) {
+            return;
+        }
+        if (!Thread.holdsLock(monitor)) {
+            return;
+        }
+        Thread currentThread = Thread.currentThread();
+        record(new SleepInLockEvent(
+                monitor.getClass().getName() + "@" + System.identityHashCode(monitor),
+                currentThread.getName(),
+                sleepDurationMs,
+                currentThread.getStackTrace(),
+                "synchronized"));
+    }
+
+    /** Adds one event under the list's own lock and keeps the count in step with it. */
+    private void record(SleepInLockEvent event) {
+        synchronized (events) {
+            events.add(event);
+        }
+        eventCount.incrementAndGet();
     }
 
     private static class ThreadInfo {

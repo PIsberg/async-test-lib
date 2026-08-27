@@ -12,10 +12,12 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Detects thread starvation and livelocks.
- * 
- * Livelock: Threads keep changing state in response to each other without making progress.
- * Starvation: Some threads never get CPU time due to greedy threads monopolizing it.
+ * Detects thread starvation and rapid state cycling.
+ *
+ * <p><strong>Not a livelock detector, despite the name.</strong> Starvation is a thread whose
+ * recent snapshots are all BLOCKED or WAITING with flat CPU time; rapid state cycling is five
+ * state changes in ten snapshots. A busy spin is neither, and is deliberately not reported: see
+ * {@code madeProgress} below and {@code LivelockDetectorTest}, which pins it. Issue #373.
  * 
  * This detector monitors:
  * - Thread state transitions

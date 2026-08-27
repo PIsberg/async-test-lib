@@ -61,6 +61,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`SleepInLockDetector` works on the default runner.** Its question is "does the calling thread
+  hold a monitor", and it asked `ThreadMXBean.getThreadInfo(id, true, true)`, which does not report
+  virtual threads. `@AsyncTest` runs its workers on virtual threads by default, so the detector saw
+  no lock however deep inside a `synchronized` block the caller was. Measured on
+  `examples/74-sleep-in-lock`: silent by default, reported with `useVirtualThreads = false`, same
+  subject and same seam.
+
+  `recordSleep(long, Object)` names the monitor and lets `Thread.holdsLock` answer, which works on
+  any thread and any JDK for nothing. It is also stronger evidence than the old path rather than
+  weaker: the JVM confirms the specific claim, where the JMX path infers from whichever monitor
+  `getLockedMonitors()` returns first, and a caller naming a monitor it does not hold records
+  nothing. The existing overload is unchanged, with its platform-thread limit now stated.
+  `examples/74-sleep-in-lock` no longer needs `useVirtualThreads = false` (#373).
+
+- **`LivelockDetector` is documented as what it is.** The catalog said it detects "livelock
+  (threads repeatedly changing state in response to each other without making progress)". It does
+  not: `madeProgress()` treats any RUNNABLE thread as making progress, on purpose, so a spin-retry
+  loop burning attempts is not a finding. What it reports is starvation and rapid state cycling.
+  The catalog and the class javadoc now say so, and `LivelockDetectorTest` pins the busy-spin limit
+  so the prose cannot drift back. `examples/07-livelock` was retired over the same gap in #362
+  (#373).
+
 - **A round timeout now says what the detectors saw.** The `failOn` gate is success-path-only, so
   a run that times out never reaches it: the failure was "Test timed out after 5000ms. Possible
   deadlock, starvation, or visibility issue." and nothing in it said whether any detector had an
