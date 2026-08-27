@@ -107,6 +107,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pointing at a successor. It matters more than usual here because 2.0.0 removes what 1.x
   deprecated: the tag is the whole migration path.
 
+- **`StaticInitDeadlockDetector`'s live sample reported nothing, ever.** Its javadoc offers that
+  path as the one that works "with no instrumentation at all", and it filtered to threads whose
+  state is BLOCKED, WAITING or TIMED_WAITING. A thread stuck in a class-initialization deadlock is
+  inside its own `<clinit>` calling into the other class, which puts it in a native frame, and the
+  JVM reports that as RUNNABLE. Measured on the canonical A-waits-for-B pair, on JDK 21 and JDK 26,
+  platform and virtual threads alike: every case reports RUNNABLE with `<clinit>` on the stack. So
+  the filter excluded precisely the condition the detector is named for, and this was never a
+  virtual-thread problem alone.
+
+  Removing the filter on its own would have traded a false negative for a false positive, because
+  two threads each initializing a different class at the same instant is ordinary startup. What
+  separates that from a deadlock is not the state but whether it persists: normal initialization
+  finishes in microseconds. The sample is now taken twice, 150ms apart, and only threads still
+  inside the same class's initializer both times survive. The second sample is taken only when the
+  first already found two threads in two different initializers, so the ordinary case costs
+  nothing.
+
+  Virtual threads now reach the sample too, through the JSON thread dump `VirtualThreadLockGraph`
+  reads (#367); on a JDK whose dump omits thread state they are left out rather than guessed at,
+  because without a state a thread running an initializer cannot be told from one parked in it.
+  Both directions are pinned: a virtual-thread class-init deadlock is named in the report, and two
+  classes merely initializing concurrently are not (#376).
+
+- **Two classes that looked like detectors and were never analyzed now say so, and a gate keeps
+  the list honest.** `diagnostics/` holds 149 public classes named `*Detector`, `*Validator` or
+  `*Monitor`. 146 are a `DetectorType`, are built by `DetectorRegistry` and can fail a test through
+  `failOn`. `LazyInitValidator` and `NotifyAllValidator` have the same shape and the same package
+  and the runner never calls `analyze()` on them, so instrumenting one and getting a clean report
+  from an `@AsyncTest` means only that nobody asked. `examples/28-lazy-init` promised a detection
+  from `LazyInitValidator` and lost its demonstration over it in #363; the cause took a while to
+  find precisely because the class looks like every other one in the directory.
+
+  Both javadocs now say the runner never analyzes them and name the wired detector to use instead.
+  `DetectorShapedClassesAreReachableTest` is the gate: every detector-shaped class is constructed
+  by `DetectorRegistry` or `ConcurrencyRunner`, or is on an allowlist that carries a reason and
+  whose entries must repeat that reason in their own javadoc. The existing coverage gates could not
+  catch this, because all three iterate `DetectorType.values()` and a class with no `DetectorType`
+  is invisible to them (#374).
+
+- **`SleepInLockDetector` works on the default runner.** Its question is "does the calling thread
+  hold a monitor", and it asked `ThreadMXBean.getThreadInfo(id, true, true)`, which does not report
+  virtual threads. `@AsyncTest` runs its workers on virtual threads by default, so the detector saw
+  no lock however deep inside a `synchronized` block the caller was. Measured on
+  `examples/74-sleep-in-lock`: silent by default, reported with `useVirtualThreads = false`, same
+  subject and same seam.
+
+  `recordSleep(long, Object)` names the monitor and lets `Thread.holdsLock` answer, which works on
+  any thread and any JDK for nothing. It is also stronger evidence than the old path rather than
+  weaker: the JVM confirms the specific claim, where the JMX path infers from whichever monitor
+  `getLockedMonitors()` returns first, and a caller naming a monitor it does not hold records
+  nothing. The existing overload is unchanged, with its platform-thread limit now stated.
+  `examples/74-sleep-in-lock` no longer needs `useVirtualThreads = false` (#373).
+
+- **`LivelockDetector` is documented as what it is.** The catalog said it detects "livelock
+  (threads repeatedly changing state in response to each other without making progress)". It does
+  not: `madeProgress()` treats any RUNNABLE thread as making progress, on purpose, so a spin-retry
+  loop burning attempts is not a finding. What it reports is starvation and rapid state cycling.
+  The catalog and the class javadoc now say so, and `LivelockDetectorTest` pins the busy-spin limit
+  so the prose cannot drift back. `examples/07-livelock` was retired over the same gap in #362
+  (#373).
+
 - **CI no longer resolves the Maven Central publishing plugin before it can read the POM.**
   `central-publishing-maven-plugin` sat in the root `<build><plugins>` with
   `<extensions>true</extensions>`. A build extension is resolved while the project model is being

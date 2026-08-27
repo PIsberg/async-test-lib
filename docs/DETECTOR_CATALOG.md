@@ -45,7 +45,7 @@ check something".
 | **PROMPT** | The detector saw a pattern it cannot fully model, most often a shared object whose lock it has no way to see. Correct code that shares an object produces the same signal as a race. | Open a ticket, not fail a build |
 | **ADVISORY** | A performance or hygiene note, not a correctness claim. | Read it, gate on nothing |
 
-**The tier is in the code, not in this document.** `DetectorTrust` classifies all 142, the runner
+**The tier is in the code, not in this document.** `DetectorTrust` classifies all 146, the runner
 prints the tier above every finding, every `Violation` carries it as a `trustTier` attribute, and
 `@AsyncTest(minTrust = TrustTier.VERDICT)` restricts the `failOn` gate to the tiers you name.
 `DetectorTrustCoverageTest` fails the build if a detector is unclassified, if a row names a
@@ -111,7 +111,7 @@ have excluded nothing, which is a race however many locks were involved.
 **Classified, but not all measured.** Every detector now carries a tier, because a finding with no
 tier is one a reader has to rank alone. Most carry PROMPT, which is the honest default rather than
 a result: it says nobody has measured that detector's silent-on-correct-code direction, not that
-the detector is wrong. The two evals measure 33 distinct detectors of 142 between them (three
+the detector is wrong. The two evals measure 33 distinct detectors of 146 between them (three
 appear in both), and extending them is mechanical rather than hard. Each new both-directions case
 either promotes a detector or writes down a limit, and both outcomes are worth having: the
 `CONCURRENT_MODIFICATIONS` pair, added with the tier mechanism, showed the detector firing on two
@@ -411,7 +411,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 8. Livelock Detector
 * **Severity**: `CRITICAL`
-* **Description**: Detects livelock (threads repeatedly changing state in response to each other without making progress) and thread starvation, using thread state transitions and CPU time sampled via `ThreadMXBean` to distinguish stalled threads from genuine deadlocks.
+* **Description**: Reports two things, and the name promises a third it does not deliver. It reports **starvation** (a thread whose recent snapshots are all BLOCKED or WAITING with flat CPU time) and **rapid state cycling** (five state changes in ten snapshots). It does **not** report a busy spin: `madeProgress()` treats any RUNNABLE thread as making progress, deliberately, because a busy worker's measured CPU time can look flat when several snapshots land inside one clock tick and reporting those produced findings against healthy JVMs. So a spin-retry loop burning attempts without completing work - which is what livelock usually means - is not a finding here; `LivelockDetectorTest` pins that. Samples via `ThreadMXBean.dumpAllThreads`, which does not report virtual threads, so on the default `@AsyncTest` runner nothing reaches its history at all and the runner announces `runner.detector.inert`. See issues #362, #367 and #373.
 * **Buggy Code**:
   ```java
   // Two threads politely "back off" forever, never making progress

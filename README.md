@@ -30,11 +30,12 @@
 
 ## Why async-test?
 
-- **One annotation** — `@AsyncTest` hammers your code with N threads × M invocations using a `CyclicBarrier` to force maximum contention. No executor boilerplate, no manual `CountDownLatch`, no `Thread.join` loops.
-- **146 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types, JDBC sharing, MessageDigest/SecureRandom/Cipher integrity, and more — all on by default (`detectAll = true`), or pick a `Preset` for a curated subset. Deadlock detection needs zero configuration; most other detectors observe what the test body records explicitly or what the optional agent weaves, and the runner says so at INFO the first time agent-backed detection is inactive. Measured firing behavior, including where detectors flag correct-but-shared code, is published in [the detector-accuracy eval](docs/analysis/detector-accuracy-eval.md).
-- **JUnit native, 5 and 6** — zero required configuration, no special JVM flags. `@AsyncTest` is a JUnit `@TestTemplate`, so it works from Kotlin, Groovy, Scala and Clojure too, each proven on every build by [a consumer fixture](consumer-fixture-langs/README.md); the per-language notes are in [docs/JVM_LANGUAGES.md](docs/JVM_LANGUAGES.md). Supported range: **Jupiter 5.9.3 through 6.1.2**, verified per release by a [CI matrix](.github/workflows/e2e-tests.yml) that runs the consumer fixture against every version in it — see [the compatibility table](docs/BUILDING.md#junit-compatibility). Keep whichever Jupiter your project already declares; yours wins over the library's transitive one. An optional Java agent, shipped as a separate `async-test-agent` artifact, weaves accesses with Byte Buddy so detectors observe reads and writes without hand-written hooks. It weaves JavaBean accessors by default; add `fields=true` to weave direct field instructions too, which is what makes a bare `counter++` inside a method observable. Attach it with `-javaagent:async-test-agent.jar=fields=true`, or let the runner attach it for you with `-Dasynctest.agent=fields=true` so you need not resolve the jar's path. Default usage needs no agent, and the core artifact does not carry Byte Buddy.
-- **Every finding says how far to trust it** - each of the 146 detectors carries a trust tier, printed above its report and carried through the JSON and SARIF output. `VERDICT` means a finding proves the code wrong and is backed by a measured case that fires on the bug and stays silent on its correctly synchronized twin; `PROMPT` means the detector saw a pattern it cannot fully model, so go and look. `@AsyncTest(failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT)` is a merge gate that fails only on the measured end of that scale, while everything else still gets reported. The tiers live in code and a gate refuses to promote one without the evidence: [the detector-accuracy eval](docs/analysis/detector-accuracy-eval.md). What that scale is worth on code nobody here wrote is measured separately, on 42 classes from commons-lang3, commons-collections4, Guava, Jackson, Caffeine, Netty and Spring whose own javadoc states a thread-safety contract: all 20 documented as not thread-safe were caught, and none of the 22 documented as safe for concurrent use drew a finding of any kind. See [Evidence](#evidence-what-has-been-measured-and-on-whose-code).
-- **CI-ready out of the box** — ship JUnit XML reports, machine-readable JSON, or `AssertionError` fail-gates directly to GitHub Actions, Jenkins, and GitLab CI.
+- **One annotation** — `@AsyncTest` runs your test body on N threads × M rounds, collided on a `CyclicBarrier` so every round starts at the same instant. No executor boilerplate, no `CountDownLatch`, no `Thread.join` loops.
+- **146 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types and more, all on by default. See [Detectors](#detectors) for what feeds them.
+- **JUnit native, 5 and 6** — a plain `@TestTemplate`: no JVM flags, no required configuration, and it works from Kotlin, Groovy, Scala and Clojure. Jupiter 5.9.3 through 6.1.2, verified per release ([compatibility table](docs/BUILDING.md#junit-compatibility), [language notes](docs/JVM_LANGUAGES.md)).
+- **Every finding says how far to trust it** — each detector carries a trust tier, so `failOn` can gate a merge on the measured end of the scale while everything else is still reported ([the tiers](docs/DETECTOR_CATALOG.md#trust-tiers), [Evidence](#evidence-what-has-been-measured-and-on-whose-code)).
+- **Optional agent** — `async-test-agent` weaves field accesses with Byte Buddy so a bare `counter++` inside a method becomes observable. Not needed for default use, and the core artifact does not depend on Byte Buddy ([docs/AGENT.md](docs/AGENT.md)).
+- **CI-ready out of the box** — JUnit XML, machine-readable JSON, SARIF, or plain `AssertionError` fail-gates, straight into GitHub Actions, Jenkins and GitLab CI.
 
 <div align="center">
 
@@ -286,6 +287,15 @@ After the run, the **detector registry** analyses what was observed and reports 
 // Explicit opt-in
 @AsyncTest(detectAll = false, detectDeadlocks = true, detectRaceConditions = true)
 ```
+
+**What feeds them.** Deadlock detection needs no configuration at all: it reads the JVM's own
+thread state. Most of the rest observe either what the test body records explicitly through
+`AsyncTestContext`, or what the optional [agent](docs/AGENT.md) weaves for you. When a detector is
+enabled but nothing can feed it, the runner says so once per JVM at INFO rather than letting an
+empty report read as a clean bill of health; [docs/AGENT.md](docs/AGENT.md#when-the-runner-says-a-detector-cannot-see)
+lists those notices. Which detectors fall in which group is tabulated in
+[docs/DETECTOR_CATALOG.md](docs/DETECTOR_CATALOG.md), and how they behave on code nobody here
+wrote is in [the accuracy eval](docs/analysis/detector-accuracy-eval.md).
 
 ### Detector categories
 

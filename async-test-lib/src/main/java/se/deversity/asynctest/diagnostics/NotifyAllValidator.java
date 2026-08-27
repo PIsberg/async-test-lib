@@ -7,7 +7,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Detects notify/notifyAll misuse in classic wait/notify coordination.
+ * Detects {@code notify()} used where {@code notifyAll()} is needed: a single wake-up with more
+ * than one waiter on the monitor.
+ *
+ * <p><strong>The runner never analyzes this class.</strong> It has no
+ * {@link se.deversity.asynctest.DetectorType}, no attribute on {@code @AsyncTest} and no
+ * {@code DetectorRegistry} entry, so no {@code failOn} gate can trip on what it records: a test
+ * drives it and reads {@link #analyze()} itself. Instrumenting it and getting a clean report from
+ * an {@code @AsyncTest} means only that nobody asked.
+ *
+ * <p>The wired detector for the condition is {@code NotifyWithoutMonitorDetector}. See issue #374.
  */
 public class NotifyAllValidator {
 

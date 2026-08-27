@@ -7,7 +7,19 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Detects unsafe lazy initialization and broken double-checked locking patterns.
+ * Detects broken lazy initialization: a field one thread saw as null and another saw as
+ * initialized, with neither volatile nor synchronization.
+ *
+ * <p><strong>The runner never analyzes this class.</strong> It has no
+ * {@link se.deversity.asynctest.DetectorType}, no attribute on {@code @AsyncTest} and no
+ * {@code DetectorRegistry} entry, so no {@code failOn} gate can trip on what it records: a test
+ * drives it and reads {@link #analyze()} itself. Instrumenting it and getting a clean report from
+ * an {@code @AsyncTest} means only that nobody asked.
+ *
+ * <p>The wired detectors for this bug are {@code DoubleCheckedLockingDetector}, which reports the
+ * broken DCL structure, and {@code LazyInitRaceDetector}, which reports an observed initialization
+ * race. {@code examples/28-lazy-init} promised a detection from this class and lost its
+ * demonstration over it. See issues #363 and #374.
  */
 public class LazyInitValidator {
 

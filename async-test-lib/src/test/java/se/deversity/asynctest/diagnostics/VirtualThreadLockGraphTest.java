@@ -136,7 +136,7 @@ class VirtualThreadLockGraphTest {
         }
     }
 
-    private static String fixture(String name) {
+    static String fixture(String name) {
         try (InputStream in = VirtualThreadLockGraphTest.class
                 .getResourceAsStream("/threaddumps/" + name)) {
             assertNotNull(in, "missing test fixture /threaddumps/" + name);

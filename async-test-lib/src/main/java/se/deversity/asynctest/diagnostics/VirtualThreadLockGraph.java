@@ -63,13 +63,54 @@ final class VirtualThreadLockGraph {
     private VirtualThreadLockGraph() {
     }
 
-    /** One thread, as the dump describes it. */
-    record DumpedThread(String tid, String name, boolean virtual,
-                        @Nullable String blockedOn, List<String> monitorsOwned) {
+    /**
+     * One thread, as the dump describes it.
+     *
+     * <p>{@code state} and {@code stack} play no part in cycle detection. They are here because
+     * {@code StaticInitDeadlockDetector}'s live sample needs the same three facts about a virtual
+     * thread that {@code Thread.getAllStackTraces()} gives it about a platform one, and this is
+     * the only place that can supply them. {@code state} is null on JDKs whose dump omits it. See
+     * issue #376.
+     */
+    record DumpedThread(String tid, String name, boolean virtual, @Nullable String blockedOn,
+                        List<String> monitorsOwned, @Nullable String state, List<String> stack) {
     }
 
     /** A closed wait-for cycle: each thread waits for a monitor the next one holds. */
     record Cycle(List<String> threadNames, List<String> monitors) {
+    }
+
+    /**
+     * Every thread the running JVM's dump describes, or empty when that dump carries no state.
+     *
+     * <p>Separate from {@link #scan()} because the two want different things out of the same
+     * document: cycles need monitors, and {@code StaticInitDeadlockDetector}'s live sample needs a
+     * state and a stack.
+     *
+     * @return the threads, or {@link Optional#empty()} when the dump carries no thread state
+     */
+    static Optional<List<DumpedThread>> threadsWithState() {
+        String json = dumpJson();
+        return json == null ? Optional.empty() : scanDumpForThreads(json);
+    }
+
+    /**
+     * The half of {@link #threadsWithState()} that does not touch the JVM.
+     *
+     * <p>Empty when the document has no {@code state}, and that is the whole point rather than a
+     * technicality: the JDK 21 dump carries stacks but no state, and a thread <em>running</em> a
+     * static initializer is not parked in one. Handing back stacks with no state to filter on
+     * would let the caller report a class that is merely initializing, which is a false positive
+     * on correct code. See issue #376.
+     *
+     * @param json a thread dump in the JSON format {@code dumpThreads} writes
+     * @return the threads, or {@link Optional#empty()} when the dump carries no thread state
+     */
+    static Optional<List<DumpedThread>> scanDumpForThreads(String json) {
+        if (!json.contains(QUOTE + "state" + QUOTE)) {
+            return Optional.empty();
+        }
+        return Optional.of(parse(json));
     }
 
     /**
@@ -245,6 +286,7 @@ final class VirtualThreadLockGraph {
 
     /** {@return the thread this object describes, or null when it does not have the shape} */
     private static @Nullable DumpedThread readThread(String object) {
+        String stack = arrayOf(object, "stack");
         String withoutStack = withoutArray(object, "stack");
         String tid = stringField(withoutStack, "tid");
         if (tid == null) {
@@ -256,7 +298,9 @@ final class VirtualThreadLockGraph {
                 name == null ? tid : name,
                 withoutStack.replace(" ", "").contains(QUOTE + "virtual" + QUOTE + ":true"),
                 stringField(withoutStack, "blockedOn"),
-                locksIn(withoutStack));
+                locksIn(withoutStack),
+                stringField(withoutStack, "state"),
+                stack == null ? List.of() : List.copyOf(quotedStringsIn(stack)));
     }
 
     /**

@@ -6,6 +6,66 @@ annotation attributes, public config fields) and the japicmp binary-compatibilit
 pinned to 1.6.0. This document is the plan for getting past both without ever shipping
 a broken intermediate release.
 
+## Status, re-measured 2026-08-27
+
+Trains 1 and 2 have not started. The plan below is unchanged in shape and every number in it is
+stale, so the counts are restated here rather than edited in place: the drift is the finding.
+
+| Metric this plan exists to reduce | 2026-08-03 | 2026-08-27 | Direction |
+|---|---:|---:|---|
+| public boolean fields on `AsyncTestConfig` | 132 | **151** | worse |
+| deprecated attributes on `@AsyncTest` | 127 | **146** | worse |
+| detectors keyed by `identityHashCode` | 84 | **103** | worse |
+| `DetectorType` constants | 127 | **146** | grew |
+
+Nothing regressed. Every one of those grew because detectors were added, and each detector costs a
+constant, an attribute, a config field, a builder setter, a `from()` read, a `build()` resolution
+line and usually an identity-keyed map. That is the tax this plan was written to remove, and it
+compounds: **the longer Train 1 waits, the larger Train 3 gets.** At the current rate the 2.0
+deletion is roughly 15% bigger every three weeks.
+
+The mechanical shape today, for anyone picking this up:
+
+| Site | Lines |
+|---|---:|
+| `AsyncTestConfig` | 2,210 |
+| `DetectorRegistry` | 1,181 |
+| `ann.<attr>()` reads in `from()` | 168 |
+| resolution lines in `build()` | 147 |
+| detector constructions in the registry | 146 |
+
+### What changed in the plan's favour
+
+`DetectorWiringIsCompleteTest` (2026-08-27) pins the correspondence Train 1 rests on: one
+`DetectorType` per `@AsyncTest` detector attribute, no strays either way, every attribute read in
+`from()` and resolved in `build()`. Before it, the `EnumSet` refactor would have been a rewrite of
+three hand-maintained lists that nothing proved equivalent; now a mismatch fails the build. That
+was the missing precondition, not a nice-to-have.
+
+### What Train 1 actually costs, stated honestly
+
+The original text says the config core is "computed once in `build()` ... keep every existing
+public boolean field, now assigned as a one-line derivation". That is right, and it is worth being
+clear that it does **not** reduce line count on its own:
+
+- reading the annotation still needs one line per attribute, because annotation members cannot be
+  enumerated by convention (`DEADLOCKS` is `detectDeadlocks`, but `SEMAPHORE` is `monitorSemaphore`
+  and `SIMPLE_DATE_FORMAT` is `detectSimpleDateFormatIssues`);
+- assigning the public fields still needs one line each, because they are `public final`.
+
+What it does move is the *logic*: resolution stops being 147 independent expressions that can each
+be wrong, and becomes one loop over the enum. The 147 becomes 146 mechanical assignments that
+cannot be individually wrong and that Train 3 deletes outright. That is the win; a smaller file is
+not.
+
+### Recommended next step
+
+Train 1's registry table, not the config core. It is one file, it is the half that removes a real
+edit site rather than relocating one, and `DetectorRegistry`'s 146 constructions are already
+uniform enough to table-drive. The config core should follow it, not lead, because the registry
+table is the cheaper way to learn whether the table-driven shape survives this codebase's
+constraints.
+
 ## Blocked findings this plan unlocks
 
 > Counts re-measured against the tree on 2026-08-03, ahead of 1.7.0 GA. Several had drifted
