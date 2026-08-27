@@ -390,28 +390,6 @@
                     <outputName>bom</outputName>
                 </configuration>
             </plugin>
-            <!-- Maven Central publishing via Sonatype Central Portal -->
-            <plugin>
-                <groupId>org.sonatype.central</groupId>
-                <artifactId>central-publishing-maven-plugin</artifactId>
-                <version>${central-publishing-maven-plugin.version}</version>
-                <extensions>true</extensions>
-                <configuration>
-                    <!-- Matches <server id="central"> in settings.xml / setup-java action -->
-                    <publishingServerId>central</publishingServerId>
-                    <!-- Automatically release after validation (no manual portal action needed) -->
-                    <autoPublish>true</autoPublish>
-                    <!-- uploaded, not published: with autoPublish the publication proceeds
-                         server-side once the bundle is uploaded and validated, but waiting for
-                         the "published" state blocks mvn deploy on Central's pipeline for an
-                         unbounded time. Both v1.7.0 and v1.9.1 had the publish job killed
-                         mid-poll around the hour mark; both publications completed on Central
-                         anyway, and every post-upload step (cosign, SBOM, GitHub release) was
-                         lost and had to be reconstructed by hand. Waiting only for the upload
-                         lets those steps run; Central availability is verified separately. -->
-                    <waitUntil>uploaded</waitUntil>
-                </configuration>
-            </plugin>
             <!-- PMD static analysis — main sources only -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -552,6 +530,28 @@
                                 <arg>--pinentry-mode</arg>
                                 <arg>loopback</arg>
                             </gpgArguments>
+                        </configuration>
+                    </plugin>
+                    <!-- Maven Central publishing via Sonatype Central Portal -->
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>${central-publishing-maven-plugin.version}</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <!-- Matches <server id="central"> in settings.xml / setup-java action -->
+                            <publishingServerId>central</publishingServerId>
+                            <!-- Automatically release after validation (no manual portal action needed) -->
+                            <autoPublish>true</autoPublish>
+                            <!-- uploaded, not published: with autoPublish the publication proceeds
+                                 server-side once the bundle is uploaded and validated, but waiting for
+                                 the "published" state blocks mvn deploy on Central's pipeline for an
+                                 unbounded time. Both v1.7.0 and v1.9.1 had the publish job killed
+                                 mid-poll around the hour mark; both publications completed on Central
+                                 anyway, and every post-upload step (cosign, SBOM, GitHub release) was
+                                 lost and had to be reconstructed by hand. Waiting only for the upload
+                                 lets those steps run; Central availability is verified separately. -->
+                            <waitUntil>uploaded</waitUntil>
                         </configuration>
                     </plugin>
                 </plugins>
