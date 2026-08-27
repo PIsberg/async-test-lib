@@ -130,14 +130,21 @@ Anchor the replacement to the end of the identifier and all 42 are covered.
 
 ### Checking your suite is ready
 
-Compile with deprecation warnings visible. A build with none left is a build that survives 2.0.0:
+Compile with deprecation warnings visible. A build with none left is a build that survives 2.0.0.
+Verified on this repo: the Maven flag turns javac to `[debug deprecation target 21]` and reports every
+deprecated call site.
 
 ```bash
 mvn -Dmaven.compiler.showDeprecation=true test
 ```
 
-```bash
-./gradlew test --warning-mode all
+Gradle does not pass `-Xlint:deprecation` by default, and `--warning-mode all` reports Gradle's
+own deprecations rather than javac's. Ask javac directly:
+
+```kotlin
+tasks.withType<JavaCompile>().configureEach {
+    options.compilerArgs.add("-Xlint:deprecation")
+}
 ```
 
 ---
