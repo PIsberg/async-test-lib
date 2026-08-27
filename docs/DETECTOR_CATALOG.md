@@ -136,12 +136,20 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (2)
+### Agent-fed (5)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
 
-`AtomicityValidator`, `SharedCollectionDetector`
+The three lock detectors joined on 2026-08-27. The agent had substituted every lock, unlock and
+tryLock call site since collection weaving shipped, and handed all of it to the lockset, which
+answers one question: was this access guarded. These three ask different questions of the same
+events, and were reachable only through hand-written recording calls, so attaching the agent and
+writing a plain test produced silence from them on code that was genuinely inverting its lock
+order. Two of them sit in the highest trust tier, the one whose findings mean the code is wrong.
+
+`AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
+`TryLockMisuseDetector`
 
 ### Zero-config (3)
 
@@ -151,18 +159,18 @@ call:
 
 `DeadlockDetector`, `LivelockDetector`, `StaticInitDeadlockDetector`
 
-### Recording-only (141)
+### Recording-only (138)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
 recording is the feed:
 
 `VisibilityMonitor`, `FalseSharingDetector`, `WakeupDetector`, `ConstructorSafetyValidator`,
-`ABAProblemDetector`, `LockOrderValidator`, `SynchronizerMonitor`, `ThreadPoolMonitor`,
+`ABAProblemDetector`, `SynchronizerMonitor`, `ThreadPoolMonitor`,
 `MemoryOrderingMonitor`, `PipelineMonitor`, `ReadWriteLockMonitor`, `SemaphoreMisuseDetector`,
 `CompletableFutureExceptionDetector`, `CompletableFutureCompletionLeakDetector`,
 `VirtualThreadPinningDetector`, `ThreadPoolDeadlockDetector`, `ConcurrentModificationDetector`,
-`LockLeakDetector`, `SharedRandomDetector`, `BlockingQueueDetector`, `ConditionVariableDetector`,
+`SharedRandomDetector`, `BlockingQueueDetector`, `ConditionVariableDetector`,
 `SimpleDateFormatDetector`, `ParallelStreamDetector`, `ResourceLeakDetector`,
 `CountDownLatchDetector`, `CyclicBarrierDetector`, `ReentrantLockDetector`,
 `VolatileArrayDetector`, `DoubleCheckedLockingDetector`, `WaitTimeoutDetector`,
@@ -191,7 +199,7 @@ recording is the feed:
 `WeakHashMapSharedDetector`, `JdbcConnectionSharedDetector`, `SharedStatefulCryptoDetector`,
 `NonAtomicConcurrentMapUpdateDetector`, `SharedDeflaterDetector`, `ThisEscapeDetector`,
 `ThreadLocalRandomMisuseDetector`, `CompletableFutureObtrudeDetector`, `SpuriousWakeupDetector`,
-`LockUpgradeDeadlockDetector`, `TryLockMisuseDetector`,
+`LockUpgradeDeadlockDetector`,
 `CompletableFutureBlockingCallbackDetector`, `StableValueMisuseDetector`,
 `StructuredTaskScopeMisuseDetector`, `GathererConcurrencyMisuseDetector`,
 `SharedByteBufferDetector`, `SharedCharsetCoderDetector`, `SharedChecksumDetector`,

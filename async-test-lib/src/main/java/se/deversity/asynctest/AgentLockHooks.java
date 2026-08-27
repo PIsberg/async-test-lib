@@ -13,6 +13,9 @@ import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 
 import se.deversity.asynctest.diagnostics.HeldLocks;
+import se.deversity.asynctest.diagnostics.LockLeakDetector;
+import se.deversity.asynctest.diagnostics.LockOrderValidator;
+import se.deversity.asynctest.diagnostics.TryLockMisuseDetector;
 import se.deversity.vibetags.annotations.AIContract;
 
 /**
@@ -60,7 +63,7 @@ import se.deversity.vibetags.annotations.AIContract;
  * @since 1.9.8
  */
 @API(status = Status.INTERNAL)
-@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures are matched by CollectionAccessWeaver.lockSubstitutions and cannot change independently of it. The acquire-after / release-before ordering is a safety property, not a style choice - recording a lock as held before it is actually held would make another thread's racing access read as guarded, which is the one error direction this library must never take. Every hook must perform the original operation and propagate its exceptions unchanged.")
+@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures are matched by CollectionAccessWeaver.lockSubstitutions and cannot change independently of it. The acquire-after / release-before ordering is a safety property, not a style choice - recording a lock as held before it is actually held would make another thread's racing access read as guarded, which is the one error direction this library must never take. Every hook must perform the original operation and propagate its exceptions unchanged. The detector delivery inherits the same acquire-after / release-before ordering as the lockset and must keep it: LockOrderValidator builds its nesting edges from the order these calls arrive in, so delivering an acquisition early would invent a hold-and-wait edge that never existed. It resolves each detector through a null-returning AsyncTestContext accessor because a woven call site runs in code that does not know a test exists, so no context is the ordinary case and must cost a null check rather than an exception. DetectorFeeds lists these three as AGENT-fed and DetectorFeedCoverageTest reads this file to check the delivery is still here, so removing a call means reclassifying the detector in the same change.")
 public final class AgentLockHooks {
 
     /** Which lock a view belongs to, and whether it admits other holders. */
@@ -147,6 +150,7 @@ public final class AgentLockHooks {
         } else {
             HeldLocks.acquired(view.owner(), view.shared());
         }
+        deliverAcquired(view == null ? lock : view.owner(), lock);
     }
 
     private static void noteReleased(Lock lock) {
@@ -155,6 +159,74 @@ public final class AgentLockHooks {
             HeldLocks.released(lock);
         } else {
             HeldLocks.released(view.owner(), view.shared());
+        }
+        deliverReleased(view == null ? lock : view.owner(), lock);
+    }
+
+    /**
+     * Hands an acquisition to the detectors whose whole input is the acquire/release stream.
+     *
+     * <p>Until this existed the stream stopped at {@link HeldLocks}, which answers only "is this
+     * access guarded". {@code LockOrderValidator} and {@code LockLeakDetector} ask questions the
+     * same events already answer, and both were reachable only by hand-written {@code record}
+     * calls, so a user who attached the agent and wrote no instrumentation got silence from them
+     * on code that was genuinely inverting its lock order.
+     *
+     * <p>The lockset identity is passed to the order validator rather than the lock object: a
+     * {@code ReentrantReadWriteLock}'s two views are two objects, and an order built from views
+     * sees a reader and a writer as different locks. The leak detector takes the {@code Lock} its
+     * signature requires, so a view is its own subject there, which is also what a leak means for
+     * one.
+     *
+     * <p>No allocation: the name is {@code Class.getName()}, which {@code Class} already holds,
+     * the same choice {@link AgentCollectionHooks} documents for its label.
+     *
+     * @param identity the lockset identity, the owner for a view
+     * @param lock     the lock the call site actually named
+     */
+    private static void deliverAcquired(Object identity, Lock lock) {
+        LockOrderValidator order = AsyncTestContext.currentLockOrderValidator();
+        if (order != null) {
+            order.recordLockAcquisition(identity);
+        }
+        LockLeakDetector leak = AsyncTestContext.currentLockLeakDetector();
+        if (leak != null) {
+            leak.recordLockAcquired(lock, lock.getClass().getName());
+        }
+    }
+
+    /**
+     * The release half of {@link #deliverAcquired(Object, Lock)}.
+     *
+     * @param identity the lockset identity, the owner for a view
+     * @param lock     the lock the call site actually named
+     */
+    private static void deliverReleased(Object identity, Lock lock) {
+        LockOrderValidator order = AsyncTestContext.currentLockOrderValidator();
+        if (order != null) {
+            order.recordLockRelease(identity);
+        }
+        LockLeakDetector leak = AsyncTestContext.currentLockLeakDetector();
+        if (leak != null) {
+            leak.recordLockReleased(lock, lock.getClass().getName());
+        }
+    }
+
+    /**
+     * Hands a {@code tryLock} outcome to {@code TryLockMisuseDetector}, including the failures.
+     *
+     * <p>A failed {@code tryLock} records nothing to the lockset, correctly, because nothing was
+     * acquired. It is exactly what this detector exists to see: the misuse it reports is a return
+     * value that was ignored, which is invisible unless the failure itself is recorded.
+     *
+     * @param lock     the lock the call site named
+     * @param acquired what {@code tryLock} returned
+     */
+    private static void deliverTryLock(Lock lock, boolean acquired) {
+        TryLockMisuseDetector tryLocks = AsyncTestContext.currentTryLockMisuseDetector();
+        if (tryLocks != null) {
+            tryLocks.recordTryLockResult(lock, lock.getClass().getName(), acquired,
+                    Thread.currentThread());
         }
     }
 
@@ -176,6 +248,7 @@ public final class AgentLockHooks {
         if (acquired) {
             noteAcquired(receiver);
         }
+        deliverTryLock(receiver, acquired);
         return acquired;
     }
 
@@ -193,12 +266,17 @@ public final class AgentLockHooks {
         if (acquired) {
             noteAcquired(receiver);
         }
+        deliverTryLock(receiver, acquired);
         return acquired;
     }
 
     /** Weaves {@code Lock.unlock()}. @param receiver the lock */
     public static void unlock(Lock receiver) {
         noteReleased(receiver);
+        TryLockMisuseDetector tryLocks = AsyncTestContext.currentTryLockMisuseDetector();
+        if (tryLocks != null) {
+            tryLocks.recordUnlock(receiver, receiver.getClass().getName(), Thread.currentThread());
+        }
         receiver.unlock();
     }
 

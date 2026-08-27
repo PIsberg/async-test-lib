@@ -18,6 +18,7 @@ import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -100,9 +101,39 @@ class DetectorFeedCoverageTest {
         assertEquals(SharedCollectionDetector.class, collectionFed,
                 "the collection stream's accessor names the detector it feeds");
 
+        // The lock stream. AgentLockHooks substitutes every Lock.lock()/unlock()/tryLock() call
+        // site, and for a long time handed all of it to HeldLocks alone, so these three saw
+        // nothing unless the user wrote record calls by hand. This gate did not notice, because
+        // it scanned the bridge and the collection hooks and no third place existed yet: a
+        // stream could be routed into a detector with the table still calling it RECORDING.
+        // Resolving the accessor proves the wiring's shape; requiring the hook source to name it
+        // proves the delivery is still there, which is the half reflection cannot see.
+        String lockHooks = read(repoRoot().resolve(Path.of("async-test-lib", "src", "main",
+                "java", "se", "deversity", "asynctest", "AgentLockHooks.java")));
+        Set<DetectorType> lockFed = EnumSet.noneOf(DetectorType.class);
+        for (String accessor : List.of("currentLockOrderValidator", "currentLockLeakDetector",
+                "currentTryLockMisuseDetector")) {
+            Class<?> fed;
+            try {
+                fed = AsyncTestContext.class.getDeclaredMethod(accessor).getReturnType();
+            } catch (NoSuchMethodException e) {
+                throw new AssertionError("AgentLockHooks reaches its detectors through "
+                        + "AsyncTestContext." + accessor + "(); if that accessor moved, point "
+                        + "this gate at the new wiring rather than deleting the check", e);
+            }
+            assertTrue(lockHooks.contains(accessor + "()"),
+                    "AsyncTestContext." + accessor + "() exists but AgentLockHooks no longer "
+                            + "calls it, so the woven lock stream stops at HeldLocks again and "
+                            + fed.getSimpleName() + " is only reachable by hand. Either restore "
+                            + "the delivery or move the detector back to RECORDING in "
+                            + "DetectorFeeds, so the table keeps matching what the agent does.");
+            lockFed.add(typeOf(fed.getSimpleName()));
+        }
+
         Set<DetectorType> expected = EnumSet.noneOf(DetectorType.class);
         expected.add(typeOf(AtomicityValidator.class.getSimpleName()));
         expected.add(typeOf(SharedCollectionDetector.class.getSimpleName()));
+        expected.addAll(lockFed);
         assertEquals(expected, DetectorFeeds.fedBy(DetectorFeed.AGENT),
                 "AGENT rows must be exactly the detectors the woven streams reach");
     }
