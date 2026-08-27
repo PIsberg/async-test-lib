@@ -1689,6 +1689,34 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link SimpleDateFormatDetector} for the calling thread's test, or
+     * {@code null}}
+     *
+     * <p>Same null-returning contract as {@link #currentSharedCollectionDetector()}: the caller is
+     * {@link AgentSharedInstanceHooks}, running inside woven code that does not know a test is in
+     * progress.
+     */
+    static @Nullable SimpleDateFormatDetector currentSimpleDateFormatDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.simpleDateFormatDetector;
+    }
+
+    /** {@return the {@link SharedMatcherDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable SharedMatcherDetector currentSharedMatcherDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.sharedMatcherDetector;
+    }
+
+    /**
+     * {@return the {@link SharedMessageDigestDetector} for the calling thread's test, or
+     * {@code null}}
+     */
+    static @Nullable SharedMessageDigestDetector currentSharedMessageDigestDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.sharedMessageDigestDetector;
+    }
+
+    /**
      * Returns the {@link TimerDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectTimerIssues = false}
      * @deprecated use {@link #timerDetector()}

@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A `SimpleDateFormat` cached in a field is now caught with no instrumentation, and so are a
+  shared `Matcher` and `MessageDigest`.** Hoisting a formatter to a field because constructing one
+  is expensive, and thereby making the class unsafe to call concurrently, is one of the oldest bugs
+  in Java. The library has had a detector for it throughout, and it was reachable only through a
+  hand-written `recordFormat` call, so it found the bug only for a test author who already
+  suspected it.
+
+  `AgentSharedInstanceHooks` and a third weaver table substitute the call sites - `format`,
+  `parse`, `find`, `matches`, `group`, `update`, `digest` - which is the one place the instance and
+  the calling thread are both in hand. Agent-fed goes from 5 detectors to 8, and with the three
+  zero-config ones **11 of 146 detectors now work on code the user did not modify, against 5 at the
+  start of the day**.
+
+  The table is deliberately short. Each entry costs a rewritten instruction in every woven method
+  that calls it, and these three earn it by being common and unambiguous: none has a thread-safe
+  subclass that a call site could be holding. `Random` is absent for exactly that reason -
+  `ThreadLocalRandom` extends it, and substituting there would record instances that were safe all
+  along.
+
+  Both directions measured. `SharedInstanceWeavingTest` shares one formatter across four threads
+  and requires the finding; `SharedInstanceWeavingSparesConfinedUseTest` constructs one per call -
+  the standard fix - and requires silence, because a false positive on the fix would be worse than
+  not detecting the bug. Verified failing first: removing the substitution fails the positive test.
+  The corpus eval agrees: 22 documented-thread-safe classes from seven third-party libraries, 0
+  findings from all eight agent-fed detectors.
+
+  The corpus module's `DetectorExposure` needed a correction the change exposed. It read agent-fed
+  as "fed in the attached lane only", which stopped being true the moment a detector with an
+  existing hand-recording subject moved from `RECORDING` to `AGENT`: the subject then recorded into
+  a denominator the table called zero. Agent-fed now means the woven streams can feed it, not that
+  a hand-written call is impossible.
+
 - **Attaching the agent now catches a lock-order inversion with no instrumentation.** The agent has
   substituted every `Lock.lock()`, `unlock()` and `tryLock()` call site since collection weaving
   shipped, and handed all of it to `HeldLocks`, which answers exactly one question: was this access

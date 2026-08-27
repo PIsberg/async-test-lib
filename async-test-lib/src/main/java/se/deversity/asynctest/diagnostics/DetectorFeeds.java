@@ -59,7 +59,15 @@ public final class DetectorFeeds {
             // order. AgentLockHooks now delivers to each.
             DetectorType.LOCK_ORDER,
             DetectorType.LOCK_LEAKS,
-            DetectorType.TRY_LOCK_MISUSE);
+            DetectorType.TRY_LOCK_MISUSE,
+            // The shared-instance family. Each of these three JDK types keeps mutable state, is
+            // documented as unsafe to share, and is routinely cached in a field because building
+            // one is expensive - which is how a confined object becomes a shared one. The
+            // substitution sees the call site, which is the only place the instance and the
+            // calling thread are both in hand.
+            DetectorType.SIMPLE_DATE_FORMAT,
+            DetectorType.SHARED_MATCHER,
+            DetectorType.SHARED_MESSAGE_DIGEST);
 
     /**
      * Fed by the JVM and the harness with no recording call.

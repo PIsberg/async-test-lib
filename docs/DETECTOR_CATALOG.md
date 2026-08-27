@@ -136,20 +136,23 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (5)
+### Agent-fed (8)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
 
-The three lock detectors joined on 2026-08-27. The agent had substituted every lock, unlock and
-tryLock call site since collection weaving shipped, and handed all of it to the lockset, which
-answers one question: was this access guarded. These three ask different questions of the same
-events, and were reachable only through hand-written recording calls, so attaching the agent and
-writing a plain test produced silence from them on code that was genuinely inverting its lock
-order. Two of them sit in the highest trust tier, the one whose findings mean the code is wrong.
+The three lock detectors and the three shared-instance detectors joined on 2026-08-27. The
+agent had substituted every lock, unlock and tryLock call site since collection weaving
+shipped, and handed all of it to the lockset, which answers one question: was this access
+guarded. The lock three ask different questions of the same events. The shared-instance three
+cover JDK types that keep mutable state, are documented as unsafe to share, and are routinely
+cached in a field because building one is expensive, which is how a confined object becomes a
+shared one. All six were reachable only through hand-written recording calls, so attaching the
+agent and writing a plain test produced silence from them.
 
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
-`TryLockMisuseDetector`
+`TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
+`SharedMessageDigestDetector`
 
 ### Zero-config (3)
 
@@ -159,7 +162,7 @@ call:
 
 `DeadlockDetector`, `LivelockDetector`, `StaticInitDeadlockDetector`
 
-### Recording-only (138)
+### Recording-only (135)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -171,7 +174,7 @@ recording is the feed:
 `CompletableFutureExceptionDetector`, `CompletableFutureCompletionLeakDetector`,
 `VirtualThreadPinningDetector`, `ThreadPoolDeadlockDetector`, `ConcurrentModificationDetector`,
 `SharedRandomDetector`, `BlockingQueueDetector`, `ConditionVariableDetector`,
-`SimpleDateFormatDetector`, `ParallelStreamDetector`, `ResourceLeakDetector`,
+`ParallelStreamDetector`, `ResourceLeakDetector`,
 `CountDownLatchDetector`, `CyclicBarrierDetector`, `ReentrantLockDetector`,
 `VolatileArrayDetector`, `DoubleCheckedLockingDetector`, `WaitTimeoutDetector`,
 `LockContentionDetector`, `SynchronizedNonFinalDetector`, `MissedSignalDetector`,
@@ -190,8 +193,8 @@ recording is the feed:
 `SharedFormatterDetector`, `ConcurrentMapComputeRecursionDetector`,
 `SynchronizedOnLiteralDetector`, `PublicLockExposureDetector`, `ForkJoinTaskBlockingDetector`,
 `OptimisticReadValidationDetector`, `CompletableFutureCommonPoolBlockingDetector`,
-`SharedMatcherDetector`, `SharedDecimalFormatDetector`, `WeakReferenceRaceDetector`,
-`StatefulLambdaDetector`, `SharedMessageDigestDetector`, `InterruptSwallowingDetector`,
+`SharedDecimalFormatDetector`, `WeakReferenceRaceDetector`,
+`StatefulLambdaDetector`, `InterruptSwallowingDetector`,
 `MdcContextLeakDetector`, `SystemPropertyMutationDetector`, `FutureIgnoredDetector`,
 `ExplicitGcDetector`, `DeprecatedThreadApiDetector`, `SharedXmlParserDetector`,
 `BoxedPrimitiveLockDetector`, `SharedTimeZoneDetector`, `UncaughtExceptionHandlerDetector`,

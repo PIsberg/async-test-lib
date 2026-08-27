@@ -1,6 +1,10 @@
 package se.deversity.asynctest.agent;
 
 import java.lang.reflect.Method;
+import java.security.MessageDigest;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.regex.Matcher;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -89,6 +93,9 @@ final class CollectionAccessWeaver {
     /** The library-side class the substituted lock calls land in. */
     private static final String LOCK_HOOKS = LIBRARY_ROOT + "AgentLockHooks";
 
+    /** The library-side class holding the shared-instance hooks. */
+    private static final String SHARED_HOOKS = LIBRARY_ROOT + "AgentSharedInstanceHooks";
+
     private CollectionAccessWeaver() {
     }
 
@@ -175,6 +182,29 @@ final class CollectionAccessWeaver {
             Entry.view(StampedLock.class, "asWriteLock", "asWriteLock", Lock.class));
 
     /**
+     * The shared-instance table: JDK types that keep mutable state and are not thread safe.
+     *
+     * <p>Each of these is routinely cached in a static field because constructing one is
+     * expensive, which is exactly how a confined object becomes a shared one. The detectors that
+     * report them were reachable only by a hand-written {@code record} call, so the library could
+     * see the bug only when the test author already suspected it.
+     *
+     * <p>The receiver types are concrete and free of thread-safe subclasses on purpose. A call
+     * site holding a {@code ThreadLocalRandom} through a {@code Random} reference is the standing
+     * counter-example, and it is why {@code Random} is not in this table: substituting there would
+     * record instances that were safe all along.
+     */
+    private static final List<Entry> SHARED_INSTANCE_ENTRIES = List.of(
+            Entry.call(SimpleDateFormat.class, "format", "format", Date.class),
+            Entry.call(SimpleDateFormat.class, "parse", "parse", String.class),
+            Entry.call(Matcher.class, "find", "find"),
+            Entry.call(Matcher.class, "matches", "matches"),
+            Entry.call(Matcher.class, "group", "group"),
+            Entry.call(MessageDigest.class, "update", "update", byte[].class),
+            Entry.call(MessageDigest.class, "digest", "digest"),
+            Entry.call(MessageDigest.class, "digest", "digest", byte[].class));
+
+    /**
      * One resolved rewrite: the call shape to match and the hook invocation that replaces it.
      *
      * <p>{@code callSiteDescriptor} is the hook's descriptor with the receiver parameter removed,
@@ -243,6 +273,16 @@ final class CollectionAccessWeaver {
         return List.of(new SubstitutionWrapper(targets(LOCK_ENTRIES, lockHooks)));
     }
 
+    /**
+     * {@return the shared-instance substitutions, in table order}
+     *
+     * @param sharedHooks the class holding the shared-instance hooks, resolved in the weaving
+     *                    class loader
+     */
+    static List<AsmVisitorWrapper> sharedInstanceSubstitutions(Class<?> sharedHooks) {
+        return List.of(new SubstitutionWrapper(targets(SHARED_INSTANCE_ENTRIES, sharedHooks)));
+    }
+
     /** {@return the hook class name the substituted collection calls land in} */
     static String hooksClassName() {
         return HOOKS;
@@ -251,6 +291,11 @@ final class CollectionAccessWeaver {
     /** {@return the hook class name the substituted lock calls land in} */
     static String lockHooksClassName() {
         return LOCK_HOOKS;
+    }
+
+    /** {@return the hook class name the substituted shared-instance calls land in} */
+    static String sharedHooksClassName() {
+        return SHARED_HOOKS;
     }
 
     /** Applies one table of {@link Target}s to every method of a woven class. */
