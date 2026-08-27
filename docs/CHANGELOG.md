@@ -58,7 +58,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still tracked separately. Upgrade findings also collapse to one line per lock with a
   count, the way #351 required of the common-pool detector (#355).
 
-
 ### Fixed
 
 - **`StaticInitDeadlockDetector`'s live sample reported nothing, ever.** Its javadoc offers that
@@ -83,6 +82,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because without a state a thread running an initializer cannot be told from one parked in it.
   Both directions are pinned: a virtual-thread class-init deadlock is named in the report, and two
   classes merely initializing concurrently are not (#376).
+
+- **Two classes that looked like detectors and were never analyzed now say so, and a gate keeps
+  the list honest.** `diagnostics/` holds 149 public classes named `*Detector`, `*Validator` or
+  `*Monitor`. 146 are a `DetectorType`, are built by `DetectorRegistry` and can fail a test through
+  `failOn`. `LazyInitValidator` and `NotifyAllValidator` have the same shape and the same package
+  and the runner never calls `analyze()` on them, so instrumenting one and getting a clean report
+  from an `@AsyncTest` means only that nobody asked. `examples/28-lazy-init` promised a detection
+  from `LazyInitValidator` and lost its demonstration over it in #363; the cause took a while to
+  find precisely because the class looks like every other one in the directory.
+
+  Both javadocs now say the runner never analyzes them and name the wired detector to use instead.
+  `DetectorShapedClassesAreReachableTest` is the gate: every detector-shaped class is constructed
+  by `DetectorRegistry` or `ConcurrencyRunner`, or is on an allowlist that carries a reason and
+  whose entries must repeat that reason in their own javadoc. The existing coverage gates could not
+  catch this, because all three iterate `DetectorType.values()` and a class with no `DetectorType`
+  is invisible to them (#374).
+
+- **`SleepInLockDetector` works on the default runner.** Its question is "does the calling thread
+  hold a monitor", and it asked `ThreadMXBean.getThreadInfo(id, true, true)`, which does not report
+  virtual threads. `@AsyncTest` runs its workers on virtual threads by default, so the detector saw
+  no lock however deep inside a `synchronized` block the caller was. Measured on
+  `examples/74-sleep-in-lock`: silent by default, reported with `useVirtualThreads = false`, same
+  subject and same seam.
+
+  `recordSleep(long, Object)` names the monitor and lets `Thread.holdsLock` answer, which works on
+  any thread and any JDK for nothing. It is also stronger evidence than the old path rather than
+  weaker: the JVM confirms the specific claim, where the JMX path infers from whichever monitor
+  `getLockedMonitors()` returns first, and a caller naming a monitor it does not hold records
+  nothing. The existing overload is unchanged, with its platform-thread limit now stated.
+  `examples/74-sleep-in-lock` no longer needs `useVirtualThreads = false` (#373).
+
+- **`LivelockDetector` is documented as what it is.** The catalog said it detects "livelock
+  (threads repeatedly changing state in response to each other without making progress)". It does
+  not: `madeProgress()` treats any RUNNABLE thread as making progress, on purpose, so a spin-retry
+  loop burning attempts is not a finding. What it reports is starvation and rapid state cycling.
+  The catalog and the class javadoc now say so, and `LivelockDetectorTest` pins the busy-spin limit
+  so the prose cannot drift back. `examples/07-livelock` was retired over the same gap in #362
+  (#373).
+
+- **CI no longer resolves the Maven Central publishing plugin before it can read the POM.**
+  `central-publishing-maven-plugin` sat in the root `<build><plugins>` with
+  `<extensions>true</extensions>`. A build extension is resolved while the project model is being
+  assembled: before any goal, before the transfer-retry settings #342 added, and before a single
+  test runs. So all 38 checks, on every OS and JDK, had to reach Maven Central for a plugin whose
+  only job is publishing to Maven Central, and one transient read killed the job outright with
+  `Unresolveable build extension` and `ProjectBuildingException`, which nothing inside the build
+  can recover from.
+
+  It cost three CI jobs in three days on three different runners: the Examples Reactor shard 1/4 on
+  2026-08-25, `Test Suite (21, ubuntu-latest)` on #370 and `Test Suite (21, windows-latest)` on
+  #375. Each time nothing was blocked, so it was a genuine transient that happened to be fatal
+  because of where the dependency sat. #342 made the fetch more likely to survive; this makes 37 of
+  the 38 jobs not need it.
+
+  The plugin moves to the `release` profile, which `publish.yml` already activates with
+  `mvn --batch-mode clean deploy -P release`. Verified from Maven's own debug output rather than by
+  reading the POM: `mvn -X -N validate` never mentions the plugin, and the same command with
+  `-P release` logs `Created new class realm extension>org.sonatype.central:central-publishing-maven-plugin:0.11.0`.
+  `NoBuildExtensionOutsideAProfileTest` pins both halves, including that `waitUntil=uploaded` from
+  #250 survived the move (#377).
 
 - **A leaked `ReentrantLock` hold recorded through `ReentrantLockDetector` is now reported.** That
   detector has `recordLockAcquired` and `recordLockReleased`, keeps counts from them, prints those
@@ -1885,7 +1944,6 @@ The parent pom and the Gradle publishing block already declared it, and the thre
 relied on Maven inheritance, which leaves the license absent from the raw pom a consumer or a
 scanner reads without resolving the parent. Each module pom now states it, byte-identical to the
 parent's block. `BuildMetadataSyncTest` stays green.
-
 
 ### Fixed — 733 published javadoc descriptions said nothing, and a test now says so
 
