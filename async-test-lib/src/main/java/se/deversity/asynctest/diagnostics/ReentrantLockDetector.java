@@ -11,11 +11,20 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Detects ReentrantLock misuse patterns:
- * - Lock starvation (thread waiting excessively long)
- * - Unfair lock acquisition (threads not acquiring in FIFO order)
- * - Lock timeout (tryLock with timeout expiring)
- * - Lock not released in finally block
+ * Detects ReentrantLock misuse patterns.
+ *
+ * <p><strong>What it reports:</strong> a {@code tryLock} that timed out
+ * ({@link #recordLockTimeout}) and a thread that waited past the starvation threshold
+ * ({@link #recordStarvation}). Those are the two things {@link ReentrantLockReport#hasIssues()}
+ * gates on.
+ *
+ * <p><strong>What it records but does not report:</strong> acquire and release counts. They are
+ * context in the report, not a finding, because an unbalanced pair is as likely to mean the two
+ * halves were instrumented in different places as it is to mean a hold was leaked.
+ * {@link LockLeakDetector} is the detector for that question, and since issue #368 this one
+ * forwards its registrations and records there whenever both are enabled, so a caller who
+ * instruments only these methods still gets the leak reported rather than silence. See
+ * {@link #deferLeakReportingTo}.
  */
 public class ReentrantLockDetector {
 
@@ -24,12 +33,56 @@ public class ReentrantLockDetector {
     private final Set<String> starvationThreads = ConcurrentHashMap.newKeySet();
 
     /**
+     * Where to send acquire and release records, or {@code null} to keep them as context only.
+     *
+     * <p>{@link ReentrantLockReport#hasIssues()} gates on timeouts and starvation. The acquire and
+     * release counts are recorded and printed but never trip it, which is right: this detector has
+     * no way to tell an unbalanced pair caused by a leak from one caused by instrumentation that
+     * records the two halves in different places. {@link LockLeakDetector} is the detector for
+     * that question - it reports both the imbalance and a lock still held when analysis runs.
+     *
+     * <p>What was wrong was the silence. The method names here invite a caller to record acquire
+     * and release and expect a leak to be reported, and nothing said otherwise; a leaked hold went
+     * unreported unless they had also instrumented a second detector's separate API. So the
+     * registry hands this one the peer when both are enabled and every registration and record is
+     * forwarded, which means the finding comes out under the name that owns it whichever API was
+     * instrumented. See issue #368, and #361 for the same arrangement between the two read-write
+     * lock detectors.
+     */
+    private volatile @Nullable LockLeakDetector leakReporter;
+
+    /**
+     * Sends acquire and release records to {@code peer}, which is the detector that reports leaks.
+     *
+     * <p>Called by {@code DetectorRegistry} when both detectors are enabled, which {@code
+     * detectAll} makes the default. With no peer set this detector's own behaviour is unchanged.
+     *
+     * @param peer the detector that will report lock leaks, or {@code null} to forward nothing
+     */
+    public void deferLeakReportingTo(@Nullable LockLeakDetector peer) {
+        this.leakReporter = peer;
+        if (peer != null) {
+            lockRegistry.forEach((lock, info) -> peer.registerLock(lock, info.name));
+        }
+    }
+
+    /** {@return the registered name of {@code lock}, or a stable fallback} */
+    private String nameOf(ReentrantLock lock) {
+        LockInfo info = lockRegistry.get(lock);
+        return info != null ? info.name : "ReentrantLock@" + System.identityHashCode(lock);
+    }
+
+    /**
      * Register a ReentrantLock for monitoring.
      *
      * @param lock the lock being recorded, tracked by identity rather than equality
      * @param name a label identifying the lock in the report
      */
     public void registerLock(ReentrantLock lock, String name) {
+        LockLeakDetector peer = leakReporter;
+        if (peer != null) {
+            peer.registerLock(lock, name);
+        }
         // First registration wins: re-registering a subject must not discard what has
         // been observed about it. An @AsyncTest body runs once per thread, so a consumer
         // registering inside it registers once per worker.
@@ -43,6 +96,10 @@ public class ReentrantLockDetector {
      * @param threadName a label identifying the thread in the report
      */
     public void recordLockAcquired(ReentrantLock lock, String threadName) {
+        LockLeakDetector peer = leakReporter;
+        if (peer != null) {
+            peer.recordLockAcquired(lock, nameOf(lock));
+        }
         LockInfo info = lockRegistry.get(lock);
         if (info != null) {
             info.recordAcquire(threadName);
@@ -56,6 +113,10 @@ public class ReentrantLockDetector {
      * @param threadName a label identifying the thread in the report
      */
     public void recordLockReleased(ReentrantLock lock, String threadName) {
+        LockLeakDetector peer = leakReporter;
+        if (peer != null) {
+            peer.recordLockReleased(lock, nameOf(lock));
+        }
         LockInfo info = lockRegistry.get(lock);
         if (info != null) {
             info.recordRelease(threadName);

@@ -535,6 +535,24 @@ final class DetectorRegistry {
         if (lockDowngradeDetector != null && lockUpgradeDeadlockDetector != null) {
             lockDowngradeDetector.deferUpgradeReportingTo(lockUpgradeDeadlockDetector);
         }
+
+        // findDeadlockedThreads() reports platform threads, so on the default runner the workers
+        // colliding on the code under test are exactly the ones it cannot put in a cycle, and a
+        // textbook circular wait came back clean. The JVM's own JSON thread dump does carry the
+        // wait-for graph on JDKs whose dump names monitors, so the detector reads it - but only
+        // when there is something to find there, because it costs a thread dump. See issue #367.
+        if (deadlockDetector != null && cfg.useVirtualThreads) {
+            deadlockDetector.enableVirtualThreadScan();
+        }
+
+        // A leaked hold is LockLeakDetector's finding, and ReentrantLockDetector gates on
+        // timeouts and starvation only. Its method names invite a caller to record acquire and
+        // release and expect a leak to be reported, so a caller who instrumented that API and
+        // nothing else got silence. Forwarding sends the finding to the detector that owns it,
+        // the same arrangement the two read-write lock detectors use. See issue #368.
+        if (reentrantLockDetector != null && lockLeakDetector != null) {
+            reentrantLockDetector.deferLeakReportingTo(lockLeakDetector);
+        }
         tryLockMisuseDetector            = cfg.detectTryLockMisuse                 ? new TryLockMisuseDetector()            : null;
         cfBlockingCallbackDetector       = cfg.detectCFBlockingCallback            ? new CompletableFutureBlockingCallbackDetector() : null;
         // ---- Phase 16: JDK 25/26 preview-era concurrency detectors ----

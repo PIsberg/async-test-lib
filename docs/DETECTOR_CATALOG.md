@@ -216,7 +216,7 @@ These detectors run automatically on every `@AsyncTest` without configuration.
 
 ### 1. Deadlock Detector
 * **Severity**: `CRITICAL`
-* **Description**: Detects circular dependencies between threads waiting on monitors or reentrant locks.
+* **Description**: Detects circular dependencies between threads waiting on monitors or reentrant locks. Two sources, because one is not enough: `ThreadMXBean.findDeadlockedThreads()` covers platform threads, and the JVM's own JSON thread dump covers virtual ones, which the JMX query never reports and which are what `@AsyncTest` runs its workers on by default. The second source needs a JDK whose dump names the monitors each thread holds and is blocked on - measured present on 26, absent on 21 and 24. Where it is absent a clean report means the question could not be asked, and the runner says so at INFO (`runner.detector.inert`); `useVirtualThreads = false` gets the finding on any JDK. Monitors only: a `ReentrantLock` deadlock parks rather than blocks, and the dump names the blocker but not its owner.
 * **Buggy Code**:
   ```java
   // Thread A
