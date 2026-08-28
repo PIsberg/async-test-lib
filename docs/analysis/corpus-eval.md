@@ -643,6 +643,45 @@ touched only by the thread that created it, stayed silent.
 This one is the counterpart to the check-then-act pair in a different way. There the class was
 thread-safe and the *sequence* was wrong; here the class is thread-safe and the *sharing* is.
 
+### How far this lane can go, and where it stops
+
+"Ten of 146" invites the reading that 136 rows are waiting to be written. They are not, and the
+ceiling is worth stating so nobody spends a week discovering it one detector at a time.
+
+A recording row needs a third-party subject the detector can actually accept. Classifying every
+detector's `record*`/`register*` parameter types, and any `instanceof` gate on the record path:
+
+| | Detectors | What it means for this lane |
+|---|---:|---|
+| Broad-typed (`Object`, `Map`, `Collection`), no JDK gate | 93 | a third-party subject is possible |
+| Typed to a JDK *interface* (`ExecutorService`, `Future`, `Checksum`) | 10 | a third-party *implementation* is possible |
+| Typed to a JDK concrete class, or `instanceof`-gated to one | 34 | **no third-party subject exists to write** |
+| No `record*` API at all | 12 | agent-fed or zero-config; not this lane's business |
+
+So the reachable set is around 103, not 146. The 34 are not a backlog. `WeakHashMapSharedDetector`
+ends its record path with `else return; // not our concern` after testing for `WeakHashMap` and
+`IdentityHashMap`; `SimpleDateFormatDetector`'s API is typed to `SimpleDateFormat`. For those, a
+third-party row would be silent because of the type system rather than because of the model, and a
+negative that the compiler guarantees measures nothing.
+
+That distinction rejected three candidates while the ninth and tenth rows were being written, and
+each rejection is worth more than the row would have been:
+
+- **netty `ByteBuf`** for `SharedByteBufferDetector`. 2508 lines of javadoc and not one mention of
+  thread safety, so there is no documented contract to cite. It is also why the existing netty row
+  cites `ByteBufAllocator` instead.
+- **commons-lang3 `FastDateFormat`** for `SimpleDateFormatDetector`. The citation is perfect -
+  *"a fast and thread-safe version of `SimpleDateFormat`"*, and *"`SimpleDateFormat` is not
+  thread-safe in any JDK version"* - and the row cannot be written, because the detector's
+  parameter type will not accept it.
+- **commons-collections4 `ReferenceMap`** for `WeakHashMapSharedDetector`, for the `instanceof`
+  gate above.
+
+The binding constraint is not the detector count. It is finding a library class whose own javadoc
+states a contract that exercises the detector's model, and the eight corpus libraries only contain
+so many. Rows should keep being added while that holds and stop when it stops, rather than being
+padded out to a number.
+
 
 ## Reproducing it
 
