@@ -47,6 +47,8 @@ import se.deversity.vibetags.annotations.AIContract;
  * <p>Sharing is decided by the detector, not by this class. A hook fires on every call, and the
  * detector reports only when it has seen more than one thread touch the same instance, so a
  * confined formatter used a thousand times costs a map lookup and produces nothing.
+ *
+ * @since 1.10.0
  */
 @AIContract(reason = "Called from bytecode the agent rewrites: the method names and erased signatures here are matched by CollectionAccessWeaver.SHARED_INSTANCE_ENTRIES and cannot change independently of it. Every hook must perform the original operation and propagate its exceptions unchanged, and must record before delegating only where the original cannot throw first - the detector's question is 'did two threads touch this instance', which a call that threw still answers. The receiver types are deliberately concrete and free of thread-safe subclasses: adding one that has a safe subclass, Random being the standing example with ThreadLocalRandom, turns every substituted call site into a potential false positive on correct code.")
 public final class AgentSharedInstanceHooks {

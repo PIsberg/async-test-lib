@@ -109,7 +109,7 @@ public class ThreadLocalMonitor {
      * every round; a caller that never calls it measures one round, which is what the manual
      * API did before.
      *
-     * @since 1.9.9
+     * @since 1.10.0
      */
     public void markInvocationStart() {
         for (ThreadLocalState state : threadLocals.values()) {

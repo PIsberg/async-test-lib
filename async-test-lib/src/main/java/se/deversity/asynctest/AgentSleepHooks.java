@@ -25,6 +25,8 @@ import se.deversity.vibetags.annotations.AIContract;
  * <p>A sleep with no lock held is not the bug and records nothing. Rate limiting, back-off and
  * polling are all ordinary uses of {@code Thread.sleep}, and reporting them would make the finding
  * worthless.
+ *
+ * @since 1.10.0
  */
 @AIContract(reason = "Called from bytecode the agent rewrites, through the static substitution path: the method name and erased signature here are matched by CollectionAccessWeaver.STATIC_ENTRIES and cannot change independently of it. The guard is the point - recording only when HeldLocks.topHeld() returns a lock is what separates the bug from rate limiting, back-off and polling, which are ordinary uses of Thread.sleep and vastly more common. Record before sleeping, not after: a sleep interrupted mid-way still held the lock for as long as it lasted, and the finding is about the holding rather than the completing. The hook must perform the original sleep and propagate InterruptedException unchanged. It must pass the monitor to recordSleep rather than calling the single-argument overload: that one resolves the held monitors through ThreadMXBean, which does not report virtual threads, so on the runner's default workers it answers none and the detector never fires.")
 public final class AgentSleepHooks {

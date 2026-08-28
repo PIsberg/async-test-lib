@@ -7,41 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **`SleepInLockDetector` was inert in every real run, and nothing said so.** Every `recordSleep`
-  returns early on a `monitoring` flag that defaults to `false`, and the only caller of
-  `startMonitoring()` anywhere was the detector's own unit test. `DetectorRegistry` constructed it,
-  `ifIssue` wired its report, `detectSleepInLock` defaulted to `true` - and it recorded nothing,
-  ever. A clean report meant only that nobody had asked. The registry now starts it.
-
-- **`docs/DETECTOR_CATALOG.md` said "the sixteen above" over a list of seventeen.** The heading and
-  the list were updated when `SleepInLockDetector` joined; the numeral in the prose below them was
-  not, and no gate reads it - `DetectorFeedCoverageTest` checks the heading and the membership.
-  It now reads eighteen, with the entry this release adds.
-
-- **The demo GIF workflow had failed on every run since branch protection went on, and two faults
-  hid the fact.** `demo.yml` re-recorded the README demo and pushed the result straight to `main`,
-  which branch protection rejects outright:
-
-  ```
-  remote: error: GH006: Protected branch update failed for refs/heads/main.
-  remote: - Changes must be made through a pull request.
-  ```
-
-  That push could not have succeeded on any run, and its retry loop could not have rescued it: the
-  step that stamps a version into `tools/demo/pom.xml` leaves the tree dirty, so the rebase died on
-  `cannot rebase: You have unstaged changes`. The workflow now commits to its own branch and opens
-  a pull request, and reverts the version stamp first.
-
-  The second fault is why nobody noticed the first. The same workflow filtered on `paths: src/**`,
-  and there has been no top-level `src/` since this repository became a reactor, so a library
-  change never re-recorded the demo the library is the subject of. It now watches
-  `async-test-lib/src/main/**`.
-
-  Neither is visible from the pipeline. A push to a protected branch fails *after* the merge, so no
-  pull request goes red for it, and a dead path filter produces no run at all - which looks exactly
-  like nothing to do. `WorkflowPushTargetAndPathsTest` now fails on either.
+## [1.10.0] - 2026-08-28
 
 ### Added
 
@@ -239,7 +205,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still tracked separately. Upgrade findings also collapse to one line per lock with a
   count, the way #351 required of the common-pool detector (#355).
 
+- **The corpus recording lane gives seven detectors a denominator instead of four.**
+  `SharedMessageDigestDetector`, `SharedStatefulCryptoDetector` and `ResourceLeakDetector` each
+  gain a `MUST_FIRE` / `MUST_STAY_SILENT` pair over unmodified JDK and Netty subjects. The three
+  vary the axis the first four did not: the digest pair differs by a lock (one instance, six
+  threads, one row holding the digest's own monitor), the crypto pair by confinement (one shared
+  `Mac` against one per thread), and the resource pair by the release call itself (a Netty
+  `ByteBuf` acquired and released against the identical lifecycle without the release). Each
+  silent row was driven red first, by removing exactly the thing it is about.
+  `ConcurrentMapComputeRecursionDetector` was a named candidate and is deliberately absent: a
+  nested same-key `computeIfAbsent` throws before the inner mapping function runs, so the
+  recording it needs cannot be observed, only constructed (#338, follow-up in #341).
+
+### Changed
+
+- **`ConcurrentMapComputeRecursionDetector` now reports a mapping function that re-enters its
+  own map under any key, not only the key it is computing.** The rule was keyed on map, key and
+  thread together, and `ConcurrentHashMap`'s contract is not key-scoped: "the mapping function
+  must not modify this map". The cost was visible in this repository.
+  `examples/40-concurrent-map-recursion` is the detector's own example, its bug is a
+  different-key re-entry, and its detection test is `@Disabled`, so nothing had noticed that
+  removing `@Disabled` would not produce the finding its README promised. Measured over 200
+  fresh maps, that shape ran and returned 198 times and threw twice, on the runs where both keys
+  landed in the same bin, so the wider shape is also the quieter one. Nesting into a *different*
+  map is still not reported, and has a corpus row and a unit test holding that boundary: a
+  mapping function that fills some other cache is ordinary layered-cache code. The two findings
+  are listed separately in the report because their consequences differ (#343).
+
+- **Example 40 now demonstrates what it claims.** Its test recorded around `getNeighbors("A")`
+  rather than inside the mapping function, which is one balanced start and end per body
+  execution and no nesting at all, so it would have reported nothing under either rule.
+  `GraphService` exposes two no-op `Consumer<String>` hooks, the test wires them to the
+  detector, and the test sets `failOn = FailOn.HIGH, minTrust = TrustTier.PROMPT` because
+  `failOn` defaults to `NONE` and this detector is `PROMPT` tier. With `@Disabled` removed the
+  run now fails with the report naming both keys, which is what the README always said it
+  would (#343).
+
+- **A static reference store now carries the value it published, and a static single-check cache
+  can earn the settle excuse.** The weaver reached the stored value for `PUTFIELD` only; a
+  `PUTSTATIC` of a reference type reported "not known", because a static store has just the value
+  on the stack with the class constant pushed above it, and reaching it needs
+  `DUP; LDC class; SWAP` rather than `DUP2`. Two things followed. The narrowing #326 added never
+  reached `if (INSTANCE == null) INSTANCE = create()` at class scope, which is the same
+  double-submit defect one scope up. And the per-instance excuses were gated on a non-zero
+  receiver identity, which a static field never has, so the settle rule was not consulted for one
+  either: every raced static field reported, whatever it published. `AtomicityValidator` now lets
+  the identity-0 group reach those excuses when the group carries stored-value evidence, which
+  only a weaver-observed static reference store can produce. A caller that records nothing about
+  the value, an older agent, a primitive store and every pre-agent overload all report 0 and keep
+  the answer they had (#337).
+
 ### Fixed
+
+- **`SleepInLockDetector` was inert in every real run, and nothing said so.** Every `recordSleep`
+  returns early on a `monitoring` flag that defaults to `false`, and the only caller of
+  `startMonitoring()` anywhere was the detector's own unit test. `DetectorRegistry` constructed it,
+  `ifIssue` wired its report, `detectSleepInLock` defaulted to `true` - and it recorded nothing,
+  ever. A clean report meant only that nobody had asked. The registry now starts it.
+
+- **`docs/DETECTOR_CATALOG.md` said "the sixteen above" over a list of seventeen.** The heading and
+  the list were updated when `SleepInLockDetector` joined; the numeral in the prose below them was
+  not, and no gate reads it - `DetectorFeedCoverageTest` checks the heading and the membership.
+  It now reads eighteen, with the entry this release adds.
+
+- **The demo GIF workflow had failed on every run since branch protection went on, and two faults
+  hid the fact.** `demo.yml` re-recorded the README demo and pushed the result straight to `main`,
+  which branch protection rejects outright:
+
+  ```
+  remote: error: GH006: Protected branch update failed for refs/heads/main.
+  remote: - Changes must be made through a pull request.
+  ```
+
+  That push could not have succeeded on any run, and its retry loop could not have rescued it: the
+  step that stamps a version into `tools/demo/pom.xml` leaves the tree dirty, so the rebase died on
+  `cannot rebase: You have unstaged changes`. The workflow now commits to its own branch and opens
+  a pull request, and reverts the version stamp first.
+
+  The second fault is why nobody noticed the first. The same workflow filtered on `paths: src/**`,
+  and there has been no top-level `src/` since this repository became a reactor, so a library
+  change never re-recorded the demo the library is the subject of. It now watches
+  `async-test-lib/src/main/**`.
+
+  Neither is visible from the pipeline. A push to a protected branch fails *after* the merge, so no
+  pull request goes red for it, and a dead path filter produces no run at all - which looks exactly
+  like nothing to do. `WorkflowPushTargetAndPathsTest` now fails on either.
 
 - **The 2.0.0 roadmap said `AsyncTestConfig`'s boolean surface was deprecated. It never was.**
   Train 3 lists "remove the deprecated public boolean fields/builder setters from
@@ -587,33 +637,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   27 demonstrations still produce no finding at all in three runs and are tracked in #346; the
   cause differs per example and none of them is fixed by `failOn`.
 
-
-### Changed
-
-- **`ConcurrentMapComputeRecursionDetector` now reports a mapping function that re-enters its
-  own map under any key, not only the key it is computing.** The rule was keyed on map, key and
-  thread together, and `ConcurrentHashMap`'s contract is not key-scoped: "the mapping function
-  must not modify this map". The cost was visible in this repository.
-  `examples/40-concurrent-map-recursion` is the detector's own example, its bug is a
-  different-key re-entry, and its detection test is `@Disabled`, so nothing had noticed that
-  removing `@Disabled` would not produce the finding its README promised. Measured over 200
-  fresh maps, that shape ran and returned 198 times and threw twice, on the runs where both keys
-  landed in the same bin, so the wider shape is also the quieter one. Nesting into a *different*
-  map is still not reported, and has a corpus row and a unit test holding that boundary: a
-  mapping function that fills some other cache is ordinary layered-cache code. The two findings
-  are listed separately in the report because their consequences differ (#343).
-
-- **Example 40 now demonstrates what it claims.** Its test recorded around `getNeighbors("A")`
-  rather than inside the mapping function, which is one balanced start and end per body
-  execution and no nesting at all, so it would have reported nothing under either rule.
-  `GraphService` exposes two no-op `Consumer<String>` hooks, the test wires them to the
-  detector, and the test sets `failOn = FailOn.HIGH, minTrust = TrustTier.PROMPT` because
-  `failOn` defaults to `NONE` and this detector is `PROMPT` tier. With `@Disabled` removed the
-  run now fails with the report naming both keys, which is what the README always said it
-  would (#343).
-
-### Fixed
-
 - **`ConcurrentMapComputeRecursionDetector` described a failure mode that no longer happens, and
   now describes the one that does.** Its report claimed the consequence of a recursive
   `compute*` was an infinite loop (Java 8) or a thread deadlocking against its own bin lock.
@@ -638,38 +661,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-entry is on a *different* key, which the detector does not report and which, measured over
   200 fresh maps, ran and returned 198 times and threw twice. The prose says so, and the
   detection gap is tracked in #343.
-
-### Added
-
-- **The corpus recording lane gives seven detectors a denominator instead of four.**
-  `SharedMessageDigestDetector`, `SharedStatefulCryptoDetector` and `ResourceLeakDetector` each
-  gain a `MUST_FIRE` / `MUST_STAY_SILENT` pair over unmodified JDK and Netty subjects. The three
-  vary the axis the first four did not: the digest pair differs by a lock (one instance, six
-  threads, one row holding the digest's own monitor), the crypto pair by confinement (one shared
-  `Mac` against one per thread), and the resource pair by the release call itself (a Netty
-  `ByteBuf` acquired and released against the identical lifecycle without the release). Each
-  silent row was driven red first, by removing exactly the thing it is about.
-  `ConcurrentMapComputeRecursionDetector` was a named candidate and is deliberately absent: a
-  nested same-key `computeIfAbsent` throws before the inner mapping function runs, so the
-  recording it needs cannot be observed, only constructed (#338, follow-up in #341).
-
-### Changed
-
-- **A static reference store now carries the value it published, and a static single-check cache
-  can earn the settle excuse.** The weaver reached the stored value for `PUTFIELD` only; a
-  `PUTSTATIC` of a reference type reported "not known", because a static store has just the value
-  on the stack with the class constant pushed above it, and reaching it needs
-  `DUP; LDC class; SWAP` rather than `DUP2`. Two things followed. The narrowing #326 added never
-  reached `if (INSTANCE == null) INSTANCE = create()` at class scope, which is the same
-  double-submit defect one scope up. And the per-instance excuses were gated on a non-zero
-  receiver identity, which a static field never has, so the settle rule was not consulted for one
-  either: every raced static field reported, whatever it published. `AtomicityValidator` now lets
-  the identity-0 group reach those excuses when the group carries stored-value evidence, which
-  only a weaver-observed static reference store can produce. A caller that records nothing about
-  the value, an older agent, a primitive store and every pre-agent overload all report 0 and keep
-  the answer they had (#337).
-
-### Fixed
 
 - **CI Maven invocations retry a transfer whose bytes already went out.** A build-extension
   resolution failed on one examples shard while three others succeeded in the same run against

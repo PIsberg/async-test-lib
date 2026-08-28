@@ -34,6 +34,8 @@ import se.deversity.vibetags.annotations.AIContract;
  * <p>Acquisition and release follow the rule {@link AgentLockHooks} sets - record after acquiring
  * and before releasing, so the recorded interval is contained by the real one. A call that throws
  * records nothing, because nothing happened.
+ *
+ * @since 1.10.0
  */
 @AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.CONCURRENCY_ENTRIES and cannot change independently of it. Every hook must perform the original operation and propagate its exceptions unchanged, InterruptedException included - these types throw it as a matter of course and swallowing one would change the interruption semantics of the code under test. Record after acquiring and before releasing, the containment rule AgentLockHooks documents, and record nothing when the underlying call throws. offer, poll and the timed await must record their actual return value: the boolean a caller discards is the whole bug these detectors report.")
 public final class AgentConcurrencyUtilHooks {
