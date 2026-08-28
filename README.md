@@ -34,7 +34,7 @@
 - **146 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types and more, all on by default. See [Detectors](#detectors) for what feeds them.
 - **JUnit native, 5 and 6** — a plain `@TestTemplate`: no JVM flags, no required configuration, and it works from Kotlin, Groovy, Scala and Clojure. Jupiter 5.9.3 through 6.1.2, verified per release ([compatibility table](docs/BUILDING.md#junit-compatibility), [language notes](docs/JVM_LANGUAGES.md)).
 - **Every finding says how far to trust it** — each detector carries a trust tier, so `failOn` can gate a merge on the measured end of the scale while everything else is still reported ([the tiers](docs/DETECTOR_CATALOG.md#trust-tiers), [Evidence](#evidence-what-has-been-measured-and-on-whose-code)).
-- **Optional agent** — `async-test-agent` weaves field accesses with Byte Buddy so a bare `counter++` inside a method becomes observable. Not needed for default use, and the core artifact does not depend on Byte Buddy ([docs/AGENT.md](docs/AGENT.md)).
+- **Optional agent** — `async-test-agent` rewrites field accesses, collection and lock calls, shared JDK objects, coordination primitives and `Thread.sleep` with Byte Buddy, so **20 of them fire on code you did not modify** instead of 3. Not needed for default use, and the core artifact does not depend on Byte Buddy ([docs/AGENT.md](docs/AGENT.md)).
 - **CI-ready out of the box** — JUnit XML, machine-readable JSON, SARIF, or plain `AssertionError` fail-gates, straight into GitHub Actions, Jenkins and GitLab CI.
 
 <div align="center">
@@ -288,9 +288,11 @@ After the run, the **detector registry** analyses what was observed and reports 
 @AsyncTest(detectAll = false, detectDeadlocks = true, detectRaceConditions = true)
 ```
 
-**What feeds them.** Deadlock detection needs no configuration at all: it reads the JVM's own
-thread state. Most of the rest observe either what the test body records explicitly through
-`AsyncTestContext`, or what the optional [agent](docs/AGENT.md) weaves for you. When a detector is
+**What feeds them.** Three read the JVM and the harness directly and need no configuration at
+all. With the agent attached that becomes 20, because the woven streams carry what those
+detectors need without a line of instrumentation. The remaining 126 observe what the test body
+records explicitly through `AsyncTestContext`, and the catalog says which of three reasons
+keeps each of them there. When a detector is
 enabled but nothing can feed it, the runner says so once per JVM at INFO rather than letting an
 empty report read as a clean bill of health; [docs/AGENT.md](docs/AGENT.md#when-the-runner-says-a-detector-cannot-see)
 lists those notices. Which detectors fall in which group is tabulated in

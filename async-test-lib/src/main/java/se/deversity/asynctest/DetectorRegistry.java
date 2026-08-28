@@ -425,6 +425,13 @@ final class DetectorRegistry {
         interruptMonitor           = cfg.detectInterruptMishandling     ? new InterruptMonitor()            : null;
         threadLeakDetector         = cfg.detectThreadLeaks              ? new ThreadLeakDetector()         : null;
         sleepInLockDetector        = cfg.detectSleepInLock              ? new SleepInLockDetector()        : null;
+        // Without this the detector is inert: every recordSleep returns early on a monitoring
+        // flag that defaults to false, and nothing in main code had ever turned it on - only its
+        // own unit test did. Constructing it and never starting it meant detectSleepInLock=true
+        // produced a clean report on code that sleeps under a lock all day.
+        if (sleepInLockDetector != null) {
+            sleepInLockDetector.startMonitoring();
+        }
         unboundedQueueDetector     = cfg.detectUnboundedQueue           ? new UnboundedQueueDetector()     : null;
         threadStarvationDetector   = cfg.detectThreadStarvation         ? new ThreadStarvationDetector()   : null;
         calendarDetector           = cfg.detectCalendarIssues           ? new CalendarDetector()           : null;

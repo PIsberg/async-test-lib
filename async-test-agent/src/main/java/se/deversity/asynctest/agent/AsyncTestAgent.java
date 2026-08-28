@@ -445,12 +445,24 @@ public final class AsyncTestAgent {
             ClassLoader loader = AsyncTestAgent.class.getClassLoader();
             Class<?> hooks = Class.forName(CollectionAccessWeaver.hooksClassName(), false, loader);
             Class<?> lockHooks = Class.forName(CollectionAccessWeaver.lockHooksClassName(), false, loader);
+            Class<?> sharedHooks =
+                    Class.forName(CollectionAccessWeaver.sharedHooksClassName(), false, loader);
             // Lock weaving rides along with collection weaving rather than being its own option:
             // recording an access without seeing the ReentrantLock that covered it reports correct
             // code, which is the same reason monitor weaving is not separately switchable.
+            //
+            // Shared-instance weaving rides along for the opposite reason: it cannot report
+            // correct code. Its detectors fire only on an instance more than one thread touched,
+            // and the three types in that table have no thread-safe subclass a call site could be
+            // holding, so there is nothing for a user to switch off.
             List<AsmVisitorWrapper> all =
                     new java.util.ArrayList<>(CollectionAccessWeaver.substitutions(hooks));
             all.addAll(CollectionAccessWeaver.lockSubstitutions(lockHooks));
+            all.addAll(CollectionAccessWeaver.sharedInstanceSubstitutions(sharedHooks));
+            all.addAll(CollectionAccessWeaver.concurrencySubstitutions(
+                    Class.forName(CollectionAccessWeaver.concurrencyHooksClassName(), false, loader)));
+            all.addAll(CollectionAccessWeaver.staticSubstitutions(
+                    Class.forName(CollectionAccessWeaver.staticHooksClassName(), false, loader)));
             return all;
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException(

@@ -110,9 +110,23 @@ class DetectorFeedCoverageTest {
         // proves the delivery is still there, which is the half reflection cannot see.
         String lockHooks = read(repoRoot().resolve(Path.of("async-test-lib", "src", "main",
                 "java", "se", "deversity", "asynctest", "AgentLockHooks.java")));
-        Set<DetectorType> lockFed = EnumSet.noneOf(DetectorType.class);
+        Set<DetectorType> wovenFed = EnumSet.noneOf(DetectorType.class);
+        String sharedHooks = read(repoRoot().resolve(Path.of("async-test-lib", "src", "main",
+                "java", "se", "deversity", "asynctest", "AgentSharedInstanceHooks.java")));
+        String concurrencyHooks = read(repoRoot().resolve(Path.of("async-test-lib", "src",
+                "main", "java", "se", "deversity", "asynctest",
+                "AgentConcurrencyUtilHooks.java")));
+        String sleepHooks = read(repoRoot().resolve(Path.of("async-test-lib", "src", "main",
+                "java", "se", "deversity", "asynctest", "AgentSleepHooks.java")));
+        String wovenHooks = lockHooks + sharedHooks + concurrencyHooks + sleepHooks;
         for (String accessor : List.of("currentLockOrderValidator", "currentLockLeakDetector",
-                "currentTryLockMisuseDetector")) {
+                "currentTryLockMisuseDetector", "currentSimpleDateFormatDetector",
+                "currentSharedMatcherDetector", "currentSharedMessageDigestDetector",
+                "currentCalendarDetector", "currentStringBuilderDetector",
+                "currentSharedDecimalFormatDetector", "currentSharedFormatterDetector",
+                "currentSemaphoreMisuseDetector", "currentCountDownLatchDetector",
+                "currentLatchMisuseDetector", "currentBlockingQueueDetector",
+                "currentSleepInLockDetector")) {
             Class<?> fed;
             try {
                 fed = AsyncTestContext.class.getDeclaredMethod(accessor).getReturnType();
@@ -121,19 +135,19 @@ class DetectorFeedCoverageTest {
                         + "AsyncTestContext." + accessor + "(); if that accessor moved, point "
                         + "this gate at the new wiring rather than deleting the check", e);
             }
-            assertTrue(lockHooks.contains(accessor + "()"),
+            assertTrue(wovenHooks.contains(accessor + "()"),
                     "AsyncTestContext." + accessor + "() exists but AgentLockHooks no longer "
-                            + "calls it, so the woven lock stream stops at HeldLocks again and "
+                            + "calls it, so that woven stream no longer reaches a detector and "
                             + fed.getSimpleName() + " is only reachable by hand. Either restore "
                             + "the delivery or move the detector back to RECORDING in "
                             + "DetectorFeeds, so the table keeps matching what the agent does.");
-            lockFed.add(typeOf(fed.getSimpleName()));
+            wovenFed.add(typeOf(fed.getSimpleName()));
         }
 
         Set<DetectorType> expected = EnumSet.noneOf(DetectorType.class);
         expected.add(typeOf(AtomicityValidator.class.getSimpleName()));
         expected.add(typeOf(SharedCollectionDetector.class.getSimpleName()));
-        expected.addAll(lockFed);
+        expected.addAll(wovenFed);
         assertEquals(expected, DetectorFeeds.fedBy(DetectorFeed.AGENT),
                 "AGENT rows must be exactly the detectors the woven streams reach");
     }
@@ -147,6 +161,35 @@ class DetectorFeedCoverageTest {
         assertHeadingMatches(catalog, "Recording-only", DetectorFeed.RECORDING);
     }
 
+    @Test
+    @DisplayName("the README's count of detectors that need no instrumentation matches the table")
+    void readmeCountMatchesTheTable() {
+        int withoutInstrumentation = DetectorFeeds.fedBy(DetectorFeed.AGENT).size()
+                + DetectorFeeds.fedBy(DetectorFeed.ZERO_CONFIG).size();
+        int zeroConfig = DetectorFeeds.fedBy(DetectorFeed.ZERO_CONFIG).size();
+        int recording = DetectorFeeds.fedBy(DetectorFeed.RECORDING).size();
+        String readme = read(repoRoot().resolve("README.md"));
+
+        // The README is where a reader decides whether the agent is worth attaching, so these
+        // three numbers are the ones that sell it. They drifted from the table the moment a
+        // detector changed feed, and nothing said so: the catalog's own counts are gated above,
+        // the README's were prose.
+        assertTrue(readme.contains("**" + withoutInstrumentation
+                        + " of them fire on code you did not modify**"),
+                "README.md must say \"**" + withoutInstrumentation + " of them fire on code "
+                        + "you did not modify**\" - that is AGENT plus ZERO_CONFIG in "
+                        + "DetectorFeeds, and it is the number a reader uses to decide whether "
+                        + "to attach the agent at all. Phrase it as \"N of them\": a bare "
+                        + "\"N detectors\" in prose is read by DetectorCatalogCoverageTest "
+                        + "as a claim about the total, which is 146.");
+        assertTrue(readme.contains("instead of " + zeroConfig + "."),
+                "README.md must say the agent takes that count up from " + zeroConfig
+                        + ", the ZERO_CONFIG rows: without the comparison the first number "
+                        + "reads as the whole story.");
+        assertTrue(readme.contains("The remaining " + recording + " observe what the test body"),
+                "README.md must say " + recording + " detectors remain recording-only, matching "
+                        + "the RECORDING rows in DetectorFeeds.");
+    }
     private static void assertHeadingMatches(String catalog, String heading, DetectorFeed feed) {
         Matcher section = Pattern
                 .compile("### " + heading + " \\((\\d+)\\)\n(.*?)(?=\n#|\n---)", Pattern.DOTALL)

@@ -136,20 +136,31 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (5)
+### Agent-fed (17)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
 
-The three lock detectors joined on 2026-08-27. The agent had substituted every lock, unlock and
-tryLock call site since collection weaving shipped, and handed all of it to the lockset, which
-answers one question: was this access guarded. These three ask different questions of the same
-events, and were reachable only through hand-written recording calls, so attaching the agent and
-writing a plain test produced silence from them on code that was genuinely inverting its lock
-order. Two of them sit in the highest trust tier, the one whose findings mean the code is wrong.
+The three lock detectors and the three shared-instance detectors joined on 2026-08-27. The
+agent had substituted every lock, unlock and tryLock call site since collection weaving
+shipped, and handed all of it to the lockset, which answers one question: was this access
+guarded. The lock three ask different questions of the same events. The shared-instance three
+cover JDK types that keep mutable state, are documented as unsafe to share, and are routinely
+cached in a field because building one is expensive, which is how a confined object becomes a
+shared one. All six were reachable only through hand-written recording calls, so attaching the
+agent and writing a plain test produced silence from them.
+
+The coordination primitives joined last. Sharing is the point of a semaphore or a latch, so 
+what these report is protocol misuse rather than sharing: a permit that never came back, an 
+offer whose false return was discarded, a timed await that expired. They are plumbing, used 
+three layers down in the class under test, which is why nobody instruments them by hand and 
+why their detectors were unreachable in practice rather than merely inconvenient.
 
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
-`TryLockMisuseDetector`
+`TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
+`SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
+`SharedDecimalFormatDetector`, `SharedFormatterDetector`, `SemaphoreMisuseDetector`,
+`CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`, `SleepInLockDetector`
 
 ### Zero-config (3)
 
@@ -159,7 +170,31 @@ call:
 
 `DeadlockDetector`, `LivelockDetector`, `StaticInitDeadlockDetector`
 
-### Recording-only (138)
+### Why the rest are recording-only
+
+Agent-feeding a detector works when one JDK method call carries everything the detector needs. That
+is what the sixteen above have in common: a lock acquired, a formatter used, a permit taken. Three
+things stop the others, and each was checked against the code rather than assumed.
+
+**The detector needs a fact the substitution cannot supply.** `ExecutorShutdownDetector` reports an
+executor that was registered with it and then never shut down. Registration is the load-bearing
+half: a `submit` on an executor it has never seen records nothing, so feeding the agent's `submit`
+and `shutdown` calls alone would leave it silent rather than wrong. Registering creation means the
+`Executors` factory methods, which the static substitution path can now reach, so this one is a
+decision rather than a limit - see #387.
+
+**The call site is static.** This used to stop `SleepInLockDetector`, and no longer does: the
+substitution now has an `invokestatic` path, and `Thread.sleep` was its first user. `System.gc`,
+for `ExplicitGcDetector`, is a table entry away. What remains is that each static entry has to be
+worth its instruction, the same bar the virtual ones meet.
+
+**The input is not a call.** `VisibilityMonitor` needs field reads and writes, which is the field
+weaver's stream rather than a call site. `ThreadPoolMonitor` and the `CompletableFuture` family
+need a task's start and completion, and a substituted `submit` sees neither: the task runs later,
+somewhere else. `LazyInitRaceDetector` and `ThisEscapeDetector` describe a shape in the code rather
+than any particular method, and no substitution can see a shape.
+
+### Recording-only (126)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -167,19 +202,19 @@ recording is the feed:
 
 `VisibilityMonitor`, `FalseSharingDetector`, `WakeupDetector`, `ConstructorSafetyValidator`,
 `ABAProblemDetector`, `SynchronizerMonitor`, `ThreadPoolMonitor`,
-`MemoryOrderingMonitor`, `PipelineMonitor`, `ReadWriteLockMonitor`, `SemaphoreMisuseDetector`,
+`MemoryOrderingMonitor`, `PipelineMonitor`, `ReadWriteLockMonitor`,
 `CompletableFutureExceptionDetector`, `CompletableFutureCompletionLeakDetector`,
 `VirtualThreadPinningDetector`, `ThreadPoolDeadlockDetector`, `ConcurrentModificationDetector`,
-`SharedRandomDetector`, `BlockingQueueDetector`, `ConditionVariableDetector`,
-`SimpleDateFormatDetector`, `ParallelStreamDetector`, `ResourceLeakDetector`,
-`CountDownLatchDetector`, `CyclicBarrierDetector`, `ReentrantLockDetector`,
+`SharedRandomDetector`, `ConditionVariableDetector`,
+`ParallelStreamDetector`, `ResourceLeakDetector`,
+`CyclicBarrierDetector`, `ReentrantLockDetector`,
 `VolatileArrayDetector`, `DoubleCheckedLockingDetector`, `WaitTimeoutDetector`,
 `LockContentionDetector`, `SynchronizedNonFinalDetector`, `MissedSignalDetector`,
 `LazyInitRaceDetector`, `PhaserDetector`, `StampedLockDetector`, `ExchangerDetector`,
 `ScheduledExecutorDetector`, `ForkJoinPoolDetector`, `ThreadFactoryDetector`,
 `RaceConditionDetector`, `ThreadLocalMonitor`, `BusyWaitDetector`, `InterruptMonitor`,
-`ThreadLeakDetector`, `SleepInLockDetector`, `UnboundedQueueDetector`, `ThreadStarvationDetector`,
-`CalendarDetector`, `TimerDetector`, `CopyOnWriteCollectionDetector`, `StringBuilderDetector`,
+`ThreadLeakDetector`, `UnboundedQueueDetector`, `ThreadStarvationDetector`,
+`TimerDetector`, `CopyOnWriteCollectionDetector`,
 `StructuredConcurrencyMisuseDetector`, `VirtualThreadContextLeakDetector`,
 `ScopedValueMisuseDetector`, `VirtualThreadCpuBoundTaskDetector`,
 `VirtualThreadCarrierExhaustionDetector`, `HttpClientConcurrencyDetector`, `StreamClosingDetector`,
@@ -187,11 +222,11 @@ recording is the feed:
 `MutableMapKeyDetector`, `NestedMonitorLockoutDetector`, `LockDowngradeDetector`,
 `InheritableThreadLocalMisuseDetector`, `ThreadLocalContaminationDetector`,
 `AtomicNonAtomicUpdateDetector`, `SynchronizedCollectionIterationDetector`,
-`SharedFormatterDetector`, `ConcurrentMapComputeRecursionDetector`,
+`ConcurrentMapComputeRecursionDetector`,
 `SynchronizedOnLiteralDetector`, `PublicLockExposureDetector`, `ForkJoinTaskBlockingDetector`,
 `OptimisticReadValidationDetector`, `CompletableFutureCommonPoolBlockingDetector`,
-`SharedMatcherDetector`, `SharedDecimalFormatDetector`, `WeakReferenceRaceDetector`,
-`StatefulLambdaDetector`, `SharedMessageDigestDetector`, `InterruptSwallowingDetector`,
+`WeakReferenceRaceDetector`,
+`StatefulLambdaDetector`, `InterruptSwallowingDetector`,
 `MdcContextLeakDetector`, `SystemPropertyMutationDetector`, `FutureIgnoredDetector`,
 `ExplicitGcDetector`, `DeprecatedThreadApiDetector`, `SharedXmlParserDetector`,
 `BoxedPrimitiveLockDetector`, `SharedTimeZoneDetector`, `UncaughtExceptionHandlerDetector`,
@@ -205,7 +240,7 @@ recording is the feed:
 `SharedByteBufferDetector`, `SharedCharsetCoderDetector`, `SharedChecksumDetector`,
 `FileChannelPositionRaceDetector`, `SharedIteratorDetector`, `HighContentionAtomicDetector`,
 `SharedJsonMapperReconfigDetector`, `LazyConstantMisuseDetector`, `FinalFieldMutationDetector`,
-`SharedKdfDetector`, `LatchMisuseDetector`, `ExecutorDeadlockDetector`, `FutureBlockingDetector`,
+`SharedKdfDetector`, `ExecutorDeadlockDetector`, `FutureBlockingDetector`,
 `FlowPublisherConcurrencyDetector`, `ConfinedArenaThreadEscapeDetector`,
 `SharedMemorySegmentRaceDetector`, `VarHandleNonAtomicUpdateDetector`,
 `RecordMutableComponentLeakDetector`, `VirtualThreadPoolingDetector`,

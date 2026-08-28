@@ -59,7 +59,31 @@ public final class DetectorFeeds {
             // order. AgentLockHooks now delivers to each.
             DetectorType.LOCK_ORDER,
             DetectorType.LOCK_LEAKS,
-            DetectorType.TRY_LOCK_MISUSE);
+            DetectorType.TRY_LOCK_MISUSE,
+            // The shared-instance family. Each of these three JDK types keeps mutable state, is
+            // documented as unsafe to share, and is routinely cached in a field because building
+            // one is expensive - which is how a confined object becomes a shared one. The
+            // substitution sees the call site, which is the only place the instance and the
+            // calling thread are both in hand.
+            DetectorType.SIMPLE_DATE_FORMAT,
+            DetectorType.SHARED_MATCHER,
+            DetectorType.SHARED_MESSAGE_DIGEST,
+            DetectorType.CALENDAR,
+            DetectorType.STRING_BUILDER,
+            DetectorType.SHARED_DECIMAL_FORMAT,
+            DetectorType.SHARED_FORMATTER,
+            // The coordination primitives. Sharing is the point of these, so what the detectors
+            // report is protocol misuse - a permit that never came back, an offer whose false
+            // return was discarded. Nobody instruments a semaphore three layers down in the
+            // class under test, which is why these were unreachable in practice.
+            DetectorType.SEMAPHORE,
+            DetectorType.COUNTDOWN_LATCH,
+            DetectorType.LATCH_MISUSE,
+            DetectorType.BLOCKING_QUEUE,
+            // Thread.sleep is the agent's first static substitution. Whether a sleep is a bug
+            // depends entirely on whether a lock was held, which the lockset already knew and no
+            // stack trace records, so the two halves only had to be introduced.
+            DetectorType.SLEEP_IN_LOCK);
 
     /**
      * Fed by the JVM and the harness with no recording call.

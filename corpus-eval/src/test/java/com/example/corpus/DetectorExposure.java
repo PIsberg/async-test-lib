@@ -43,7 +43,14 @@ final class DetectorExposure {
     static boolean isExposed(DetectorType type, CorpusLane lane) {
         return switch (DetectorFeeds.feedOf(type)) {
             case ZERO_CONFIG -> true;
-            case AGENT -> lane == CorpusLane.AGENT_ON;
+            // Agent-fed means the woven streams can feed it with nothing instrumented, not that
+            // a hand-written record call is impossible. The recording lane deliberately makes
+            // those calls, and a detector that moves from RECORDING to AGENT keeps whichever
+            // recording subject it already had - so it stays exposed there too, or the subject
+            // records into a denominator this table says is zero.
+            case AGENT -> lane == CorpusLane.AGENT_ON
+                    || (lane == CorpusLane.RECORDING
+                            && Corpus.recordedDetectors().contains(type));
             // Exposure is what a lane actually feeds, not what it could feed in principle. The
             // recording lane records to a named handful, and the rest of the feed is as
             // unexposed there as it is in the other two.

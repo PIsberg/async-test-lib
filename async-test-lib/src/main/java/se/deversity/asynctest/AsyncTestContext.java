@@ -1689,6 +1689,86 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link SimpleDateFormatDetector} for the calling thread's test, or
+     * {@code null}}
+     *
+     * <p>Same null-returning contract as {@link #currentSharedCollectionDetector()}: the caller is
+     * {@link AgentSharedInstanceHooks}, running inside woven code that does not know a test is in
+     * progress.
+     */
+    static @Nullable SimpleDateFormatDetector currentSimpleDateFormatDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.simpleDateFormatDetector;
+    }
+
+    /** {@return the {@link SharedMatcherDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable SharedMatcherDetector currentSharedMatcherDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.sharedMatcherDetector;
+    }
+
+    /**
+     * {@return the {@link SharedMessageDigestDetector} for the calling thread's test, or
+     * {@code null}}
+     */
+    static @Nullable SharedMessageDigestDetector currentSharedMessageDigestDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.sharedMessageDigestDetector;
+    }
+    /** {@return the {@link CalendarDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable CalendarDetector currentCalendarDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.calendarDetector;
+    }
+
+    /** {@return the {@link StringBuilderDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable StringBuilderDetector currentStringBuilderDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.stringBuilderDetector;
+    }
+
+    /** {@return the {@link SharedDecimalFormatDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable SharedDecimalFormatDetector currentSharedDecimalFormatDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.sharedDecimalFormatDetector;
+    }
+
+    /** {@return the {@link SharedFormatterDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable SharedFormatterDetector currentSharedFormatterDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.sharedFormatterDetector;
+    }
+    /** {@return the {@link SemaphoreMisuseDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable SemaphoreMisuseDetector currentSemaphoreMisuseDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.semaphoreMisuseDetector;
+    }
+
+    /** {@return the {@link CountDownLatchDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable CountDownLatchDetector currentCountDownLatchDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.countDownLatchDetector;
+    }
+
+    /** {@return the {@link LatchMisuseDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable LatchMisuseDetector currentLatchMisuseDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.latchMisuseDetector;
+    }
+
+    /** {@return the {@link BlockingQueueDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable BlockingQueueDetector currentBlockingQueueDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.blockingQueueDetector;
+    }
+
+    /** {@return the {@link SleepInLockDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable SleepInLockDetector currentSleepInLockDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.sleepInLockDetector;
+    }
+
+    /**
      * Returns the {@link TimerDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectTimerIssues = false}
      * @deprecated use {@link #timerDetector()}

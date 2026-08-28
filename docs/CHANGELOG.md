@@ -7,7 +7,110 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`SleepInLockDetector` was inert in every real run, and nothing said so.** Every `recordSleep`
+  returns early on a `monitoring` flag that defaults to `false`, and the only caller of
+  `startMonitoring()` anywhere was the detector's own unit test. `DetectorRegistry` constructed it,
+  `ifIssue` wired its report, `detectSleepInLock` defaulted to `true` - and it recorded nothing,
+  ever. A clean report meant only that nobody had asked. The registry now starts it.
+
 ### Added
+
+- **A sleep inside a lock is caught with no instrumentation, through the agent's first static
+  substitution.** Whether a `Thread.sleep` is a bug depends entirely on whether a lock was held,
+  which no stack trace records and `Thread.holdsLock` can only answer about an object you already
+  named. `HeldLocks` has known it all along, so the two halves only had to be introduced - except
+  that the substitution rewrote `invokevirtual` and `invokeinterface`, and `Thread.sleep` is
+  `invokestatic`, so the one call the detector exists for was the one it could not see (#386).
+
+  The weaver now has a static path. It is simpler than the virtual one rather than riskier: no
+  receiver on the stack, so the hook's descriptor is the call site's unchanged, and a static does
+  not dispatch on subtype, so the owner is matched exactly instead of by assignability.
+  **20 of 146 detectors now work on code the user did not modify**, against 5 at the start.
+
+  Two things had to be found by probing rather than reasoning. The hook first called
+  `recordSleep(millis)`, which resolves held monitors through `ThreadMXBean` - blind to virtual
+  threads, which the runner uses by default, so it answered "none" for every worker; it now names
+  the monitor and routes through `Thread.holdsLock`. And the positive fixture used a
+  `synchronized` method, which compiles to an access flag and emits no `MONITORENTER`, so the
+  lockset never learned the monitor was held. The fixture uses a `synchronized` block; the gap is
+  #388.
+
+  Both directions measured, and the negative decides whether this can ship at all: rate limiting,
+  back-off and polling are all sleeps outside a lock and vastly outnumber the bug, so
+  `SleepInLockWeavingSparesSleepOutsideLockTest` requires silence on the same substituted call with
+  the lock released first.
+
+- **A leaked semaphore permit and a dropped queue offer are now caught with no instrumentation.**
+  `Semaphore`, `CountDownLatch` and `BlockingQueue` are plumbing: a test author instruments a
+  domain object because they suspect it, and nobody instruments a semaphore three layers down in
+  the class under test. That is why the four detectors for them were unreachable in practice rather
+  than merely inconvenient.
+
+  `AgentConcurrencyUtilHooks` substitutes `acquire`, `tryAcquire`, `release`, `countDown`, both
+  `await` overloads, `offer`, `poll` and `put`. Unlike the shared-instance family, sharing is the
+  whole point of these objects, so what the hooks record is the operation and its outcome: the
+  boolean an `offer` discards, and the timed `await` that expired, are the entire finding.
+
+  **19 of 146 detectors now work on code the user did not modify** - 16 agent-fed and 3
+  zero-config - against 5 at the start of the day. The corpus eval reports 0 findings from all 19
+  across 22 documented-thread-safe classes from seven third-party libraries.
+
+  The first version of the fixture proved something else by accident. It gave the semaphore four
+  permits and leaked every one, so the fifth `acquire` blocked forever and the round timed out
+  instead of reporting. The timeout message named the finding anyway - "1 detector finding(s)
+  recorded before the timeout: SemaphoreMisuseDetector" - which is the summary added earlier in
+  this release doing exactly its job. The fixture now holds far more permits than the run consumes,
+  because a leak demonstrated by deadlocking is demonstrated in the least useful way available.
+
+- **A cached `Calendar`, `StringBuilder`, `DecimalFormat` or `java.util.Formatter` is now caught
+  too.** Second tranche of the same shape: each is expensive or awkward to build, so it gets
+  hoisted to a field, and the class quietly stops being safe to call concurrently. Each had a
+  detector already, and each of those was reachable only through a hand-written `record` call.
+
+  With this, **15 of 146 detectors work on code the user did not modify** - 12 agent-fed and 3
+  zero-config - against 5 at the start of the day. The corpus eval reports 0 findings from all 15
+  across 22 documented-thread-safe classes from seven third-party libraries.
+
+  `StringBuilder` deserves its own note, because it is used constantly and correctly. Only an
+  explicit builder is woven: javac has compiled string concatenation to `invokedynamic` since JDK
+  9, so `"a" + b` never reaches the substitution. `NumberFormat` rather than `DecimalFormat`
+  anchors the number entry, because the abstract parent is what a field is usually typed as and no
+  JDK subclass of it is thread safe. `RunnerAllocationBudgetTest` still passes, which is the gate
+  that matters for six new entries on call sites this common.
+
+- **A `SimpleDateFormat` cached in a field is now caught with no instrumentation, and so are a
+  shared `Matcher` and `MessageDigest`.** Hoisting a formatter to a field because constructing one
+  is expensive, and thereby making the class unsafe to call concurrently, is one of the oldest bugs
+  in Java. The library has had a detector for it throughout, and it was reachable only through a
+  hand-written `recordFormat` call, so it found the bug only for a test author who already
+  suspected it.
+
+  `AgentSharedInstanceHooks` and a third weaver table substitute the call sites - `format`,
+  `parse`, `find`, `matches`, `group`, `update`, `digest` - which is the one place the instance and
+  the calling thread are both in hand. Agent-fed goes from 5 detectors to 8, and with the three
+  zero-config ones **11 of 146 detectors now work on code the user did not modify, against 5 at the
+  start of the day**.
+
+  The table is deliberately short. Each entry costs a rewritten instruction in every woven method
+  that calls it, and these three earn it by being common and unambiguous: none has a thread-safe
+  subclass that a call site could be holding. `Random` is absent for exactly that reason -
+  `ThreadLocalRandom` extends it, and substituting there would record instances that were safe all
+  along.
+
+  Both directions measured. `SharedInstanceWeavingTest` shares one formatter across four threads
+  and requires the finding; `SharedInstanceWeavingSparesConfinedUseTest` constructs one per call -
+  the standard fix - and requires silence, because a false positive on the fix would be worse than
+  not detecting the bug. Verified failing first: removing the substitution fails the positive test.
+  The corpus eval agrees: 22 documented-thread-safe classes from seven third-party libraries, 0
+  findings from all eight agent-fed detectors.
+
+  The corpus module's `DetectorExposure` needed a correction the change exposed. It read agent-fed
+  as "fed in the attached lane only", which stopped being true the moment a detector with an
+  existing hand-recording subject moved from `RECORDING` to `AGENT`: the subject then recorded into
+  a denominator the table called zero. Agent-fed now means the woven streams can feed it, not that
+  a hand-written call is impossible.
 
 - **Attaching the agent now catches a lock-order inversion with no instrumentation.** The agent has
   substituted every `Lock.lock()`, `unlock()` and `tryLock()` call site since collection weaving
