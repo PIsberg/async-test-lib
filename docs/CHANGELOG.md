@@ -40,6 +40,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recognises safety by package prefix, so until #395 is settled *no* third-party collection can
   hold that row, because every one of them reports.
 
+- **`ConcurrentModificationDetector` stops reporting every thread-safe collection outside
+  `java.util.concurrent`** (#395). It decided safety from the package prefix, so only the JDK's own
+  concurrent collections were recognised and every correct third-party one was reported - measured
+  on guava's `ConcurrentHashMultiset` and commons-collections4's `SynchronizedCollection`, both
+  documented thread-safe and both firing.
+
+  Fixed by reading the naming convention rather than the package: `Concurrent*`, `CopyOnWrite*`,
+  `Synchronized*`. A denylist would also have closed it, at the cost of going silent on
+  commons-collections4's documented-unsafe maps - a worse trade for a detector whose job is
+  finding those. Both false positives are gone and every unsafe subject still fires, including
+  ones a denylist would have lost.
+
+  A convention is not a proof, and the residue is pinned rather than hidden: a collection that is
+  thread-safe and says so nowhere in its name is still reported.
+
 - **A fifth false positive is pinned rather than left invisible.**
   `ConcurrentModificationDetector` decides whether mutation is safe from the collection's package
   name, so guava's `ConcurrentHashMultiset` and commons-collections4's `SynchronizedCollection` are

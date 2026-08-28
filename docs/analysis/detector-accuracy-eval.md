@@ -222,12 +222,28 @@ corpus module, two threads adding to each:
 | commons-collections4 `SynchronizedCollection` | **fires** | **no** |
 | `java.util.ArrayList` | fires | yes |
 
-There is no clean fix by interface. Java has no thread-safe-collection marker, and this
-detector's API is `Collection`-typed, so the `ConcurrentMap` contract that would cover
-third-party *maps* does not apply here. Inverting the allowlist into a denylist - report only
-known-unsafe types - would trade these false positives for false negatives on any unsafe type
-not on the list. That is a decision about the detector's stance rather than a bug fix, so it
-is filed rather than taken.
+**Fixed the same day, and not the way the issue proposed.** A denylist would have closed it at
+the cost of going silent on commons-collections4's documented-unsafe maps, which is a worse trade
+for a detector whose job is finding exactly those. Java has no thread-safe-collection marker and
+this detector's API is `Collection`-typed, so `ConcurrentMap` cannot be consulted either. What is
+left is the class name, and the ecosystem uses it with near-total consistency: `Concurrent*`,
+`CopyOnWrite*`, `Synchronized*` across the JDK, guava, commons and Spring. The model now reads
+that convention instead of the package prefix.
+
+Re-measured after the change, same subjects:
+
+| Collection | Before | After | Correct |
+|---|---|---|---|
+| `CopyOnWriteArrayList`, `Collections.synchronizedList` | silent | silent | yes |
+| guava `ConcurrentHashMultiset` | fires | **silent** | yes |
+| commons-collections4 `SynchronizedCollection` | fires | **silent** | yes |
+| `java.util.ArrayList` | fires | fires | yes |
+| commons-collections4 `CursorableLinkedList` | fires | fires | yes |
+| guava `ArrayListMultimap.values()` | fires | fires | yes |
+
+A convention is not a proof, and the residue is pinned rather than papered over: a collection that
+is thread-safe and says so nowhere in its name is still reported. That is what the
+`ThreadSafeBag` row above holds, and it is the honest limit of a language with no marker for this.
 
 The pinned test uses a local thread-safe collection rather than guava, so it measures the
 model and not a dependency: `async-test-lib` does not carry the corpus libraries on its test

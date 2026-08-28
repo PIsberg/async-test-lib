@@ -75,8 +75,45 @@ public class ConcurrentModificationDetector {
         CollectionState(Collection<?> collection, String name) {
             this.name = name != null ? name : "collection@" + System.identityHashCode(collection);
             String type = collection == null ? "" : collection.getClass().getName();
-            this.concurrentType = type.startsWith("java.util.concurrent.");
-            this.synchronizedWrapper = type.startsWith("java.util.Collections$Synchronized");
+            this.concurrentType = isConcurrentByConvention(type);
+            this.synchronizedWrapper = isSynchronizedWrapperByConvention(type);
+        }
+
+        /**
+         * {@return whether {@code type} names a collection that is concurrent by convention}
+         *
+         * <p>The package test alone read every correct third-party collection as unsafe, because
+         * only the JDK puts its concurrent collections in {@code java.util.concurrent}. Measured:
+         * guava's {@code ConcurrentHashMultiset} and commons-collections4's
+         * {@code SynchronizedCollection} both reported, while the JDK equivalents stayed silent,
+         * and both document a concurrency contract.
+         *
+         * <p>Java has no marker interface for a thread-safe collection, so the class name is the
+         * only signal there is. That makes this a convention rather than a proof, and it is worth
+         * being plain about which: a collection that is thread-safe without saying so in its name
+         * is still reported, and a badly named one that is not thread-safe is now missed. The
+         * naming is close to universal in practice - {@code Concurrent*}, {@code CopyOnWrite*}
+         * and {@code Synchronized*} across the JDK, guava, commons and Spring - which is what
+         * makes it worth more than the package prefix it replaces.
+         */
+        private static boolean isConcurrentByConvention(String type) {
+            if (type.startsWith("java.util.concurrent.")) {
+                return true;
+            }
+            String simple = simpleNameOf(type);
+            return simple.startsWith("Concurrent") || simple.startsWith("CopyOnWrite");
+        }
+
+        /** {@return whether {@code type} names a synchronizing decorator, by the same convention} */
+        private static boolean isSynchronizedWrapperByConvention(String type) {
+            return type.startsWith("java.util.Collections$Synchronized")
+                    || simpleNameOf(type).startsWith("Synchronized");
+        }
+
+        /** {@return the class name without package or enclosing type} */
+        private static String simpleNameOf(String type) {
+            String afterPackage = type.substring(type.lastIndexOf('.') + 1);
+            return afterPackage.substring(afterPackage.lastIndexOf('$') + 1);
         }
     }
 

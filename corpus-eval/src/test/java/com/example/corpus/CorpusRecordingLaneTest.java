@@ -114,14 +114,14 @@ class CorpusRecordingLaneTest {
     /** Its own javadoc says, in bold, that the implementation is not synchronized. */
     private final List<String> cursorableList = new CursorableLinkedList<>();
 
-    /** The twin whose whole design is concurrent mutation. */
-    private final List<String> copyOnWriteList = new CopyOnWriteArrayList<>();
+    /** The twin guava documents as supporting concurrent modification. */
+    private final Multiset<String> concurrentMultisetForModification = ConcurrentHashMultiset.create();
 
     /** One declaration per collection for the run; see unlockedDeclared for why. */
     private final AtomicBoolean cursorableDeclared = new AtomicBoolean();
 
     /** The safe row's own one-shot latch. */
-    private final AtomicBoolean copyOnWriteDeclared = new AtomicBoolean();
+    private final AtomicBoolean concurrentMultisetDeclared = new AtomicBoolean();
 
     /** Documented to support concurrent modification; its iterator is still confined state. */
     private final Multiset<String> concurrentMultiset =
@@ -843,18 +843,18 @@ class CorpusRecordingLaneTest {
     /**
      * The identical mutation on a collection designed for exactly this.
      *
-     * <p>A JDK subject rather than a third-party one, and not for convenience: the detector
-     * recognises safety by package prefix, so guava's {@code ConcurrentHashMultiset} and
-     * commons-collections4's {@code SynchronizedCollection} both report despite documenting
-     * thread safety. Until #395 is settled, no third-party collection can hold this row.
+     * <p>This exact subject reported until #395 was fixed: it was one of the two the false
+     * positive was measured on. It is the silent half of the pair and the row that keeps that
+     * fix honest.
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
-    void recorded_copyOnWriteArrayList_concurrentAdd() {
+    void recorded_concurrentMultiset_concurrentAdd() {
         CorpusRecorder.countBodyExecution();
-        declareCollectionOnce(copyOnWriteDeclared, copyOnWriteList, "copy-on-write-list");
+        declareCollectionOnce(concurrentMultisetDeclared, concurrentMultisetForModification,
+                "concurrent-multiset");
         AsyncTestContext.concurrentModificationDetector()
-                .recordModification(copyOnWriteList, "copy-on-write-list", "add");
-        copyOnWriteList.add("value");
+                .recordModification(concurrentMultisetForModification, "concurrent-multiset", "add");
+        concurrentMultisetForModification.add("value");
     }
 
     private static void declareCollectionOnce(AtomicBoolean latch, java.util.Collection<String> c,

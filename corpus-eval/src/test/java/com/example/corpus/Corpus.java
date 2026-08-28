@@ -589,14 +589,12 @@ final class Corpus {
                             + "the fix, and a finding here would report every correct traversal "
                             + "of a concurrent collection there is"),
 
-            // --- ConcurrentModifications: an eleventh denominator, and the row that makes #395
-            //     concrete. The detector decides whether mutation is safe from the collection's
-            //     package name, so the silent twin here has to be a JDK type. That is not a
-            //     stylistic choice: guava's ConcurrentHashMultiset and commons-collections4's
-            //     SynchronizedCollection are both documented thread-safe and both report, so
-            //     neither can serve as a MUST_STAY_SILENT row until #395 is decided. The pair
-            //     below is therefore honest about what it measures - the package-name model,
-            //     which is the only model this detector has.
+            // --- ConcurrentModifications. This pair was written a few hours before #395 was
+            //     fixed, and its silent twin had to be a JDK CopyOnWriteArrayList, because the
+            //     detector recognised safety by package prefix and every third-party thread-safe
+            //     collection reported. That is closed: the model now reads the naming convention
+            //     the ecosystem actually uses, so the twin is third-party like the rest of the
+            //     corpus, and this row is what holds the fix.
 
             new RecordingSubject("recorded_cursorableLinkedList_concurrentAdd", COLLECTIONS4,
                     "org.apache.commons.collections4.list.CursorableLinkedList",
@@ -606,15 +604,15 @@ final class Corpus {
                             + "every thread in the run mutates it. This is the case the detector "
                             + "exists for and the one it gets right"),
 
-            new RecordingSubject("recorded_copyOnWriteArrayList_concurrentAdd", JDK,
-                    "java.util.concurrent.CopyOnWriteArrayList",
+            new RecordingSubject("recorded_concurrentMultiset_concurrentAdd", GUAVA,
+                    "com.google.common.collect.ConcurrentHashMultiset",
                     DetectorType.CONCURRENT_MODIFICATIONS, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
-                    "the identical mutation on a collection whose whole design is concurrent "
-                            + "mutation. A JDK subject rather than a third-party one on purpose: "
-                            + "the detector recognises safety by package prefix, so no "
-                            + "third-party thread-safe collection can hold this row until #395 "
-                            + "is settled. The row measures the model that exists")
+                    "the identical mutation on a multiset guava documents as supporting "
+                            + "concurrent modification. This exact subject reported until #395 "
+                            + "was fixed - it was one of the two the false positive was measured "
+                            + "on - so the row is both the silent half of the pair and the thing "
+                            + "that keeps that fix honest")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()
