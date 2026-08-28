@@ -83,7 +83,12 @@ public final class DetectorFeeds {
             // Thread.sleep is the agent's first static substitution. Whether a sleep is a bug
             // depends entirely on whether a lock was held, which the lockset already knew and no
             // stack trace records, so the two halves only had to be introduced.
-            DetectorType.SLEEP_IN_LOCK);
+            DetectorType.SLEEP_IN_LOCK,
+            // System.gc is the second static substitution, and unlike the sleep it needs no
+            // guard: an explicit collection is a full stop-the-world pause that distorts every
+            // latency the run measures and reschedules the interleavings it exists to explore,
+            // whether or not a lock was held.
+            DetectorType.EXPLICIT_GC);
 
     /**
      * Fed by the JVM and the harness with no recording call.

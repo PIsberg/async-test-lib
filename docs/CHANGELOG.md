@@ -15,7 +15,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ifIssue` wired its report, `detectSleepInLock` defaulted to `true` - and it recorded nothing,
   ever. A clean report meant only that nobody had asked. The registry now starts it.
 
+- **`docs/DETECTOR_CATALOG.md` said "the sixteen above" over a list of seventeen.** The heading and
+  the list were updated when `SleepInLockDetector` joined; the numeral in the prose below them was
+  not, and no gate reads it - `DetectorFeedCoverageTest` checks the heading and the membership.
+  It now reads eighteen, with the entry this release adds.
+
 ### Added
+
+- **An explicit `System.gc()` is caught with no instrumentation, and the static path has a second
+  user.** `ExplicitGcDetector` reports a call that requests a full stop-the-world pause in the
+  middle of a concurrent run: it inflates every latency the run measures, invents timeouts nothing
+  else would have caused, and reschedules the very interleavings the run exists to explore. It was
+  reachable only through a hand-written `recordGcInvocation` call, so it found the pause only for
+  someone who already suspected it.
+
+  `System.gc` is an `invokestatic`, so it needed the path `Thread.sleep` opened - and cost one
+  table entry and one hook rather than another visitor, which is the argument for having built that
+  path as a mechanism instead of special-casing one call. **21 of 146 detectors now work on code
+  the user did not modify**, against 5 at the start of this series.
+
+  Unlike the sleep, this one takes no lockset guard: a sleep is rate limiting, back-off or polling
+  far more often than it is a bug, while an explicit collection is the finding whoever asked for
+  it. The negative direction therefore pins something else. `ExplicitGcWeavingSparesGcFreeCodeTest`
+  exercises the *other* static entry - a bean that sleeps and never collects - and requires
+  silence, because a table whose two static entries were bound to each other's hooks is a fault no
+  test calling only `System.gc()` could reveal: in that direction both bindings give the same
+  answer.
 
 - **A sleep inside a lock is caught with no instrumentation, through the agent's first static
   substitution.** Whether a `Thread.sleep` is a bug depends entirely on whether a lock was held,

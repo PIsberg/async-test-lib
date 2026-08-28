@@ -463,6 +463,8 @@ public final class AsyncTestAgent {
                     Class.forName(CollectionAccessWeaver.concurrencyHooksClassName(), false, loader)));
             all.addAll(CollectionAccessWeaver.staticSubstitutions(
                     Class.forName(CollectionAccessWeaver.staticHooksClassName(), false, loader)));
+            all.addAll(CollectionAccessWeaver.gcSubstitutions(
+                    Class.forName(CollectionAccessWeaver.gcHooksClassName(), false, loader)));
             return all;
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException(

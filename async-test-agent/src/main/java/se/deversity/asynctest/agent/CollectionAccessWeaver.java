@@ -108,6 +108,9 @@ final class CollectionAccessWeaver {
     /** The library-side class holding the static-call hooks. */
     private static final String STATIC_HOOKS = LIBRARY_ROOT + "AgentSleepHooks";
 
+    /** The library-side class holding the explicit-GC hook. */
+    private static final String GC_HOOKS = LIBRARY_ROOT + "AgentGcHooks";
+
     private CollectionAccessWeaver() {
     }
 
@@ -274,6 +277,20 @@ final class CollectionAccessWeaver {
             Entry.staticCall(Thread.class, "sleep", "sleep", long.class));
 
     /**
+     * The explicit-GC table.
+     *
+     * <p>{@code System.gc()} is the second user of the static path and the argument for having
+     * built it rather than special-casing one call: one more table entry, no more mechanism. It
+     * takes no arguments and returns nothing, which makes it the simplest substitution here.
+     *
+     * <p>{@code Runtime.getRuntime().gc()} is deliberately absent. It is an {@code invokevirtual}
+     * on a receiver, so it belongs in a receiver table rather than this one, and listing it here
+     * would claim a coverage the static path does not have.
+     */
+    private static final List<Entry> GC_ENTRIES = List.of(
+            Entry.staticCall(System.class, "gc", "gc"));
+
+    /**
      * One resolved rewrite: the call shape to match and the hook invocation that replaces it.
      *
      * <p>{@code callSiteDescriptor} is the hook's descriptor with the receiver parameter removed,
@@ -386,6 +403,19 @@ final class CollectionAccessWeaver {
         return List.of(new SubstitutionWrapper(targets(STATIC_ENTRIES, staticHooks)));
     }
 
+    /**
+     * {@return the explicit-GC substitution}
+     *
+     * <p>Separate from {@link #staticSubstitutions} because the hook classes are one per concern
+     * rather than one per invocation kind: a sleep means nothing until the lockset is consulted,
+     * and a collection means the same thing wherever it was called from.
+     *
+     * @param gcHooks the class holding the hook, resolved in the weaving class loader
+     */
+    static List<AsmVisitorWrapper> gcSubstitutions(Class<?> gcHooks) {
+        return List.of(new SubstitutionWrapper(targets(GC_ENTRIES, gcHooks)));
+    }
+
     /** {@return the hook class name the substituted collection calls land in} */
     static String hooksClassName() {
         return HOOKS;
@@ -409,6 +439,11 @@ final class CollectionAccessWeaver {
     /** {@return the hook class name the substituted static calls land in} */
     static String staticHooksClassName() {
         return STATIC_HOOKS;
+    }
+
+    /** {@return the hook class name the substituted System.gc() calls land in} */
+    static String gcHooksClassName() {
+        return GC_HOOKS;
     }
 
     /** Applies one table of {@link Target}s to every method of a woven class. */

@@ -1768,6 +1768,12 @@ public final class AsyncTestContext {
         return context == null ? null : context.sleepInLockDetector;
     }
 
+    /** {@return the {@link ExplicitGcDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable ExplicitGcDetector currentExplicitGcDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.explicitGcDetector;
+    }
+
     /**
      * Returns the {@link TimerDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectTimerIssues = false}
