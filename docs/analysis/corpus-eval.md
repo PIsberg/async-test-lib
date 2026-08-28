@@ -710,6 +710,23 @@ each rejection is worth more than the row would have been:
   parameter type will not accept it.
 - **commons-collections4 `ReferenceMap`** for `WeakHashMapSharedDetector`, for the `instanceof`
   gate above.
+- **`NonAtomicConcurrentMapUpdateDetector`**, which looked like an uncovered detector and is
+  `DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT` under a different class name. Already covered. The
+  class name and the type name differ across the roster often enough that the shortlist has to be
+  built from `DetectorTrust` rows rather than from file names.
+- **guava `ListenableFuture` and `ListeningExecutorService`** for the future and executor family.
+  These were the last third-party-capable group - everything else in the uncovered set takes a JDK
+  primitive - and neither documents a thread-safety contract to cite.
+- **guava `AtomicLongMap`** for `HighContentionAtomicDetector`. It has a good contract and is
+  already a subject, but the detector's model turns on how much contention was observed, not on
+  what the class promises. A pair there would be separated by the size of the numbers rather than
+  by the documented contract, which is not what this lane measures.
+
+**Where that leaves it.** Of 47 RECORDING-fed detectors with no denominator, the ones that remain
+take JDK primitives - locks, latches, `wait`/`notify`, scopes, buffers, channels, threads - and a
+corpus of third-party subjects has nothing to offer them. That is not a backlog either. Extending
+the lane further means a new corpus library, and `docs/DEPENDENCIES.md` makes that a proposal with
+a reason rather than an install.
 
 The binding constraint is not the detector count. It is finding a library class whose own javadoc
 states a contract that exercises the detector's model, and the eight corpus libraries only contain
