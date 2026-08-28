@@ -136,7 +136,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (17)
+### Agent-fed (18)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -160,7 +160,8 @@ why their detectors were unreachable in practice rather than merely inconvenient
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
 `SharedDecimalFormatDetector`, `SharedFormatterDetector`, `SemaphoreMisuseDetector`,
-`CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`, `SleepInLockDetector`
+`CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`, `SleepInLockDetector`,
+`ExplicitGcDetector`
 
 ### Zero-config (3)
 
@@ -173,7 +174,7 @@ call:
 ### Why the rest are recording-only
 
 Agent-feeding a detector works when one JDK method call carries everything the detector needs. That
-is what the sixteen above have in common: a lock acquired, a formatter used, a permit taken. Three
+is what the eighteen above have in common: a lock acquired, a formatter used, a permit taken. Three
 things stop the others, and each was checked against the code rather than assumed.
 
 **The detector needs a fact the substitution cannot supply.** `ExecutorShutdownDetector` reports an
@@ -183,10 +184,11 @@ and `shutdown` calls alone would leave it silent rather than wrong. Registering 
 `Executors` factory methods, which the static substitution path can now reach, so this one is a
 decision rather than a limit - see #387.
 
-**The call site is static.** This used to stop `SleepInLockDetector`, and no longer does: the
-substitution now has an `invokestatic` path, and `Thread.sleep` was its first user. `System.gc`,
-for `ExplicitGcDetector`, is a table entry away. What remains is that each static entry has to be
-worth its instruction, the same bar the virtual ones meet.
+**The call site is static.** This used to stop `SleepInLockDetector` and `ExplicitGcDetector`, and
+stops neither now: the substitution has an `invokestatic` path, `Thread.sleep` was its first user
+and `System.gc` its second. The second cost one table entry and one hook rather than another
+visitor, which is the argument for having built the path as a mechanism. What remains is that each
+static entry has to be worth its instruction, the same bar the virtual ones meet.
 
 **The input is not a call.** `VisibilityMonitor` needs field reads and writes, which is the field
 weaver's stream rather than a call site. `ThreadPoolMonitor` and the `CompletableFuture` family
@@ -194,7 +196,7 @@ need a task's start and completion, and a substituted `submit` sees neither: the
 somewhere else. `LazyInitRaceDetector` and `ThisEscapeDetector` describe a shape in the code rather
 than any particular method, and no substitution can see a shape.
 
-### Recording-only (126)
+### Recording-only (125)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -228,7 +230,7 @@ recording is the feed:
 `WeakReferenceRaceDetector`,
 `StatefulLambdaDetector`, `InterruptSwallowingDetector`,
 `MdcContextLeakDetector`, `SystemPropertyMutationDetector`, `FutureIgnoredDetector`,
-`ExplicitGcDetector`, `DeprecatedThreadApiDetector`, `SharedXmlParserDetector`,
+`DeprecatedThreadApiDetector`, `SharedXmlParserDetector`,
 `BoxedPrimitiveLockDetector`, `SharedTimeZoneDetector`, `UncaughtExceptionHandlerDetector`,
 `DaemonThreadHygieneDetector`, `NotifyWithoutMonitorDetector`, `SharedSecureRandomDetector`,
 `WeakHashMapSharedDetector`, `JdbcConnectionSharedDetector`, `SharedStatefulCryptoDetector`,
