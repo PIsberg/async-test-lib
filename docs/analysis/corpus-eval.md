@@ -670,6 +670,15 @@ each rejection is worth more than the row would have been:
 - **netty `ByteBuf`** for `SharedByteBufferDetector`. 2508 lines of javadoc and not one mention of
   thread safety, so there is no documented contract to cite. It is also why the existing netty row
   cites `ByteBufAllocator` instead.
+
+  Worth recording while it is in hand: the two `recorded_nettyByteBuf_*` rows carry
+  `Contract.NOT_THREAD_SAFE`, and that label is the one part of them the javadoc does not support.
+  Nothing rests on it - they are `RESOURCE_LEAKS` rows, `RecordingSubject` carries no citation
+  field, and their rationale is reference counting, which *is* documented: `ByteBuf implements
+  ReferenceCounted`, "a reference-counted object that requires explicit deallocation". So the rows
+  are sound and the label is folklore. Left as it is rather than changed, because relabelling a
+  subject moves numbers in a published table, but a corpus whose premise is documented contracts
+  should not have an undocumented one sitting in it unremarked.
 - **commons-lang3 `FastDateFormat`** for `SimpleDateFormatDetector`. The citation is perfect -
   *"a fast and thread-safe version of `SimpleDateFormat`"*, and *"`SimpleDateFormat` is not
   thread-safe in any JDK version"* - and the row cannot be written, because the detector's
