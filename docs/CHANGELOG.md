@@ -33,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one obvious documented-safe class in the corpus libraries that was not yet a subject; Jackson's
   `ObjectReader` and `ObjectWriter` were checked first and are already covered.
 
+- **A twelfth detector gets a denominator, and it is the lane's tightest pair.**
+  `MutableMapKeyDetector`: both rows file the same commons-lang3 `MutableInt` as a key in the same
+  map, and differ only in whether the body then mutates it. Nothing about the subject separates
+  them, so only the detector's model can. It is also the lane's first row whose hazard is not a
+  race - a key mutated after insertion moves its hash away from the bucket it was filed under, and
+  synchronization does not repair that.
+
 - **An eleventh detector gets a denominator, and the row documents its own limit.**
   `ConcurrentModificationDetector` now has a pair: commons-collections4's `CursorableLinkedList`,
   which says in bold that it is not synchronized, fires; a JDK `CopyOnWriteArrayList` stays silent.

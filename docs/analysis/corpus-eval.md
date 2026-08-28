@@ -445,7 +445,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 141: exposure zero, nothing said in
-either direction. That is now measured for eleven of them, in a third lane, and the separation
+either direction. That is now measured for twelve of them, in a third lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -596,8 +596,8 @@ have reported nothing under either rule. `GraphService` now exposes two no-op `C
 hooks, the test wires them to the detector, and with `@Disabled` removed the run fails with the
 report naming both keys.
 
-That is the argument for the lane in one line. Eleven detectors of 146 is not coverage; it is the
-first eleven rows of a table that had none, and they have already been enough to find a defect that
+That is the argument for the lane in one line. Twelve detectors of 146 is not coverage; it is the
+first twelve rows of a table that had none, and they have already been enough to find a defect that
 had been shipping, to settle a modelling question that had been open since the fourth wave, to
 correct a detector that was describing a failure mode the platform stopped having, to catch an
 example demonstrating a bug its own detector could not see, and - with the ninth row - to find
@@ -642,6 +642,18 @@ touched only by the thread that created it, stayed silent.
 
 This one is the counterpart to the check-then-act pair in a different way. There the class was
 thread-safe and the *sequence* was wrong; here the class is thread-safe and the *sharing* is.
+
+**The twelfth row: `MutableMapKeyDetector`, the tightest pair in the lane**
+
+Both rows are the same commons-lang3 `MutableInt`, filed as a key in the same map the same way.
+The only difference is whether the body then mutates it. Nothing about the subject separates them
+- not the type, not the contract, not the call sequence up to that point - so the detector's model
+is the only thing that can, which is what a both-directions pair is supposed to test.
+
+It is also the lane's first row whose hazard is not a race at all. A key mutated after insertion
+moves its hash away from the bucket the map filed it under, and no amount of synchronization
+repairs that. The corpus is mostly about what concurrency does to correct code; this row is about
+a contract the caller broke, which concurrency then makes harder to see.
 
 **The eleventh row: `ConcurrentModificationDetector`, and what it could not be**
 

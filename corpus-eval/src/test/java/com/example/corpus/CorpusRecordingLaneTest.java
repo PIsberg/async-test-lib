@@ -13,6 +13,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.apache.commons.collections4.collection.SynchronizedCollection;
 import org.apache.commons.collections4.list.CursorableLinkedList;
+import org.apache.commons.lang3.mutable.MutableInt;
 import org.apache.commons.collections4.map.LRUMap;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -110,6 +111,21 @@ class CorpusRecordingLaneTest {
 
     /** Reconfigured while other threads write through it: the exception that javadoc names. */
     private final ObjectMapper reconfiguredMapper = new ObjectMapper();
+
+    /** The key the loud row mutates after filing it. */
+    private final MutableInt mutatedKey = new MutableInt(1);
+
+    /** The identical key the quiet row files and then leaves alone. */
+    private final MutableInt untouchedKey = new MutableInt(1);
+
+    /** The map both keys are filed in; the map itself is not the subject. */
+    private final Map<Object, String> keyedMap = new ConcurrentHashMap<>();
+
+    /** One insertion per key for the run: recordKeyInserted resets the mutation count. */
+    private final AtomicBoolean mutatedKeyFiled = new AtomicBoolean();
+
+    /** The quiet row's own one-shot latch. */
+    private final AtomicBoolean untouchedKeyFiled = new AtomicBoolean();
 
     /** Its own javadoc says, in bold, that the implementation is not synchronized. */
     private final List<String> cursorableList = new CursorableLinkedList<>();
@@ -861,6 +877,46 @@ class CorpusRecordingLaneTest {
                                               String name) {
         if (latch.compareAndSet(false, true)) {
             AsyncTestContext.concurrentModificationDetector().registerCollection(c, name);
+        }
+    }
+
+    // --- MutableMapKey ----------------------------------------------------------------------
+
+    /**
+     * Files a mutable object as a map key and then changes it.
+     *
+     * <p>The mutation moves the key's hash away from the bucket the map filed it under, so the
+     * entry stops being reachable by an equal key. No amount of synchronization repairs that -
+     * it is a hash-contract defect, not a race - which is why the row exists on a class whose
+     * own javadoc already says it is not thread safe.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_mutableIntKey_mutatedAfterInsertion() {
+        CorpusRecorder.countBodyExecution();
+        fileKeyOnce(mutatedKeyFiled, mutatedKey, "mutated-key");
+        int before = mutatedKey.intValue();
+        mutatedKey.increment();
+        AsyncTestContext.mutableMapKeyDetector()
+                .recordKeyMutation(mutatedKey, "value", before, mutatedKey.intValue());
+    }
+
+    /**
+     * The same class filed the same way and then left alone: the ordinary, correct use.
+     *
+     * <p>Mutability is a hazard only when exercised. A detector that reported the type would
+     * report every correct use of {@code MutableInt} as a key, which is most of them.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_mutableIntKey_neverMutated() {
+        CorpusRecorder.countBodyExecution();
+        fileKeyOnce(untouchedKeyFiled, untouchedKey, "untouched-key");
+        untouchedKey.intValue();
+    }
+
+    private void fileKeyOnce(AtomicBoolean latch, Object key, String name) {
+        if (latch.compareAndSet(false, true)) {
+            keyedMap.put(key, "value");
+            AsyncTestContext.mutableMapKeyDetector().recordKeyInserted(keyedMap, key, name);
         }
     }
 

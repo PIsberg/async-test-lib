@@ -612,7 +612,38 @@ final class Corpus {
                             + "concurrent modification. This exact subject reported until #395 "
                             + "was fixed - it was one of the two the false positive was measured "
                             + "on - so the row is both the silent half of the pair and the thing "
-                            + "that keeps that fix honest")
+                            + "that keeps that fix honest"),
+
+            // --- MutableMapKey: the tightest pair in the lane. Both rows use the same
+            //     commons-lang3 class, insert it as a key the same way, and differ only in
+            //     whether the body then mutates it. Nothing about the subject separates them,
+            //     which leaves only the detector's model to do it.
+            //
+            //     recordKeyInserted is called once for the run rather than per worker. It
+            //     installs a fresh registration, so a per-worker call would reset the mutation
+            //     count and the loud row could go quiet depending on interleaving. That is the
+            //     shape three record*Created methods were fixed for; this one is left alone
+            //     because resetting on re-insertion is arguably its correct semantics - a key
+            //     re-inserted after mutation really has been re-hashed - and changing it would
+            //     need evidence this row does not provide.
+
+            new RecordingSubject("recorded_mutableIntKey_mutatedAfterInsertion", LANG3,
+                    "org.apache.commons.lang3.mutable.MutableInt",
+                    DetectorType.MUTABLE_MAP_KEY, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a MutableInt is put in a map as a key and then mutated, which changes the "
+                            + "hash the map filed it under. The entry becomes unreachable by "
+                            + "equal keys and the map cannot repair itself, whatever "
+                            + "synchronization the caller adds"),
+
+            new RecordingSubject("recorded_mutableIntKey_neverMutated", LANG3,
+                    "org.apache.commons.lang3.mutable.MutableInt",
+                    DetectorType.MUTABLE_MAP_KEY, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same mutable class used as a key and left alone, which is the ordinary "
+                            + "and correct way to use one. Mutability is a hazard only when "
+                            + "exercised, and reporting the type itself would report every "
+                            + "correct use of it")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()
