@@ -1666,6 +1666,29 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link LockOrderValidator} for the calling thread's test, or {@code null}}
+     *
+     * <p>Same contract as {@link #currentSharedCollectionDetector()}, for the same reason:
+     * {@link AgentLockHooks} runs inside woven code that does not know a test is in progress.
+     */
+    static @Nullable LockOrderValidator currentLockOrderValidator() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.lockOrderValidator;
+    }
+
+    /** {@return the {@link LockLeakDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable LockLeakDetector currentLockLeakDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.lockLeakDetector;
+    }
+
+    /** {@return the {@link TryLockMisuseDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable TryLockMisuseDetector currentTryLockMisuseDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.tryLockMisuseDetector;
+    }
+
+    /**
      * Returns the {@link TimerDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectTimerIssues = false}
      * @deprecated use {@link #timerDetector()}

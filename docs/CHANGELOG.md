@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Attaching the agent now catches a lock-order inversion with no instrumentation.** The agent has
+  substituted every `Lock.lock()`, `unlock()` and `tryLock()` call site since collection weaving
+  shipped, and handed all of it to `HeldLocks`, which answers exactly one question: was this access
+  guarded. `LockOrderValidator` asks a different question of the identical event stream - while
+  holding one lock, which other did this thread want - and was reachable only through a
+  hand-written `recordLockAcquisition` call. So a user who attached the agent, wrote a plain
+  `@AsyncTest` and inverted their lock order got silence, while the data that would have caught it
+  was already flowing past. The same held for `LockLeakDetector` and `TryLockMisuseDetector`, whose
+  whole input the substitution also already carries.
+
+  `AgentLockHooks` now delivers to all three, so the agent-fed set is 5 rather than 2, and two of
+  the three additions are `VERDICT` tier - the tier whose findings mean the code is wrong. That
+  matters beyond three detectors: of 146, five now work on code the user did not modify, against
+  two before, and the rest still need a `record` call the user writes by hand.
+
+  Measured both directions, because a detector that fires on correct code is worse than one that
+  stays quiet. `LockWeavingFeedsLockDetectorsTest` drives two `ReentrantLock`s in opposite orders
+  through woven call sites and requires the finding;
+  `LockWeavingDoesNotFlagConsistentOrderTest` drives the same shape with one consistent order and
+  requires silence. They are separate classes on purpose: a `Violation` carries no test identifier,
+  so two fixtures sharing one `AsyncFindings` scope cannot be told apart and the negative assertion
+  would pass whether or not the detector ever ran. The corpus eval agrees on the safety half - 22
+  documented-thread-safe classes from seven third-party libraries, 0 findings from all three.
+
+  `DetectorFeedCoverageTest` had a hole this change walked through: it derived the agent-fed set
+  reflectively from `TelemetryBridge` and `AgentCollectionHooks`, and no third wiring class existed
+  when it was written, so a stream could be routed into a detector with the table still calling it
+  `RECORDING`. It now reads `AgentLockHooks` too and fails if the delivery is removed without the
+  detector being reclassified.
+
 - **A weekly job runs the disabled example demonstrations, which nothing did.** Each one says, in
   its `@Disabled` reason, "Remove @Disabled to see X detected by YDetector", and that sentence was
   unchecked: an audit on 2026-08-25 enabled all 97 by hand and 72 passed. `ExampleDisabledDemoTest`

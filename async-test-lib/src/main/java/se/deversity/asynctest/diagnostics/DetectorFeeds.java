@@ -51,7 +51,15 @@ public final class DetectorFeeds {
     /** Fed by the agent's woven field, collection and lock streams. */
     private static final Set<DetectorType> AGENT_FED = EnumSet.of(
             DetectorType.ATOMICITY_VIOLATIONS,
-            DetectorType.SHARED_COLLECTIONS);
+            DetectorType.SHARED_COLLECTIONS,
+            // The lock substitutions were reaching HeldLocks only, which answers "was this
+            // access guarded". These three ask different questions of the same event stream and
+            // were reachable by hand-written record calls alone, so attaching the agent and
+            // writing no instrumentation produced silence from them on genuinely inverted lock
+            // order. AgentLockHooks now delivers to each.
+            DetectorType.LOCK_ORDER,
+            DetectorType.LOCK_LEAKS,
+            DetectorType.TRY_LOCK_MISUSE);
 
     /**
      * Fed by the JVM and the harness with no recording call.
