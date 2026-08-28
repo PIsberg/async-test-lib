@@ -445,7 +445,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 141: exposure zero, nothing said in
-either direction. That is now measured for nine of them, in a third lane, and the separation
+either direction. That is now measured for ten of them, in a third lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -596,8 +596,8 @@ have reported nothing under either rule. `GraphService` now exposes two no-op `C
 hooks, the test wires them to the detector, and with `@Disabled` removed the run fails with the
 report naming both keys.
 
-That is the argument for the lane in one line. Nine detectors of 146 is not coverage; it is the
-first nine rows of a table that had none, and they have already been enough to find a defect that
+That is the argument for the lane in one line. Ten detectors of 146 is not coverage; it is the
+first ten rows of a table that had none, and they have already been enough to find a defect that
 had been shipping, to settle a modelling question that had been open since the fourth wave, to
 correct a detector that was describing a failure mode the platform stopped having, to catch an
 example demonstrating a bug its own detector could not see, and - with the ninth row - to find
@@ -624,6 +624,24 @@ once per worker, and the detector's own usage example calls it from inside one. 
 methods, `recordFutureCreated` and `recordExecutorCreated`, had the same shape. The row could not
 have been written without hitting it, which is the argument for the lane restated: a denominator
 is a place where a detector has to actually work.
+
+**The tenth row: `SharedIteratorDetector`**
+
+Guava documents `ConcurrentHashMultiset` as *"a multiset that supports concurrent modifications
+and that provides atomic versions of most `Multiset` operations"* -
+`com/google/common/collect/ConcurrentHashMultiset.java:50`. The detector's own message claims the
+hazard stands *"even when that collection is itself a concurrent collection"*, and this is the row
+that holds it to that claim: a concurrent collection buys its iterator nothing, because the cursor
+is unsynchronized state of its own.
+
+Both rows call `hasNext()` on an iterator of the same collection and differ in one thing, whether
+the iterator object is shared. `hasNext()` rather than `next()` because it does not consume: a
+shared iterator drained by 240 body executions would end the run on `NoSuchElementException`
+instead of measuring anything. The shared row fired; the per-thread row, where every instance is
+touched only by the thread that created it, stayed silent.
+
+This one is the counterpart to the check-then-act pair in a different way. There the class was
+thread-safe and the *sequence* was wrong; here the class is thread-safe and the *sharing* is.
 
 
 ## Reproducing it

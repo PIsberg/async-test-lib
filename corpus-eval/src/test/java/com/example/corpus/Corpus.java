@@ -536,7 +536,39 @@ final class Corpus {
                     "the same traversal of the same decorator, inside synchronized (coll), which "
                             + "is the pattern the javadoc prints. A finding here would be a "
                             + "finding on the documented fix, which is the direction that stops "
-                            + "people using the detector at all")
+                            + "people using the detector at all"),
+
+            // --- SharedIterator: the collection is genuinely concurrent and the iterator is
+            //     still single-thread state. Guava documents ConcurrentHashMultiset as
+            //     "supports concurrent modifications and provides atomic versions of most
+            //     Multiset operations" - com/google/common/collect/ConcurrentHashMultiset.java:50
+            //     - which is what makes the pair worth having: the detector's own message says
+            //     the hazard stands "even when that collection is itself a concurrent
+            //     collection", and this is the row that holds it to that.
+            //
+            //     Both rows call hasNext() on an iterator of the same collection and differ only
+            //     in whether the iterator object is shared. hasNext() rather than next() because
+            //     it does not consume: a shared iterator drained by 240 body executions would
+            //     end the run on NoSuchElementException instead of measuring anything.
+
+            new RecordingSubject("recorded_concurrentHashMultiset_sharedIterator", GUAVA,
+                    "com.google.common.collect.ConcurrentHashMultiset",
+                    DetectorType.SHARED_ITERATOR, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one iterator instance is advanced by every thread in the run. The multiset "
+                            + "is documented to support concurrent modification and that buys the "
+                            + "iterator nothing: the cursor is unsynchronized state of its own, "
+                            + "and sharing it skips or duplicates elements. Thread-safe class, "
+                            + "unsafe caller"),
+
+            new RecordingSubject("recorded_concurrentHashMultiset_iteratorPerThread", GUAVA,
+                    "com.google.common.collect.ConcurrentHashMultiset",
+                    DetectorType.SHARED_ITERATOR, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same call on the same collection, with each body taking its own "
+                            + "iterator. Confining an iterator to the thread that created it is "
+                            + "the fix, and a finding here would report every correct traversal "
+                            + "of a concurrent collection there is")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()

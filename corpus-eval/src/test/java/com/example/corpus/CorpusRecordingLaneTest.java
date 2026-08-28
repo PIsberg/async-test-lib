@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.github.benmanes.caffeine.cache.Cache;
+import com.google.common.collect.ConcurrentHashMultiset;
+import com.google.common.collect.Multiset;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -35,6 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ConcurrentMap;
 import java.util.List;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.Collections;
 import java.util.ArrayList;
 import javax.crypto.Mac;
@@ -105,6 +108,19 @@ class CorpusRecordingLaneTest {
 
     /** Reconfigured while other threads write through it: the exception that javadoc names. */
     private final ObjectMapper reconfiguredMapper = new ObjectMapper();
+
+    /** Documented to support concurrent modification; its iterator is still confined state. */
+    private final Multiset<String> concurrentMultiset =
+            ConcurrentHashMultiset.create(List.of("alpha", "beta", "gamma"));
+
+    /**
+     * One iterator for the whole run: the object the shared row shares.
+     *
+     * <p>Held as a field rather than taken per body, which is the entire difference between the
+     * two rows. The detector keys on the iterator's identity, so a per-body iterator would be a
+     * different subject each time and could not accumulate a second thread.
+     */
+    private final Iterator<String> sharedIterator = concurrentMultiset.iterator();
 
     /** Traversed without the decorator's lock: the defect its own javadoc warns about. */
     private final Collection<String> unlockedCollection = syncCollection();
@@ -754,6 +770,38 @@ class CorpusRecordingLaneTest {
             seen += value.length();
         }
         assertTrue(seen > 0, "the corpus collections are seeded and must never traverse empty");
+    }
+
+    // --- SharedIterator --------------------------------------------------------------------
+
+    /**
+     * Advances one iterator instance from every thread in the run.
+     *
+     * <p>The multiset underneath is documented to support concurrent modification, which is the
+     * point: it buys the iterator nothing. A cursor is unsynchronized state of its own, and the
+     * detector's message says so - the hazard stands "even when that collection is itself a
+     * concurrent collection".
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_concurrentHashMultiset_sharedIterator() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.sharedIteratorDetector().recordAccess(sharedIterator, "hasNext");
+        sharedIterator.hasNext();
+    }
+
+    /**
+     * The same call on the same collection, with each body taking its own iterator.
+     *
+     * <p>Every instance is then touched by exactly the one thread that created it, so the
+     * detector's per-instance thread count never reaches two. This is the fix, and reporting it
+     * would mean reporting every correct traversal of a concurrent collection there is.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_concurrentHashMultiset_iteratorPerThread() {
+        CorpusRecorder.countBodyExecution();
+        Iterator<String> own = concurrentMultiset.iterator();
+        AsyncTestContext.sharedIteratorDetector().recordAccess(own, "hasNext");
+        own.hasNext();
     }
 
     private static void toleratingCorruption(Runnable operation) {

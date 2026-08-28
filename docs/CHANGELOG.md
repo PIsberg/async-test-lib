@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The corpus recording lane gives a tenth detector a denominator.** `SharedIteratorDetector`
+  now has a pair against Guava's `ConcurrentHashMultiset`, documented as supporting "concurrent
+  modifications" with "atomic versions of most `Multiset` operations". The detector's message
+  claims the hazard stands "even when that collection is itself a concurrent collection", and this
+  is the row that holds it to that: both rows call `hasNext()` on an iterator of the same
+  collection and differ only in whether the iterator object is shared. The shared row fired, the
+  per-thread row stayed silent.
+
 - **The corpus recording lane gives a ninth detector a denominator.**
   `SynchronizedCollectionIterationDetector` now has a both-directions pair against
   `org.apache.commons.collections4.collection.SynchronizedCollection`, whose class javadoc states
