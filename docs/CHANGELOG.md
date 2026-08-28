@@ -33,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one obvious documented-safe class in the corpus libraries that was not yet a subject; Jackson's
   `ObjectReader` and `ObjectWriter` were checked first and are already covered.
 
+- **An eleventh detector gets a denominator, and the row documents its own limit.**
+  `ConcurrentModificationDetector` now has a pair: commons-collections4's `CursorableLinkedList`,
+  which says in bold that it is not synchronized, fires; a JDK `CopyOnWriteArrayList` stays silent.
+  The silent twin is JDK rather than third-party for a reason worth stating - the detector
+  recognises safety by package prefix, so until #395 is settled *no* third-party collection can
+  hold that row, because every one of them reports.
+
 - **A fifth false positive is pinned rather than left invisible.**
   `ConcurrentModificationDetector` decides whether mutation is safe from the collection's package
   name, so guava's `ConcurrentHashMultiset` and commons-collections4's `SynchronizedCollection` are

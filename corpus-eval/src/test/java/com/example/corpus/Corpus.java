@@ -587,7 +587,34 @@ final class Corpus {
                     "the same call on the same collection, with each body taking its own "
                             + "iterator. Confining an iterator to the thread that created it is "
                             + "the fix, and a finding here would report every correct traversal "
-                            + "of a concurrent collection there is")
+                            + "of a concurrent collection there is"),
+
+            // --- ConcurrentModifications: an eleventh denominator, and the row that makes #395
+            //     concrete. The detector decides whether mutation is safe from the collection's
+            //     package name, so the silent twin here has to be a JDK type. That is not a
+            //     stylistic choice: guava's ConcurrentHashMultiset and commons-collections4's
+            //     SynchronizedCollection are both documented thread-safe and both report, so
+            //     neither can serve as a MUST_STAY_SILENT row until #395 is decided. The pair
+            //     below is therefore honest about what it measures - the package-name model,
+            //     which is the only model this detector has.
+
+            new RecordingSubject("recorded_cursorableLinkedList_concurrentAdd", COLLECTIONS4,
+                    "org.apache.commons.collections4.list.CursorableLinkedList",
+                    DetectorType.CONCURRENT_MODIFICATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "its own javadoc says in bold that the implementation is not synchronized, and "
+                            + "every thread in the run mutates it. This is the case the detector "
+                            + "exists for and the one it gets right"),
+
+            new RecordingSubject("recorded_copyOnWriteArrayList_concurrentAdd", JDK,
+                    "java.util.concurrent.CopyOnWriteArrayList",
+                    DetectorType.CONCURRENT_MODIFICATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the identical mutation on a collection whose whole design is concurrent "
+                            + "mutation. A JDK subject rather than a third-party one on purpose: "
+                            + "the detector recognises safety by package prefix, so no "
+                            + "third-party thread-safe collection can hold this row until #395 "
+                            + "is settled. The row measures the model that exists")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()

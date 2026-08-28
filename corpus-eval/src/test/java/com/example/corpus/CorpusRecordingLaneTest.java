@@ -12,6 +12,7 @@ import io.netty.buffer.Unpooled;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.apache.commons.collections4.collection.SynchronizedCollection;
+import org.apache.commons.collections4.list.CursorableLinkedList;
 import org.apache.commons.collections4.map.LRUMap;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -33,6 +34,7 @@ import java.text.SimpleDateFormat;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ConcurrentMap;
 import java.util.List;
@@ -108,6 +110,18 @@ class CorpusRecordingLaneTest {
 
     /** Reconfigured while other threads write through it: the exception that javadoc names. */
     private final ObjectMapper reconfiguredMapper = new ObjectMapper();
+
+    /** Its own javadoc says, in bold, that the implementation is not synchronized. */
+    private final List<String> cursorableList = new CursorableLinkedList<>();
+
+    /** The twin whose whole design is concurrent mutation. */
+    private final List<String> copyOnWriteList = new CopyOnWriteArrayList<>();
+
+    /** One declaration per collection for the run; see unlockedDeclared for why. */
+    private final AtomicBoolean cursorableDeclared = new AtomicBoolean();
+
+    /** The safe row's own one-shot latch. */
+    private final AtomicBoolean copyOnWriteDeclared = new AtomicBoolean();
 
     /** Documented to support concurrent modification; its iterator is still confined state. */
     private final Multiset<String> concurrentMultiset =
@@ -807,6 +821,47 @@ class CorpusRecordingLaneTest {
         Iterator<String> own = concurrentMultiset.iterator();
         AsyncTestContext.sharedIteratorDetector().recordAccess(own, "hasNext");
         own.hasNext();
+    }
+
+    // --- ConcurrentModifications ----------------------------------------------------------------
+
+    /**
+     * Every thread mutates a list its own javadoc calls unsynchronized.
+     *
+     * <p>Tolerated, because that is what the subject is: a linked list mutated from six threads
+     * can corrupt its own pointers, and the record has already happened when it does.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_cursorableLinkedList_concurrentAdd() {
+        CorpusRecorder.countBodyExecution();
+        declareCollectionOnce(cursorableDeclared, cursorableList, "cursorable-list");
+        AsyncTestContext.concurrentModificationDetector()
+                .recordModification(cursorableList, "cursorable-list", "add");
+        toleratingCorruption(() -> cursorableList.add("value"));
+    }
+
+    /**
+     * The identical mutation on a collection designed for exactly this.
+     *
+     * <p>A JDK subject rather than a third-party one, and not for convenience: the detector
+     * recognises safety by package prefix, so guava's {@code ConcurrentHashMultiset} and
+     * commons-collections4's {@code SynchronizedCollection} both report despite documenting
+     * thread safety. Until #395 is settled, no third-party collection can hold this row.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_copyOnWriteArrayList_concurrentAdd() {
+        CorpusRecorder.countBodyExecution();
+        declareCollectionOnce(copyOnWriteDeclared, copyOnWriteList, "copy-on-write-list");
+        AsyncTestContext.concurrentModificationDetector()
+                .recordModification(copyOnWriteList, "copy-on-write-list", "add");
+        copyOnWriteList.add("value");
+    }
+
+    private static void declareCollectionOnce(AtomicBoolean latch, java.util.Collection<String> c,
+                                              String name) {
+        if (latch.compareAndSet(false, true)) {
+            AsyncTestContext.concurrentModificationDetector().registerCollection(c, name);
+        }
     }
 
     private static void toleratingCorruption(Runnable operation) {

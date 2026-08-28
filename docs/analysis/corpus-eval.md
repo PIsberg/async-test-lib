@@ -445,7 +445,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 141: exposure zero, nothing said in
-either direction. That is now measured for ten of them, in a third lane, and the separation
+either direction. That is now measured for eleven of them, in a third lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -596,8 +596,8 @@ have reported nothing under either rule. `GraphService` now exposes two no-op `C
 hooks, the test wires them to the detector, and with `@Disabled` removed the run fails with the
 report naming both keys.
 
-That is the argument for the lane in one line. Ten detectors of 146 is not coverage; it is the
-first ten rows of a table that had none, and they have already been enough to find a defect that
+That is the argument for the lane in one line. Eleven detectors of 146 is not coverage; it is the
+first eleven rows of a table that had none, and they have already been enough to find a defect that
 had been shipping, to settle a modelling question that had been open since the fourth wave, to
 correct a detector that was describing a failure mode the platform stopped having, to catch an
 example demonstrating a bug its own detector could not see, and - with the ninth row - to find
@@ -642,6 +642,19 @@ touched only by the thread that created it, stayed silent.
 
 This one is the counterpart to the check-then-act pair in a different way. There the class was
 thread-safe and the *sequence* was wrong; here the class is thread-safe and the *sharing* is.
+
+**The eleventh row: `ConcurrentModificationDetector`, and what it could not be**
+
+commons-collections4's `CursorableLinkedList` says in bold that the implementation is not
+synchronized, so the MUST_FIRE row is straightforward: six threads mutating it, and the detector
+gets it right.
+
+The silent twin is a JDK `CopyOnWriteArrayList`, and that is worth explaining rather than passing
+over. It is not a convenience. The detector recognises safety by package prefix, so guava's
+`ConcurrentHashMultiset` and commons-collections4's `SynchronizedCollection` both report despite
+documenting thread safety - the false positive filed as #395. Until that is settled **no
+third-party collection can hold this row at all**, because every one of them fires. The pair
+measures the model that exists, and the reason it looks JDK-shaped is itself the finding.
 
 ### How far this lane can go, and where it stops
 
