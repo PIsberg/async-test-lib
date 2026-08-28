@@ -74,7 +74,9 @@ public class CompletableFutureExceptionDetector {
         if (!enabled || future == null) {
             return;
         }
-        futures.put(System.identityHashCode(future), new FutureState(future, name));
+        // computeIfAbsent, not put: re-declaring a future already tracked would discard whether
+        // a handler had been registered on it, which is the whole finding.
+        futures.computeIfAbsent(System.identityHashCode(future), k -> new FutureState(future, name));
     }
 
     /**

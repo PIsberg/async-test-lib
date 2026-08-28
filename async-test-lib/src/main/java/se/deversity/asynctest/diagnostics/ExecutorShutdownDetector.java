@@ -58,7 +58,9 @@ public class ExecutorShutdownDetector {
     public void recordExecutorCreated(ExecutorService executor, String name) {
         if (executor == null) return;
         String resolved = name != null ? name : "executor@" + System.identityHashCode(executor);
-        executors.put(System.identityHashCode(executor), new ExecutorState(resolved));
+        // computeIfAbsent, not put: re-declaring an executor already tracked would reset
+        // tasksSubmitted and shutdownCalled, and analyze() gates on both.
+        executors.computeIfAbsent(System.identityHashCode(executor), k -> new ExecutorState(resolved));
     }
 
     /**

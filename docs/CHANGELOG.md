@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Three detectors erased what they had already seen, every time a worker re-declared its
+  subject.** `recordWrapperCreated`, `recordFutureCreated` and `recordExecutorCreated` each
+  installed a fresh state object with `map.put`, so the unsafe-iteration count, the
+  handler-registered flag and the submitted-task count were reset on every call. An `@AsyncTest`
+  body runs once per worker per invocation, and
+  `SynchronizedCollectionIterationDetector`'s own usage example calls it from inside one - so a
+  user following the documentation lost every observation made before the last worker got there.
+  All three now use `computeIfAbsent`.
+
+  `RegistrationIsIdempotentTest` exists precisely for this and did not catch it, because it scans
+  `register*` and these are named `record*`. It now also scans `record*Created`: a name ending in
+  `Created` declares that a subject exists and never begins an episode, which is what makes the
+  suffix safe to gate on.
+
+- **The idempotence gate had two holes that let a broken registration read as correct.** Its
+  checks are substring tests over the method body, so a comment explaining *why* a method uses
+  `computeIfAbsent` contained the word `computeIfAbsent` and the method passed while still calling
+  `put` - the comment documenting the rule switched the rule off. Comments are now stripped before
+  the checks run. Separately, accepting any `!= null` plus any `return` as a lookup-then-return
+  guard let an unrelated `name != null` ternary count; requiring `.get(` instead went too far and
+  flagged `VolatileArrayDetector.registerArray`, the pattern the gate recommends. It now requires
+  the null-check to be on a call result, which a parameter cannot be.
+
 - **A lock you declared bought nothing from `ConcurrentModificationDetector`.** Two threads
   mutating an `ArrayList` is the finding, and it stood even when one lock covered every mutation
   and the caller had said so through `AsyncTestContext.holdingLock`. The detector had no lock

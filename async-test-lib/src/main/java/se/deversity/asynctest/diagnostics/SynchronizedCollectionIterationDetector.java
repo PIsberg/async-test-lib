@@ -54,7 +54,11 @@ public class SynchronizedCollectionIterationDetector {
     public void recordWrapperCreated(Object wrapper, String name) {
         if (wrapper == null) return;
         String label = name != null ? name : "collection@" + System.identityHashCode(wrapper);
-        wrappers.put(System.identityHashCode(wrapper), new WrapperInfo(label));
+        // computeIfAbsent, not put: an @AsyncTest body runs once per worker, so this is called
+        // again for a wrapper already being tracked. Installing fresh state there discarded
+        // every unsafe iteration counted so far. The first label wins, which is the right way
+        // round - a name is cosmetic and the observations are the finding.
+        wrappers.computeIfAbsent(System.identityHashCode(wrapper), k -> new WrapperInfo(label));
     }
 
     /**

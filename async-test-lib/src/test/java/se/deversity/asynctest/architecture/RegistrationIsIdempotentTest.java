@@ -34,10 +34,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <h4>What this does not cover</h4>
  *
- * <p>Only {@code register*}. A {@code record*} method that begins an episode - a compound
- * operation, an optimistic read, a scope - may legitimately replace what was there, and those were
- * deliberately left alone rather than changed without evidence. If one of them turns out to have
- * the same problem it needs its own reasoning, not an entry here.
+ * <p>{@code register*} and {@code record*Created}, and nothing else. A {@code record*} method
+ * that begins an episode - a compound operation, an optimistic read, a scope - may legitimately
+ * replace what was there, and those are deliberately left alone rather than changed without
+ * evidence.
+ *
+ * <p>The {@code Created} suffix was added after three methods turned out to be registrations
+ * wearing a {@code record} prefix: {@code recordWrapperCreated}, {@code recordFutureCreated} and
+ * {@code recordExecutorCreated}. Each declared that a subject exists and then accumulated
+ * observations against it - unsafe iterations, whether a handler was attached, whether shutdown
+ * was called - and each installed fresh state on every call, so a body that declared its subject
+ * per worker erased what the previous worker had seen.
+ * {@code SynchronizedCollectionIterationDetector}'s own usage example does exactly that, from
+ * inside an {@code @AsyncTest}. A name ending in {@code Created} declares existence and never
+ * begins an episode, which is what makes the suffix safe to gate on. Anything else still needs
+ * its own reasoning rather than an entry here.
  */
 @DisplayName("registerX must be idempotent: re-registering keeps earlier observations")
 class RegistrationIsIdempotentTest {
@@ -47,13 +58,39 @@ class RegistrationIsIdempotentTest {
 
     /** A {@code public void registerX(...) { ... }} method and its body. */
     private static final Pattern REGISTER_METHOD = Pattern.compile(
-            "public (?:synchronized )?void (register\\w+)\\([^)]*\\)\\s*\\{(.*?)\\n    \\}",
+            "public (?:synchronized )?void (register\\w+|record\\w+Created)\\([^)]*\\)\\s*\\{(.*?)\\n    \\}",
             Pattern.DOTALL);
 
     /** A {@code map.put(key, new State(...))} - installing freshly built state. */
     private static final Pattern INSTALLS_FRESH_STATE = Pattern.compile(
             "\\w+\\.put\\((?:[^;]*?)(?:new \\w+(?:<[^>]*>)?\\(|newKeySet\\(\\))",
             Pattern.DOTALL);
+
+    /**
+     * A null-check on the <em>result of a call</em>: {@code findArrayInfo(a, n) != null}.
+     *
+     * <p>The closing parenthesis is the whole point. Requiring only {@code "!= null"} plus
+     * {@code "return"} let {@code recordWrapperCreated} through, because its unrelated
+     * {@code name != null} ternary and its argument null-check satisfied both. Requiring a
+     * literal {@code .get(} instead went too far the other way and flagged
+     * {@code VolatileArrayDetector.registerArray}, which looks the subject up through a helper
+     * and is the pattern this gate recommends. A lookup returns something; a parameter does not.
+     */
+    private static final Pattern LOOKUP_RESULT_NULL_CHECK =
+            Pattern.compile("\\)\\s*!=\\s*null");
+
+    /**
+     * {@return {@code body} with its comments removed}
+     *
+     * <p>Every check below is a substring test, which cannot tell code from prose. That is not
+     * hypothetical: a comment explaining <em>why</em> a method uses {@code computeIfAbsent}
+     * contains the word {@code computeIfAbsent}, so a method that explained the fix while still
+     * calling {@code put} read as guarded and this gate passed on it. The comment that documents
+     * the rule must not be able to switch the rule off.
+     */
+    private static String withoutComments(String body) {
+        return body.replaceAll("(?s)/\\*.*?\\*/", " ").replaceAll("//.*", " ");
+    }
 
     @Test
     @DisplayName("no registerX installs fresh state unconditionally")
@@ -72,13 +109,15 @@ class RegistrationIsIdempotentTest {
                 while (method.find()) {
                     inspected++;
                     String name = method.group(1);
-                    String body = method.group(2);
+                    String body = withoutComments(method.group(2));
                     if (!INSTALLS_FRESH_STATE.matcher(body).find()) {
                         continue;   // does not install state; nothing to discard
                     }
+                    boolean looksUpFirst = LOOKUP_RESULT_NULL_CHECK.matcher(body).find()
+                            && body.contains("return");
                     boolean guarded = body.contains("putIfAbsent")
                             || body.contains("computeIfAbsent")
-                            || (body.contains("!= null") && body.contains("return"));
+                            || looksUpFirst;
                     if (!guarded) {
                         offenders.add(file.getFileName() + " :: " + name);
                     }
