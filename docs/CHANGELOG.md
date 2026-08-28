@@ -47,6 +47,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recognises safety by package prefix, so until #395 is settled *no* third-party collection can
   hold that row, because every one of them reports.
 
+- **A sleep inside a `synchronized` method is caught** (#388). A synchronized *block* compiles to
+  a `MONITORENTER` the field weaver rewrites, so the lockset learns the monitor; a synchronized
+  *method* takes its monitor from the `ACC_SYNCHRONIZED` access flag and compiles to no instruction
+  at all, so `HeldLocks.topHeld()` answered `null` inside a method that plainly held a lock. Same
+  bug, and only one of the two shapes was visible.
+
+  It was filed as blocked, on the reasoning that the lockset would have to learn the monitor - a
+  push on method entry and a pop on every exit including the exceptional one, which needs a handler
+  and a branch, which needs new stack map frames, which `AsyncTestAgent`'s
+  `COMPUTE_MAXS, never COMPUTE_FRAMES` note rules out.
+
+  The lockset does not have to learn it. The weaver already knows at weave time that the enclosing
+  method is synchronized and what it locks, so it loads that monitor and calls a hook taking it -
+  `this` for an instance method, the class for a static one. One more value on the stack, no branch
+  and no handler, which is precisely what that note permits.
+
 - **`ConcurrentModificationDetector` stops reporting every thread-safe collection outside
   `java.util.concurrent`** (#395). It decided safety from the package prefix, so only the JDK's own
   concurrent collections were recognised and every correct third-party one was reported - measured

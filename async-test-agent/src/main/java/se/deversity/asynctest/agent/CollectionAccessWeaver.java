@@ -126,7 +126,14 @@ final class CollectionAccessWeaver {
     private record Entry(Class<?> declaredBy, String method, String hook,
                          @org.jspecify.annotations.Nullable Class<?> returning,
                          boolean isStatic,
+                         @org.jspecify.annotations.Nullable String synchronizedHook,
                          Class<?>... parameters) {
+
+        Entry(Class<?> declaredBy, String method, String hook,
+              @org.jspecify.annotations.Nullable Class<?> returning, boolean isStatic,
+              Class<?>... parameters) {
+            this(declaredBy, method, hook, returning, isStatic, null, parameters);
+        }
 
         /** An entry matched by name and arguments alone, whatever the call returns. */
         static Entry call(Class<?> declaredBy, String method, String hook, Class<?>... parameters) {
@@ -148,6 +155,17 @@ final class CollectionAccessWeaver {
         static Entry staticCall(Class<?> declaredBy, String method, String hook,
                                 Class<?>... parameters) {
             return new Entry(declaredBy, method, hook, null, true, parameters);
+        }
+
+        /**
+         * The hook to call instead when the enclosing method is {@code synchronized}.
+         *
+         * <p>Only meaningful where holding a monitor changes the answer, which today is the
+         * sleep. It takes the same arguments plus the monitor, and the weaver loads that monitor
+         * at the call site: {@code this} for an instance method, the class for a static one.
+         */
+        Entry whenSynchronized(String hook) {
+            return new Entry(declaredBy, method, this.hook, returning, isStatic, hook, parameters);
         }
     }
 
@@ -274,7 +292,8 @@ final class CollectionAccessWeaver {
      * never did, so the two halves only had to be introduced.
      */
     private static final List<Entry> STATIC_ENTRIES = List.of(
-            Entry.staticCall(Thread.class, "sleep", "sleep", long.class));
+            Entry.staticCall(Thread.class, "sleep", "sleep", long.class)
+                    .whenSynchronized("sleepHoldingMonitor"));
 
     /**
      * The explicit-GC table.
@@ -300,7 +319,14 @@ final class CollectionAccessWeaver {
      */
     private record Target(String methodName, String callSiteDescriptor,
                           TypeDescription receiverType, String hookOwnerInternalName,
-                          String hookMethodName, String hookDescriptor, boolean isStatic) {
+                          String hookMethodName, String hookDescriptor, boolean isStatic,
+                          @org.jspecify.annotations.Nullable String synchronizedHookName,
+                          @org.jspecify.annotations.Nullable String synchronizedHookDescriptor) {
+
+        /** {@return whether this target has a variant for use inside a synchronized method} */
+        boolean hasSynchronizedVariant() {
+            return synchronizedHookName != null;
+        }
     }
 
     private static List<Target> targets(List<Entry> entries, Class<?> hooks) {
@@ -326,9 +352,38 @@ final class CollectionAccessWeaver {
                     Type.getInternalName(hooks),
                     hook.getName(),
                     hookType.getDescriptor(),
-                    entry.isStatic()));
+                    entry.isStatic(),
+                    entry.synchronizedHook(),
+                    synchronizedDescriptorFor(hooks, entry)));
         }
         return targets;
+    }
+
+    /**
+     * {@return the descriptor of the entry's synchronized-method variant, or {@code null}}
+     *
+     * <p>Resolved here rather than assumed, for the same reason {@code hookMethod} resolves the
+     * ordinary hook: a name that does not exist on the hooks class is a version skew between the
+     * agent and the library, and it should fail while the table is being built rather than
+     * produce an invocation of a method that is not there.
+     */
+    private static @org.jspecify.annotations.Nullable String synchronizedDescriptorFor(
+            Class<?> hooks, Entry entry) {
+        if (entry.synchronizedHook() == null) {
+            return null;
+        }
+        Class<?>[] signature = new Class<?>[entry.parameters().length + 1];
+        System.arraycopy(entry.parameters(), 0, signature, 0, entry.parameters().length);
+        signature[signature.length - 1] = Object.class;
+        try {
+            return Type.getType(hooks.getMethod(entry.synchronizedHook(), signature))
+                    .getDescriptor();
+        } catch (NoSuchMethodException e) {
+            throw new IllegalStateException(
+                    "no synchronized-method hook " + hooks.getName() + "."
+                            + entry.synchronizedHook() + " for " + entry.declaredBy().getName()
+                            + "." + entry.method() + "; agent and library versions disagree", e);
+        }
     }
 
     private static Method hookMethod(Class<?> hooks, Entry entry) {
@@ -484,7 +539,8 @@ final class CollectionAccessWeaver {
                                                  String signature, String[] exceptions) {
                     MethodVisitor delegate =
                             super.visitMethod(access, name, descriptor, signature, exceptions);
-                    return new SubstitutingMethodVisitor(delegate, targets, typePool, assignable);
+                    return new SubstitutingMethodVisitor(delegate, targets, typePool, assignable,
+                            access, instrumentedType.getInternalName());
                 }
             };
         }
@@ -497,12 +553,25 @@ final class CollectionAccessWeaver {
         private final TypePool typePool;
         private final Map<String, Boolean> assignable;
 
+        /** Whether the method being visited takes a monitor from its {@code ACC_SYNCHRONIZED} flag. */
+        private final boolean enclosingIsSynchronized;
+
+        /** Whether that monitor is the class rather than {@code this}. */
+        private final boolean enclosingIsStatic;
+
+        /** The class being woven, for loading its {@code Class} as a static method's monitor. */
+        private final String owningClassInternalName;
+
         SubstitutingMethodVisitor(MethodVisitor delegate, List<Target> targets,
-                                  TypePool typePool, Map<String, Boolean> assignable) {
+                                  TypePool typePool, Map<String, Boolean> assignable,
+                                  int access, String owningClassInternalName) {
             super(Opcodes.ASM9, delegate);
             this.targets = targets;
             this.typePool = typePool;
             this.assignable = assignable;
+            this.enclosingIsSynchronized = (access & Opcodes.ACC_SYNCHRONIZED) != 0;
+            this.enclosingIsStatic = (access & Opcodes.ACC_STATIC) != 0;
+            this.owningClassInternalName = owningClassInternalName;
         }
 
         @Override
@@ -539,6 +608,26 @@ final class CollectionAccessWeaver {
                             && name.equals(target.methodName())
                             && descriptor.equals(target.callSiteDescriptor())
                             && owner.equals(target.receiverType().getInternalName())) {
+                        // Inside a synchronized method the monitor is held and no instruction
+                        // says so: ACC_SYNCHRONIZED is an access flag, so HeldLocks cannot know.
+                        // The weaver does know, statically, so it names the monitor instead of
+                        // asking - this for an instance method, the class for a static one.
+                        //
+                        // One extra value on the stack, no branch and no exception handler, which
+                        // is exactly what COMPUTE_MAXS without COMPUTE_FRAMES allows. Teaching
+                        // the lockset instead would need a push on entry and a pop on every exit
+                        // including the exceptional one, and that needs frames.
+                        if (enclosingIsSynchronized && target.hasSynchronizedVariant()) {
+                            if (enclosingIsStatic) {
+                                super.visitLdcInsn(Type.getObjectType(owningClassInternalName));
+                            } else {
+                                super.visitVarInsn(Opcodes.ALOAD, 0);
+                            }
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC,
+                                    target.hookOwnerInternalName(), target.synchronizedHookName(),
+                                    target.synchronizedHookDescriptor(), false);
+                            return;
+                        }
                         super.visitMethodInsn(Opcodes.INVOKESTATIC,
                                 target.hookOwnerInternalName(), target.hookMethodName(),
                                 target.hookDescriptor(), false);
