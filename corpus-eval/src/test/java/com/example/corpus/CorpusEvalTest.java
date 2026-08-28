@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import com.fasterxml.jackson.databind.SequenceWriter;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -169,6 +170,19 @@ class CorpusEvalTest {
     private final Table<String, String, String> hashBasedTable = HashBasedTable.create();
 
     /**
+     * One stateful writer shared by the whole run: the first subject of that shape.
+     *
+     * <p>Jackson is explicit - a {@code SequenceWriter} is stateful and not thread-safe, and
+     * concurrent use needs external synchronization. Everything else Jackson contributes here is
+     * either immutable ({@code ObjectReader}, {@code ObjectWriter}) or safe once configured
+     * ({@code ObjectMapper}), so this is the library's only subject whose hazard is its own
+     * mutable position rather than reconfiguration.
+     *
+     * <p>The sink discards, because where the bytes go is not the subject.
+     */
+    private final SequenceWriter sequenceWriter = newSequenceWriter();
+
+    /**
      * A guava cache loaded through its {@code CacheLoader}, which is the interesting path.
      *
      * <p>A miss makes one thread compute while the others wait on the same entry, so this is
@@ -247,6 +261,15 @@ class CorpusEvalTest {
      * surface as a thrown exception rather than as a detector finding, and that outcome is part of
      * what the eval measures, so it is recorded instead of failing the run.
      */
+    /** {@return a sequence writer over a sink that discards, since the bytes are not the subject} */
+    private static SequenceWriter newSequenceWriter() {
+        try {
+            return new ObjectMapper().writer().writeValues(java.io.OutputStream.nullOutputStream());
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("could not open the corpus sequence writer", e);
+        }
+    }
+
     private static void unsafeOperation(Runnable operation) {
         CorpusRecorder.countBodyExecution();
         try {
@@ -389,6 +412,17 @@ class CorpusEvalTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void atomicLongMap_incrementAndGet() {
         safeOperation(() -> atomicLongMap.incrementAndGet("key"));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void sequenceWriter_write() {
+        unsafeOperation(() -> {
+            try {
+                sequenceWriter.write(PAYLOAD);
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException(e);
+            }
+        });
     }
 
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)

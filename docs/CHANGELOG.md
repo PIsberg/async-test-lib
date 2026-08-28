@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A 45th subject: Jackson's `SequenceWriter`, the first whose hazard is its own cursor.**
+  Jackson is explicit - *"Instances of `SequenceWriter` are stateful, and not thread-safe"*. Every
+  other Jackson subject is either immutable (`ObjectReader`, `ObjectWriter`) or safe once
+  configured (`ObjectMapper`), so this is the library's only subject whose hazard is mutable
+  position rather than reconfiguration. 24,949 accesses, detected by `AtomicityValidator` and
+  `SharedCollectionDetector`, and **239 recorded crashes** - the documented hazard demonstrating
+  itself rather than being taken on trust.
+
 - **A 44th subject, and the first two-dimensional one: guava's `HashBasedTable`.** Guava documents
   it as *"not synchronized. If multiple threads access this table concurrently and one of the
   threads modifies the table, it must be synchronized externally"*. Every other collection subject

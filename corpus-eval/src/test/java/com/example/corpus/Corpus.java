@@ -180,6 +180,12 @@ final class Corpus {
                     "Instances of this class may be used by multiple threads concurrently.",
                     "com/google/common/util/concurrent/AtomicLongMap.java:46"),
 
+            new Subject("sequenceWriter_write", JACKSON,
+                    "com.fasterxml.jackson.databind.SequenceWriter", Contract.NOT_THREAD_SAFE,
+                    "Instances of SequenceWriter are stateful, and not thread-safe: if used "
+                            + "concurrently, external synchronization is necessary.",
+                    "com/fasterxml/jackson/databind/SequenceWriter.java:23"),
+
             new Subject("hashBasedTable_put", GUAVA,
                     "com.google.common.collect.HashBasedTable", Contract.NOT_THREAD_SAFE,
                     "Note that this implementation is not synchronized. If multiple threads access "
