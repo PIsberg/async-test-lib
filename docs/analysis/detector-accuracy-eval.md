@@ -57,7 +57,7 @@ still invisible.
 | FalseSharingDetector | silent by default (experimental gate), and reports the pair once the property is set | silent | findings uncorrelated with the phenomenon; opt-in via `-Dasync-test.experimental.false-sharing=true`, and both directions of that gate are now pinned |
 | LockLeakDetector | fires (two acquisitions recorded, no release) | silent (every acquire released, nothing held at analysis time) | genuine both-direction detector |
 | CompletableFutureExceptionDetector | fires (completed exceptionally with no handler registered) | silent (same failure, handler registered first) | genuine both-direction detector |
-| ConcurrentModificationDetector | fires (modification recorded while an iterator is live) | silent on a `CopyOnWriteArrayList`, and on a snapshot iterator modified during iteration; **fires** on an `ArrayList` guarded by an undeclared lock | since #292 the collection's own type is consulted; an invisible lock is still invisible |
+| ConcurrentModificationDetector | fires (modification recorded while an iterator is live) | silent on a `CopyOnWriteArrayList`, on a snapshot iterator modified during iteration, and on an `ArrayList` whose mutations all ran under one **declared** lock | since #292 the collection's own type is consulted; since the shared `Lockset` it also intersects declared and agent-observed locks. An undeclared lock is still invisible, by design |
 | ResourceLeakDetector | fires (two opens, no close) | silent (every open closed, nothing open at analysis time) | genuine both-direction detector |
 | InterruptMonitor | fires (InterruptedException caught, flag never restored) | silent (catch-and-restore) | genuine both-direction detector |
 | UncaughtExceptionHandlerDetector | fires (thread throws with no custom handler) | silent (same throw, handler installed) | genuine both-direction detector |
@@ -187,3 +187,23 @@ so that improvement shows up as a red test, exactly like a regression would.
 That is exactly what happened on 2026-08-11: the `synchronized(digest)` twin went silent
 when guard-on-self awareness landed, its assertion now pins the true negative, and new
 external-lock twins pin what is still a false positive.
+
+And again on 2026-08-28, with a correction worth keeping. The four "pinned false
+positives" read as four defects and are not: all four are one documented limit, that an
+**undeclared** lock is invisible and must therefore still be reported. Three already had a
+declared-lock counterpart pinning the silence. One of those three,
+`SharedMessageDigestDetector`, had the capability with no test naming it -
+`SelfGuard.TrackedInstance.noteAccess` has intersected declared locks since the
+guard-on-self probe grew into a lockset, so a refactor could have removed it without a
+single assertion going red. It has a test now.
+
+`ConcurrentModificationDetector` was the one real gap: no reference to `HeldLocks` or
+`SelfGuard` anywhere in it, so a declared lock bought nothing. It now notes the held
+lockset per mutation through the shared `Lockset`, extracted for this out of
+`AtomicityValidator`, where it had been a private class nested two levels deep. The
+extraction was verified behaviour-preserving before any behaviour was added: the whole
+eval and `AtomicityValidatorTest` passed unchanged first.
+
+The undeclared-lock rows stay `assertTrue`, and should. The limits section above already
+says why: without the agent there is no monitor instruction to observe, so silence there
+would be silence bought by nothing.

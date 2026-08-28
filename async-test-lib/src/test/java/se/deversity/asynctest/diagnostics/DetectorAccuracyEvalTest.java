@@ -984,6 +984,35 @@ class DetectorAccuracyEvalTest {
                         + "and update detector-accuracy-eval.md");
     }
 
+    @Test
+    @DisplayName("digest: a declared external lock is recognised (the FP above, closed)")
+    void digestDetectorIsSilentWhenOneDeclaredLockGuardsEveryAccess() throws InterruptedException {
+        SharedMessageDigestDetector detector = new SharedMessageDigestDetector();
+        MessageDigest digest = sha256();
+        ReentrantLock lock = new ReentrantLock();
+        Runnable update = () -> {
+            try (var held = AsyncTestContext.holdingLock(lock)) {
+                lock.lock();
+                try {
+                    digest.update((byte) 1);
+                    detector.recordAccess(digest, "shared-digest", Thread.currentThread());
+                } finally {
+                    lock.unlock();
+                }
+            }
+        };
+        onTwoThreads(update, update);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "Same shared MessageDigest and the same two threads as the pinned false positive "
+                        + "above; the only difference is that this lock is declared, so "
+                        + "SelfGuard.TrackedInstance intersects it in and one lock covers every "
+                        + "access. This capability already existed - HeldLocks.intersect has "
+                        + "handled declared locks since the guard-on-self probe grew into a "
+                        + "lockset - but nothing pinned it, so it could have been lost in a "
+                        + "refactor without a single test going red. That is what this is for.");
+    }
+
     // ---- SharedStatefulCryptoDetector ----
 
     @Test

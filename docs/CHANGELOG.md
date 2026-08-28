@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A lock you declared bought nothing from `ConcurrentModificationDetector`.** Two threads
+  mutating an `ArrayList` is the finding, and it stood even when one lock covered every mutation
+  and the caller had said so through `AsyncTestContext.holdingLock`. The detector had no lock
+  model at all - not one reference to `HeldLocks` or `SelfGuard` - so correct code that took the
+  trouble to describe itself was reported anyway. It now intersects the held lockset per mutation
+  and stays silent when one visible lock covered all of them. Hand-rolled
+  `synchronized (theList)` counts too, with no declaration.
+
+  An **undeclared** lock still reports, and that is deliberate rather than a leftover:
+  `HeldLocks.members(0L)` returns the empty set, so an unlocked access collapses the intersection
+  and the finding stands. Silence bought by a lock nobody can see would be silence bought by
+  nothing. `DetectorAccuracyEvalTest` pins both directions, plus the case a weaker model would get
+  wrong - two threads each holding their *own* declared lock are still racing.
+
+### Changed
+
+- **The lockset intersection is one implementation instead of a candidate for two.** It lived as a
+  private class nested two levels inside `AtomicityValidator`, so the next detector that needed it
+  would have copied it, and a copied lockset is the twin-kept-in-agreement-by-convention this repo
+  gates against elsewhere. It moves to a package-private `Lockset`. Pure extraction, and verified
+  as one: `AtomicityValidatorTest` and all 70 accuracy-eval cases passed unchanged before any
+  behaviour was added.
+
 ## [1.10.0] - 2026-08-28
 
 ### Added
