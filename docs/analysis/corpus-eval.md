@@ -445,7 +445,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 141: exposure zero, nothing said in
-either direction. That is now measured for eight of them, in a third lane, and the separation
+either direction. That is now measured for nine of them, in a third lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -596,11 +596,34 @@ have reported nothing under either rule. `GraphService` now exposes two no-op `C
 hooks, the test wires them to the detector, and with `@Disabled` removed the run fails with the
 report naming both keys.
 
-That is the argument for the lane in one line. Eight detectors of 146 is not coverage; it is the
-first eight rows of a table that had none, and they have already been enough to find a defect that
+That is the argument for the lane in one line. Nine detectors of 146 is not coverage; it is the
+first nine rows of a table that had none, and they have already been enough to find a defect that
 had been shipping, to settle a modelling question that had been open since the fourth wave, to
-correct a detector that was describing a failure mode the platform stopped having, and to catch an
-example demonstrating a bug its own detector could not see.
+correct a detector that was describing a failure mode the platform stopped having, to catch an
+example demonstrating a bug its own detector could not see, and - with the ninth row - to find
+three registrations that erased their own evidence.
+
+**The ninth row: `SynchronizedCollectionIterationDetector`**
+
+`org.apache.commons.collections4.collection.SynchronizedCollection` states the contract in its
+class javadoc rather than leaving it to folklore, which is what makes it a corpus subject:
+
+> Iterators must be manually synchronized:
+> `synchronized (coll) { Iterator it = coll.iterator(); ... }`
+> - `org/apache/commons/collections4/collection/SynchronizedCollection.java:29`
+
+Both rows traverse an identical decorator and differ in one bit, the `holdingLock` flag, so the
+detector is handed the same evidence apart from the thing its model turns on. The class is
+documented thread-safe and the unlocked caller is still wrong, which puts this with the
+check-then-act pair rather than with the unsafe-type pairs.
+
+Writing it found the defect above. `recordIterationStarted` returns early for a wrapper it does
+not know, so registration is load-bearing - and `recordWrapperCreated` installed a fresh
+`WrapperInfo` on every call, discarding the iterations counted so far. An `@AsyncTest` body runs
+once per worker, and the detector's own usage example calls it from inside one. Two sibling
+methods, `recordFutureCreated` and `recordExecutorCreated`, had the same shape. The row could not
+have been written without hitting it, which is the argument for the lane restated: a denominator
+is a place where a detector has to actually work.
 
 
 ## Reproducing it

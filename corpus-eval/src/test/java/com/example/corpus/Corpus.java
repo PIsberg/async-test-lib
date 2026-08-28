@@ -504,7 +504,39 @@ final class Corpus {
                             + "other cache is ordinary layered-cache code, and the prohibition is "
                             + "per map, so this must stay silent. It is the row that makes the "
                             + "cross-key rule safe to have on by default: a detector keyed on the "
-                            + "thread rather than the map would report every layered cache")
+                            + "thread rather than the map would report every layered cache"),
+
+            // --- SynchronizedCollectionIteration: the class is a synchronizing decorator and the
+            //     defect is the caller's, exactly like the check-then-act pair above. What makes
+            //     this a corpus contract rather than folklore is that commons-collections4 states
+            //     the rule in the class javadoc itself, with the code:
+            //
+            //       "Iterators must be manually synchronized:
+            //          synchronized (coll) { Iterator it = coll.iterator(); ... }"
+            //       org/apache/commons/collections4/collection/SynchronizedCollection.java:29
+            //
+            //     Both rows share one wrapper and differ only in the holdingLock flag, so the
+            //     detector is handed identical evidence apart from the one bit its model turns on.
+
+            new RecordingSubject("recorded_synchronizedCollection_iteratedWithoutLock", COLLECTIONS4,
+                    "org.apache.commons.collections4.collection.SynchronizedCollection",
+                    DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every method of the decorator takes the collection's lock, and iteration is "
+                            + "the documented exception the caller has to hold it for. Iterating "
+                            + "without it leaves each next() individually synchronized and the "
+                            + "traversal as a whole unprotected, which is a "
+                            + "ConcurrentModificationException or a silently skipped element. The "
+                            + "class is thread-safe and the caller is still wrong"),
+
+            new RecordingSubject("recorded_synchronizedCollection_iteratedHoldingLock", COLLECTIONS4,
+                    "org.apache.commons.collections4.collection.SynchronizedCollection",
+                    DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same traversal of the same decorator, inside synchronized (coll), which "
+                            + "is the pattern the javadoc prints. A finding here would be a "
+                            + "finding on the documented fix, which is the direction that stops "
+                            + "people using the detector at all")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()

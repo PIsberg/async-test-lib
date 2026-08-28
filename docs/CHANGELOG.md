@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The corpus recording lane gives a ninth detector a denominator.**
+  `SynchronizedCollectionIterationDetector` now has a both-directions pair against
+  `org.apache.commons.collections4.collection.SynchronizedCollection`, whose class javadoc states
+  the contract outright: *"Iterators must be manually synchronized"*, with the code. Both rows
+  traverse an identical decorator and differ in one bit - whether the lock was held - so the
+  detector gets the same evidence apart from the thing its model turns on. The unlocked row fired,
+  the locked row stayed silent, and the class is documented thread-safe in both, which puts this
+  with the check-then-act pair: the class is right and the caller is wrong.
+
+  Writing the row is what found the registration defect below. `recordIterationStarted` ignores a
+  wrapper it was never told about, so registration is load-bearing, and the row could not have
+  been written without hitting it.
+
 ### Fixed
 
 - **Three detectors erased what they had already seen, every time a worker re-declared its

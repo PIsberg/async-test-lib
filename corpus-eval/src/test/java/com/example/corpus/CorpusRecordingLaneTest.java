@@ -9,6 +9,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.apache.commons.collections4.collection.SynchronizedCollection;
 import org.apache.commons.collections4.map.LRUMap;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -30,8 +31,10 @@ import java.text.SimpleDateFormat;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ConcurrentMap;
 import java.util.List;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.ArrayList;
 import javax.crypto.Mac;
@@ -102,6 +105,25 @@ class CorpusRecordingLaneTest {
 
     /** Reconfigured while other threads write through it: the exception that javadoc names. */
     private final ObjectMapper reconfiguredMapper = new ObjectMapper();
+
+    /** Traversed without the decorator's lock: the defect its own javadoc warns about. */
+    private final Collection<String> unlockedCollection = syncCollection();
+
+    /** The same traversal inside synchronized (coll): the pattern that javadoc prints. */
+    private final Collection<String> lockedCollection = syncCollection();
+
+    /**
+     * One declaration per wrapper for the whole run, not one per worker.
+     *
+     * <p>{@code recordWrapperCreated} is idempotent now, but it was not until this row was
+     * written - it installed a fresh {@code WrapperInfo} and discarded the iterations counted
+     * so far, which is what a per-worker declaration would have hit. Declaring once is also
+     * simply what a consumer does, so the row measures the shape people write.
+     */
+    private final AtomicBoolean unlockedDeclared = new AtomicBoolean();
+
+    /** The locked row's own one-shot latch; separate wrapper, separate declaration. */
+    private final AtomicBoolean lockedDeclared = new AtomicBoolean();
 
     /** Documented not synchronised, used as a cache the way the detector's javadoc shows. */
     private final LRUMap<String, String> lruMap = new LRUMap<>(64);
@@ -674,6 +696,64 @@ class CorpusRecordingLaneTest {
         cache.put(RECURSION_KEY, "seed");
         cache.put(OTHER_KEY, "seed");
         return cache;
+    }
+
+    // --- SynchronizedCollectionIteration -------------------------------------------------------
+
+    /**
+     * Traverses a synchronizing decorator without holding its lock.
+     *
+     * <p>Every method on {@code SynchronizedCollection} takes the collection's monitor, so each
+     * {@code next()} is individually safe and the traversal as a whole is not. That is the
+     * exception the class javadoc calls out, and it is the caller's to get right: the class is
+     * documented thread-safe and this body is still wrong.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_synchronizedCollection_iteratedWithoutLock() {
+        CorpusRecorder.countBodyExecution();
+        declareOnce(unlockedDeclared, unlockedCollection, "unlocked-collection");
+        AsyncTestContext.synchronizedCollectionIterationDetector()
+                .recordIterationStarted(unlockedCollection, Thread.currentThread(), false);
+        traverse(unlockedCollection);
+    }
+
+    /**
+     * The same traversal of an identical decorator, inside {@code synchronized (coll)}.
+     *
+     * <p>The detector is handed the same calls as the row above and one different bit. Nothing
+     * mutates either collection, so neither row can throw; what separates them is only whether
+     * the lock was held, which is exactly the model being measured.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_synchronizedCollection_iteratedHoldingLock() {
+        CorpusRecorder.countBodyExecution();
+        declareOnce(lockedDeclared, lockedCollection, "locked-collection");
+        synchronized (lockedCollection) {
+            AsyncTestContext.synchronizedCollectionIterationDetector()
+                    .recordIterationStarted(lockedCollection, Thread.currentThread(), true);
+            traverse(lockedCollection);
+        }
+    }
+
+    private static Collection<String> syncCollection() {
+        return SynchronizedCollection.synchronizedCollection(
+                new ArrayList<>(List.of("alpha", "beta", "gamma")));
+    }
+
+    private static void declareOnce(AtomicBoolean latch, Collection<String> wrapper, String name) {
+        if (latch.compareAndSet(false, true)) {
+            AsyncTestContext.synchronizedCollectionIterationDetector()
+                    .recordWrapperCreated(wrapper, name);
+        }
+    }
+
+    /** Reads every element, so the traversal is real work rather than an unused iterator. */
+    private static void traverse(Collection<String> collection) {
+        int seen = 0;
+        for (String value : collection) {
+            seen += value.length();
+        }
+        assertTrue(seen > 0, "the corpus collections are seeded and must never traverse empty");
     }
 
     private static void toleratingCorruption(Runnable operation) {
