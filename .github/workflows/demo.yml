@@ -4,7 +4,11 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src/**'
+      # 'src/**' used to sit here and matched nothing: there has been no
+      # top-level src/ since the repository became a reactor, so a library
+      # change never re-recorded the demo the library is the subject of.
+      # Main sources only - a test change cannot alter what the demo prints.
+      - 'async-test-lib/src/main/**'
       - 'tools/**'
       - '.github/workflows/demo.yml'
   workflow_dispatch:
@@ -13,7 +17,7 @@ permissions:
   contents: read
 
 # Back-to-back merges to main each trigger a recording; only the newest
-# result matters, so drop superseded runs instead of racing them to push.
+# result matters, so drop superseded runs instead of racing them.
 concurrency:
   group: demo-gif
   cancel-in-progress: true
@@ -23,7 +27,8 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write  # pushes the regenerated demo GIF back to main
+      contents: write        # pushes the recording to its own branch
+      pull-requests: write   # opens the PR that carries it to main
 
     steps:
       - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
@@ -72,28 +77,62 @@ jobs:
             --speed 1.2 \
             --idle-time-limit 3
 
-      - name: Commit updated GIF to main
-        # The workflow's `paths:` filter excludes docs/diagrams/, so pushing
-        # the regenerated assets here will NOT re-trigger this workflow.
-        # Direct push avoids the GITHUB_TOKEN "cannot create PR" restriction;
-        # human review on auto-generated GIFs adds no value.
+      - name: Propose the regenerated GIF as a pull request
+        # This step used to push straight to main, and had failed on every run
+        # since branch protection went on: GH006, "Changes must be made through
+        # a pull request". Its retry loop could not have helped either - it
+        # rebased with tools/demo/pom.xml still modified by the version stamp
+        # above, so git refused with "cannot rebase: You have unstaged changes".
+        #
+        # The comment it carried - "Direct push avoids the GITHUB_TOKEN cannot
+        # create PR restriction" - described a real restriction, since lifted:
+        # Settings > Actions > General > "Allow GitHub Actions to create and
+        # approve pull requests" is on, so the token may open this PR.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if git status --porcelain docs/diagrams/demo.cast docs/diagrams/demo.gif | grep -q .; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add docs/diagrams/demo.cast docs/diagrams/demo.gif
-            git commit -m "chore: update demo GIF [skip ci]"
-            # main may have moved while we recorded; rebase our one commit
-            # onto the current tip and retry so the push is never rejected.
-            for attempt in 1 2 3; do
-              if git push origin HEAD:main; then
-                exit 0
-              fi
-              echo "Push rejected (attempt ${attempt}) — rebasing onto latest main"
-              git fetch origin main
-              git rebase origin/main
-            done
-            git push origin HEAD:main
-          else
-            echo "GIF unchanged — nothing to push"
+          set -euo pipefail
+
+          # The version stamp is a build-time mutation, not something to commit,
+          # and leaving it dirty is what broke the old rebase.
+          git checkout -- tools/demo/pom.xml
+
+          if ! git status --porcelain docs/diagrams/demo.cast docs/diagrams/demo.gif | grep -q .; then
+            echo "GIF unchanged - nothing to propose"
+            exit 0
           fi
+
+          BRANCH=chore/demo-gif
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add docs/diagrams/demo.cast docs/diagrams/demo.gif
+          git commit -m "chore: update demo GIF"
+
+          # One long-lived branch, force-pushed. A recording runs per qualifying
+          # merge to main, and a fresh branch per run would open a PR per merge;
+          # reusing the branch means an open PR just gains a newer recording.
+          git push --force origin "$BRANCH"
+
+          if [ -n "$(gh pr list --head "$BRANCH" --state open --json number -q '.[].number')" ]; then
+            echo "PR already open for $BRANCH - the force-push updated it"
+            exit 0
+          fi
+
+          # printf rather than a heredoc: this is inside a YAML block scalar, so
+          # a terminator at column 0 would end the block and every indented line
+          # would reach GitHub as a markdown code block.
+          printf '%s\n' \
+            'The demo recording changed, so `docs/diagrams/demo.gif` and `docs/diagrams/demo.cast`' \
+            'were re-recorded from the current `main`.' \
+            '' \
+            'Opened by the `Update demo GIF` workflow, which cannot commit to `main` directly:' \
+            'branch protection requires a pull request.' \
+            '' \
+            'Nothing here is hand-written. Re-running the workflow force-pushes a newer recording' \
+            'onto this same branch rather than opening a second pull request.' \
+            > "$RUNNER_TEMP/demo-pr-body.md"
+
+          gh pr create --base main --head "$BRANCH" \
+            --title "chore: update the demo GIF" \
+            --body-file "$RUNNER_TEMP/demo-pr-body.md"

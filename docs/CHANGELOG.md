@@ -20,6 +20,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not, and no gate reads it - `DetectorFeedCoverageTest` checks the heading and the membership.
   It now reads eighteen, with the entry this release adds.
 
+- **The demo GIF workflow had failed on every run since branch protection went on, and two faults
+  hid the fact.** `demo.yml` re-recorded the README demo and pushed the result straight to `main`,
+  which branch protection rejects outright:
+
+  ```
+  remote: error: GH006: Protected branch update failed for refs/heads/main.
+  remote: - Changes must be made through a pull request.
+  ```
+
+  That push could not have succeeded on any run, and its retry loop could not have rescued it: the
+  step that stamps a version into `tools/demo/pom.xml` leaves the tree dirty, so the rebase died on
+  `cannot rebase: You have unstaged changes`. The workflow now commits to its own branch and opens
+  a pull request, and reverts the version stamp first.
+
+  The second fault is why nobody noticed the first. The same workflow filtered on `paths: src/**`,
+  and there has been no top-level `src/` since this repository became a reactor, so a library
+  change never re-recorded the demo the library is the subject of. It now watches
+  `async-test-lib/src/main/**`.
+
+  Neither is visible from the pipeline. A push to a protected branch fails *after* the merge, so no
+  pull request goes red for it, and a dead path filter produces no run at all - which looks exactly
+  like nothing to do. `WorkflowPushTargetAndPathsTest` now fails on either.
+
 ### Added
 
 - **An explicit `System.gc()` is caught with no instrumentation, and the static path has a second
