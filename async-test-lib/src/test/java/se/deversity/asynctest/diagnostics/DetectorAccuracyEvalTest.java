@@ -1411,6 +1411,70 @@ class DetectorAccuracyEvalTest {
     }
 
     @Test
+    @DisplayName("concurrent modification: a declared external lock is recognised (the FP above, closed)")
+    void concurrentModificationDetectorIsSilentWhenOneDeclaredLockGuardsEveryMutation()
+            throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new ArrayList<>();
+        ReentrantLock lock = new ReentrantLock();
+        detector.registerCollection(list, "list");
+        Runnable guardedModify = () -> {
+            try (var held = AsyncTestContext.holdingLock(lock)) {
+                lock.lock();
+                try {
+                    list.add("value");
+                    detector.recordModification(list, "list", "add");
+                } finally {
+                    lock.unlock();
+                }
+            }
+        };
+        onTwoThreads(guardedModify, guardedModify);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "Same ArrayList and the same two threads as the test above; the only difference is "
+                        + "that this lock is declared, so it reaches the collection's lockset and "
+                        + "covers every mutation. Reporting here would be reporting correct code "
+                        + "the caller took the trouble to describe. The agent produces the same "
+                        + "members without the declaration, by weaving MONITORENTER.");
+    }
+
+    @Test
+    @DisplayName("concurrent modification: two different declared locks are still a race")
+    void concurrentModificationDetectorFiresWhenEachThreadHoldsItsOwnLock()
+            throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new ArrayList<>();
+        ReentrantLock first = new ReentrantLock();
+        ReentrantLock second = new ReentrantLock();
+        detector.registerCollection(list, "list");
+        Runnable underFirst = mutateUnder(detector, list, first);
+        Runnable underSecond = mutateUnder(detector, list, second);
+        onTwoThreads(underFirst, underSecond);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "Both threads held a declared lock, and no single lock covered both mutations, so "
+                        + "they never excluded each other. This is the case a model that only "
+                        + "asked \"was any lock held\" would get wrong, and it is why the lockset "
+                        + "intersects rather than counting.");
+    }
+
+    private static Runnable mutateUnder(ConcurrentModificationDetector detector,
+                                        List<String> list, ReentrantLock lock) {
+        return () -> {
+            try (var held = AsyncTestContext.holdingLock(lock)) {
+                lock.lock();
+                try {
+                    list.add("value");
+                    detector.recordModification(list, "list", "add");
+                } finally {
+                    lock.unlock();
+                }
+            }
+        };
+    }
+
+    @Test
     @DisplayName("resource leak: opening without closing fires (true positive)")
     void resourceLeakDetectorFiresOnAnUnclosedResource() throws InterruptedException {
         ResourceLeakDetector detector = new ResourceLeakDetector();
