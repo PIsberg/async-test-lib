@@ -4,11 +4,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.github.benmanes.caffeine.cache.Cache;
+import com.google.common.collect.ConcurrentHashMultiset;
+import com.google.common.collect.Multiset;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.apache.commons.collections4.collection.SynchronizedCollection;
 import org.apache.commons.collections4.map.LRUMap;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -30,8 +33,11 @@ import java.text.SimpleDateFormat;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ConcurrentMap;
 import java.util.List;
+import java.util.Collection;
+import java.util.Iterator;
 import java.util.Collections;
 import java.util.ArrayList;
 import javax.crypto.Mac;
@@ -102,6 +108,38 @@ class CorpusRecordingLaneTest {
 
     /** Reconfigured while other threads write through it: the exception that javadoc names. */
     private final ObjectMapper reconfiguredMapper = new ObjectMapper();
+
+    /** Documented to support concurrent modification; its iterator is still confined state. */
+    private final Multiset<String> concurrentMultiset =
+            ConcurrentHashMultiset.create(List.of("alpha", "beta", "gamma"));
+
+    /**
+     * One iterator for the whole run: the object the shared row shares.
+     *
+     * <p>Held as a field rather than taken per body, which is the entire difference between the
+     * two rows. The detector keys on the iterator's identity, so a per-body iterator would be a
+     * different subject each time and could not accumulate a second thread.
+     */
+    private final Iterator<String> sharedIterator = concurrentMultiset.iterator();
+
+    /** Traversed without the decorator's lock: the defect its own javadoc warns about. */
+    private final Collection<String> unlockedCollection = syncCollection();
+
+    /** The same traversal inside synchronized (coll): the pattern that javadoc prints. */
+    private final Collection<String> lockedCollection = syncCollection();
+
+    /**
+     * One declaration per wrapper for the whole run, not one per worker.
+     *
+     * <p>{@code recordWrapperCreated} is idempotent now, but it was not until this row was
+     * written - it installed a fresh {@code WrapperInfo} and discarded the iterations counted
+     * so far, which is what a per-worker declaration would have hit. Declaring once is also
+     * simply what a consumer does, so the row measures the shape people write.
+     */
+    private final AtomicBoolean unlockedDeclared = new AtomicBoolean();
+
+    /** The locked row's own one-shot latch; separate wrapper, separate declaration. */
+    private final AtomicBoolean lockedDeclared = new AtomicBoolean();
 
     /** Documented not synchronised, used as a cache the way the detector's javadoc shows. */
     private final LRUMap<String, String> lruMap = new LRUMap<>(64);
@@ -674,6 +712,101 @@ class CorpusRecordingLaneTest {
         cache.put(RECURSION_KEY, "seed");
         cache.put(OTHER_KEY, "seed");
         return cache;
+    }
+
+    // --- SynchronizedCollectionIteration -------------------------------------------------------
+
+    /**
+     * Traverses a synchronizing decorator without holding its lock.
+     *
+     * <p>Every method on {@code SynchronizedCollection} takes the collection's monitor, so each
+     * {@code next()} is individually safe and the traversal as a whole is not. That is the
+     * exception the class javadoc calls out, and it is the caller's to get right: the class is
+     * documented thread-safe and this body is still wrong.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_synchronizedCollection_iteratedWithoutLock() {
+        CorpusRecorder.countBodyExecution();
+        declareOnce(unlockedDeclared, unlockedCollection, "unlocked-collection");
+        AsyncTestContext.synchronizedCollectionIterationDetector()
+                .recordIterationStarted(unlockedCollection, Thread.currentThread(), false);
+        traverse(unlockedCollection);
+    }
+
+    /**
+     * The same traversal of an identical decorator, inside {@code synchronized (coll)}.
+     *
+     * <p>The detector is handed the same calls as the row above and one different bit. Nothing
+     * mutates either collection, so neither row can throw; what separates them is only whether
+     * the lock was held, which is exactly the model being measured.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_synchronizedCollection_iteratedHoldingLock() {
+        CorpusRecorder.countBodyExecution();
+        declareOnce(lockedDeclared, lockedCollection, "locked-collection");
+        synchronized (lockedCollection) {
+            AsyncTestContext.synchronizedCollectionIterationDetector()
+                    .recordIterationStarted(lockedCollection, Thread.currentThread(), true);
+            traverse(lockedCollection);
+        }
+    }
+
+    private static Collection<String> syncCollection() {
+        return SynchronizedCollection.synchronizedCollection(
+                new ArrayList<>(List.of("alpha", "beta", "gamma")));
+    }
+
+    private static void declareOnce(AtomicBoolean latch, Collection<String> wrapper, String name) {
+        if (latch.compareAndSet(false, true)) {
+            AsyncTestContext.synchronizedCollectionIterationDetector()
+                    .recordWrapperCreated(wrapper, name);
+        }
+    }
+
+    /** Reads every element, so the traversal is real work rather than an unused iterator. */
+    private static void traverse(Collection<String> collection) {
+        int seen = 0;
+        for (String value : collection) {
+            seen += value.length();
+        }
+        assertTrue(seen > 0, "the corpus collections are seeded and must never traverse empty");
+    }
+
+    // --- SharedIterator --------------------------------------------------------------------
+
+    /**
+     * Advances one iterator instance from every thread in the run.
+     *
+     * <p>The multiset underneath is documented to support concurrent modification, which is the
+     * point: it buys the iterator nothing. A cursor is unsynchronized state of its own, and the
+     * detector's message says so - the hazard stands "even when that collection is itself a
+     * concurrent collection".
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_concurrentHashMultiset_sharedIterator() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.sharedIteratorDetector().recordAccess(sharedIterator, "hasNext");
+        // Tolerated, because the subject is an iterator being misused on purpose. Six threads
+        // interrogating one cursor is exactly what the row exists to record, and guava is under
+        // no obligation to survive it: one run threw from inside hasNext() and took the lane
+        // down with it. The record above has already happened, so the measurement does not
+        // depend on the call returning.
+        toleratingCorruption(sharedIterator::hasNext);
+    }
+
+    /**
+     * The same call on the same collection, with each body taking its own iterator.
+     *
+     * <p>Every instance is then touched by exactly the one thread that created it, so the
+     * detector's per-instance thread count never reaches two. This is the fix, and reporting it
+     * would mean reporting every correct traversal of a concurrent collection there is.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_concurrentHashMultiset_iteratorPerThread() {
+        CorpusRecorder.countBodyExecution();
+        Iterator<String> own = concurrentMultiset.iterator();
+        AsyncTestContext.sharedIteratorDetector().recordAccess(own, "hasNext");
+        own.hasNext();
     }
 
     private static void toleratingCorruption(Runnable operation) {

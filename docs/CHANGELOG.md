@@ -7,6 +7,110 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A 45th subject: Jackson's `SequenceWriter`, the first whose hazard is its own cursor.**
+  Jackson is explicit - *"Instances of `SequenceWriter` are stateful, and not thread-safe"*. Every
+  other Jackson subject is either immutable (`ObjectReader`, `ObjectWriter`) or safe once
+  configured (`ObjectMapper`), so this is the library's only subject whose hazard is mutable
+  position rather than reconfiguration. 24,949 accesses, detected by `AtomicityValidator` and
+  `SharedCollectionDetector`, and **239 recorded crashes** - the documented hazard demonstrating
+  itself rather than being taken on trust.
+
+- **A 44th subject, and the first two-dimensional one: guava's `HashBasedTable`.** Guava documents
+  it as *"not synchronized. If multiple threads access this table concurrently and one of the
+  threads modifies the table, it must be synchronized externally"*. Every other collection subject
+  is one-dimensional, and a `Table` put reaches through a backing map into an inner one - so this
+  is also the first subject where the mutation the agent has to see is nested rather than direct.
+  It saw it: 3910 accesses, detected by `SharedCollectionDetector`, taking documented-unsafe
+  detections from 20 to 21 with no false positive anywhere in the lane.
+
+- **A 43rd subject for the agent-on lane: guava's `LoadingCache`.** Guava documents it as
+  "expected to be thread-safe, and can be safely accessed by multiple concurrent threads", and the
+  loading path is the interesting one - a miss makes one thread compute while the others wait on
+  the same entry, which is where a cache looks most like a race to anything watching. It is not
+  one, and the run observed 10,670 accesses through it with zero findings. Guava's cache was the
+  one obvious documented-safe class in the corpus libraries that was not yet a subject; Jackson's
+  `ObjectReader` and `ObjectWriter` were checked first and are already covered.
+
+- **A fifth false positive is pinned rather than left invisible.**
+  `ConcurrentModificationDetector` decides whether mutation is safe from the collection's package
+  name, so guava's `ConcurrentHashMultiset` and commons-collections4's `SynchronizedCollection` are
+  both reported while the JDK equivalents stay silent - measured, not inferred. There is no clean
+  fix by interface (Java has no thread-safe-collection marker, and the API is `Collection`-typed so
+  `ConcurrentMap` does not apply), and inverting the allowlist into a denylist trades these for
+  false negatives, which is a decision about the detector's stance. Filed as #395 and pinned by a
+  test using a local thread-safe collection, so it measures the model rather than a dependency.
+
+- **The corpus recording lane gives a tenth detector a denominator.** `SharedIteratorDetector`
+  now has a pair against Guava's `ConcurrentHashMultiset`, documented as supporting "concurrent
+  modifications" with "atomic versions of most `Multiset` operations". The detector's message
+  claims the hazard stands "even when that collection is itself a concurrent collection", and this
+  is the row that holds it to that: both rows call `hasNext()` on an iterator of the same
+  collection and differ only in whether the iterator object is shared. The shared row fired, the
+  per-thread row stayed silent.
+
+- **The corpus recording lane gives a ninth detector a denominator.**
+  `SynchronizedCollectionIterationDetector` now has a both-directions pair against
+  `org.apache.commons.collections4.collection.SynchronizedCollection`, whose class javadoc states
+  the contract outright: *"Iterators must be manually synchronized"*, with the code. Both rows
+  traverse an identical decorator and differ in one bit - whether the lock was held - so the
+  detector gets the same evidence apart from the thing its model turns on. The unlocked row fired,
+  the locked row stayed silent, and the class is documented thread-safe in both, which puts this
+  with the check-then-act pair: the class is right and the caller is wrong.
+
+  Writing the row is what found the registration defect below. `recordIterationStarted` ignores a
+  wrapper it was never told about, so registration is load-bearing, and the row could not have
+  been written without hitting it.
+
+### Fixed
+
+- **Three detectors erased what they had already seen, every time a worker re-declared its
+  subject.** `recordWrapperCreated`, `recordFutureCreated` and `recordExecutorCreated` each
+  installed a fresh state object with `map.put`, so the unsafe-iteration count, the
+  handler-registered flag and the submitted-task count were reset on every call. An `@AsyncTest`
+  body runs once per worker per invocation, and
+  `SynchronizedCollectionIterationDetector`'s own usage example calls it from inside one - so a
+  user following the documentation lost every observation made before the last worker got there.
+  All three now use `computeIfAbsent`.
+
+  `RegistrationIsIdempotentTest` exists precisely for this and did not catch it, because it scans
+  `register*` and these are named `record*`. It now also scans `record*Created`: a name ending in
+  `Created` declares that a subject exists and never begins an episode, which is what makes the
+  suffix safe to gate on.
+
+- **The idempotence gate had two holes that let a broken registration read as correct.** Its
+  checks are substring tests over the method body, so a comment explaining *why* a method uses
+  `computeIfAbsent` contained the word `computeIfAbsent` and the method passed while still calling
+  `put` - the comment documenting the rule switched the rule off. Comments are now stripped before
+  the checks run. Separately, accepting any `!= null` plus any `return` as a lookup-then-return
+  guard let an unrelated `name != null` ternary count; requiring `.get(` instead went too far and
+  flagged `VolatileArrayDetector.registerArray`, the pattern the gate recommends. It now requires
+  the null-check to be on a call result, which a parameter cannot be.
+
+- **A lock you declared bought nothing from `ConcurrentModificationDetector`.** Two threads
+  mutating an `ArrayList` is the finding, and it stood even when one lock covered every mutation
+  and the caller had said so through `AsyncTestContext.holdingLock`. The detector had no lock
+  model at all - not one reference to `HeldLocks` or `SelfGuard` - so correct code that took the
+  trouble to describe itself was reported anyway. It now intersects the held lockset per mutation
+  and stays silent when one visible lock covered all of them. Hand-rolled
+  `synchronized (theList)` counts too, with no declaration.
+
+  An **undeclared** lock still reports, and that is deliberate rather than a leftover:
+  `HeldLocks.members(0L)` returns the empty set, so an unlocked access collapses the intersection
+  and the finding stands. Silence bought by a lock nobody can see would be silence bought by
+  nothing. `DetectorAccuracyEvalTest` pins both directions, plus the case a weaker model would get
+  wrong - two threads each holding their *own* declared lock are still racing.
+
+### Changed
+
+- **The lockset intersection is one implementation instead of a candidate for two.** It lived as a
+  private class nested two levels inside `AtomicityValidator`, so the next detector that needed it
+  would have copied it, and a copied lockset is the twin-kept-in-agreement-by-convention this repo
+  gates against elsewhere. It moves to a package-private `Lockset`. Pure extraction, and verified
+  as one: `AtomicityValidatorTest` and all 70 accuracy-eval cases passed unchanged before any
+  behaviour was added.
+
 ## [1.10.0] - 2026-08-28
 
 ### Added

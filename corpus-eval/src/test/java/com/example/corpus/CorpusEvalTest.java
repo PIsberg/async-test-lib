@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import com.fasterxml.jackson.databind.SequenceWriter;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -30,6 +31,11 @@ import com.google.common.eventbus.Subscribe;
 import com.google.common.hash.BloomFilter;
 import com.google.common.hash.Funnels;
 import com.google.common.io.FileBackedOutputStream;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.collect.HashBasedTable;
+import com.google.common.collect.Table;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.common.util.concurrent.AtomicLongMap;
 import com.google.common.util.concurrent.RateLimiter;
 import org.apache.commons.collections4.bag.HashBag;
@@ -152,6 +158,41 @@ class CorpusEvalTest {
     private final BloomFilter<CharSequence> bloomFilter =
             BloomFilter.create(Funnels.stringFunnel(StandardCharsets.UTF_8), 10_000);
     private final AtomicLongMap<String> atomicLongMap = AtomicLongMap.create();
+
+    /**
+     * A two-dimensional collection, a shape nothing else in the corpus has.
+     *
+     * <p>Guava documents it as not synchronized and requiring external synchronization when any
+     * thread modifies it. A {@code Table} put reaches through a backing map to an inner one, so
+     * this is also the first subject where the mutation the agent has to see is nested rather
+     * than direct.
+     */
+    private final Table<String, String, String> hashBasedTable = HashBasedTable.create();
+
+    /**
+     * One stateful writer shared by the whole run: the first subject of that shape.
+     *
+     * <p>Jackson is explicit - a {@code SequenceWriter} is stateful and not thread-safe, and
+     * concurrent use needs external synchronization. Everything else Jackson contributes here is
+     * either immutable ({@code ObjectReader}, {@code ObjectWriter}) or safe once configured
+     * ({@code ObjectMapper}), so this is the library's only subject whose hazard is its own
+     * mutable position rather than reconfiguration.
+     *
+     * <p>The sink discards, because where the bytes go is not the subject.
+     */
+    private final SequenceWriter sequenceWriter = newSequenceWriter();
+
+    /**
+     * A guava cache loaded through its {@code CacheLoader}, which is the interesting path.
+     *
+     * <p>A miss makes one thread compute while the others wait on the same entry, so this is
+     * where a cache looks most like a race to anything watching. The javadoc promises it is not
+     * one. The loader is deliberately trivial: the subject is the cache's own synchronization,
+     * not whatever the loader does.
+     */
+    private final LoadingCache<String, String> guavaLoadingCache = CacheBuilder.newBuilder()
+            .maximumSize(64)
+            .build(CacheLoader.from(key -> key + "-loaded"));
     private final ConcurrentHashMultiset<String> concurrentMultiset = ConcurrentHashMultiset.create();
     private final Supplier<Object> memoized = Suppliers.memoize(Object::new);
 
@@ -220,6 +261,15 @@ class CorpusEvalTest {
      * surface as a thrown exception rather than as a detector finding, and that outcome is part of
      * what the eval measures, so it is recorded instead of failing the run.
      */
+    /** {@return a sequence writer over a sink that discards, since the bytes are not the subject} */
+    private static SequenceWriter newSequenceWriter() {
+        try {
+            return new ObjectMapper().writer().writeValues(java.io.OutputStream.nullOutputStream());
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("could not open the corpus sequence writer", e);
+        }
+    }
+
     private static void unsafeOperation(Runnable operation) {
         CorpusRecorder.countBodyExecution();
         try {
@@ -362,6 +412,30 @@ class CorpusEvalTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void atomicLongMap_incrementAndGet() {
         safeOperation(() -> atomicLongMap.incrementAndGet("key"));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void sequenceWriter_write() {
+        unsafeOperation(() -> {
+            try {
+                sequenceWriter.write(PAYLOAD);
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void hashBasedTable_put() {
+        unsafeOperation(() -> {
+            hashBasedTable.put("row", "column", "value");
+            hashBasedTable.get("row", "column");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void guavaLoadingCache_get() {
+        safeOperation(() -> guavaLoadingCache.getUnchecked("key"));
     }
 
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)

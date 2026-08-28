@@ -180,6 +180,25 @@ final class Corpus {
                     "Instances of this class may be used by multiple threads concurrently.",
                     "com/google/common/util/concurrent/AtomicLongMap.java:46"),
 
+            new Subject("sequenceWriter_write", JACKSON,
+                    "com.fasterxml.jackson.databind.SequenceWriter", Contract.NOT_THREAD_SAFE,
+                    "Instances of SequenceWriter are stateful, and not thread-safe: if used "
+                            + "concurrently, external synchronization is necessary.",
+                    "com/fasterxml/jackson/databind/SequenceWriter.java:23"),
+
+            new Subject("hashBasedTable_put", GUAVA,
+                    "com.google.common.collect.HashBasedTable", Contract.NOT_THREAD_SAFE,
+                    "Note that this implementation is not synchronized. If multiple threads access "
+                            + "this table concurrently and one of the threads modifies the table, "
+                            + "it must be synchronized externally.",
+                    "com/google/common/collect/HashBasedTable.java:42"),
+
+            new Subject("guavaLoadingCache_get", GUAVA,
+                    "com.google.common.cache.LoadingCache", Contract.THREAD_SAFE,
+                    "Implementations of this interface are expected to be thread-safe, and can be "
+                            + "safely accessed by multiple concurrent threads.",
+                    "com/google/common/cache/LoadingCache.java:31"),
+
             new Subject("concurrentHashMultiset_add", GUAVA,
                     "com.google.common.collect.ConcurrentHashMultiset", Contract.THREAD_SAFE,
                     "A multiset that supports concurrent modifications and that provides atomic "
@@ -504,7 +523,71 @@ final class Corpus {
                             + "other cache is ordinary layered-cache code, and the prohibition is "
                             + "per map, so this must stay silent. It is the row that makes the "
                             + "cross-key rule safe to have on by default: a detector keyed on the "
-                            + "thread rather than the map would report every layered cache")
+                            + "thread rather than the map would report every layered cache"),
+
+            // --- SynchronizedCollectionIteration: the class is a synchronizing decorator and the
+            //     defect is the caller's, exactly like the check-then-act pair above. What makes
+            //     this a corpus contract rather than folklore is that commons-collections4 states
+            //     the rule in the class javadoc itself, with the code:
+            //
+            //       "Iterators must be manually synchronized:
+            //          synchronized (coll) { Iterator it = coll.iterator(); ... }"
+            //       org/apache/commons/collections4/collection/SynchronizedCollection.java:29
+            //
+            //     Both rows share one wrapper and differ only in the holdingLock flag, so the
+            //     detector is handed identical evidence apart from the one bit its model turns on.
+
+            new RecordingSubject("recorded_synchronizedCollection_iteratedWithoutLock", COLLECTIONS4,
+                    "org.apache.commons.collections4.collection.SynchronizedCollection",
+                    DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every method of the decorator takes the collection's lock, and iteration is "
+                            + "the documented exception the caller has to hold it for. Iterating "
+                            + "without it leaves each next() individually synchronized and the "
+                            + "traversal as a whole unprotected, which is a "
+                            + "ConcurrentModificationException or a silently skipped element. The "
+                            + "class is thread-safe and the caller is still wrong"),
+
+            new RecordingSubject("recorded_synchronizedCollection_iteratedHoldingLock", COLLECTIONS4,
+                    "org.apache.commons.collections4.collection.SynchronizedCollection",
+                    DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same traversal of the same decorator, inside synchronized (coll), which "
+                            + "is the pattern the javadoc prints. A finding here would be a "
+                            + "finding on the documented fix, which is the direction that stops "
+                            + "people using the detector at all"),
+
+            // --- SharedIterator: the collection is genuinely concurrent and the iterator is
+            //     still single-thread state. Guava documents ConcurrentHashMultiset as
+            //     "supports concurrent modifications and provides atomic versions of most
+            //     Multiset operations" - com/google/common/collect/ConcurrentHashMultiset.java:50
+            //     - which is what makes the pair worth having: the detector's own message says
+            //     the hazard stands "even when that collection is itself a concurrent
+            //     collection", and this is the row that holds it to that.
+            //
+            //     Both rows call hasNext() on an iterator of the same collection and differ only
+            //     in whether the iterator object is shared. hasNext() rather than next() because
+            //     it does not consume: a shared iterator drained by 240 body executions would
+            //     end the run on NoSuchElementException instead of measuring anything.
+
+            new RecordingSubject("recorded_concurrentHashMultiset_sharedIterator", GUAVA,
+                    "com.google.common.collect.ConcurrentHashMultiset",
+                    DetectorType.SHARED_ITERATOR, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one iterator instance is advanced by every thread in the run. The multiset "
+                            + "is documented to support concurrent modification and that buys the "
+                            + "iterator nothing: the cursor is unsynchronized state of its own, "
+                            + "and sharing it skips or duplicates elements. Thread-safe class, "
+                            + "unsafe caller"),
+
+            new RecordingSubject("recorded_concurrentHashMultiset_iteratorPerThread", GUAVA,
+                    "com.google.common.collect.ConcurrentHashMultiset",
+                    DetectorType.SHARED_ITERATOR, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same call on the same collection, with each body taking its own "
+                            + "iterator. Confining an iterator to the thread that created it is "
+                            + "the fix, and a finding here would report every correct traversal "
+                            + "of a concurrent collection there is")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()

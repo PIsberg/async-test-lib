@@ -984,6 +984,35 @@ class DetectorAccuracyEvalTest {
                         + "and update detector-accuracy-eval.md");
     }
 
+    @Test
+    @DisplayName("digest: a declared external lock is recognised (the FP above, closed)")
+    void digestDetectorIsSilentWhenOneDeclaredLockGuardsEveryAccess() throws InterruptedException {
+        SharedMessageDigestDetector detector = new SharedMessageDigestDetector();
+        MessageDigest digest = sha256();
+        ReentrantLock lock = new ReentrantLock();
+        Runnable update = () -> {
+            try (var held = AsyncTestContext.holdingLock(lock)) {
+                lock.lock();
+                try {
+                    digest.update((byte) 1);
+                    detector.recordAccess(digest, "shared-digest", Thread.currentThread());
+                } finally {
+                    lock.unlock();
+                }
+            }
+        };
+        onTwoThreads(update, update);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "Same shared MessageDigest and the same two threads as the pinned false positive "
+                        + "above; the only difference is that this lock is declared, so "
+                        + "SelfGuard.TrackedInstance intersects it in and one lock covers every "
+                        + "access. This capability already existed - HeldLocks.intersect has "
+                        + "handled declared locks since the guard-on-self probe grew into a "
+                        + "lockset - but nothing pinned it, so it could have been lost in a "
+                        + "refactor without a single test going red. That is what this is for.");
+    }
+
     // ---- SharedStatefulCryptoDetector ----
 
     @Test
@@ -1408,6 +1437,125 @@ class DetectorAccuracyEvalTest {
                         + "it does for the other detectors with no lock model. Fixing #292 removed "
                         + "the findings the collection's own type ruled out, not the ones an "
                         + "invisible lock rules out");
+    }
+
+    /**
+     * A genuinely thread-safe collection that does not live in {@code java.util.concurrent}.
+     *
+     * <p>Local rather than a real library class on purpose: the point is the model, not guava. The
+     * detector decides safety from the class's package name, so any correct third-party collection
+     * lands on the wrong side of it, and a local class shows that without a dependency.
+     */
+    private static final class ThreadSafeBag extends java.util.AbstractCollection<String> {
+        private final List<String> backing = java.util.Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        public boolean add(String value) {
+            return backing.add(value);
+        }
+
+        @Override
+        public java.util.Iterator<String> iterator() {
+            return backing.iterator();
+        }
+
+        @Override
+        public int size() {
+            return backing.size();
+        }
+    }
+
+    @Test
+    @DisplayName("concurrent modification: a thread-safe collection outside java.util.concurrent still fires (pinned false positive)")
+    void concurrentModificationDetectorFiresOnAThreadSafeCollectionItCannotRecognise()
+            throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        ThreadSafeBag bag = new ThreadSafeBag();
+        detector.registerCollection(bag, "bag");
+        Runnable mutate = () -> {
+            bag.add("value");
+            detector.recordModification(bag, "bag", "add");
+        };
+        onTwoThreads(mutate, mutate);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "PINNED FALSE POSITIVE: this collection is thread-safe and two threads adding to "
+                        + "it is correct code. The detector decides safety by package name - "
+                        + "java.util.concurrent. or java.util.Collections$Synchronized - so every "
+                        + "correct third-party collection is on the wrong side of the test. "
+                        + "Measured in the corpus module, where it fires on guava's "
+                        + "ConcurrentHashMultiset and commons-collections4's SynchronizedCollection "
+                        + "while staying silent on the JDK equivalents. There is no clean fix by "
+                        + "interface: Java has no thread-safe-collection marker, and this "
+                        + "detector's API is Collection-typed so ConcurrentMap does not help. "
+                        + "Inverting the allowlist into a denylist would trade these false "
+                        + "positives for false negatives, which is a modelling decision rather "
+                        + "than a bug fix. If this goes silent, that decision was taken - flip "
+                        + "the assertion and update detector-accuracy-eval.md.");
+    }
+
+    @Test
+    @DisplayName("concurrent modification: a declared external lock is recognised (the FP above, closed)")
+    void concurrentModificationDetectorIsSilentWhenOneDeclaredLockGuardsEveryMutation()
+            throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new ArrayList<>();
+        ReentrantLock lock = new ReentrantLock();
+        detector.registerCollection(list, "list");
+        Runnable guardedModify = () -> {
+            try (var held = AsyncTestContext.holdingLock(lock)) {
+                lock.lock();
+                try {
+                    list.add("value");
+                    detector.recordModification(list, "list", "add");
+                } finally {
+                    lock.unlock();
+                }
+            }
+        };
+        onTwoThreads(guardedModify, guardedModify);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "Same ArrayList and the same two threads as the test above; the only difference is "
+                        + "that this lock is declared, so it reaches the collection's lockset and "
+                        + "covers every mutation. Reporting here would be reporting correct code "
+                        + "the caller took the trouble to describe. The agent produces the same "
+                        + "members without the declaration, by weaving MONITORENTER.");
+    }
+
+    @Test
+    @DisplayName("concurrent modification: two different declared locks are still a race")
+    void concurrentModificationDetectorFiresWhenEachThreadHoldsItsOwnLock()
+            throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new ArrayList<>();
+        ReentrantLock first = new ReentrantLock();
+        ReentrantLock second = new ReentrantLock();
+        detector.registerCollection(list, "list");
+        Runnable underFirst = mutateUnder(detector, list, first);
+        Runnable underSecond = mutateUnder(detector, list, second);
+        onTwoThreads(underFirst, underSecond);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "Both threads held a declared lock, and no single lock covered both mutations, so "
+                        + "they never excluded each other. This is the case a model that only "
+                        + "asked \"was any lock held\" would get wrong, and it is why the lockset "
+                        + "intersects rather than counting.");
+    }
+
+    private static Runnable mutateUnder(ConcurrentModificationDetector detector,
+                                        List<String> list, ReentrantLock lock) {
+        return () -> {
+            try (var held = AsyncTestContext.holdingLock(lock)) {
+                lock.lock();
+                try {
+                    list.add("value");
+                    detector.recordModification(list, "list", "add");
+                } finally {
+                    lock.unlock();
+                }
+            }
+        };
     }
 
     @Test
