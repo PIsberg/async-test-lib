@@ -1439,6 +1439,61 @@ class DetectorAccuracyEvalTest {
                         + "invisible lock rules out");
     }
 
+    /**
+     * A genuinely thread-safe collection that does not live in {@code java.util.concurrent}.
+     *
+     * <p>Local rather than a real library class on purpose: the point is the model, not guava. The
+     * detector decides safety from the class's package name, so any correct third-party collection
+     * lands on the wrong side of it, and a local class shows that without a dependency.
+     */
+    private static final class ThreadSafeBag extends java.util.AbstractCollection<String> {
+        private final List<String> backing = java.util.Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        public boolean add(String value) {
+            return backing.add(value);
+        }
+
+        @Override
+        public java.util.Iterator<String> iterator() {
+            return backing.iterator();
+        }
+
+        @Override
+        public int size() {
+            return backing.size();
+        }
+    }
+
+    @Test
+    @DisplayName("concurrent modification: a thread-safe collection outside java.util.concurrent still fires (pinned false positive)")
+    void concurrentModificationDetectorFiresOnAThreadSafeCollectionItCannotRecognise()
+            throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        ThreadSafeBag bag = new ThreadSafeBag();
+        detector.registerCollection(bag, "bag");
+        Runnable mutate = () -> {
+            bag.add("value");
+            detector.recordModification(bag, "bag", "add");
+        };
+        onTwoThreads(mutate, mutate);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "PINNED FALSE POSITIVE: this collection is thread-safe and two threads adding to "
+                        + "it is correct code. The detector decides safety by package name - "
+                        + "java.util.concurrent. or java.util.Collections$Synchronized - so every "
+                        + "correct third-party collection is on the wrong side of the test. "
+                        + "Measured in the corpus module, where it fires on guava's "
+                        + "ConcurrentHashMultiset and commons-collections4's SynchronizedCollection "
+                        + "while staying silent on the JDK equivalents. There is no clean fix by "
+                        + "interface: Java has no thread-safe-collection marker, and this "
+                        + "detector's API is Collection-typed so ConcurrentMap does not help. "
+                        + "Inverting the allowlist into a denylist would trade these false "
+                        + "positives for false negatives, which is a modelling decision rather "
+                        + "than a bug fix. If this goes silent, that decision was taken - flip "
+                        + "the assertion and update detector-accuracy-eval.md.");
+    }
+
     @Test
     @DisplayName("concurrent modification: a declared external lock is recognised (the FP above, closed)")
     void concurrentModificationDetectorIsSilentWhenOneDeclaredLockGuardsEveryMutation()

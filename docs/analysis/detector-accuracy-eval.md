@@ -207,3 +207,28 @@ eval and `AtomicityValidatorTest` passed unchanged first.
 The undeclared-lock rows stay `assertTrue`, and should. The limits section above already
 says why: without the agent there is no monitor instruction to observe, so silence there
 would be silence bought by nothing.
+
+**A fifth pinned false positive, found by measurement on 2026-08-28.**
+`ConcurrentModificationDetector` decides whether mutation is safe from the collection's
+*package name*: `java.util.concurrent.` or `java.util.Collections$Synchronized`. Every
+correct third-party collection is therefore on the wrong side of that test. Measured in the
+corpus module, two threads adding to each:
+
+| Collection | Reports | Correct |
+|---|---|---|
+| `java.util.concurrent.CopyOnWriteArrayList` | silent | yes |
+| `Collections.synchronizedList(...)` | silent | yes |
+| guava `ConcurrentHashMultiset` | **fires** | **no** |
+| commons-collections4 `SynchronizedCollection` | **fires** | **no** |
+| `java.util.ArrayList` | fires | yes |
+
+There is no clean fix by interface. Java has no thread-safe-collection marker, and this
+detector's API is `Collection`-typed, so the `ConcurrentMap` contract that would cover
+third-party *maps* does not apply here. Inverting the allowlist into a denylist - report only
+known-unsafe types - would trade these false positives for false negatives on any unsafe type
+not on the list. That is a decision about the detector's stance rather than a bug fix, so it
+is filed rather than taken.
+
+The pinned test uses a local thread-safe collection rather than guava, so it measures the
+model and not a dependency: `async-test-lib` does not carry the corpus libraries on its test
+classpath, and the subject of the test is the package-name check, not any one library.

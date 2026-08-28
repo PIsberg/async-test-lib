@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A fifth false positive is pinned rather than left invisible.**
+  `ConcurrentModificationDetector` decides whether mutation is safe from the collection's package
+  name, so guava's `ConcurrentHashMultiset` and commons-collections4's `SynchronizedCollection` are
+  both reported while the JDK equivalents stay silent - measured, not inferred. There is no clean
+  fix by interface (Java has no thread-safe-collection marker, and the API is `Collection`-typed so
+  `ConcurrentMap` does not apply), and inverting the allowlist into a denylist trades these for
+  false negatives, which is a decision about the detector's stance. Filed as #395 and pinned by a
+  test using a local thread-safe collection, so it measures the model rather than a dependency.
+
 - **The corpus recording lane gives a tenth detector a denominator.** `SharedIteratorDetector`
   now has a pair against Guava's `ConcurrentHashMultiset`, documented as supporting "concurrent
   modifications" with "atomic versions of most `Multiset` operations". The detector's message
