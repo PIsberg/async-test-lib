@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A 44th subject, and the first two-dimensional one: guava's `HashBasedTable`.** Guava documents
+  it as *"not synchronized. If multiple threads access this table concurrently and one of the
+  threads modifies the table, it must be synchronized externally"*. Every other collection subject
+  is one-dimensional, and a `Table` put reaches through a backing map into an inner one - so this
+  is also the first subject where the mutation the agent has to see is nested rather than direct.
+  It saw it: 3910 accesses, detected by `SharedCollectionDetector`, taking documented-unsafe
+  detections from 20 to 21 with no false positive anywhere in the lane.
+
 - **A 43rd subject for the agent-on lane: guava's `LoadingCache`.** Guava documents it as
   "expected to be thread-safe, and can be safely accessed by multiple concurrent threads", and the
   loading path is the interesting one - a miss makes one thread compute while the others wait on

@@ -180,6 +180,13 @@ final class Corpus {
                     "Instances of this class may be used by multiple threads concurrently.",
                     "com/google/common/util/concurrent/AtomicLongMap.java:46"),
 
+            new Subject("hashBasedTable_put", GUAVA,
+                    "com.google.common.collect.HashBasedTable", Contract.NOT_THREAD_SAFE,
+                    "Note that this implementation is not synchronized. If multiple threads access "
+                            + "this table concurrently and one of the threads modifies the table, "
+                            + "it must be synchronized externally.",
+                    "com/google/common/collect/HashBasedTable.java:42"),
+
             new Subject("guavaLoadingCache_get", GUAVA,
                     "com.google.common.cache.LoadingCache", Contract.THREAD_SAFE,
                     "Implementations of this interface are expected to be thread-safe, and can be "

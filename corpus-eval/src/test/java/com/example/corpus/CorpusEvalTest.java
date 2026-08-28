@@ -31,6 +31,8 @@ import com.google.common.hash.BloomFilter;
 import com.google.common.hash.Funnels;
 import com.google.common.io.FileBackedOutputStream;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.collect.HashBasedTable;
+import com.google.common.collect.Table;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.util.concurrent.AtomicLongMap;
@@ -155,6 +157,16 @@ class CorpusEvalTest {
     private final BloomFilter<CharSequence> bloomFilter =
             BloomFilter.create(Funnels.stringFunnel(StandardCharsets.UTF_8), 10_000);
     private final AtomicLongMap<String> atomicLongMap = AtomicLongMap.create();
+
+    /**
+     * A two-dimensional collection, a shape nothing else in the corpus has.
+     *
+     * <p>Guava documents it as not synchronized and requiring external synchronization when any
+     * thread modifies it. A {@code Table} put reaches through a backing map to an inner one, so
+     * this is also the first subject where the mutation the agent has to see is nested rather
+     * than direct.
+     */
+    private final Table<String, String, String> hashBasedTable = HashBasedTable.create();
 
     /**
      * A guava cache loaded through its {@code CacheLoader}, which is the interesting path.
@@ -377,6 +389,14 @@ class CorpusEvalTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void atomicLongMap_incrementAndGet() {
         safeOperation(() -> atomicLongMap.incrementAndGet("key"));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void hashBasedTable_put() {
+        unsafeOperation(() -> {
+            hashBasedTable.put("row", "column", "value");
+            hashBasedTable.get("row", "column");
+        });
     }
 
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
