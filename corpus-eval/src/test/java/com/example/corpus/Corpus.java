@@ -180,6 +180,12 @@ final class Corpus {
                     "Instances of this class may be used by multiple threads concurrently.",
                     "com/google/common/util/concurrent/AtomicLongMap.java:46"),
 
+            new Subject("guavaLoadingCache_get", GUAVA,
+                    "com.google.common.cache.LoadingCache", Contract.THREAD_SAFE,
+                    "Implementations of this interface are expected to be thread-safe, and can be "
+                            + "safely accessed by multiple concurrent threads.",
+                    "com/google/common/cache/LoadingCache.java:31"),
+
             new Subject("concurrentHashMultiset_add", GUAVA,
                     "com.google.common.collect.ConcurrentHashMultiset", Contract.THREAD_SAFE,
                     "A multiset that supports concurrent modifications and that provides atomic "

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A 43rd subject for the agent-on lane: guava's `LoadingCache`.** Guava documents it as
+  "expected to be thread-safe, and can be safely accessed by multiple concurrent threads", and the
+  loading path is the interesting one - a miss makes one thread compute while the others wait on
+  the same entry, which is where a cache looks most like a race to anything watching. It is not
+  one, and the run observed 10,670 accesses through it with zero findings. Guava's cache was the
+  one obvious documented-safe class in the corpus libraries that was not yet a subject; Jackson's
+  `ObjectReader` and `ObjectWriter` were checked first and are already covered.
+
 - **A fifth false positive is pinned rather than left invisible.**
   `ConcurrentModificationDetector` decides whether mutation is safe from the collection's package
   name, so guava's `ConcurrentHashMultiset` and commons-collections4's `SynchronizedCollection` are

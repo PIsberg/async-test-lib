@@ -786,7 +786,12 @@ class CorpusRecordingLaneTest {
     void recorded_concurrentHashMultiset_sharedIterator() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.sharedIteratorDetector().recordAccess(sharedIterator, "hasNext");
-        sharedIterator.hasNext();
+        // Tolerated, because the subject is an iterator being misused on purpose. Six threads
+        // interrogating one cursor is exactly what the row exists to record, and guava is under
+        // no obligation to survive it: one run threw from inside hasNext() and took the lane
+        // down with it. The record above has already happened, so the measurement does not
+        // depend on the call returning.
+        toleratingCorruption(sharedIterator::hasNext);
     }
 
     /**

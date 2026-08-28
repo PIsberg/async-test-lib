@@ -30,6 +30,9 @@ import com.google.common.eventbus.Subscribe;
 import com.google.common.hash.BloomFilter;
 import com.google.common.hash.Funnels;
 import com.google.common.io.FileBackedOutputStream;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.common.util.concurrent.AtomicLongMap;
 import com.google.common.util.concurrent.RateLimiter;
 import org.apache.commons.collections4.bag.HashBag;
@@ -152,6 +155,18 @@ class CorpusEvalTest {
     private final BloomFilter<CharSequence> bloomFilter =
             BloomFilter.create(Funnels.stringFunnel(StandardCharsets.UTF_8), 10_000);
     private final AtomicLongMap<String> atomicLongMap = AtomicLongMap.create();
+
+    /**
+     * A guava cache loaded through its {@code CacheLoader}, which is the interesting path.
+     *
+     * <p>A miss makes one thread compute while the others wait on the same entry, so this is
+     * where a cache looks most like a race to anything watching. The javadoc promises it is not
+     * one. The loader is deliberately trivial: the subject is the cache's own synchronization,
+     * not whatever the loader does.
+     */
+    private final LoadingCache<String, String> guavaLoadingCache = CacheBuilder.newBuilder()
+            .maximumSize(64)
+            .build(CacheLoader.from(key -> key + "-loaded"));
     private final ConcurrentHashMultiset<String> concurrentMultiset = ConcurrentHashMultiset.create();
     private final Supplier<Object> memoized = Suppliers.memoize(Object::new);
 
@@ -362,6 +377,11 @@ class CorpusEvalTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void atomicLongMap_incrementAndGet() {
         safeOperation(() -> atomicLongMap.incrementAndGet("key"));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void guavaLoadingCache_get() {
+        safeOperation(() -> guavaLoadingCache.getUnchecked("key"));
     }
 
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
