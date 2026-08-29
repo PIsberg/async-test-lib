@@ -140,12 +140,12 @@ is not reproducible.
 | Key | JDK | OS | Agent | Source |
 |---|---|---|---|---|
 | **L** | 26 (Temurin) | Windows 11 26200 (amd64) | `fields=true,collections=true` | local run, 2026-08-24 |
-| **C21** | 21 (Temurin) | ubuntu-latest | `fields=true,collections=true` | e2e-tests workflow, `Corpus Eval (Java 21)` |
-| **C25** | 25 (Temurin) | ubuntu-latest | `fields=true,collections=true` | e2e-tests workflow, `Corpus Eval (Java 25)` |
-| **C26** | 26 (Temurin) | ubuntu-latest | `fields=true,collections=true` | e2e-tests workflow, `Corpus Eval (Java 26)` |
+| **C21** | 21 (Temurin) | ubuntu-latest | `fields=true,collections=true` | corpus workflow, `Corpus Eval (Java 21)` |
+| **C25** | 25 (Temurin) | ubuntu-latest | `fields=true,collections=true` | corpus workflow, `Corpus Eval (Java 25)` |
+| **C26** | 26 (Temurin) | ubuntu-latest | `fields=true,collections=true` | corpus workflow, `Corpus Eval (Java 26)` |
 | **L-off** / **C-off** | as above | as above | not attached | the control lane of the same run |
 
-Each CI job uploads both lanes' reports as `e2e-corpus-eval-report-java-<version>`, so any row here
+Each CI job uploads both lanes' reports as `corpus-eval-report-java-<version>`, so any row here
 can be checked against the run that produced it.
 
 ### The platforms used to disagree; what that turned out to be
