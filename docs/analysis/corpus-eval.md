@@ -15,9 +15,8 @@ _Extended again 2026-08-29. Three changes, in the order they matter: the true-po
 gated rather than only reported, the documented-safe denominator went from 23 subjects to 60, and
 eight detectors this lane measures in both directions are now classified `VERDICT` on the strength
 of it. The subject counts, the exposure table and the gate description below are updated to the
-run that produced them. **The four-platform comparison further down still keys the previous corpus
-of 45 subjects; its CI columns are refilled from this branch's `Corpus Eval` jobs, and until they
-are, read it as the history of a smaller corpus rather than as this one's result._
+run that produced them, and the four-platform comparison is refilled from the `Corpus Eval` jobs on
+JDK 21, 25 and 26 that ran against the change._
 
 The [detector-accuracy eval](detector-accuracy-eval.md) measures 20 of the 146 detectors against
 twins written for the test. It answers "does the analyzer's model hold", and it cannot answer the
@@ -188,15 +187,21 @@ existing suite can still lose classes the same way.
 
 | Measure | **L** | **C21** | **C25** | **C26** |
 |---|---:|---:|---:|---:|
-| Documented-thread-safe with a VERDICT-tier HIGH or CRITICAL finding | **0 of 22** | **0 of 22** | **0 of 22** | **0 of 22** |
-| Documented-not-thread-safe with at least one finding | **20 of 20** | **20 of 20** | **20 of 20** | **20 of 20** |
-| Documented-thread-safe with any finding at all | **0 of 22** | **0 of 22** | **0 of 22** | **0 of 22** |
-| `mutableInt_incrementAndGet`, events / findings | 1,455 / 1 | 1,455 / 1 | 1,455 / 1 | 1,445 / 1 |
-| `rateLimiter_tryAcquire`, events / findings | 6,421 / 0 | 6,431 / 0 | 6,431 / 0 | 6,421 / 0 |
+| Documented-thread-safe with a VERDICT-tier HIGH or CRITICAL finding | **0 of 60** | **0 of 60** | **0 of 60** | **0 of 60** |
+| Documented-not-thread-safe with at least one finding | **22 of 22** | **22 of 22** | **22 of 22** | **22 of 22** |
+| Documented-thread-safe with any finding at all | **0 of 60** | **0 of 60** | **0 of 60** | **0 of 60** |
+| `AtomicityValidator`, documented-unsafe subjects with a finding | 16 of 22 | 16 of 22 | 16 of 22 | 16 of 22 |
+| `SharedCollectionDetector`, documented-unsafe subjects with a finding | 14 of 22 | 14 of 22 | 14 of 22 | 14 of 22 |
+| `mutableInt_incrementAndGet`, events / findings | 1,439 / 1 | 1,455 / 1 | 1,455 / 1 | 1,455 / 1 |
+| `rateLimiter_tryAcquire`, events / findings | 6,431 / 0 | 6,431 / 0 | 6,431 / 0 | 6,431 / 0 |
 | Telemetry events dropped | 0 | 0 | 0 | 0 |
 
-Every row is now identical on all four platforms: the same 20 subjects detected, the same zero
-noise, and per-subject event counts that agree to within 3%. The rows that used to differ were
+Every row is identical on all four platforms, over the corpus as it now stands: the same 22
+subjects detected, the same zero noise over a safe side that is now 60 wide, the same per-detector
+split, and per-subject event counts that agree to within 1.1%. The thirty-seven documented-safe
+subjects added in 2026-08-29 hold at zero on Linux and on JDK 21 and 25, not only on the machine
+they were written on - which is the question a single-machine zero cannot answer, and the reason
+this table has a platform key at all. The rows that used to differ were
 the corpus doing its job. `objectMapper_configuredThenShared` drew findings on the CI legs only,
 and the reason was physical: on two cores a lost cache fill surfaces as the next round's re-miss
 and re-write, so jackson's serializer caches warm over two rounds there and one round on six
@@ -240,57 +245,97 @@ real defect rather than variance ([#316](https://github.com/PIsberg/async-test-l
 
 | Subject | Library | Contract | Events | Findings | Detectors (tier/severity) | Crashes |
 |---|---|---|---:|---:|---|---:|
-| `mutableInt_incrementAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 1455 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `mutableLong_incrementAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 1455 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `stopWatch_splitAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 6849 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 76 |
-| `lruMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 5373 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `flat3Map_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 5052 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `listOrderedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 1698 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `passiveExpiringMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3135 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `arrayListMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 1997 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `evictingQueue_addAndPoll` | guava:33.4.8-jre | NOT_THREAD_SAFE | 2175 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `guavaStopwatch_startStop` | guava:33.4.8-jre | NOT_THREAD_SAFE | 2393 | 1 | AtomicityValidator (PROMPT/HIGH) | 10 |
-| `statsAccumulator_add` | guava:33.4.8-jre | NOT_THREAD_SAFE | 5121 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `hashMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 1467 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `linkedListMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 4617 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `minMaxPriorityQueue_addAndPoll` | guava:33.4.8-jre | NOT_THREAD_SAFE | 15403 | 1 | AtomicityValidator (PROMPT/HIGH) | 62 |
-| `hashedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3925 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `linkedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 4212 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `multiKeyMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 7919 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `caseInsensitiveMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3928 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `lazyMap_get` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 1217 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `mutableInt_incrementAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 1439 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `mutableLong_incrementAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 1439 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `stopWatch_splitAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 5667 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 66 |
+| `lruMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 5409 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `flat3Map_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 4559 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `listOrderedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 1670 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `passiveExpiringMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3119 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `arrayListMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 4177 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `evictingQueue_addAndPoll` | guava:33.4.8-jre | NOT_THREAD_SAFE | 2159 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `guavaStopwatch_startStop` | guava:33.4.8-jre | NOT_THREAD_SAFE | 2391 | 1 | AtomicityValidator (PROMPT/HIGH) | 9 |
+| `statsAccumulator_add` | guava:33.4.8-jre | NOT_THREAD_SAFE | 4269 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `hashMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 1459 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `linkedListMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 4571 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `minMaxPriorityQueue_addAndPoll` | guava:33.4.8-jre | NOT_THREAD_SAFE | 16337 | 1 | AtomicityValidator (PROMPT/HIGH) | 70 |
+| `hashedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3893 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `linkedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3913 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `multiKeyMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 7913 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `caseInsensitiveMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3893 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `lazyMap_get` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 1203 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
 | `fastDateFormat_format` | commons-lang3:3.20.0 | THREAD_SAFE | 4511 | 0 | - | 0 |
-| `atomicSafeInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 1184 | 0 | - | 0 |
-| `lazyInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 1164 | 0 | - | 0 |
+| `atomicSafeInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 1160 | 0 | - | 0 |
+| `lazyInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 1162 | 0 | - | 0 |
 | `synchronizedBag_addAndCount` | commons-collections4:4.5.0 | THREAD_SAFE | 4030 | 0 | - | 0 |
-| `rateLimiter_tryAcquire` | guava:33.4.8-jre | THREAD_SAFE | 6421 | 0 | - | 0 |
-| `eventBus_post` | guava:33.4.8-jre | THREAD_SAFE | 31390 | 0 | - | 0 |
-| `bloomFilter_putAndMightContain` | guava:33.4.8-jre | THREAD_SAFE | 27822 | 0 | - | 0 |
-| `atomicLongMap_incrementAndGet` | guava:33.4.8-jre | THREAD_SAFE | 911 | 0 | - | 0 |
-| `concurrentHashMultiset_add` | guava:33.4.8-jre | THREAD_SAFE | 1393 | 0 | - | 0 |
-| `memoizedSupplier_get` | guava:33.4.8-jre | THREAD_SAFE | 1565 | 0 | - | 0 |
-| `joiner_join` | guava:33.4.8-jre | THREAD_SAFE | 4031 | 0 | - | 0 |
+| `rateLimiter_tryAcquire` | guava:33.4.8-jre | THREAD_SAFE | 6431 | 0 | - | 0 |
+| `eventBus_post` | guava:33.4.8-jre | THREAD_SAFE | 31366 | 0 | - | 0 |
+| `bloomFilter_putAndMightContain` | guava:33.4.8-jre | THREAD_SAFE | 27844 | 0 | - | 0 |
+| `atomicLongMap_incrementAndGet` | guava:33.4.8-jre | THREAD_SAFE | 907 | 0 | - | 0 |
+| `sequenceWriter_write` | jackson-databind:2.22.2 | NOT_THREAD_SAFE | 25299 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 239 |
+| `hashBasedTable_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 3848 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `guavaLoadingCache_get` | guava:33.4.8-jre | THREAD_SAFE | 10604 | 0 | - | 0 |
+| `concurrentHashMultiset_add` | guava:33.4.8-jre | THREAD_SAFE | 1395 | 0 | - | 0 |
+| `memoizedSupplier_get` | guava:33.4.8-jre | THREAD_SAFE | 1409 | 0 | - | 0 |
+| `joiner_join` | guava:33.4.8-jre | THREAD_SAFE | 4041 | 0 | - | 0 |
 | `splitter_splitToList` | guava:33.4.8-jre | THREAD_SAFE | 33325 | 0 | - | 0 |
 | `patternFilenameFilter_accept` | guava:33.4.8-jre | THREAD_SAFE | 911 | 0 | - | 0 |
 | `fixedOrderComparator_compare` | commons-collections4:4.5.0 | THREAD_SAFE | 1391 | 0 | - | 0 |
-| `fileBackedOutputStream_writeAndReset` | guava:33.4.8-jre | THREAD_SAFE | 3541 | 0 | - | 0 |
-| `objectMapper_reconfigureWhileWriting` | jackson-databind:2.22.2 | NOT_THREAD_SAFE | 119341 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `objectMapper_configuredThenShared` | jackson-databind:2.22.2 | THREAD_SAFE | 113189 | 0 | - | 0 |
-| `objectReader_readValue` | jackson-databind:2.22.2 | THREAD_SAFE | 76365 | 0 | - | 0 |
-| `objectWriter_writeValueAsString` | jackson-databind:2.22.2 | THREAD_SAFE | 82201 | 0 | - | 0 |
-| `caffeineCache_getAndPut` | caffeine:3.2.4 | THREAD_SAFE | 8703 | 0 | - | 0 |
-| `caffeineAsMap_computeIfAbsent` | caffeine:3.2.4 | THREAD_SAFE | 3553 | 0 | - | 0 |
-| `pooledByteBufAllocator_bufferAndRelease` | netty-buffer:4.2.17.Final | THREAD_SAFE | 59667 | 0 | - | 0 |
-| `concurrentReferenceHashMap_putAndGet` | spring-core:7.0.9 | THREAD_SAFE | 10406 | 0 | - | 0 |
+| `fileBackedOutputStream_writeAndReset` | guava:33.4.8-jre | THREAD_SAFE | 3551 | 0 | - | 0 |
+| `objectMapper_reconfigureWhileWriting` | jackson-databind:2.22.2 | NOT_THREAD_SAFE | 119129 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `objectMapper_configuredThenShared` | jackson-databind:2.22.2 | THREAD_SAFE | 112905 | 0 | - | 0 |
+| `objectReader_readValue` | jackson-databind:2.22.2 | THREAD_SAFE | 75562 | 0 | - | 0 |
+| `objectWriter_writeValueAsString` | jackson-databind:2.22.2 | THREAD_SAFE | 82306 | 0 | - | 0 |
+| `caffeineCache_getAndPut` | caffeine:3.2.4 | THREAD_SAFE | 11173 | 0 | - | 0 |
+| `caffeineAsMap_computeIfAbsent` | caffeine:3.2.4 | THREAD_SAFE | 3464 | 0 | - | 0 |
+| `pooledByteBufAllocator_bufferAndRelease` | netty-buffer:4.2.17.Final | THREAD_SAFE | 62814 | 0 | - | 0 |
+| `concurrentReferenceHashMap_putAndGet` | spring-core:7.0.9 | THREAD_SAFE | 10304 | 0 | - | 0 |
+| `concurrentHashMap_putAndGet` | jdk:26 | THREAD_SAFE | 901 | 0 | - | 0 |
+| `copyOnWriteArrayList_addAndIterate` | jdk:26 | THREAD_SAFE | 911 | 0 | - | 0 |
+| `stringBuffer_appendAndLength` | jdk:26 | THREAD_SAFE | 901 | 0 | - | 0 |
+| `concurrentLinkedQueue_addAndPoll` | jdk:26 | THREAD_SAFE | 911 | 0 | - | 0 |
+| `linkedBlockingQueue_offerAndPoll` | jdk:26 | THREAD_SAFE | 921 | 0 | - | 0 |
+| `hashtable_putAndGet` | jdk:26 | THREAD_SAFE | 911 | 0 | - | 0 |
+| `concurrentSkipListMap_putAndGet` | jdk:26 | THREAD_SAFE | 911 | 0 | - | 0 |
+| `synchronizedList_addUnderItsMonitor` | jdk:26 | THREAD_SAFE | 1151 | 0 | - | 0 |
+| `threadLocalRandom_nextInt` | jdk:26 | THREAD_SAFE | 431 | 0 | - | 0 |
+| `atomicInteger_incrementAndGet` | jdk:26 | THREAD_SAFE | 671 | 0 | - | 0 |
+| `thresholdCircuitBreaker_incrementAndCheckState` | commons-lang3:3.20.0 | THREAD_SAFE | 1861 | 0 | - | 0 |
+| `eventCountCircuitBreaker_incrementAndCheckState` | commons-lang3:3.20.0 | THREAD_SAFE | 4227 | 0 | - | 0 |
+| `memoizer_compute` | commons-lang3:3.20.0 | THREAD_SAFE | 1151 | 0 | - | 0 |
+| `constantInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 911 | 0 | - | 0 |
+| `atomicInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 1168 | 0 | - | 0 |
+| `range_contains` | commons-lang3:3.20.0 | THREAD_SAFE | 1631 | 0 | - | 0 |
+| `staticBucketMap_putAndGet` | commons-collections4:4.5.0 | THREAD_SAFE | 3554 | 0 | - | 0 |
+| `commonsReferenceHashMap_putAndGet` | commons-collections4:4.5.0 | THREAD_SAFE | 7877 | 0 | - | 0 |
+| `synchronizedCollection_addAndSize` | commons-collections4:4.5.0 | THREAD_SAFE | 1871 | 0 | - | 0 |
+| `synchronizedSortedBag_addAndCount` | commons-collections4:4.5.0 | THREAD_SAFE | 4270 | 0 | - | 0 |
+| `synchronizedMultiSet_addAndCount` | commons-collections4:4.5.0 | THREAD_SAFE | 4259 | 0 | - | 0 |
+| `synchronizedQueue_addAndPoll` | commons-collections4:4.5.0 | THREAD_SAFE | 2041 | 0 | - | 0 |
+| `strongInterner_intern` | guava:33.4.8-jre | THREAD_SAFE | 3658 | 0 | - | 0 |
+| `weakInterner_intern` | guava:33.4.8-jre | THREAD_SAFE | 3181 | 0 | - | 0 |
+| `guavaSynchronizedQueue_addAndPoll` | guava:33.4.8-jre | THREAD_SAFE | 1871 | 0 | - | 0 |
+| `guavaSynchronizedDeque_addAndPoll` | guava:33.4.8-jre | THREAD_SAFE | 1871 | 0 | - | 0 |
+| `synchronizedTable_putAndGet` | guava:33.4.8-jre | THREAD_SAFE | 4755 | 0 | - | 0 |
+| `concurrentHashSet_addAndContains` | guava:33.4.8-jre | THREAD_SAFE | 911 | 0 | - | 0 |
+| `hashFunction_hashString` | guava:33.4.8-jre | THREAD_SAFE | 3071 | 0 | - | 0 |
+| `mapMakerMap_putAndGet` | guava:33.4.8-jre | THREAD_SAFE | 911 | 0 | - | 0 |
+| `synchronizedSupplier_get` | guava:33.4.8-jre | THREAD_SAFE | 2195 | 0 | - | 0 |
+| `guavaCache_getAndPut` | guava:33.4.8-jre | THREAD_SAFE | 29704 | 0 | - | 0 |
+| `asyncCache_getAndJoin` | caffeine:3.2.4 | THREAD_SAFE | 4180 | 0 | - | 0 |
+| `asyncLoadingCache_getAndJoin` | caffeine:3.2.4 | THREAD_SAFE | 4324 | 0 | - | 0 |
+| `caffeineLoadingCache_get` | caffeine:3.2.4 | THREAD_SAFE | 3793 | 0 | - | 0 |
+| `unpooledByteBufAllocator_bufferAndRelease` | netty-buffer:4.2.17.Final | THREAD_SAFE | 9086 | 0 | - | 0 |
+| `conversionService_convert` | spring-core:7.0.9 | THREAD_SAFE | 7890 | 0 | - | 0 |
 
 | Measure | **L** | **L-off** |
 |---|---|---|
-| Detectors exposed at all | 5 of 146 | 3 of 146 |
-| Documented-thread-safe classes with a VERDICT-tier HIGH or CRITICAL finding | 0 of 22 | 0 of 22 |
-| Documented-thread-safe classes with any finding at all | **0 of 22** | 0 of 22 |
-| Documented-not-thread-safe classes with at least one finding | 20 of 20 | 0 of 20 |
-| Documented-not-thread-safe classes that threw out of their own code | 3 of 20 | 3 of 20 |
-| Distinct detectors that produced any finding | 2 of 5 exposed | 0 of 3 exposed |
+| Detectors exposed at all | 21 of 146 | 3 of 146 |
+| Documented-thread-safe classes with a VERDICT-tier HIGH or CRITICAL finding | 0 of 60 | 0 of 60 |
+| Documented-thread-safe classes with any finding at all | **0 of 60** | 0 of 60 |
+| Documented-not-thread-safe classes with at least one finding | 22 of 22 | 0 of 22 |
+| Documented-not-thread-safe classes that threw out of their own code | 4 of 22 | 4 of 22 |
+| Distinct detectors that produced any finding | 2 of 21 exposed | 0 of 3 exposed |
 
 The control column is the same on every platform: with nothing attached, all four runs observed
 nothing at all from any agent-fed detector, over all 82 subjects. Whatever moves between machines moves
@@ -489,7 +534,7 @@ shape the settled single-check rule excuses.
   because that would be a flaky gate rather than a measurement.
 
   The detection half of that list is new, and what it replaced is worth recording. The gate used to
-  pass on one finding *or one crash* anywhere in the unsafe group, and three of those subjects
+  pass on one finding *or one crash* anywhere in the unsafe group, and four of those subjects
   throw on most runs, so the crash half satisfied it alone: both detectors could have gone silent
   on all twenty-two subjects and the table above would still have been published green. Filtering
   `SharedCollectionDetector` out of the findings before the gate drops detection to 16 of 22 and
