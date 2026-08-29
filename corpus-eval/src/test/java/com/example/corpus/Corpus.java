@@ -435,7 +435,93 @@ final class Corpus {
                     "org.apache.commons.collections4.queue.SynchronizedQueue", Contract.THREAD_SAFE,
                     "Decorates another Queue to synchronize its behavior for a multithreaded "
                             + "environment.",
-                    "org/apache/commons/collections4/queue/SynchronizedQueue.java:24")
+                    "org/apache/commons/collections4/queue/SynchronizedQueue.java:24"),
+
+            new Subject("strongInterner_intern", GUAVA,
+                    "com.google.common.collect.Interners", Contract.THREAD_SAFE,
+                    "Returns a new thread-safe interner which retains a strong reference to each "
+                            + "instance it has interned.",
+                    "com/google/common/collect/Interners.java:99"),
+
+            new Subject("weakInterner_intern", GUAVA,
+                    "com.google.common.collect.Interners", Contract.THREAD_SAFE,
+                    "Returns a new thread-safe interner which retains a weak reference to each "
+                            + "instance it has interned.",
+                    "com/google/common/collect/Interners.java:108"),
+
+            new Subject("guavaSynchronizedQueue_addAndPoll", GUAVA,
+                    "com.google.common.collect.Queues", Contract.THREAD_SAFE,
+                    "Returns a synchronized (thread-safe) queue backed by the specified queue.",
+                    "com/google/common/collect/Queues.java:428"),
+
+            new Subject("guavaSynchronizedDeque_addAndPoll", GUAVA,
+                    "com.google.common.collect.Queues", Contract.THREAD_SAFE,
+                    "Returns a synchronized (thread-safe) deque backed by the specified deque.",
+                    "com/google/common/collect/Queues.java:462"),
+
+            new Subject("synchronizedTable_putAndGet", GUAVA,
+                    "com.google.common.collect.Tables", Contract.THREAD_SAFE,
+                    "Returns a synchronized (thread-safe) table backed by the specified table.",
+                    "com/google/common/collect/Tables.java:671"),
+
+            new Subject("concurrentHashSet_addAndContains", GUAVA,
+                    "com.google.common.collect.Sets", Contract.THREAD_SAFE,
+                    "Creates a thread-safe set backed by a hash map. The set is backed by a "
+                            + "ConcurrentHashMap instance, and thus carries the same concurrency "
+                            + "guarantees.",
+                    "com/google/common/collect/Sets.java:271"),
+
+            new Subject("hashFunction_hashString", GUAVA,
+                    "com.google.common.hash.HashFunction", Contract.THREAD_SAFE,
+                    "stateless, and therefore thread-safe.",
+                    "com/google/common/hash/HashFunction.java:43"),
+
+            new Subject("mapMakerMap_putAndGet", GUAVA,
+                    "com.google.common.collect.MapMaker", Contract.THREAD_SAFE,
+                    "Builds a thread-safe map.",
+                    "com/google/common/collect/MapMaker.java:273"),
+
+            new Subject("synchronizedSupplier_get", GUAVA,
+                    "com.google.common.base.Suppliers", Contract.THREAD_SAFE,
+                    "Returns a supplier whose get() method synchronizes on delegate before "
+                            + "calling it, making it thread-safe.",
+                    "com/google/common/base/Suppliers.java:390"),
+
+            new Subject("guavaCache_getAndPut", GUAVA,
+                    "com.google.common.cache.Cache", Contract.THREAD_SAFE,
+                    "Implementations of this interface are expected to be thread-safe, and can be "
+                            + "safely accessed by multiple concurrent threads.",
+                    "com/google/common/cache/Cache.java:35"),
+
+            new Subject("asyncCache_getAndJoin", CAFFEINE,
+                    "com.github.benmanes.caffeine.cache.AsyncCache", Contract.THREAD_SAFE,
+                    "Implementations of this interface are expected to be thread-safe and can be "
+                            + "safely accessed by multiple concurrent threads.",
+                    "com/github/benmanes/caffeine/cache/AsyncCache.java:35"),
+
+            new Subject("asyncLoadingCache_getAndJoin", CAFFEINE,
+                    "com.github.benmanes.caffeine.cache.AsyncLoadingCache", Contract.THREAD_SAFE,
+                    "Implementations of this interface are expected to be thread-safe and can be "
+                            + "safely accessed by multiple concurrent threads.",
+                    "com/github/benmanes/caffeine/cache/AsyncLoadingCache.java:29"),
+
+            new Subject("caffeineLoadingCache_get", CAFFEINE,
+                    "com.github.benmanes.caffeine.cache.LoadingCache", Contract.THREAD_SAFE,
+                    "Implementations of this interface are expected to be thread-safe and can be "
+                            + "safely accessed by multiple concurrent threads.",
+                    "com/github/benmanes/caffeine/cache/LoadingCache.java:31"),
+
+            new Subject("unpooledByteBufAllocator_bufferAndRelease", NETTY,
+                    "io.netty.buffer.ByteBufAllocator", Contract.THREAD_SAFE,
+                    "Implementations are responsible to allocate buffers. Implementations of this "
+                            + "interface are expected to be thread-safe.",
+                    "io/netty/buffer/ByteBufAllocator.java:19"),
+
+            new Subject("conversionService_convert", SPRING,
+                    "org.springframework.core.convert.ConversionService", Contract.THREAD_SAFE,
+                    "Call convert(Object, Class) to perform a thread-safe type conversion using "
+                            + "this system.",
+                    "org/springframework/core/convert/ConversionService.java:23")
     );
 
     /**
