@@ -50,7 +50,7 @@ prints the tier above every finding, every `Violation` carries it as a `trustTie
 `@AsyncTest(minTrust = TrustTier.VERDICT)` restricts the `failOn` gate to the tiers you name.
 `DetectorTrustCoverageTest` fails the build if a detector is unclassified, if a row names a
 detector class the factories do not construct, or if anything reaches VERDICT without naming
-both-directions tests that exist. This section is the narrative; the table in the code is the
+both-directions evidence that resolves. This section is the narrative; the table in the code is the
 authority, and the two cannot drift silently.
 
 This is measured rather than asserted. Two evals run each covered detector against a buggy variant
@@ -65,12 +65,22 @@ still fire when the two threads take *different* locks, which is a race no matte
 are held. The twins that do fire on correct code share one cause - the guard is a lock nothing
 told the library about.
 
-**VERDICT in the code, each with both directions measured:** `DEADLOCKS`, `LOCK_ORDER`,
+**VERDICT in the code, each with both directions measured, from two sources.** Ten are backed by
+tests in this repository, which the gate resolves by reflection: `DEADLOCKS`, `LOCK_ORDER`,
 `ATOMIC_NON_ATOMIC_UPDATE`, `LOCK_LEAKS`, `COMPLETABLE_FUTURE_EXCEPTIONS`, `RESOURCE_LEAKS`,
 `INTERRUPT_MISHANDLING`, `UNCAUGHT_EXCEPTION_HANDLER`, `COMPLETABLE_FUTURE_COMPLETION_LEAKS` and
-`THREAD_LEAKS`. Each names a test that fires on the bug and a test that stays silent on the
-correct twin, and the gate resolves both by reflection. Nine of the ten are in the `ESSENTIALS`
-preset, which is the one to gate on.
+`THREAD_LEAKS`. Nine of those ten are in the `ESSENTIALS` preset, which is the one to gate on.
+
+Eight more are backed by the corpus eval's recording lane, where the pair is two uses of an
+unmodified third-party class rather than a twin written here: `SHARED_JSON_MAPPER_RECONFIG`,
+`SHARED_MESSAGE_DIGEST`, `SHARED_STATEFUL_CRYPTO`, `CONCURRENT_MAP_COMPUTE_RECURSION`,
+`SYNCHRONIZED_COLLECTION_ITERATION`, `SHARED_ITERATOR`, `MUTABLE_MAP_KEY` and
+`JDBC_CONNECTION_SHARED`. That lane lives in a downstream module, so reflection cannot reach it;
+[`META-INF/async-test/verdict-evidence-corpus`](../async-test-lib/src/main/resources/META-INF/async-test/verdict-evidence-corpus)
+names each pair and both modules check it, which is what keeps the tier from outliving the
+measurement. Three further corpus pairs are deliberately not counted: `CACHE_CONCURRENCY`,
+`CONCURRENT_MAP_CHECK_THEN_ACT` and `CONCURRENT_MODIFICATIONS` pair two different classes, so what
+separates fire from silence there is the class as much as the defect.
 
 **Verdict on one path, weaker on another: graded per finding.** `VAR_HANDLE_NON_ATOMIC_UPDATE`,
 `STATIC_INIT_DEADLOCK`, `CONFINED_ARENA_THREAD_ESCAPE`, `RECORD_MUTABLE_COMPONENT_LEAK`,
