@@ -86,6 +86,7 @@ The following elements are security-critical. AI must not weaken security proper
 ## Scoped Rules Index
 Detailed per-element guardrails live in scoped rule files that load automatically when you open the matching source file. Consult the referenced file before modifying an element:
 
+- `se.deversity.asynctest` → `.gemini/rules/se-deversity-asynctest.md`
 - `se.deversity.asynctest.AgentCollectionHooks` → `.gemini/rules/se-deversity-asynctest-AgentCollectionHooks.md`
 - `se.deversity.asynctest.AgentConcurrencyUtilHooks` → `.gemini/rules/se-deversity-asynctest-AgentConcurrencyUtilHooks.md`
 - `se.deversity.asynctest.AgentGcHooks` → `.gemini/rules/se-deversity-asynctest-AgentGcHooks.md`

@@ -61,6 +61,12 @@ When modifying these elements, audit for:
 ### se.deversity.asynctest.AsyncTestContext.install(se.deversity.asynctest.AsyncTestContext)
 - **Allowed Callers**: [se.deversity.asynctest.runner.ConcurrencyRunner]
 
+## Performance Constraints
+
+### se.deversity.asynctest.runner.ConcurrencyRunner
+- **Rule**: Optimal complexity required. O(n^2) is forbidden on hot paths.
+- **Constraint**: One run with every detector enabled allocates at most 80,000 bytes per body execution, pinned by RunnerAllocationBudgetTest. The ceiling is on allocation rather than wall-clock because a shared CI runner cannot measure time reliably, and it is per body execution rather than per run so it does not move with threads x invocations. Anything added to the per-access path - a lambda captured per call, a boxed primitive, a string built before it is known to be needed - is multiplied by every access of every detector and shows up here first.
+
 ## Load-Bearing Oddity
 - **Rule**: This looks removable but is deliberate. Refactor only while the invariant holds.
 
