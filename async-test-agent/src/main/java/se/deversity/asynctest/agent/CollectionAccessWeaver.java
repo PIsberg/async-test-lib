@@ -369,20 +369,23 @@ final class CollectionAccessWeaver {
      */
     private static @org.jspecify.annotations.Nullable String synchronizedDescriptorFor(
             Class<?> hooks, Entry entry) {
-        if (entry.synchronizedHook() == null) {
+        // Held in a local rather than re-read. Two calls to the accessor are two reads to a
+        // static analyser, and it cannot know the second returns what the first did, so the
+        // guard above proves nothing about the use below.
+        String hookName = entry.synchronizedHook();
+        if (hookName == null) {
             return null;
         }
         Class<?>[] signature = new Class<?>[entry.parameters().length + 1];
         System.arraycopy(entry.parameters(), 0, signature, 0, entry.parameters().length);
         signature[signature.length - 1] = Object.class;
         try {
-            return Type.getType(hooks.getMethod(entry.synchronizedHook(), signature))
-                    .getDescriptor();
+            return Type.getType(hooks.getMethod(hookName, signature)).getDescriptor();
         } catch (NoSuchMethodException e) {
             throw new IllegalStateException(
-                    "no synchronized-method hook " + hooks.getName() + "."
-                            + entry.synchronizedHook() + " for " + entry.declaredBy().getName()
-                            + "." + entry.method() + "; agent and library versions disagree", e);
+                    "no synchronized-method hook " + hooks.getName() + "." + hookName
+                            + " for " + entry.declaredBy().getName() + "." + entry.method()
+                            + "; agent and library versions disagree", e);
         }
     }
 
