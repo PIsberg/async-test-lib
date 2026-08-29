@@ -105,7 +105,7 @@ public final class DetectorTrust {
             row(DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS, "CompletableFutureCompletionLeakDetector", "CompletableFutureCompletionLeaks", TrustTier.VERDICT),
             row(DetectorType.VIRTUAL_THREAD_PINNING, "VirtualThreadPinningDetector", "VirtualThreadPinning", TrustTier.PROMPT),
             row(DetectorType.THREAD_POOL_DEADLOCK, "ThreadPoolDeadlockDetector", "ThreadPoolDeadlock", TrustTier.PROMPT),
-            row(DetectorType.CONCURRENT_MODIFICATIONS, "ConcurrentModificationDetector", "ConcurrentModifications", TrustTier.PROMPT),
+            row(DetectorType.CONCURRENT_MODIFICATIONS, "ConcurrentModificationDetector", "ConcurrentModifications", TrustTier.VERDICT),
             row(DetectorType.LOCK_LEAKS, "LockLeakDetector", "LockLeaks", TrustTier.VERDICT),
             row(DetectorType.SHARED_RANDOM, "SharedRandomDetector", "SharedRandom", TrustTier.PROMPT),
             row(DetectorType.BLOCKING_QUEUE, "BlockingQueueDetector", "BlockingQueue", TrustTier.PROMPT),

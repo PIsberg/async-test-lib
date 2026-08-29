@@ -139,6 +139,34 @@ class CorpusRecordingLaneTest {
     /** The safe row's own one-shot latch. */
     private final AtomicBoolean concurrentMultisetDeclared = new AtomicBoolean();
 
+    /**
+     * The same class as {@link #cursorableList}, mutated under the collection's own monitor.
+     *
+     * <p>Added for #406. The existing silent row for this detector is a different class, so what
+     * separated fire from silence there was the type as much as the synchronization. This one
+     * varies the synchronization and nothing else: same implementation, same recorded operation,
+     * same six threads, and a monitor the detector can see. {@code ConcurrentModificationDetector}
+     * intersects the locks held across recorded mutations and reports only when that intersection
+     * is empty, so the pair separates exactly on the rule under test.
+     */
+    private final List<String> guardedCursorableList = new CursorableLinkedList<>();
+
+    /** The guarded row's own one-shot latch. */
+    private final AtomicBoolean guardedCursorableDeclared = new AtomicBoolean();
+
+    /**
+     * A second reference map, recorded to per-thread keys rather than one shared key.
+     *
+     * <p>Added for #406, replacing nothing: the caffeine row stays. Its purpose is that the
+     * silence comes from a decision the detector made. {@code recorded_caffeineAsMap_computeIfAbsent}
+     * calls no detector API at all, so a detector that fired on every single
+     * {@code recordCheckThenAct} would pass it; this row makes the same calls on the same class as
+     * the firing row and differs only in the key, which is the other half of the site identity the
+     * detector groups on.
+     */
+    private final ConcurrentReferenceHashMap<String, String> perThreadKeyMap =
+            new ConcurrentReferenceHashMap<>();
+
     /** Documented to support concurrent modification; its iterator is still confined state. */
     private final Multiset<String> concurrentMultiset =
             ConcurrentHashMultiset.create(List.of("alpha", "beta", "gamma"));
@@ -871,6 +899,45 @@ class CorpusRecordingLaneTest {
         AsyncTestContext.concurrentModificationDetector()
                 .recordModification(concurrentMultisetForModification, "concurrent-multiset", "add");
         concurrentMultisetForModification.add("value");
+    }
+
+
+    /**
+     * The same class as the firing row, mutated by every thread under the collection's monitor.
+     *
+     * <p>The detector notes the locks held at each recorded mutation and intersects them across
+     * the run; a non-empty intersection is a lock that covered every mutation, and it reports
+     * nothing. Six threads on a barrier all take the same monitor here, so the intersection holds
+     * and the silence is the rule firing rather than the detector failing to look.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_cursorableLinkedList_mutatedUnderItsOwnMonitor() {
+        CorpusRecorder.countBodyExecution();
+        declareCollectionOnce(guardedCursorableDeclared, guardedCursorableList,
+                "guarded-cursorable-list");
+        synchronized (guardedCursorableList) {
+            AsyncTestContext.concurrentModificationDetector()
+                    .recordModification(guardedCursorableList, "guarded-cursorable-list", "add");
+            guardedCursorableList.add("value");
+        }
+    }
+
+    /**
+     * Records the same check-then-act as the firing row, against a key private to each thread.
+     *
+     * <p>The detector groups by (map, key) and reports a site only when more than one thread
+     * reached it. Every thread here performs a genuine get-then-put and says so; none of them
+     * meets another on a key, so the site count stays at one thread throughout and the detector
+     * has a decision to make rather than nothing to look at.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_concurrentReferenceHashMap_checkThenActOnPrivateKeys() {
+        CorpusRecorder.countBodyExecution();
+        String key = "key-" + Thread.currentThread().threadId();
+        AsyncTestContext.nonAtomicConcurrentMapUpdateDetector()
+                .recordCheckThenAct(perThreadKeyMap, key, "get-then-put", Thread.currentThread());
+        String existing = perThreadKeyMap.get(key);
+        perThreadKeyMap.put(key, existing == null ? "first" : existing + "+");
     }
 
     private static void declareCollectionOnce(AtomicBoolean latch, java.util.Collection<String> c,

@@ -583,14 +583,39 @@ library refuses a `VERDICT` row that no line and no in-repo pair backs, and `Cor
 every id against the rows here and fails if one is missing, cites the wrong detector or has drifted
 to the wrong expectation.
 
-Eight detectors were promoted on that basis, taking `VERDICT` from 10 of 146 to 18:
+Nine detectors were promoted on that basis, taking `VERDICT` from 10 of 146 to 19:
 `SHARED_JSON_MAPPER_RECONFIG`, `SHARED_MESSAGE_DIGEST`, `SHARED_STATEFUL_CRYPTO`,
 `CONCURRENT_MAP_COMPUTE_RECURSION`, `SYNCHRONIZED_COLLECTION_ITERATION`, `SHARED_ITERATOR`,
-`MUTABLE_MAP_KEY` and `JDBC_CONNECTION_SHARED`. Each of those pairs varies the defect and nothing
-else on the same class, which is the bar the in-repo twins meet. Three pairs here do not meet it
-and were left alone: `CACHE_CONCURRENCY`, `CONCURRENT_MAP_CHECK_THEN_ACT` and
-`CONCURRENT_MODIFICATIONS` each pair two different classes, so what separates fire from silence is
-the class as much as the defect. They keep their rows and their `PROMPT` tier.
+`MUTABLE_MAP_KEY`, `JDBC_CONNECTION_SHARED` and `CONCURRENT_MODIFICATIONS`. Each of those pairs
+varies the defect and nothing else on the same class, which is the bar the in-repo twins meet.
+
+### Two that stay PROMPT, and why the pair was not the problem
+
+Three pairs were held back at first because each joined two different classes, so what separated
+fire from silence was the class as much as the defect. Revisiting them for
+[#406](https://github.com/PIsberg/async-test-lib/issues/406) settled all three, and only one of the
+answers was the one the question expected.
+
+**`CONCURRENT_MODIFICATIONS` was the tractable one.** The detector is lock-aware: it intersects the
+locks held across every recorded mutation and reports only when that intersection is empty. So a
+same-class pair does exist - one `CursorableLinkedList` mutated by six threads with no visible
+lock, and a second mutated by six threads under the collection's own monitor. The row was written,
+the pair now separates on the synchronization alone, and the detector is promoted.
+
+**`CACHE_CONCURRENCY` cannot have a same-class pair at all.** Its rule asks
+`synchronizesItself(cache)`, which tests the map against `ConcurrentMap`, `Hashtable` and the
+`Collections$Synchronized` wrappers. That is a question about the type, so given one class both
+halves of a pair get the same answer before the run starts. It also consults no lock: a `HashMap`
+correctly guarded by the caller's own lock draws the same finding as a raced one, which is the
+definition of `PROMPT` rather than a gap to close.
+
+**`CONCURRENT_MAP_CHECK_THEN_ACT` is classified by its caller.** `recordCheckThenAct` is itself the
+assertion that a check-then-act happened; the detector's only decision is whether more than one
+thread reached the same `(map, key)` site. Its silent row was worse than cross-class - it called no
+detector API at all, so a detector that fired on every single record call would have passed it - and
+a same-class row was written to fix that: the same map class, the same recorded check-then-act, on a
+key private to each thread. The silence is now a decision rather than an absence of calls. It still
+does not reach `VERDICT`, because the body declared the defect before the detector saw anything.
 
 | Detector | Must fire | ...did | Must stay silent | ...did |
 |---|---:|---:|---:|---:|

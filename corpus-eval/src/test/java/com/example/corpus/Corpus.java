@@ -866,7 +866,29 @@ final class Corpus {
                     "the same mutable class used as a key and left alone, which is the ordinary "
                             + "and correct way to use one. Mutability is a hazard only when "
                             + "exercised, and reporting the type itself would report every "
-                            + "correct use of it")
+                            + "correct use of it"),
+            // --- #406: two rows added so that what separates fire from silence is the defect and
+            //     not the class. The third detector the issue named, CACHE_CONCURRENCY, gets no
+            //     row: its model asks the map's type whether it synchronizes itself, so given one
+            //     class both halves of a pair get the same answer by construction.
+
+            new RecordingSubject("recorded_cursorableLinkedList_mutatedUnderItsOwnMonitor", COLLECTIONS4,
+                    "org.apache.commons.collections4.list.CursorableLinkedList",
+                    DetectorType.CONCURRENT_MODIFICATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same class as the firing row, mutated by every thread under the "
+                            + "collection's own monitor. The detector intersects the locks held "
+                            + "across recorded mutations and reports only an empty intersection, "
+                            + "so this pair separates on the synchronization alone"),
+
+            new RecordingSubject("recorded_concurrentReferenceHashMap_checkThenActOnPrivateKeys", SPRING,
+                    "org.springframework.util.ConcurrentReferenceHashMap",
+                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same class and the same recorded check-then-act as the firing row, on a "
+                            + "key private to each thread. The detector groups by (map, key) and "
+                            + "reports only a site more than one thread reached, so the silence is "
+                            + "a decision rather than an absence of calls")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()

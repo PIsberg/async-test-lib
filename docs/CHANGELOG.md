@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`CONCURRENT_MODIFICATIONS` reached `TrustTier.VERDICT`, taking it to 19 of 146.** It was one of
+  three detectors held back when the corpus evidence channel landed, because its recording pair
+  joined two different classes and so separated on the type as much as on the defect. Revisiting it
+  for #406 found the detector is lock-aware: it intersects the locks held across every recorded
+  mutation and reports only an empty intersection. A same-class pair therefore exists, and now
+  does - one `CursorableLinkedList` mutated by six threads with no visible lock, a second mutated
+  by six threads under the collection's own monitor. Removing that monitor makes the silent row
+  fire, which is the check the promotion rests on.
+
+- **The check-then-act silent row exercises the detector now.** `CONCURRENT_MAP_CHECK_THEN_ACT`'s
+  `MUST_STAY_SILENT` row called no detector API at all, so a detector that fired on every single
+  `recordCheckThenAct` would have passed it. A same-class row was added: the same map class and the
+  same recorded check-then-act as the firing row, on a key private to each thread, which the
+  detector must decide is not a site. Giving it one shared key makes it fire.
+
+- **`CACHE_CONCURRENCY` and `CONCURRENT_MAP_CHECK_THEN_ACT` stay `PROMPT`, with the reason
+  recorded.** Neither is a missing pair. `CACHE_CONCURRENCY` asks the map's own type whether it
+  synchronizes itself, so given one class both halves of a pair get the same answer by
+  construction, and it consults no lock, so a correctly guarded `HashMap` draws the same finding as
+  a raced one. `CONCURRENT_MAP_CHECK_THEN_ACT` is classified by its caller: `recordCheckThenAct` is
+  the assertion that a check-then-act happened, and the detector's own decision is only the
+  more-than-one-thread threshold.
+
 - **The corpus eval's true-positive side is gated now, not only reported.**
   `CorpusGates.theUnsafeGroupIsDetected` passed on one finding *or one crash* anywhere in the
   documented-not-thread-safe group, and three of those subjects throw on most runs, so the crash

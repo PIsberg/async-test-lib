@@ -71,16 +71,23 @@ tests in this repository, which the gate resolves by reflection: `DEADLOCKS`, `L
 `INTERRUPT_MISHANDLING`, `UNCAUGHT_EXCEPTION_HANDLER`, `COMPLETABLE_FUTURE_COMPLETION_LEAKS` and
 `THREAD_LEAKS`. Nine of those ten are in the `ESSENTIALS` preset, which is the one to gate on.
 
-Eight more are backed by the corpus eval's recording lane, where the pair is two uses of an
+Nine more are backed by the corpus eval's recording lane, where the pair is two uses of an
 unmodified third-party class rather than a twin written here: `SHARED_JSON_MAPPER_RECONFIG`,
 `SHARED_MESSAGE_DIGEST`, `SHARED_STATEFUL_CRYPTO`, `CONCURRENT_MAP_COMPUTE_RECURSION`,
-`SYNCHRONIZED_COLLECTION_ITERATION`, `SHARED_ITERATOR`, `MUTABLE_MAP_KEY` and
-`JDBC_CONNECTION_SHARED`. That lane lives in a downstream module, so reflection cannot reach it;
+`SYNCHRONIZED_COLLECTION_ITERATION`, `SHARED_ITERATOR`, `MUTABLE_MAP_KEY`,
+`JDBC_CONNECTION_SHARED` and `CONCURRENT_MODIFICATIONS`. That lane lives in a downstream module, so
+reflection cannot reach it;
 [`META-INF/async-test/verdict-evidence-corpus`](../async-test-lib/src/main/resources/META-INF/async-test/verdict-evidence-corpus)
 names each pair and both modules check it, which is what keeps the tier from outliving the
-measurement. Three further corpus pairs are deliberately not counted: `CACHE_CONCURRENCY`,
-`CONCURRENT_MAP_CHECK_THEN_ACT` and `CONCURRENT_MODIFICATIONS` pair two different classes, so what
-separates fire from silence there is the class as much as the defect.
+measurement.
+
+Two detectors the corpus measures in both directions stay `PROMPT`, and the reason is the
+detector's model rather than the pair. `CACHE_CONCURRENCY` asks the map's own type whether it
+synchronizes itself, so given one class both halves of a pair get the same answer by construction,
+and it consults no lock at all: a `HashMap` correctly guarded by the caller's own lock draws the
+same finding as a raced one. `CONCURRENT_MAP_CHECK_THEN_ACT` is classified by its caller, because
+`recordCheckThenAct` is itself the assertion that a check-then-act happened; the detector's own
+decision is only whether more than one thread reached the same `(map, key)` site.
 
 **Verdict on one path, weaker on another: graded per finding.** `VAR_HANDLE_NON_ATOMIC_UPDATE`,
 `STATIC_INIT_DEADLOCK`, `CONFINED_ARENA_THREAD_ESCAPE`, `RECORD_MUTABLE_COMPONENT_LEAK`,
