@@ -77,6 +77,7 @@ you are editing here.
 <rule>Elements listed in <security_elements> are security-critical. Never weaken their security properties. Every proposed change must be explicitly reviewed for security impact.</rule>
   <scoped_rules>
     <note>Detailed per-element guardrails for the elements below live in scoped rule files that load automatically when the matching source file is opened. Consult the referenced file before modifying an element.</note>
+    <element path="se.deversity.asynctest" rules=".claude/rules/se-deversity-asynctest.md"/>
     <element path="se.deversity.asynctest.AgentCollectionHooks" rules=".claude/rules/se-deversity-asynctest-AgentCollectionHooks.md"/>
     <element path="se.deversity.asynctest.AgentConcurrencyUtilHooks" rules=".claude/rules/se-deversity-asynctest-AgentConcurrencyUtilHooks.md"/>
     <element path="se.deversity.asynctest.AgentGcHooks" rules=".claude/rules/se-deversity-asynctest-AgentGcHooks.md"/>

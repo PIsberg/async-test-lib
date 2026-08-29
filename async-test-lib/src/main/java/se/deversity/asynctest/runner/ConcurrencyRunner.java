@@ -4,6 +4,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import se.deversity.vibetags.annotations.AIAudit;
+import se.deversity.vibetags.annotations.AIPerformance;
 import se.deversity.vibetags.annotations.AICore;
 import se.deversity.vibetags.annotations.AILoadBearing;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -81,6 +82,7 @@ import java.util.concurrent.TimeoutException;
     note = "Core stress-test execution engine. The CyclicBarrier pattern forces maximum thread contention. Timeout logic and AsyncTestContext install/uninstall are carefully calibrated — subtle changes introduce flaky tests or missed detector activations."
 )
 @AIAudit(checkFor = {"Thread Safety issues", "Resource Leaks"})
+@AIPerformance(constraint = "One run with every detector enabled allocates at most 80,000 bytes per body execution, pinned by RunnerAllocationBudgetTest. The ceiling is on allocation rather than wall-clock because a shared CI runner cannot measure time reliably, and it is per body execution rather than per run so it does not move with threads x invocations. Anything added to the per-access path - a lambda captured per call, a boxed primitive, a string built before it is known to be needed - is multiplied by every access of every detector and shows up here first.")
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Coordinates concurrency using CyclicBarrier to maximize thread contention.")
 public class ConcurrencyRunner {
 
