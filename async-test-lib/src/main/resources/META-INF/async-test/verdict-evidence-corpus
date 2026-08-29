@@ -1,0 +1,35 @@
+# The both-directions evidence that backs a VERDICT tier and lives outside this repository's own
+# test sources.
+#
+# TrustTier.VERDICT means a finding says the code is wrong, so promotion to it requires a case that
+# fires on a bug and a case that stays silent on the correct twin. DetectorTrustCoverageTest
+# resolves that evidence by reflection, which reaches only test methods in this module. The corpus
+# eval holds pairs of exactly the same shape on unmodified third-party code, in a downstream module
+# no test here can see: this file is how the two halves reach each other.
+#
+# Each line names a detector and its pair, as
+#
+#   DETECTOR_TYPE = fires-on-the-bug, stays-silent-on-the-twin
+#
+# and both sides check it. In this module, DetectorTrustCoverageTest requires every VERDICT row to
+# be backed either by a pair of test methods it can resolve or by a line here, and requires every
+# line here to name a detector actually classified VERDICT. In corpus-eval, CorpusGates requires
+# each named id to be a RecordingSubject for that detector carrying that expectation, so a line
+# that stops being true fails the corpus build rather than quietly vouching for a tier.
+#
+# The bar is the one the in-repo pairs meet: the two subjects differ in the defect and in nothing
+# else. Three corpus pairs are deliberately absent because they do not meet it - CACHE_CONCURRENCY,
+# CONCURRENT_MAP_CHECK_THEN_ACT and CONCURRENT_MODIFICATIONS pair two different classes, so what
+# separates them is the class as much as the defect. They stay PROMPT, with rows in the corpus and
+# no claim here.
+#
+# Blank lines and # comments are ignored.
+
+SHARED_JSON_MAPPER_RECONFIG = recorded_objectMapper_reconfigureWhileWriting, recorded_objectMapper_configuredThenShared
+SHARED_MESSAGE_DIGEST = recorded_messageDigest_sharedAcrossThreads, recorded_messageDigest_guardedByItsOwnMonitor
+SHARED_STATEFUL_CRYPTO = recorded_mac_sharedAcrossThreads, recorded_mac_confinedToOneThreadEach
+CONCURRENT_MAP_COMPUTE_RECURSION = recorded_caffeineAsMap_recursiveMerge, recorded_caffeineAsMap_selfContainedMerge
+SYNCHRONIZED_COLLECTION_ITERATION = recorded_synchronizedCollection_iteratedWithoutLock, recorded_synchronizedCollection_iteratedHoldingLock
+SHARED_ITERATOR = recorded_concurrentHashMultiset_sharedIterator, recorded_concurrentHashMultiset_iteratorPerThread
+MUTABLE_MAP_KEY = recorded_mutableIntKey_mutatedAfterInsertion, recorded_mutableIntKey_neverMutated
+JDBC_CONNECTION_SHARED = recorded_hoistedConnection_sharedAcrossThreads, recorded_hikariPool_checkoutPerThread

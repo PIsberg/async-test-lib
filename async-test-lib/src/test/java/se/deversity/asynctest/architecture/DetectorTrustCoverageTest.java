@@ -26,6 +26,7 @@ import java.util.regex.Pattern;
 import static java.util.Map.entry;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -126,16 +127,20 @@ class DetectorTrustCoverageTest {
     @Test
     @DisplayName("VERDICT is only reachable with named both-directions tests that exist")
     void everyVerdictTierIsBackedByEvidenceThatResolves() {
+        Map<DetectorType, List<String>> corpus = corpusEvidence();
         List<String> unbacked = new ArrayList<>();
         for (DetectorTrust.Row row : DetectorTrust.rows()) {
-            if (row.tier() == TrustTier.VERDICT && !EVIDENCE.containsKey(row.type())) {
+            if (row.tier() == TrustTier.VERDICT
+                    && !EVIDENCE.containsKey(row.type())
+                    && !corpus.containsKey(row.type())) {
                 unbacked.add(row.type().name());
             }
         }
         assertTrue(unbacked.isEmpty(),
                 "VERDICT means a finding proves the code wrong, so it needs a case that fires on the "
                         + "bug and a case that stays silent on the correct twin. No evidence registered for: "
-                        + unbacked + ". Either add both tests and register them in EVIDENCE, or classify "
+                        + unbacked + ". Either add both tests and register them in EVIDENCE, add a "
+                        + "corpus pair and a line in " + CORPUS_EVIDENCE_RESOURCE + ", or classify "
                         + "the detector as PROMPT.");
 
         for (Map.Entry<DetectorType, List<String>> entry : EVIDENCE.entrySet()) {
@@ -283,6 +288,73 @@ class DetectorTrustCoverageTest {
         } catch (ClassNotFoundException | NoSuchMethodException e) {
             fail("Trust-tier evidence " + reference + " does not exist. A VERDICT tier is only as good "
                     + "as the test behind it, so a renamed or deleted case must fail here: " + e);
+        }
+    }
+
+
+    /**
+     * The resource that carries VERDICT evidence living outside this module's test sources.
+     *
+     * <p>{@link #EVIDENCE} is resolved by reflection, which reaches only test methods compiled
+     * here. The corpus eval holds pairs of the same shape on unmodified third-party code, in a
+     * downstream module that depends on this one and therefore cannot be depended on back. The
+     * file is the seam: this gate requires every line in it to name a detector actually classified
+     * VERDICT, and {@code CorpusGates} in that module requires every line to name two recording
+     * subjects that exist and carry the stated expectations. Neither half can drift without a
+     * build going red.
+     */
+    private static final String CORPUS_EVIDENCE_RESOURCE =
+            "/META-INF/async-test/verdict-evidence-corpus";
+
+    /** {@return the corpus-backed evidence, detector to its two subject ids, fire first} */
+    private static Map<DetectorType, List<String>> corpusEvidence() {
+        Map<DetectorType, List<String>> parsed = new HashMap<>();
+        String content;
+        try (java.io.InputStream in =
+                     DetectorTrustCoverageTest.class.getResourceAsStream(CORPUS_EVIDENCE_RESOURCE)) {
+            assertNotNull(in, CORPUS_EVIDENCE_RESOURCE + " is missing from the classpath");
+            content = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not read " + CORPUS_EVIDENCE_RESOURCE, e);
+        }
+        for (String raw : content.split("\n")) {
+            String line = raw.strip();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+            int equals = line.indexOf('=');
+            assertTrue(equals > 0, "malformed line in " + CORPUS_EVIDENCE_RESOURCE + ": " + line);
+            String detector = line.substring(0, equals).strip();
+            List<String> subjects = java.util.Arrays.stream(line.substring(equals + 1).split(","))
+                    .map(String::strip)
+                    .filter(part -> !part.isEmpty())
+                    .toList();
+            parsed.put(DetectorType.valueOf(detector), subjects);
+        }
+        return parsed;
+    }
+
+    @Test
+    @DisplayName("every corpus-backed VERDICT line names a VERDICT detector and both directions")
+    void corpusEvidenceIsWellFormedAndPointsAtVerdictRows() {
+        Map<DetectorType, List<String>> corpus = corpusEvidence();
+        assertFalse(corpus.isEmpty(),
+                CORPUS_EVIDENCE_RESOURCE + " parsed to nothing, so the promotions it backs are "
+                        + "unbacked and this gate is vouching for them by accident");
+
+        for (Map.Entry<DetectorType, List<String>> entry : corpus.entrySet()) {
+            assertEquals(2, entry.getValue().size(),
+                    entry.getKey() + " must name exactly two corpus subjects, the one that fires "
+                            + "on the bug and the one that stays silent on the twin. One direction "
+                            + "alone proves nothing: a detector that fires on everything passes "
+                            + "the first and one that was never wired up passes the second. Found: "
+                            + entry.getValue());
+            assertEquals(TrustTier.VERDICT, DetectorTrust.tierOf(entry.getKey()),
+                    entry.getKey() + " has corpus evidence registered but is not classified "
+                            + "VERDICT. Remove the stale line or raise the tier.");
+            assertFalse(EVIDENCE.containsKey(entry.getKey()),
+                    entry.getKey() + " is backed twice, here and in EVIDENCE. Keep the in-repo "
+                            + "pair, which this gate can resolve, and drop the corpus line.");
         }
     }
 

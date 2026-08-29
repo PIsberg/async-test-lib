@@ -99,6 +99,88 @@ final class CorpusGates {
         everyRecordedDetectorIsExposed(lane);
         everyReportingDetectorWasExposed(findings, lane);
         everySubjectGotTheOutcomeItsRecordedCallsOblige(findings);
+        everyCorpusBackedVerdictResolvesToItsPair();
+    }
+
+
+    /**
+     * The other half of the cross-module VERDICT evidence seam.
+     *
+     * <p>{@code TrustTier.VERDICT} means a finding says the code is wrong, so the library only
+     * grants it against a case that fires on a bug and a case that stays silent on the correct
+     * twin. Its own gate resolves that evidence by reflection over its own test methods, which
+     * cannot reach this module: this module depends on the library, so the library cannot depend
+     * back. Eight detectors are classified VERDICT on the strength of pairs that live here, named
+     * in {@code META-INF/async-test/verdict-evidence-corpus}.
+     *
+     * <p>A name in a file is not evidence. This resolves every line against the rows it names and
+     * fails if one is missing, points at a different detector, or has drifted to the wrong
+     * expectation. The pairs themselves are held to their outcomes every run by
+     * {@link #everySubjectGotTheOutcomeItsRecordedCallsOblige}, so between the two the tier cannot
+     * outlive the measurement that earned it.
+     */
+    private static void everyCorpusBackedVerdictResolvesToItsPair() {
+        String resource = "/META-INF/async-test/verdict-evidence-corpus";
+        String content;
+        try (java.io.InputStream in = CorpusGates.class.getResourceAsStream(resource)) {
+            assertTrue(in != null, resource + " is not on the classpath, so the eight VERDICT "
+                    + "tiers this module backs cannot be checked from either side");
+            content = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException("Could not read " + resource, e);
+        }
+
+        List<String> broken = new ArrayList<>();
+        int lines = 0;
+        for (String raw : content.split("\n")) {
+            String line = raw.strip();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+            lines++;
+            int equals = line.indexOf('=');
+            if (equals <= 0) {
+                broken.add("malformed line: " + line);
+                continue;
+            }
+            DetectorType detector = DetectorType.valueOf(line.substring(0, equals).strip());
+            String[] ids = line.substring(equals + 1).split(",");
+            if (ids.length != 2) {
+                broken.add(detector + " must name two subjects, fire first, and names "
+                        + ids.length);
+                continue;
+            }
+            broken.addAll(problemsWith(detector, ids[0].strip(),
+                    RecordingSubject.Expectation.MUST_FIRE));
+            broken.addAll(problemsWith(detector, ids[1].strip(),
+                    RecordingSubject.Expectation.MUST_STAY_SILENT));
+        }
+
+        assertTrue(lines > 0, resource + " parsed to no lines at all, so this gate passed by "
+                + "reading nothing");
+        assertTrue(broken.isEmpty(),
+                "the library classifies these detectors VERDICT because this module measures both "
+                        + "directions for them, and the evidence it names no longer resolves here. "
+                        + "Either restore the rows or lower the tier: " + broken);
+    }
+
+    /** {@return what is wrong with the row {@code id}, as evidence for {@code detector}} */
+    private static List<String> problemsWith(DetectorType detector,
+                                             String id,
+                                             RecordingSubject.Expectation expected) {
+        RecordingSubject subject = Corpus.recordingByTestMethod(id);
+        if (subject == null) {
+            return List.of(detector + " names " + id + ", which is not a recording subject");
+        }
+        List<String> problems = new ArrayList<>();
+        if (subject.detector() != detector) {
+            problems.add(id + " is cited for " + detector + " but records to " + subject.detector());
+        }
+        if (subject.expectation() != expected) {
+            problems.add(id + " is cited as the " + expected + " half for " + detector
+                    + " but is declared " + subject.expectation());
+        }
+        return problems;
     }
 
     /** A recording test method without a row would be a subject with no stated expectation. */
