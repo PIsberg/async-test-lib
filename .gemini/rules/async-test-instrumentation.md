@@ -55,6 +55,5 @@
 
 ### se.deversity.asynctest.benchmark.BenchmarkComparator.readStore(java.io.File)
 - **Rule**: Prohibit dynamic class loading, custom classloaders, runtime reflection hacks, or execution of dynamic external code.
-- **Reason**: Java native deserialization sink. The BASELINE_FILTER allow-list (ending in !*) must resolve every class in the stream and reject all others, preventing arbitrary class loading (CWE-502 RCE). Never widen the filter or remove setObjectInputFilter.
 <!-- VIBETAGS-MODULE-END: async-test-lib -->
 <!-- VIBETAGS-END -->

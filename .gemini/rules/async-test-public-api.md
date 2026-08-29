@@ -5,7 +5,6 @@
 
 ### se.deversity.asynctest.NoopAsyncTestListener
 This element is strictly excluded from AI context. Do not reference it.
-- **Reason**: Trivial no-op implementation of AsyncTestListener. All methods are intentionally empty — no logic to review or change here.
 
 ## Performance Constraints
 
