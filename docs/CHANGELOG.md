@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A `MUST_STAY_SILENT` corpus row can no longer pass by never calling its detector.** A silent
+  row passes when its detector says nothing, and a row that never calls the detector satisfies that
+  for free. One was: the silent half of `CONCURRENT_MAP_CHECK_THEN_ACT` was three lines of Caffeine
+  with no detector call in them. `SilentRowPremise` now reads the lane's own source and requires
+  each silent row to address the detector it names, following one level of helper because the lane
+  uses one. The offending row was removed rather than repaired, and why it cannot be repaired is
+  the point: a correct use of a `ConcurrentMap` has no check-then-act to record, so for that
+  detector the correct twin is unrecordable. Nine silent rows now back a `VERDICT` tier, so this
+  guards live claims. (#410)
+
+- **`ExecutorShutdownDetector` now says what it is for.** It reported as a general-purpose thread
+  leak check and is not one: it reports only executors declared through `recordExecutorCreated`,
+  and that declaration means "this scope created it and owns closing it". An executor the code was
+  handed - a shared static pool, an injected dependency, a framework-managed one - is untracked,
+  because not closing it is correct. Two tests pin both sides: an undeclared executor draws nothing
+  however many tasks it takes, and declaring a borrowed one reports correct code, which is the cost
+  of the design rather than an accident of it. No behaviour changed; the rule was already narrow
+  and the javadoc was what claimed otherwise. It also records why the detector is not agent-fed:
+  weaving would declare every executor in the program and produce that second case everywhere.
+  (#387)
+
+- **The corpus numbers in prose are checked against the corpus.** `README.md` said 42 subjects,
+  20 of 20 and 0 of 22 while the module measured 82, 22 of 22 and 0 of 60, and its own agent bullet
+  said 21 in the same breath as its evidence section said 5. Corrected, and `CorpusClaimsInDocsTest`
+  now fails when a stated denominator stops being true. The agent bullet also no longer says 21
+  detectors "fire" on unmodified code: 21 can *see* it, and on 82 third-party subjects two of them
+  produced every finding.
+
 - **`CONCURRENT_MODIFICATIONS` reached `TrustTier.VERDICT`, taking it to 19 of 146.** It was one of
   three detectors held back when the corpus evidence channel landed, because its recording pair
   joined two different classes and so separated on the type as much as on the defect. Revisiting it

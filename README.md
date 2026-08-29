@@ -34,7 +34,7 @@
 - **146 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types and more, all on by default. See [Detectors](#detectors) for what feeds them.
 - **JUnit native, 5 and 6** — a plain `@TestTemplate`: no JVM flags, no required configuration, and it works from Kotlin, Groovy, Scala and Clojure. Jupiter 5.9.3 through 6.1.2, verified per release ([compatibility table](docs/BUILDING.md#junit-compatibility), [language notes](docs/JVM_LANGUAGES.md)).
 - **Every finding says how far to trust it** — each detector carries a trust tier, so `failOn` can gate a merge on the measured end of the scale while everything else is still reported ([the tiers](docs/DETECTOR_CATALOG.md#trust-tiers), [Evidence](#evidence-what-has-been-measured-and-on-whose-code)).
-- **Optional agent** — `async-test-agent` rewrites field accesses, collection and lock calls, shared JDK objects, coordination primitives, `Thread.sleep` and `System.gc` with Byte Buddy, so **21 of them fire on code you did not modify** instead of 3. Not needed for default use, and the core artifact does not depend on Byte Buddy ([docs/AGENT.md](docs/AGENT.md)).
+- **Optional agent** — `async-test-agent` rewrites field accesses, collection and lock calls, shared JDK objects, coordination primitives, `Thread.sleep` and `System.gc` with Byte Buddy, so **21 of them can see code you did not modify** instead of 3. Being able to see is not the same as firing: on 82 third-party subjects two of those 21 produced every finding, and the other nineteen were correctly silent because nothing in that corpus writes the idiom they model. Not needed for default use, and the core artifact does not depend on Byte Buddy ([docs/AGENT.md](docs/AGENT.md)).
 - **CI-ready out of the box** — JUnit XML, machine-readable JSON, SARIF, or plain `AssertionError` fail-gates, straight into GitHub Actions, Jenkins and GitLab CI.
 
 <div align="center">
@@ -55,19 +55,25 @@ A concurrency detector is easy to make loud and hard to make right, so this proj
 independent bodies of evidence and the denominator each was measured over. Neither is a claim
 about the JVM ecosystem. Both are reproducible from this repository.
 
-### The corpus: 42 classes nobody here wrote
+### The corpus: 82 subjects nobody here wrote
 
-`corpus-eval/` runs `@AsyncTest` over 42 classes from commons-lang3, commons-collections4, Guava,
-Jackson, Caffeine, Netty and Spring whose **own javadoc states a thread-safety contract**. That sentence is the ground truth, quoted in the corpus table with the file and line
+`corpus-eval/` runs `@AsyncTest` over 82 subjects from commons-lang3, commons-collections4, Guava,
+Jackson, Caffeine, Netty, Spring, HikariCP and the JDK whose **own javadoc states a thread-safety
+contract**. That sentence is the ground truth, quoted in the corpus table with the file and line
 it came from, so a reader can check the classification without trusting this project. A finding on
 a class documented as thread-safe is noise; a finding on one documented as not thread-safe is a
 true positive. Nothing is inferred from how the code looks.
 
 | | Result |
 |---|---|
-| Documented not thread-safe | 20 of 20 detected |
-| Documented thread-safe, with any finding at all | **0 of 22** |
-| Documented thread-safe, with a `VERDICT`-tier HIGH or CRITICAL | **0 of 22** |
+| Documented not thread-safe | 22 of 22 detected |
+| Documented thread-safe, with any finding at all | **0 of 60** |
+| Documented thread-safe, with a `VERDICT`-tier HIGH or CRITICAL | **0 of 60** |
+
+Identical on four platforms: JDK 21, 25 and 26 on Linux, and 26 on Windows. Sixty documented-safe
+subjects is what puts a **95% upper bound of 5.0%** on the false-positive rate; the bound comes
+from the size of that denominator rather than from the run of zeroes, which is why the safe side is
+the larger half of the corpus on purpose.
 
 The zero was not tuned. Each of the findings that used to sit in that column was traced to
 something the model could not see, filed as an issue, and closed by a rule that names an idiom and
@@ -81,10 +87,12 @@ fixed anything.
 
 **The eval prints its denominator before any rate**, because a finding count on its own cannot
 tell "no false positive from detector X" apart from "X never ran". In code that records nothing,
-only 5 of the 146 detectors can see anything at all, and saying so is the difference between a
-measurement and a marketing number. A third lane exists for exactly that reason: it records what
-the body did, the way a user following `AsyncTestContext` would, and gives four more detectors a
-denominator over subjects that must fire and twins that must stay silent. It is where HikariCP
+only 21 of the 146 detectors can see anything at all, and two of those produced every finding in
+the corpus. Saying so is the difference between a measurement and a marketing number. A third lane
+exists for exactly that reason: it records what the body did, the way a user following
+`AsyncTestContext` would, and gives twelve more detectors a denominator over subjects that must
+fire and twins that must stay silent. Nine of those pairs are what let their detectors carry
+`VERDICT`, the tier a build can fail on. It is where HikariCP
 joins the corpus as an eighth library, because a connection pool is the one subject that cannot
 be exercised without something to pool.
 
