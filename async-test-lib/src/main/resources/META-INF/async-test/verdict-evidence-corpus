@@ -18,10 +18,19 @@
 # that stops being true fails the corpus build rather than quietly vouching for a tier.
 #
 # The bar is the one the in-repo pairs meet: the two subjects differ in the defect and in nothing
-# else. Three corpus pairs are deliberately absent because they do not meet it - CACHE_CONCURRENCY,
-# CONCURRENT_MAP_CHECK_THEN_ACT and CONCURRENT_MODIFICATIONS pair two different classes, so what
-# separates them is the class as much as the defect. They stay PROMPT, with rows in the corpus and
-# no claim here.
+# else. Two corpus-measured detectors are deliberately absent, and the reason is the detector's
+# model rather than the pair (#406):
+#
+#   CACHE_CONCURRENCY asks the map's own type whether it synchronizes itself, so given one class
+#   both halves of a pair get the same answer by construction and no same-class pair can exist. It
+#   also consults no lock at all, so a HashMap correctly guarded by the caller's own lock draws the
+#   same finding as a raced one. That is the definition of PROMPT.
+#
+#   CONCURRENT_MAP_CHECK_THEN_ACT is classified by its caller. recordCheckThenAct IS the assertion
+#   that a check-then-act happened; the detector's own decision is only whether more than one
+#   thread reached the same (map, key). A same-class pair exists and is in the corpus, and it makes
+#   the silence a decision rather than an absence of calls, but it cannot make a finding mean the
+#   code is wrong, because the body declared that before the detector saw anything.
 #
 # Blank lines and # comments are ignored.
 
@@ -33,3 +42,4 @@ SYNCHRONIZED_COLLECTION_ITERATION = recorded_synchronizedCollection_iteratedWith
 SHARED_ITERATOR = recorded_concurrentHashMultiset_sharedIterator, recorded_concurrentHashMultiset_iteratorPerThread
 MUTABLE_MAP_KEY = recorded_mutableIntKey_mutatedAfterInsertion, recorded_mutableIntKey_neverMutated
 JDBC_CONNECTION_SHARED = recorded_hoistedConnection_sharedAcrossThreads, recorded_hikariPool_checkoutPerThread
+CONCURRENT_MODIFICATIONS = recorded_cursorableLinkedList_concurrentAdd, recorded_cursorableLinkedList_mutatedUnderItsOwnMonitor
