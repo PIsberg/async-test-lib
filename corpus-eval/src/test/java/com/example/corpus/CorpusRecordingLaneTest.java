@@ -158,11 +158,10 @@ class CorpusRecordingLaneTest {
      * A second reference map, recorded to per-thread keys rather than one shared key.
      *
      * <p>Added for #406, replacing nothing: the caffeine row stays. Its purpose is that the
-     * silence comes from a decision the detector made. {@code recorded_caffeineAsMap_computeIfAbsent}
-     * calls no detector API at all, so a detector that fired on every single
-     * {@code recordCheckThenAct} would pass it; this row makes the same calls on the same class as
-     * the firing row and differs only in the key, which is the other half of the site identity the
-     * detector groups on.
+     * silence comes from a decision the detector made. The row this replaced called no detector
+     * API at all, so a detector that fired on every single {@code recordCheckThenAct} would have
+     * passed it; this one makes the same calls on the same class as the firing row and differs only
+     * in the key, which is the other half of the site identity the detector groups on.
      */
     private final ConcurrentReferenceHashMap<String, String> perThreadKeyMap =
             new ConcurrentReferenceHashMap<>();
@@ -225,10 +224,6 @@ class CorpusRecordingLaneTest {
 
     /** The second key the cross-key row re-enters on, seeded alongside the first. */
     private static final String OTHER_KEY = "other-key";
-
-    /** A second Caffeine instance, so the computeIfAbsent row cannot borrow the other's state. */
-    private final Cache<String, String> caffeineAtomicCache =
-            Caffeine.newBuilder().maximumSize(64).build();
 
     /** Documented thread-safe, and used with a check-then-act anyway: the defect is the usage. */
     private final ConcurrentReferenceHashMap<String, String> referenceMap =
@@ -406,13 +401,6 @@ class CorpusRecordingLaneTest {
                 .recordCheckThenAct(referenceMap, "key", "get-then-put", Thread.currentThread());
         String existing = referenceMap.get("key");
         referenceMap.put("key", existing == null ? "first" : existing + "+");
-    }
-
-    /** The atomic primitive that fixes the row above, so there is no check-then-act to record. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
-    void recorded_caffeineAsMap_computeIfAbsent() {
-        CorpusRecorder.countBodyExecution();
-        caffeineAtomicCache.asMap().computeIfAbsent("key", key -> "computed");
     }
 
     // --- JdbcConnectionShared ----------------------------------------------------------------

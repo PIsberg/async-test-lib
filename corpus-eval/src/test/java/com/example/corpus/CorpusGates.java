@@ -100,8 +100,23 @@ final class CorpusGates {
         everyReportingDetectorWasExposed(findings, lane);
         everySubjectGotTheOutcomeItsRecordedCallsOblige(findings);
         everyCorpusBackedVerdictResolvesToItsPair();
+        everySilentRowReachesItsDetector();
     }
 
+
+    /**
+     * Refuses a MUST_STAY_SILENT row that never addresses the detector it names.
+     *
+     * <p>The per-subject outcome gate holds a silent row to saying nothing, and a row that never
+     * calls the detector satisfies that for free. {@link SilentRowPremise} carries the reasoning
+     * and the one row that was doing it.
+     */
+    private static void everySilentRowReachesItsDetector() {
+        List<String> broken = SilentRowPremise.rowsThatNeverReachTheirDetector();
+        assertTrue(broken.isEmpty(),
+                "a silent row is only evidence if the detector had something to be silent about, "
+                        + "and these never gave it anything: " + broken);
+    }
 
     /**
      * The other half of the cross-module VERDICT evidence seam.

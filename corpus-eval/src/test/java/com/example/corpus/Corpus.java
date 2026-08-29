@@ -582,12 +582,16 @@ final class Corpus {
                             + "is not, which is the lost update the detector reports; the class "
                             + "is thread-safe and the caller is still wrong"),
 
-            new RecordingSubject("recorded_caffeineAsMap_computeIfAbsent", CAFFEINE,
-                    "com.github.benmanes.caffeine.cache.Cache",
-                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
-                    RecordingSubject.Expectation.MUST_STAY_SILENT,
-                    "computeIfAbsent is the atomic primitive that fixes the row above, so the "
-                            + "body has no check-then-act to record and the detector has no input"),
+            // recorded_caffeineAsMap_computeIfAbsent stood here and was removed for #410. It
+            // demonstrated the atomic primitive that fixes the row above, and as evidence it was
+            // empty: it called no detector API, so a detector that fired on every recordCheckThenAct
+            // would have passed it. It cannot be repaired either, and that is the interesting part.
+            // The correct use of a ConcurrentMap has no check-then-act to record, so for this
+            // detector the correct twin is unrecordable - which is the same fact, seen from the
+            // other side, as its staying PROMPT: the caller declares the defect, and a caller with
+            // nothing to declare is silent before the detector is consulted.
+            // recorded_concurrentReferenceHashMap_checkThenActOnPrivateKeys is the silent row that
+            // does exercise the model, on the same class as the firing row.
             // --- JdbcConnectionShared: a pool is the documented fix, and used to be reported
             //     as the defect. Deferred from #302 until a recording lane existed, because
             //     this detector is recording-fed and had an exposure of zero without one.
