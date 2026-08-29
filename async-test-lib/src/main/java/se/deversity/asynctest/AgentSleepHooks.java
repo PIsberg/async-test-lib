@@ -55,4 +55,37 @@ public final class AgentSleepHooks {
         }
         Thread.sleep(millis);
     }
+
+    /**
+     * Weaves {@code Thread.sleep(long)} inside a {@code synchronized} method.
+     *
+     * <p>A {@code synchronized} method takes its monitor from the {@code ACC_SYNCHRONIZED} access
+     * flag, not from an instruction, so nothing in the body tells {@link HeldLocks} the lock is
+     * held and {@link HeldLocks#topHeld()} answers {@code null} inside one. That is #388, and the
+     * reason it looked unfixable was the assumption that the lockset had to learn the monitor:
+     * pushing on method entry and popping on every exit needs a handler and a branch, which needs
+     * new stack map frames, which {@code AsyncTestAgent} rules out.
+     *
+     * <p>The lockset does not have to learn it. The weaver already knows, at weave time, both that
+     * the enclosing method is synchronized and what it locks - {@code this} for an instance method
+     * and the class for a static one - so it loads that monitor and calls this overload instead.
+     * One more value on the stack, no branch and no handler, which is what
+     * {@code COMPUTE_MAXS, never COMPUTE_FRAMES} permits.
+     *
+     * <p>There is no guard here, and there must not be: this method is only ever reached from
+     * inside a {@code synchronized} method, so the monitor is held by construction. Consulting the
+     * lockset would ask the question the caller already answered, and get {@code null}.
+     *
+     * @param millis  how long to sleep
+     * @param monitor the monitor the enclosing synchronized method holds
+     * @throws InterruptedException if interrupted while sleeping
+     * @since 1.10.0
+     */
+    public static void sleepHoldingMonitor(long millis, Object monitor) throws InterruptedException {
+        SleepInLockDetector detector = AsyncTestContext.currentSleepInLockDetector();
+        if (detector != null) {
+            detector.recordSleep(millis, monitor);
+        }
+        Thread.sleep(millis);
+    }
 }

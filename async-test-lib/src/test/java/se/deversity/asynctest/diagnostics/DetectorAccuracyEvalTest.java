@@ -1465,6 +1465,50 @@ class DetectorAccuracyEvalTest {
         }
     }
 
+    /** The same bag, named the way the ecosystem names thread-safe collections. */
+    private static final class ConcurrentBag extends java.util.AbstractCollection<String> {
+        private final List<String> backing = java.util.Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        public boolean add(String value) {
+            return backing.add(value);
+        }
+
+        @Override
+        public java.util.Iterator<String> iterator() {
+            return backing.iterator();
+        }
+
+        @Override
+        public int size() {
+            return backing.size();
+        }
+    }
+
+    @Test
+    @DisplayName("concurrent modification: a collection named by the concurrent convention stays silent (#395)")
+    void concurrentModificationDetectorIsSilentOnACollectionNamedConcurrent()
+            throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        ConcurrentBag bag = new ConcurrentBag();
+        detector.registerCollection(bag, "bag");
+        Runnable mutate = () -> {
+            bag.add("value");
+            detector.recordModification(bag, "bag", "add");
+        };
+        onTwoThreads(mutate, mutate);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "Byte for byte the same collection as the pinned row below, renamed. That is the "
+                        + "whole of #395: only the JDK puts concurrent collections in "
+                        + "java.util.concurrent, so a package test reads every correct "
+                        + "third-party one as unsafe. The name is the only signal Java offers, "
+                        + "and the ecosystem uses it consistently - measured against guava's "
+                        + "ConcurrentHashMultiset and commons-collections4's "
+                        + "SynchronizedCollection, both of which were reported before this and "
+                        + "are silent after, with commons' documented-unsafe maps still firing.");
+    }
+
     @Test
     @DisplayName("concurrent modification: a thread-safe collection outside java.util.concurrent still fires (pinned false positive)")
     void concurrentModificationDetectorFiresOnAThreadSafeCollectionItCannotRecognise()
@@ -1479,19 +1523,19 @@ class DetectorAccuracyEvalTest {
         onTwoThreads(mutate, mutate);
 
         assertTrue(detector.analyze().hasIssues(),
-                "PINNED FALSE POSITIVE: this collection is thread-safe and two threads adding to "
-                        + "it is correct code. The detector decides safety by package name - "
-                        + "java.util.concurrent. or java.util.Collections$Synchronized - so every "
-                        + "correct third-party collection is on the wrong side of the test. "
-                        + "Measured in the corpus module, where it fires on guava's "
-                        + "ConcurrentHashMultiset and commons-collections4's SynchronizedCollection "
-                        + "while staying silent on the JDK equivalents. There is no clean fix by "
-                        + "interface: Java has no thread-safe-collection marker, and this "
-                        + "detector's API is Collection-typed so ConcurrentMap does not help. "
-                        + "Inverting the allowlist into a denylist would trade these false "
-                        + "positives for false negatives, which is a modelling decision rather "
-                        + "than a bug fix. If this goes silent, that decision was taken - flip "
-                        + "the assertion and update detector-accuracy-eval.md.");
+                "PINNED FALSE POSITIVE, and what is left of it after #395. The detector now "
+                        + "recognises the naming convention the ecosystem actually uses - "
+                        + "Concurrent*, CopyOnWrite*, Synchronized* - so guava's "
+                        + "ConcurrentHashMultiset and commons-collections4's "
+                        + "SynchronizedCollection are silent where they used to report. This bag "
+                        + "is thread-safe and says so nowhere in its name, which is the residue: "
+                        + "a name is the only signal Java offers, so a collection that keeps its "
+                        + "safety to itself is still reported. "
+                        + "A denylist would have closed this too, at the cost of going silent "
+                        + "on commons-collections4's documented-unsafe maps, which is a worse "
+                        + "trade for a detector whose job is finding them. If this ever goes "
+                        + "silent, the model gained real evidence of thread-safety - flip the "
+                        + "assertion and update detector-accuracy-eval.md.");
     }
 
     @Test

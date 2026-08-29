@@ -445,7 +445,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 141: exposure zero, nothing said in
-either direction. That is now measured for ten of them, in a third lane, and the separation
+either direction. That is now measured for twelve of them, in a third lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -596,8 +596,8 @@ have reported nothing under either rule. `GraphService` now exposes two no-op `C
 hooks, the test wires them to the detector, and with `@Disabled` removed the run fails with the
 report naming both keys.
 
-That is the argument for the lane in one line. Ten detectors of 146 is not coverage; it is the
-first ten rows of a table that had none, and they have already been enough to find a defect that
+That is the argument for the lane in one line. Twelve detectors of 146 is not coverage; it is the
+first twelve rows of a table that had none, and they have already been enough to find a defect that
 had been shipping, to settle a modelling question that had been open since the fourth wave, to
 correct a detector that was describing a failure mode the platform stopped having, to catch an
 example demonstrating a bug its own detector could not see, and - with the ninth row - to find
@@ -643,6 +643,31 @@ touched only by the thread that created it, stayed silent.
 This one is the counterpart to the check-then-act pair in a different way. There the class was
 thread-safe and the *sequence* was wrong; here the class is thread-safe and the *sharing* is.
 
+**The twelfth row: `MutableMapKeyDetector`, the tightest pair in the lane**
+
+Both rows are the same commons-lang3 `MutableInt`, filed as a key in the same map the same way.
+The only difference is whether the body then mutates it. Nothing about the subject separates them
+- not the type, not the contract, not the call sequence up to that point - so the detector's model
+is the only thing that can, which is what a both-directions pair is supposed to test.
+
+It is also the lane's first row whose hazard is not a race at all. A key mutated after insertion
+moves its hash away from the bucket the map filed it under, and no amount of synchronization
+repairs that. The corpus is mostly about what concurrency does to correct code; this row is about
+a contract the caller broke, which concurrency then makes harder to see.
+
+**The eleventh row: `ConcurrentModificationDetector`, and what it could not be**
+
+commons-collections4's `CursorableLinkedList` says in bold that the implementation is not
+synchronized, so the MUST_FIRE row is straightforward: six threads mutating it, and the detector
+gets it right.
+
+The silent twin is a JDK `CopyOnWriteArrayList`, and that is worth explaining rather than passing
+over. It is not a convenience. The detector recognises safety by package prefix, so guava's
+`ConcurrentHashMultiset` and commons-collections4's `SynchronizedCollection` both report despite
+documenting thread safety - the false positive filed as #395. Until that is settled **no
+third-party collection can hold this row at all**, because every one of them fires. The pair
+measures the model that exists, and the reason it looks JDK-shaped is itself the finding.
+
 ### How far this lane can go, and where it stops
 
 "Ten of 146" invites the reading that 136 rows are waiting to be written. They are not, and the
@@ -685,6 +710,23 @@ each rejection is worth more than the row would have been:
   parameter type will not accept it.
 - **commons-collections4 `ReferenceMap`** for `WeakHashMapSharedDetector`, for the `instanceof`
   gate above.
+- **`NonAtomicConcurrentMapUpdateDetector`**, which looked like an uncovered detector and is
+  `DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT` under a different class name. Already covered. The
+  class name and the type name differ across the roster often enough that the shortlist has to be
+  built from `DetectorTrust` rows rather than from file names.
+- **guava `ListenableFuture` and `ListeningExecutorService`** for the future and executor family.
+  These were the last third-party-capable group - everything else in the uncovered set takes a JDK
+  primitive - and neither documents a thread-safety contract to cite.
+- **guava `AtomicLongMap`** for `HighContentionAtomicDetector`. It has a good contract and is
+  already a subject, but the detector's model turns on how much contention was observed, not on
+  what the class promises. A pair there would be separated by the size of the numbers rather than
+  by the documented contract, which is not what this lane measures.
+
+**Where that leaves it.** Of 47 RECORDING-fed detectors with no denominator, the ones that remain
+take JDK primitives - locks, latches, `wait`/`notify`, scopes, buffers, channels, threads - and a
+corpus of third-party subjects has nothing to offer them. That is not a backlog either. Extending
+the lane further means a new corpus library, and `docs/DEPENDENCIES.md` makes that a proposal with
+a reason rather than an install.
 
 The binding constraint is not the detector count. It is finding a library class whose own javadoc
 states a contract that exercises the detector's model, and the eight corpus libraries only contain

@@ -12,6 +12,8 @@ import io.netty.buffer.Unpooled;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.apache.commons.collections4.collection.SynchronizedCollection;
+import org.apache.commons.collections4.list.CursorableLinkedList;
+import org.apache.commons.lang3.mutable.MutableInt;
 import org.apache.commons.collections4.map.LRUMap;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -33,6 +35,7 @@ import java.text.SimpleDateFormat;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ConcurrentMap;
 import java.util.List;
@@ -108,6 +111,33 @@ class CorpusRecordingLaneTest {
 
     /** Reconfigured while other threads write through it: the exception that javadoc names. */
     private final ObjectMapper reconfiguredMapper = new ObjectMapper();
+
+    /** The key the loud row mutates after filing it. */
+    private final MutableInt mutatedKey = new MutableInt(1);
+
+    /** The identical key the quiet row files and then leaves alone. */
+    private final MutableInt untouchedKey = new MutableInt(1);
+
+    /** The map both keys are filed in; the map itself is not the subject. */
+    private final Map<Object, String> keyedMap = new ConcurrentHashMap<>();
+
+    /** One insertion per key for the run: recordKeyInserted resets the mutation count. */
+    private final AtomicBoolean mutatedKeyFiled = new AtomicBoolean();
+
+    /** The quiet row's own one-shot latch. */
+    private final AtomicBoolean untouchedKeyFiled = new AtomicBoolean();
+
+    /** Its own javadoc says, in bold, that the implementation is not synchronized. */
+    private final List<String> cursorableList = new CursorableLinkedList<>();
+
+    /** The twin guava documents as supporting concurrent modification. */
+    private final Multiset<String> concurrentMultisetForModification = ConcurrentHashMultiset.create();
+
+    /** One declaration per collection for the run; see unlockedDeclared for why. */
+    private final AtomicBoolean cursorableDeclared = new AtomicBoolean();
+
+    /** The safe row's own one-shot latch. */
+    private final AtomicBoolean concurrentMultisetDeclared = new AtomicBoolean();
 
     /** Documented to support concurrent modification; its iterator is still confined state. */
     private final Multiset<String> concurrentMultiset =
@@ -807,6 +837,87 @@ class CorpusRecordingLaneTest {
         Iterator<String> own = concurrentMultiset.iterator();
         AsyncTestContext.sharedIteratorDetector().recordAccess(own, "hasNext");
         own.hasNext();
+    }
+
+    // --- ConcurrentModifications ----------------------------------------------------------------
+
+    /**
+     * Every thread mutates a list its own javadoc calls unsynchronized.
+     *
+     * <p>Tolerated, because that is what the subject is: a linked list mutated from six threads
+     * can corrupt its own pointers, and the record has already happened when it does.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_cursorableLinkedList_concurrentAdd() {
+        CorpusRecorder.countBodyExecution();
+        declareCollectionOnce(cursorableDeclared, cursorableList, "cursorable-list");
+        AsyncTestContext.concurrentModificationDetector()
+                .recordModification(cursorableList, "cursorable-list", "add");
+        toleratingCorruption(() -> cursorableList.add("value"));
+    }
+
+    /**
+     * The identical mutation on a collection designed for exactly this.
+     *
+     * <p>This exact subject reported until #395 was fixed: it was one of the two the false
+     * positive was measured on. It is the silent half of the pair and the row that keeps that
+     * fix honest.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_concurrentMultiset_concurrentAdd() {
+        CorpusRecorder.countBodyExecution();
+        declareCollectionOnce(concurrentMultisetDeclared, concurrentMultisetForModification,
+                "concurrent-multiset");
+        AsyncTestContext.concurrentModificationDetector()
+                .recordModification(concurrentMultisetForModification, "concurrent-multiset", "add");
+        concurrentMultisetForModification.add("value");
+    }
+
+    private static void declareCollectionOnce(AtomicBoolean latch, java.util.Collection<String> c,
+                                              String name) {
+        if (latch.compareAndSet(false, true)) {
+            AsyncTestContext.concurrentModificationDetector().registerCollection(c, name);
+        }
+    }
+
+    // --- MutableMapKey ----------------------------------------------------------------------
+
+    /**
+     * Files a mutable object as a map key and then changes it.
+     *
+     * <p>The mutation moves the key's hash away from the bucket the map filed it under, so the
+     * entry stops being reachable by an equal key. No amount of synchronization repairs that -
+     * it is a hash-contract defect, not a race - which is why the row exists on a class whose
+     * own javadoc already says it is not thread safe.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_mutableIntKey_mutatedAfterInsertion() {
+        CorpusRecorder.countBodyExecution();
+        fileKeyOnce(mutatedKeyFiled, mutatedKey, "mutated-key");
+        int before = mutatedKey.intValue();
+        mutatedKey.increment();
+        AsyncTestContext.mutableMapKeyDetector()
+                .recordKeyMutation(mutatedKey, "value", before, mutatedKey.intValue());
+    }
+
+    /**
+     * The same class filed the same way and then left alone: the ordinary, correct use.
+     *
+     * <p>Mutability is a hazard only when exercised. A detector that reported the type would
+     * report every correct use of {@code MutableInt} as a key, which is most of them.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_mutableIntKey_neverMutated() {
+        CorpusRecorder.countBodyExecution();
+        fileKeyOnce(untouchedKeyFiled, untouchedKey, "untouched-key");
+        untouchedKey.intValue();
+    }
+
+    private void fileKeyOnce(AtomicBoolean latch, Object key, String name) {
+        if (latch.compareAndSet(false, true)) {
+            keyedMap.put(key, "value");
+            AsyncTestContext.mutableMapKeyDetector().recordKeyInserted(keyedMap, key, name);
+        }
     }
 
     private static void toleratingCorruption(Runnable operation) {

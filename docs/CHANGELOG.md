@@ -33,6 +33,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one obvious documented-safe class in the corpus libraries that was not yet a subject; Jackson's
   `ObjectReader` and `ObjectWriter` were checked first and are already covered.
 
+- **A twelfth detector gets a denominator, and it is the lane's tightest pair.**
+  `MutableMapKeyDetector`: both rows file the same commons-lang3 `MutableInt` as a key in the same
+  map, and differ only in whether the body then mutates it. Nothing about the subject separates
+  them, so only the detector's model can. It is also the lane's first row whose hazard is not a
+  race - a key mutated after insertion moves its hash away from the bucket it was filed under, and
+  synchronization does not repair that.
+
+- **An eleventh detector gets a denominator, and the row documents its own limit.**
+  `ConcurrentModificationDetector` now has a pair: commons-collections4's `CursorableLinkedList`,
+  which says in bold that it is not synchronized, fires; a JDK `CopyOnWriteArrayList` stays silent.
+  The silent twin is JDK rather than third-party for a reason worth stating - the detector
+  recognises safety by package prefix, so until #395 is settled *no* third-party collection can
+  hold that row, because every one of them reports.
+
+- **A sleep inside a `synchronized` method is caught** (#388). A synchronized *block* compiles to
+  a `MONITORENTER` the field weaver rewrites, so the lockset learns the monitor; a synchronized
+  *method* takes its monitor from the `ACC_SYNCHRONIZED` access flag and compiles to no instruction
+  at all, so `HeldLocks.topHeld()` answered `null` inside a method that plainly held a lock. Same
+  bug, and only one of the two shapes was visible.
+
+  It was filed as blocked, on the reasoning that the lockset would have to learn the monitor - a
+  push on method entry and a pop on every exit including the exceptional one, which needs a handler
+  and a branch, which needs new stack map frames, which `AsyncTestAgent`'s
+  `COMPUTE_MAXS, never COMPUTE_FRAMES` note rules out.
+
+  The lockset does not have to learn it. The weaver already knows at weave time that the enclosing
+  method is synchronized and what it locks, so it loads that monitor and calls a hook taking it -
+  `this` for an instance method, the class for a static one. One more value on the stack, no branch
+  and no handler, which is precisely what that note permits.
+
+- **`ConcurrentModificationDetector` stops reporting every thread-safe collection outside
+  `java.util.concurrent`** (#395). It decided safety from the package prefix, so only the JDK's own
+  concurrent collections were recognised and every correct third-party one was reported - measured
+  on guava's `ConcurrentHashMultiset` and commons-collections4's `SynchronizedCollection`, both
+  documented thread-safe and both firing.
+
+  Fixed by reading the naming convention rather than the package: `Concurrent*`, `CopyOnWrite*`,
+  `Synchronized*`. A denylist would also have closed it, at the cost of going silent on
+  commons-collections4's documented-unsafe maps - a worse trade for a detector whose job is
+  finding those. Both false positives are gone and every unsafe subject still fires, including
+  ones a denylist would have lost.
+
+  A convention is not a proof, and the residue is pinned rather than hidden: a collection that is
+  thread-safe and says so nowhere in its name is still reported.
+
 - **A fifth false positive is pinned rather than left invisible.**
   `ConcurrentModificationDetector` decides whether mutation is safe from the collection's package
   name, so guava's `ConcurrentHashMultiset` and commons-collections4's `SynchronizedCollection` are
