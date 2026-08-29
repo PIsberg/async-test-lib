@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The corpus eval's true-positive side is gated now, not only reported.**
+  `CorpusGates.theUnsafeGroupIsDetected` passed on one finding *or one crash* anywhere in the
+  documented-not-thread-safe group, and three of those subjects throw on most runs, so the crash
+  half satisfied it alone: both detectors that produce every finding in that corpus could have gone
+  silent on all 22 subjects and the module would still have published its detection table green.
+  It now requires 85% of the group to draw a finding and requires `AtomicityValidator` and
+  `SharedCollectionDetector` each to report on at least one of them, with crashes counting towards
+  neither. Verified by breaking it: silencing `SharedCollectionDetector` drops detection to 16 of
+  22 and fails the floor of 18, where the old gate stayed green.
+
+- **The documented-safe denominator went from 23 subjects to 60.** A zero over 23 bounds the
+  false-positive rate near 13% at 95% confidence, because the rule of three sets that bound from
+  the size of the denominator rather than the length of the run of zeroes. Sixty puts it at 5.0%.
+  The 37 added are the JDK's own concurrent collections and `StringBuffer`, the commons-lang3
+  concurrent package, the collections4 synchronized decorators and `StaticBucketMap`, guava's
+  interners, synchronized wrappers, concurrent set, `MapMaker` map, `HashFunction` and `Cache`,
+  caffeine's `AsyncCache`, `AsyncLoadingCache` and `LoadingCache`, netty's unpooled allocator and
+  spring's `DefaultConversionService`. Each was chosen for shared mutable state behind a real
+  mechanism; no stateless utility class is among them, because one would enlarge the denominator
+  without ever having been able to draw a finding. Measured on JDK 26: 82 subjects, zero findings
+  on all 60 documented-safe ones, every new subject carrying 421 to 29,764 observed events.
+
+- **Eight detectors reached `TrustTier.VERDICT` on evidence the corpus already held.** Eleven of
+  the twelve detectors the corpus recording lane measures in both directions sat at `PROMPT`,
+  because `DetectorTrustCoverageTest` resolves VERDICT evidence by reflection over
+  `async-test-lib`'s own test methods and `corpus-eval` is downstream of it: the pairs were
+  structurally inadmissible rather than judged insufficient. A new resource,
+  `META-INF/async-test/verdict-evidence-corpus`, names each pair, and both modules check it - the
+  library refuses a VERDICT row nothing backs and a line naming a non-VERDICT detector, and
+  `CorpusGates` resolves every id against its recording rows. `SHARED_JSON_MAPPER_RECONFIG`,
+  `SHARED_MESSAGE_DIGEST`, `SHARED_STATEFUL_CRYPTO`, `CONCURRENT_MAP_COMPUTE_RECURSION`,
+  `SYNCHRONIZED_COLLECTION_ITERATION`, `SHARED_ITERATOR`, `MUTABLE_MAP_KEY` and
+  `JDBC_CONNECTION_SHARED` are promoted, taking VERDICT from 10 of 146 to 18. `CACHE_CONCURRENCY`,
+  `CONCURRENT_MAP_CHECK_THEN_ACT` and `CONCURRENT_MODIFICATIONS` are deliberately not: their pairs
+  are two different classes, so what separates fire from silence is the class as much as the
+  defect. A build gated on `minTrust = TrustTier.VERDICT` now acts on 18 detectors rather than 10.
+
 - **A 45th subject: Jackson's `SequenceWriter`, the first whose hazard is its own cursor.**
   Jackson is explicit - *"Instances of `SequenceWriter` are stateful, and not thread-safe"*. Every
   other Jackson subject is either immutable (`ObjectReader`, `ObjectWriter`) or safe once

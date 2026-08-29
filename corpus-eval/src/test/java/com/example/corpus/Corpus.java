@@ -298,7 +298,230 @@ final class Corpus {
                     "org.springframework.util.ConcurrentReferenceHashMap", Contract.THREAD_SAFE,
                     "This implementation follows the same design constraints as ConcurrentHashMap "
                             + "with the exception that null values and null keys are supported.",
-                    "org/springframework/util/ConcurrentReferenceHashMap.java:51")
+                    "org/springframework/util/ConcurrentReferenceHashMap.java:51"),
+
+            // --- Fifth wave: the documented-safe denominator, widened. A zero over 23 subjects
+            // --- bounds the false-positive rate near 13% at 95%, and the bound is set by the size
+            // --- of the denominator rather than by the run of zeroes. These subjects are chosen
+            // --- for shared mutable state behind a real mechanism, never for being trivially
+            // --- safe: a stateless utility class would enlarge the denominator without ever
+            // --- having been able to draw a finding.
+            // ---
+            // --- The JDK rows cite a file and a sentence but no line. This module runs on 21, 25
+            // --- and 26, the line moves between them and the sentence does not.
+
+            new Subject("concurrentHashMap_putAndGet", JDK,
+                    "java.util.concurrent.ConcurrentHashMap", Contract.THREAD_SAFE,
+                    "even though all operations are thread-safe, retrieval operations do not "
+                            + "entail locking",
+                    "java.base/java/util/concurrent/ConcurrentHashMap.java"),
+
+            new Subject("copyOnWriteArrayList_addAndIterate", JDK,
+                    "java.util.concurrent.CopyOnWriteArrayList", Contract.THREAD_SAFE,
+                    "A thread-safe variant of ArrayList in which all mutative operations are "
+                            + "implemented by making a fresh copy of the underlying array.",
+                    "java.base/java/util/concurrent/CopyOnWriteArrayList.java"),
+
+            new Subject("stringBuffer_appendAndLength", JDK,
+                    "java.lang.StringBuffer", Contract.THREAD_SAFE,
+                    "A thread-safe, mutable sequence of characters.",
+                    "java.base/java/lang/StringBuffer.java"),
+
+            new Subject("concurrentLinkedQueue_addAndPoll", JDK,
+                    "java.util.concurrent.ConcurrentLinkedQueue", Contract.THREAD_SAFE,
+                    "An unbounded thread-safe queue based on linked nodes.",
+                    "java.base/java/util/concurrent/ConcurrentLinkedQueue.java"),
+
+            new Subject("linkedBlockingQueue_offerAndPoll", JDK,
+                    "java.util.concurrent.BlockingQueue", Contract.THREAD_SAFE,
+                    "BlockingQueue implementations are thread-safe.",
+                    "java.base/java/util/concurrent/BlockingQueue.java"),
+
+            new Subject("hashtable_putAndGet", JDK,
+                    "java.util.Hashtable", Contract.THREAD_SAFE,
+                    "Unlike the new collection implementations, Hashtable is synchronized.",
+                    "java.base/java/util/Hashtable.java"),
+
+            new Subject("concurrentSkipListMap_putAndGet", JDK,
+                    "java.util.concurrent.ConcurrentSkipListMap", Contract.THREAD_SAFE,
+                    "Insertion, removal, update, and access operations safely execute "
+                            + "concurrently by multiple threads.",
+                    "java.base/java/util/concurrent/ConcurrentSkipListMap.java"),
+
+            new Subject("synchronizedList_addUnderItsMonitor", JDK,
+                    "java.util.Collections", Contract.THREAD_SAFE,
+                    "Returns a synchronized (thread-safe) list backed by the specified list.",
+                    "java.base/java/util/Collections.java"),
+
+            new Subject("threadLocalRandom_nextInt", JDK,
+                    "java.util.concurrent.ThreadLocalRandom", Contract.THREAD_SAFE,
+                    "A random number generator (with period 2^64) isolated to the current thread.",
+                    "java.base/java/util/concurrent/ThreadLocalRandom.java"),
+
+            new Subject("atomicInteger_incrementAndGet", JDK,
+                    "java.util.concurrent.atomic.AtomicInteger", Contract.THREAD_SAFE,
+                    "An int value that may be updated atomically.",
+                    "java.base/java/util/concurrent/atomic/AtomicInteger.java"),
+
+            // The lang3 concurrent package states its contract once, for the package, which is
+            // where commons puts it. Cited as such rather than restated per class.
+
+            new Subject("thresholdCircuitBreaker_incrementAndCheckState", LANG3,
+                    "org.apache.commons.lang3.concurrent.ThresholdCircuitBreaker", Contract.THREAD_SAFE,
+                    "#Thread safe#",
+                    "org/apache/commons/lang3/concurrent/ThresholdCircuitBreaker.java:49"),
+
+            new Subject("eventCountCircuitBreaker_incrementAndCheckState", LANG3,
+                    "org.apache.commons.lang3.concurrent.EventCountCircuitBreaker", Contract.THREAD_SAFE,
+                    "Provides support classes for multi-threaded programming. ... These classes "
+                            + "are thread-safe.",
+                    "org/apache/commons/lang3/concurrent/package-info.java:20"),
+
+            new Subject("memoizer_compute", LANG3,
+                    "org.apache.commons.lang3.concurrent.Memoizer", Contract.THREAD_SAFE,
+                    "Provides support classes for multi-threaded programming. ... These classes "
+                            + "are thread-safe.",
+                    "org/apache/commons/lang3/concurrent/package-info.java:20"),
+
+            new Subject("constantInitializer_get", LANG3,
+                    "org.apache.commons.lang3.concurrent.ConstantInitializer", Contract.THREAD_SAFE,
+                    "Provides support classes for multi-threaded programming. ... These classes "
+                            + "are thread-safe.",
+                    "org/apache/commons/lang3/concurrent/package-info.java:20"),
+
+            new Subject("atomicInitializer_get", LANG3,
+                    "org.apache.commons.lang3.concurrent.AtomicInitializer", Contract.THREAD_SAFE,
+                    "Provides support classes for multi-threaded programming. ... These classes "
+                            + "are thread-safe.",
+                    "org/apache/commons/lang3/concurrent/package-info.java:20"),
+
+            new Subject("range_contains", LANG3,
+                    "org.apache.commons.lang3.Range", Contract.THREAD_SAFE,
+                    "#ThreadSafe# if the objects and comparator are thread-safe.",
+                    "org/apache/commons/lang3/Range.java:29"),
+
+            new Subject("staticBucketMap_putAndGet", COLLECTIONS4,
+                    "org.apache.commons.collections4.map.StaticBucketMap", Contract.THREAD_SAFE,
+                    "A StaticBucketMap is an efficient, thread-safe implementation of "
+                            + "java.util.Map that performs well in a highly thread-contentious "
+                            + "environment.",
+                    "org/apache/commons/collections4/map/StaticBucketMap.java:32"),
+
+            new Subject("commonsReferenceHashMap_putAndGet", COLLECTIONS4,
+                    "org.apache.commons.collections4.map.ConcurrentReferenceHashMap", Contract.THREAD_SAFE,
+                    "even though all operations are thread-safe, retrieval operations do not "
+                            + "entail locking",
+                    "org/apache/commons/collections4/map/ConcurrentReferenceHashMap.java:88"),
+
+            new Subject("synchronizedCollection_addAndSize", COLLECTIONS4,
+                    "org.apache.commons.collections4.collection.SynchronizedCollection", Contract.THREAD_SAFE,
+                    "Decorates another Collection to synchronize its behavior for a "
+                            + "multithreaded environment.",
+                    "org/apache/commons/collections4/collection/SynchronizedCollection.java:26"),
+
+            new Subject("synchronizedSortedBag_addAndCount", COLLECTIONS4,
+                    "org.apache.commons.collections4.bag.SynchronizedSortedBag", Contract.THREAD_SAFE,
+                    "Decorates another SortedBag to synchronize its behavior for a multithreaded "
+                            + "environment.",
+                    "org/apache/commons/collections4/bag/SynchronizedSortedBag.java:25"),
+
+            new Subject("synchronizedMultiSet_addAndCount", COLLECTIONS4,
+                    "org.apache.commons.collections4.multiset.SynchronizedMultiSet", Contract.THREAD_SAFE,
+                    "Decorates another MultiSet to synchronize its behavior for a multithreaded "
+                            + "environment.",
+                    "org/apache/commons/collections4/multiset/SynchronizedMultiSet.java:25"),
+
+            new Subject("synchronizedQueue_addAndPoll", COLLECTIONS4,
+                    "org.apache.commons.collections4.queue.SynchronizedQueue", Contract.THREAD_SAFE,
+                    "Decorates another Queue to synchronize its behavior for a multithreaded "
+                            + "environment.",
+                    "org/apache/commons/collections4/queue/SynchronizedQueue.java:24"),
+
+            new Subject("strongInterner_intern", GUAVA,
+                    "com.google.common.collect.Interners", Contract.THREAD_SAFE,
+                    "Returns a new thread-safe interner which retains a strong reference to each "
+                            + "instance it has interned.",
+                    "com/google/common/collect/Interners.java:99"),
+
+            new Subject("weakInterner_intern", GUAVA,
+                    "com.google.common.collect.Interners", Contract.THREAD_SAFE,
+                    "Returns a new thread-safe interner which retains a weak reference to each "
+                            + "instance it has interned.",
+                    "com/google/common/collect/Interners.java:108"),
+
+            new Subject("guavaSynchronizedQueue_addAndPoll", GUAVA,
+                    "com.google.common.collect.Queues", Contract.THREAD_SAFE,
+                    "Returns a synchronized (thread-safe) queue backed by the specified queue.",
+                    "com/google/common/collect/Queues.java:428"),
+
+            new Subject("guavaSynchronizedDeque_addAndPoll", GUAVA,
+                    "com.google.common.collect.Queues", Contract.THREAD_SAFE,
+                    "Returns a synchronized (thread-safe) deque backed by the specified deque.",
+                    "com/google/common/collect/Queues.java:462"),
+
+            new Subject("synchronizedTable_putAndGet", GUAVA,
+                    "com.google.common.collect.Tables", Contract.THREAD_SAFE,
+                    "Returns a synchronized (thread-safe) table backed by the specified table.",
+                    "com/google/common/collect/Tables.java:671"),
+
+            new Subject("concurrentHashSet_addAndContains", GUAVA,
+                    "com.google.common.collect.Sets", Contract.THREAD_SAFE,
+                    "Creates a thread-safe set backed by a hash map. The set is backed by a "
+                            + "ConcurrentHashMap instance, and thus carries the same concurrency "
+                            + "guarantees.",
+                    "com/google/common/collect/Sets.java:271"),
+
+            new Subject("hashFunction_hashString", GUAVA,
+                    "com.google.common.hash.HashFunction", Contract.THREAD_SAFE,
+                    "stateless, and therefore thread-safe.",
+                    "com/google/common/hash/HashFunction.java:43"),
+
+            new Subject("mapMakerMap_putAndGet", GUAVA,
+                    "com.google.common.collect.MapMaker", Contract.THREAD_SAFE,
+                    "Builds a thread-safe map.",
+                    "com/google/common/collect/MapMaker.java:273"),
+
+            new Subject("synchronizedSupplier_get", GUAVA,
+                    "com.google.common.base.Suppliers", Contract.THREAD_SAFE,
+                    "Returns a supplier whose get() method synchronizes on delegate before "
+                            + "calling it, making it thread-safe.",
+                    "com/google/common/base/Suppliers.java:390"),
+
+            new Subject("guavaCache_getAndPut", GUAVA,
+                    "com.google.common.cache.Cache", Contract.THREAD_SAFE,
+                    "Implementations of this interface are expected to be thread-safe, and can be "
+                            + "safely accessed by multiple concurrent threads.",
+                    "com/google/common/cache/Cache.java:35"),
+
+            new Subject("asyncCache_getAndJoin", CAFFEINE,
+                    "com.github.benmanes.caffeine.cache.AsyncCache", Contract.THREAD_SAFE,
+                    "Implementations of this interface are expected to be thread-safe and can be "
+                            + "safely accessed by multiple concurrent threads.",
+                    "com/github/benmanes/caffeine/cache/AsyncCache.java:35"),
+
+            new Subject("asyncLoadingCache_getAndJoin", CAFFEINE,
+                    "com.github.benmanes.caffeine.cache.AsyncLoadingCache", Contract.THREAD_SAFE,
+                    "Implementations of this interface are expected to be thread-safe and can be "
+                            + "safely accessed by multiple concurrent threads.",
+                    "com/github/benmanes/caffeine/cache/AsyncLoadingCache.java:29"),
+
+            new Subject("caffeineLoadingCache_get", CAFFEINE,
+                    "com.github.benmanes.caffeine.cache.LoadingCache", Contract.THREAD_SAFE,
+                    "Implementations of this interface are expected to be thread-safe and can be "
+                            + "safely accessed by multiple concurrent threads.",
+                    "com/github/benmanes/caffeine/cache/LoadingCache.java:31"),
+
+            new Subject("unpooledByteBufAllocator_bufferAndRelease", NETTY,
+                    "io.netty.buffer.ByteBufAllocator", Contract.THREAD_SAFE,
+                    "Implementations are responsible to allocate buffers. Implementations of this "
+                            + "interface are expected to be thread-safe.",
+                    "io/netty/buffer/ByteBufAllocator.java:19"),
+
+            new Subject("conversionService_convert", SPRING,
+                    "org.springframework.core.convert.ConversionService", Contract.THREAD_SAFE,
+                    "Call convert(Object, Class) to perform a thread-safe type conversion using "
+                            + "this system.",
+                    "org/springframework/core/convert/ConversionService.java:23")
     );
 
     /**

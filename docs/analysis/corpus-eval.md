@@ -11,17 +11,25 @@ day after closing the three model gaps it had left open
 [#313](https://github.com/PIsberg/async-test-lib/issues/313)): the noise column those gaps fed is
 now zero on every platform, and the numbers below are the ones that hold after all of it._
 
+_Extended again 2026-08-29. Three changes, in the order they matter: the true-positive side is now
+gated rather than only reported, the documented-safe denominator went from 23 subjects to 60, and
+eight detectors this lane measures in both directions are now classified `VERDICT` on the strength
+of it. The subject counts, the exposure table and the gate description below are updated to the
+run that produced them. **The four-platform comparison further down still keys the previous corpus
+of 45 subjects; its CI columns are refilled from this branch's `Corpus Eval` jobs, and until they
+are, read it as the history of a smaller corpus rather than as this one's result._
+
 The [detector-accuracy eval](detector-accuracy-eval.md) measures 20 of the 146 detectors against
 twins written for the test. It answers "does the analyzer's model hold", and it cannot answer the
 question an evaluating team asks first: on code neither the library nor the test author wrote, does
 a finding mean something is wrong, and how much noise comes with it. This document answers that on
-42 classes from seven third-party libraries.
+82 subjects drawn from eight third-party libraries and the JDK.
 
 ## What was measured
 
-Forty-two classes from `commons-lang3:3.20.0`, `commons-collections4:4.5.0`, `guava:33.4.8-jre`,
-`jackson-databind:2.22.2`, `caffeine:3.2.4`, `netty-buffer:4.2.17.Final` and `spring-core:7.0.9`,
-each exercised by one shared instance under `@AsyncTest(threads = 6, invocations = 40)` with
+Eighty-two subjects from `commons-lang3:3.20.0`, `commons-collections4:4.5.0`, `guava:33.4.8-jre`,
+`jackson-databind:2.22.2`, `caffeine:3.2.4`, `netty-buffer:4.2.17.Final`, `spring-core:7.0.9`,
+`HikariCP:7.0.2` and the JDK the run is on, each exercised by one shared instance under `@AsyncTest(threads = 6, invocations = 40)` with
 `detectAll = true`. No detector is configured, nothing is recorded by hand, and no line of the
 subject library is modified. The only thing the test body does is call the class from six threads
 at once.
@@ -36,10 +44,19 @@ Every subject runs twice, in two lanes:
 Ground truth is each class's own javadoc, quoted with its file and line in that library's sources
 jar in [`Corpus.java`](../../corpus-eval/src/test/java/com/example/corpus/Corpus.java):
 
-- **Twenty classes document themselves as not thread-safe.** Sharing one instance across threads is
-  the defect a user would have written, so a finding is a true positive.
-- **Twenty-two document themselves as safe for concurrent use.** Sharing one instance is the usage
-  the class exists for, so a finding is noise.
+- **Twenty-two classes document themselves as not thread-safe.** Sharing one instance across
+  threads is the defect a user would have written, so a finding is a true positive.
+- **Sixty document themselves as safe for concurrent use.** Sharing one instance is the usage the
+  class exists for, so a finding is noise.
+
+The safe side is the larger half on purpose, and it was not always. A zero over 22 documented-safe
+classes bounds the false-positive rate near 13% at 95% confidence, because the rule of three sets
+that bound from the size of the denominator and not from the length of the run of zeroes. Sixty
+subjects put it at 5.0%. Every one of the 38 added was picked for shared mutable state behind a
+real mechanism - striped locks, copy-on-write, a synchronized decorator, a monitor the caller is
+told to hold - and never for being trivially safe, because a stateless utility class enlarges the
+denominator without ever having been able to draw a finding. That buys a smaller number and not a
+stronger claim.
 
 A test method with no corpus row fails the run, so a subject cannot be exercised without a
 documented contract behind it. A class that states nothing is not a subject however obvious its
@@ -61,30 +78,58 @@ and listed in [DETECTOR_CATALOG.md](../DETECTOR_CATALOG.md#what-feeds-each-detec
 
 | Feed | Detectors | Fed in `agent-on` | Fed in `agent-off` |
 |---|---:|---|---|
-| `AGENT` | 2 | yes, by the woven field and collection streams | no, there are no woven streams |
+| `AGENT` | 18 | yes, by the woven field and collection streams | no, there are no woven streams |
 | `ZERO_CONFIG` | 3 | yes, by `ThreadMXBean`, thread dumps and the runner | yes, the same |
-| `RECORDING` | 141 | no, nothing here calls a `record*` API | no, the same |
+| `RECORDING` | 125 | no, nothing here calls a `record*` API | no, the same |
 
-So the attached lane exposes 5 detectors of 146 and the control lane 3. That is the denominator
+So the attached lane exposes 21 detectors of 146 and the control lane 3. Two of the eighteen
+agent-fed produce every finding this eval has recorded, on every platform. The other sixteen model
+locks, latches, date formats and builders, and a corpus whose entire test body is "share one
+instance and call it" never writes those idioms down for them to see. Their silence is correct,
+which is why the detection gate names the two and not the eighteen. That is the denominator
 for everything below, and it is checked rather than asserted: `CorpusGates` fails the run if a
 detector the feed table says cannot be fed reports anyway, and fails the control lane if either
 agent-fed detector is heard from at all. The control lane's measured result is zero findings from
 zero exposed agent-fed detectors, which is what makes the attached lane's findings attributable to
 the agent rather than to the harness.
 
-Per exposed detector, over the 22 documented-safe and 20 documented-unsafe subjects:
+Per exposed detector, over the 60 documented-safe and 22 documented-unsafe subjects, from run **L**
+below:
 
 | Detector | Feed | Safe exposed | ...with a finding | Unsafe exposed | ...with a finding |
 |---|---|---:|---:|---:|---:|
-| `AtomicityValidator` | AGENT | 22 | 0 | 20 | 15 |
-| `SharedCollectionDetector` | AGENT | 22 | 0 | 20 | 12 |
-| `DeadlockDetector` | ZERO_CONFIG | 22 | 0 | 20 | 0 |
-| `LivelockDetector` | ZERO_CONFIG | 22 | 0 | 20 | 0 |
-| `StaticInitDeadlockDetector` | ZERO_CONFIG | 22 | 0 | 20 | 0 |
+| `AtomicityValidator` | AGENT | 60 | 0 | 22 | 16 |
+| `SharedCollectionDetector` | AGENT | 60 | 0 | 22 | 14 |
+| `LockOrderValidator` | AGENT | 60 | 0 | 22 | 0 |
+| `SemaphoreMisuseDetector` | AGENT | 60 | 0 | 22 | 0 |
+| `LockLeakDetector` | AGENT | 60 | 0 | 22 | 0 |
+| `BlockingQueueDetector` | AGENT | 60 | 0 | 22 | 0 |
+| `SimpleDateFormatDetector` | AGENT | 60 | 0 | 22 | 0 |
+| `CountDownLatchDetector` | AGENT | 60 | 0 | 22 | 0 |
+| `SleepInLockDetector` | AGENT | 60 | 0 | 22 | 0 |
+| `CalendarDetector` | AGENT | 60 | 0 | 22 | 0 |
+| `StringBuilderDetector` | AGENT | 60 | 0 | 22 | 0 |
+| `SharedFormatterDetector` | AGENT | 60 | 0 | 22 | 0 |
+| `SharedMatcherDetector` | AGENT | 60 | 0 | 22 | 0 |
+| `SharedDecimalFormatDetector` | AGENT | 60 | 0 | 22 | 0 |
+| `SharedMessageDigestDetector` | AGENT | 60 | 0 | 22 | 0 |
+| `ExplicitGcDetector` | AGENT | 60 | 0 | 22 | 0 |
+| `TryLockMisuseDetector` | AGENT | 60 | 0 | 22 | 0 |
+| `LatchMisuseDetector` | AGENT | 60 | 0 | 22 | 0 |
+| `DeadlockDetector` | ZERO_CONFIG | 60 | 0 | 22 | 0 |
+| `LivelockDetector` | ZERO_CONFIG | 60 | 0 | 22 | 0 |
+| `StaticInitDeadlockDetector` | ZERO_CONFIG | 60 | 0 | 22 | 0 |
 
-The three zero-config rows are the ones worth reading twice. They are exposed on all 42 subjects
+The sixteen agent-fed zeroes are not sixteen failures. `StringBuilderDetector` is the clearest
+case: it is exposed on all 82 subjects, one of which is a `StringBuffer` shared across six threads,
+and it correctly says nothing, because the class it models is the other one. The rest model locks,
+latches, date formats and matchers, and no subject here writes those idioms down. The detection
+gate names the two detectors this corpus actually exercises for exactly that reason: requiring all
+eighteen to fire would fail on correct silence.
+
+The three zero-config rows are the ones worth reading twice. They are exposed on all 82 subjects
 and reported nothing, which is a measured zero: none of these subjects deadlocks, livelocks or
-parks in a class initializer, and the detectors that would have said so were running. The 141
+parks in a class initializer, and the detectors that would have said so were running. The 125
 recording-fed detectors have no row, because a rate over an exposure of zero is not a rate.
 
 ## Results
@@ -248,7 +293,7 @@ real defect rather than variance ([#316](https://github.com/PIsberg/async-test-l
 | Distinct detectors that produced any finding | 2 of 5 exposed | 0 of 3 exposed |
 
 The control column is the same on every platform: with nothing attached, all four runs observed
-nothing at all from the agent-fed pair, over 42 subjects. Whatever moves between machines moves
+nothing at all from any agent-fed detector, over all 82 subjects. Whatever moves between machines moves
 inside the woven pipeline, not in the harness.
 
 ## What this means for a user
@@ -266,12 +311,13 @@ every platform, and a fourth on CI only; all four were the same three model gaps
 section below records the rules that closed them. Zero of the twenty-two documented-safe classes
 now draw any finding at all, on any of the four runs this document keys.
 
-**What attaching the agent buys, in one number.** Five detectors of 146 could see anything in this
-corpus, and two of them produced every finding in it, on every platform. That is not a defect in the other 144: 141
-of them are told what happened by the test body, and this corpus tells them nothing on purpose.
+**What attaching the agent buys, in one number.** Twenty-one detectors of 146 could see anything in
+this corpus, and two of them produced every finding in it, on every platform. That is not a defect
+in the other 144: 125 of them are told what happened by the test body, and this corpus tells them
+nothing on purpose, while sixteen of the agent-fed eighteen model idioms no subject here writes.
 A user attaching the agent to an existing suite and changing no test code is buying the
 `AGENT` set; a user willing to record is buying the rest. The control lane is what makes that
-concrete: with the agent detached the same 42 subjects produced zero findings, so nothing in the
+concrete: with the agent detached the same 82 subjects produced zero findings, so nothing in the
 attached lane's column came from the harness.
 
 ## The three findings on documented-thread-safe code, and the rules that closed them
@@ -419,32 +465,42 @@ shape the settled single-check rule excuses.
 
 ## What this does not measure
 
-- **Forty-two classes from seven libraries is not an ecosystem study.** It bounds the
-  false-positive rate at the tier that gates builds, over a stated denominator, and it does not
-  support a claim about the JVM ecosystem.
-- **137 detectors of 146 are not measured here at all.** Their exposure in every lane is zero, so
-  this corpus says nothing about them in either direction. Four more are measured in the
+- **Eighty-two subjects from eight libraries and the JDK is not an ecosystem study.** It bounds
+  the false-positive rate at the tier that gates builds, over a stated denominator, and it does
+  not support a claim about the JVM ecosystem. Sixty documented-safe subjects put that bound at
+  5.0%, which is a useful number and not a vanishing one.
+- **125 detectors of 146 are not measured in the unmodified lanes at all.** Their exposure there
+  is zero, so those lanes say nothing about them in either direction. Twelve are measured in the
   recording lane below, which is a different eval over a different denominator and is reported
   separately for that reason.
-- **A noise column of zero is a measurement, not a guarantee.** All twenty-two documented-safe
+- **A noise column of zero is a measurement, not a guarantee.** All sixty documented-safe
   classes produce nothing, and each of the last three went quiet because a specific idiom became
   a rule the analyzer can check, never because a threshold moved. A correct class guarded by a
   mechanism the weaver cannot see, a lock acquired inside unwoven code, a hand-rolled protocol on
   plain fields, will still draw a `PROMPT`-tier finding, and the tier system exists to price
   exactly that. This corpus no longer contains such a class; the next library someone points the
   agent at may.
-- **Detection is probabilistic, and the gate reflects that.** `CorpusGates` fails the run when a
-  documented-thread-safe class draws a VERDICT-tier HIGH or CRITICAL finding, when the unsafe group
-  as a whole produces nothing at all, when a detector reports that the feed table says cannot be
-  fed, and when the control lane hears from an agent-fed detector. It deliberately does not assert
-  that a particular subject fires on a particular run, because that would be a flaky gate rather
-  than a measurement.
+- **Detection is probabilistic, and the gate is built around that rather than excused by it.**
+  `CorpusGates` fails the run when a documented-thread-safe class draws a VERDICT-tier HIGH or
+  CRITICAL finding, when fewer than 85% of the documented-unsafe subjects draw a finding, when
+  either `AtomicityValidator` or `SharedCollectionDetector` says nothing about any of them, when a
+  detector reports that the feed table says cannot be fed, and when the control lane hears from an
+  agent-fed detector. It still does not assert that a particular subject fires on a particular run,
+  because that would be a flaky gate rather than a measurement.
+
+  The detection half of that list is new, and what it replaced is worth recording. The gate used to
+  pass on one finding *or one crash* anywhere in the unsafe group, and three of those subjects
+  throw on most runs, so the crash half satisfied it alone: both detectors could have gone silent
+  on all twenty-two subjects and the table above would still have been published green. Filtering
+  `SharedCollectionDetector` out of the findings before the gate drops detection to 16 of 22 and
+  now fails the floor of 18; the old gate stayed green on the same input. Crashes no longer count
+  towards detection at all.
 - **The corpus classes are subjects, not endorsements.** They are on the test classpath of a
   standalone module and reach neither the reactor nor any published artifact.
 
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
-The bullet above used to end this document's account of the 141: exposure zero, nothing said in
+The bullet above used to end this document's account of the 125: exposure zero, nothing said in
 either direction. That is now measured for twelve of them, in a third lane, and the separation
 matters more than the number.
 
@@ -469,6 +525,27 @@ detector's verdict is not: it is a function of the calls the body made. So each 
 directions. Every detector gets a pair, because one direction alone proves nothing — a detector
 that fires on everything passes the MUST_FIRE half, and one that was never wired up passes the
 other.
+
+**What those pairs now buy.** A pair of exactly this shape is what the library requires before a
+detector may carry `TrustTier.VERDICT`, the one tier safe to fail a merge on. Until 2026-08-29 the
+requirement could only be met by tests inside `async-test-lib` itself, because the gate that
+enforces it resolves evidence by reflection and this module is downstream of that one: eleven of
+the twelve detectors measured here in both directions sat at `PROMPT` for want of a channel, not
+for want of evidence.
+[`META-INF/async-test/verdict-evidence-corpus`](../../async-test-lib/src/main/resources/META-INF/async-test/verdict-evidence-corpus)
+is that channel. It names a detector and its two subjects per line, and both modules check it: the
+library refuses a `VERDICT` row that no line and no in-repo pair backs, and `CorpusGates` resolves
+every id against the rows here and fails if one is missing, cites the wrong detector or has drifted
+to the wrong expectation.
+
+Eight detectors were promoted on that basis, taking `VERDICT` from 10 of 146 to 18:
+`SHARED_JSON_MAPPER_RECONFIG`, `SHARED_MESSAGE_DIGEST`, `SHARED_STATEFUL_CRYPTO`,
+`CONCURRENT_MAP_COMPUTE_RECURSION`, `SYNCHRONIZED_COLLECTION_ITERATION`, `SHARED_ITERATOR`,
+`MUTABLE_MAP_KEY` and `JDBC_CONNECTION_SHARED`. Each of those pairs varies the defect and nothing
+else on the same class, which is the bar the in-repo twins meet. Three pairs here do not meet it
+and were left alone: `CACHE_CONCURRENCY`, `CONCURRENT_MAP_CHECK_THEN_ACT` and
+`CONCURRENT_MODIFICATIONS` each pair two different classes, so what separates fire from silence is
+the class as much as the defect. They keep their rows and their `PROMPT` tier.
 
 | Detector | Must fire | ...did | Must stay silent | ...did |
 |---|---:|---:|---:|---:|

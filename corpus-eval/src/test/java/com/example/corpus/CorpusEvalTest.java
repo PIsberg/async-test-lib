@@ -270,6 +270,107 @@ class CorpusEvalTest {
         }
     }
 
+
+    // --- Fifth wave: the documented-safe denominator, widened.
+    //
+    // A false-positive rate of zero over 23 subjects has a 95% upper bound near 13%, because the
+    // bound is set by the size of the denominator and not by the run of zeroes. These subjects
+    // exist to shrink that interval, so they are chosen for shared mutable state guarded by a
+    // real mechanism - striped locks, copy-on-write, a synchronized decorator, a monitor the
+    // caller is told to hold - and never for being trivially safe. A stateless utility class
+    // would pad the denominator without ever having been able to draw a finding.
+    //
+    // The JDK rows cite the file and the sentence but no line number: this module runs on 21, 25
+    // and 26, the line moves between them and the sentence does not.
+
+    private final java.util.concurrent.ConcurrentHashMap<String, String> concurrentHashMap =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.CopyOnWriteArrayList<String> copyOnWriteList =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final StringBuffer stringBuffer = new StringBuffer();
+    private final java.util.concurrent.ConcurrentLinkedQueue<String> concurrentQueue =
+            new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private final java.util.concurrent.BlockingQueue<String> blockingQueue =
+            new java.util.concurrent.LinkedBlockingQueue<>();
+    private final java.util.Hashtable<String, String> hashtable = new java.util.Hashtable<>();
+    private final java.util.concurrent.ConcurrentSkipListMap<String, String> skipListMap =
+            new java.util.concurrent.ConcurrentSkipListMap<>();
+    private final java.util.List<String> synchronizedList =
+            java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+    private final AtomicInteger atomicInteger = new AtomicInteger();
+
+    private final org.apache.commons.lang3.concurrent.ThresholdCircuitBreaker thresholdBreaker =
+            new org.apache.commons.lang3.concurrent.ThresholdCircuitBreaker(Long.MAX_VALUE);
+    private final org.apache.commons.lang3.concurrent.EventCountCircuitBreaker eventCountBreaker =
+            new org.apache.commons.lang3.concurrent.EventCountCircuitBreaker(
+                    Integer.MAX_VALUE, 1, TimeUnit.MINUTES);
+    private final org.apache.commons.lang3.concurrent.Memoizer<String, String> memoizer =
+            new org.apache.commons.lang3.concurrent.Memoizer<>(
+                    (java.util.function.Function<String, String>) key -> key + "-computed");
+    private final org.apache.commons.lang3.concurrent.ConstantInitializer<Object> constantInitializer =
+            new org.apache.commons.lang3.concurrent.ConstantInitializer<>(new Object());
+    private final org.apache.commons.lang3.concurrent.AtomicInitializer<Object> atomicInitializer =
+            new org.apache.commons.lang3.concurrent.AtomicInitializer<>() {
+                @Override
+                protected Object initialize() {
+                    return new Object();
+                }
+            };
+    private final org.apache.commons.lang3.Range<Integer> range =
+            org.apache.commons.lang3.Range.of(1, 10);
+
+    private final org.apache.commons.collections4.map.StaticBucketMap<String, String> staticBucketMap =
+            new org.apache.commons.collections4.map.StaticBucketMap<>();
+    private final Map<String, String> commonsReferenceMap =
+            org.apache.commons.collections4.map.ConcurrentReferenceHashMap.<String, String>builder().get();
+    private final java.util.Collection<String> synchronizedCollection =
+            org.apache.commons.collections4.collection.SynchronizedCollection
+                    .synchronizedCollection(new java.util.ArrayList<>());
+    private final org.apache.commons.collections4.SortedBag<String> synchronizedSortedBag =
+            org.apache.commons.collections4.bag.SynchronizedSortedBag
+                    .synchronizedSortedBag(new org.apache.commons.collections4.bag.TreeBag<>());
+    private final org.apache.commons.collections4.MultiSet<String> synchronizedMultiSet =
+            org.apache.commons.collections4.multiset.SynchronizedMultiSet
+                    .synchronizedMultiSet(new org.apache.commons.collections4.multiset.HashMultiSet<>());
+    private final java.util.Queue<String> synchronizedQueue =
+            org.apache.commons.collections4.queue.SynchronizedQueue
+                    .synchronizedQueue(new java.util.LinkedList<>());
+
+
+    private final com.google.common.collect.Interner<String> strongInterner =
+            com.google.common.collect.Interners.newStrongInterner();
+    private final com.google.common.collect.Interner<String> weakInterner =
+            com.google.common.collect.Interners.newWeakInterner();
+    private final java.util.Queue<String> guavaSynchronizedQueue =
+            com.google.common.collect.Queues.synchronizedQueue(new java.util.ArrayDeque<>());
+    private final java.util.Deque<String> guavaSynchronizedDeque =
+            com.google.common.collect.Queues.synchronizedDeque(new java.util.ArrayDeque<>());
+    private final Table<String, String, String> synchronizedTable =
+            com.google.common.collect.Tables.synchronizedTable(HashBasedTable.create());
+    private final java.util.Set<String> concurrentHashSet =
+            com.google.common.collect.Sets.newConcurrentHashSet();
+    private final com.google.common.hash.HashFunction hashFunction =
+            com.google.common.hash.Hashing.sha256();
+    private final java.util.concurrent.ConcurrentMap<String, String> mapMakerMap =
+            new com.google.common.collect.MapMaker().makeMap();
+    private final Supplier<Object> synchronizedSupplier =
+            com.google.common.base.Suppliers.synchronizedSupplier(Object::new);
+    private final com.google.common.cache.Cache<String, String> guavaCache =
+            CacheBuilder.newBuilder().maximumSize(64).build();
+
+    private final com.github.benmanes.caffeine.cache.AsyncCache<String, String> asyncCache =
+            Caffeine.newBuilder().maximumSize(64).buildAsync();
+    private final com.github.benmanes.caffeine.cache.AsyncLoadingCache<String, String> asyncLoadingCache =
+            Caffeine.newBuilder().maximumSize(64).buildAsync(key -> key + "-loaded");
+    private final com.github.benmanes.caffeine.cache.LoadingCache<String, String> caffeineLoadingCache =
+            Caffeine.newBuilder().maximumSize(64).build(key -> key + "-loaded");
+
+    private final ByteBufAllocator unpooledAllocator =
+            io.netty.buffer.UnpooledByteBufAllocator.DEFAULT;
+
+    private final org.springframework.core.convert.ConversionService conversionService =
+            new org.springframework.core.convert.support.DefaultConversionService();
+
     private static void unsafeOperation(Runnable operation) {
         CorpusRecorder.countBodyExecution();
         try {
@@ -658,5 +759,299 @@ class CorpusEvalTest {
             referenceMap.put("key", "value");
             referenceMap.get("key");
         });
+    }
+
+    // --- subjects documented as thread-safe, fifth wave: the JDK's own concurrent types --------
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void concurrentHashMap_putAndGet() {
+        safeOperation(() -> {
+            concurrentHashMap.put("key", "value");
+            concurrentHashMap.get("key");
+        });
+    }
+
+    /** Adds and then iterates, which is the read the copy-on-write contract exists to make safe. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void copyOnWriteArrayList_addAndIterate() {
+        safeOperation(() -> {
+            copyOnWriteList.add("element");
+            for (String element : copyOnWriteList) {
+                element.length();
+            }
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void stringBuffer_appendAndLength() {
+        safeOperation(() -> {
+            stringBuffer.append('x');
+            stringBuffer.length();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void concurrentLinkedQueue_addAndPoll() {
+        safeOperation(() -> {
+            concurrentQueue.add("element");
+            concurrentQueue.poll();
+        });
+    }
+
+    /** The contract is stated on {@code BlockingQueue}; the instance is a LinkedBlockingQueue. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void linkedBlockingQueue_offerAndPoll() {
+        safeOperation(() -> {
+            blockingQueue.offer("element");
+            blockingQueue.poll();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void hashtable_putAndGet() {
+        safeOperation(() -> {
+            hashtable.put("key", "value");
+            hashtable.get("key");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void concurrentSkipListMap_putAndGet() {
+        safeOperation(() -> {
+            skipListMap.put("key", "value");
+            skipListMap.get("key");
+        });
+    }
+
+    /**
+     * Iterates inside {@code synchronized (list)}, which is the condition the wrapper's javadoc
+     * attaches to its guarantee. A subject that broke that condition would belong on the other
+     * side of the corpus.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void synchronizedList_addUnderItsMonitor() {
+        safeOperation(() -> {
+            synchronizedList.add("element");
+            synchronized (synchronizedList) {
+                for (String element : synchronizedList) {
+                    element.length();
+                }
+            }
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void threadLocalRandom_nextInt() {
+        safeOperation(() -> java.util.concurrent.ThreadLocalRandom.current().nextInt(100));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void atomicInteger_incrementAndGet() {
+        safeOperation(atomicInteger::incrementAndGet);
+    }
+
+    // --- subjects documented as thread-safe, fifth wave: commons ------------------------------
+
+    /** The threshold is Long.MAX_VALUE, so the breaker never opens and the body only contends. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void thresholdCircuitBreaker_incrementAndCheckState() {
+        safeOperation(() -> thresholdBreaker.incrementAndCheckState(1L));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void eventCountCircuitBreaker_incrementAndCheckState() {
+        safeOperation(eventCountBreaker::incrementAndCheckState);
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void memoizer_compute() {
+        safeOperation(() -> {
+            try {
+                memoizer.compute("key");
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(interrupted);
+            }
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void constantInitializer_get() {
+        safeOperation(() -> {
+            try {
+                constantInitializer.get();
+            } catch (ConcurrentException failed) {
+                throw new IllegalStateException(failed);
+            }
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void atomicInitializer_get() {
+        safeOperation(() -> {
+            try {
+                atomicInitializer.get();
+            } catch (ConcurrentException failed) {
+                throw new IllegalStateException(failed);
+            }
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void range_contains() {
+        safeOperation(() -> range.contains(5));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void staticBucketMap_putAndGet() {
+        safeOperation(() -> {
+            staticBucketMap.put("key", "value");
+            staticBucketMap.get("key");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void commonsReferenceHashMap_putAndGet() {
+        safeOperation(() -> {
+            commonsReferenceMap.put("key", "value");
+            commonsReferenceMap.get("key");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void synchronizedCollection_addAndSize() {
+        safeOperation(() -> {
+            synchronizedCollection.add("element");
+            synchronizedCollection.size();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void synchronizedSortedBag_addAndCount() {
+        safeOperation(() -> {
+            synchronizedSortedBag.add("element");
+            synchronizedSortedBag.getCount("element");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void synchronizedMultiSet_addAndCount() {
+        safeOperation(() -> {
+            synchronizedMultiSet.add("element");
+            synchronizedMultiSet.getCount("element");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void synchronizedQueue_addAndPoll() {
+        safeOperation(() -> {
+            synchronizedQueue.add("element");
+            synchronizedQueue.poll();
+        });
+    }
+
+    // --- subjects documented as thread-safe, fifth wave: guava ---------------------------------
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void strongInterner_intern() {
+        safeOperation(() -> strongInterner.intern(new String("shared")));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void weakInterner_intern() {
+        safeOperation(() -> weakInterner.intern(new String("shared")));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void guavaSynchronizedQueue_addAndPoll() {
+        safeOperation(() -> {
+            guavaSynchronizedQueue.add("element");
+            guavaSynchronizedQueue.poll();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void guavaSynchronizedDeque_addAndPoll() {
+        safeOperation(() -> {
+            guavaSynchronizedDeque.addLast("element");
+            guavaSynchronizedDeque.pollFirst();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void synchronizedTable_putAndGet() {
+        safeOperation(() -> {
+            synchronizedTable.put("row", "column", "value");
+            synchronizedTable.get("row", "column");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void concurrentHashSet_addAndContains() {
+        safeOperation(() -> {
+            concurrentHashSet.add("element");
+            concurrentHashSet.contains("element");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void hashFunction_hashString() {
+        safeOperation(() -> hashFunction.hashString("payload", StandardCharsets.UTF_8));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void mapMakerMap_putAndGet() {
+        safeOperation(() -> {
+            mapMakerMap.put("key", "value");
+            mapMakerMap.get("key");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void synchronizedSupplier_get() {
+        safeOperation(synchronizedSupplier::get);
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void guavaCache_getAndPut() {
+        safeOperation(() -> {
+            guavaCache.put("key", "value");
+            guavaCache.getIfPresent("key");
+        });
+    }
+
+    // --- subjects documented as thread-safe, fifth wave: caffeine, netty, spring ---------------
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void asyncCache_getAndJoin() {
+        safeOperation(() -> asyncCache.get("key", key -> key + "-computed").join());
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void asyncLoadingCache_getAndJoin() {
+        safeOperation(() -> asyncLoadingCache.get("key").join());
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void caffeineLoadingCache_get() {
+        safeOperation(() -> caffeineLoadingCache.get("key"));
+    }
+
+    /** The instance is an {@code UnpooledByteBufAllocator}, reached through {@code ByteBufAllocator}. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void unpooledByteBufAllocator_bufferAndRelease() {
+        safeOperation(() -> {
+            ByteBuf buffer = unpooledAllocator.heapBuffer(64);
+            try {
+                buffer.writeInt(7);
+            } finally {
+                buffer.release();
+            }
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void conversionService_convert() {
+        safeOperation(() -> conversionService.convert("42", Integer.class));
     }
 }

@@ -4,6 +4,8 @@ import java.lang.management.ManagementFactory;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -32,6 +34,34 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 final class CorpusGates {
 
+    /**
+     * The fraction of documented-not-thread-safe subjects that must draw a finding.
+     *
+     * <p>Runs L, C21, C25 and C26 all detect every one of them, so the floor sits below the lowest
+     * measurement rather than at it and leaves the group room to lose a few subjects to the
+     * scheduler. It is a ratio and not a literal so that adding a subject raises the floor with
+     * it: a documented-unsafe subject the corpus cannot detect on any platform belongs in an
+     * issue, not in a denominator that quietly lowers the bar for everything else.
+     */
+    private static final double UNSAFE_DETECTION_FLOOR = 0.85;
+
+    /**
+     * The agent-fed detectors this corpus actually exercises, each of which must fire somewhere.
+     *
+     * <p>The lane exposes eighteen agent-fed detectors and two of them produce every finding in
+     * the report. That is not a defect in the other sixteen: they model locks, latches, date
+     * formats and builders, and a corpus whose whole test body is "share one instance and call
+     * it" never writes those idioms down for them to see. Requiring all eighteen to fire would
+     * fail on correct silence.
+     *
+     * <p>These two are different. Every finding this eval has recorded on any platform came from
+     * one of them, so either going quiet across all twenty-two documented-unsafe subjects is a
+     * regression rather than a schedule. Adding a subject that wakes a third detector breaks
+     * nothing here; this set is a floor on what must speak, not a ceiling on what may.
+     */
+    private static final Set<DetectorType> EXERCISED_AGENT_DETECTORS =
+            EnumSet.of(DetectorType.ATOMICITY_VIOLATIONS, DetectorType.SHARED_COLLECTIONS);
+
     private CorpusGates() {
     }
 
@@ -44,7 +74,7 @@ final class CorpusGates {
         everyReportingDetectorWasExposed(findings, lane);
         theAgentIsAttachedTheWayThisLaneRequires(lane);
         if (lane == CorpusLane.AGENT_ON) {
-            theUnsafeGroupIsDetected(findings, crashes);
+            theUnsafeGroupIsDetected(findings);
         } else {
             theAgentFedSetIsSilentWithoutTheAgent(findings);
         }
@@ -69,6 +99,88 @@ final class CorpusGates {
         everyRecordedDetectorIsExposed(lane);
         everyReportingDetectorWasExposed(findings, lane);
         everySubjectGotTheOutcomeItsRecordedCallsOblige(findings);
+        everyCorpusBackedVerdictResolvesToItsPair();
+    }
+
+
+    /**
+     * The other half of the cross-module VERDICT evidence seam.
+     *
+     * <p>{@code TrustTier.VERDICT} means a finding says the code is wrong, so the library only
+     * grants it against a case that fires on a bug and a case that stays silent on the correct
+     * twin. Its own gate resolves that evidence by reflection over its own test methods, which
+     * cannot reach this module: this module depends on the library, so the library cannot depend
+     * back. Eight detectors are classified VERDICT on the strength of pairs that live here, named
+     * in {@code META-INF/async-test/verdict-evidence-corpus}.
+     *
+     * <p>A name in a file is not evidence. This resolves every line against the rows it names and
+     * fails if one is missing, points at a different detector, or has drifted to the wrong
+     * expectation. The pairs themselves are held to their outcomes every run by
+     * {@link #everySubjectGotTheOutcomeItsRecordedCallsOblige}, so between the two the tier cannot
+     * outlive the measurement that earned it.
+     */
+    private static void everyCorpusBackedVerdictResolvesToItsPair() {
+        String resource = "/META-INF/async-test/verdict-evidence-corpus";
+        String content;
+        try (java.io.InputStream in = CorpusGates.class.getResourceAsStream(resource)) {
+            assertTrue(in != null, resource + " is not on the classpath, so the eight VERDICT "
+                    + "tiers this module backs cannot be checked from either side");
+            content = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException("Could not read " + resource, e);
+        }
+
+        List<String> broken = new ArrayList<>();
+        int lines = 0;
+        for (String raw : content.split("\n")) {
+            String line = raw.strip();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+            lines++;
+            int equals = line.indexOf('=');
+            if (equals <= 0) {
+                broken.add("malformed line: " + line);
+                continue;
+            }
+            DetectorType detector = DetectorType.valueOf(line.substring(0, equals).strip());
+            String[] ids = line.substring(equals + 1).split(",");
+            if (ids.length != 2) {
+                broken.add(detector + " must name two subjects, fire first, and names "
+                        + ids.length);
+                continue;
+            }
+            broken.addAll(problemsWith(detector, ids[0].strip(),
+                    RecordingSubject.Expectation.MUST_FIRE));
+            broken.addAll(problemsWith(detector, ids[1].strip(),
+                    RecordingSubject.Expectation.MUST_STAY_SILENT));
+        }
+
+        assertTrue(lines > 0, resource + " parsed to no lines at all, so this gate passed by "
+                + "reading nothing");
+        assertTrue(broken.isEmpty(),
+                "the library classifies these detectors VERDICT because this module measures both "
+                        + "directions for them, and the evidence it names no longer resolves here. "
+                        + "Either restore the rows or lower the tier: " + broken);
+    }
+
+    /** {@return what is wrong with the row {@code id}, as evidence for {@code detector}} */
+    private static List<String> problemsWith(DetectorType detector,
+                                             String id,
+                                             RecordingSubject.Expectation expected) {
+        RecordingSubject subject = Corpus.recordingByTestMethod(id);
+        if (subject == null) {
+            return List.of(detector + " names " + id + ", which is not a recording subject");
+        }
+        List<String> problems = new ArrayList<>();
+        if (subject.detector() != detector) {
+            problems.add(id + " is cited for " + detector + " but records to " + subject.detector());
+        }
+        if (subject.expectation() != expected) {
+            problems.add(id + " is cited as the " + expected + " half for " + detector
+                    + " but is declared " + subject.expectation());
+        }
+        return problems;
     }
 
     /** A recording test method without a row would be a subject with no stated expectation. */
@@ -266,17 +378,65 @@ final class CorpusGates {
         }
     }
 
-    private static void theUnsafeGroupIsDetected(List<CorpusRecorder.Finding> findings,
-                                                 List<CorpusRecorder.Crash> crashes) {
-        boolean anythingObserved = findings.stream()
-                .anyMatch(finding -> contractOf(finding.subject()) == Contract.NOT_THREAD_SAFE)
-                || crashes.stream()
-                .anyMatch(crash -> contractOf(crash.subject()) == Contract.NOT_THREAD_SAFE);
+    /**
+     * The true-positive side, gated rather than only reported.
+     *
+     * <p>This gate used to pass on one finding <em>or one crash</em> anywhere in the group, and
+     * three of the documented-not-thread-safe subjects throw on most runs. The crash half alone
+     * therefore satisfied it: both agent-fed detectors could have gone silent on every subject in
+     * the corpus and this module would still have published its detection table green. The
+     * headline number was reported, never checked.
+     *
+     * <p>It is checked here in two ways, neither of which pins a particular subject to a
+     * particular run:
+     *
+     * <ul>
+     *   <li>each of {@link #EXERCISED_AGENT_DETECTORS} must report on at least one
+     *       documented-not-thread-safe subject. <em>Which</em> subjects a detector catches moves
+     *       with the scheduler; whether it catches any of twenty-two does not, so a detector that
+     *       has stopped working fails here on the first run rather than on the first reader.</li>
+     *   <li>the group as a whole must reach {@link #UNSAFE_DETECTION_FLOOR} of its subjects, which
+     *       catches the degradation that leaves each detector alive but firing far less often.</li>
+     * </ul>
+     *
+     * <p>Crashes count towards neither any more. A corrupted subject that throws instead of
+     * drawing a finding is a symptom the report prints per subject and the analysis document
+     * already calls a symptom rather than a measurement; it is not evidence that a detector saw
+     * anything.
+     *
+     * @param findings what the detectors reported in this lane
+     */
+    private static void theUnsafeGroupIsDetected(List<CorpusRecorder.Finding> findings) {
+        Set<String> detected = findings.stream()
+                .filter(finding -> contractOf(finding.subject()) == Contract.NOT_THREAD_SAFE)
+                .map(CorpusRecorder.Finding::subject)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
 
-        assertFalse(!anythingObserved,
-                "not one of the " + Corpus.count(Contract.NOT_THREAD_SAFE)
-                        + " documented-not-thread-safe subjects produced a finding or threw; "
-                        + "the harness saw nothing, which means it stopped measuring");
+        long subjects = Corpus.count(Contract.NOT_THREAD_SAFE);
+        long floor = (long) Math.floor(subjects * UNSAFE_DETECTION_FLOOR);
+
+        assertTrue(detected.size() >= floor,
+                detected.size() + " of the " + subjects + " documented-not-thread-safe subjects "
+                        + "drew a finding, and this gate requires " + floor + ". Every keyed "
+                        + "platform run detects all of them, so a number this far below that is a "
+                        + "detector regression rather than scheduler variance. Detected: "
+                        + detected);
+
+        List<String> silent = EXERCISED_AGENT_DETECTORS.stream()
+                .filter(type -> findings.stream().noneMatch(finding ->
+                        contractOf(finding.subject()) == Contract.NOT_THREAD_SAFE
+                                && DetectorExposure.typeOf(finding.detector())
+                                        .filter(reported -> reported == type)
+                                        .isPresent()))
+                .map(Enum::name)
+                .toList();
+
+        assertTrue(silent.isEmpty(),
+                "these detectors produce every finding this corpus has ever recorded, and said "
+                        + "nothing about any of the " + subjects + " subjects whose own javadoc "
+                        + "documents them as not thread-safe. That is the shape a detector that "
+                        + "has stopped working takes, not the shape of an unlucky schedule: "
+                        + silent);
     }
 
     /**
