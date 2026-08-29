@@ -8,29 +8,49 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Detects {@link ExecutorService} instances that are created and used but never properly
- * shut down, or shut down without a subsequent {@code awaitTermination()} call.
+ * Detects an {@link ExecutorService} that the code under test <em>created</em> and then failed to
+ * shut down, or shut down without a subsequent {@code awaitTermination()}.
  *
- * <p>Forgetting to shut down an executor is one of the most common resource leaks in Java
- * concurrent code. Thread pool threads are GC-root-attached daemon or non-daemon threads
- * that never terminate unless the pool is explicitly shut down.
+ * <p><strong>Ownership is the whole rule, and you declare it.</strong> This detector reports only
+ * executors passed to {@link #recordExecutorCreated}, and that call means "this scope created this
+ * executor and is responsible for closing it". {@link #recordTaskSubmitted} on an executor that was
+ * never declared is a no-op by design, so a shared static pool, an injected executor owned by the
+ * caller, or a framework-managed one draws nothing.
+ *
+ * <p>That matters because the rule cannot tell the two apart on its own. Not shutting down an
+ * executor you were handed is correct, and shutting one down is a bug; nothing in the event stream
+ * distinguishes them, so the declaration is the only ownership signal there is. Declaring an
+ * executor you did not create makes this detector report correct code.
+ *
+ * <p><strong>Why it is not fed by the agent.</strong> Weaving would declare every executor in the
+ * observed program, which is exactly the case above at scale: the common correct pattern would
+ * report, and a tool that reports correct code gets switched off. It was considered for agent
+ * feeding alongside the coordination primitives and deliberately left out. The reasoning is in
+ * <a href="https://github.com/PIsberg/async-test-lib/issues/387">#387</a>, and the factory methods
+ * an agent would have to intercept are {@code invokestatic}, which the weaver does not rewrite.
+ *
+ * <p><strong>Why it stays {@code PROMPT}.</strong> A finding is only as good as the declaration
+ * behind it. Where a detector at {@code VERDICT} says the code is wrong, this one says the author
+ * said they owned this executor and did not close it, which is worth reading and not worth failing
+ * a merge on by itself.
  *
  * <p>Issues detected:
  * <ul>
- *   <li>Executor had tasks submitted but {@code shutdown()} was never called → thread leak</li>
- *   <li>Executor was shut down but {@code awaitTermination()} was never called → submitted tasks
- *       may be silently abandoned or still running when the test finishes</li>
+ *   <li>a declared executor had tasks submitted and {@code shutdown()} was never called, so its
+ *       threads outlive the test</li>
+ *   <li>a declared executor was shut down without {@code awaitTermination()}, so submitted tasks
+ *       may be abandoned or still running when the test finishes</li>
  * </ul>
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
  * @AsyncTest(threads = 4, detectExecutorShutdown = true)
  * void testExecutorLifecycle() {
- *     ExecutorService ex = Executors.newFixedThreadPool(2);
+ *     ExecutorService ex = Executors.newFixedThreadPool(2);   // created here, so owned here
  *     AsyncTestContext.executorShutdownMonitor().recordExecutorCreated(ex, "my-pool");
  *     ex.submit(() -> doWork());
  *     AsyncTestContext.executorShutdownMonitor().recordTaskSubmitted(ex);
- *     // Missing: ex.shutdown() + awaitTermination → will be detected
+ *     // Missing: ex.shutdown() + awaitTermination -> will be detected
  * }
  * }</pre>
  */
@@ -50,9 +70,14 @@ public class ExecutorShutdownDetector {
     private final Map<Integer, ExecutorState> executors = new ConcurrentHashMap<>();
 
     /**
-     * Register an executor for lifecycle monitoring.
+     * Declare that this scope created {@code executor} and owns shutting it down.
      *
-     * @param executor the executor to monitor (null-safe)
+     * <p>This is the detector's only ownership signal, and everything it reports is gated on it:
+     * an executor never passed here is not tracked, and {@link #recordTaskSubmitted} for it does
+     * nothing. Pass an executor you were handed rather than created and this detector will report
+     * you for not closing something that is not yours to close.
+     *
+     * @param executor the executor this scope created (null-safe)
      * @param name     a descriptive label for reports; if null uses identity hash
      */
     public void recordExecutorCreated(ExecutorService executor, String name) {

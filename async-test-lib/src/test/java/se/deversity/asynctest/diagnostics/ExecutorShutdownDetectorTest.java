@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.*;
@@ -125,5 +126,65 @@ public class ExecutorShutdownDetectorTest {
         ExecutorShutdownDetector.ExecutorShutdownReport report = detector.analyze();
         assertFalse(report.hasIssues(), "No tasks submitted means no leak risk");
         ex.shutdownNow();
+    }
+
+    /**
+     * The case #387 is about: an executor this code was handed, not one it created.
+     *
+     * <p>A shared static pool, an injected dependency and a framework-managed executor all reach
+     * the code under test already built, and none of them is its to close. The detector's only
+     * ownership signal is {@link ExecutorShutdownDetector#recordExecutorCreated}, so an executor
+     * that was never declared has to stay untracked no matter how much traffic it sees. Without
+     * this pinned, narrowing the rule by accident or widening it by agent feeding would both look
+     * like a passing build.
+     */
+    @Test
+    @DisplayName("an executor that was never declared is not reported, however many tasks it took")
+    void anUndeclaredExecutorIsNotThisScopesToClose() {
+        ExecutorShutdownDetector detector = new ExecutorShutdownDetector();
+        ExecutorService handedToUs = Executors.newFixedThreadPool(2);
+        try {
+            for (int i = 0; i < 25; i++) {
+                detector.recordTaskSubmitted(handedToUs);
+            }
+
+            ExecutorShutdownDetector.ExecutorShutdownReport report = detector.analyze();
+
+            assertFalse(report.hasIssues(),
+                    "not shutting down an executor you were handed is correct, and this detector "
+                            + "has no way to know it was handed one except that nobody declared "
+                            + "it. Reporting here would report the common correct case: " + report);
+        } finally {
+            handedToUs.shutdownNow();
+        }
+    }
+
+    /**
+     * The other side of the same contract, pinned so the cost of misusing the API is visible.
+     *
+     * <p>Declaring an executor this scope did not create makes the detector report correct code.
+     * That is not a defect to fix in the detector - nothing in the event stream distinguishes an
+     * owned executor from a borrowed one - it is the reason the javadoc says what
+     * {@code recordExecutorCreated} means, and the reason this detector is not agent-fed: weaving
+     * would declare every executor in the program and produce exactly this finding everywhere.
+     */
+    @Test
+    @DisplayName("declaring an executor you did not create reports correct code, which is the trap")
+    void declaringABorrowedExecutorReportsCorrectCode() {
+        ExecutorShutdownDetector detector = new ExecutorShutdownDetector();
+        ExecutorService handedToUs = Executors.newFixedThreadPool(2);
+        try {
+            detector.recordExecutorCreated(handedToUs, "borrowed-pool");
+            detector.recordTaskSubmitted(handedToUs);
+
+            ExecutorShutdownDetector.ExecutorShutdownReport report = detector.analyze();
+
+            assertTrue(report.hasIssues(),
+                    "the declaration is the ownership signal, so declaring a borrowed executor "
+                            + "buys the finding. Pinned because it is the cost of the design, not "
+                            + "an accident of it");
+        } finally {
+            handedToUs.shutdownNow();
+        }
     }
 }

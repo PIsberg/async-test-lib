@@ -176,9 +176,16 @@ class DetectorFeedCoverageTest {
         // three numbers are the ones that sell it. They drifted from the table the moment a
         // detector changed feed, and nothing said so: the catalog's own counts are gated above,
         // the README's were prose.
+        //
+        // The verb is "can see" and not "fire", deliberately. Exposure is what this number
+        // measures - how many detectors the agent gives an input to - and firing is what they do
+        // with it. The corpus eval separates them: 21 detectors are exposed on its 82 subjects and
+        // two of them produced every finding, the other nineteen being correctly silent because
+        // nothing there writes the idiom they model. "21 fire on code you did not modify" is a
+        // claim the project's own evidence contradicts, which is the worst kind to put on a README.
         assertTrue(readme.contains("**" + withoutInstrumentation
-                        + " of them fire on code you did not modify**"),
-                "README.md must say \"**" + withoutInstrumentation + " of them fire on code "
+                        + " of them can see code you did not modify**"),
+                "README.md must say \"**" + withoutInstrumentation + " of them can see code "
                         + "you did not modify**\" - that is AGENT plus ZERO_CONFIG in "
                         + "DetectorFeeds, and it is the number a reader uses to decide whether "
                         + "to attach the agent at all. Phrase it as \"N of them\": a bare "
