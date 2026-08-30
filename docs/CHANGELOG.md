@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The corpus eval has its own workflow, `corpus.yml`.** It was a job inside `e2e-tests.yml`,
+  which is where things that consume the built artifact live. This eval answers a different kind of
+  question - whether a finding on somebody else's code means their code is wrong - and publishes
+  numbers the README and the trust tiers both rest on, with nine detectors carrying `VERDICT` on
+  the strength of pairs measured in it. It now has its own history, its own badge and a
+  `workflow_dispatch` for running it against a library change without the whole end-to-end suite.
+
+  The three per-JDK legs keep the names they had, so anything naming `Corpus Eval (Java 21)`
+  individually is unaffected. A new summary job named **`Corpus Eval`** is the stable required
+  check for the workflow, mirroring `E2E Tests`; **it has to be added to branch protection**, since
+  removing the leg from the `E2E Tests` aggregate is what took the corpus out of that gate. The
+  uploaded artifacts are renamed from `e2e-corpus-eval-report-java-<version>` to
+  `corpus-eval-report-java-<version>`, and the analysis document is updated to match.
+
 - **A `MUST_STAY_SILENT` corpus row can no longer pass by never calling its detector.** A silent
   row passes when its detector says nothing, and a row that never calls the detector satisfies that
   for free. One was: the silent half of `CONCURRENT_MAP_CHECK_THEN_ACT` was three lines of Caffeine
