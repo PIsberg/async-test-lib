@@ -48,17 +48,40 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DetectorAccuracyEvalTest {
 
     /** Runs the two actions on two freshly started threads that collide on a barrier,
-     * then joins both, so every recording genuinely happens from distinct live threads. */
+     * then joins both, so every recording genuinely happens from distinct live threads.
+     * A worker that fails fails the calling test: a swallowed failure removes that worker's
+     * recordings, and what is left is a detector asserted against half its input (#413).
+     * Captured inside the runnable, not via setUncaughtExceptionHandler, because the
+     * uncaught-handler pair below asserts on exactly which handler a worker carries. */
     private static void onTwoThreads(Runnable first, Runnable second) throws InterruptedException {
         CyclicBarrier barrier = new CyclicBarrier(2);
+        java.util.concurrent.atomic.AtomicReference<Throwable> died =
+                new java.util.concurrent.atomic.AtomicReference<>();
         Runnable sync1 = () -> { await(barrier); first.run(); };
         Runnable sync2 = () -> { await(barrier); second.run(); };
-        Thread t1 = new Thread(sync1);
-        Thread t2 = new Thread(sync2);
+        Thread t1 = new Thread(capturing(sync1, died));
+        Thread t2 = new Thread(capturing(sync2, died));
         t1.start();
         t2.start();
         t1.join();
         t2.join();
+        if (died.get() != null) {
+            throw new AssertionError(
+                    "a worker thread failed instead of completing its recordings, so the "
+                            + "detector under test saw only part of its input", died.get());
+        }
+    }
+
+    /** {@return {@code work}, with any failure parked in {@code died} for the join to rethrow} */
+    private static Runnable capturing(Runnable work,
+            java.util.concurrent.atomic.AtomicReference<Throwable> died) {
+        return () -> {
+            try {
+                work.run();
+            } catch (Throwable failure) {
+                died.compareAndSet(null, failure);
+            }
+        };
     }
 
     private static void await(CyclicBarrier barrier) {
@@ -67,6 +90,26 @@ class DetectorAccuracyEvalTest {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /**
+     * The harness's own contract, pinned because #413 was this harness and not a detector.
+     *
+     * <p>Before the fix, a worker's uncaught exception vanished: {@code join} returned, the
+     * test asserted against a detector that had seen half its input, and the only symptom was
+     * an assertion message with the evidence already gone.
+     */
+    @Test
+    @DisplayName("harness: a worker that dies fails the test instead of vanishing (#413)")
+    void onTwoThreadsPropagatesAWorkerDeath() {
+        AssertionError propagated = org.junit.jupiter.api.Assertions.assertThrows(
+                AssertionError.class,
+                () -> onTwoThreads(
+                        () -> { throw new IllegalStateException("worker died"); },
+                        () -> { }));
+        assertTrue(propagated.getCause() instanceof IllegalStateException,
+                "the worker's own failure must ride along as the cause, or the next "
+                        + "occurrence is again diagnosed from nothing");
     }
 
     // ---- RaceConditionDetector ----
@@ -1587,13 +1630,28 @@ class DetectorAccuracyEvalTest {
                         + "intersects rather than counting.");
     }
 
+    /**
+     * Mutates the shared list under {@code lock} and records the mutation whatever the list did.
+     *
+     * <p>The two callers' locks deliberately do not exclude each other, so the raced
+     * {@code ArrayList} itself can corrupt and throw from {@code add}: measured at 5 in 3
+     * million collisions, as {@code ArrayIndexOutOfBoundsException: Index 1 out of bounds for
+     * length 0}, a stale {@code elementData} read beside the other thread's {@code size} write.
+     * That crash is the raced object's symptom, not this eval's subject, and it was #413: the
+     * dying worker skipped its recording and the detector was silenced by its own scenario. The
+     * mutation attempt happened either way, so it is recorded either way.
+     */
     private static Runnable mutateUnder(ConcurrentModificationDetector detector,
                                         List<String> list, ReentrantLock lock) {
         return () -> {
             try (var held = AsyncTestContext.holdingLock(lock)) {
                 lock.lock();
                 try {
-                    list.add("value");
+                    try {
+                        list.add("value");
+                    } catch (RuntimeException corruptedByTheRace) {
+                        // Expected rarely; see the javadoc above.
+                    }
                     detector.recordModification(list, "list", "add");
                 } finally {
                     lock.unlock();
