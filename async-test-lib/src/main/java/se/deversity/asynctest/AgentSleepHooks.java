@@ -79,7 +79,7 @@ public final class AgentSleepHooks {
      * @param millis  how long to sleep
      * @param monitor the monitor the enclosing synchronized method holds
      * @throws InterruptedException if interrupted while sleeping
-     * @since 1.10.0
+     * @since 1.11.0
      */
     public static void sleepHoldingMonitor(long millis, Object monitor) throws InterruptedException {
         SleepInLockDetector detector = AsyncTestContext.currentSleepInLockDetector();

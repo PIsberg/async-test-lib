@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-08-30
+
 ### Added
 
 - **The corpus eval has its own workflow, `corpus.yml`.** It was a job inside `e2e-tests.yml`,
@@ -211,6 +213,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   been written without hitting it.
 
 ### Fixed
+
+- **The accuracy eval's harness no longer swallows a worker death** (#413). The one-off Gradle
+  failure of `CONCURRENT_MODIFICATIONS`'s `MUST_FIRE` case was never the detector: the scenario's
+  two locks deliberately do not exclude each other, so the raced `ArrayList` itself can throw from
+  `add` - reproduced at 5 in 3 million barrier collisions - and the dying worker skipped the
+  recording that followed. `onTwoThreads` now rethrows a worker's failure after the join, with the
+  worker's own exception as the cause, and the raced mutation is recorded whether or not the raced
+  object crashed. The detector and its lockset were sound throughout.
 
 - **Three detectors erased what they had already seen, every time a worker re-declared its
   subject.** `recordWrapperCreated`, `recordFutureCreated` and `recordExecutorCreated` each
