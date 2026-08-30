@@ -256,6 +256,7 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
 - [Examples](#examples)
 - [CI/CD Integration](#cicd-integration)
 - [IntelliJ Plugin](#intellij-plugin)
+- [Project layout](#project-layout)
 - [Documentation](#documentation)
 - [Publications](#publications)
 - [License](#license)
@@ -572,6 +573,40 @@ View → Tool Windows → async-test Findings
 4. Run your tests, then click **Refresh** in the tool window
 
 See [intellij-plugin/README.md](intellij-plugin/README.md) for full instructions.
+
+---
+
+## Project layout
+
+```
+async-test-lib/          The library: @AsyncTest, the runner, and every detector.
+                         This is the artifact consumers depend on.
+async-test-agent/        Opt-in Java agent (Byte Buddy) that weaves field and
+                         collection accesses so detectors see unmodified code.
+async-test-analysis/     Opt-in ASM pre-scanner for virtual-thread pinning sites.
+                         Depends on nothing else here.
+
+consumer-fixture/        A consumer-shaped project proving every detector is
+                         reachable through the published API.
+consumer-fixture-langs/  The same proof from Kotlin, Groovy, Scala and Clojure.
+corpus-eval/             Runs the detectors against real third-party libraries
+                         and gates the false-positive and detection rates.
+load-tests/              JMH throughput and memory benchmarks, with the measured
+                         results pinned per release under results/.
+evals/                   Evals that measure whether coding agents actually obey
+                         this repository's instruction files.
+
+examples/                Self-contained example projects, each demonstrating a
+                         concurrency defect against the release its pom pins.
+intellij-plugin/         IDE tool window that renders the JSON report.
+tools/                   Release and licensing utilities, and the demo.
+docs/                    All documentation, routed from docs/INDEX.md.
+```
+
+Only the first three are Maven reactor modules, and they are what publishes to
+Maven Central. The fixture, corpus, load-test and example projects consume the
+library the way a user would, which is what makes their results evidence; the
+rest is documentation and tooling around them.
 
 ---
 
