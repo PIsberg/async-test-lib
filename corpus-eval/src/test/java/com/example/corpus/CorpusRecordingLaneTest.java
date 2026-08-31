@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
@@ -313,6 +314,31 @@ class CorpusRecordingLaneTest {
     private static final List<Future<?>> IGNORED_FUTURES =
             Collections.synchronizedList(new ArrayList<>());
 
+    /** The monitor both notify rows declare against; only one of them holds it. */
+    private static final Object NOTIFY_MONITOR = new Object();
+
+    /** The illegal notifyAll is really attempted once, so the JVM confirms the row's premise. */
+    private final AtomicBoolean illegalNotifyProven = new AtomicBoolean();
+
+    /**
+     * What the real, unheld {@code notifyAll()} did - the loud notify row's premise, measured.
+     *
+     * <p>The row's rationale says the monitor is genuinely not held, and the JVM is the only
+     * authority on that. {@link #theIllegalNotifyReallyThrew()} refuses the run if the call did
+     * not throw, so the claim cannot outlive the behaviour it rests on.
+     */
+    private static final java.util.concurrent.atomic.AtomicReference<String> ILLEGAL_NOTIFY_OUTCOME =
+            new java.util.concurrent.atomic.AtomicReference<>("never attempted");
+
+    /** The stream the loud row leaks: one real file descriptor, closed unrecorded at the end. */
+    private static InputStream leakedStream;
+
+    /** The file both stream rows read; created in installRecorder, deleted in reportAndGate. */
+    private static Path streamFile;
+
+    /** One recorded open for the run: 240 leaked descriptors would exhaust the runner. */
+    private final AtomicBoolean leakedStreamDeclared = new AtomicBoolean();
+
     @BeforeAll
     static void installRecorder() throws IOException, SQLException, NoSuchAlgorithmException {
         CorpusRecorder.install();
@@ -344,6 +370,10 @@ class CorpusRecordingLaneTest {
         futuresPool = Executors.newFixedThreadPool(2);
         failingTimer = new Timer("corpus-failing-timer", true);
         cleanTimer = new Timer("corpus-clean-timer", true);
+
+        streamFile = Files.createTempFile("corpus-stream", ".bin");
+        Files.write(streamFile, new byte[256]);
+        leakedStream = Files.newInputStream(streamFile);
     }
 
     /** Kept so the hoisted connection's own pool can be closed with it. */
@@ -366,6 +396,7 @@ class CorpusRecordingLaneTest {
     static void reportAndGate() throws IOException {
         CorpusRecorder.uninstall();
         thePooledRowsPremiseHeld();
+        theIllegalNotifyReallyThrew();
         pool.close();
         hoistedPool.close();
         implicitChannel.close();
@@ -377,6 +408,8 @@ class CorpusRecordingLaneTest {
         futuresPool.shutdownNow();
         cleanTimer.cancel();
         failingTimer.cancel();
+        leakedStream.close();
+        Files.deleteIfExists(streamFile);
         Files.deleteIfExists(channelFile);
         CorpusLane lane = CorpusLane.current();
         Path report = CorpusReport.writeRecording(
@@ -403,6 +436,23 @@ class CorpusRecordingLaneTest {
                 "that one connection has to reach more than one thread, or the detector "
                         + "short-circuits before it reaches the rule under test and the silence "
                         + "is not evidence. Saw " + THREADS_THAT_USED_THE_POOL.size() + " thread(s)");
+    }
+
+    /**
+     * Refuses a pass the loud notify row would not have earned.
+     *
+     * <p>Its 240 findings all rest on one premise: that the recording thread genuinely does not
+     * hold {@code NOTIFY_MONITOR}. The JVM is the authority on that, and this asks it - the row
+     * really calls {@code notifyAll()} outside the monitor once, and {@code Object}'s javadoc
+     * says that must throw {@code IllegalMonitorStateException}. Without this, a row that had
+     * quietly become synchronized would still report, and every finding would be describing
+     * something other than what the rationale claims.
+     */
+    private static void theIllegalNotifyReallyThrew() {
+        assertEquals("IllegalMonitorStateException", ILLEGAL_NOTIFY_OUTCOME.get(),
+                "the loud notify row claims the monitor is not held, and notifyAll outside a "
+                        + "monitor must throw IllegalMonitorStateException. The JVM said: "
+                        + ILLEGAL_NOTIFY_OUTCOME.get());
     }
 
     // --- SharedJsonMapperReconfig ------------------------------------------------------------
@@ -1360,6 +1410,132 @@ class CorpusRecordingLaneTest {
         AsyncTestContext.futureIgnoredDetector()
                 .recordInspect(awaited, Thread.currentThread());
         awaited.get();
+    }
+
+    // --- NotifyWithoutMonitor ----------------------------------------------------------------
+
+    /**
+     * Declares a notifyAll on a monitor this thread does not hold.
+     *
+     * <p>The detector samples {@code Thread.holdsLock} as the attempt is recorded, so the finding
+     * follows from where the call sits rather than from any interleaving. The row does not stop
+     * at declaring it: once for the run it really calls {@code notifyAll()} outside the monitor
+     * and records the {@code IllegalMonitorStateException} the JVM throws, so the premise behind
+     * all 240 findings is verified by the platform rather than asserted by this comment. Once
+     * rather than every body, because 240 identical crashes would bury the report.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_notify_withoutHoldingTheMonitor() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.notifyWithoutMonitorDetector()
+                .recordNotifyAttempt(NOTIFY_MONITOR, "unheld-monitor");
+        if (illegalNotifyProven.compareAndSet(false, true)) {
+            try {
+                NOTIFY_MONITOR.notifyAll();
+                ILLEGAL_NOTIFY_OUTCOME.set("returned normally");
+            } catch (IllegalMonitorStateException thrownByTheJvm) {
+                ILLEGAL_NOTIFY_OUTCOME.set("IllegalMonitorStateException");
+                CorpusRecorder.recordCrash(thrownByTheJvm);
+            }
+        }
+    }
+
+    /**
+     * The same declaration on the same monitor, made inside {@code synchronized}.
+     *
+     * <p>Identical evidence apart from the one thing the detector's probe reads, and the
+     * {@code notifyAll()} that follows is real: the JVM accepts it, which is what makes the
+     * silence correct rather than lucky. A detector that reported here would fire on almost
+     * every legal wait/notify in existence.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_notify_holdingTheMonitor() {
+        CorpusRecorder.countBodyExecution();
+        synchronized (NOTIFY_MONITOR) {
+            AsyncTestContext.notifyWithoutMonitorDetector()
+                    .recordNotifyAttempt(NOTIFY_MONITOR, "held-monitor");
+            NOTIFY_MONITOR.notifyAll();
+        }
+    }
+
+    // --- InterruptSwallowing -----------------------------------------------------------------
+
+    /**
+     * Catches a real {@code InterruptedException} and leaves the flag cleared.
+     *
+     * <p>Self-interrupt then sleep, so the exception is deterministic rather than timed: the
+     * flag is already set when {@code sleep} is entered, and the JDK clears it on throw. Leaving
+     * it cleared is the swallow, and every layer above loses the cancellation signal.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_interruptedException_swallowed() {
+        CorpusRecorder.countBodyExecution();
+        Thread.currentThread().interrupt();
+        try {
+            Thread.sleep(1);
+        } catch (InterruptedException e) {
+            AsyncTestContext.interruptSwallowingDetector()
+                    .recordCatch(Thread.currentThread(), "CorpusRecordingLaneTest.swallowed", false);
+        }
+    }
+
+    /**
+     * The identical catch, with the flag restored before the record.
+     *
+     * <p>{@code Thread.currentThread().interrupt()} is the fix the detector's own message
+     * prescribes, and the record says so. The flag is then cleared before the body returns:
+     * it is the fix under test, not something to hand to the runner's barrier, and clearing it
+     * after the record cannot change what the detector already saw.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_interruptedException_flagRestored() {
+        CorpusRecorder.countBodyExecution();
+        Thread.currentThread().interrupt();
+        try {
+            Thread.sleep(1);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            AsyncTestContext.interruptSwallowingDetector()
+                    .recordCatch(Thread.currentThread(), "CorpusRecordingLaneTest.restored", true);
+        }
+        Thread.interrupted();
+    }
+
+    // --- StreamClosing -----------------------------------------------------------------------
+
+    /**
+     * One real file-backed stream, recorded open for the run and never recorded closed.
+     *
+     * <p>Still open when the run is analysed, which is the leaked descriptor the detector
+     * exists for, and the outcome follows from the close that never happens. One instance
+     * rather than one per body: the leak is the point, and 240 of them would exhaust the runner
+     * rather than demonstrate anything. {@code reportAndGate} closes it unrecorded, after the
+     * measurement.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_inputStream_openedAndNeverClosed() {
+        CorpusRecorder.countBodyExecution();
+        if (leakedStreamDeclared.compareAndSet(false, true)) {
+            AsyncTestContext.streamClosingDetector()
+                    .recordStreamOpened(leakedStream, "leaked-stream");
+        }
+    }
+
+    /**
+     * A fresh stream per body, closed and recorded closed by the thread that opened it.
+     *
+     * <p>That clears both rules this detector applies: nothing is left open, and no stream is
+     * closed by a thread other than its opener. Per body rather than shared, so at most one
+     * descriptor per worker is ever live and the concurrent-open ceiling is never approached.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_inputStream_closedInTheOpeningThread() throws IOException {
+        CorpusRecorder.countBodyExecution();
+        InputStream mine = Files.newInputStream(streamFile);
+        AsyncTestContext.streamClosingDetector().recordStreamOpened(mine, "closed-stream");
+        mine.read();
+        mine.close();
+        AsyncTestContext.streamClosingDetector().recordStreamClosed(mine, "closed-stream");
     }
 
     private static void toleratingCorruption(Runnable operation) {

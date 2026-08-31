@@ -1072,7 +1072,86 @@ final class Corpus {
                     "the same submissions to the same pool, each followed by a recorded "
                             + "inspection and a real get(). Retrieval is the fix the detector's "
                             + "own message prescribes, and a finding here would report every "
-                            + "correctly awaited task in existence")
+                            + "correctly awaited task in existence"),
+
+            // --- NotifyWithoutMonitor: the tightest pair the lane can hold. Both rows record
+            //     the identical call on the identical monitor, and the only difference is
+            //     whether the body is inside synchronized (monitor). The detector samples
+            //     Thread.holdsLock at record time, so its own probe is the discriminator, and
+            //     java.lang.Object states the contract: notify/notifyAll throw
+            //     IllegalMonitorStateException "if the current thread is not the owner of this
+            //     object's monitor". The loud row proves its own premise by really calling
+            //     notifyAll once and letting the JVM throw.
+
+            new RecordingSubject("recorded_notify_withoutHoldingTheMonitor", JDK,
+                    "java.lang.Object",
+                    DetectorType.NOTIFY_WITHOUT_MONITOR, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every body declares a notifyAll on a monitor it does not hold, which "
+                            + "Object's javadoc says throws IllegalMonitorStateException. The "
+                            + "row does not merely assert that: it calls notifyAll for real "
+                            + "once and records the exception the JVM throws, so the premise "
+                            + "behind every finding is verified rather than stated"),
+
+            new RecordingSubject("recorded_notify_holdingTheMonitor", JDK,
+                    "java.lang.Object",
+                    DetectorType.NOTIFY_WITHOUT_MONITOR, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same declaration on the same monitor from the same six threads, made "
+                            + "inside synchronized (monitor) and followed by a real notifyAll "
+                            + "that the JVM accepts. The legal call is the overwhelmingly "
+                            + "common one, so a detector that reported it would fire on almost "
+                            + "every wait/notify in existence"),
+
+            // --- InterruptSwallowing: a caller-declares model, and the rows say so. Both
+            //     bodies suffer a real InterruptedException - self-interrupt then sleep, which
+            //     is deterministic rather than timed - and differ in the one boolean the
+            //     detector reads. Its tier stays PROMPT for exactly that reason: the finding
+            //     is only as good as the declaration behind it.
+
+            new RecordingSubject("recorded_interruptedException_swallowed", JDK,
+                    "java.lang.InterruptedException",
+                    DetectorType.INTERRUPT_SWALLOWING, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a real InterruptedException is caught and the interrupt flag is left "
+                            + "cleared, which is what the JDK does to it on throw. The "
+                            + "cancellation signal is then unobservable to every layer above, "
+                            + "and the finding follows from the recorded handling rather than "
+                            + "from any interleaving"),
+
+            new RecordingSubject("recorded_interruptedException_flagRestored", JDK,
+                    "java.lang.InterruptedException",
+                    DetectorType.INTERRUPT_SWALLOWING, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the identical catch on the identical exception, with "
+                            + "Thread.currentThread().interrupt() called before the record - "
+                            + "the fix the detector's own message prescribes. A finding here "
+                            + "would report correctly propagated cancellation"),
+
+            // --- StreamClosing: the ResourceLeak shape on file descriptors. Both rows open a
+            //     real file-backed InputStream and differ only in whether the close is
+            //     performed and recorded, in the thread that opened it.
+
+            new RecordingSubject("recorded_inputStream_openedAndNeverClosed", JDK,
+                    "java.io.InputStream",
+                    DetectorType.STREAM_CLOSING, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one real file-backed stream is recorded open for the run and no close is "
+                            + "ever recorded, so it is still open when the run is analysed - "
+                            + "the leaked file descriptor the detector exists for. One "
+                            + "instance rather than one per body because the leak is the "
+                            + "point and 240 of them would exhaust the runner rather than "
+                            + "demonstrate anything"),
+
+            new RecordingSubject("recorded_inputStream_closedInTheOpeningThread", JDK,
+                    "java.io.InputStream",
+                    DetectorType.STREAM_CLOSING, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a fresh stream per body execution, opened, read, closed and recorded "
+                            + "closed by the thread that opened it. That clears both rules the "
+                            + "detector applies - nothing left open, and no cross-thread close "
+                            + "- so the silence is two decisions rather than an absence of "
+                            + "calls")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()

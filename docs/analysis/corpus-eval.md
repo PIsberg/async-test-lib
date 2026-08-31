@@ -546,7 +546,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 125: exposure zero, nothing said in
-either direction. That is now measured for nineteen of them, in its own lane, and the separation
+either direction. That is now measured for twenty-two of them, in its own lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -900,6 +900,37 @@ Three refusals, each for a different reason, all worth keeping:
   cannot state a MUST outcome the gates hold on every leg, so this pair waits for the corpus to
   drop JDK 21, not for the JDK to document anything.
 
+**The sixth wave: three pairs, and a premise the JVM answers (2026-08-31)**
+
+`NOTIFY_WITHOUT_MONITOR`, `INTERRUPT_SWALLOWING` and `STREAM_CLOSING` take the lane to
+twenty-two of the 146.
+
+`NOTIFY_WITHOUT_MONITOR` is the tightest pair the lane holds. Both rows record the identical
+call on the identical monitor object, and the only difference is whether the body sits inside
+`synchronized (monitor)` - the detector samples `Thread.holdsLock` as the attempt is recorded,
+so its own probe is the discriminator and nothing else varies at all. `java.lang.Object` states
+the contract in the `@throws` clause of `notify`/`notifyAll`: `IllegalMonitorStateException` "if
+the current thread is not the owner of this object's monitor".
+
+That row also carries the lane's second measured premise, after the pooled connection's. Its 240
+findings all rest on the claim that the recording thread genuinely does not hold the monitor,
+and the JVM is the only authority on that - so the row really calls `notifyAll()` outside the
+monitor once, and `theIllegalNotifyReallyThrew()` fails the run unless the JVM threw. The gate
+was verified by breaking it: wrapping that one call in `synchronized` makes it report "The JVM
+said: returned normally" and go red, which is the difference between a gate and a comment.
+
+`INTERRUPT_SWALLOWING` is a caller-declares model and the rows say so, which is also why the
+detector sits at `PROMPT`: the finding is only as good as the declaration behind it. Both bodies
+suffer a real `InterruptedException` - self-interrupt, then `sleep`, so the throw is
+deterministic rather than timed - and differ in the one boolean. The silent row restores the
+flag as the fix prescribes and then clears it before returning, because the fix under test is
+not something to hand to the runner's barrier.
+
+`STREAM_CLOSING` is the ResourceLeak shape on file descriptors: one real file-backed stream
+recorded open and never closed must fire, a fresh stream per body opened and closed by the same
+thread must stay silent. The loud row leaks exactly one descriptor rather than 240, because the
+leak is the point and 240 of them would exhaust the runner instead of demonstrating anything.
+
 ### How far this lane can go, and where it stops
 
 "Ten of 146" invites the reading that 136 rows are waiting to be written. They are not, and the
@@ -960,7 +991,7 @@ each rejection is worth more than the row would have been:
   by the documented contract, which is not what this lane measures.
 
 **Where that leaves it.** Of the 47 RECORDING-fed detectors that had no denominator when this
-section was first written, 40 remain after the fifth wave (five of them refused above with the reason on record), and they take JDK primitives - locks,
+section was first written, 37 remain after the sixth wave (five of them refused above with the reason on record), and they take JDK primitives - locks,
 latches, `wait`/`notify`, scopes, threads. A corpus of third-party subjects has nothing to offer
 them; the third wave's route, a JDK subject whose own javadoc states a contract, is open to some
 of them but is not a backlog either, because most of those primitives' javadocs state a usage
