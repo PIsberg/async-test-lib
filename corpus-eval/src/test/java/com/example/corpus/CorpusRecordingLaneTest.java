@@ -339,6 +339,29 @@ class CorpusRecordingLaneTest {
     /** One recorded open for the run: 240 leaked descriptors would exhaust the runner. */
     private final AtomicBoolean leakedStreamDeclared = new AtomicBoolean();
 
+    /** A string literal: interned per JVM, so any unrelated code locking this text shares it. */
+    private static final String INTERNED_LOCK = "corpus-shared-lock-name";
+
+    /** The private final Object both silent lock rows use, which is the documented idiom. */
+    private static final Object PRIVATE_LOCK = new Object();
+
+    /** Integer.valueOf caches small values, so this instance is shared JVM-wide like the literal. */
+    private static final Integer BOXED_LOCK = Integer.valueOf(42);
+
+    /** The counter the get-then-set row races on; each call atomic, the pair not. */
+    private final java.util.concurrent.atomic.AtomicInteger lostUpdateCounter =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    /** The twin the correct row updates with compareAndSet. */
+    private final java.util.concurrent.atomic.AtomicInteger casCounter =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    /** The monitor the unguarded wait row names; distinct from the looped row's. */
+    private static final Object UNLOOPED_MONITOR = new Object();
+
+    /** The monitor whose wait is declared to sit inside its condition loop. */
+    private static final Object LOOPED_MONITOR = new Object();
+
     @BeforeAll
     static void installRecorder() throws IOException, SQLException, NoSuchAlgorithmException {
         CorpusRecorder.install();
@@ -1536,6 +1559,233 @@ class CorpusRecordingLaneTest {
         mine.read();
         mine.close();
         AsyncTestContext.streamClosingDetector().recordStreamClosed(mine, "closed-stream");
+    }
+
+    // --- The blocking-inside-a-guard family -------------------------------------------------
+    //
+    // Three detectors, one shape: a blocking call is unremarkable on its own and a hazard while
+    // something is held. Each pair records the identical calls and moves the block outside the
+    // region, so what separates them is position in the sequence and nothing else.
+
+    /**
+     * A blocking wait recorded while a monitor is held.
+     *
+     * <p>The blocked thread keeps a monitor nobody else can take, which is the lockout. The
+     * outcome follows from the order of the three recorded calls, so no interleaving can change
+     * it.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_blockingCall_insideAMonitor() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.nestedMonitorLockoutDetector();
+        Object monitor = new Object();
+        synchronized (monitor) {
+            detector.recordMonitorAcquired(monitor);
+            detector.recordBlockingOperationAttempted("Future.get");
+            detector.recordMonitorReleased(monitor);
+        }
+    }
+
+    /** The identical calls with the release moved before the block: the fix, and ordinary code. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_blockingCall_afterReleasingTheMonitor() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.nestedMonitorLockoutDetector();
+        Object monitor = new Object();
+        synchronized (monitor) {
+            detector.recordMonitorAcquired(monitor);
+        }
+        detector.recordMonitorReleased(monitor);
+        detector.recordBlockingOperationAttempted("Future.get");
+    }
+
+    /**
+     * A blocking call recorded between ForkJoinTask entry and exit.
+     *
+     * <p>A pool worker parked on anything but its own join starves the pool it belongs to, which
+     * is the reason {@code ForkJoinPool.managedBlock} exists.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_blockingCall_insideAForkJoinTask() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.forkJoinTaskBlockingDetector();
+        Thread self = Thread.currentThread();
+        detector.recordForkJoinTaskEntered(self);
+        detector.recordBlockingCallAttempted(self, "Future.get");
+        detector.recordForkJoinTaskExited(self);
+    }
+
+    /** The same calls with the block after the exit: blocking on a plain thread is not a defect. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_blockingCall_afterLeavingTheForkJoinTask() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.forkJoinTaskBlockingDetector();
+        Thread self = Thread.currentThread();
+        detector.recordForkJoinTaskEntered(self);
+        detector.recordForkJoinTaskExited(self);
+        detector.recordBlockingCallAttempted(self, "Future.get");
+    }
+
+    /**
+     * A join recorded inside a completion callback.
+     *
+     * <p>It blocks the thread that is supposed to be running continuations, so every other stage
+     * sharing that thread waits behind it. The class is thread-safe and the caller is wrong.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_blockingCall_insideACompletableFutureCallback() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.cfBlockingCallbackDetector();
+        Thread self = Thread.currentThread();
+        detector.recordEnterCallback("thenApply", self);
+        detector.recordBlockingCall(self, "join");
+        detector.recordExitCallback(self);
+    }
+
+    /** The identical join recorded after the callback returned, which is where waiting belongs. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_blockingCall_afterTheCallbackReturned() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.cfBlockingCallbackDetector();
+        Thread self = Thread.currentThread();
+        detector.recordEnterCallback("thenApply", self);
+        detector.recordExitCallback(self);
+        detector.recordBlockingCall(self, "join");
+    }
+
+    // --- The lock-object family --------------------------------------------------------------
+
+    /**
+     * The monitor is a string literal, and literals are interned for the whole JVM.
+     *
+     * <p>Unrelated code locking the same text shares this lock with neither side able to see the
+     * other. {@code String} is immutable and thread-safe; using one as a monitor is the defect.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_synchronized_onAnInternedLiteral() {
+        CorpusRecorder.countBodyExecution();
+        synchronized (INTERNED_LOCK) {
+            AsyncTestContext.synchronizedOnLiteralDetector()
+                    .recordMonitorAcquired(INTERNED_LOCK, Thread.currentThread(), "corpus-literal");
+        }
+    }
+
+    /** The same acquisition on a private final Object: the documented idiom, unreachable by name. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_synchronized_onAPrivateLockObject() {
+        CorpusRecorder.countBodyExecution();
+        synchronized (PRIVATE_LOCK) {
+            AsyncTestContext.synchronizedOnLiteralDetector()
+                    .recordMonitorAcquired(PRIVATE_LOCK, Thread.currentThread(), "corpus-private");
+        }
+    }
+
+    /**
+     * The monitor is a boxed {@code Integer}, and {@code Integer.valueOf} caches small values.
+     *
+     * <p>Two unrelated places boxing the same number get the same object, so the sharing is
+     * invisible at the call site - which is exactly what makes it worth reporting.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_lock_onABoxedInteger() {
+        CorpusRecorder.countBodyExecution();
+        synchronized (BOXED_LOCK) {
+            AsyncTestContext.boxedPrimitiveLockDetector()
+                    .recordLockAcquire(BOXED_LOCK, Thread.currentThread(), "corpus-boxed");
+        }
+    }
+
+    /** The same acquisition on a private Object with no cache behind it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_lock_onAPrivateObject() {
+        CorpusRecorder.countBodyExecution();
+        synchronized (PRIVATE_LOCK) {
+            AsyncTestContext.boxedPrimitiveLockDetector()
+                    .recordLockAcquire(PRIVATE_LOCK, Thread.currentThread(), "corpus-private");
+        }
+    }
+
+    // --- AtomicNonAtomicUpdate ----------------------------------------------------------------
+
+    /**
+     * A get and a set recorded as one read-modify-write from six threads.
+     *
+     * <p>Each call is atomic and the sequence is not: an update landing between them is
+     * overwritten and lost, which is the reason {@code compareAndSet} exists.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_atomicInteger_getThenSet() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.atomicNonAtomicUpdateDetector();
+        detector.recordGet(lostUpdateCounter, "lost-update", self);
+        int seen = lostUpdateCounter.get();
+        detector.recordSet(lostUpdateCounter, "lost-update", self);
+        lostUpdateCounter.set(seen + 1);
+    }
+
+    /** The same read followed by a recorded compare-and-set: the primitive the finding names. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_atomicInteger_getThenCompareAndSet() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.atomicNonAtomicUpdateDetector();
+        detector.recordGet(casCounter, "cas-update", self);
+        int seen = casCounter.get();
+        detector.recordCas(casCounter, "cas-update", self);
+        casCounter.compareAndSet(seen, seen + 1);
+    }
+
+    // --- SpuriousWakeup -----------------------------------------------------------------------
+
+    /**
+     * A wait recorded as not guarded by a condition loop.
+     *
+     * <p>{@code Object.wait}'s javadoc says a wait may return with no notify at all and that
+     * callers must re-check their condition in a loop. A caller treating the return as the
+     * condition proceeds on a state that never held, whatever the schedule did.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_wait_withoutALoop() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.spuriousWakeupHazardDetector()
+                .recordWait(UNLOOPED_MONITOR, "unlooped", false, Thread.currentThread());
+    }
+
+    /** The same wait declared as sitting inside its condition loop: the shape the javadoc prints. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_wait_insideAConditionLoop() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.spuriousWakeupHazardDetector()
+                .recordWait(LOOPED_MONITOR, "looped", true, Thread.currentThread());
+    }
+
+    // --- MdcContextLeak -----------------------------------------------------------------------
+
+    /**
+     * The task ends holding a diagnostic key it did not start with.
+     *
+     * <p>On a pooled thread that key is inherited by whatever task runs next, which is how one
+     * request's id ends up on another request's log lines.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_mdc_keyLeftBehindAtTaskEnd() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.mdcContextLeakDetector();
+        detector.recordTaskStart(self, Map.of());
+        detector.recordTaskEnd(self, Map.of("requestId", "corpus-" + self.threadId()));
+    }
+
+    /** The same task ending with exactly the context it began with: the finally-block guarantee. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_mdc_contextClearedBeforeTaskEnd() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.mdcContextLeakDetector();
+        Map<String, String> onEntry = Map.of("requestId", "corpus-" + self.threadId());
+        detector.recordTaskStart(self, onEntry);
+        detector.recordTaskEnd(self, onEntry);
     }
 
     private static void toleratingCorruption(Runnable operation) {

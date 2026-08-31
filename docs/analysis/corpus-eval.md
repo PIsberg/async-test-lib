@@ -546,7 +546,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 125: exposure zero, nothing said in
-either direction. That is now measured for twenty-two of them, in its own lane, and the separation
+either direction. That is now measured for thirty of them, in its own lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -931,9 +931,48 @@ recorded open and never closed must fire, a fresh stream per body opened and clo
 thread must stay silent. The loud row leaks exactly one descriptor rather than 240, because the
 leak is the point and 240 of them would exhaust the runner instead of demonstrating anything.
 
+**The seventh wave: eight pairs, written from a triage rather than one at a time (2026-08-31)**
+
+The first six waves each discovered their detectors' models by reading them one by one. This one
+started from a classification of every remaining recording-fed detector against the four rules a
+pair has to satisfy - the silent side must actually call the detector, both outcomes must follow
+from the calls rather than from timing, the parameter types must admit a subject we can build,
+and the finding must not be a contention note whose correct twin is supposed to fire anyway.
+That triage put 84 of the remaining detectors in reach and refused 13, and it is what the
+remaining waves are being written from. The refusals are in the two lists below.
+
+The eight rows here fall into three families, which is the point of writing them together -
+each family is one model seen through different types:
+
+- **A blocking call is fine alone and a hazard while something is held.** `NESTED_MONITOR_LOCKOUT`,
+  `FORK_JOIN_TASK_BLOCKING` and `COMPLETABLE_FUTURE_BLOCKING_CALLBACK` record the identical three
+  calls and differ only in whether the block sits inside the monitor, the task, or the callback.
+  Moving one line past the release is the entire difference between fire and silence.
+- **What you lock on, rather than what you do inside.** `SYNCHRONIZED_ON_LITERAL` and
+  `BOXED_PRIMITIVE_LOCK` each swap a JVM-wide shared instance - an interned literal, a cached
+  `Integer.valueOf` - for a private final `Object`, with the same recorded acquisition either way.
+  Both hazards are invisible at the call site, which is what makes them worth a detector.
+- **Each operation is atomic and the sequence is not.** `ATOMIC_NON_ATOMIC_UPDATE` is the
+  `AtomicInteger` form of the check-then-act pair, get-then-set against get-then-compareAndSet.
+
+`SPURIOUS_WAKEUP_HAZARD` and `MDC_CONTEXT_LEAK` complete the wave: a wait declared outside its
+condition loop against one inside it, and a task ending with a diagnostic key it did not start
+with against one ending exactly as it began.
+
+**A measurement bug this wave caught, in the eval rather than in a detector.** Wave 7's first run
+failed on wave 3's guarded `WeakHashMap` row, which had been green for four waves. The cause was
+not the new rows: `~/.m2` held a library jar that predated the `WeakHashMapSharedDetector` lock
+fix, so the lane had been resolving a build whose `State` class did not extend
+`SelfGuard.TrackedInstance` while the working tree's did. Same version number, different bytes -
+the failure mode this repository has already hit with a locally installed vibetags processor. It
+is worth stating plainly because the lane's whole output is a measurement: nothing in the report
+identifies *which build* of the library produced it, so a stale install changes every number
+silently and the only symptom is a row that used to pass. Filed as an issue rather than fixed
+here.
+
 ### How far this lane can go, and where it stops
 
-"Twenty-two of 146" invites the reading that 124 rows are waiting to be written. They are not,
+"Thirty of 146" invites the reading that 116 rows are waiting to be written. They are not,
 and the ceiling is worth stating so nobody spends a week discovering it one detector at a time.
 
 A recording row needs a third-party subject the detector can actually accept. Classifying every
@@ -990,11 +1029,41 @@ each rejection is worth more than the row would have been:
   what the class promises. A pair there would be separated by the size of the numbers rather than
   by the documented contract, which is not what this lane measures.
 
-**Where that leaves it.** 104 RECORDING-fed detectors still have no row. That figure is the one
+**The thirteen the triage refused.** Six because the correct twin cannot be recorded at all - the
+detector's only recording method produces a finding for every event it receives, so a silent row
+would be a row that made no call, which is the shape #410 removed from this lane rather than the
+shape to add back:
+
+| Detector | Why no correct twin exists |
+|---|---|
+| `VIRTUAL_THREAD_PINNING` | every recorded pinning event is a finding; the platform-thread variant records nothing |
+| `THREAD_POOL_DEADLOCK` | any `nestedSubmissionCount > 0` fires, whatever the pool size |
+| `THIS_ESCAPE` | reports every instance with a non-empty escape set; the correct twin's calls are no-ops |
+| `THREAD_LOCAL_RANDOM_MISUSE` | `ThreadLocalRandom.current()` is a JVM-wide singleton, so no per-thread instance exists to confine |
+| `COMPLETABLE_FUTURE_OBTRUDE_ABUSE` | `recordObtrude` is the only method and every entry is a violation |
+| `DEPRECATED_THREAD_API` | `recordApiUse` is the only method and every entry is a violation |
+
+Seven more because the outcome is not a function of the recorded calls. A row whose expectation
+a GC pause or a core count can flip is a flaky gate, and this lane's whole claim is that its
+expectations are structural:
+
+| Detector | What the outcome actually depends on |
+|---|---|
+| `FALSE_SHARING` | an experimental flag, a 100-access threshold, and two fields' accessing-thread sets differing |
+| `MEMORY_ORDERING` | a write and a read landing adjacent in a concurrently appended log, from different threads |
+| `THREAD_STARVATION` | elapsed `nanoTime` against a 1000 ms threshold |
+| `LOCK_DOWNGRADE` | the structural branch is deferred to `LockUpgradeDeadlockDetector` by the registry; what is left needs a cross-thread gap |
+| `PLATFORM_THREAD_PER_TASK` | a probe task against a 200 ms deadline |
+| `VIRTUAL_THREAD_CPU_BOUND` | a measured segment against a 50 ms threshold |
+| `VIRTUAL_THREAD_CARRIER_EXHAUSTION` | concurrently blocked threads against `availableProcessors`, so it fires on small runners |
+
+**Where that leaves it.** 95 RECORDING-fed detectors still have no row. That figure is the one
 the feed table yields directly - 146 detectors, 18 agent-fed, 3 zero-config, leaving 125
-recording-fed, of which 22 are paired here - and it replaces a "47" that earlier revisions of
-this paragraph decremented wave by wave without anyone being able to re-derive it. Five of the
-104 are refused above with the reason on record; the rest take JDK primitives - locks,
+recording-fed, of which 30 are paired here - and it replaces a "47" that earlier revisions of
+this paragraph decremented wave by wave without anyone being able to re-derive it. Eighteen of
+the 95 are refused with the reason on record: five for want of any documented contract, and the
+thirteen the triage rejected as having no recordable correct twin or no structural outcome. The
+rest take JDK primitives - locks,
 latches, `wait`/`notify`, scopes, threads. A corpus of third-party subjects has nothing to offer
 them; the third wave's route, a JDK subject whose own javadoc states a contract, is open to some
 of them but is not a backlog either, because most of those primitives' javadocs state a usage

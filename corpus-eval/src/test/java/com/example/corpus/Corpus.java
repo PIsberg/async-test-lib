@@ -1151,7 +1151,161 @@ final class Corpus {
                             + "closed by the thread that opened it. That clears both rules the "
                             + "detector applies - nothing left open, and no cross-thread close "
                             + "- so the silence is two decisions rather than an absence of "
-                            + "calls")
+                            + "calls"),
+
+            // --- The blocking-inside-a-guard family. Three detectors share one shape: a
+            //     blocking call is fine on its own and a hazard while something is held, so
+            //     each pair moves the identical blocking record outside the region and changes
+            //     nothing else. Holding a monitor, a ForkJoinTask and a CompletableFuture
+            //     callback are three different things to be inside, and the model is the same.
+
+            new RecordingSubject("recorded_blockingCall_insideAMonitor", JDK,
+                    "java.lang.Object",
+                    DetectorType.NESTED_MONITOR_LOCKOUT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a blocking wait is recorded while a monitor is held, so the blocked thread "
+                            + "keeps the monitor no other thread can now take. That is the "
+                            + "lockout, and it follows from the order of the recorded calls"),
+
+            new RecordingSubject("recorded_blockingCall_afterReleasingTheMonitor", JDK,
+                    "java.lang.Object",
+                    DetectorType.NESTED_MONITOR_LOCKOUT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the identical three calls with the release moved before the block, which is "
+                            + "the fix and also the ordinary shape of correct code. A detector "
+                            + "that reported it would flag every blocking call in a program that "
+                            + "also uses monitors"),
+
+            new RecordingSubject("recorded_blockingCall_insideAForkJoinTask", JDK,
+                    "java.util.concurrent.ForkJoinTask",
+                    DetectorType.FORK_JOIN_TASK_BLOCKING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a blocking call is recorded between task entry and exit. A pool worker "
+                            + "parked on something other than its own join starves the pool it "
+                            + "belongs to, which is why ForkJoinPool has managedBlock at all"),
+
+            new RecordingSubject("recorded_blockingCall_afterLeavingTheForkJoinTask", JDK,
+                    "java.util.concurrent.ForkJoinTask",
+                    DetectorType.FORK_JOIN_TASK_BLOCKING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same calls with the block moved after the exit, so no worker is parked "
+                            + "while inside a task. Blocking on a plain thread is not a defect "
+                            + "and reporting it would be noise on ordinary code"),
+
+            new RecordingSubject("recorded_blockingCall_insideACompletableFutureCallback", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a join is recorded inside a completion callback, which blocks the thread "
+                            + "that is supposed to be running continuations and can stall every "
+                            + "other stage sharing it. CompletableFuture is thread-safe and the "
+                            + "caller is still wrong"),
+
+            new RecordingSubject("recorded_blockingCall_afterTheCallbackReturned", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the identical join recorded after the callback has returned, which is "
+                            + "where a caller is supposed to wait. The pair separates on the "
+                            + "region the call sits in and on nothing else"),
+
+            // --- The lock-object family: two detectors that both ask what you are
+            //     synchronizing on rather than what you do inside. Each pair swaps a globally
+            //     shared instance for a private one and changes nothing else.
+
+            new RecordingSubject("recorded_synchronized_onAnInternedLiteral", JDK,
+                    "java.lang.String",
+                    DetectorType.SYNCHRONIZED_ON_LITERAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the monitor is a string literal, and literals are interned per JVM, so "
+                            + "unrelated code that happens to lock the same text shares this "
+                            + "lock without either side knowing. String is immutable and "
+                            + "thread-safe; what is wrong is using one as a monitor"),
+
+            new RecordingSubject("recorded_synchronized_onAPrivateLockObject", JDK,
+                    "java.lang.Object",
+                    DetectorType.SYNCHRONIZED_ON_LITERAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same recorded acquisition on a private final Object, which is the "
+                            + "documented lock idiom and cannot be reached by name from anywhere "
+                            + "else. Reporting it would report the fix"),
+
+            new RecordingSubject("recorded_lock_onABoxedInteger", JDK,
+                    "java.lang.Integer",
+                    DetectorType.BOXED_PRIMITIVE_LOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the monitor is a boxed Integer, and Integer.valueOf caches small values, "
+                            + "so two unrelated places boxing the same number get the same "
+                            + "object. The sharing is invisible at the call site, which is what "
+                            + "makes it worth reporting"),
+
+            new RecordingSubject("recorded_lock_onAPrivateObject", JDK,
+                    "java.lang.Object",
+                    DetectorType.BOXED_PRIMITIVE_LOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same acquisition recorded on a private Object with no cache behind it. "
+                            + "Identical evidence apart from the identity of the lock, which is "
+                            + "the whole of this detector's model"),
+
+            // --- AtomicNonAtomicUpdate: each operation is atomic and the pair is not, which is
+            //     the same shape as the ConcurrentMap check-then-act row one type down.
+
+            new RecordingSubject("recorded_atomicInteger_getThenSet", JDK,
+                    "java.util.concurrent.atomic.AtomicInteger",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a get and a set are recorded as a read-modify-write from six threads. Each "
+                            + "call is atomic and the sequence is not, so an update between them "
+                            + "is overwritten and lost - the reason compareAndSet exists"),
+
+            new RecordingSubject("recorded_atomicInteger_getThenCompareAndSet", JDK,
+                    "java.util.concurrent.atomic.AtomicInteger",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same read followed by a recorded compare-and-set, which is the atomic "
+                            + "primitive the finding recommends. A detector that reported here "
+                            + "would report the fix it prints"),
+
+            // --- SpuriousWakeup: Object.wait's own javadoc says a wait may return without any
+            //     notify and that callers must wait in a loop on a condition. The pair is that
+            //     one bit.
+
+            new RecordingSubject("recorded_wait_withoutALoop", JDK,
+                    "java.lang.Object",
+                    DetectorType.SPURIOUS_WAKEUP_HAZARD, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a wait is recorded as not guarded by a condition loop, which the javadoc "
+                            + "says is wrong however the schedule behaves: a wait may return "
+                            + "spuriously, and a caller that treats the return as the condition "
+                            + "proceeds on a state that never held"),
+
+            new RecordingSubject("recorded_wait_insideAConditionLoop", JDK,
+                    "java.lang.Object",
+                    DetectorType.SPURIOUS_WAKEUP_HAZARD, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same wait declared as sitting inside a while loop over its condition, "
+                            + "which is the shape the javadoc prints. The pair separates on the "
+                            + "one bit the detector reads"),
+
+            // --- MdcContextLeak: diagnostic context that outlives its task. The pair differs by
+            //     what the context map holds when the task ends, not by what it held at start.
+
+            new RecordingSubject("recorded_mdc_keyLeftBehindAtTaskEnd", JDK,
+                    "java.util.Map",
+                    DetectorType.MDC_CONTEXT_LEAK, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the task starts with an empty diagnostic context and ends holding a key it "
+                            + "put there. On a pooled thread that key is inherited by whatever "
+                            + "task runs next, which is how one request's id ends up on another "
+                            + "request's log lines"),
+
+            new RecordingSubject("recorded_mdc_contextClearedBeforeTaskEnd", JDK,
+                    "java.util.Map",
+                    DetectorType.MDC_CONTEXT_LEAK, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same task ending with exactly the context it began with, which is what "
+                            + "a correct filter guarantees in its finally block. Nothing crosses "
+                            + "the task boundary, so there is nothing to inherit")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()
