@@ -521,6 +521,92 @@ class CorpusRecordingLaneTest {
         return prefix + '-' + UNIQUE_KEYS.incrementAndGet();
     }
 
+    /**
+     * Releases both parked threads below.
+     *
+     * <p>Counted down at the very top of {@link #reportAndGate()}, before any assertion, so a
+     * failing gate can never leave the non-daemon thread parked and the JVM unable to exit.
+     */
+    private static final CountDownLatch PARKED_THREADS_RELEASE = new CountDownLatch(1);
+
+    /**
+     * Alive and daemon: the thread the leak row records a start for and never an end.
+     *
+     * <p>{@code ThreadLeakDetector.analyzeLeaks()} only reports a tracked thread that is still
+     * {@code isAlive()} at analysis, so this row needs a genuinely running thread rather than an
+     * unstarted one. Daemon, so it cannot hold the JVM open even if the release is missed.
+     */
+    private static Thread parkedDaemon;
+
+    /**
+     * Alive and NOT daemon: the one kind of thread that keeps the JVM from exiting.
+     *
+     * <p>That is exactly what the daemon-hygiene row has to demonstrate, and exactly why the
+     * release runs first in {@code reportAndGate}.
+     */
+    private static Thread parkedNonDaemon;
+
+    /** Produces raw threads: default name, not daemon, no handler. */
+    private static final java.util.concurrent.ThreadFactory RAW_FACTORY = Thread::new;
+
+    /** Produces what a production factory does: named, daemon, handler installed. */
+    private static final java.util.concurrent.ThreadFactory CONFIGURED_FACTORY = runnable -> {
+        Thread configured = new Thread(runnable, "corpus-configured-worker");
+        configured.setDaemon(true);
+        configured.setUncaughtExceptionHandler((t, e) -> { });
+        return configured;
+    };
+
+    /** Set on threads the body declares as pooled: the inheritance hazard. */
+    private static final InheritableThreadLocal<String> POOLED_ITL = new InheritableThreadLocal<>();
+
+    /** The twin, used under a name private to each thread and never declared pooled. */
+    private static final InheritableThreadLocal<String> CONFINED_ITL = new InheritableThreadLocal<>();
+
+    /** Read in a later task than the one that set it: the contamination row's subject. */
+    private static final ThreadLocal<String> CONTAMINATING_TL = new ThreadLocal<>();
+
+    /** The twin, read inside its own task and absent in the next. */
+    private static final ThreadLocal<String> SCOPED_TL = new ThreadLocal<>();
+
+    /** The lambda whose captured counter is read-modify-written with nothing held. */
+    private static final Runnable UNGUARDED_LAMBDA = () -> { };
+
+    /** The twin, whose read-modify-writes all name the guard the caller held. */
+    private static final Runnable GUARDED_LAMBDA = () -> { };
+
+    /** The lock the guarded lambda row holds and declares. */
+    private static final Object LAMBDA_GUARD = new Object();
+
+    /** A record whose component is mutable: final reference, mutable target. */
+    record MutableBox(List<String> items) { }
+
+    /** A record whose components are all immutable, which is deeply immutable. */
+    record ImmutablePoint(int x, int y) { }
+
+    /**
+     * Shared across threads with a plain, unsynchronized list reachable through the accessor.
+     *
+     * <p>A plain {@code ArrayList} on purpose. The detector sorts a component into three bands,
+     * not two: immutable is silent, a {@code java.util.concurrent} collection is also silent -
+     * "mutable on purpose, and safely", a deliberate and correct exemption - and only an
+     * unsynchronized mutable component fires. The first attempt at this row used a
+     * {@code CopyOnWriteArrayList} and stayed silent, which was the row being wrong rather than
+     * the detector. Nothing here mutates the list; the hazard is that the reference escapes.
+     */
+    private static final MutableBox LEAKY_RECORD = new MutableBox(new ArrayList<>());
+
+    /** Shared just as widely, with nothing mutable to reach. */
+    private static final ImmutablePoint SAFE_RECORD = new ImmutablePoint(1, 2);
+
+    /** One generator for the run: SplittableRandom is documented as not thread-safe. */
+    private static final java.util.SplittableRandom SHARED_SPLITTABLE =
+            new java.util.SplittableRandom(42);
+
+    /** A generator per thread, which is what split() exists for. */
+    private static final ThreadLocal<java.util.SplittableRandom> CONFINED_SPLITTABLE =
+            ThreadLocal.withInitial(SHARED_SPLITTABLE::split);
+
     @BeforeAll
     static void installRecorder() throws IOException, SQLException, NoSuchAlgorithmException {
         CorpusRecorder.install();
@@ -553,6 +639,16 @@ class CorpusRecordingLaneTest {
         failingTimer = new Timer("corpus-failing-timer", true);
         cleanTimer = new Timer("corpus-clean-timer", true);
 
+        // Both rows need a thread that is genuinely alive at analysis: the leak detector only
+        // reports a tracked thread that is still isAlive(), and a non-daemon thread is the one
+        // kind that holds the JVM open. They park until reportAndGate releases them.
+        parkedDaemon = new Thread(CorpusRecordingLaneTest::awaitRelease, "corpus-parked-daemon");
+        parkedDaemon.setDaemon(true);
+        parkedDaemon.start();
+        parkedNonDaemon = new Thread(CorpusRecordingLaneTest::awaitRelease, "corpus-parked-user");
+        parkedNonDaemon.setDaemon(false);
+        parkedNonDaemon.start();
+
         streamFile = Files.createTempFile("corpus-stream", ".bin");
         Files.write(streamFile, new byte[256]);
         leakedStream = Files.newInputStream(streamFile);
@@ -577,6 +673,9 @@ class CorpusRecordingLaneTest {
     @AfterAll
     static void reportAndGate() throws IOException {
         CorpusRecorder.uninstall();
+        // First, before any assertion. The measurement is over, and a gate that fails below must
+        // not be able to leave the non-daemon thread parked with the JVM unable to exit.
+        PARKED_THREADS_RELEASE.countDown();
         thePooledRowsPremiseHeld();
         theIllegalNotifyReallyThrew();
         pool.close();
@@ -2548,6 +2647,199 @@ class CorpusRecordingLaneTest {
         detector.recordGet(ATOMIC_HANDLE, ATOMIC_RECEIVER, "counter",
                 se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, self);
         detector.recordAtomicUpdate(ATOMIC_HANDLE, ATOMIC_RECEIVER, "counter", self);
+    }
+
+    // --- The thread-lifecycle family ------------------------------------------------------------
+
+    /** Parks until reportAndGate releases it; the body of both parked threads. */
+    private static void awaitRelease() {
+        try {
+            PARKED_THREADS_RELEASE.await();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * A thread recorded as started whose end is never recorded.
+     *
+     * <p>The detector reports a tracked thread that is still {@code isAlive()} at analysis, so
+     * this uses the parked thread rather than starting 240 of its own. It is a daemon, so even
+     * if the release were missed it could not hold the JVM open.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_thread_startedAndNeverJoined() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.threadLeakDetector().recordThreadStart(parkedDaemon, "parked-daemon");
+    }
+
+    /** The same calls with a join between them, so the thread is gone before analysis. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_thread_startedAndJoined() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.threadLeakDetector();
+        Thread worker = new Thread(() -> { }, "corpus-joined-worker");
+        detector.recordThreadStart(worker, "joined-worker");
+        worker.start();
+        worker.join();
+        detector.recordThreadEnd(worker);
+    }
+
+    /** A thread with no custom handler recorded as dying from an uncaught exception. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_thread_diedWithNoHandler() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.uncaughtExceptionHandlerDetector();
+        Thread bare = new Thread(() -> { }, "corpus-unhandled");
+        detector.recordThreadStart(bare);
+        detector.recordUncaughtException(bare, new IllegalStateException("corpus-thread-death"));
+    }
+
+    /** The identical death on a thread that had a handler installed before it started. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_thread_diedWithAHandlerInstalled() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.uncaughtExceptionHandlerDetector();
+        Thread handled = new Thread(() -> { }, "corpus-handled");
+        handled.setUncaughtExceptionHandler((t, e) -> { });
+        detector.recordThreadStart(handled);
+        detector.recordUncaughtException(handled, new IllegalStateException("corpus-thread-death"));
+    }
+
+    /** A live non-daemon thread: the one kind that keeps the JVM from exiting. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_thread_leftNonDaemonAndAlive() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.daemonThreadHygieneDetector().recordThread(parkedNonDaemon, "parked-user");
+    }
+
+    /** The same recording of a daemon thread, which the JVM abandons at exit. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_thread_leftAsADaemon() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.daemonThreadHygieneDetector().recordThread(parkedDaemon, "parked-daemon");
+    }
+
+    /** A factory handing back a default-named, non-daemon, handler-less thread. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_threadFactory_producedARawThread() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.threadFactoryDetector();
+        detector.registerFactory(RAW_FACTORY, "raw-factory");
+        detector.recordThreadCreated(RAW_FACTORY, "raw-factory", RAW_FACTORY.newThread(() -> { }));
+    }
+
+    /** The same factory call producing a named daemon thread with a handler. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_threadFactory_producedAConfiguredThread() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.threadFactoryDetector();
+        detector.registerFactory(CONFIGURED_FACTORY, "configured-factory");
+        detector.recordThreadCreated(CONFIGURED_FACTORY, "configured-factory",
+                CONFIGURED_FACTORY.newThread(() -> { }));
+    }
+
+    // --- Per-thread state that outlives its task ------------------------------------------------
+
+    /** An inheritable thread-local set on a thread the body declares as pooled. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_inheritableThreadLocal_setOnAPoolThread() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.inheritableThreadLocalMisuseDetector();
+        detector.registerPoolThread(Thread.currentThread());
+        detector.recordSet(POOLED_ITL, "request-context", "value");
+    }
+
+    /** The same set and get under a name private to each thread, never declared pooled. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_inheritableThreadLocal_confinedToItsOwnName() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.inheritableThreadLocalMisuseDetector();
+        String name = "request-context-" + Thread.currentThread().threadId();
+        detector.recordSet(CONFINED_ITL, name, "value");
+        detector.recordGet(CONFINED_ITL, name);
+    }
+
+    /** A value set during one task and still readable in the next task on the same thread. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_threadLocal_readAcrossATaskBoundary() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.threadLocalContaminationDetector();
+        detector.recordNewTask(self, "first-task");
+        detector.recordSet(self, CONTAMINATING_TL, "request-context");
+        detector.recordNewTask(self, "second-task");
+        detector.recordGet(self, CONTAMINATING_TL, "request-context", true);
+    }
+
+    /** The same two tasks with the value read inside its own task and absent in the next. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_threadLocal_clearedAtTheTaskBoundary() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.threadLocalContaminationDetector();
+        detector.recordNewTask(self, "first-task");
+        detector.recordSet(self, SCOPED_TL, "request-context");
+        detector.recordGet(self, SCOPED_TL, "request-context", true);
+        detector.recordNewTask(self, "second-task");
+        detector.recordGet(self, SCOPED_TL, "request-context", false);
+    }
+
+    // --- Three more confinement shapes -----------------------------------------------------------
+
+    /** Six threads read-modify-writing one lambda's captured counter with nothing held. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_lambda_readModifyWriteWithNoGuard() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.lambdaLostUpdateDetector()
+                .recordReadModifyWrite(UNGUARDED_LAMBDA, "counter", 0, 1, Thread.currentThread());
+    }
+
+    /** The identical sequence with the guard the caller held named to the detector. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_lambda_readModifyWriteUnderAGuard() {
+        CorpusRecorder.countBodyExecution();
+        synchronized (LAMBDA_GUARD) {
+            AsyncTestContext.lambdaLostUpdateDetector().recordReadModifyWrite(
+                    GUARDED_LAMBDA, "counter", 0, 1, LAMBDA_GUARD, Thread.currentThread());
+        }
+    }
+
+    /** A record holding a mutable list, shared across threads. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_record_sharedWithAMutableComponent() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.recordMutableComponentLeakDetector()
+                .recordShared(LEAKY_RECORD, "leaky-record", Thread.currentThread());
+    }
+
+    /** The same sharing of a record whose components are all immutable. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_record_sharedWithImmutableComponents() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.recordMutableComponentLeakDetector()
+                .recordShared(SAFE_RECORD, "safe-record", Thread.currentThread());
+    }
+
+    /** One SplittableRandom recorded from six threads: its javadoc says not thread-safe. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_splittableRandom_sharedAcrossThreads() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.sharedSplittableRandomDetector();
+        detector.registerGenerator(SHARED_SPLITTABLE, "shared-splittable");
+        detector.recordAccess(SHARED_SPLITTABLE, "shared-splittable", "nextInt");
+        SHARED_SPLITTABLE.nextInt();
+    }
+
+    /** A generator per thread, which is what split() exists for. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_splittableRandom_splitPerThread() {
+        CorpusRecorder.countBodyExecution();
+        java.util.SplittableRandom mine = CONFINED_SPLITTABLE.get();
+        var detector = AsyncTestContext.sharedSplittableRandomDetector();
+        detector.registerGenerator(mine, "confined-splittable");
+        detector.recordAccess(mine, "confined-splittable", "nextInt");
+        mine.nextInt();
     }
 
     private static void toleratingCorruption(Runnable operation) {

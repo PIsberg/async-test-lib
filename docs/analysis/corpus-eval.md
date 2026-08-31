@@ -546,7 +546,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 125: exposure zero, nothing said in
-either direction. That is now measured for fifty-seven of them, in its own lane, and the separation
+either direction. That is now measured for sixty-six of them, in its own lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -1052,9 +1052,36 @@ down. A plain get and a plain set are neither atomic nor ordered, and the twin e
 read-modify-write as a volatile read plus an atomic update - so the pair separates purely on the
 access mode the caller asked for, which is the whole of what a `VarHandle` lets you choose.
 
+**The eleventh wave: threads as the subject, and a three-band classifier**
+
+`THREAD_LEAKS`, `UNCAUGHT_EXCEPTION_HANDLER`, `DAEMON_THREAD_HYGIENE`, `THREAD_FACTORY`,
+`INHERITABLE_THREAD_LOCAL`, `THREAD_LOCAL_CONTAMINATION`, `LAMBDA_LOST_UPDATE`,
+`RECORD_MUTABLE_COMPONENT_LEAK` and `SHARED_SPLITTABLE_RANDOM` take the lane to **66 of 146**, in
+135 rows. These are the first detectors whose subject is a thread rather than something threads
+share: was it joined, did anyone hear it die, will it hold the JVM open, was it built with the
+name and handler a pool needs.
+
+**Two rows here need a thread that is genuinely alive at analysis**, which no earlier row did.
+`ThreadLeakDetector` only reports a tracked thread still `isAlive()`, and the whole point of the
+daemon-hygiene row is a non-daemon thread - the one kind that keeps the JVM from exiting. Both
+use a thread parked on a latch for the run rather than starting 240 of their own, and the latch
+is released as the **first statement** of `reportAndGate`, before any assertion: a gate that
+fails must not be able to leave the JVM unable to exit. That ordering is the row's real safety
+property and is worth stating, because getting it wrong turns a red test into a hung build.
+
+**The record row was wrong before it was right, for the third time in this series.**
+`RECORD_MUTABLE_COMPONENT_LEAK`'s loud row first held a `CopyOnWriteArrayList` and stayed silent.
+Reading the detector rather than guessing showed why: it sorts a component into three bands, not
+two. Immutable is silent; a `java.util.concurrent` collection is *also* silent, with the source
+comment "mutable on purpose, and safely"; and only an unsynchronized mutable component fires.
+That exemption is correct - sharing a record that holds a concurrent collection is not the
+hazard - so the row moved to a plain `ArrayList`. As with the non-capturing lambda in wave 8, the
+pair caught the row rather than the detector, and the reason is now in a comment beside the field
+so the next person does not rediscover it.
+
 ### How far this lane can go, and where it stops
 
-"Fifty-seven of 146" invites the reading that 89 rows are waiting to be written. They are not,
+"Sixty-six of 146" invites the reading that 80 rows are waiting to be written. They are not,
 and the ceiling is worth stating so nobody spends a week discovering it one detector at a time.
 
 A recording row needs a third-party subject the detector can actually accept. Classifying every
@@ -1139,11 +1166,11 @@ expectations are structural:
 | `VIRTUAL_THREAD_CPU_BOUND` | a measured segment against a 50 ms threshold |
 | `VIRTUAL_THREAD_CARRIER_EXHAUSTION` | concurrently blocked threads against `availableProcessors`, so it fires on small runners |
 
-**Where that leaves it.** 68 RECORDING-fed detectors still have no row. That figure is the one
+**Where that leaves it.** 59 RECORDING-fed detectors still have no row. That figure is the one
 the feed table yields directly - 146 detectors, 18 agent-fed, 3 zero-config, leaving 125
-recording-fed, of which 57 are paired here - and it replaces a "47" that earlier revisions of
+recording-fed, of which 66 are paired here - and it replaces a "47" that earlier revisions of
 this paragraph decremented wave by wave without anyone being able to re-derive it. Eighteen of
-the 68 are refused with the reason on record: five for want of any documented contract, and the
+the 59 are refused with the reason on record: five for want of any documented contract, and the
 thirteen the triage rejected as having no recordable correct twin or no structural outcome. The
 rest take JDK primitives - locks,
 latches, `wait`/`notify`, scopes, threads. A corpus of third-party subjects has nothing to offer

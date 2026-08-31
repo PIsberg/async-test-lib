@@ -1835,7 +1835,169 @@ final class Corpus {
                     "the same read-modify-write expressed as a volatile read and a recorded "
                             + "atomic update, which is what the class provides "
                             + "compareAndSet and getAndAdd for. The pair separates on the "
-                            + "access mode the caller chose")
+                            + "access mode the caller chose"),
+
+            // --- The thread-lifecycle family. Four detectors that watch what happens to a
+            //     thread rather than to shared data: was it joined, did anyone hear it die, will
+            //     it hold the JVM open, and was it built with the hygiene a pool needs.
+
+            new RecordingSubject("recorded_thread_startedAndNeverJoined", JDK,
+                    "java.lang.Thread",
+                    DetectorType.THREAD_LEAKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a thread is started and its end is never recorded, so it is still running "
+                            + "when the run is analysed. A test that leaks a thread per "
+                            + "execution leaks them by the hundred, and each one holds "
+                            + "everything it referenced"),
+
+            new RecordingSubject("recorded_thread_startedAndJoined", JDK,
+                    "java.lang.Thread",
+                    DetectorType.THREAD_LEAKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same thread started, joined and recorded as ended before the body "
+                            + "returns. The join makes the outcome structural rather than a bet "
+                            + "on the thread finishing in time"),
+
+            new RecordingSubject("recorded_thread_diedWithNoHandler", JDK,
+                    "java.lang.Thread",
+                    DetectorType.UNCAUGHT_EXCEPTION_HANDLER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a thread with no uncaught-exception handler is recorded as dying from one. "
+                            + "The default handler prints to stderr and the thread disappears, "
+                            + "so in a build log the work simply stops happening with nothing "
+                            + "failing"),
+
+            new RecordingSubject("recorded_thread_diedWithAHandlerInstalled", JDK,
+                    "java.lang.Thread",
+                    DetectorType.UNCAUGHT_EXCEPTION_HANDLER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the identical death on a thread that had a handler set before it started, "
+                            + "which is the fix. The pair separates on whether anything was "
+                            + "installed to hear the failure"),
+
+            new RecordingSubject("recorded_thread_leftNonDaemonAndAlive", JDK,
+                    "java.lang.Thread",
+                    DetectorType.DAEMON_THREAD_HYGIENE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a live non-daemon thread is recorded, which is the one kind that keeps the "
+                            + "JVM from exiting. A suite that leaves one behind hangs after the "
+                            + "last test passes, and the symptom is a build that never returns "
+                            + "rather than a failure"),
+
+            new RecordingSubject("recorded_thread_leftAsADaemon", JDK,
+                    "java.lang.Thread",
+                    DetectorType.DAEMON_THREAD_HYGIENE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same recording of a thread marked daemon, which the JVM abandons at "
+                            + "exit. Background threads are ordinary and reporting them would "
+                            + "be noise on every scheduler and pool in a program"),
+
+            new RecordingSubject("recorded_threadFactory_producedARawThread", JDK,
+                    "java.util.concurrent.ThreadFactory",
+                    DetectorType.THREAD_FACTORY, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the factory hands back a thread with the default name, no daemon flag and "
+                            + "no handler. Each of those is a diagnosis problem later: an "
+                            + "unnamed thread in a dump says nothing about which pool it "
+                            + "belongs to, and a missing handler loses its failures"),
+
+            new RecordingSubject("recorded_threadFactory_producedAConfiguredThread", JDK,
+                    "java.util.concurrent.ThreadFactory",
+                    DetectorType.THREAD_FACTORY, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same factory recorded producing a named daemon thread with a handler "
+                            + "installed, which is what a production factory does. The pair "
+                            + "separates on how the thread was configured and nothing else"),
+
+            // --- Per-thread state that outlives its task. Two detectors on the shape the MDC
+            //     and ThreadLocal-leak pairs approach from other angles.
+
+            new RecordingSubject("recorded_inheritableThreadLocal_setOnAPoolThread", JDK,
+                    "java.lang.InheritableThreadLocal",
+                    DetectorType.INHERITABLE_THREAD_LOCAL, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "an inheritable thread-local is set on a declared pool thread. Inheritance "
+                            + "happens at thread creation, so a pooled worker keeps whatever the "
+                            + "thread that created the pool had - and every task after it reads "
+                            + "a value belonging to somebody else"),
+
+            new RecordingSubject("recorded_inheritableThreadLocal_confinedToItsOwnName", JDK,
+                    "java.lang.InheritableThreadLocal",
+                    DetectorType.INHERITABLE_THREAD_LOCAL, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same set and get against a name private to each thread, on a thread "
+                            + "never declared as pooled. Nothing is inherited and nothing is "
+                            + "shared, which is what correct use of the class looks like"),
+
+            new RecordingSubject("recorded_threadLocal_readAcrossATaskBoundary", JDK,
+                    "java.lang.ThreadLocal",
+                    DetectorType.THREAD_LOCAL_CONTAMINATION, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a value is set during one task and still readable in the next task on the "
+                            + "same thread. On a pool that is one request reading another "
+                            + "request's context, which is a correctness problem long before it "
+                            + "is a leak"),
+
+            new RecordingSubject("recorded_threadLocal_clearedAtTheTaskBoundary", JDK,
+                    "java.lang.ThreadLocal",
+                    DetectorType.THREAD_LOCAL_CONTAMINATION, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same two tasks with the value read inside the task that set it and "
+                            + "absent in the next, which is what a cleanup at the boundary "
+                            + "produces. The pair separates on what crossed the boundary"),
+
+            // --- Three more instance-sharing pairs, each the confinement shape on a different
+            //     kind of state: a lambda's captured variable, and two generators.
+
+            new RecordingSubject("recorded_lambda_readModifyWriteWithNoGuard", JDK,
+                    "java.lang.Runnable",
+                    DetectorType.LAMBDA_LOST_UPDATE, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "six threads read, modify and write one lambda's captured variable with no "
+                            + "lock declared. Two threads that read the same value both write "
+                            + "back one increment, so an update is lost with nothing thrown"),
+
+            new RecordingSubject("recorded_lambda_readModifyWriteUnderAGuard", JDK,
+                    "java.lang.Runnable",
+                    DetectorType.LAMBDA_LOST_UPDATE, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the identical sequence with the guard the caller held passed to the "
+                            + "detector, so it can see that every read-modify-write was "
+                            + "serialised. A finding here would report a correctly locked "
+                            + "counter"),
+
+            new RecordingSubject("recorded_record_sharedWithAMutableComponent", JDK,
+                    "java.lang.Record",
+                    DetectorType.RECORD_MUTABLE_COMPONENT_LEAK, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a record holding a mutable list is shared across threads. Records make the "
+                            + "reference final and say nothing about what it points at, so the "
+                            + "shallow immutability reads as a safety guarantee it does not "
+                            + "provide"),
+
+            new RecordingSubject("recorded_record_sharedWithImmutableComponents", JDK,
+                    "java.lang.Record",
+                    DetectorType.RECORD_MUTABLE_COMPONENT_LEAK, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same sharing of a record whose components are all immutable, which is "
+                            + "deeply immutable and safe to publish anywhere. Reporting it "
+                            + "would report the single best reason to use a record"),
+
+            new RecordingSubject("recorded_splittableRandom_sharedAcrossThreads", JDK,
+                    "java.util.SplittableRandom",
+                    DetectorType.SHARED_SPLITTABLE_RANDOM, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one generator is recorded from six threads. SplittableRandom's javadoc "
+                            + "says instances are not thread-safe and that split() exists "
+                            + "precisely so each thread can have its own; sharing one corrupts "
+                            + "the sequence rather than merely contending on it"),
+
+            new RecordingSubject("recorded_splittableRandom_splitPerThread", JDK,
+                    "java.util.SplittableRandom",
+                    DetectorType.SHARED_SPLITTABLE_RANDOM, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a generator per thread, which is what split() is for and what the javadoc "
+                            + "prescribes. No instance is ever recorded from a second thread")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()
