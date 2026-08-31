@@ -58,7 +58,11 @@ public class VolatileArrayDetector {
         // which can differ between two accesses because registering rehashes the map - so the
         // workers' accesses could land in different entries, each seeing a single thread.
         synchronized (registrationLock) {
-            if (findArrayInfo(array, name) != null) {
+            // Identity, not name: a second distinct array carrying a label some other array
+            // already holds has to get its own entry. Resolving by name here collapsed every
+            // per-thread buffer of a ThreadLocal onto the first one registered, and the
+            // confined arrays then read as one array written by six threads.
+            if (findByIdentity(array) != null) {
                 return;
             }
             elementAccesses.put(new ArrayInfo(name, array, componentType),
@@ -112,10 +116,45 @@ public class VolatileArrayDetector {
         }
     }
 
+    /**
+     * {@return the entry holding exactly {@code array}, or {@code null}}
+     *
+     * <p>Identity only, with no name fallback, which is what registration has to ask: two
+     * distinct arrays may legitimately carry the same label - a {@code ThreadLocal<int[]>}
+     * registered as {@code "buffer"} by every worker is confined, correct code - and a lookup
+     * that answered by name would drop all but the first of them and then resolve every
+     * worker's writes to that one entry.
+     *
+     * @param array the array to look for
+     */
     @SuppressWarnings({"PMD.CompareObjectsWithEquals", "ReferenceEquality"}) // array identity comparison is intentional
-    private @Nullable ArrayInfo findArrayInfo(Object array, String arrayName) {
+    private @Nullable ArrayInfo findByIdentity(Object array) {
         for (ArrayInfo info : elementAccesses.keySet()) {
-            if (info.array == array || info.name.equals(arrayName)) {
+            if (info.array == array) {
+                return info;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * {@return the entry for {@code array}, preferring identity and falling back to the label}
+     *
+     * <p>The name fallback is kept for a caller that records against an array it never
+     * registered, which is the lenient behaviour this detector has always had. It is only
+     * consulted when no entry holds the array itself, so arrays that share a label no longer
+     * collapse into one another.
+     *
+     * @param array     the array being accessed
+     * @param arrayName the label it was recorded under
+     */
+    private @Nullable ArrayInfo findArrayInfo(Object array, String arrayName) {
+        ArrayInfo byIdentity = findByIdentity(array);
+        if (byIdentity != null) {
+            return byIdentity;
+        }
+        for (ArrayInfo info : elementAccesses.keySet()) {
+            if (info.name.equals(arrayName)) {
                 return info;
             }
         }
