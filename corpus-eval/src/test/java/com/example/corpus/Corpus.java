@@ -1484,7 +1484,210 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "an array per thread, written the same number of times. No element is ever "
                             + "reached by a second thread, so there is nothing for the missing "
-                            + "ordering to be missing between")
+                            + "ordering to be missing between"),
+
+            // --- The CompletableFuture lifecycle family: two VERDICT-tier detectors that ask
+            //     what happened to a future after it was created. Each pair creates one the
+            //     same way and differs in what the body records afterwards.
+
+            new RecordingSubject("recorded_completableFuture_failedWithNoHandler", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a future completes exceptionally and no handler is ever recorded for it. "
+                            + "The exception is then held inside the future and discarded with "
+                            + "it, so the failure is invisible to the code that asked for the "
+                            + "work - the same silent-loss shape as an ignored Future"),
+
+            new RecordingSubject("recorded_completableFuture_failureHandled", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the identical failure with a recorded handler before the completion, which "
+                            + "is what exceptionally and handle exist for. The pair separates "
+                            + "on whether anybody dealt with the exception"),
+
+            new RecordingSubject("recorded_completableFuture_neverCompleted", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a future is created and no completion is ever recorded, so anything "
+                            + "waiting on it waits for a result that is not coming. A "
+                            + "manually-completed future whose completing path is missed is a "
+                            + "hang, not an error, which is why it is worth a detector"),
+
+            new RecordingSubject("recorded_completableFuture_completedBeforeTheBodyReturned", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same creation with its completion recorded before the body returns, so "
+                            + "every tracked future ends the run completed. The outcome follows "
+                            + "from the calls rather than from when a pool got round to it"),
+
+            // --- UnboundedQueue: the capacity is the whole model, and it is a parameter rather
+            //     than something the detector has to infer.
+
+            new RecordingSubject("recorded_blockingQueue_createdUnbounded", JDK,
+                    "java.util.concurrent.LinkedBlockingQueue",
+                    DetectorType.UNBOUNDED_QUEUE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a queue is declared with no capacity bound. The class is thread-safe and "
+                            + "that is not the hazard: an unbounded queue converts a producer "
+                            + "that outruns its consumer from backpressure into heap growth, "
+                            + "and the failure arrives much later as an OutOfMemoryError"),
+
+            new RecordingSubject("recorded_blockingQueue_createdWithACapacity", JDK,
+                    "java.util.concurrent.ArrayBlockingQueue",
+                    DetectorType.UNBOUNDED_QUEUE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same declaration with a bound, plus recorded enqueues and dequeues. A "
+                            + "bounded queue blocks the producer instead of growing, which is "
+                            + "the fix, and reporting it would report every correctly sized "
+                            + "queue in a program"),
+
+            // --- CopyOnWriteCollections: the class is thread-safe and the question is whether
+            //     the workload suits it, so the pair is the same collection type under two
+            //     read/write mixes.
+
+            new RecordingSubject("recorded_copyOnWrite_underAWriteHeavyWorkload", JDK,
+                    "java.util.concurrent.CopyOnWriteArrayList",
+                    DetectorType.COPY_ON_WRITE_COLLECTIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "writes dominate the recorded operations on a copy-on-write list. Every "
+                            + "write copies the whole backing array, so the cost is quadratic "
+                            + "in a workload like this - correct, and the wrong data structure, "
+                            + "which is exactly what an advisory detector is for"),
+
+            new RecordingSubject("recorded_copyOnWrite_underAReadHeavyWorkload", JDK,
+                    "java.util.concurrent.CopyOnWriteArrayList",
+                    DetectorType.COPY_ON_WRITE_COLLECTIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same class recorded under the mix it was designed for, many reads to "
+                            + "one write. The pair separates on the workload and not on the "
+                            + "type, which is the only way to test a model whose subject is "
+                            + "correct by construction"),
+
+            // --- ParallelStreams: a stateful operation in a parallel pipeline. The stream is
+            //     the same either way; what changes is what the lambda does.
+
+            new RecordingSubject("recorded_parallelStream_withAStatefulOperation", JDK,
+                    "java.util.stream.Stream",
+                    DetectorType.PARALLEL_STREAMS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a parallel pipeline records a stateful operation. The stream contract asks "
+                            + "for non-interfering, stateless lambdas precisely because the "
+                            + "framework may run them on any thread in any order, so a "
+                            + "stateful one races on state the pipeline never promised to guard"),
+
+            new RecordingSubject("recorded_parallelStream_withStatelessOperations", JDK,
+                    "java.util.stream.Stream",
+                    DetectorType.PARALLEL_STREAMS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same parallel pipeline recorded with a stateless operation, which is "
+                            + "what the contract asks for and what almost every correct "
+                            + "parallel stream does"),
+
+            // --- ThreadLocalLeaks: set without remove. On a pooled thread the value outlives
+            //     the task, which is the same hazard as the MDC pair one type down.
+
+            new RecordingSubject("recorded_threadLocal_initialisedAndNeverCleaned", JDK,
+                    "java.lang.ThreadLocal",
+                    DetectorType.THREAD_LOCAL_LEAKS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a thread-local is initialised and no cleanup is ever recorded. The value "
+                            + "then lives as long as the thread does, which on a pooled thread "
+                            + "means forever, and it keeps its whole reference graph alive with "
+                            + "it"),
+
+            new RecordingSubject("recorded_threadLocal_cleanedUpAfterUse", JDK,
+                    "java.lang.ThreadLocal",
+                    DetectorType.THREAD_LOCAL_LEAKS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same initialisation with a recorded cleanup behind it, which is the "
+                            + "remove() in a finally block that every correct use has. The "
+                            + "pair separates on that one call"),
+
+            // --- DoubleCheckedLocking: the pattern is declared rather than inferred, and the
+            //     rows differ in the volatile flag alone - the single bit that decides whether
+            //     the idiom is correct.
+
+            new RecordingSubject("recorded_doubleCheckedLocking_withoutVolatile", JDK,
+                    "java.lang.Object",
+                    DetectorType.DOUBLE_CHECKED_LOCKING, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the classic broken singleton: both checks, inside synchronized, on a "
+                            + "non-volatile field. Without volatile another thread can see the "
+                            + "reference before the constructor's writes, so it hands out a "
+                            + "partially built object - the reason the idiom needed fixing"),
+
+            new RecordingSubject("recorded_doubleCheckedLocking_withVolatile", JDK,
+                    "java.lang.Object",
+                    DetectorType.DOUBLE_CHECKED_LOCKING, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the identical declaration with the field volatile, which is the documented "
+                            + "fix and correct since Java 5. Four flags, one of them flipped, "
+                            + "and nothing else differs"),
+
+            // --- SynchronizedNonFinal: locking on a field that can be reassigned means two
+            //     threads can hold different monitors while believing they are excluded.
+
+            new RecordingSubject("recorded_synchronized_onAReassignableLock", JDK,
+                    "java.lang.Object",
+                    DetectorType.SYNCHRONIZED_NON_FINAL, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the monitor is a fresh object each time, which is what locking on a "
+                            + "non-final field looks like once somebody reassigns it. Two "
+                            + "threads then synchronize on different objects and exclude "
+                            + "nobody, while the code reads as guarded"),
+
+            new RecordingSubject("recorded_synchronized_onAFinalLock", JDK,
+                    "java.lang.Object",
+                    DetectorType.SYNCHRONIZED_NON_FINAL, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same recorded acquisition on one final lock object for the run, which "
+                            + "is the idiom every guide prints. The pair separates on whether "
+                            + "the monitor identity is stable"),
+
+            // --- FinalFieldMutation: reflection past final. The silent row records reads of a
+            //     field that is never mutated, so the detector sees traffic and decides.
+
+            new RecordingSubject("recorded_finalField_mutatedReflectively", JDK,
+                    "java.lang.reflect.Field",
+                    DetectorType.FINAL_FIELD_MUTATION, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a final field is recorded as mutated. Final fields carry a freeze "
+                            + "guarantee that the memory model relies on, and writing one after "
+                            + "construction voids it: other threads may keep observing the old "
+                            + "value indefinitely, with no synchronization able to repair it"),
+
+            new RecordingSubject("recorded_finalField_onlyRead", JDK,
+                    "java.lang.reflect.Field",
+                    DetectorType.FINAL_FIELD_MUTATION, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same field read by every thread and never written, which is what final "
+                            + "fields are for and is safe without any synchronization at all. "
+                            + "The detector sees the traffic and reports nothing, which is the "
+                            + "decision the row is testing"),
+
+            // --- PublicLockExposure: synchronizing on an object your API also hands out means
+            //     any caller can take your lock. The pair differs by whether the published
+            //     object is the one being locked.
+
+            new RecordingSubject("recorded_lock_publishedThroughTheApi", JDK,
+                    "java.lang.Object",
+                    DetectorType.PUBLIC_LOCK_EXPOSURE, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the object being synchronized on is also handed out by an accessor. Any "
+                            + "caller can then hold your lock for as long as it likes, and "
+                            + "neither side can see the other's locking in review"),
+
+            new RecordingSubject("recorded_lock_keptPrivate", JDK,
+                    "java.lang.Object",
+                    DetectorType.PUBLIC_LOCK_EXPOSURE, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same two calls with the published object being a value the class "
+                            + "returns rather than the monitor it holds. Publishing something "
+                            + "is not the defect; publishing the thing you lock on is")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()

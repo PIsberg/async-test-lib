@@ -546,7 +546,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 125: exposure zero, nothing said in
-either direction. That is now measured for thirty-nine of them, in its own lane, and the separation
+either direction. That is now measured for forty-nine of them, in its own lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -1003,9 +1003,32 @@ that had to fire. That asymmetry is the argument for pairs restated: the firing 
 a detector's own unit tests already cover, and the silent direction is where the false positives
 live.
 
+**The ninth wave: ten pairs, and the first wave where nothing broke**
+
+`COMPLETABLE_FUTURE_EXCEPTIONS`, `COMPLETABLE_FUTURE_COMPLETION_LEAKS`, `UNBOUNDED_QUEUE`,
+`COPY_ON_WRITE_COLLECTIONS`, `PARALLEL_STREAMS`, `THREAD_LOCAL_LEAKS`, `DOUBLE_CHECKED_LOCKING`,
+`SYNCHRONIZED_NON_FINAL`, `FINAL_FIELD_MUTATION` and `PUBLIC_LOCK_EXPOSURE` take the lane to
+**49 of 146**, in 101 rows. All twenty behaved on the first run, which is worth stating only
+because the previous two waves did not: the triage's job was to predict which models would
+separate structurally, and on this batch it was right ten times out of ten.
+
+Three of them are worth a sentence each for the shape they add:
+
+- **`COPY_ON_WRITE_COLLECTIONS` is the first pair where both halves are the same class under
+  different workloads.** The subject is correct by construction - a `CopyOnWriteArrayList` is
+  thread-safe whatever you do to it - so the only thing that can separate fire from silence is
+  the read/write mix, write-heavy against read-heavy. It is the model for every advisory
+  detector whose finding is "right answer, wrong data structure".
+- **`DOUBLE_CHECKED_LOCKING` separates on a single boolean** among four declared flags: both
+  checks, inside synchronized, and the field volatile or not. That is the whole difference
+  between the broken singleton and the version that has been correct since Java 5.
+- **`FINAL_FIELD_MUTATION`'s silent row records reads and nothing else.** Every recorded mutation
+  fires unconditionally, so the correct twin is a field that is only read - which still hands the
+  detector traffic and still makes it decide, rather than being the empty row #410 removed.
+
 ### How far this lane can go, and where it stops
 
-"Thirty-nine of 146" invites the reading that 107 rows are waiting to be written. They are not,
+"Forty-nine of 146" invites the reading that 97 rows are waiting to be written. They are not,
 and the ceiling is worth stating so nobody spends a week discovering it one detector at a time.
 
 A recording row needs a third-party subject the detector can actually accept. Classifying every
@@ -1090,11 +1113,11 @@ expectations are structural:
 | `VIRTUAL_THREAD_CPU_BOUND` | a measured segment against a 50 ms threshold |
 | `VIRTUAL_THREAD_CARRIER_EXHAUSTION` | concurrently blocked threads against `availableProcessors`, so it fires on small runners |
 
-**Where that leaves it.** 86 RECORDING-fed detectors still have no row. That figure is the one
+**Where that leaves it.** 76 RECORDING-fed detectors still have no row. That figure is the one
 the feed table yields directly - 146 detectors, 18 agent-fed, 3 zero-config, leaving 125
-recording-fed, of which 39 are paired here - and it replaces a "47" that earlier revisions of
+recording-fed, of which 49 are paired here - and it replaces a "47" that earlier revisions of
 this paragraph decremented wave by wave without anyone being able to re-derive it. Eighteen of
-the 86 are refused with the reason on record: five for want of any documented contract, and the
+the 76 are refused with the reason on record: five for want of any documented contract, and the
 thirteen the triage rejected as having no recordable correct twin or no structural outcome. The
 rest take JDK primitives - locks,
 latches, `wait`/`notify`, scopes, threads. A corpus of third-party subjects has nothing to offer

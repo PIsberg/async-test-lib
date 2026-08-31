@@ -37,6 +37,7 @@ import java.nio.charset.CharsetEncoder;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.WeakHashMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.ExecutorService;
@@ -419,6 +420,35 @@ class CorpusRecordingLaneTest {
 
     /** One registration per array for the run; registerArray resets nothing, but a consumer declares once. */
     private final AtomicBoolean sharedArrayRegistered = new AtomicBoolean();
+
+    /** Declared with no bound: the queue whose backpressure is heap growth. */
+    private static final java.util.concurrent.BlockingQueue<String> UNBOUNDED_QUEUE =
+            new java.util.concurrent.LinkedBlockingQueue<>();
+
+    /** The twin with a capacity, which blocks the producer instead of growing. */
+    private static final java.util.concurrent.BlockingQueue<String> BOUNDED_QUEUE =
+            new java.util.concurrent.ArrayBlockingQueue<>(16);
+
+    /** A copy-on-write list under the workload it is worst at: every operation a write. */
+    private static final List<String> WRITE_HEAVY_COW = new CopyOnWriteArrayList<>();
+
+    /** The same class under the mix it was built for, many reads to one write. */
+    private static final List<String> READ_HEAVY_COW = new CopyOnWriteArrayList<>();
+
+    /** One seeding write for the run, so the read-heavy row stays read-heavy. */
+    private final AtomicBoolean readHeavyCowSeeded = new AtomicBoolean();
+
+    /** Set and never removed: on a pooled thread the value outlives every task. */
+    private static final ThreadLocal<String> LEAKED_THREAD_LOCAL = new ThreadLocal<>();
+
+    /** The twin with the remove() a correct finally block performs. */
+    private static final ThreadLocal<String> CLEANED_THREAD_LOCAL = new ThreadLocal<>();
+
+    /** The monitor the exposure row both locks on and hands out. */
+    private static final Object EXPOSED_LOCK = new Object();
+
+    /** What the silent exposure row publishes instead: a value, not the monitor. */
+    private static final Object PUBLISHED_VALUE = new Object();
 
     @BeforeAll
     static void installRecorder() throws IOException, SQLException, NoSuchAlgorithmException {
@@ -2059,6 +2089,220 @@ class CorpusRecordingLaneTest {
         detector.registerArray(mine, "confined-array", int.class);
         detector.recordElementWrite(mine, 0, "confined-array");
         mine[0]++;
+    }
+
+    // --- The CompletableFuture lifecycle family -----------------------------------------------
+
+    /** A future that fails with no handler recorded: the exception dies inside it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_completableFuture_failedWithNoHandler() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.completableFutureExceptionDetector();
+        CompletableFuture<String> future = new CompletableFuture<>();
+        detector.recordFutureCreated(future, "unhandled");
+        future.completeExceptionally(new IllegalStateException("corpus-cf-failure"));
+        detector.recordFutureCompleted(future, "unhandled", false);
+    }
+
+    /** The identical failure with a handler recorded first, which is what exceptionally is for. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_completableFuture_failureHandled() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.completableFutureExceptionDetector();
+        CompletableFuture<String> future = new CompletableFuture<>();
+        detector.recordFutureCreated(future, "handled");
+        IllegalStateException failure = new IllegalStateException("corpus-cf-failure");
+        future.completeExceptionally(failure);
+        detector.recordExceptionHandled(future, "handled", failure);
+        detector.recordFutureCompleted(future, "handled", true);
+    }
+
+    /** A future created and never completed: whatever waits on it waits forever. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_completableFuture_neverCompleted() {
+        CorpusRecorder.countBodyExecution();
+        CompletableFuture<String> future = new CompletableFuture<>();
+        AsyncTestContext.completableFutureCompletionLeakDetector()
+                .recordFutureCreated(future, "never-completed");
+    }
+
+    /** The same creation completed before the body returns, so no tracked future is left open. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_completableFuture_completedBeforeTheBodyReturned() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.completableFutureCompletionLeakDetector();
+        CompletableFuture<String> future = new CompletableFuture<>();
+        detector.recordFutureCreated(future, "completed");
+        future.complete("value");
+        detector.recordFutureCompleted(future, "completed");
+    }
+
+    // --- UnboundedQueue -------------------------------------------------------------------------
+
+    /** A queue declared with no bound: backpressure becomes heap growth. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_blockingQueue_createdUnbounded() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.unboundedQueueDetector()
+                .recordQueueCreation(UNBOUNDED_QUEUE, "unbounded-queue", -1);
+    }
+
+    /** The same declaration with a capacity, plus real traffic through it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_blockingQueue_createdWithACapacity() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.unboundedQueueDetector();
+        detector.recordQueueCreation(BOUNDED_QUEUE, "bounded-queue", 16);
+        if (BOUNDED_QUEUE.offer("item")) {
+            detector.recordEnqueue(BOUNDED_QUEUE);
+            BOUNDED_QUEUE.poll();
+            detector.recordDequeue(BOUNDED_QUEUE);
+        }
+    }
+
+    // --- CopyOnWriteCollections -----------------------------------------------------------------
+
+    /** Writes dominating a copy-on-write list: correct, and the wrong data structure. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_copyOnWrite_underAWriteHeavyWorkload() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.copyOnWriteCollectionDetector();
+        detector.registerCollection(WRITE_HEAVY_COW, "write-heavy-cow");
+        detector.recordWrite(WRITE_HEAVY_COW, "write-heavy-cow");
+        WRITE_HEAVY_COW.add("item");
+    }
+
+    /** The same class under the mix it was designed for: many reads to one write. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_copyOnWrite_underAReadHeavyWorkload() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.copyOnWriteCollectionDetector();
+        detector.registerCollection(READ_HEAVY_COW, "read-heavy-cow");
+        if (readHeavyCowSeeded.compareAndSet(false, true)) {
+            detector.recordWrite(READ_HEAVY_COW, "read-heavy-cow");
+            READ_HEAVY_COW.add("item");
+        }
+        for (int i = 0; i < 20; i++) {
+            detector.recordRead(READ_HEAVY_COW, "read-heavy-cow");
+            READ_HEAVY_COW.size();
+        }
+    }
+
+    // --- ParallelStreams ------------------------------------------------------------------------
+
+    /** A stateful operation in a parallel pipeline, which the stream contract forbids. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_parallelStream_withAStatefulOperation() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.parallelStreamDetector();
+        detector.recordParallelStream("stateful-pipeline");
+        detector.recordStatefulOperation("stateful-pipeline", "map");
+    }
+
+    /** The same pipeline with a stateless operation: what the contract asks for. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_parallelStream_withStatelessOperations() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.parallelStreamDetector();
+        detector.recordParallelStream("stateless-pipeline");
+        detector.recordStatelessOperation("stateless-pipeline", "map");
+    }
+
+    // --- ThreadLocalLeaks -----------------------------------------------------------------------
+
+    /** Initialised and never cleaned: on a pooled thread the value outlives every task. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_threadLocal_initialisedAndNeverCleaned() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.threadLocalMonitor().recordThreadLocalInit(LEAKED_THREAD_LOCAL, "leaked-tl");
+        LEAKED_THREAD_LOCAL.set("value");
+    }
+
+    /** The same initialisation with the remove() every correct use has in its finally block. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_threadLocal_cleanedUpAfterUse() {
+        CorpusRecorder.countBodyExecution();
+        var monitor = AsyncTestContext.threadLocalMonitor();
+        monitor.recordThreadLocalInit(CLEANED_THREAD_LOCAL, "cleaned-tl");
+        CLEANED_THREAD_LOCAL.set("value");
+        CLEANED_THREAD_LOCAL.remove();
+        monitor.recordThreadLocalCleanup(CLEANED_THREAD_LOCAL);
+    }
+
+    // --- DoubleCheckedLocking -------------------------------------------------------------------
+
+    /** Both checks, inside synchronized, on a non-volatile field: the broken singleton. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_doubleCheckedLocking_withoutVolatile() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.doubleCheckedLockingDetector();
+        detector.registerDCL("brokenSingleton", false, true, true, true);
+        detector.recordAccess("brokenSingleton", true, false);
+    }
+
+    /** The identical declaration with the field volatile: the fix, correct since Java 5. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_doubleCheckedLocking_withVolatile() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.doubleCheckedLockingDetector();
+        detector.registerDCL("correctSingleton", true, true, true, true);
+        detector.recordAccess("correctSingleton", true, false);
+    }
+
+    // --- SynchronizedNonFinal -------------------------------------------------------------------
+
+    /** A fresh monitor each time, which is what locking on a reassignable field looks like. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_synchronized_onAReassignableLock() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.synchronizedNonFinalDetector()
+                .recordLockObject(new Object(), "reassignableLock", CorpusRecordingLaneTest.class);
+    }
+
+    /** One final lock object for the run: the idiom every guide prints. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_synchronized_onAFinalLock() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.synchronizedNonFinalDetector()
+                .recordLockObject(PRIVATE_LOCK, "finalLock", CorpusRecordingLaneTest.class);
+    }
+
+    // --- FinalFieldMutation ---------------------------------------------------------------------
+
+    /** A final field recorded as written, which voids the freeze the memory model relies on. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_finalField_mutatedReflectively() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.finalFieldMutationDetector()
+                .recordMutation("CorpusConfig.name", Thread.currentThread());
+    }
+
+    /** The same field read by every thread and never written: what final fields are for. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_finalField_onlyRead() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.finalFieldMutationDetector()
+                .recordRead("CorpusConfig.readOnlyName", Thread.currentThread());
+    }
+
+    // --- PublicLockExposure ---------------------------------------------------------------------
+
+    /** The object being synchronized on is the one the API hands out. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_lock_publishedThroughTheApi() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.publicLockExposureDetector();
+        detector.recordSynchronizedOnThis(EXPOSED_LOCK, Thread.currentThread(), "CorpusService");
+        detector.recordObjectPublished(EXPOSED_LOCK, "getService()");
+    }
+
+    /** The same two calls with the published object being a value rather than the monitor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_lock_keptPrivate() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.publicLockExposureDetector();
+        detector.recordSynchronizedOnThis(PRIVATE_LOCK, Thread.currentThread(), "CorpusService");
+        detector.recordObjectPublished(PUBLISHED_VALUE, "getValue()");
     }
 
     private static void toleratingCorruption(Runnable operation) {
