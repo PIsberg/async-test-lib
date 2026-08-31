@@ -546,7 +546,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 125: exposure zero, nothing said in
-either direction. That is now measured for thirty of them, in its own lane, and the separation
+either direction. That is now measured for thirty-nine of them, in its own lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -970,9 +970,42 @@ identifies *which build* of the library produced it, so a stale install changes 
 silently and the only symptom is a row that used to pass. Filed as an issue rather than fixed
 here.
 
+**The eighth wave: nine pairs, and two silent rows that fired for different reasons**
+
+`WAIT_TIMEOUT`, `MISSED_SIGNAL`, `OPTIMISTIC_READ_VALIDATION`, `LOCK_UPGRADE_DEADLOCK`,
+`SCOPED_VALUE`, `STATEFUL_LAMBDA`, `SYSTEM_PROPERTY_MUTATION`, `WEAK_REFERENCE_RACE` and
+`VOLATILE_ARRAY` take the lane to thirty-nine. Seven behaved on the first run. The two that did
+not are the interesting part, because they failed the same way - a MUST_STAY_SILENT row fired -
+for opposite reasons.
+
+**The lambda row was wrong, and the detector was right.** Its silent twin was
+`ThreadLocal.withInitial(() -> () -> { })`, which reads as a lambda per thread and is not one: a
+non-capturing lambda is a JVM-wide singleton, so every worker received the same object and
+`StatefulLambdaDetector`, which keys on identity, correctly reported it as shared. Measured on
+JDK 26 before changing anything: the non-capturing form yields **1** distinct instance across
+four threads, the capturing form yields **4**. The row now captures per-thread state, and the
+comment records the measurement so the next person writing a confinement twin does not repeat it.
+
+**The array row was right, and the detector was wrong.** `VolatileArrayDetector.findArrayInfo`
+resolved an access by `info.array == array || info.name.equals(arrayName)`, so distinct arrays
+sharing a label collapsed onto whichever registered first: the second worker's registration
+found the first worker's entry and returned early, and every worker's writes then landed in that
+one entry. Six private arrays read as one array written by six threads. That is a false positive
+on the standard per-thread-buffer pattern - a `ThreadLocal<int[]>` registered under one stable
+name in every worker is confined, correct code - and it is the same shape as the `WeakHashMap`
+defect in wave 3: the detector reported the fix as loudly as the bug. Registration now asks for
+identity alone, and access resolution prefers identity and keeps the label only as a fallback for
+an array that was never registered. `VolatileArrayDetectorTest` pins both directions, and the
+failing direction was confirmed by reverting the one line and watching it go red.
+
+Two waves, two detector defects, both found by a row that had to stay silent rather than by a row
+that had to fire. That asymmetry is the argument for pairs restated: the firing direction is what
+a detector's own unit tests already cover, and the silent direction is where the false positives
+live.
+
 ### How far this lane can go, and where it stops
 
-"Thirty of 146" invites the reading that 116 rows are waiting to be written. They are not,
+"Thirty-nine of 146" invites the reading that 107 rows are waiting to be written. They are not,
 and the ceiling is worth stating so nobody spends a week discovering it one detector at a time.
 
 A recording row needs a third-party subject the detector can actually accept. Classifying every
@@ -1057,11 +1090,11 @@ expectations are structural:
 | `VIRTUAL_THREAD_CPU_BOUND` | a measured segment against a 50 ms threshold |
 | `VIRTUAL_THREAD_CARRIER_EXHAUSTION` | concurrently blocked threads against `availableProcessors`, so it fires on small runners |
 
-**Where that leaves it.** 95 RECORDING-fed detectors still have no row. That figure is the one
+**Where that leaves it.** 86 RECORDING-fed detectors still have no row. That figure is the one
 the feed table yields directly - 146 detectors, 18 agent-fed, 3 zero-config, leaving 125
-recording-fed, of which 30 are paired here - and it replaces a "47" that earlier revisions of
+recording-fed, of which 39 are paired here - and it replaces a "47" that earlier revisions of
 this paragraph decremented wave by wave without anyone being able to re-derive it. Eighteen of
-the 95 are refused with the reason on record: five for want of any documented contract, and the
+the 86 are refused with the reason on record: five for want of any documented contract, and the
 thirteen the triage rejected as having no recordable correct twin or no structural outcome. The
 rest take JDK primitives - locks,
 latches, `wait`/`notify`, scopes, threads. A corpus of third-party subjects has nothing to offer

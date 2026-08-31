@@ -362,6 +362,64 @@ class CorpusRecordingLaneTest {
     /** The monitor whose wait is declared to sit inside its condition loop. */
     private static final Object LOOPED_MONITOR = new Object();
 
+    /** The monitor whose wait is recorded as untimed. */
+    private static final Object UNTIMED_MONITOR = new Object();
+
+    /** The twin whose wait carries a bound and is followed by a notify. */
+    private static final Object TIMED_MONITOR = new Object();
+
+    /** One StampedLock per optimistic-read row; the pair differs in the validation result. */
+    private static final java.util.concurrent.locks.StampedLock UNVALIDATED_STAMPED_LOCK =
+            new java.util.concurrent.locks.StampedLock();
+
+    private static final java.util.concurrent.locks.StampedLock VALIDATED_STAMPED_LOCK =
+            new java.util.concurrent.locks.StampedLock();
+
+    /** The lock whose read is upgraded without releasing: the deadlock the class cannot resolve. */
+    private static final java.util.concurrent.locks.ReentrantReadWriteLock UPGRADED_LOCK =
+            new java.util.concurrent.locks.ReentrantReadWriteLock();
+
+    /** The twin that releases the read before attempting the write. */
+    private static final java.util.concurrent.locks.ReentrantReadWriteLock RELEASED_THEN_WRITTEN_LOCK =
+            new java.util.concurrent.locks.ReentrantReadWriteLock();
+
+    /** One lambda instance for the run, executed by every thread: the shared-state row. */
+    private static final Runnable SHARED_LAMBDA = () -> { };
+
+    /**
+     * A lambda per thread, so no instance is ever executed by a second one.
+     *
+     * <p>It has to capture something. A non-capturing lambda is a JVM-wide singleton - the
+     * metafactory hands out one instance for the whole process - so
+     * {@code withInitial(() -> () -> { })} gives every thread the same object, and the detector
+     * keys on identity, so it reported this row as shared and was right to. Measured on JDK 26:
+     * the non-capturing form yields 1 distinct instance across 4 threads, the capturing form 4.
+     */
+    private static final ThreadLocal<Runnable> CONFINED_LAMBDA = ThreadLocal.withInitial(() -> {
+        int[] captured = new int[1];
+        return () -> captured[0]++;
+    });
+
+    /** Held strongly for the run, so the weak reference below can never come back empty. */
+    private static final Object STRONG_REFERENT = new Object();
+
+    /** The reference whose read is recorded as having found its referent. */
+    private static final java.lang.ref.WeakReference<Object> LIVE_REFERENCE =
+            new java.lang.ref.WeakReference<>(STRONG_REFERENT);
+
+    /** The reference the loud row records as already cleared. */
+    private static final java.lang.ref.WeakReference<Object> CLEARED_REFERENCE =
+            new java.lang.ref.WeakReference<>(new Object());
+
+    /** One array whose elements every thread writes: volatile publishes the reference only. */
+    private static final int[] SHARED_ARRAY = new int[8];
+
+    /** An array per thread, so no element is ever reached by a second one. */
+    private static final ThreadLocal<int[]> CONFINED_ARRAY = ThreadLocal.withInitial(() -> new int[8]);
+
+    /** One registration per array for the run; registerArray resets nothing, but a consumer declares once. */
+    private final AtomicBoolean sharedArrayRegistered = new AtomicBoolean();
+
     @BeforeAll
     static void installRecorder() throws IOException, SQLException, NoSuchAlgorithmException {
         CorpusRecorder.install();
@@ -1786,6 +1844,221 @@ class CorpusRecordingLaneTest {
         Map<String, String> onEntry = Map.of("requestId", "corpus-" + self.threadId());
         detector.recordTaskStart(self, onEntry);
         detector.recordTaskEnd(self, onEntry);
+    }
+
+    // --- The wait/notify protocol family ------------------------------------------------------
+
+    /** An untimed wait: the thread parks until somebody else chooses to release it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_wait_withNoTimeout() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.waitTimeoutDetector()
+                .recordInfiniteWait(UNTIMED_MONITOR, "untimed", Thread.currentThread().getName());
+    }
+
+    /** The same wait with a bound and a notify behind it: the version that recovers on its own. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_wait_withATimeoutAndANotify() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.waitTimeoutDetector();
+        detector.recordTimedWait(TIMED_MONITOR, "timed", Thread.currentThread().getName(), 50L);
+        detector.recordNotifyAll(TIMED_MONITOR, "timed");
+    }
+
+    /**
+     * A notify on a condition nobody recorded waiting for.
+     *
+     * <p>A signal sent before its waiter arrives is not queued anywhere; it is lost, and the
+     * waiter that arrives next blocks for a notification that has already happened.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_notify_withNobodyWaiting() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.missedSignalDetector().recordNotify("orphan-condition");
+    }
+
+    /** The same notify with a recorded wait before it and a wakeup after it: the whole handshake. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_notify_afterAWaiterArrived() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.missedSignalDetector();
+        detector.recordWait("paired-condition");
+        detector.recordNotify("paired-condition");
+        detector.recordWakeup("paired-condition");
+    }
+
+    /**
+     * An optimistic read whose validation comes back false.
+     *
+     * <p>{@code StampedLock}'s optimistic mode is documented as valid only once {@code validate}
+     * confirms the stamp, so a read used after a failed validation saw a value mid-write.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_optimisticRead_usedWithoutValidating() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.optimisticReadValidationDetector();
+        long stamp = UNVALIDATED_STAMPED_LOCK.tryOptimisticRead();
+        detector.recordOptimisticReadStarted(UNVALIDATED_STAMPED_LOCK, stamp, self);
+        detector.recordDataAccessed(UNVALIDATED_STAMPED_LOCK, stamp, self, "balance");
+        detector.recordValidateCalled(UNVALIDATED_STAMPED_LOCK, stamp, false, self);
+    }
+
+    /** The identical three calls with a validation that succeeds: the documented protocol. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_optimisticRead_validatedBeforeUse() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.optimisticReadValidationDetector();
+        long stamp = VALIDATED_STAMPED_LOCK.tryOptimisticRead();
+        detector.recordOptimisticReadStarted(VALIDATED_STAMPED_LOCK, stamp, self);
+        detector.recordDataAccessed(VALIDATED_STAMPED_LOCK, stamp, self, "balance");
+        detector.recordValidateCalled(VALIDATED_STAMPED_LOCK, stamp, true, self);
+    }
+
+    // --- LockUpgradeDeadlock -------------------------------------------------------------------
+
+    /**
+     * A write lock attempted while this thread still holds the read lock.
+     *
+     * <p>{@code ReentrantReadWriteLock} does not support upgrading: the write acquisition waits
+     * for the readers to leave, and one of those readers is the caller, so nothing can wake it.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_readLock_upgradedWithoutReleasing() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.lockUpgradeDeadlockDetector();
+        detector.recordReadLockAcquired(UPGRADED_LOCK, "upgraded", self);
+        detector.recordWriteLockAcquisitionAttempt(UPGRADED_LOCK, "upgraded", self);
+    }
+
+    /** The same two acquisitions with the read released between them: the documented way up. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_readLock_releasedBeforeWriting() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.lockUpgradeDeadlockDetector();
+        detector.recordReadLockAcquired(RELEASED_THEN_WRITTEN_LOCK, "released", self);
+        detector.recordReadLockReleased(RELEASED_THEN_WRITTEN_LOCK, self);
+        detector.recordWriteLockAcquisitionAttempt(RELEASED_THEN_WRITTEN_LOCK, "released", self);
+    }
+
+    // --- ScopedValue ---------------------------------------------------------------------------
+
+    /** A read on a thread that never entered a binding: outside the scope the value has none. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_scopedValue_readOutsideItsBinding() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.scopedValueMisuseDetector()
+                .recordGetCalled("unbound-value", Thread.currentThread());
+    }
+
+    /** The same read between a recorded entry and exit, which is the only place it is defined. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_scopedValue_readInsideItsBinding() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.scopedValueMisuseDetector();
+        detector.recordBindingEntered("bound-value", self);
+        detector.recordGetCalled("bound-value", self);
+        detector.recordBindingExited("bound-value", self);
+    }
+
+    // --- StatefulLambda ------------------------------------------------------------------------
+
+    /** One lambda instance executed by six threads, mutating the state it captured. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_lambda_sharedAndMutatingItsCapture() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.statefulLambdaDetector();
+        detector.recordExecution(SHARED_LAMBDA, "shared-lambda", self);
+        detector.recordCapturedMutation(SHARED_LAMBDA, "counter", self);
+    }
+
+    /** A lambda per thread: stateful is only a hazard once the instance escapes its thread. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_lambda_confinedToItsOwnThread() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        Runnable mine = CONFINED_LAMBDA.get();
+        var detector = AsyncTestContext.statefulLambdaDetector();
+        detector.recordExecution(mine, "confined-lambda", self);
+        detector.recordCapturedMutation(mine, "counter", self);
+    }
+
+    // --- SystemPropertyMutation ----------------------------------------------------------------
+
+    /**
+     * Six threads write one process-global key.
+     *
+     * <p>The properties table is synchronized, so nothing corrupts - and that is the point. The
+     * race is over which value the rest of the JVM reads, and it reaches every library in it.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_systemProperty_mutatedByEveryThread() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.systemPropertyMutationDetector()
+                .recordSet("corpus.shared.key", "v", Thread.currentThread());
+    }
+
+    /** The same writes to a key private to each thread: a single-threaded mutation, not a race. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_systemProperty_mutatedOnAPrivateKey() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        AsyncTestContext.systemPropertyMutationDetector()
+                .recordSet("corpus.own." + self.threadId(), "v", self);
+    }
+
+    // --- WeakReferenceRace ---------------------------------------------------------------------
+
+    /** A get recorded as having returned null where the caller expected its referent. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_weakReference_dereferencedAfterClearing() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.weakReferenceRaceDetector()
+                .recordNullDereference(CLEARED_REFERENCE, "cleared-ref", Thread.currentThread());
+    }
+
+    /** The same read of a reference whose referent is held strongly, so it cannot come back empty. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_weakReference_readWithAStrongReferent() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.weakReferenceRaceDetector()
+                .recordGet(LIVE_REFERENCE, "live-ref", STRONG_REFERENT, Thread.currentThread());
+    }
+
+    // --- VolatileArray -------------------------------------------------------------------------
+
+    /**
+     * One array whose elements every thread writes.
+     *
+     * <p>Declaring the field volatile publishes the array reference and says nothing at all about
+     * the elements, which is the most-repeated misreading of the keyword and the reason this
+     * shape survives review.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_volatileArray_elementsWrittenByEveryThread() {
+        CorpusRecorder.countBodyExecution();
+        if (sharedArrayRegistered.compareAndSet(false, true)) {
+            AsyncTestContext.volatileArrayDetector()
+                    .registerArray(SHARED_ARRAY, "shared-array", int.class);
+        }
+        AsyncTestContext.volatileArrayDetector().recordElementWrite(SHARED_ARRAY, 0, "shared-array");
+        SHARED_ARRAY[0]++;
+    }
+
+    /** An array per thread, so no element is ever reached by a second one. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_volatileArray_confinedToOneThread() {
+        CorpusRecorder.countBodyExecution();
+        int[] mine = CONFINED_ARRAY.get();
+        var detector = AsyncTestContext.volatileArrayDetector();
+        detector.registerArray(mine, "confined-array", int.class);
+        detector.recordElementWrite(mine, 0, "confined-array");
+        mine[0]++;
     }
 
     private static void toleratingCorruption(Runnable operation) {

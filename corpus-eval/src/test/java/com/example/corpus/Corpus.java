@@ -1305,7 +1305,186 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "the same task ending with exactly the context it began with, which is what "
                             + "a correct filter guarantees in its finally block. Nothing crosses "
-                            + "the task boundary, so there is nothing to inherit")
+                            + "the task boundary, so there is nothing to inherit"),
+
+            // --- The wait/notify protocol family. Three detectors read the same monitor idiom
+            //     from three angles - how long you wait, whether anyone was waiting, and
+            //     whether a stamp was validated - and each pair changes one call.
+
+            new RecordingSubject("recorded_wait_withNoTimeout", JDK,
+                    "java.lang.Object",
+                    DetectorType.WAIT_TIMEOUT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "an untimed wait is recorded, which parks the thread until some other "
+                            + "thread chooses to notify it. If that notify is lost or never "
+                            + "sent the thread waits forever, and the difference between a "
+                            + "wedged process and a slow one is whether a timeout was passed"),
+
+            new RecordingSubject("recorded_wait_withATimeoutAndANotify", JDK,
+                    "java.lang.Object",
+                    DetectorType.WAIT_TIMEOUT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same wait declared with a bound, followed by a recorded notifyAll. A "
+                            + "bounded wait recovers on its own, so reporting it would report "
+                            + "the defensive version of the same code"),
+
+            new RecordingSubject("recorded_notify_withNobodyWaiting", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a notify is recorded on a condition no thread ever recorded waiting for. "
+                            + "A signal delivered before the waiter arrives is not queued - it "
+                            + "is simply lost - and the waiter that arrives next blocks for a "
+                            + "notification that has already been and gone"),
+
+            new RecordingSubject("recorded_notify_afterAWaiterArrived", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same notify on a condition with a recorded wait before it and a "
+                            + "recorded wakeup after it, which is the whole handshake. The pair "
+                            + "separates on whether a waiter existed, not on how the threads "
+                            + "were scheduled"),
+
+            new RecordingSubject("recorded_optimisticRead_usedWithoutValidating", JDK,
+                    "java.util.concurrent.locks.StampedLock",
+                    DetectorType.OPTIMISTIC_READ_VALIDATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "data is read under an optimistic stamp and the validation that follows "
+                            + "returns false, so the read saw a value a writer was changing. "
+                            + "StampedLock's optimistic mode is documented as valid only when "
+                            + "validate() confirms it, which is exactly what did not happen"),
+
+            new RecordingSubject("recorded_optimisticRead_validatedBeforeUse", JDK,
+                    "java.util.concurrent.locks.StampedLock",
+                    DetectorType.OPTIMISTIC_READ_VALIDATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the identical sequence with a validation that succeeds, which is the "
+                            + "protocol the class documents. The pair hands the detector the "
+                            + "same three calls and differs in the boolean the third carries"),
+
+            // --- LockUpgradeDeadlock: a read lock is not upgradable, and the pair differs by
+            //     whether the read is released before the write is attempted.
+
+            new RecordingSubject("recorded_readLock_upgradedWithoutReleasing", JDK,
+                    "java.util.concurrent.locks.ReentrantReadWriteLock",
+                    DetectorType.LOCK_UPGRADE_DEADLOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a thread holding the read lock attempts the write lock without releasing "
+                            + "it. ReentrantReadWriteLock does not support upgrading, and the "
+                            + "write acquisition waits for readers that include the caller "
+                            + "itself, which is a deadlock the caller cannot be woken from"),
+
+            new RecordingSubject("recorded_readLock_releasedBeforeWriting", JDK,
+                    "java.util.concurrent.locks.ReentrantReadWriteLock",
+                    DetectorType.LOCK_UPGRADE_DEADLOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same two acquisitions with the read release between them, which is "
+                            + "the documented way to move from reading to writing. A finding "
+                            + "here would report every correct read-then-write there is"),
+
+            // --- ScopedValue: a get outside any binding, against one inside. The detector
+            //     tracks the binding as a region the same way the blocking-call family does.
+
+            new RecordingSubject("recorded_scopedValue_readOutsideItsBinding", JDK,
+                    "java.lang.ScopedValue",
+                    DetectorType.SCOPED_VALUE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a value is read on a thread that never entered a binding for it. A scoped "
+                            + "value is only defined inside the dynamic scope that bound it, so "
+                            + "the read outside one is either an exception or a stale value "
+                            + "from somewhere the caller did not mean"),
+
+            new RecordingSubject("recorded_scopedValue_readInsideItsBinding", JDK,
+                    "java.lang.ScopedValue",
+                    DetectorType.SCOPED_VALUE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same read between a recorded binding entry and its exit, which is the "
+                            + "only place the value is defined. The pair separates on the "
+                            + "region the read sits in"),
+
+            // --- StatefulLambda: the lambda is the subject, and sharing one that mutates its
+            //     captured state is the defect. Confinement is the fix, as with the Mac pair.
+
+            new RecordingSubject("recorded_lambda_sharedAndMutatingItsCapture", JDK,
+                    "java.lang.Runnable",
+                    DetectorType.STATEFUL_LAMBDA, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one lambda instance is executed by six threads and records a mutation of "
+                            + "the state it captured. A lambda that keeps state is an object "
+                            + "with a field, and sharing it across threads races on that field "
+                            + "exactly as sharing any other mutable object would"),
+
+            new RecordingSubject("recorded_lambda_confinedToItsOwnThread", JDK,
+                    "java.lang.Runnable",
+                    DetectorType.STATEFUL_LAMBDA, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a lambda per thread, executed and mutated the same number of times. No "
+                            + "instance is ever executed by a second thread, so a stateful "
+                            + "lambda that never escapes is not a hazard and must not read as "
+                            + "one"),
+
+            // --- SystemPropertyMutation: system properties are process-global, so the pair
+            //     separates on whether two threads write the same key.
+
+            new RecordingSubject("recorded_systemProperty_mutatedByEveryThread", JDK,
+                    "java.lang.System",
+                    DetectorType.SYSTEM_PROPERTY_MUTATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "six threads write one process-global key. The properties table is "
+                            + "synchronized so nothing corrupts, and that is the point: the "
+                            + "race is over which value the rest of the process reads, and it "
+                            + "reaches every library in the JVM rather than just the caller"),
+
+            new RecordingSubject("recorded_systemProperty_mutatedOnAPrivateKey", JDK,
+                    "java.lang.System",
+                    DetectorType.SYSTEM_PROPERTY_MUTATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same number of writes to a key private to each thread. Nothing "
+                            + "contends, so what remains is a single-threaded mutation, which "
+                            + "this detector deliberately does not report"),
+
+            // --- WeakReferenceRace: the referent can be collected between a null check and a
+            //     use, and the pair differs by whether anything keeps it reachable.
+
+            new RecordingSubject("recorded_weakReference_dereferencedAfterClearing", JDK,
+                    "java.lang.ref.WeakReference",
+                    DetectorType.WEAK_REFERENCE_RACE, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a get on a weak reference is recorded as having returned null where the "
+                            + "caller expected a referent. Nothing about the reference is "
+                            + "wrong; what is wrong is code that checks a weak reference and "
+                            + "then uses it as if the collector had agreed to wait"),
+
+            new RecordingSubject("recorded_weakReference_readWithAStrongReferent", JDK,
+                    "java.lang.ref.WeakReference",
+                    DetectorType.WEAK_REFERENCE_RACE, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same recorded read of a reference whose referent is held strongly for "
+                            + "the run, so it cannot be cleared and the read cannot come back "
+                            + "empty. That is the pattern that makes weak references safe to "
+                            + "use, and reporting it would report the fix"),
+
+            // --- VolatileArray: volatile on an array reference publishes the reference and
+            //     nothing about the elements, which is the most-repeated misreading of the
+            //     keyword. The pair separates on whether the array is shared at all.
+
+            new RecordingSubject("recorded_volatileArray_elementsWrittenByEveryThread", JDK,
+                    "java.lang.Object",
+                    DetectorType.VOLATILE_ARRAY, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one array has its elements written by six threads. Declaring the field "
+                            + "volatile publishes the array reference and gives the element "
+                            + "writes no ordering or visibility at all, which is why this looks "
+                            + "safe in review and is not"),
+
+            new RecordingSubject("recorded_volatileArray_confinedToOneThread", JDK,
+                    "java.lang.Object",
+                    DetectorType.VOLATILE_ARRAY, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "an array per thread, written the same number of times. No element is ever "
+                            + "reached by a second thread, so there is nothing for the missing "
+                            + "ordering to be missing between")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()
