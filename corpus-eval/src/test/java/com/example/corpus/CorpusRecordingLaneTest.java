@@ -33,7 +33,11 @@ import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
 import java.nio.CharBuffer;
 import java.nio.charset.CharsetEncoder;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.WeakHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Future;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -290,6 +294,25 @@ class CorpusRecordingLaneTest {
     /** One declaration for the run: the shape a consumer writes, though the record call is idempotent. */
     private final AtomicBoolean leakedPoolDeclared = new AtomicBoolean();
 
+    /** Documented thread-safe; the fragility under test is its single task-execution thread. */
+    private static Timer failingTimer;
+
+    /** The clean twin, cancelled in reportAndGate. */
+    private static Timer cleanTimer;
+
+    /** Each timer row schedules exactly one real task for the run. */
+    private final AtomicBoolean failingTimerArmed = new AtomicBoolean();
+
+    /** The clean row's own one-shot latch. */
+    private final AtomicBoolean cleanTimerArmed = new AtomicBoolean();
+
+    /** The pool the Future rows submit to; never declared to ExecutorShutdown, closed unrecorded. */
+    private static ExecutorService futuresPool;
+
+    /** Strong references, so no ignored Future's identity key is reused within the run. */
+    private static final List<Future<?>> IGNORED_FUTURES =
+            Collections.synchronizedList(new ArrayList<>());
+
     @BeforeAll
     static void installRecorder() throws IOException, SQLException, NoSuchAlgorithmException {
         CorpusRecorder.install();
@@ -318,6 +341,9 @@ class CorpusRecordingLaneTest {
         positionalChannel = FileChannel.open(channelFile, StandardOpenOption.READ);
 
         leakedPool = Executors.newFixedThreadPool(1);
+        futuresPool = Executors.newFixedThreadPool(2);
+        failingTimer = new Timer("corpus-failing-timer", true);
+        cleanTimer = new Timer("corpus-clean-timer", true);
     }
 
     /** Kept so the hoisted connection's own pool can be closed with it. */
@@ -348,6 +374,9 @@ class CorpusRecordingLaneTest {
         // shutdown was RECORDED during the run, and the measurement is over by the time this
         // runs. Closing it here keeps the fork's thread count honest without touching the row.
         leakedPool.shutdownNow();
+        futuresPool.shutdownNow();
+        cleanTimer.cancel();
+        failingTimer.cancel();
         Files.deleteIfExists(channelFile);
         CorpusLane lane = CorpusLane.current();
         Path report = CorpusReport.writeRecording(
@@ -1230,6 +1259,107 @@ class CorpusRecordingLaneTest {
         AsyncTestContext.executorShutdownMonitor().recordShutdownCalled(mine, false);
         mine.awaitTermination(5, TimeUnit.SECONDS);
         AsyncTestContext.executorShutdownMonitor().recordAwaitTerminationCalled(mine);
+    }
+
+    // --- Timer -------------------------------------------------------------------------------
+
+    /**
+     * A real TimerTask records its uncaught exception, then throws it.
+     *
+     * <p>The exception really terminates the timer's single task-execution thread, which is the
+     * failure Timer's own javadoc calls terminating unexpectedly: every remaining task is
+     * cancelled and nothing is reported. The detector's thread-death claim follows from the one
+     * recorded exception, and the arming body awaits the task before returning, so the record
+     * precedes analysis by construction rather than by schedule. The detector reference is
+     * captured on the worker thread because the timer's own thread has no AsyncTestContext.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_timer_taskExceptionKillsThread() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        if (failingTimerArmed.compareAndSet(false, true)) {
+            var monitor = AsyncTestContext.timerMonitor();
+            monitor.registerTimer(failingTimer, "failing-timer");
+            monitor.recordTaskSchedule(failingTimer, "failing-timer", "boom");
+            CountDownLatch recorded = new CountDownLatch(1);
+            failingTimer.schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    monitor.recordTaskException(failingTimer, "failing-timer", "boom",
+                            new IllegalStateException("corpus-timer-boom"));
+                    recorded.countDown();
+                    throw new IllegalStateException("corpus-timer-boom");
+                }
+            }, 0);
+            assertTrue(recorded.await(10, TimeUnit.SECONDS),
+                    "the throwing task must record its exception before the arming body returns, "
+                            + "or the MUST_FIRE claim would depend on the timer thread's schedule");
+        }
+    }
+
+    /**
+     * The same schedule-and-complete lifecycle on a second timer, with nothing thrown.
+     *
+     * <p>recordTaskRun is deliberately not called: the run-to-complete distance is judged
+     * against a 100 ms wall-clock threshold, and a MUST_STAY_SILENT row must not be breakable
+     * by a GC pause between two adjacent calls. Thread death is the only claim the detector can
+     * make from what is recorded here, so the silence is structural.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_timer_tasksCompleteWithoutException() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        if (cleanTimerArmed.compareAndSet(false, true)) {
+            var monitor = AsyncTestContext.timerMonitor();
+            monitor.registerTimer(cleanTimer, "clean-timer");
+            monitor.recordTaskSchedule(cleanTimer, "clean-timer", "tick");
+            CountDownLatch completed = new CountDownLatch(1);
+            cleanTimer.schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    monitor.recordTaskComplete(cleanTimer, "clean-timer", "tick");
+                    completed.countDown();
+                }
+            }, 0);
+            assertTrue(completed.await(10, TimeUnit.SECONDS),
+                    "the clean task must have completed and recorded before the arming body "
+                            + "returns, or the silent row would be silent for lack of input");
+        }
+    }
+
+    // --- FutureIgnored -----------------------------------------------------------------------
+
+    /**
+     * Every body submits a real task and records the Future; no body ever inspects one.
+     *
+     * <p>The detector keeps one boolean per submitted Future, and the finding follows from the
+     * call that never happens, so no interleaving can remove it. The futures are held strongly
+     * for the run: the detector keys instances by identity hash, and a collected Future could
+     * hand its key to a later one.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_future_submittedAndNeverInspected() {
+        CorpusRecorder.countBodyExecution();
+        Future<?> ignored = futuresPool.submit(() -> { });
+        AsyncTestContext.futureIgnoredDetector()
+                .recordSubmit(ignored, "ignored-task", Thread.currentThread());
+        IGNORED_FUTURES.add(ignored);
+    }
+
+    /**
+     * The same submissions, each followed by a recorded inspection and a real get().
+     *
+     * <p>Retrieval is the fix the detector's own message prescribes. Each Future ends inspected
+     * before the body returns, so every record the detector holds at analysis says the caller
+     * looked, and a finding here would report every correctly awaited task in existence.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_future_inspectedAfterSubmit() throws Exception {
+        CorpusRecorder.countBodyExecution();
+        Future<?> awaited = futuresPool.submit(() -> { });
+        AsyncTestContext.futureIgnoredDetector()
+                .recordSubmit(awaited, "inspected-task", Thread.currentThread());
+        AsyncTestContext.futureIgnoredDetector()
+                .recordInspect(awaited, Thread.currentThread());
+        awaited.get();
     }
 
     private static void toleratingCorruption(Runnable operation) {

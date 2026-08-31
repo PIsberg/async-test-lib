@@ -546,7 +546,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 125: exposure zero, nothing said in
-either direction. That is now measured for seventeen of them, in its own lane, and the separation
+either direction. That is now measured for nineteen of them, in its own lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -873,6 +873,33 @@ directions are pinned per-detector by `SharedTypeAccuracyEvalTest` anyway. A cor
 premise is documented contracts adds nothing by restating that eval under an undocumented label,
 so those two stay refused until the JDK documents the contract.
 
+**The fifth wave: two lifecycle pairs, three refusals (2026-08-31)**
+
+`TIMER` and `FUTURE_IGNORED` take the lane to nineteen. Both are protocol models on classes the
+JDK documents as thread-safe, so both pairs live in the thread-safe-class, wrong-caller family:
+a real `TimerTask` that records its uncaught exception and then throws it - really terminating
+the timer's single task-execution thread - must fire, and the same schedule-and-complete
+lifecycle with nothing thrown must stay silent; a submitted `Future` nobody ever inspects must
+fire, and the same submission followed by a recorded inspection and a real `get()` must stay
+silent. The timer's silent row deliberately records schedule and complete but not
+`recordTaskRun`: the run-to-complete path is judged against a 100 ms wall-clock threshold, and a
+MUST_STAY_SILENT row must not be breakable by a GC pause - the same species of choice as the
+iterator pair's `hasNext()`.
+
+Three refusals, each for a different reason, all worth keeping:
+
+- **`SHARED_XML_PARSER`.** The famous "an implementation is NOT guaranteed to be thread safe"
+  line is nowhere in the JDK 26 sources: neither `DocumentBuilderFactory` nor `DocumentBuilder`
+  states anything about thread safety any more. Same rule as the checksum and deflater refusals
+  above - no statement, no row.
+- **`SHARED_TIMEZONE`.** `TimeZone` has never stated a thread-safety contract. Same rule.
+- **`SHARED_KDF`.** The opposite problem: `javax.crypto.KDF` has a model contract - a dedicated
+  "Concurrent Access" section saying the methods "are not thread-safe" and callers "should
+  synchronize amongst themselves" - and the class exists only since JDK 24, while this module
+  keeps a JDK 21 leg because the library targets 21. A row that cannot execute on every leg
+  cannot state a MUST outcome the gates hold on every leg, so this pair waits for the corpus to
+  drop JDK 21, not for the JDK to document anything.
+
 ### How far this lane can go, and where it stops
 
 "Ten of 146" invites the reading that 136 rows are waiting to be written. They are not, and the
@@ -933,7 +960,7 @@ each rejection is worth more than the row would have been:
   by the documented contract, which is not what this lane measures.
 
 **Where that leaves it.** Of the 47 RECORDING-fed detectors that had no denominator when this
-section was first written, 42 remain after the fourth wave (two of them refused above rather than waiting), and they take JDK primitives - locks,
+section was first written, 40 remain after the fifth wave (five of them refused above with the reason on record), and they take JDK primitives - locks,
 latches, `wait`/`notify`, scopes, threads. A corpus of third-party subjects has nothing to offer
 them; the third wave's route, a JDK subject whose own javadoc states a contract, is open to some
 of them but is not a backlog either, because most of those primitives' javadocs state a usage

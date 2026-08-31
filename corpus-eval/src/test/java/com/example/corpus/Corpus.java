@@ -1022,7 +1022,57 @@ final class Corpus {
                             + "detector's own fix text prescribes, recorded call for call. "
                             + "Every tracked instance ends with both flags set, so the silence "
                             + "is the model clearing a completed lifecycle, not an absence of "
-                            + "input")
+                            + "input"),
+
+            // --- Timer: a lifecycle pair on the class the JDK documents as thread-safe whose
+            //     one fragility is its single task-execution thread. The pair separates on
+            //     recordTaskException alone: the detector's thread-death claim follows from
+            //     that one recorded event and from nothing the scheduler did. The silent row
+            //     deliberately records schedule and complete but not recordTaskRun, because the
+            //     run-to-complete path is judged against a wall-clock threshold (100 ms), and a
+            //     silent expectation must not be breakable by a GC pause.
+
+            new RecordingSubject("recorded_timer_taskExceptionKillsThread", JDK,
+                    "java.util.Timer",
+                    DetectorType.TIMER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a real TimerTask records its uncaught exception and then throws it, which "
+                            + "really terminates the timer's single task-execution thread - the "
+                            + "failure mode where every remaining task is cancelled with "
+                            + "nothing reported. The body awaits the task before returning, so "
+                            + "the record precedes analysis by construction"),
+
+            new RecordingSubject("recorded_timer_tasksCompleteWithoutException", JDK,
+                    "java.util.Timer",
+                    DetectorType.TIMER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same schedule-and-complete lifecycle on a second timer, with no "
+                            + "exception recorded because none is thrown. Thread death is the "
+                            + "only claim the detector makes from these calls, so the silence "
+                            + "is its model finding a completed lifecycle and nothing else"),
+
+            // --- FutureIgnored: the purest protocol pair in the lane. The detector's whole
+            //     model is one boolean per submitted Future - was it ever inspected - so the
+            //     rows differ in exactly that call and nothing else.
+
+            new RecordingSubject("recorded_future_submittedAndNeverInspected", JDK,
+                    "java.util.concurrent.Future",
+                    DetectorType.FUTURE_IGNORED, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every body submits a real task and records the returned Future, and no "
+                            + "body ever records an inspection. An exception thrown by such a "
+                            + "task is captured in the Future and discarded with it, which is "
+                            + "the silent-failure mode the detector exists for; the finding "
+                            + "follows from the absent call, so no schedule can remove it"),
+
+            new RecordingSubject("recorded_future_inspectedAfterSubmit", JDK,
+                    "java.util.concurrent.Future",
+                    DetectorType.FUTURE_IGNORED, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same submissions to the same pool, each followed by a recorded "
+                            + "inspection and a real get(). Retrieval is the fix the detector's "
+                            + "own message prescribes, and a finding here would report every "
+                            + "correctly awaited task in existence")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()
