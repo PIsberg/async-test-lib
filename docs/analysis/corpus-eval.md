@@ -933,8 +933,8 @@ leak is the point and 240 of them would exhaust the runner instead of demonstrat
 
 ### How far this lane can go, and where it stops
 
-"Ten of 146" invites the reading that 136 rows are waiting to be written. They are not, and the
-ceiling is worth stating so nobody spends a week discovering it one detector at a time.
+"Twenty-two of 146" invites the reading that 124 rows are waiting to be written. They are not,
+and the ceiling is worth stating so nobody spends a week discovering it one detector at a time.
 
 A recording row needs a third-party subject the detector can actually accept. Classifying every
 detector's `record*`/`register*` parameter types, and any `instanceof` gate on the record path:
@@ -990,8 +990,11 @@ each rejection is worth more than the row would have been:
   what the class promises. A pair there would be separated by the size of the numbers rather than
   by the documented contract, which is not what this lane measures.
 
-**Where that leaves it.** Of the 47 RECORDING-fed detectors that had no denominator when this
-section was first written, 37 remain after the sixth wave (five of them refused above with the reason on record), and they take JDK primitives - locks,
+**Where that leaves it.** 104 RECORDING-fed detectors still have no row. That figure is the one
+the feed table yields directly - 146 detectors, 18 agent-fed, 3 zero-config, leaving 125
+recording-fed, of which 22 are paired here - and it replaces a "47" that earlier revisions of
+this paragraph decremented wave by wave without anyone being able to re-derive it. Five of the
+104 are refused above with the reason on record; the rest take JDK primitives - locks,
 latches, `wait`/`notify`, scopes, threads. A corpus of third-party subjects has nothing to offer
 them; the third wave's route, a JDK subject whose own javadoc states a contract, is open to some
 of them but is not a backlog either, because most of those primitives' javadocs state a usage
