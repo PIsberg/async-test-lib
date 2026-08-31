@@ -58,7 +58,12 @@ import java.util.concurrent.atomic.AtomicReference;
  *       whose dump carries a thread state; where it does not, virtual threads are left out rather
  *       than guessed at, because a thread <em>running</em> a static initializer is not parked in
  *       one. The recorded path below is unaffected either way: it is pure recording and has
- *       always worked on any thread.</li>
+ *       always worked on any thread.
+ *
+ *       <p>Instances baseline the JVM at construction, exactly as {@link DeadlockDetector}
+ *       does: a thread already parked inside an initializer when the detector is created is an
+ *       earlier run's wedge — it can never be unwedged — and is excluded from the sample, so
+ *       only initializer deadlocks created after construction are reported.</li>
  * </ul>
  *
  * <p>Usage:
@@ -115,6 +120,26 @@ public final class StaticInitDeadlockDetector {
 
     /** Cached live-thread sample, taken once so repeated analyze() calls agree. */
     private final AtomicReference<@Nullable List<Parked>> sample = new AtomicReference<>();
+
+    /**
+     * Threads already inside a class initializer when this detector was constructed, keyed the
+     * same way {@link #stillThere} keys a survivor. The same baseline {@link DeadlockDetector}
+     * takes at construction, for the same reason: an initializer deadlock cannot be unwedged, so
+     * one leaked by an earlier test would otherwise be re-reported by every detector constructed
+     * after it, and {@code ConcurrencyRunner} constructs detectors before the test body runs.
+     * Costs one live-thread walk at construction, mirroring the thread dump
+     * {@link DeadlockDetector#enableVirtualThreadScan()} already pays per run.
+     */
+    private final Set<String> preexistingParked;
+
+    /** Captures the construction-time baseline of threads already parked in an initializer. */
+    public StaticInitDeadlockDetector() {
+        Set<String> baseline = new HashSet<>();
+        for (Parked p : parkedInInitializer()) {
+            baseline.add(key(p));
+        }
+        preexistingParked = Set.copyOf(baseline);
+    }
 
     /**
      * Record entry into a class's static initializer. From this moment the calling thread holds
@@ -234,7 +259,7 @@ public final class StaticInitDeadlockDetector {
 
         List<Parked> confirmed = List.of();
         try {
-            List<Parked> first = parkedInInitializer();
+            List<Parked> first = withoutPreexisting(parkedInInitializer());
             if (spansTwoInitializers(first)) {
                 Thread.sleep(SECOND_SAMPLE_DELAY_MS);
                 confirmed = stillThere(first, parkedInInitializer());
@@ -260,13 +285,30 @@ public final class StaticInitDeadlockDetector {
         return classes.size() >= 2;
     }
 
+    /** {@return the entries of parked not already inside the same initializer at construction} */
+    private List<Parked> withoutPreexisting(List<Parked> parked) {
+        if (preexistingParked.isEmpty()) return parked;
+        List<Parked> fresh = new ArrayList<>();
+        for (Parked p : parked) {
+            if (!preexistingParked.contains(key(p))) {
+                fresh.add(p);
+            }
+        }
+        return fresh;
+    }
+
+    /** {@return the identity of a sampled thread across samples: its name and its initializer} */
+    private static String key(Parked p) {
+        return p.threadName() + " " + p.initializingClass();
+    }
+
     /** {@return the entries of first whose thread is still inside the same initializer} */
     private static List<Parked> stillThere(List<Parked> first, List<Parked> second) {
         Set<String> secondKeys = new LinkedHashSet<>();
-        for (Parked p : second) secondKeys.add(p.threadName() + " " + p.initializingClass());
+        for (Parked p : second) secondKeys.add(key(p));
         List<Parked> survivors = new ArrayList<>();
         for (Parked p : first) {
-            if (secondKeys.contains(p.threadName() + " " + p.initializingClass())) {
+            if (secondKeys.contains(key(p))) {
                 survivors.add(p);
             }
         }

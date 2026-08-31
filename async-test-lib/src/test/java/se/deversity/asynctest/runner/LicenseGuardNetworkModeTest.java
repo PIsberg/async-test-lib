@@ -87,7 +87,12 @@ class LicenseGuardNetworkModeTest {
     }
 
     private void set(String key, String value) {
-        savedProps.putIfAbsent(key, System.getProperty(key));
+        // Not Map.putIfAbsent: it treats a null-valued mapping as absent, so a second set() of
+        // a key that started unset would overwrite the saved baseline with the mid-test value,
+        // and @AfterEach would "restore" the leak into every later test class in this JVM.
+        if (!savedProps.containsKey(key)) {
+            savedProps.put(key, System.getProperty(key));
+        }
         if (value == null) System.clearProperty(key);
         else System.setProperty(key, value);
     }
