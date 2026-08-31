@@ -100,4 +100,37 @@ class WeakHashMapSharedDetectorTest {
         assertTrue(types.contains("WeakHashMap"));
         assertTrue(types.contains("IdentityHashMap"));
     }
+
+    @Test
+    void guardedByItsOwnMonitorStaysSilent() throws Exception {
+        var d = new WeakHashMapSharedDetector();
+        var m = new WeakHashMap<String, String>();
+        Runnable guarded = () -> {
+            synchronized (m) {
+                d.recordAccess(m, "guarded", Thread.currentThread());
+            }
+        };
+        guarded.run();
+        Thread t = new Thread(guarded);
+        t.start();
+        t.join();
+        assertFalse(d.analyze().hasIssues(),
+                "synchronized (map) is the external synchronization WeakHashMap's javadoc asks "
+                        + "for; flagging it reports the fix as loudly as the bug");
+    }
+
+    @Test
+    void aGuardOnOnlySomeAccessesStillFires() throws Exception {
+        var d = new WeakHashMapSharedDetector();
+        var m = new WeakHashMap<String, String>();
+        synchronized (m) {
+            d.recordAccess(m, "half-guarded", Thread.currentThread());
+        }
+        Thread t = new Thread(() -> d.recordAccess(m, "half-guarded", Thread.currentThread()));
+        t.start();
+        t.join();
+        assertTrue(d.analyze().hasIssues(),
+                "one unguarded access empties the candidate lock set; a guard that does not "
+                        + "cover every access is no guard");
+    }
 }

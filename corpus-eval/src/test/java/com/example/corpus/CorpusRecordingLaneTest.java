@@ -25,7 +25,13 @@ import se.deversity.asynctest.AsyncTestContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
+import java.util.WeakHashMap;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -242,8 +248,32 @@ class CorpusRecordingLaneTest {
     /** Checked out once and never returned: the hoisted handle the second row shares. */
     private static Connection hoisted;
 
+    /** Buffers are not safe for use by multiple concurrent threads: the relative-op row. */
+    private final ByteBuffer relativeBuffer = ByteBuffer.allocate(256);
+
+    /** The twin instance, shared just as widely and touched only at absolute indices. */
+    private final ByteBuffer absoluteBuffer = ByteBuffer.allocate(256);
+
+    /** One channel for the implicit-read row; every thread advances its shared cursor. */
+    private static FileChannel implicitChannel;
+
+    /** The twin channel, read only through the positional overload. */
+    private static FileChannel positionalChannel;
+
+    /** The file both channels read; created in installRecorder, deleted in reportAndGate. */
+    private static Path channelFile;
+
+    /** Its own javadoc: like most collection classes, this class is not synchronized. */
+    private final Map<String, String> sharedWeakMap = new WeakHashMap<>();
+
+    /** The same class, touched only inside synchronized (guardedWeakMap). */
+    private final Map<String, String> guardedWeakMap = new WeakHashMap<>();
+
+    /** A compile-time constant key, so no referent is ever cleared and expunge stays a no-op. */
+    private static final String WEAK_KEY = "corpus-weak-key";
+
     @BeforeAll
-    static void installRecorder() throws SQLException, NoSuchAlgorithmException {
+    static void installRecorder() throws IOException, SQLException, NoSuchAlgorithmException {
         CorpusRecorder.install();
 
         sharedDigest = MessageDigest.getInstance("SHA-256");
@@ -263,6 +293,11 @@ class CorpusRecordingLaneTest {
         hoistedConfig.setPoolName("corpus-hoisted-pool");
         hoistedPool = new HikariDataSource(hoistedConfig);
         hoisted = hoistedPool.getConnection().unwrap(Connection.class);
+
+        channelFile = Files.createTempFile("corpus-channel", ".bin");
+        Files.write(channelFile, new byte[4096]);
+        implicitChannel = FileChannel.open(channelFile, StandardOpenOption.READ);
+        positionalChannel = FileChannel.open(channelFile, StandardOpenOption.READ);
     }
 
     /** Kept so the hoisted connection's own pool can be closed with it. */
@@ -282,11 +317,14 @@ class CorpusRecordingLaneTest {
     private static final Set<Long> THREADS_THAT_USED_THE_POOL = ConcurrentHashMap.newKeySet();
 
     @AfterAll
-    static void reportAndGate() {
+    static void reportAndGate() throws IOException {
         CorpusRecorder.uninstall();
         thePooledRowsPremiseHeld();
         pool.close();
         hoistedPool.close();
+        implicitChannel.close();
+        positionalChannel.close();
+        Files.deleteIfExists(channelFile);
         CorpusLane lane = CorpusLane.current();
         Path report = CorpusReport.writeRecording(
                 CorpusRecorder.findings(), THREADS, INVOCATIONS, lane);
@@ -972,6 +1010,116 @@ class CorpusRecordingLaneTest {
         if (latch.compareAndSet(false, true)) {
             keyedMap.put(key, "value");
             AsyncTestContext.mutableMapKeyDetector().recordKeyInserted(keyedMap, key, name);
+        }
+    }
+
+    // --- SharedByteBuffer --------------------------------------------------------------------
+
+    /**
+     * Six threads rewind and relative-get one shared buffer with nothing held.
+     *
+     * <p>The detector fires when position-mutating operations reach an instance from more than
+     * one thread with an empty candidate lock set, and six threads on a barrier meet both halves
+     * by construction. Every body rewinds before its get, so the cursor never strays more than a
+     * few in-flight bodies from zero and no interleaving can reach the 256-byte limit: the row
+     * measures the sharing, not an underflow ending the run.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_byteBuffer_relativeGetsShared() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.sharedByteBufferDetector().recordPositionalAccess(relativeBuffer, "rewind");
+        relativeBuffer.rewind();
+        AsyncTestContext.sharedByteBufferDetector().recordPositionalAccess(relativeBuffer, "get");
+        relativeBuffer.get();
+    }
+
+    /**
+     * The same sharing, recorded only at absolute indices.
+     *
+     * <p>Absolute get(int) neither reads nor moves position, limit or mark, so the detector's
+     * model counts these accesses as context and has nothing to report however many threads make
+     * them. The input is identical to the loud row's in every respect but the overload, which
+     * leaves the operation-kind distinction as the only thing deciding the outcome.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_byteBuffer_absoluteGetsShared() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.sharedByteBufferDetector().recordAbsoluteAccess(absoluteBuffer, "get(int)");
+        absoluteBuffer.get(7);
+    }
+
+    // --- FileChannelPositionRace -------------------------------------------------------------
+
+    /**
+     * Every thread reads the shared channel through the overload that advances its cursor.
+     *
+     * <p>The detector fires once implicit-position operations reach one channel from more than
+     * one thread. Reads rather than writes, so nothing depends on what the interleaving did to
+     * the file: 240 reads of 8 bytes stay inside the 4096-byte file, and a read that starts at
+     * an offset another thread's read moved is exactly the hazard being recorded.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_fileChannel_implicitReadsShared() throws IOException {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.fileChannelPositionRaceDetector()
+                .recordImplicitPositionAccess(implicitChannel, "read");
+        implicitChannel.read(ByteBuffer.allocate(8));
+    }
+
+    /**
+     * The same shared channel usage, through the positional overload.
+     *
+     * <p>read(ByteBuffer, position) takes an explicit offset and never consults the implicit
+     * cursor, which is why it is the fix the detector's own message recommends. The detector
+     * still tracks the instance, so its silence is a classification of the recorded calls
+     * rather than an instance it never saw.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_fileChannel_positionalReadsShared() throws IOException {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.fileChannelPositionRaceDetector()
+                .recordPositionalAccess(positionalChannel, "read");
+        positionalChannel.read(ByteBuffer.allocate(8), 0L);
+    }
+
+    // --- WeakHashMapShared -------------------------------------------------------------------
+
+    /**
+     * One WeakHashMap, six threads, nothing held.
+     *
+     * <p>The detector fires when a WeakHashMap or IdentityHashMap is recorded from more than one
+     * thread with no lock covering every access. The key is a compile-time constant, so its
+     * referent is never cleared and the GC-driven expunge stays a no-op: the row measures the
+     * sharing the javadoc forbids, not reference-queue behaviour the scheduler may or may not
+     * trigger.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_weakHashMap_sharedAcrossThreads() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.weakHashMapSharedDetector()
+                .recordAccess(sharedWeakMap, "shared-weakmap", Thread.currentThread());
+        toleratingCorruption(() -> {
+            sharedWeakMap.put(WEAK_KEY, "value");
+            sharedWeakMap.get(WEAK_KEY);
+        });
+    }
+
+    /**
+     * The same map and the same six threads, inside synchronized (guardedWeakMap).
+     *
+     * <p>That is the external synchronization WeakHashMap's javadoc asks for, and the record
+     * happens while the monitor is held, which is when the guard probe answers truthfully. A
+     * finding here would tell someone who fixed their race that the fix is as broken as the
+     * bug, which is the direction that stops people using the detector at all.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_weakHashMap_guardedByItsOwnMonitor() {
+        CorpusRecorder.countBodyExecution();
+        synchronized (guardedWeakMap) {
+            AsyncTestContext.weakHashMapSharedDetector()
+                    .recordAccess(guardedWeakMap, "guarded-weakmap", Thread.currentThread());
+            guardedWeakMap.put(WEAK_KEY, "value");
+            guardedWeakMap.get(WEAK_KEY);
         }
     }
 

@@ -892,7 +892,86 @@ final class Corpus {
                     "the same class and the same recorded check-then-act as the firing row, on a "
                             + "key private to each thread. The detector groups by (map, key) and "
                             + "reports only a site more than one thread reached, so the silence is "
-                            + "a decision rather than an absence of calls")
+                            + "a decision rather than an absence of calls"),
+
+            // --- SharedByteBuffer: one instance, six threads, and the pair separates on which
+            //     half of the Buffer API the body uses. Buffer's own javadoc is the contract
+            //     ("Buffers are not safe for use by multiple concurrent threads"), and the
+            //     mutable state behind that sentence is the cursor - position, limit and mark -
+            //     which only relative operations touch. Absolute get(int) reads at an explicit
+            //     index and moves nothing, which is why the detector's model treats it as
+            //     context rather than violation. Sharing is held constant, so the operation-kind
+            //     distinction is the only thing that separates the rows.
+
+            new RecordingSubject("recorded_byteBuffer_relativeGetsShared", JDK,
+                    "java.nio.ByteBuffer",
+                    DetectorType.SHARED_BYTE_BUFFER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "rewind() and a relative get() are recorded from six threads with nothing "
+                            + "held. Both mutate the cursor the Buffer javadoc leaves "
+                            + "unprotected, so several positional threads with an empty lock "
+                            + "set is met by construction, which is the detector's whole rule"),
+
+            new RecordingSubject("recorded_byteBuffer_absoluteGetsShared", JDK,
+                    "java.nio.ByteBuffer",
+                    DetectorType.SHARED_BYTE_BUFFER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same six threads share the twin buffer and record only absolute "
+                            + "get(int) calls, which never read or move position, limit or mark. "
+                            + "The detector counts them as context, not violation, so the "
+                            + "silence is its operation model deciding rather than an absence "
+                            + "of input"),
+
+            // --- FileChannelPositionRace: the class is documented thread-safe and the hazard
+            //     is the one stateful thing that guarantee does not cover, the implicit
+            //     position. Both rows read the same temp file through a channel shared by every
+            //     thread and differ only in which read overload the body uses - the
+            //     cursor-advancing read(ByteBuffer) or the self-contained read(ByteBuffer, long).
+
+            new RecordingSubject("recorded_fileChannel_implicitReadsShared", JDK,
+                    "java.nio.channels.FileChannel",
+                    DetectorType.FILE_CHANNEL_POSITION_RACE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread records a cursor-advancing read(ByteBuffer) on one shared "
+                            + "channel. FileChannel serializes each call internally, but the "
+                            + "offset a read starts from depends on every other thread's "
+                            + "progress, so the I/O lands at positions no caller chose - the "
+                            + "class is thread-safe and the caller is still wrong"),
+
+            new RecordingSubject("recorded_fileChannel_positionalReadsShared", JDK,
+                    "java.nio.channels.FileChannel",
+                    DetectorType.FILE_CHANNEL_POSITION_RACE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same sharing recorded through read(ByteBuffer, position), which takes "
+                            + "an explicit offset and never consults the shared cursor. That is "
+                            + "the overload the detector's own message recommends, and a "
+                            + "finding on it would report the documented fix as the defect"),
+
+            // --- WeakHashMapShared: the pair differs by a lock, exactly like the digest pair,
+            //     on the JDK map whose javadoc says the class is not synchronized and names
+            //     external synchronization as the fix. The keys are compile-time String
+            //     constants, so the GC never clears a referent and the lazily-run expunge
+            //     cannot restructure the table mid-row: the rows measure the sharing, not the
+            //     reference queue.
+
+            new RecordingSubject("recorded_weakHashMap_sharedAcrossThreads", JDK,
+                    "java.util.WeakHashMap",
+                    DetectorType.WEAK_HASH_MAP_SHARED, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one WeakHashMap is recorded from six threads with nothing held. Its own "
+                            + "javadoc says the class is not synchronized, and its GC-driven "
+                            + "expunge mutates the table on every get and put, which is the "
+                            + "hazard the detector names"),
+
+            new RecordingSubject("recorded_weakHashMap_guardedByItsOwnMonitor", JDK,
+                    "java.util.WeakHashMap",
+                    DetectorType.WEAK_HASH_MAP_SHARED, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same map and the same six threads, with every access inside "
+                            + "synchronized on the map itself - the external synchronization "
+                            + "the javadoc asks for. Thread.holdsLock sees that with no agent "
+                            + "attached, so the candidate lock set never empties and a finding "
+                            + "here would report the fix as loudly as the bug")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()

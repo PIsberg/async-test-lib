@@ -546,7 +546,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 125: exposure zero, nothing said in
-either direction. That is now measured for twelve of them, in a third lane, and the separation
+either direction. That is now measured for fifteen of them, in a third lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -815,6 +815,43 @@ documenting thread safety - the false positive filed as #395. Until that is sett
 third-party collection can hold this row at all**, because every one of them fires. The pair
 measures the model that exists, and the reason it looks JDK-shaped is itself the finding.
 
+**The third wave: three JDK pairs, and the lockset the map detector lacked (2026-08-31)**
+
+The ceiling section below classifies detectors by what their record path will accept, and its
+premise - a recording row needs a *third-party* subject - had already been quietly outgrown by
+the second wave: the `MessageDigest` and `Mac` pairs use the platform itself as the subject
+library, with the version read from `Runtime.version()` and contracts cited from the JDK's own
+javadoc. The third wave leans on that deliberately. Three detectors the third-party route could
+not reach now have pairs, taking the lane from twelve detectors to fifteen:
+
+- **`SHARED_BYTE_BUFFER`.** The netty `ByteBuf` candidate was rejected below for having no
+  documented contract; `java.nio.Buffer` states one - *"Buffers are not safe for use by multiple
+  concurrent threads"* - and the mutable state behind that sentence is the cursor that only
+  relative operations touch. Both rows share one `ByteBuffer` across six threads and differ only
+  in which half of the API the body records: relative `rewind()`/`get()` fires, absolute
+  `get(int)` stays silent. The pair separates on the detector's operation-kind model with the
+  sharing held constant.
+- **`FILE_CHANNEL_POSITION_RACE`.** The inverse contract shape: `FileChannel` is documented
+  thread-safe, and the hazard is the one stateful thing the guarantee does not cover, the
+  implicit position. Both rows read the same temp file through a shared channel; the
+  cursor-advancing `read(ByteBuffer)` fires and the self-contained `read(ByteBuffer, long)` -
+  the overload the detector's own message recommends - stays silent. This joins the
+  check-then-act and iterator pairs in the thread-safe-class, wrong-caller family.
+- **`WEAK_HASH_MAP_SHARED`.** The `instanceof`-gated detector the ceiling names as its example
+  takes the JDK map itself as the subject, and writing the pair found a defect that had been
+  shipping. The guarded twin - every access inside `synchronized (map)`, the external
+  synchronization `WeakHashMap`'s own javadoc asks for - fired as loudly as the unguarded row:
+  the detector had never joined the `SelfGuard.TrackedInstance` lockset rollout, so it could not
+  see any guard at all. It carries the lockset now, `SharedTypeAccuracyEvalTest` pins both
+  directions (the family table in
+  [detector-accuracy-eval.md](detector-accuracy-eval.md) moved from 17 of 19 to 18 of 20), and
+  the corpus row is what holds the fix.
+
+The `WeakHashMapShared` finding is the lane's argument repeated a third time: the defect was not
+reachable by any unit test that already existed, because every existing test recorded unguarded
+sharing and asserted the firing direction. The row that had to stay silent is what forced the
+model to distinguish the fix from the bug.
+
 ### How far this lane can go, and where it stops
 
 "Ten of 146" invites the reading that 136 rows are waiting to be written. They are not, and the
@@ -830,18 +867,23 @@ detector's `record*`/`register*` parameter types, and any `instanceof` gate on t
 | Typed to a JDK concrete class, or `instanceof`-gated to one | 34 | **no third-party subject exists to write** |
 | No `record*` API at all | 12 | agent-fed or zero-config; not this lane's business |
 
-So the reachable set is around 103, not 146. The 34 are not a backlog. `WeakHashMapSharedDetector`
-ends its record path with `else return; // not our concern` after testing for `WeakHashMap` and
-`IdentityHashMap`; `SimpleDateFormatDetector`'s API is typed to `SimpleDateFormat`. For those, a
-third-party row would be silent because of the type system rather than because of the model, and a
-negative that the compiler guarantees measures nothing.
+So the third-party reachable set is around 103, not 146. The 34 are not a backlog for a
+third-party corpus. `WeakHashMapSharedDetector` ends its record path with
+`else return; // not our concern` after testing for `WeakHashMap` and `IdentityHashMap`;
+`SimpleDateFormatDetector`'s API is typed to `SimpleDateFormat`. For those, a third-party row
+would be silent because of the type system rather than because of the model, and a negative that
+the compiler guarantees measures nothing. What the 34 *can* take is the JDK type itself, which is
+how the third wave wrote the `WEAK_HASH_MAP_SHARED` pair above; the constraint that survives the
+type system is the same one as everywhere else in the corpus, a javadoc that actually states a
+contract.
 
 That distinction rejected three candidates while the ninth and tenth rows were being written, and
 each rejection is worth more than the row would have been:
 
 - **netty `ByteBuf`** for `SharedByteBufferDetector`. 2508 lines of javadoc and not one mention of
   thread safety, so there is no documented contract to cite. It is also why the existing netty row
-  cites `ByteBufAllocator` instead.
+  cites `ByteBufAllocator` instead. The third wave's `java.nio.ByteBuffer` pair is the same
+  detector reached from the other side: the JDK buffer's javadoc does state the contract.
 
   Worth recording while it is in hand: the two `recorded_nettyByteBuf_*` rows carry
   `Contract.NOT_THREAD_SAFE`, and that label is the one part of them the javadoc does not support.
@@ -869,11 +911,14 @@ each rejection is worth more than the row would have been:
   what the class promises. A pair there would be separated by the size of the numbers rather than
   by the documented contract, which is not what this lane measures.
 
-**Where that leaves it.** Of 47 RECORDING-fed detectors with no denominator, the ones that remain
-take JDK primitives - locks, latches, `wait`/`notify`, scopes, buffers, channels, threads - and a
-corpus of third-party subjects has nothing to offer them. That is not a backlog either. Extending
-the lane further means a new corpus library, and `docs/DEPENDENCIES.md` makes that a proposal with
-a reason rather than an install.
+**Where that leaves it.** Of the 47 RECORDING-fed detectors that had no denominator when this
+section was first written, 44 remain after the third wave, and they take JDK primitives - locks,
+latches, `wait`/`notify`, scopes, threads. A corpus of third-party subjects has nothing to offer
+them; the third wave's route, a JDK subject whose own javadoc states a contract, is open to some
+of them but is not a backlog either, because most of those primitives' javadocs state a usage
+protocol rather than a thread-safety contract. Extending the lane with another library instead
+means a new corpus dependency, and `docs/DEPENDENCIES.md` makes that a proposal with a reason
+rather than an install.
 
 The binding constraint is not the detector count. It is finding a library class whose own javadoc
 states a contract that exercises the detector's model, and the eight corpus libraries only contain

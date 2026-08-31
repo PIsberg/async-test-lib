@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.SplittableRandom;
 import java.util.TimeZone;
 import java.util.TreeSet;
+import java.util.WeakHashMap;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
@@ -97,7 +98,8 @@ class SharedTypeAccuracyEvalTest {
             "SharedStatefulCryptoDetector",
             "SharedTimeZoneDetector",
             "SharedXmlParserDetector",
-            "SimpleDateFormatDetector"));
+            "SimpleDateFormatDetector",
+            "WeakHashMapSharedDetector"));
 
     /**
      * Detectors for which firing on the guarded twin is the correct answer, not a false positive.
@@ -146,7 +148,7 @@ class SharedTypeAccuracyEvalTest {
     }
 
     @Test
-    @DisplayName("the guard-on-self twin: 17 detectors recognise it, 2 contention notes still fire")
+    @DisplayName("the guard-on-self twin: 18 detectors recognise it, 2 contention notes still fire")
     void guardOnSelfTwinOutcomeIsPinnedPerDetector() {
         List<String> stillFires = new ArrayList<>();
         List<String> contentionNoteLost = new ArrayList<>();
@@ -484,6 +486,14 @@ class SharedTypeAccuracyEvalTest {
                 format.format(new Date());
                 d.recordFormat(format, "isoDate");
             }), () -> d.analyze().hasIssues());
+        });
+        cases.put("WeakHashMapSharedDetector", () -> {
+            WeakHashMapSharedDetector d = new WeakHashMapSharedDetector();
+            WeakHashMap<String, String> map = new WeakHashMap<>();
+            return new Probe(
+                    g -> guard(g, map,
+                            () -> d.recordAccess(map, "weak-cache", Thread.currentThread())),
+                    () -> d.analyze().hasIssues());
         });
 
         return cases;
