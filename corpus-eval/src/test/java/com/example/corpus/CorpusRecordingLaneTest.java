@@ -31,7 +31,12 @@ import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
+import java.nio.CharBuffer;
+import java.nio.charset.CharsetEncoder;
 import java.util.WeakHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -272,6 +277,19 @@ class CorpusRecordingLaneTest {
     /** A compile-time constant key, so no referent is ever cleared and expunge stays a no-op. */
     private static final String WEAK_KEY = "corpus-weak-key";
 
+    /** Instances of this class are not safe for use by multiple concurrent threads: the shared row. */
+    private static final CharsetEncoder SHARED_ENCODER = StandardCharsets.UTF_8.newEncoder();
+
+    /** An encoder per thread, built from the same charset: the confined twin. */
+    private static final ThreadLocal<CharsetEncoder> CONFINED_ENCODER =
+            ThreadLocal.withInitial(StandardCharsets.UTF_8::newEncoder);
+
+    /** The declared-owned pool the loud row never shuts down; reportAndGate closes it unrecorded. */
+    private static ExecutorService leakedPool;
+
+    /** One declaration for the run: the shape a consumer writes, though the record call is idempotent. */
+    private final AtomicBoolean leakedPoolDeclared = new AtomicBoolean();
+
     @BeforeAll
     static void installRecorder() throws IOException, SQLException, NoSuchAlgorithmException {
         CorpusRecorder.install();
@@ -298,6 +316,8 @@ class CorpusRecordingLaneTest {
         Files.write(channelFile, new byte[4096]);
         implicitChannel = FileChannel.open(channelFile, StandardOpenOption.READ);
         positionalChannel = FileChannel.open(channelFile, StandardOpenOption.READ);
+
+        leakedPool = Executors.newFixedThreadPool(1);
     }
 
     /** Kept so the hoisted connection's own pool can be closed with it. */
@@ -324,6 +344,10 @@ class CorpusRecordingLaneTest {
         hoistedPool.close();
         implicitChannel.close();
         positionalChannel.close();
+        // Real cleanup, deliberately unrecorded: the loud executor row's claim is that no
+        // shutdown was RECORDED during the run, and the measurement is over by the time this
+        // runs. Closing it here keeps the fork's thread count honest without touching the row.
+        leakedPool.shutdownNow();
         Files.deleteIfExists(channelFile);
         CorpusLane lane = CorpusLane.current();
         Path report = CorpusReport.writeRecording(
@@ -1121,6 +1145,91 @@ class CorpusRecordingLaneTest {
             guardedWeakMap.put(WEAK_KEY, "value");
             guardedWeakMap.get(WEAK_KEY);
         }
+    }
+
+    // --- SharedCharsetCoder ------------------------------------------------------------------
+
+    /**
+     * One UTF-8 encoder, six threads, nothing held.
+     *
+     * <p>The detector fires when one coder is recorded from more than one thread with an empty
+     * candidate lock set; six threads on a barrier meet both halves by construction. The bodies
+     * really drive the state machine - reset() then encode() - and CharsetEncoder's javadoc
+     * says instances are not safe for use by multiple concurrent threads, so an
+     * IllegalStateException out of an interleaved transition is the subject corrupting, which
+     * the lane tolerates and counts rather than fails on.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_charsetEncoder_sharedAcrossThreads() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.sharedCharsetCoderDetector()
+                .recordAccess(SHARED_ENCODER, "encode", Thread.currentThread());
+        toleratingCorruption(() -> {
+            SHARED_ENCODER.reset();
+            SHARED_ENCODER.encode(CharBuffer.wrap("corpus"), ByteBuffer.allocate(16), true);
+        });
+    }
+
+    /**
+     * An encoder per thread, which is what the detector's own first fix looks like recorded.
+     *
+     * <p>Same charset, same calls, same number of recordings; no instance is ever recorded from
+     * a second thread, so the rule's first clause is never met. This is the direction that
+     * catches a detector keyed on the coder class rather than the instance, which would report
+     * six correct threads as a race.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_charsetEncoder_encoderPerThread() {
+        CorpusRecorder.countBodyExecution();
+        CharsetEncoder mine = CONFINED_ENCODER.get();
+        AsyncTestContext.sharedCharsetCoderDetector()
+                .recordAccess(mine, "encode", Thread.currentThread());
+        mine.reset();
+        mine.encode(CharBuffer.wrap("corpus"), ByteBuffer.allocate(16), true);
+    }
+
+    // --- ExecutorShutdown --------------------------------------------------------------------
+
+    /**
+     * One declared-owned pool, really submitted to by every body, never shut down.
+     *
+     * <p>The detector's model is declared ownership: recordExecutorCreated means this scope
+     * owns the close. Tasks are recorded and submitted for real, no shutdown is ever recorded,
+     * and the finding follows from those flags alone - no interleaving can change what was
+     * never called. reportAndGate closes the pool after the measurement, unrecorded, so the
+     * fork does not carry the leak the row exists to demonstrate.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_executor_neverShutDown() {
+        CorpusRecorder.countBodyExecution();
+        if (leakedPoolDeclared.compareAndSet(false, true)) {
+            AsyncTestContext.executorShutdownMonitor()
+                    .recordExecutorCreated(leakedPool, "leaked-pool");
+        }
+        AsyncTestContext.executorShutdownMonitor().recordTaskSubmitted(leakedPool);
+        leakedPool.submit(() -> { });
+    }
+
+    /**
+     * A fresh pool per body execution, run through the whole protocol the detector prescribes.
+     *
+     * <p>Create, declare, submit, shutdown, awaitTermination - each recorded call for call, so
+     * every tracked instance ends with both lifecycle flags set and the detector's silence is
+     * the model clearing a completed lifecycle. Per body rather than one shared pool for the
+     * same reason as the released-ByteBuf row: a shared instance's flags would be whatever the
+     * last writer left, and the row must not depend on which write that was.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_executor_shutdownAndAwaited() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        ExecutorService mine = Executors.newFixedThreadPool(1);
+        AsyncTestContext.executorShutdownMonitor().recordExecutorCreated(mine, "closed-pool");
+        AsyncTestContext.executorShutdownMonitor().recordTaskSubmitted(mine);
+        mine.submit(() -> { });
+        mine.shutdown();
+        AsyncTestContext.executorShutdownMonitor().recordShutdownCalled(mine, false);
+        mine.awaitTermination(5, TimeUnit.SECONDS);
+        AsyncTestContext.executorShutdownMonitor().recordAwaitTerminationCalled(mine);
     }
 
     private static void toleratingCorruption(Runnable operation) {

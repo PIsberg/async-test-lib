@@ -971,7 +971,58 @@ final class Corpus {
                             + "synchronized on the map itself - the external synchronization "
                             + "the javadoc asks for. Thread.holdsLock sees that with no agent "
                             + "attached, so the candidate lock set never empties and a finding "
-                            + "here would report the fix as loudly as the bug")
+                            + "here would report the fix as loudly as the bug"),
+
+            // --- SharedCharsetCoder: the crypto pairs' confinement shape on the coder family.
+            //     CharsetEncoder's class javadoc states the contract outright: "Instances of
+            //     this class are not safe for use by multiple concurrent threads." The safe
+            //     pattern the detector's own message leads with is a coder per thread, so the
+            //     silent twin is confinement, exactly like the Mac pair.
+
+            new RecordingSubject("recorded_charsetEncoder_sharedAcrossThreads", JDK,
+                    "java.nio.charset.CharsetEncoder",
+                    DetectorType.SHARED_CHARSET_CODER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one UTF-8 encoder is recorded from six threads with nothing held. Its "
+                            + "javadoc says instances are not safe for use by multiple "
+                            + "concurrent threads, and the state machine behind that sentence "
+                            + "is advanced by every reset() and encode() the bodies make"),
+
+            new RecordingSubject("recorded_charsetEncoder_encoderPerThread", JDK,
+                    "java.nio.charset.CharsetEncoder",
+                    DetectorType.SHARED_CHARSET_CODER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "an encoder per thread, built from the same Charset and recorded the same "
+                            + "number of times. No instance is ever recorded from a second "
+                            + "thread, so the rule's first clause is never met; a detector "
+                            + "keyed on the coder class rather than the instance would report "
+                            + "six correct threads as a race"),
+
+            // --- ExecutorShutdown: a protocol pair like the ResourceLeak rows, on the executor
+            //     lifecycle. Ownership is declared, which is the detector's whole model:
+            //     recordExecutorCreated means this scope owns the close, and the pair differs
+            //     only in whether the declared owner ever performs it.
+
+            new RecordingSubject("recorded_executor_neverShutDown", JDK,
+                    "java.util.concurrent.ExecutorService",
+                    DetectorType.EXECUTOR_SHUTDOWN, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one declared-owned pool takes a real submission from every body and no "
+                            + "shutdown is ever recorded. ExecutorService's javadoc says an "
+                            + "unused executor should be shut down to allow reclamation of its "
+                            + "resources; its non-daemon workers otherwise outlive the test, "
+                            + "and the finding follows from the recorded lifecycle alone"),
+
+            new RecordingSubject("recorded_executor_shutdownAndAwaited", JDK,
+                    "java.util.concurrent.ExecutorService",
+                    DetectorType.EXECUTOR_SHUTDOWN, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a fresh pool per body execution, declared, submitted to, shut down and "
+                            + "awaited before the body returns - the full protocol the "
+                            + "detector's own fix text prescribes, recorded call for call. "
+                            + "Every tracked instance ends with both flags set, so the silence "
+                            + "is the model clearing a completed lifecycle, not an absence of "
+                            + "input")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()
