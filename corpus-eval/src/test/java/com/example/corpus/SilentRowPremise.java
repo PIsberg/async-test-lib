@@ -138,7 +138,11 @@ final class SilentRowPremise {
     private static String bodyOf(String source, String methodName) {
         Matcher declaration = Pattern.compile(
                 "(?m)^\\s*(?:@\\w+\\s+)*(?:private|public|protected|static|final|void|[A-Za-z<>\\[\\],.?\\s]+?)\\b"
-                        + Pattern.quote(methodName) + "\\s*\\([^)]*\\)\\s*\\{").matcher(source);
+                        + Pattern.quote(methodName)
+                        // A declaration may carry a throws clause between the parameter list
+                        // and the body; without this alternative such a method reads as absent
+                        // and its silent row as never reaching the detector.
+                        + "\\s*\\([^)]*\\)\\s*(?:throws\\s+[A-Za-z0-9_$.,\\s]+)?\\{").matcher(source);
         if (!declaration.find()) {
             return "";
         }
