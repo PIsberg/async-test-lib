@@ -38,6 +38,13 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code HashSet}; this detector covers the two specialised maps that pattern
  * leaves out and which are frequently used as caches.
  *
+ * <p>Synchronization awareness is partial, the same way as the rest of the shared-instance
+ * family. An access recorded while the accessing thread holds a lock on every recorded access -
+ * the {@code synchronized (map)} idiom, or a lock declared through
+ * {@code AsyncTestContext.holdingLock(...)} - counts as guarded, and a map whose every access
+ * was guarded produces no finding. A lock that was never declared is invisible and the finding
+ * stands; the report wording says so.
+ *
  * @since 1.6.0
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "ConcurrentHashMap-backed instance tracking; per-instance State holds ConcurrentHashMap.newKeySet() for thread ids/names.")
@@ -48,7 +55,7 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class WeakHashMapSharedDetector {
 
-    private static final class State {
+    private static final class State extends SelfGuard.TrackedInstance {
         final String label;
         final String type;
         final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
@@ -85,6 +92,9 @@ public final class WeakHashMapSharedDetector {
                     (name != null) ? name : finalType + "@" + k,
                     finalType));
         }
+        // Probed on the accessing thread, which is the one inside (or outside) the guarded
+        // region; the explicit thread parameter is attribution only.
+        s.noteAccess(map);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
     }
@@ -96,7 +106,7 @@ public final class WeakHashMapSharedDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1) continue;
+            if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
             String specificRisk = "WeakHashMap".equals(s.type)
                     ? "GC-driven entry removal mutates the internal table on every "
                             + "get()/put() without locking — concurrent access can produce "
@@ -104,7 +114,8 @@ public final class WeakHashMapSharedDetector {
                     : "open-addressing with linear probing can silently drop or duplicate "
                             + "entries when concurrent puts shift past the probe range";
             String msg = String.format(
-                    "'%s' (type=%s) accessed from %d threads (%s) — %s is not thread-safe; %s.",
+                    "'%s' (type=%s) accessed from %d threads (%s) — %s is not thread-safe; %s"
+                            + SelfGuard.REPORT_NOTE + ".",
                     s.label,
                     s.type,
                     s.accessingThreadIds.size(),

@@ -101,20 +101,24 @@ authority on which row is which - each outcome above is one assertion in it.
   `failOn = HIGH` will fail builds over correct-but-shared code unless those findings
   are baselined; see the baseline mechanism in `ConcurrencyRunner`.
 
-## The Shared* family (2026-08-14, extended 2026-08-20)
+## The Shared* family (2026-08-14, extended 2026-08-20 and 2026-08-31)
 
-_Enforced by `SharedTypeAccuracyEvalTest`._ The same pair harness applied to all 19
+_Enforced by `SharedTypeAccuracyEvalTest`._ The same pair harness applied to all 20
 detectors that watch a non-thread-safe JDK type, which is the largest cluster in the
 catalogue and the one that carried most of the false-positive surface above.
+`WeakHashMapSharedDetector` joined the roster on 2026-08-31, when the corpus eval's
+recording lane caught it flagging `synchronized (map)` - the external synchronization
+`WeakHashMap`'s own javadoc asks for - as loudly as the unguarded bug; it carries the
+lockset now and both directions are pinned like the rest.
 
 | Direction | Result 2026-08-14 | Result now |
 |---|---|---|
-| Unguarded sharing (true positive) | 19 of 19 fire | 19 of 19 fire |
-| `synchronized(instance)` twin (true negative) | 2 of 19 stay silent | 17 of 19 stay silent |
-| Declared `ReentrantLock` twin (true negative) | not measured | 17 of 19 stay silent |
-| Two threads, two different declared locks | not measured | 17 of 17 fire, correctly |
+| Unguarded sharing (true positive) | 19 of 19 fire | 20 of 20 fire |
+| `synchronized(instance)` twin (true negative) | 2 of 19 stay silent | 18 of 20 stay silent |
+| Declared `ReentrantLock` twin (true negative) | not measured | 18 of 20 stay silent |
+| Two threads, two different declared locks | not measured | 18 of 18 fire, correctly |
 
-The 17 all reach those answers through one shared model rather than 17 copies of it.
+The 18 all reach those answers through one shared model rather than 18 copies of it.
 `SelfGuard.TrackedInstance` keeps the Eraser candidate set - the locks held at every access to
 that instance, intersected - and a detector's state class extends it, its record path calls
 `noteAccess(instance)`, and its `analyze()` reports only when `sawUnguardedAccess()`, which is
