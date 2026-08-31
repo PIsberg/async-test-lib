@@ -228,7 +228,9 @@
                 </executions>
             </plugin>
             <!-- PITest mutation testing — run on demand:
-                 mvn test-compile org.pitest:pitest-maven:mutationCoverage -->
+                 mvn test-compile org.pitest:pitest-maven:mutationCoverage
+                 Full run ≈ 2h (the e2e engine tier is included in the measurement; a scoped
+                 run via -DtargetClasses=... takes ~1-2 min). -->
             <plugin>
                 <groupId>org.pitest</groupId>
                 <artifactId>pitest-maven</artifactId>
@@ -257,6 +259,12 @@
                     <!-- Surefire's argLine contains JaCoCo's late-bound @{argLine} which
                          pitest cannot resolve; required flags are passed via jvmArgs instead -->
                     <parseSurefireArgLine>false</parseSurefireArgLine>
+                    <!-- Do not inherit surefire settings: the local surefire default excludes
+                         the @Tag("e2e") engine tier (surefire.excludedGroups), and inheriting
+                         that measured mutation score against half the suite — 74% with the
+                         33 EngineTestKit classes invisible vs 77% with them. Everything pitest
+                         needs is declared explicitly in this block. -->
+                    <parseSurefireConfig>false</parseSurefireConfig>
                     <!-- Stress tests coordinate via CyclicBarrier; give mutants generous
                          headroom before being flagged TIMED_OUT -->
                     <timeoutConstant>10000</timeoutConstant>
@@ -265,11 +273,13 @@
                         <value>-Dlicense.mock.mode=true</value>
                     </jvmArgs>
                     <!-- Gate: the build fails below this mutation score. Measured full-run
-                         score is 75.4% (2026-07-17); the gate sits ~1.4pp below because
+                         score is 77.5% (2026-08-31, 8732 mutants, e2e tier included via
+                         parseSurefireConfig=false above); the gate sits ~1.5pp below because
                          TIMED_OUT mutant counts jitter between runs. Survivors are dominated
-                         by diagnostic output and timing-heuristic detector mutants that cannot
-                         be killed without flaky, timing-forced tests. -->
-                    <mutationThreshold>74</mutationThreshold>
+                         by diagnostic output, timing-heuristic detector mutants that cannot
+                         be killed without flaky, timing-forced tests, and agent-fed hook
+                         shims that never execute without the bytecode agent attached. -->
+                    <mutationThreshold>76</mutationThreshold>
                     <outputFormats>
                         <param>HTML</param>
                         <param>XML</param>
