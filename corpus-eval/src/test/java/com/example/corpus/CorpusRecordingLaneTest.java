@@ -450,6 +450,77 @@ class CorpusRecordingLaneTest {
     /** What the silent exposure row publishes instead: a value, not the monitor. */
     private static final Object PUBLISHED_VALUE = new Object();
 
+    /** The barrier the loud row records as broken; six parties, never awaited for real. */
+    private static final java.util.concurrent.CyclicBarrier BROKEN_BARRIER =
+            new java.util.concurrent.CyclicBarrier(THREADS);
+
+    /** The twin recorded through a whole arrive-await-complete cycle. */
+    private static final java.util.concurrent.CyclicBarrier COMPLETED_BARRIER =
+            new java.util.concurrent.CyclicBarrier(THREADS);
+
+    /** The lock whose tryLock is recorded as timed out. */
+    private static final java.util.concurrent.locks.ReentrantLock TIMED_OUT_LOCK =
+            new java.util.concurrent.locks.ReentrantLock();
+
+    /** The twin acquired and released cleanly by every thread. */
+    private static final java.util.concurrent.locks.ReentrantLock CLEAN_LOCK =
+            new java.util.concurrent.locks.ReentrantLock();
+
+    /** The phaser recorded as terminated: every later arrival stops synchronizing. */
+    private static final java.util.concurrent.Phaser TERMINATED_PHASER =
+            new java.util.concurrent.Phaser(1);
+
+    /** The twin recorded advancing through a phase. */
+    private static final java.util.concurrent.Phaser ADVANCING_PHASER =
+            new java.util.concurrent.Phaser(1);
+
+    /** The rendezvous whose completion carries no payload. */
+    private static final java.util.concurrent.Exchanger<String> EMPTY_EXCHANGER =
+            new java.util.concurrent.Exchanger<>();
+
+    /** The twin that exchanges something real. */
+    private static final java.util.concurrent.Exchanger<String> PAYLOAD_EXCHANGER =
+            new java.util.concurrent.Exchanger<>();
+
+    /** The lock the two condition rows take their conditions from. */
+    private static final java.util.concurrent.locks.ReentrantLock CONDITION_LOCK =
+            new java.util.concurrent.locks.ReentrantLock();
+
+    /** Awaited with nothing ever signalling it. */
+    private static final java.util.concurrent.locks.Condition UNSIGNALLED_CONDITION =
+            CONDITION_LOCK.newCondition();
+
+    /** The twin with a recorded signal behind every await. */
+    private static final java.util.concurrent.locks.Condition SIGNALLED_CONDITION =
+            CONDITION_LOCK.newCondition();
+
+    /** The VarHandle stand-ins: the detector only needs non-null handle and receiver objects. */
+    private static final Object PLAIN_HANDLE = new Object();
+
+    private static final Object PLAIN_RECEIVER = new Object();
+
+    private static final Object ATOMIC_HANDLE = new Object();
+
+    private static final Object ATOMIC_RECEIVER = new Object();
+
+    /** Counter behind {@link #perInvocation(String)}. */
+    private static final java.util.concurrent.atomic.AtomicLong UNIQUE_KEYS =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    /**
+     * {@return a name unique to one body execution}
+     *
+     * <p>The value-lifecycle detectors accumulate over the whole run, so a silent row keyed on a
+     * shared name would let one body's calls satisfy another's - a set from one invocation would
+     * answer for the read in the next. Per-thread is not enough either, because a thread runs the
+     * body forty times.
+     *
+     * @param prefix what the name describes
+     */
+    private static String perInvocation(String prefix) {
+        return prefix + '-' + UNIQUE_KEYS.incrementAndGet();
+    }
+
     @BeforeAll
     static void installRecorder() throws IOException, SQLException, NoSuchAlgorithmException {
         CorpusRecorder.install();
@@ -2303,6 +2374,180 @@ class CorpusRecordingLaneTest {
         var detector = AsyncTestContext.publicLockExposureDetector();
         detector.recordSynchronizedOnThis(PRIVATE_LOCK, Thread.currentThread(), "CorpusService");
         detector.recordObjectPublished(PUBLISHED_VALUE, "getValue()");
+    }
+
+    // --- The synchronizer family --------------------------------------------------------------
+    //
+    // Four coordinators, one question: did the protocol complete, or did it end in the state the
+    // class documents as terminal? Each pair records a finished cycle against an abandoned one.
+
+    /** A barrier recorded as broken: every later await fails until somebody resets it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_cyclicBarrier_leftBroken() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.cyclicBarrierDetector();
+        detector.registerBarrier(BROKEN_BARRIER, "broken-barrier", THREADS);
+        detector.recordBroken(BROKEN_BARRIER);
+    }
+
+    /** The same barrier through a whole cycle: arrive, await, complete, never broken. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_cyclicBarrier_completedItsCycle() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.cyclicBarrierDetector();
+        detector.registerBarrier(COMPLETED_BARRIER, "completed-barrier", THREADS);
+        detector.recordArrival(COMPLETED_BARRIER);
+        detector.recordAwait(COMPLETED_BARRIER);
+        detector.recordBarrierComplete(COMPLETED_BARRIER);
+    }
+
+    /** A tryLock recorded as timed out: somebody held it longer than the caller would wait. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_reentrantLock_acquisitionTimedOut() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.reentrantLockDetector();
+        detector.registerLock(TIMED_OUT_LOCK, "timed-out-lock");
+        detector.recordLockTimeout(TIMED_OUT_LOCK);
+    }
+
+    /** The same lock acquired and released with no timeout: what an uncontended lock looks like. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_reentrantLock_acquiredAndReleased() {
+        CorpusRecorder.countBodyExecution();
+        String self = Thread.currentThread().getName();
+        var detector = AsyncTestContext.reentrantLockDetector();
+        detector.registerLock(CLEAN_LOCK, "clean-lock");
+        CLEAN_LOCK.lock();
+        try {
+            detector.recordLockAcquired(CLEAN_LOCK, self);
+        } finally {
+            CLEAN_LOCK.unlock();
+            detector.recordLockReleased(CLEAN_LOCK, self);
+        }
+    }
+
+    /** A phaser recorded as terminated: later arrivals return a phase instead of synchronizing. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_phaser_terminated() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.phaserDetector();
+        detector.registerPhaser(TERMINATED_PHASER, "terminated-phaser", 1);
+        detector.recordTermination(TERMINATED_PHASER);
+    }
+
+    /** The same phaser recorded arriving, awaiting the advance and completing its phase. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_phaser_advancedThroughItsPhase() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.phaserDetector();
+        detector.registerPhaser(ADVANCING_PHASER, "advancing-phaser", 1);
+        detector.recordArrive(ADVANCING_PHASER);
+        detector.recordArriveAwaitAdvance(ADVANCING_PHASER);
+        detector.recordPhaseComplete(ADVANCING_PHASER, 0);
+    }
+
+    /** An exchange that completes carrying nothing: a rendezvous that transferred no value. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_exchanger_exchangedNothing() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.exchangerDetector();
+        detector.registerExchanger(EMPTY_EXCHANGER, "empty-exchanger");
+        detector.recordExchangeComplete(EMPTY_EXCHANGER, "empty-exchanger", null);
+    }
+
+    /** The same rendezvous recorded start to finish with a real payload. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_exchanger_exchangedAPayload() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.exchangerDetector();
+        detector.registerExchanger(PAYLOAD_EXCHANGER, "payload-exchanger");
+        detector.recordExchangeStart(PAYLOAD_EXCHANGER, "payload-exchanger");
+        detector.recordExchangeComplete(PAYLOAD_EXCHANGER, "payload-exchanger", "payload");
+    }
+
+    /** An await with nothing ever signalling: the Condition form of a lost wakeup. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_condition_awaitedWithNoSignal() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.conditionVariableDetector();
+        detector.registerCondition(UNSIGNALLED_CONDITION, "unsignalled");
+        detector.recordAwait(UNSIGNALLED_CONDITION, "unsignalled");
+        detector.recordAwaitExit(UNSIGNALLED_CONDITION, "unsignalled", false);
+    }
+
+    /** The same await with a recorded signal behind it: the whole handshake. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_condition_awaitedAndSignalled() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.conditionVariableDetector();
+        detector.registerCondition(SIGNALLED_CONDITION, "signalled");
+        detector.recordAwait(SIGNALLED_CONDITION, "signalled");
+        detector.recordSignal(SIGNALLED_CONDITION, "signalled", true);
+        detector.recordAwaitExit(SIGNALLED_CONDITION, "signalled", false);
+    }
+
+    // --- The value-lifecycle family -------------------------------------------------------------
+
+    /** A value that goes A to B and back to A, which a value-only compare-and-set cannot see. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_aba_valueReturnedToItsOriginal() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.abaProblemDetector();
+        String slot = perInvocation("aba-restored");
+        detector.recordValueChange(slot, "A", "B");
+        detector.recordValueChange(slot, "B", "A");
+    }
+
+    /** The same two transitions going onwards to C, so nothing is ever restored. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_aba_valueMovedOnwards() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.abaProblemDetector();
+        String slot = perInvocation("aba-onwards");
+        detector.recordValueChange(slot, "A", "B");
+        detector.recordValueChange(slot, "B", "C");
+    }
+
+    /** A read of a write-once holder nothing has set. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_stableValue_readBeforeItWasSet() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.stableValueMisuseDetector()
+                .recordRead(perInvocation("stable-unset"), Thread.currentThread());
+    }
+
+    /** The same read with its set recorded first, on a name unique to this invocation. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_stableValue_setBeforeItWasRead() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.stableValueMisuseDetector();
+        String name = perInvocation("stable-set");
+        detector.recordSet(name, self);
+        detector.recordRead(name, self);
+    }
+
+    /** A plain get and a plain set as one read-modify-write: no atomicity, no ordering. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_varHandle_plainGetThenPlainSet() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.varHandleNonAtomicUpdateDetector();
+        detector.recordGet(PLAIN_HANDLE, PLAIN_RECEIVER, "counter",
+                se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector.Mode.PLAIN, self);
+        detector.recordSet(PLAIN_HANDLE, PLAIN_RECEIVER, "counter",
+                se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector.Mode.PLAIN, self);
+    }
+
+    /** The same update expressed as a volatile read and a recorded atomic update. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_varHandle_volatileGetThenAtomicUpdate() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.varHandleNonAtomicUpdateDetector();
+        detector.recordGet(ATOMIC_HANDLE, ATOMIC_RECEIVER, "counter",
+                se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, self);
+        detector.recordAtomicUpdate(ATOMIC_HANDLE, ATOMIC_RECEIVER, "counter", self);
     }
 
     private static void toleratingCorruption(Runnable operation) {

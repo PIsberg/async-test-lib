@@ -546,7 +546,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 125: exposure zero, nothing said in
-either direction. That is now measured for forty-nine of them, in its own lane, and the separation
+either direction. That is now measured for fifty-seven of them, in its own lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -1026,9 +1026,35 @@ Three of them are worth a sentence each for the shape they add:
   fires unconditionally, so the correct twin is a field that is only read - which still hands the
   detector traffic and still makes it decide, rather than being the empty row #410 removed.
 
+**The tenth wave: the synchronizers, and keys that cannot be borrowed**
+
+`CYCLIC_BARRIER`, `REENTRANT_LOCK`, `PHASER`, `EXCHANGER` and `CONDITION_VARIABLES` take the
+`java.util.concurrent` coordinators in one batch, because their detectors all ask one question:
+did the protocol complete, or did it end in the state the class documents as terminal? Each pair
+records a finished cycle against an abandoned one - a barrier left broken against one that
+arrives, awaits and completes; a `tryLock` that timed out against a lock taken and released; a
+phaser terminated against one that advanced a phase; an exchange carrying null against one
+carrying a payload; an await nobody signalled against the whole handshake.
+
+`ABA_PROBLEM`, `STABLE_VALUE_MISUSE` and `VAR_HANDLE_NON_ATOMIC_UPDATE` complete the wave at
+**57 of 146**, in 117 rows.
+
+Those last three needed something the earlier waves did not. Their detectors accumulate over the
+whole run, keyed on a caller-supplied name, so a silent row using a fixed name would let one body
+execution's calls satisfy another's - a `recordSet` from invocation 7 answering for the
+`recordRead` in invocation 8, and the row passing for a reason that has nothing to do with the
+model. Per-thread keys are not enough either, because each thread runs the body forty times. The
+lane now has a `perInvocation(...)` helper that appends a monotonic counter, and the three rows
+use it. This is the run-wide accumulation hazard the triage flagged, met for the first time.
+
+`VAR_HANDLE_NON_ATOMIC_UPDATE` is worth one more line: it is the `AtomicInteger` pair one level
+down. A plain get and a plain set are neither atomic nor ordered, and the twin expresses the same
+read-modify-write as a volatile read plus an atomic update - so the pair separates purely on the
+access mode the caller asked for, which is the whole of what a `VarHandle` lets you choose.
+
 ### How far this lane can go, and where it stops
 
-"Forty-nine of 146" invites the reading that 97 rows are waiting to be written. They are not,
+"Fifty-seven of 146" invites the reading that 89 rows are waiting to be written. They are not,
 and the ceiling is worth stating so nobody spends a week discovering it one detector at a time.
 
 A recording row needs a third-party subject the detector can actually accept. Classifying every
@@ -1113,11 +1139,11 @@ expectations are structural:
 | `VIRTUAL_THREAD_CPU_BOUND` | a measured segment against a 50 ms threshold |
 | `VIRTUAL_THREAD_CARRIER_EXHAUSTION` | concurrently blocked threads against `availableProcessors`, so it fires on small runners |
 
-**Where that leaves it.** 76 RECORDING-fed detectors still have no row. That figure is the one
+**Where that leaves it.** 68 RECORDING-fed detectors still have no row. That figure is the one
 the feed table yields directly - 146 detectors, 18 agent-fed, 3 zero-config, leaving 125
-recording-fed, of which 49 are paired here - and it replaces a "47" that earlier revisions of
+recording-fed, of which 57 are paired here - and it replaces a "47" that earlier revisions of
 this paragraph decremented wave by wave without anyone being able to re-derive it. Eighteen of
-the 76 are refused with the reason on record: five for want of any documented contract, and the
+the 68 are refused with the reason on record: five for want of any documented contract, and the
 thirteen the triage rejected as having no recordable correct twin or no structural outcome. The
 rest take JDK primitives - locks,
 latches, `wait`/`notify`, scopes, threads. A corpus of third-party subjects has nothing to offer

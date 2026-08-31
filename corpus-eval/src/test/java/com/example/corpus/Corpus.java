@@ -1687,7 +1687,155 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "the same two calls with the published object being a value the class "
                             + "returns rather than the monitor it holds. Publishing something "
-                            + "is not the defect; publishing the thing you lock on is")
+                            + "is not the defect; publishing the thing you lock on is"),
+
+            // --- The synchronizer family. Four java.util.concurrent coordinators whose
+            //     detectors all ask the same question - did the protocol complete, or did it
+            //     end in the state the class documents as terminal - so each pair records a
+            //     completed cycle against an abandoned one.
+
+            new RecordingSubject("recorded_cyclicBarrier_leftBroken", JDK,
+                    "java.util.concurrent.CyclicBarrier",
+                    DetectorType.CYCLIC_BARRIER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the barrier is recorded as broken, which its own javadoc describes as the "
+                            + "state every subsequent await fails from until somebody resets it. "
+                            + "A broken barrier is a coordination point that will never "
+                            + "coordinate again, and nothing throws to say so at the site"),
+
+            new RecordingSubject("recorded_cyclicBarrier_completedItsCycle", JDK,
+                    "java.util.concurrent.CyclicBarrier",
+                    DetectorType.CYCLIC_BARRIER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same barrier recorded through a whole cycle - arrival, await, "
+                            + "completion - and never broken. That is the ordinary use, and it "
+                            + "is what the harness itself does on every round"),
+
+            new RecordingSubject("recorded_reentrantLock_acquisitionTimedOut", JDK,
+                    "java.util.concurrent.locks.ReentrantLock",
+                    DetectorType.REENTRANT_LOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a tryLock is recorded as having timed out. The lock is doing exactly what "
+                            + "it promises; a timeout means some other thread held it longer "
+                            + "than the caller was willing to wait, which is the contention the "
+                            + "caller needs told about because tryLock's false return is easy "
+                            + "to discard"),
+
+            new RecordingSubject("recorded_reentrantLock_acquiredAndReleased", JDK,
+                    "java.util.concurrent.locks.ReentrantLock",
+                    DetectorType.REENTRANT_LOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same lock acquired and released by every thread with no timeout "
+                            + "recorded, which is what an uncontended lock looks like and what "
+                            + "most locks in most programs do"),
+
+            new RecordingSubject("recorded_phaser_terminated", JDK,
+                    "java.util.concurrent.Phaser",
+                    DetectorType.PHASER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the phaser is recorded as terminated. Termination is permanent and every "
+                            + "later arrival returns a negative phase rather than blocking, so "
+                            + "parties that keep arriving are silently no longer synchronizing "
+                            + "with each other"),
+
+            new RecordingSubject("recorded_phaser_advancedThroughItsPhase", JDK,
+                    "java.util.concurrent.Phaser",
+                    DetectorType.PHASER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same phaser recorded arriving, awaiting the advance and completing a "
+                            + "phase, which is the cycle it exists for. The pair separates on "
+                            + "whether the protocol ended in its terminal state"),
+
+            new RecordingSubject("recorded_exchanger_exchangedNothing", JDK,
+                    "java.util.concurrent.Exchanger",
+                    DetectorType.EXCHANGER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "an exchange completes with a null payload, which means the partner "
+                            + "arrived with nothing to give. An Exchanger is a rendezvous for "
+                            + "two threads to swap objects, so an empty swap is a handshake "
+                            + "that succeeded and transferred nothing"),
+
+            new RecordingSubject("recorded_exchanger_exchangedAPayload", JDK,
+                    "java.util.concurrent.Exchanger",
+                    DetectorType.EXCHANGER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same rendezvous recorded start to finish with a real payload, which "
+                            + "is every correct use of the class. The pair separates on what "
+                            + "crossed rather than on how the threads met"),
+
+            new RecordingSubject("recorded_condition_awaitedWithNoSignal", JDK,
+                    "java.util.concurrent.locks.Condition",
+                    DetectorType.CONDITION_VARIABLES, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "an await is recorded with no signal ever recorded for that condition. The "
+                            + "waiter is then parked on a condition nothing will ever announce, "
+                            + "which is the Condition form of the lost-wakeup the missed-signal "
+                            + "pair covers for monitors"),
+
+            new RecordingSubject("recorded_condition_awaitedAndSignalled", JDK,
+                    "java.util.concurrent.locks.Condition",
+                    DetectorType.CONDITION_VARIABLES, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same await with a recorded signal behind it and a recorded exit, which "
+                            + "is the whole handshake. The pair separates on whether anybody "
+                            + "ever announced the condition"),
+
+            // --- The value-lifecycle family: three detectors that ask whether a value was
+            //     produced before it was consumed. Each silent row uses a key unique to its
+            //     invocation, because the detectors accumulate across the whole run and a
+            //     shared key would let one body's calls answer for another's.
+
+            new RecordingSubject("recorded_aba_valueReturnedToItsOriginal", JDK,
+                    "java.util.concurrent.atomic.AtomicReference",
+                    DetectorType.ABA_PROBLEM, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a value goes A to B and back to A. A compare-and-set that only checks the "
+                            + "value cannot tell that state from one that never moved, so it "
+                            + "succeeds on a stale premise - the hazard that stamped and marked "
+                            + "references exist to close"),
+
+            new RecordingSubject("recorded_aba_valueMovedOnwards", JDK,
+                    "java.util.concurrent.atomic.AtomicReference",
+                    DetectorType.ABA_PROBLEM, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same two recorded transitions going A to B to C, so no value is ever "
+                            + "restored and a value check is a sound premise. The pair "
+                            + "separates on whether the sequence returned to where it started"),
+
+            new RecordingSubject("recorded_stableValue_readBeforeItWasSet", JDK,
+                    "java.lang.Object",
+                    DetectorType.STABLE_VALUE_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a read is recorded against a stable value nothing has set. A "
+                            + "write-once holder read before its write hands back the "
+                            + "uninitialised state, and because the holder is meant to be set "
+                            + "exactly once there is no later correction"),
+
+            new RecordingSubject("recorded_stableValue_setBeforeItWasRead", JDK,
+                    "java.lang.Object",
+                    DetectorType.STABLE_VALUE_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same read with its set recorded first, on a name unique to this "
+                            + "invocation so no other body's calls can satisfy it. Set then "
+                            + "read is the entire contract of a write-once holder"),
+
+            new RecordingSubject("recorded_varHandle_plainGetThenPlainSet", JDK,
+                    "java.lang.invoke.VarHandle",
+                    DetectorType.VAR_HANDLE_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a plain get and a plain set are recorded as one read-modify-write. "
+                            + "VarHandle gives the caller the ordering they ask for and plain "
+                            + "mode asks for none, so the pair is neither atomic nor ordered - "
+                            + "the same lost update as the AtomicInteger row, one level down"),
+
+            new RecordingSubject("recorded_varHandle_volatileGetThenAtomicUpdate", JDK,
+                    "java.lang.invoke.VarHandle",
+                    DetectorType.VAR_HANDLE_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same read-modify-write expressed as a volatile read and a recorded "
+                            + "atomic update, which is what the class provides "
+                            + "compareAndSet and getAndAdd for. The pair separates on the "
+                            + "access mode the caller chose")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()
