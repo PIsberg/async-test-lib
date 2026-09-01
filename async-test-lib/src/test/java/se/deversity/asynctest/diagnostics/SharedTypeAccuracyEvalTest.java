@@ -66,10 +66,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * recognise the {@code synchronized(instance)} twin as a result, and the remaining two are in
  * {@link #CONTENTION_NOTE_BY_DESIGN} because for them the twin is not a false positive at all.
  *
- * <p>What the probe still cannot see is a guard on any other lock object - a
- * {@code ReentrantLock}, or a private lock - because nothing in these recording APIs names the
- * lock the caller chose. Closing that direction needs a per-thread held-lock set rather than a
- * single-object probe, and until it exists those twins are expected to fire.
+ * <p>A guard on some other lock object - a {@code ReentrantLock}, or a private lock - was once
+ * invisible for the same reason, because a single-object probe can only ask about the instance.
+ * That direction is closed: {@link #declaredExternalLockIsRecognisedAsGuarding} holds the whole
+ * {@link #GUARD_ON_SELF_AWARE} set silent when both threads take one {@code ReentrantLock} across
+ * every access, through the per-thread held-lock set and the Eraser intersection it feeds. The
+ * word doing the work is <em>declared</em>: the lock reaches the set through
+ * {@code AsyncTestContext.holdingLock(...)}, so an external lock nobody declares is still a guard
+ * these detectors cannot see, and its twin still fires.
  */
 @DisplayName("Accuracy eval: the Shared* family, unsafe sharing vs its guarded twin")
 class SharedTypeAccuracyEvalTest {

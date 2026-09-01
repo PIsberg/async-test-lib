@@ -18,8 +18,8 @@
 # that stops being true fails the corpus build rather than quietly vouching for a tier.
 #
 # The bar is the one the in-repo pairs meet: the two subjects differ in the defect and in nothing
-# else. Two corpus-measured detectors are deliberately absent, and the reason is the detector's
-# model rather than the pair (#406):
+# else. Three corpus-measured detectors are deliberately absent, and the reason in each case is
+# the detector's model rather than the pair (#406, #419):
 #
 #   CACHE_CONCURRENCY asks the map's own type whether it synchronizes itself, so given one class
 #   both halves of a pair get the same answer by construction and no same-class pair can exist. It
@@ -32,6 +32,14 @@
 #   the silence a decision rather than an absence of calls, but it cannot make a finding mean the
 #   code is wrong, because the body declared that before the detector saw anything.
 #
+#   FILE_CHANNEL_POSITION_RACE has a same-class pair in the corpus and it is a good one: the two
+#   rows share one channel and differ only in the read overload, so the silence is the operation
+#   model deciding. What it cannot show is the other half of what VERDICT means. analyze() reports
+#   whenever accessingThreadIds.size() > 1 and the detector carries no representation of a lock at
+#   all, so a caller that wraps position(n) and read(buffer) in synchronized(channel) - which
+#   genuinely fixes the race - draws the identical finding. Same disqualifier as CACHE_CONCURRENCY,
+#   and the same remedy: give it the lockset the Shared* family already has, then re-ask.
+#
 # Blank lines and # comments are ignored.
 
 SHARED_JSON_MAPPER_RECONFIG = recorded_objectMapper_reconfigureWhileWriting, recorded_objectMapper_configuredThenShared
@@ -43,3 +51,5 @@ SHARED_ITERATOR = recorded_concurrentHashMultiset_sharedIterator, recorded_concu
 MUTABLE_MAP_KEY = recorded_mutableIntKey_mutatedAfterInsertion, recorded_mutableIntKey_neverMutated
 JDBC_CONNECTION_SHARED = recorded_hoistedConnection_sharedAcrossThreads, recorded_hikariPool_checkoutPerThread
 CONCURRENT_MODIFICATIONS = recorded_cursorableLinkedList_concurrentAdd, recorded_cursorableLinkedList_mutatedUnderItsOwnMonitor
+SHARED_BYTE_BUFFER = recorded_byteBuffer_relativeGetsShared, recorded_byteBuffer_absoluteGetsShared
+WEAK_HASH_MAP_SHARED = recorded_weakHashMap_sharedAcrossThreads, recorded_weakHashMap_guardedByItsOwnMonitor

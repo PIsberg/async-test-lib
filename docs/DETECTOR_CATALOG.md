@@ -71,23 +71,29 @@ tests in this repository, which the gate resolves by reflection: `DEADLOCKS`, `L
 `INTERRUPT_MISHANDLING`, `UNCAUGHT_EXCEPTION_HANDLER`, `COMPLETABLE_FUTURE_COMPLETION_LEAKS` and
 `THREAD_LEAKS`. Nine of those ten are in the `ESSENTIALS` preset, which is the one to gate on.
 
-Nine more are backed by the corpus eval's recording lane, where the pair is two uses of an
+Eleven more are backed by the corpus eval's recording lane, where the pair is two uses of an
 unmodified third-party class rather than a twin written here: `SHARED_JSON_MAPPER_RECONFIG`,
 `SHARED_MESSAGE_DIGEST`, `SHARED_STATEFUL_CRYPTO`, `CONCURRENT_MAP_COMPUTE_RECURSION`,
 `SYNCHRONIZED_COLLECTION_ITERATION`, `SHARED_ITERATOR`, `MUTABLE_MAP_KEY`,
-`JDBC_CONNECTION_SHARED` and `CONCURRENT_MODIFICATIONS`. That lane lives in a downstream module, so
+`JDBC_CONNECTION_SHARED`, `CONCURRENT_MODIFICATIONS`, `SHARED_BYTE_BUFFER` and
+`WEAK_HASH_MAP_SHARED`. That lane lives in a downstream module, so
 reflection cannot reach it;
 [`META-INF/async-test/verdict-evidence-corpus`](../async-test-lib/src/main/resources/META-INF/async-test/verdict-evidence-corpus)
 names each pair and both modules check it, which is what keeps the tier from outliving the
 measurement.
 
-Two detectors the corpus measures in both directions stay `PROMPT`, and the reason is the
-detector's model rather than the pair. `CACHE_CONCURRENCY` asks the map's own type whether it
+Three detectors the corpus measures in both directions stay `PROMPT`, and the reason in each case
+is the detector's model rather than the pair. `CACHE_CONCURRENCY` asks the map's own type whether it
 synchronizes itself, so given one class both halves of a pair get the same answer by construction,
 and it consults no lock at all: a `HashMap` correctly guarded by the caller's own lock draws the
 same finding as a raced one. `CONCURRENT_MAP_CHECK_THEN_ACT` is classified by its caller, because
 `recordCheckThenAct` is itself the assertion that a check-then-act happened; the detector's own
 decision is only whether more than one thread reached the same `(map, key)` site.
+`FILE_CHANNEL_POSITION_RACE` has the better pair of the three - one shared channel, differing only
+in the read overload - but `analyze()` reports on `accessingThreadIds.size() > 1` and the detector
+holds no representation of a lock, so a caller who wraps `position(n)` and `read(buffer)` in
+`synchronized (channel)`, which genuinely fixes the race, draws the identical finding. The remedy
+is the lockset the `Shared*` family already carries, not a different pair.
 
 **Verdict on one path, weaker on another: graded per finding.** `VAR_HANDLE_NON_ATOMIC_UPDATE`,
 `STATIC_INIT_DEADLOCK`, `CONFINED_ARENA_THREAD_ESCAPE`, `RECORD_MUTABLE_COMPONENT_LEAK`,
