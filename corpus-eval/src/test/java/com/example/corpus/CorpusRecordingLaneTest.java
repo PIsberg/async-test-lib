@@ -607,6 +607,52 @@ class CorpusRecordingLaneTest {
     private static final ThreadLocal<java.util.SplittableRandom> CONFINED_SPLITTABLE =
             ThreadLocal.withInitial(SHARED_SPLITTABLE::split);
 
+    /** The object whose construction the loud safety row leaves open for the run. */
+    private static final Object UNDER_CONSTRUCTION = new Object();
+
+    /** The twin whose construction is recorded as finished before anybody reads it. */
+    private static final Object FULLY_CONSTRUCTED = new Object();
+
+    /** One declaration each, because recordConstructionStart is a lifecycle, not a per-body event. */
+    private final AtomicBoolean constructionOpened = new AtomicBoolean();
+
+    private final AtomicBoolean constructionClosed = new AtomicBoolean();
+
+    /** Sized to a thousand parties and given six: a barrier that can never trip. */
+    private static final java.util.concurrent.CyclicBarrier UNREACHABLE_BARRIER =
+            new java.util.concurrent.CyclicBarrier(THREADS);
+
+    /** Sized to the parties that actually arrive. */
+    private static final java.util.concurrent.CyclicBarrier REACHABLE_BARRIER =
+            new java.util.concurrent.CyclicBarrier(THREADS);
+
+    /** A pool of one with a queue of one: the sizing that rejects. */
+    private static final Object TINY_POOL = new Object();
+
+    /** A pool sized for the work. */
+    private static final Object AMPLE_POOL = new Object();
+
+    /** The read-write lock the loud row keeps reader-heavy. */
+    private static final Object READER_HEAVY_LOCK = new Object();
+
+    /** The twin whose reads and writes stay in balance. */
+    private static final Object BALANCED_LOCK = new Object();
+
+    /** The monitor the loud contention row reports contended on most attempts. */
+    private static final Object CONTENDED_MONITOR = new Object();
+
+    /** The twin taken cleanly every time. */
+    private static final Object UNCONTENDED_MONITOR = new Object();
+
+    /** Written by every thread with nothing held: the textbook data race. */
+    private static final Object RACED_TARGET = new Object();
+
+    /** The same writes made inside synchronized on the object itself. */
+    private static final Object GUARDED_TARGET = new Object();
+
+    /** One initialisation for the whole run, which is what the lazy-init idiom guarantees. */
+    private final AtomicBoolean lazyFieldInitialised = new AtomicBoolean();
+
     @BeforeAll
     static void installRecorder() throws IOException, SQLException, NoSuchAlgorithmException {
         CorpusRecorder.install();
@@ -3081,6 +3127,210 @@ class CorpusRecordingLaneTest {
         detector.recordJoinCompleted(scopeId);
         detector.recordHandleRead(handle, self);
         detector.recordScopeClosed(scopeId);
+    }
+
+    // --- The harness-model family ---------------------------------------------------------------
+
+    /** One field identifier recorded with a different value from every thread. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_field_readInconsistentlyAcrossThreads() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.visibilityMonitor()
+                .recordFieldAccess("shared.counter", Thread.currentThread().threadId());
+    }
+
+    /** The same field recorded with one value every thread agrees on. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_field_readConsistentlyAcrossThreads() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.visibilityMonitor().recordFieldAccess("confined.value", 42L);
+    }
+
+    /** A wait recorded as exiting with no notify: the spurious wakeup the javadoc warns of. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_wait_returnedWithoutANotify() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.wakeupDetector();
+        detector.recordWaitEnter(UNSIGNALLED_CONDITION);
+        detector.recordWaitExit(UNSIGNALLED_CONDITION, false);
+    }
+
+    /** The same wait with a notify recorded between the enter and a notified exit. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_wait_returnedAfterANotify() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.wakeupDetector();
+        detector.recordWaitEnter(SIGNALLED_CONDITION);
+        detector.recordNotify(SIGNALLED_CONDITION, true);
+        detector.recordWaitExit(SIGNALLED_CONDITION, true);
+    }
+
+    /** Fields read by other threads while the object's construction is still open. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_object_accessedDuringConstruction() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.constructorSafetyValidator();
+        if (constructionOpened.compareAndSet(false, true)) {
+            detector.recordConstructionStart(UNDER_CONSTRUCTION);
+        }
+        detector.recordFieldAccess(UNDER_CONSTRUCTION, "name", System.nanoTime());
+    }
+
+    /** The identical reads of an object whose construction was recorded as finished first. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_object_accessedAfterConstruction() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.constructorSafetyValidator();
+        if (constructionClosed.compareAndSet(false, true)) {
+            detector.recordConstructionStart(FULLY_CONSTRUCTED);
+            detector.recordConstructionEnd(FULLY_CONSTRUCTED);
+        }
+        detector.recordFieldAccess(FULLY_CONSTRUCTED, "name", System.nanoTime());
+    }
+
+    /** A synchronizer expecting a thousand parties and receiving six. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_barrier_partiesNeverArrived() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.synchronizerMonitor();
+        detector.registerSynchronizer(UNREACHABLE_BARRIER, 1_000);
+        detector.recordBarrierArrival(UNREACHABLE_BARRIER);
+    }
+
+    /** A synchronizer sized to the parties that arrive, recorded through an advance. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_barrier_partiesArrivedAndAdvanced() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.synchronizerMonitor();
+        detector.registerSynchronizer(REACHABLE_BARRIER, 1);
+        detector.recordBarrierArrival(REACHABLE_BARRIER);
+        detector.recordBarrierAdvance(REACHABLE_BARRIER);
+    }
+
+    /** A task recorded as rejected by a pool of one with a queue of one. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_threadPool_rejectedItsWork() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.threadPoolMonitor();
+        detector.registerPool(TINY_POOL, "tiny-pool", 1, 1, 1);
+        detector.recordTaskSubmitted(TINY_POOL);
+        detector.recordTaskRejected(TINY_POOL, "queue full");
+    }
+
+    /** A pool sized for the work, recorded through submit, start and completion. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_threadPool_ranItsWorkToCompletion() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.threadPoolMonitor();
+        detector.registerPool(AMPLE_POOL, "ample-pool", 8, 64, 4_096);
+        detector.recordTaskSubmitted(AMPLE_POOL);
+        detector.recordTaskStarted(AMPLE_POOL);
+        detector.recordTaskCompleted(AMPLE_POOL, 1L);
+    }
+
+    /** Events published to a stage and never accounted for. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_pipelineStage_publishedAndDropped() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.pipelineMonitor();
+        detector.registerStage("dropping-stage");
+        detector.recordEventPublished("dropping-stage", perInvocation("event"));
+    }
+
+    /** The same events published and each recorded as processed. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_pipelineStage_publishedAndProcessed() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.pipelineMonitor();
+        detector.registerStage("balanced-stage");
+        String eventId = perInvocation("event");
+        detector.recordEventPublished("balanced-stage", eventId);
+        detector.recordEventProcessed("balanced-stage", eventId);
+    }
+
+    /** Readers outnumbering writers by an order of magnitude on one lock. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_readWriteLock_starvedItsWriter() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.readWriteLockMonitor();
+        detector.registerLock(READER_HEAVY_LOCK, "reader-heavy");
+        for (int i = 0; i < 11; i++) {
+            detector.recordReadLockAcquired(READER_HEAVY_LOCK, 0L);
+            detector.recordReadLockReleased(READER_HEAVY_LOCK);
+        }
+        detector.recordWriteLockAcquired(READER_HEAVY_LOCK, 0L);
+        detector.recordWriteLockReleased(READER_HEAVY_LOCK);
+    }
+
+    /** The same lock with its reads and writes in balance. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_readWriteLock_balancedItsTraffic() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.readWriteLockMonitor();
+        detector.registerLock(BALANCED_LOCK, "balanced");
+        detector.recordReadLockAcquired(BALANCED_LOCK, 0L);
+        detector.recordReadLockReleased(BALANCED_LOCK);
+        detector.recordWriteLockAcquired(BALANCED_LOCK, 0L);
+        detector.recordWriteLockReleased(BALANCED_LOCK);
+    }
+
+    /** One field recorded as initialised by every thread that looked at it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_lazyInit_initialisedMoreThanOnce() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.lazyInitRaceDetector();
+        detector.recordNullCheck("racyInstance", true, false);
+        detector.recordInitialization("racyInstance");
+    }
+
+    /** The same field null-checked by every thread and initialised exactly once. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_lazyInit_initialisedOnce() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.lazyInitRaceDetector();
+        detector.recordNullCheck("safeInstance", false, true);
+        if (lazyFieldInitialised.compareAndSet(false, true)) {
+            detector.recordInitialization("safeInstance");
+        }
+    }
+
+    /** A monitor recorded as contended on most of the attempts to take it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_lock_contendedRepeatedly() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.lockContentionDetector();
+        detector.recordAcquireAttempt(CONTENDED_MONITOR, "contended");
+        for (int i = 0; i < 5; i++) {
+            detector.recordContention(CONTENDED_MONITOR, "contended");
+        }
+        detector.recordAcquired(CONTENDED_MONITOR, "contended");
+        detector.recordReleased(CONTENDED_MONITOR, "contended");
+    }
+
+    /** The same attempts acquired and released with no contention recorded at all. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_lock_takenWithoutContention() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.lockContentionDetector();
+        detector.recordAcquireAttempt(UNCONTENDED_MONITOR, "uncontended");
+        detector.recordAcquired(UNCONTENDED_MONITOR, "uncontended");
+        detector.recordReleased(UNCONTENDED_MONITOR, "uncontended");
+    }
+
+    /** Six threads writing one object's field with nothing held: the textbook data race. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_field_writtenByEveryThreadUnguarded() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.raceConditionDetector().recordFieldWrite(RACED_TARGET, "counter");
+    }
+
+    /** The identical writes made inside synchronized on the object itself. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_field_writtenUnderTheObjectsMonitor() {
+        CorpusRecorder.countBodyExecution();
+        synchronized (GUARDED_TARGET) {
+            AsyncTestContext.raceConditionDetector().recordFieldWrite(GUARDED_TARGET, "counter");
+        }
     }
 
     private static void toleratingCorruption(Runnable operation) {

@@ -546,7 +546,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 125: exposure zero, nothing said in
-either direction. That is now measured for seventy-six of them, in its own lane, and the separation
+either direction. That is now measured for eighty-six of them, in its own lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -1106,9 +1106,37 @@ something the class documents as not happening.
 All twenty rows behaved on the first run. Six of the ten needed `perInvocation(...)` keys, which
 is now routine rather than a discovery.
 
+**The thirteenth wave: the detectors whose subject is a description**
+
+`VISIBILITY`, `WAKEUP_ISSUES`, `CONSTRUCTOR_SAFETY`, `SYNCHRONIZERS`, `THREAD_POOL`,
+`ASYNC_PIPELINE`, `READ_WRITE_LOCK_FAIRNESS`, `LAZY_INIT_RACE`, `LOCK_CONTENTION` and
+`RACE_CONDITIONS` take the lane to **86 of 146**, in 175 rows. All twenty behaved on the first
+run.
+
+What these have in common is that the body does not hand the detector an object to watch; it
+hands it a *description* - a field identifier and the value this thread saw, a pool's sizing, a
+stage's published and processed counts, a lock's read/write ratio, how many times an
+initialisation ran. The pairs therefore vary a number or a flag rather than an instance:
+
+- `VISIBILITY` records one field identifier with a per-thread value against one every thread
+  agrees on, which is what a visibility failure and a properly published value each look like
+  from the outside.
+- `SYNCHRONIZERS` sizes a barrier to a thousand parties and gives it six. The party count is a
+  construction-time constant, so the stall is structural and not a schedule.
+- `THREAD_POOL` records a rejection from a pool of one against a completed task on a pool sized
+  for the work, and `ASYNC_PIPELINE` records events published and never processed against events
+  published and processed. Both are counting arguments with no clock in them.
+- `RACE_CONDITIONS` is the oldest shape in the library reached last: six threads writing one
+  field with nothing held, against the identical writes inside `synchronized` on the object -
+  which `Thread.holdsLock` sees with no agent attached, the same probe the `WeakHashMap` fix in
+  wave 3 turned on.
+
+That is the model-varying family exhausted. What remains is mostly virtual-thread and
+foreign-memory detectors, plus the two whose silent rows need a pool larger than the run.
+
 ### How far this lane can go, and where it stops
 
-"Seventy-six of 146" invites the reading that 70 rows are waiting to be written. They are not,
+"Eighty-six of 146" invites the reading that 60 rows are waiting to be written. They are not,
 and the ceiling is worth stating so nobody spends a week discovering it one detector at a time.
 
 A recording row needs a third-party subject the detector can actually accept. Classifying every
@@ -1193,11 +1221,11 @@ expectations are structural:
 | `VIRTUAL_THREAD_CPU_BOUND` | a measured segment against a 50 ms threshold |
 | `VIRTUAL_THREAD_CARRIER_EXHAUSTION` | concurrently blocked threads against `availableProcessors`, so it fires on small runners |
 
-**Where that leaves it.** 49 RECORDING-fed detectors still have no row. That figure is the one
+**Where that leaves it.** 39 RECORDING-fed detectors still have no row. That figure is the one
 the feed table yields directly - 146 detectors, 18 agent-fed, 3 zero-config, leaving 125
-recording-fed, of which 76 are paired here - and it replaces a "47" that earlier revisions of
+recording-fed, of which 86 are paired here - and it replaces a "47" that earlier revisions of
 this paragraph decremented wave by wave without anyone being able to re-derive it. Eighteen of
-the 49 are refused with the reason on record: five for want of any documented contract, and the
+the 39 are refused with the reason on record: five for want of any documented contract, and the
 thirteen the triage rejected as having no recordable correct twin or no structural outcome. The
 rest take JDK primitives - locks,
 latches, `wait`/`notify`, scopes, threads. A corpus of third-party subjects has nothing to offer

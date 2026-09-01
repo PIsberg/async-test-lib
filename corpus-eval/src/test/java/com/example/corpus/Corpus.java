@@ -2170,7 +2170,181 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "the same handle read after the join completed and before the close, which "
                             + "is the only window the API defines it in. The pair separates on "
-                            + "which side of the close the read sits")
+                            + "which side of the close the read sits"),
+
+            // --- The harness-model family: detectors whose subject is a value or a lifecycle
+            //     the body describes rather than an object it holds. Each pair varies the one
+            //     thing the model reads.
+
+            new RecordingSubject("recorded_field_readInconsistentlyAcrossThreads", JDK,
+                    "java.lang.Object",
+                    DetectorType.VISIBILITY, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one field identifier is recorded with a different value from every thread. "
+                            + "Threads disagreeing about what a field holds is the definition of "
+                            + "a visibility failure, and without a happens-before edge nothing "
+                            + "obliges one thread's write to become visible to another"),
+
+            new RecordingSubject("recorded_field_readConsistentlyAcrossThreads", JDK,
+                    "java.lang.Object",
+                    DetectorType.VISIBILITY, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same number of recordings of a field every thread sees identically, "
+                            + "which is what an effectively-final or properly published value "
+                            + "looks like. The pair separates on whether the observations agree"),
+
+            new RecordingSubject("recorded_wait_returnedWithoutANotify", JDK,
+                    "java.lang.Object",
+                    DetectorType.WAKEUP_ISSUES, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a wait is recorded as having exited without any notify, which is the "
+                            + "spurious wakeup Object.wait's javadoc warns can happen at any "
+                            + "time. Code that treats the return as the condition acts on a "
+                            + "state nobody established"),
+
+            new RecordingSubject("recorded_wait_returnedAfterANotify", JDK,
+                    "java.lang.Object",
+                    DetectorType.WAKEUP_ISSUES, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same wait with a recorded notify between the enter and an exit that "
+                            + "says it was notified, which is the handshake working. The pair "
+                            + "separates on whether a signal accounted for the wakeup"),
+
+            new RecordingSubject("recorded_object_accessedDuringConstruction", JDK,
+                    "java.lang.Object",
+                    DetectorType.CONSTRUCTOR_SAFETY, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "fields of an object are read by other threads while its construction is "
+                            + "still open. A reference that escapes its constructor can be seen "
+                            + "with its final fields unset, which is the one hazard no amount of "
+                            + "later synchronization can repair"),
+
+            new RecordingSubject("recorded_object_accessedAfterConstruction", JDK,
+                    "java.lang.Object",
+                    DetectorType.CONSTRUCTOR_SAFETY, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the identical reads of an object whose construction was recorded as "
+                            + "finished first. Publishing a fully built object is the rule, and "
+                            + "the pair separates on which side of the construction the reads "
+                            + "fall"),
+
+            new RecordingSubject("recorded_barrier_partiesNeverArrived", JDK,
+                    "java.util.concurrent.CyclicBarrier",
+                    DetectorType.SYNCHRONIZERS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a synchronizer expecting a thousand parties is recorded receiving six. A "
+                            + "barrier whose party count is never reached is a permanent stall, "
+                            + "and the count is a construction-time constant rather than "
+                            + "anything the schedule decides"),
+
+            new RecordingSubject("recorded_barrier_partiesArrivedAndAdvanced", JDK,
+                    "java.util.concurrent.CyclicBarrier",
+                    DetectorType.SYNCHRONIZERS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a synchronizer sized to the parties that actually arrive, recorded through "
+                            + "an arrival and an advance. That is a barrier doing its job, which "
+                            + "is what the harness itself does on every round"),
+
+            new RecordingSubject("recorded_threadPool_rejectedItsWork", JDK,
+                    "java.util.concurrent.ThreadPoolExecutor",
+                    DetectorType.THREAD_POOL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a task is recorded as rejected by a pool of one with a queue of one. "
+                            + "Rejection is the pool telling the caller it dropped work, and the "
+                            + "default policy throws it back at whoever submitted - a failure "
+                            + "that arrives far from the sizing decision that caused it"),
+
+            new RecordingSubject("recorded_threadPool_ranItsWorkToCompletion", JDK,
+                    "java.util.concurrent.ThreadPoolExecutor",
+                    DetectorType.THREAD_POOL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a pool sized for the work, recorded through submit, start and completion "
+                            + "with nothing rejected. The pair separates on whether the pool "
+                            + "could absorb what it was given"),
+
+            new RecordingSubject("recorded_pipelineStage_publishedAndDropped", JDK,
+                    "java.lang.Object",
+                    DetectorType.ASYNC_PIPELINE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "events are published to a stage and none is ever recorded as processed. An "
+                            + "asynchronous stage that accepts work and never accounts for it is "
+                            + "how a queue silently becomes a bin, and the counts say so without "
+                            + "any timing being involved"),
+
+            new RecordingSubject("recorded_pipelineStage_publishedAndProcessed", JDK,
+                    "java.lang.Object",
+                    DetectorType.ASYNC_PIPELINE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same events published and each one recorded as processed, so the stage "
+                            + "balances. The pair separates on whether anything came out the "
+                            + "other end"),
+
+            new RecordingSubject("recorded_readWriteLock_starvedItsWriter", JDK,
+                    "java.util.concurrent.locks.ReentrantReadWriteLock",
+                    DetectorType.READ_WRITE_LOCK_FAIRNESS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "readers outnumber writers by an order of magnitude on one lock. A "
+                            + "non-fair read-write lock lets a steady stream of readers keep a "
+                            + "writer waiting indefinitely, which is a liveness problem the "
+                            + "lock is behaving correctly to produce"),
+
+            new RecordingSubject("recorded_readWriteLock_balancedItsTraffic", JDK,
+                    "java.util.concurrent.locks.ReentrantReadWriteLock",
+                    DetectorType.READ_WRITE_LOCK_FAIRNESS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same lock recorded with reads and writes in balance and each released. "
+                            + "The pair separates on the ratio, which is the only thing this "
+                            + "model reads"),
+
+            new RecordingSubject("recorded_lazyInit_initialisedMoreThanOnce", JDK,
+                    "java.lang.Object",
+                    DetectorType.LAZY_INIT_RACE, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one field is recorded as initialised by every thread that looked at it. A "
+                            + "lazy initialisation that runs more than once has produced more "
+                            + "than one instance of something meant to be unique, and every "
+                            + "caller after the first holds an object the others do not"),
+
+            new RecordingSubject("recorded_lazyInit_initialisedOnce", JDK,
+                    "java.lang.Object",
+                    DetectorType.LAZY_INIT_RACE, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same field null-checked by every thread and initialised exactly once "
+                            + "for the run. One initialisation is what the idiom exists to "
+                            + "guarantee, and the pair separates on the count"),
+
+            new RecordingSubject("recorded_lock_contendedRepeatedly", JDK,
+                    "java.lang.Object",
+                    DetectorType.LOCK_CONTENTION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a monitor is recorded as contended on most of the attempts to take it. "
+                            + "Nothing is broken; the lock is the bottleneck, which is a "
+                            + "throughput fact the caller cannot see from the code and can only "
+                            + "get from a count"),
+
+            new RecordingSubject("recorded_lock_takenWithoutContention", JDK,
+                    "java.lang.Object",
+                    DetectorType.LOCK_CONTENTION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same attempts recorded as acquired and released with no contention at "
+                            + "all, which is what most locks in most programs do. The pair "
+                            + "separates on the recorded contention and nothing else"),
+
+            new RecordingSubject("recorded_field_writtenByEveryThreadUnguarded", JDK,
+                    "java.lang.Object",
+                    DetectorType.RACE_CONDITIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "six threads write one object's field with nothing held. That is the "
+                            + "textbook data race, and the detector's lock fingerprint is empty "
+                            + "across every recorded access because there is no lock to see"),
+
+            new RecordingSubject("recorded_field_writtenUnderTheObjectsMonitor", JDK,
+                    "java.lang.Object",
+                    DetectorType.RACE_CONDITIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the identical writes made inside synchronized on the object itself, which "
+                            + "Thread.holdsLock sees with no agent attached. A finding here "
+                            + "would report the most common correct guarding idiom in Java")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()
