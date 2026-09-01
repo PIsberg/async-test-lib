@@ -1433,7 +1433,7 @@ a contention race, which is exactly the kind of outcome this lane refuses to dep
 out is a type whose refusal is structural: `StampedLock` is not reentrant, so a write lock the
 calling thread already holds refuses its own `tryLock` on every attempt, whoever else is running.
 
-### Three refusals, two of which are a defect rather than a limit
+### Three refusals, two of which were a defect rather than a limit
 
 `EXPLICIT_GC` is a clean refusal. `AgentGcHooks` records every `System.gc()` and `analyze()` turns
 every event into a violation, deliberately and with no lock guard - an explicit collection
@@ -1441,22 +1441,32 @@ distorts every latency the run measures whether or not a lock was held. Its own 
 `System.gc()` "has no such innocent twin", so there is no silent row to write and a MUST_FIRE row
 on its own would prove only that a detector with no predicate fires.
 
-`LATCH_MISUSE` and `BLOCKING_QUEUE` are a different matter. Both are classified `AGENT` in
+`LATCH_MISUSE` and `BLOCKING_QUEUE` were a different matter. Both are classified `AGENT` in
 `DetectorFeeds`, which is the claim that the woven streams can feed them with nothing
-instrumented. Reading their record paths says otherwise: every one goes through a registry lookup
-that returns null when absent, and only the public `registerLatch` / `registerQueue` populates it -
-which no hook calls.
+instrumented. Reading their record paths said otherwise: every one went through a registry lookup
+that returns null when absent, and only the public `registerLatch` / `registerQueue` populated it -
+which no hook called.
 
 That reading was checked rather than believed. Both were written as MUST_FIRE rows in their most
 incriminating shape - a latch of one counted down twice, an `ArrayBlockingQueue` of capacity one
 filled and then offered to twice - with the agent attached and every substituted call site
 (`countDown`, `await(long, TimeUnit)`, `put`, `offer`, `poll`) exercised. Both came out silent,
-and the lane reported them as `SILENT but must fire`. The rows were then removed, because a
-detector that cannot report is not a pair, and #436 carries the defect.
+and the lane reported them as `SILENT but must fire`. The rows were removed at the time, because a
+detector that cannot report is not a pair, and #436 carried the defect.
 
-So of the 18 AGENT-fed detectors: 13 are paired here, 2 were already paired by lane one at a
-larger scale, 1 is refused by design, and 2 cannot report at all in the configuration their own
-feed classification claims for them.
+**#436 is now fixed, and the rows are back.** The hooks register the subject on first observation
+instead of waiting for a `register*` call that never comes, inferring what the call would have
+declared: the latch's starting count from `getCount()` read before the operation, the queue's
+bound from `remainingCapacity() + size()`. Both inferences take the widest reading, because
+under-reading either one is the direction that invents a finding. The four rows -
+`agent_latchMisuse_countedDownPastItsCount` and its exactly-counted twin,
+`agent_blockingQueue_filledToCapacity` and its drained twin - were all as stated on the first run
+after the fix. Before it the two MUST_FIRE rows read `SILENT but must fire`, while the two silent
+rows passed on a detector that could not have spoken either way, which is exactly what a pair is
+for: only the firing half separates a working model from an absent one.
+
+So of the 18 AGENT-fed detectors: 15 are paired here, 2 were already paired by lane one at a
+larger scale, and 1 is refused by design.
 
 ### The three ZERO_CONFIG detectors, which turn out to want three different homes
 
@@ -1524,12 +1534,16 @@ and the subject they want is the JDK type itself. One instance every thread reco
 against one instance per thread.
 
 **Two were refused for being unreachable in a different lane.** `LATCH_MISUSE` and
-`BLOCKING_QUEUE` cannot report in an agent-only run, which is what #436 records and why they were
-refused. That makes them unreachable *there*, not unreachable: a recording body may call
+`BLOCKING_QUEUE` could not report in an agent-only run, which is what #436 recorded and why they
+were refused. That made them unreachable *there*, not unreachable: a recording body may call
 `registerLatch` and `registerQueue` itself, which is the entire point of this lane. Both verdicts
 turn out to be counter arithmetic with no clock and no blocking in them - `extraCountDowns` is
 `countDownCalls > initialCount`, saturation is `maxObservedSize >= capacity * 0.9`. The refusal
 had been inherited from the other lane's constraint without being re-asked here.
+
+Both are now paired in the agent lane as well, since #436 is fixed and the hooks register what
+they observe. The two lanes measure different things and both are worth keeping: here the model is
+checked against a count the body declares, there against one the detector had to infer.
 
 Seven detectors, fourteen rows, all as stated on the first run. One trap was worth the reading
 first: `ConcurrencyRunner` builds one `AsyncTestContext` before the invocation loop, so a latch or

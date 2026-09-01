@@ -694,6 +694,54 @@ final class Corpus {
                             + "returns true with no timing assumption at all. Same await(long, "
                             + "TimeUnit) call site, opposite outcome"),
 
+            // --- The two coordination detectors that were classified AGENT-fed and could not
+            //     report there. Every record path on both resolved through a registry only the
+            //     public register* methods populated, and no hook called one, so both iterated an
+            //     empty map whatever the woven call sites delivered (#436). The hooks now register
+            //     on first observation, inferring the latch's starting count and the queue's bound
+            //     from the object itself, and these four rows are what says so: written as
+            //     agent-lane rows, they cannot reach a register* call even if they wanted to.
+            //
+            //     Both subjects are created inside the body, like the semaphore above. Each body
+            //     execution therefore gets its own, so a row's arithmetic is over its own calls
+            //     and cannot depend on how the 240 executions interleaved.
+
+            new RecordingSubject("agent_latchMisuse_countedDownPastItsCount", JDK,
+                    "java.util.concurrent.CountDownLatch",
+                    DetectorType.LATCH_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a latch of one counted down twice is the extraCountDowns condition exactly. "
+                            + "Nothing declares the count here: it has to be read off getCount() "
+                            + "before the first countDown, which is the inference this row "
+                            + "measures. A latch counted past zero released waiters its author "
+                            + "believed were still gated"),
+
+            new RecordingSubject("agent_latchMisuse_countedDownExactly", JDK,
+                    "java.util.concurrent.CountDownLatch",
+                    DetectorType.LATCH_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same latch and the same two call sites, counted down once. Neither "
+                            + "condition holds: one is not above one, and one is not below one. "
+                            + "An inferred count that came out too small would fire here, which "
+                            + "is what makes this row the evidence and not the ceremony"),
+
+            new RecordingSubject("agent_blockingQueue_filledToCapacity", JDK,
+                    "java.util.concurrent.ArrayBlockingQueue",
+                    DetectorType.BLOCKING_QUEUE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a queue of two put and offered to before anything is polled peaks at two of "
+                            + "two, which is the 90% saturation threshold. The bound is nowhere in "
+                            + "the body: remainingCapacity() + size() is where it comes from. One "
+                            + "thread's own queue, so the peak is arithmetic rather than a race"),
+
+            new RecordingSubject("agent_blockingQueue_drainedAsItFilled", JDK,
+                    "java.util.concurrent.ArrayBlockingQueue",
+                    DetectorType.BLOCKING_QUEUE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same three call sites on the same bound, with a poll between the put and "
+                            + "the offer, so the peak never leaves one. A queue that keeps up with "
+                            + "its producer is the ordinary case and must not read as saturated"),
+
             new RecordingSubject("agent_sleep_whileHoldingTheMonitor", JDK,
                     "java.lang.Thread",
                     DetectorType.SLEEP_IN_LOCK, Contract.THREAD_SAFE,
