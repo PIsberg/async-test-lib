@@ -196,9 +196,25 @@ class StaticInitSampleSeesVirtualThreadsTest {
         Thread second = new Thread(() -> touchLoading(Slower.class), "loading-two");
         first.start();
         second.start();
-        Thread.sleep(5);        // both are inside their initializers now
+        // Waited on, not slept past. "Both are inside their initializers now" is the premise the
+        // whole assertion rests on, and a fixed 5 ms was a guess about scheduling rather than a
+        // fact - a run where it was wrong would have passed for the wrong reason, silently.
+        assertTrue(PROGRESSING_BOTH_INSIDE.await(5, TimeUnit.SECONDS),
+                "both initializers must be entered before the sample is taken, or this test is "
+                        + "asserting that a sampler saw nothing");
 
-        String report = detector.analyze().toString();
+        String report;
+        long previousDelay = StaticInitDeadlockDetector.secondSampleDelayMs;
+        // The initializers take 20 ms and the production window is 150. That 7x margin is what
+        // a loaded runner ate in #457, starving the initializing threads past the second sample
+        // and turning ordinary class loading into a reported deadlock. Widening the window under
+        // test changes nothing about what is asserted; it only stops the machine being part of it.
+        StaticInitDeadlockDetector.secondSampleDelayMs = 3_000;
+        try {
+            report = detector.analyze().toString();
+        } finally {
+            StaticInitDeadlockDetector.secondSampleDelayMs = previousDelay;
+        }
 
         first.join(5_000);
         second.join(5_000);
@@ -225,6 +241,7 @@ class StaticInitSampleSeesVirtualThreadsTest {
     /** Initializes slowly enough to be caught by one sample, fast enough to be gone by the next. */
     static class Slow {
         static {
+            PROGRESSING_BOTH_INSIDE.countDown();
             try {
                 Thread.sleep(20);
             } catch (InterruptedException e) {
@@ -236,6 +253,7 @@ class StaticInitSampleSeesVirtualThreadsTest {
     /** The second one, so the sample spans two different initializers. */
     static class Slower {
         static {
+            PROGRESSING_BOTH_INSIDE.countDown();
             try {
                 Thread.sleep(20);
             } catch (InterruptedException e) {
@@ -279,6 +297,9 @@ class StaticInitSampleSeesVirtualThreadsTest {
         first.interrupt();
         second.interrupt();
     }
+
+    /** Counted down by each progressing initializer on entry, so "both inside" is a fact. */
+    private static final CountDownLatch PROGRESSING_BOTH_INSIDE = new CountDownLatch(2);
 
     private static final CountDownLatch STALE_BOTH_INSIDE = new CountDownLatch(2);
 
