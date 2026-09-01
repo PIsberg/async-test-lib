@@ -39,6 +39,11 @@ class AgentCollectionHooksTest {
         assertEquals("v", AgentCollectionHooks.mapGet(map, "k"), "get returns what put stored");
         assertTrue(AgentCollectionHooks.mapContainsKey(map, "k"), "containsKey sees the entry");
         assertEquals("v", AgentCollectionHooks.mapRemove(map, "k"), "remove returns the old value");
+        AgentCollectionHooks.mapPut(map, "k", "v");
+        assertFalse(AgentCollectionHooks.mapRemove(map, "k", "other"),
+                "the conditional remove leaves a mapping whose value does not match");
+        assertTrue(AgentCollectionHooks.mapRemove(map, "k", "v"),
+                "and removes the one that does, returning a boolean rather than the value");
         assertTrue(map.isEmpty(), "remove actually removed");
 
         List<Object> list = new ArrayList<>();

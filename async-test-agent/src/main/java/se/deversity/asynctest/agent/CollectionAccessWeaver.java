@@ -4,6 +4,7 @@ import java.lang.reflect.Method;
 import java.security.MessageDigest;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Formatter;
@@ -207,6 +208,10 @@ final class CollectionAccessWeaver {
             Entry.call(Map.class, "put", "mapPut", Object.class, Object.class),
             Entry.call(Map.class, "get", "mapGet", Object.class),
             Entry.call(Map.class, "remove", "mapRemove", Object.class),
+            // The conditional remove: a read-modify-write, and the only overload here whose hook
+            // returns a boolean rather than the value it removed. That difference is why it was
+            // #440 rather than part of #434's sweep.
+            Entry.call(Map.class, "remove", "mapRemove", Object.class, Object.class),
             Entry.call(Map.class, "containsKey", "mapContainsKey", Object.class),
             Entry.call(Collection.class, "add", "collectionAdd", Object.class),
             Entry.call(Collection.class, "remove", "collectionRemove", Object.class),
@@ -377,6 +382,18 @@ final class CollectionAccessWeaver {
      */
     private static final List<Entry> STATIC_ENTRIES = List.of(
             Entry.staticCall(Thread.class, "sleep", "sleep", long.class)
+                    .whenSynchronized("sleepHoldingMonitor"),
+            // All three overloads, because a sleep under a lock is the same bug whichever one
+            // spells it. Each needs its own monitor-taking variant on the hooks class, which the
+            // table cannot generate: whenSynchronized names a method, and the weaver resolves it
+            // by the entry's parameters plus the monitor. That resolution is what made these
+            // #440 rather than a line in #434's sweep.
+            //
+            // Duration is the form new code writes since JDK 19, so leaving it out was a gap
+            // that would widen on its own.
+            Entry.staticCall(Thread.class, "sleep", "sleep", Duration.class)
+                    .whenSynchronized("sleepHoldingMonitor"),
+            Entry.staticCall(Thread.class, "sleep", "sleep", long.class, int.class)
                     .whenSynchronized("sleepHoldingMonitor"));
 
     /**

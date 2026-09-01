@@ -147,6 +147,26 @@ public final class AgentCollectionHooks {
         return receiver.remove(key);
     }
 
+    /**
+     * Weaves {@code Map.remove(Object, Object)}, the conditional form.
+     *
+     * <p>Recorded as a write, like the one-argument form, and for a stronger reason: this
+     * overload reads the current mapping and removes it only if it matches, so it is a
+     * read-modify-write over a map another thread may be changing between the two halves. A
+     * {@code false} return does not make it a read - the comparison happened, and on an unguarded
+     * map the value it compared against may already have been replaced.
+     *
+     * @param receiver the map
+     * @param key the key whose mapping is removed when its value still matches
+     * @param value the value the mapping must currently have
+     * @return whether the mapping was removed
+     * @since 1.11.1
+     */
+    public static boolean mapRemove(Map<Object, Object> receiver, Object key, Object value) {
+        record(receiver, "remove", true);
+        return receiver.remove(key, value);
+    }
+
     /** Weaves {@code Map.containsKey}. @param receiver the map @param key the key @return whether the key is present */
     public static boolean mapContainsKey(Map<Object, Object> receiver, Object key) {
         record(receiver, "containsKey", false);
