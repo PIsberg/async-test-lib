@@ -1354,6 +1354,22 @@ reason: exactly one feed is live, so every finding has exactly one possible sour
 | `SHARED_DECIMAL_FORMAT` | one static `DecimalFormat` | `ThreadLocal.withInitial(...)` |
 | `SHARED_FORMATTER` | one static `Formatter` | a `Formatter` over a local builder |
 
+**Two of the eighteen needed no row here, and checking that first was worth the minute it took.**
+`ATOMICITY_VIOLATIONS` and `SHARED_COLLECTIONS` are the two agent-fed detectors lane one already
+exercises, and lane one pairs them at a scale no hand-written row reaches. From
+`corpus-eval.md`:
+
+| Detector | Safe subjects exposed | ...with a finding | Unsafe subjects exposed | ...with a finding |
+|---|---|---|---|---|
+| `AtomicityValidator` | 60 | 0 | 22 | 16 |
+| `SharedCollectionDetector` | 60 | 0 | 22 | 14 |
+
+Both directions, over 82 unmodified third-party subjects: fires on documented-not-thread-safe
+code, silent on all 60 documented-thread-safe ones, which is what
+`noFalsePositiveOnDocumentedThreadSafeCode` has been asserting all along. Writing a two-row pair
+for either would add a weaker measurement next to a stronger one and let the roster count go up
+by two for nothing.
+
 **Two gates, because this lane's premise is not lane three's.** There, a silent row is evidence
 only if it called its detector, which `SilentRowPremise` checks by accessor name. Here there is no
 call to look for, and two different failures replace it.
