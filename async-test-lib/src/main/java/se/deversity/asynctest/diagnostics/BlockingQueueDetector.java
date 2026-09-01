@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -39,10 +41,16 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class BlockingQueueDetector {
 
+    /** The capacity of a queue with no bound, and the value {@code registerQueue} documents. */
+    private static final int UNBOUNDED = -1;
+
     private static class QueueState {
         final String name;
         final BlockingQueue<?> queue;
-        final int capacity;
+        // Declared by registerQueue, or inferred by observeQueue from the queue itself. Mutable
+        // because the inference only converges as observations arrive, and because a reading
+        // taken while another thread was mid-operation can understate it by an element.
+        final AtomicInteger capacity;
         final AtomicInteger offerCount = new AtomicInteger(0);
         final AtomicInteger pollCount = new AtomicInteger(0);
         final AtomicInteger offerSuccessCount = new AtomicInteger(0);
@@ -61,10 +69,10 @@ public class BlockingQueueDetector {
         final AtomicInteger maxObservedSize = new AtomicInteger(0);
         final AtomicInteger minObservedSize = new AtomicInteger(Integer.MAX_VALUE);
 
-        QueueState(BlockingQueue<?> queue, String name, int capacity) {
+        QueueState(BlockingQueue<?> queue, @Nullable String name, int capacity) {
             this.queue = queue;
             this.name = name != null ? name : "queue@" + System.identityHashCode(queue);
-            this.capacity = capacity;
+            this.capacity = new AtomicInteger(capacity);
         }
     }
 
@@ -86,6 +94,49 @@ public class BlockingQueueDetector {
             return;
         }
         queues.putIfAbsent(System.identityHashCode(queue), new QueueState(queue, name, capacity));
+    }
+
+    /**
+     * Registers a queue nobody instrumented, reading its capacity off the queue itself.
+     *
+     * <p>Called by the agent's woven {@code offer}, {@code poll} and {@code put} hooks. A
+     * {@link BlockingQueue} states its bound only indirectly, as
+     * {@code remainingCapacity() + size()}, and those two reads are not taken together: a
+     * concurrent operation between them can shift the sum by an element in either direction.
+     * Under-reading the bound is the dangerous direction, because saturation is a comparison
+     * against it and a bound one too small invents a finding. Keeping the widest reading is
+     * therefore the conservative choice, and it is also what leaves an explicit
+     * {@link #registerQueue} authoritative.
+     *
+     * <p>A {@code remainingCapacity()} of {@link Integer#MAX_VALUE} is the absence of a bound
+     * rather than a very large one - it is what every unbounded {@code LinkedBlockingQueue}
+     * reports - so it is recorded as unbounded, and an unbounded queue cannot saturate.
+     *
+     * @param queue the queue the woven call site is about to operate on
+     * @since 1.11.1
+     */
+    public void observeQueue(BlockingQueue<?> queue) {
+        if (!enabled || queue == null) {
+            return;
+        }
+        int observed = observedCapacityOf(queue);
+        queues.computeIfAbsent(System.identityHashCode(queue),
+                        absent -> new QueueState(queue, null, observed))
+                .capacity.accumulateAndGet(observed, BlockingQueueDetector::widerBound);
+    }
+
+    /** The bound a queue reports about itself, or {@code -1} when it has none. */
+    private static int observedCapacityOf(BlockingQueue<?> queue) {
+        long bound = (long) queue.remainingCapacity() + queue.size();
+        return bound >= Integer.MAX_VALUE ? UNBOUNDED : (int) bound;
+    }
+
+    /** Unbounded beats any bound; between two bounded readings the wider one is the safer. */
+    private static int widerBound(int current, int observed) {
+        if (current == UNBOUNDED || observed == UNBOUNDED) {
+            return UNBOUNDED;
+        }
+        return Math.max(current, observed);
     }
 
     /**
@@ -211,11 +262,13 @@ public class BlockingQueueDetector {
                     state.name, state.pollFailureCount.get()));
             }
 
-            // Check for queue saturation (high water mark near capacity)
-            if (state.capacity > 0 && state.maxObservedSize.get() >= state.capacity * 0.9) {
+            // Check for queue saturation (high water mark near capacity). A queue with no bound
+            // has nothing to be near, which is what UNBOUNDED means here.
+            int capacity = state.capacity.get();
+            if (capacity > 0 && state.maxObservedSize.get() >= capacity * 0.9) {
                 report.saturation.add(String.format(
                     "%s: queue reached %d/%d capacity (saturation risk)",
-                    state.name, state.maxObservedSize.get(), state.capacity));
+                    state.name, state.maxObservedSize.get(), capacity));
             }
 
             // Check for producer/consumer imbalance
