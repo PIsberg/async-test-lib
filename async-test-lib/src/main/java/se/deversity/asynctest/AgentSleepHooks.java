@@ -1,5 +1,7 @@
 package se.deversity.asynctest;
 
+import java.time.Duration;
+
 import se.deversity.asynctest.diagnostics.HeldLocks;
 import se.deversity.asynctest.diagnostics.SleepInLockDetector;
 import se.deversity.vibetags.annotations.AIContract;
@@ -82,10 +84,94 @@ public final class AgentSleepHooks {
      * @since 1.11.0
      */
     public static void sleepHoldingMonitor(long millis, Object monitor) throws InterruptedException {
+        recordHeld(millis, monitor);
+        Thread.sleep(millis);
+    }
+
+    /**
+     * Weaves {@code Thread.sleep(Duration)} outside a synchronized method.
+     *
+     * <p>The form new code writes since JDK 19, and it was not woven at all while its
+     * {@code long} sibling was (#440). Whether a sleep is a bug depends on whether a lock was
+     * held, not on which overload expressed the duration.
+     *
+     * <p>A duration under a millisecond records nothing, because {@code toMillis()} truncates to
+     * zero and the detector ignores a zero-length sleep. That matches what
+     * {@code sleep(0)} already does rather than introducing a second rule.
+     *
+     * @param duration how long to sleep
+     * @throws InterruptedException if interrupted while sleeping
+     */
+    public static void sleep(Duration duration) throws InterruptedException {
+        Object held = HeldLocks.topHeld();
+        if (held != null) {
+            recordHeld(duration.toMillis(), held);
+        }
+        Thread.sleep(duration);
+    }
+
+    /**
+     * Weaves {@code Thread.sleep(Duration)} inside a synchronized method.
+     *
+     * @param duration how long to sleep
+     * @param monitor  the enclosing method's monitor, loaded at the call site by the weaver
+     * @throws InterruptedException if interrupted while sleeping
+     */
+    public static void sleepHoldingMonitor(Duration duration, Object monitor)
+            throws InterruptedException {
+        recordHeld(duration.toMillis(), monitor);
+        Thread.sleep(duration);
+    }
+
+    /**
+     * Weaves {@code Thread.sleep(long, int)} outside a synchronized method.
+     *
+     * <p>The nanosecond argument is not part of the finding. The detector's question is how long a
+     * lock went un-progressed, and no lock is held meaningfully differently for an extra 999999
+     * nanoseconds; recording the millisecond component keeps one unit across all four overloads.
+     *
+     * @param millis how long to sleep, in milliseconds
+     * @param nanos  the additional nanoseconds to sleep
+     * @throws InterruptedException if interrupted while sleeping
+     */
+    public static void sleep(long millis, int nanos) throws InterruptedException {
+        Object held = HeldLocks.topHeld();
+        if (held != null) {
+            recordHeld(millis, held);
+        }
+        Thread.sleep(millis, nanos);
+    }
+
+    /**
+     * Weaves {@code Thread.sleep(long, int)} inside a synchronized method.
+     *
+     * @param millis  how long to sleep, in milliseconds
+     * @param nanos   the additional nanoseconds to sleep
+     * @param monitor the enclosing method's monitor, loaded at the call site by the weaver
+     * @throws InterruptedException if interrupted while sleeping
+     */
+    public static void sleepHoldingMonitor(long millis, int nanos, Object monitor)
+            throws InterruptedException {
+        recordHeld(millis, monitor);
+        Thread.sleep(millis, nanos);
+    }
+
+    /**
+     * Records a sleep that happened with {@code monitor} held.
+     *
+     * <p>Always the two-argument {@code recordSleep}, never the one-argument overload. That one
+     * resolves the held monitors through {@code ThreadMXBean}, which does not report virtual
+     * threads - and the runner uses them by default, so it would answer "none" for every worker
+     * and the detector would never fire. Naming the monitor routes it through
+     * {@code Thread.holdsLock} instead, which has no such blind spot.
+     *
+     * @param millis  how long the sleep was, in milliseconds
+     * @param monitor the monitor held across it
+     */
+    private static void recordHeld(long millis, Object monitor) {
         SleepInLockDetector detector = AsyncTestContext.currentSleepInLockDetector();
         if (detector != null) {
             detector.recordSleep(millis, monitor);
         }
-        Thread.sleep(millis);
     }
 }

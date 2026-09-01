@@ -4,6 +4,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.text.DecimalFormat;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Calendar;
 import java.util.Formatter;
 import java.util.GregorianCalendar;
@@ -83,6 +86,93 @@ class NewlyWovenOverloadHooksTest {
         assertEquals("x", AgentConcurrencyUtilHooks.poll(queue, 10, TimeUnit.MILLISECONDS),
                 "the timed poll returns the head");
     }
+
+    @Test
+    @DisplayName("every sleep and map hook added for #440 performs the operation it replaced")
+    void theSleepAndMapHooksDelegate() throws Exception {
+        long before = System.nanoTime();
+        AgentSleepHooks.sleep(Duration.ofMillis(2));
+        AgentSleepHooks.sleep(1L, 500_000);
+        AgentSleepHooks.sleepHoldingMonitor(Duration.ofMillis(2), LOCK);
+        AgentSleepHooks.sleepHoldingMonitor(1L, 500_000, LOCK);
+        assertTrue(System.nanoTime() - before >= 4_000_000L,
+                "all four hooks must actually sleep, not just record");
+
+        Map<Object, Object> map = new HashMap<>();
+        map.put("k", "v");
+        assertFalse(AgentCollectionHooks.mapRemove(map, "k", "other"),
+                "the conditional remove leaves an entry whose value does not match");
+        assertTrue(map.containsKey("k"), "and really leaves it");
+        assertTrue(AgentCollectionHooks.mapRemove(map, "k", "v"),
+                "the conditional remove takes an entry whose value matches");
+        assertTrue(map.isEmpty(), "and really takes it");
+    }
+
+    @Test
+    @DisplayName("a sleep holding a monitor is reported whichever overload expressed the duration")
+    void everySleepOverloadReportsWhenAMonitorIsHeld() {
+        // The point of #440. Before it, a sleep inside a synchronized method was invisible purely
+        // because its duration was spelled as a Duration rather than as a long - the detector's
+        // question is whether a lock went un-progressed, which does not depend on the spelling.
+        assertTrue(sleepReportsHoldingTheLock(
+                        () -> AgentSleepHooks.sleepHoldingMonitor(Duration.ofMillis(2), LOCK)),
+                "sleepHoldingMonitor(Duration, Object) must report");
+        assertTrue(sleepReportsHoldingTheLock(
+                        () -> AgentSleepHooks.sleepHoldingMonitor(2L, 0, LOCK)),
+                "sleepHoldingMonitor(long, int, Object) must report");
+    }
+
+    @Test
+    @DisplayName("a sleep holding nothing stays silent, whichever overload")
+    void noSleepOverloadReportsWithoutAMonitor() {
+        // The other direction, because the test above passes for a hook that reports every sleep.
+        assertFalse(sleepReports(() -> AgentSleepHooks.sleep(Duration.ofMillis(2))),
+                "sleep(Duration) with no lock held is a backoff, not a finding");
+        assertFalse(sleepReports(() -> AgentSleepHooks.sleep(2L, 0)),
+                "sleep(long, int) with no lock held is a backoff, not a finding");
+    }
+
+    /**
+     * {@return whether {@code body} reported, run with {@link #LOCK} genuinely held}
+     *
+     * <p>The monitor has to be held for real. {@code recordSleep} asks {@code Thread.holdsLock}
+     * rather than trusting the argument, so passing the monitor without holding it records
+     * nothing - which is what the weaver's synchronized path guarantees at the call site and what
+     * this has to reproduce for the assertion to mean anything.
+     */
+    private static boolean sleepReportsHoldingTheLock(Sleeping body) {
+        return sleepReports(() -> {
+            synchronized (LOCK) {
+                body.run();
+            }
+        });
+    }
+
+    /** {@return whether {@code body} produced a sleep-in-lock finding} */
+    private static boolean sleepReports(Sleeping body) {
+        AsyncTestConfig cfg = AsyncTestConfig.builder().detectSleepInLock(true).build();
+        AsyncTestContext ctx = new AsyncTestContext(cfg);
+        AsyncTestContext.install(ctx);
+        try {
+            AsyncTestContext.sleepInLockDetector().startMonitoring();
+            body.run();
+            return AsyncTestContext.sleepInLockDetector().analyze().hasIssues();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("nothing here interrupts", e);
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    /** A body that sleeps and may be interrupted. */
+    @FunctionalInterface
+    private interface Sleeping {
+        void run() throws InterruptedException;
+    }
+
+    /** The monitor the synchronized-form sleeps are recorded against. */
+    private static final Object LOCK = new Object();
 
     @Test
     @DisplayName("a semaphore's permit count is recorded per permit, not per call")

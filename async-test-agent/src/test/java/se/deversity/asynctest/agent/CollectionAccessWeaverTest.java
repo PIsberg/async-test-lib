@@ -43,6 +43,10 @@ class CollectionAccessWeaverTest {
             return receiver.remove(key);
         }
 
+        public static boolean mapRemove(Map<Object, Object> receiver, Object key, Object value) {
+            return receiver.remove(key, value);
+        }
+
         public static boolean mapContainsKey(Map<Object, Object> receiver, Object key) {
             return receiver.containsKey(key);
         }
