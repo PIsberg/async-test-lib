@@ -1,16 +1,18 @@
 name: Mutation Testing (PIT)
 
 # Weekly, and on demand. A full PIT run over se.deversity.asynctest.* is the longest job in
-# the repository (about 1h20m locally, longer under CI's e2e tier), and its score moves
+# the repository (about 2h locally with the e2e tier included), and its score moves
 # slowly, so running it on every push would buy a number nobody reads. Weekly keeps the gate
 # real: the job fails when the mutation score drops below the threshold in
-# async-test-lib/pom.xml (74%, measured 75.4% on 2026-07-17; the margin absorbs TIMED_OUT
+# async-test-lib/pom.xml (76%, measured 77.5% on 2026-08-31; the margin absorbs TIMED_OUT
 # jitter). Trigger it from Actions -> Mutation Testing (PIT) -> Run workflow when test
 # strength is the actual question, for instance before a release or after a detector sweep.
 #
-# The e2e profile auto-activates under CI, which matters here: pitest reads surefire's
-# excludedGroups, so without it PIT would score the fast tier only and report the meta-tests'
-# coverage as missing.
+# The pom's pitest configuration sets parseSurefireConfig=false and declares everything
+# explicitly, so the e2e engine tier is always part of the measurement — locally and here.
+# Before 2026-08-31 pitest inherited surefire's excludedGroups, which silently scored the
+# fast tier only on developer machines (74%) while CI's auto-activated e2e profile scored
+# the full suite (77.5%): the same command measured two different things.
 
 on:
   schedule:

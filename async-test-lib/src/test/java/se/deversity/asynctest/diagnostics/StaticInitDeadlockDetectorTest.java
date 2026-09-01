@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 /**
  * Unit tests for {@link StaticInitDeadlockDetector}.
@@ -164,11 +165,23 @@ class StaticInitDeadlockDetectorTest {
                 + "live-thread sample");
     }
 
+    /**
+     * Whether the JVM already held a monitor deadlock when this class loaded. Under surefire
+     * ({@code reuseForks=false}) this is always false; in a shared-JVM run such as pitest's
+     * coverage stage, deadlock demonstrations in other classes leak permanently deadlocked
+     * threads, and the premise below is then unobservable rather than false.
+     */
+    private static final boolean DEADLOCKED_BEFORE_THIS_CLASS =
+            StaticInitDeadlockDetector.platformDeadlockDetectorSeesAnything();
+
     @Test
     void platformDeadlockDetectorFindsNothingInAHealthyJvm() {
         // Pins the premise of this detector rather than its output: a JVM with no monitor
         // deadlock reports none, so a class-init deadlock would leave this false while the
         // application is wedged.
+        assumeFalse(DEADLOCKED_BEFORE_THIS_CLASS,
+                "another suite leaked monitor-deadlocked threads into this shared JVM before "
+                + "this class loaded; the healthy-JVM premise cannot be observed here");
         assertFalse(StaticInitDeadlockDetector.platformDeadlockDetectorSeesAnything(),
                 "This test JVM must not be monitor-deadlocked");
     }

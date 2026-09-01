@@ -81,9 +81,15 @@ class VirtualThreadLockGraphTest {
         // cannot be broken, and virtual threads cannot be killed. An earlier draft asserted the
         // healthy case in a separate method and that method failed, because it ran second and
         // found this deadlock. That was the code working and the test being wrong.
+        // Scoped to this test's own probe names, not "no cycles at all": in a shared-JVM run
+        // (pitest's coverage stage) earlier suites leak their own deadlocked workers, and those
+        // cycles are real, just not ours to assert about.
         Optional<List<VirtualThreadLockGraph.Cycle>> before = VirtualThreadLockGraph.scan();
-        before.ifPresent(cycles -> assertTrue(cycles.isEmpty(),
-                "nothing is deadlocked yet, so a cycle here is a false positive: " + cycles));
+        before.ifPresent(cycles -> assertTrue(
+                cycles.stream().noneMatch(c -> c.threadNames().contains("probe-a")
+                        || c.threadNames().contains("probe-b")),
+                "this test's probes are not deadlocked yet, so a cycle naming them here is a "
+                        + "false positive: " + cycles));
 
         Object first = new Object();
         Object second = new Object();

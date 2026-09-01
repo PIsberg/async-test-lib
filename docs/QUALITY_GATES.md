@@ -268,19 +268,22 @@ all 127 build. This only moves discovery of the common failure earlier.
 
 ## Mutation testing
 
-PITest gates the mutation score at **≥ 74%** (measured 75.4%; the margin absorbs run-to-run
-`TIMED_OUT` jitter). It is never bound to `verify`; `mutation.yml` runs it weekly (Sundays
-02:00 UTC) and on demand from the Actions tab, and that job fails below the threshold. Until
-2026-08-15 nothing in CI ran it at all, while `CONTRIBUTING.md` said it ran on a schedule.
+PITest gates the mutation score at **≥ 76%** (measured 77.5% on 2026-08-31; the margin absorbs
+run-to-run `TIMED_OUT` jitter). It is never bound to `verify`; `mutation.yml` runs it weekly
+(Sundays 02:00 UTC) and on demand from the Actions tab, and that job fails below the threshold.
+Until 2026-08-15 nothing in CI ran it at all, while `CONTRIBUTING.md` said it ran on a schedule.
 
 ```bash
-mvn org.pitest:pitest-maven:mutationCoverage                 # full run, ~1h20m
+mvn org.pitest:pitest-maven:mutationCoverage                 # full run, ~2h
 mvn org.pitest:pitest-maven:mutationCoverage -DtargetClasses=se.deversity.asynctest.diagnostics.Shared*
 ```
 
 Quirks: `parseSurefireArgLine=false` is required because JaCoCo's late-bound `@{argLine}` crashes
-pitest, so the needed JVM flags are duplicated in the plugin's `jvmArgs`. Reports are
-non-timestamped, so each run overwrites `target/pit-reports/`.
+pitest, so the needed JVM flags are duplicated in the plugin's `jvmArgs`. `parseSurefireConfig=false`
+(2026-08-31) keeps pitest from inheriting surefire's local `excludedGroups=e2e`: before it, a
+developer's full run silently scored the fast tier only (74%) while the CI job — where the e2e
+profile clears the exclusion — scored the whole suite (77.5%), so the same command measured two
+different things. Reports are non-timestamped, so each run overwrites `target/pit-reports/`.
 
 Surviving mutants are dominated by diagnostic output and timing-heuristic detectors — killing them
 would require flaky timing-forced tests, so they are deliberately tolerated. Mutation analysis has
@@ -460,7 +463,7 @@ a property that held by habit into one that fails a build.
 | Allocation budget | `RunnerAllocationBudgetTest` (`-P e2e`, every CI leg) | every CI build | one all-detector `@AsyncTest` run allocates more than 80,000 bytes per body execution (3.0x the 25,985 to 26,599 measured on 2026-08-15; re-derive the same way, red first) |
 | Keygen contract | `KeygenValidateKeyContractTest` (default `mvn test`) | every build | the request to a loopback stand-in stops matching the recorded validate-key contract (path, `POST`, `meta.key`, `meta.scope.user`, `meta.scope.product`), or a `meta.valid=false` answer, or a body without `meta.valid`, admits a run. `LicenseGuardLemonSqueezyTest` is the LemonSqueezy twin |
 | Load-test trend | `load-tests.yml` + `load-tests/tools/compare-baseline.sh` | push, PR, nightly 04:00 UTC | never; prints `::warning::` when a fresh sweep row exceeds 1.5x (median ms) or 2.0x (all-detector KB) of the newest committed baseline. A trend line, cross-machine, so warn-only by design |
-| Mutation | `mutation.yml` | Sundays, dispatch | the PIT score drops below the pom's `mutationThreshold` (74) |
+| Mutation | `mutation.yml` | Sundays, dispatch | the PIT score drops below the pom's `mutationThreshold` (76) |
 | Fuzzing | `fuzzing.yml` | Mondays, dispatch, and PRs touching the config surface or the harness | Jazzer finds an input that breaks `AsyncTestConfig.Builder`, or never reaches `INITED` |
 | Example demonstrations | `example-demos.yml` | Tuesdays, dispatch | a `@Disabled` example demonstration **passes** in every run once enabled. The inversion is the design, which is why it cannot live in the examples pipeline. See below |
 | Inquisitor | `inquisitor.yml` | PR | the adversarial reviewer (`.github/INQUISITOR.md`, model pinned in `.github/MODEL-ROSTER.md`) writes a violation against the committed law. Optional lane: skips loudly without `ANTHROPIC_API_KEY`, and the repository does not carry that secret by decision (2026-08-15: Copilot Free is the AI lane; nothing blocks on paid tokens) |

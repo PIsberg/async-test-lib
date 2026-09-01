@@ -106,13 +106,17 @@ class StaticInitSampleSeesVirtualThreadsTest {
     @Test
     @DisplayName("a virtual thread parked in a static initializer reaches the live sample")
     void aVirtualThreadParkedInAClinitIsSampled() throws Exception {
+        // Constructed before the wedge, the way ConcurrencyRunner constructs detectors before
+        // the test body runs: the detector baselines what is already parked at construction,
+        // and only a wedge created after it counts.
+        StaticInitDeadlockDetector detector = new StaticInitDeadlockDetector();
+
         Thread first = Thread.ofVirtual().name("clinit-a").start(() -> touch(Alpha.class));
         Thread second = Thread.ofVirtual().name("clinit-b").start(() -> touch(Beta.class));
         assertTrue(BOTH_INSIDE.await(5, TimeUnit.SECONDS),
                 "both initializers must be entered before they wait on each other");
         Thread.sleep(400);      // and then park, each waiting for the other's class
 
-        StaticInitDeadlockDetector detector = new StaticInitDeadlockDetector();
         String report = detector.analyze().toString();
 
         if (VirtualThreadLockGraph.threadsWithState().isEmpty()) {
@@ -198,10 +202,10 @@ class StaticInitSampleSeesVirtualThreadsTest {
 
         first.join(5_000);
         second.join(5_000);
-        // Named threads, not "no finding at all". This class deliberately leaves two virtual
-        // threads deadlocked in Alpha/Beta for the life of the JVM, and a fresh detector re-samples
-        // and finds them - which is the fix working. An earlier draft asserted on an empty report
-        // and failed on that leftover, proving the code right and the assertion wrong.
+        // Named threads, not "no finding at all": whatever else this JVM holds — this class
+        // deliberately leaves Alpha/Beta wedged for its lifetime, though a detector constructed
+        // after that wedge now baselines it away — the claim here is only that these two
+        // fast-completing initializers are not reported.
         assertFalse(report.contains("loading-one") || report.contains("loading-two"),
                 "both initializers completed well inside the sample interval, so this is two "
                         + "classes loading, not a deadlock. Reporting them would be a false "
@@ -237,6 +241,78 @@ class StaticInitSampleSeesVirtualThreadsTest {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+        }
+    }
+
+    /**
+     * A wedge that predates the detector is not this run's finding.
+     *
+     * <p>This is the same baseline {@code DeadlockDetector} takes at construction, for the same
+     * reason: in a JVM where an earlier test wedged threads inside class initializers — this very
+     * file leaves Alpha/Beta wedged on purpose — a detector constructed afterwards would blame
+     * every later run for a deadlock that predates it. {@code ConcurrencyRunner} constructs
+     * detectors before the test body runs, so "already parked at construction" exactly separates
+     * someone else's wedge from the run under test.
+     *
+     * <p>Platform daemon threads, not virtual ones, so the regression holds on JDKs whose thread
+     * dump carries no state, and so the leaked pair cannot keep the JVM alive at exit.
+     */
+    @Test
+    @DisplayName("threads already parked in an initializer at construction are baselined away")
+    void preExistingInitializerWedgeIsBaselinedAtConstruction() throws Exception {
+        Thread first = Thread.ofPlatform().daemon().name("stale-clinit-a")
+                .start(() -> touchLoading(Gamma.class));
+        Thread second = Thread.ofPlatform().daemon().name("stale-clinit-b")
+                .start(() -> touchLoading(Delta.class));
+        assertTrue(STALE_BOTH_INSIDE.await(5, TimeUnit.SECONDS),
+                "both initializers must be entered before they wait on each other");
+        Thread.sleep(400);      // and then park, each waiting for the other's class
+
+        StaticInitDeadlockDetector constructedAfterTheWedge = new StaticInitDeadlockDetector();
+        String report = constructedAfterTheWedge.analyze().toString();
+
+        assertFalse(report.contains("stale-clinit-a") || report.contains("stale-clinit-b"),
+                "a wedge that existed before the detector was constructed belongs to an earlier "
+                        + "test, not to this run; reporting it makes every run after a leaked "
+                        + "initializer deadlock fail on someone else's bug. Report was: " + report);
+
+        first.interrupt();
+        second.interrupt();
+    }
+
+    private static final CountDownLatch STALE_BOTH_INSIDE = new CountDownLatch(2);
+
+    /** Its initializer waits for Delta's, and Delta's waits for its: wedged before construction. */
+    static class Gamma {
+        static void touchMe() {
+            // referencing the class is enough to require its initialization
+        }
+
+        static {
+            STALE_BOTH_INSIDE.countDown();
+            try {
+                STALE_BOTH_INSIDE.await(5, TimeUnit.SECONDS);
+                Delta.touchMe();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    /** The other half of the pre-existing pair. */
+    static class Delta {
+        static {
+            STALE_BOTH_INSIDE.countDown();
+            try {
+                STALE_BOTH_INSIDE.await(5, TimeUnit.SECONDS);
+                Gamma.touchMe();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        static void touchMe() {
+            // referencing the class is enough to require its initialization
         }
     }
 }
