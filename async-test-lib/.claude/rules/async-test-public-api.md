@@ -60,10 +60,10 @@ This element is strictly excluded from AI context. Do not reference it.
 - **Reason**: Guarded by the `closed` volatile flag; second close() returns early before touching the registry. Covered by `registrationClose_isIdempotent` test.
 
 ### se.deversity.asynctest.AsyncTestListenerRegistry.clearAll()
-- **Reason**: List.clear() on an already-empty list is a no-op; repeated calls have identical observable effect (empty registry).
+- **Reason**: Publishes the empty set; doing so twice has identical observable effect (empty registry).
 
 ### se.deversity.asynctest.AsyncTestListenerRegistry.unregister(se.deversity.asynctest.AsyncTestListener)
-- **Reason**: Backed by List.remove which is a no-op when the listener is absent; second call returns false but produces no observable side effect.
+- **Reason**: Removes one occurrence when present and is a no-op when absent; a second call returns false but produces no observable side effect.
 
 ### se.deversity.asynctest.spi.DetectorRegistry.analyzeAll()
 - **Reason**: Each Detector.analyze() must return the same violations for the same observed state (the SPI contract). Calling analyzeAll() N times on a quiescent registry yields N identical lists; do not introduce stateful side-effects in analyze().
