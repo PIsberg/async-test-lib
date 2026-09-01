@@ -6,6 +6,7 @@ import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
+import java.time.Duration;
 import java.util.Formatter;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -207,6 +208,8 @@ final class CollectionAccessWeaver {
             Entry.call(Map.class, "put", "mapPut", Object.class, Object.class),
             Entry.call(Map.class, "get", "mapGet", Object.class),
             Entry.call(Map.class, "remove", "mapRemove", Object.class),
+            // The conditional two-argument removal, which is a mutation like its sibling (#440).
+            Entry.call(Map.class, "remove", "mapRemove", Object.class, Object.class),
             Entry.call(Map.class, "containsKey", "mapContainsKey", Object.class),
             Entry.call(Collection.class, "add", "collectionAdd", Object.class),
             Entry.call(Collection.class, "remove", "collectionRemove", Object.class),
@@ -377,6 +380,16 @@ final class CollectionAccessWeaver {
      */
     private static final List<Entry> STATIC_ENTRIES = List.of(
             Entry.staticCall(Thread.class, "sleep", "sleep", long.class)
+                    .whenSynchronized("sleepHoldingMonitor"),
+            // The Duration form is what new code writes since JDK 19, and the two-argument form
+            // is the older precision variant. Both were unwoven while the plain long was woven,
+            // so a sleep holding a monitor was invisible purely because of how its duration was
+            // spelled (#440). The conditional-hook path generalises without change: the weaver
+            // derives the monitor-taking descriptor by appending Object to the entry's own
+            // parameters, so each needs only its sleepHoldingMonitor overload to exist.
+            Entry.staticCall(Thread.class, "sleep", "sleep", Duration.class)
+                    .whenSynchronized("sleepHoldingMonitor"),
+            Entry.staticCall(Thread.class, "sleep", "sleep", long.class, int.class)
                     .whenSynchronized("sleepHoldingMonitor"));
 
     /**

@@ -53,6 +53,8 @@ class WovenOverloadCoverageTest {
      * <p>Separate from {@link #NOT_WOVEN} because the two say opposite things and a single list
      * would let one pass for the other. A decision needs no follow-up; a gap does, and an entry
      * that cannot name an issue is a to-do wearing a decision's clothes.
+     *
+     * <p>Currently empty, which is the state to keep it in.
      */
     private static final Map<String, String> KNOWN_GAP = new LinkedHashMap<>();
 
@@ -95,16 +97,10 @@ class WovenOverloadCoverageTest {
                         + "java.text.FieldPosition)",
                 "the Format SPI; same reason as the Date form");
 
-        gap("java.lang.Thread#sleep(java.time.Duration)",
-                "#440 - the sleep entry carries a whenSynchronized hook, so an overload needs a "
-                        + "matching monitor-taking variant rather than a plain one. Duration is "
-                        + "the form new code writes since JDK 19");
-        gap("java.lang.Thread#sleep(long, int)",
-                "#440 - same conditional-hook path as sleep(Duration)");
-        gap("java.util.Map#remove(java.lang.Object, java.lang.Object)",
-                "#440 - the conditional two-argument remove is a real mutation and belongs in "
-                        + "the collection table; it needs a hook returning boolean rather than "
-                        + "the removed value");
+        // KNOWN_GAP is deliberately empty. The three entries it held - Thread.sleep(Duration),
+        // Thread.sleep(long, int) and Map.remove(Object, Object) - were closed in #440, and the
+        // mechanism is kept rather than deleted with them: the next overload that ought to be
+        // woven and is not needs somewhere to live that is visibly not a decision.
     }
 
     private static void decided(String callSite, String reason) {

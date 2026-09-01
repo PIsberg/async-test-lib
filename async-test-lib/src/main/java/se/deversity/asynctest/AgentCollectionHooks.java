@@ -147,6 +147,24 @@ public final class AgentCollectionHooks {
         return receiver.remove(key);
     }
 
+    /**
+     * Weaves {@code Map.remove(Object, Object)}, the conditional removal.
+     *
+     * <p>A separate overload rather than a widening of the one above, because this one answers
+     * whether it removed anything rather than handing back what it removed. It is a mutation
+     * either way, which is the only thing the record call cares about, and it was unwoven while
+     * its one-argument sibling was (#440).
+     *
+     * @param receiver the map
+     * @param key      the key to remove
+     * @param value    the value the entry must currently hold
+     * @return whether the entry was removed
+     */
+    public static boolean mapRemove(Map<Object, Object> receiver, Object key, Object value) {
+        record(receiver, "remove", true);
+        return receiver.remove(key, value);
+    }
+
     /** Weaves {@code Map.containsKey}. @param receiver the map @param key the key @return whether the key is present */
     public static boolean mapContainsKey(Map<Object, Object> receiver, Object key) {
         record(receiver, "containsKey", false);
