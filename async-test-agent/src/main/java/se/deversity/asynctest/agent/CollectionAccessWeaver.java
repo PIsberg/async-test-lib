@@ -7,6 +7,7 @@ import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Formatter;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -169,6 +170,39 @@ final class CollectionAccessWeaver {
         }
     }
 
+    /**
+     * {@return every substituted call site, as {@code owner#method(paramType, ...)}}
+     *
+     * <p>Exists for {@code WovenOverloadCoverageTest}, which is the gate behind #434. The weaver
+     * matches an exact descriptor, so an overload that is not in a table here is not woven, is
+     * not observed, and produces silence indistinguishable from correct code. That is invisible
+     * from the outside: nothing in a build fails, and the detector for it simply never speaks.
+     * Handing the table out lets a test enumerate the receiver's real overloads and insist each
+     * one is either woven or excused by name.
+     *
+     * <p>Deliberately a formatted string rather than the {@code Entry} record. The record is an
+     * implementation detail that carries hook names and dispatch flags a coverage test has no
+     * business reading, and a test that matched on it would break on every internal change.
+     */
+    static java.util.Set<String> wovenCallSites() {
+        java.util.Set<String> sites = new java.util.LinkedHashSet<>();
+        for (List<Entry> table : List.of(ENTRIES, SHARED_INSTANCE_ENTRIES, CONCURRENCY_ENTRIES,
+                STATIC_ENTRIES, GC_ENTRIES)) {
+            for (Entry entry : table) {
+                StringBuilder site = new StringBuilder(entry.declaredBy().getName())
+                        .append('#').append(entry.method()).append('(');
+                for (int i = 0; i < entry.parameters().length; i++) {
+                    if (i > 0) {
+                        site.append(", ");
+                    }
+                    site.append(entry.parameters()[i].getName());
+                }
+                sites.add(site.append(')').toString());
+            }
+        }
+        return sites;
+    }
+
     private static final List<Entry> ENTRIES = List.of(
             Entry.call(Map.class, "put", "mapPut", Object.class, Object.class),
             Entry.call(Map.class, "get", "mapGet", Object.class),
@@ -243,23 +277,60 @@ final class CollectionAccessWeaver {
     private static final List<Entry> SHARED_INSTANCE_ENTRIES = List.of(
             Entry.call(SimpleDateFormat.class, "format", "format", Date.class),
             Entry.call(SimpleDateFormat.class, "parse", "parse", String.class),
+            Entry.call(SimpleDateFormat.class, "parse", "parse",
+                    String.class, java.text.ParsePosition.class),
             Entry.call(Matcher.class, "find", "find"),
             Entry.call(Matcher.class, "matches", "matches"),
             Entry.call(Matcher.class, "group", "group"),
+            // find() then group(1) is the standard idiom, so the group-taking overloads were the
+            // common path and the zero-argument one the exception (#434).
+            Entry.call(Matcher.class, "group", "group", int.class),
+            Entry.call(Matcher.class, "group", "group", String.class),
+            Entry.call(Matcher.class, "find", "find", int.class),
             Entry.call(MessageDigest.class, "update", "update", byte[].class),
             Entry.call(MessageDigest.class, "digest", "digest"),
             Entry.call(MessageDigest.class, "digest", "digest", byte[].class),
+            Entry.call(MessageDigest.class, "update", "update", byte.class),
+            Entry.call(MessageDigest.class, "update", "update",
+                    byte[].class, int.class, int.class),
+            Entry.call(MessageDigest.class, "update", "update", java.nio.ByteBuffer.class),
+            Entry.call(MessageDigest.class, "digest", "digest",
+                    byte[].class, int.class, int.class),
             Entry.call(Calendar.class, "get", "get", int.class),
             Entry.call(Calendar.class, "set", "set", int.class, int.class),
-            // StringBuilder is final and its two commonest appends carry the whole pattern.
+            // Populating a calendar by date is how calendars are actually built; the
+            // one-field-at-a-time form is the rarer shape and was the only one woven (#434).
+            Entry.call(Calendar.class, "set", "set", int.class, int.class, int.class),
+            Entry.call(Calendar.class, "set", "set",
+                    int.class, int.class, int.class, int.class, int.class),
+            Entry.call(Calendar.class, "set", "set",
+                    int.class, int.class, int.class, int.class, int.class, int.class),
+            // StringBuilder is final, and every append overload reads count, writes the array
+            // and writes count back. The weaver matches an exact descriptor, so listing only two
+            // of them left a shared builder appended to with a char - or an Object, or a
+            // CharSequence - completely unobserved while the String form was seen. That was found
+            // by a corpus row that had to fire and did not (#434). The remaining overloads
+            // (char[], float, StringBuffer, and the three-argument forms) are still unwoven and
+            // are listed in WovenOverloadCoverageTest rather than left to be rediscovered.
             // String concatenation does not reach here: javac has compiled that to
             // invokedynamic since JDK 9, so only an explicit builder a user shared is woven.
             Entry.call(StringBuilder.class, "append", "append", String.class),
             Entry.call(StringBuilder.class, "append", "append", int.class),
+            Entry.call(StringBuilder.class, "append", "append", char.class),
+            Entry.call(StringBuilder.class, "append", "append", long.class),
+            Entry.call(StringBuilder.class, "append", "append", double.class),
+            Entry.call(StringBuilder.class, "append", "append", boolean.class),
+            Entry.call(StringBuilder.class, "append", "append", Object.class),
+            Entry.call(StringBuilder.class, "append", "append", CharSequence.class),
             // NumberFormat rather than DecimalFormat: the abstract parent is what a field is
             // usually typed as, and neither it nor any JDK subclass is thread safe.
             Entry.call(NumberFormat.class, "format", "format", double.class),
-            Entry.call(Formatter.class, "format", "format", String.class, Object[].class));
+            Entry.call(NumberFormat.class, "format", "format", long.class),
+            Entry.call(Formatter.class, "format", "format", String.class, Object[].class),
+            // The locale-taking overload is what an internationalised codebase calls, and it was
+            // invisible while its sibling was woven (#434).
+            Entry.call(Formatter.class, "format", "format",
+                    Locale.class, String.class, Object[].class));
 
     /**
      * The coordination table: {@code java.util.concurrent} primitives whose protocol can be
@@ -277,12 +348,25 @@ final class CollectionAccessWeaver {
             Entry.call(Semaphore.class, "acquire", "acquire"),
             Entry.call(Semaphore.class, "tryAcquire", "tryAcquire"),
             Entry.call(Semaphore.class, "release", "release"),
+            // The permit-count and timed overloads. A pool sized in permits was invisible, and
+            // each permit is recorded separately so that acquire(3)/release(1) reads as the leak
+            // of two that it is (#434).
+            Entry.call(Semaphore.class, "acquire", "acquire", int.class),
+            Entry.call(Semaphore.class, "tryAcquire", "tryAcquire", int.class),
+            Entry.call(Semaphore.class, "tryAcquire", "tryAcquire", long.class, TimeUnit.class),
+            Entry.call(Semaphore.class, "tryAcquire", "tryAcquire",
+                    int.class, long.class, TimeUnit.class),
+            Entry.call(Semaphore.class, "release", "release", int.class),
             Entry.call(CountDownLatch.class, "countDown", "countDown"),
             Entry.call(CountDownLatch.class, "await", "await"),
             Entry.call(CountDownLatch.class, "await", "await", long.class, TimeUnit.class),
             Entry.call(BlockingQueue.class, "offer", "offer", Object.class),
             Entry.call(BlockingQueue.class, "poll", "poll"),
-            Entry.call(BlockingQueue.class, "put", "put", Object.class));
+            Entry.call(BlockingQueue.class, "put", "put", Object.class),
+            // The timed forms are what production code reaches for, and neither was woven (#434).
+            Entry.call(BlockingQueue.class, "offer", "offer",
+                    Object.class, long.class, TimeUnit.class),
+            Entry.call(BlockingQueue.class, "poll", "poll", long.class, TimeUnit.class));
 
     /**
      * The static table: calls a detector's input maps onto that are not invoked on a receiver.
