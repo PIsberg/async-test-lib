@@ -36,7 +36,13 @@ import java.nio.CharBuffer;
 import java.nio.charset.CharsetEncoder;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.SimpleTimeZone;
+import java.util.TimeZone;
 import java.util.WeakHashMap;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.zip.CRC32;
+import java.util.zip.Deflater;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
@@ -61,6 +67,10 @@ import java.util.Iterator;
 import java.util.Collections;
 import java.util.ArrayList;
 import javax.crypto.Mac;
+import javax.crypto.SecretKeyFactory;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 import javax.crypto.spec.SecretKeySpec;
 import java.security.InvalidKeyException;
 
@@ -98,6 +108,57 @@ class CorpusRecordingLaneTest {
 
     /** The HMAC key, fixed so the confined and shared rows build identical instances. */
     private static final byte[] HMAC_KEY = "corpus-key".getBytes(StandardCharsets.UTF_8);
+
+    /** The capacity both blocking-queue rows register, and the number of offers they make. */
+    private static final int QUEUE_CAPACITY = 5;
+
+    /** The algorithm label both KDF rows pass, so only the guarding differs. */
+    private static final String KDF_ALGORITHM = "PBKDF2WithHmacSHA256";
+
+    /** One CRC32 for the whole run: the loud checksum row. */
+    private static final CRC32 SHARED_CHECKSUM = new CRC32();
+
+    /** A CRC32 per thread, so no instance is ever recorded from two. */
+    private static final ThreadLocal<CRC32> CONFINED_CHECKSUM =
+            ThreadLocal.withInitial(CRC32::new);
+
+    /** One Deflater for the whole run: the loud deflater row. */
+    private static final Deflater SHARED_DEFLATER = new Deflater();
+
+    /** A Deflater per thread, ended in {@code reportAndGate} with the rest of the fixtures. */
+    private static final ThreadLocal<Deflater> CONFINED_DEFLATER =
+            ThreadLocal.withInitial(CorpusRecordingLaneTest::newTrackedDeflater);
+
+    /** Every confined Deflater ever handed out, so they can all be ended. */
+    private static final List<Deflater> CONFINED_DEFLATERS = new CopyOnWriteArrayList<>();
+
+    /**
+     * One mutable zone for the whole run: the loud time-zone row.
+     *
+     * <p>A {@code SimpleTimeZone} built here rather than {@code TimeZone.getTimeZone(...)},
+     * because the row's claim is about one identity reaching several threads and the factory
+     * method's clone-or-cache behaviour is not something the row should be resting on.
+     */
+    private static final SimpleTimeZone SHARED_TIME_ZONE =
+            new SimpleTimeZone(0, "corpus-shared-zone");
+
+    /** A zone per thread, distinct by construction. */
+    private static final ThreadLocal<TimeZone> CONFINED_TIME_ZONE = ThreadLocal.withInitial(
+            () -> new SimpleTimeZone(0, "corpus-zone-" + Thread.currentThread().threadId()));
+
+    /** The one factory both XML rows build from; sharing it is what the javadoc permits. */
+    private static final DocumentBuilderFactory DOCUMENT_BUILDER_FACTORY =
+            DocumentBuilderFactory.newInstance();
+
+    /** A builder per thread: the documented remedy, and the silent row. */
+    private static final ThreadLocal<DocumentBuilder> CONFINED_DOCUMENT_BUILDER =
+            ThreadLocal.withInitial(CorpusRecordingLaneTest::newDocumentBuilder);
+
+    /** One builder for the whole run: the loud XML row. */
+    private static DocumentBuilder sharedDocumentBuilder;
+
+    /** One derivation object for the whole run, shared by both KDF rows. */
+    private static SecretKeyFactory sharedKeyFactory;
 
     /** One SHA-256 for the whole run, used with nothing held: the loud digest row. */
     private static MessageDigest sharedDigest;
@@ -763,6 +824,13 @@ class CorpusRecordingLaneTest {
     static void installRecorder() throws IOException, SQLException, NoSuchAlgorithmException {
         CorpusRecorder.install();
 
+        sharedDocumentBuilder = newDocumentBuilder();
+        try {
+            sharedKeyFactory = SecretKeyFactory.getInstance(KDF_ALGORITHM);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(KDF_ALGORITHM + " is required of every JRE", e);
+        }
+
         sharedDigest = MessageDigest.getInstance("SHA-256");
         guardedDigest = MessageDigest.getInstance("SHA-256");
         sharedMac = newMac();
@@ -858,6 +926,8 @@ class CorpusRecordingLaneTest {
         leakedStream.close();
         Files.deleteIfExists(streamFile);
         Files.deleteIfExists(channelFile);
+        SHARED_DEFLATER.end();
+        CONFINED_DEFLATERS.forEach(Deflater::end);
         CorpusLane lane = CorpusLane.current();
         Path report = CorpusReport.writeRecording(
                 CorpusRecorder.findings(), THREADS, INVOCATIONS, lane);
@@ -865,6 +935,35 @@ class CorpusRecordingLaneTest {
         System.out.println(CorpusReport.recordingSummary(CorpusRecorder.findings(), lane));
         CorpusGates.checkPairLane(
                 CorpusRecorder.findings(), lane, CorpusRecordingLaneTest.class);
+    }
+
+    /**
+     * {@return a DocumentBuilder from the one shared factory}
+     *
+     * <p>The factory is shared deliberately. Its javadoc says it is not guaranteed to be thread
+     * safe and that an application should use one builder per thread; sharing the factory to make
+     * per-thread builders is the documented shape, and the silent row would be measuring
+     * something else if it built a factory of its own too.
+     */
+    /**
+     * {@return a Deflater the run will remember to end}
+     *
+     * <p>A Deflater holds a native stream that only {@code end()} releases. The corpus ships a
+     * resource-leak detector, so leaving its own fixtures unreleased would be a poor look as well
+     * as a leak.
+     */
+    private static Deflater newTrackedDeflater() {
+        Deflater deflater = new Deflater();
+        CONFINED_DEFLATERS.add(deflater);
+        return deflater;
+    }
+
+    private static DocumentBuilder newDocumentBuilder() {
+        try {
+            return DOCUMENT_BUILDER_FACTORY.newDocumentBuilder();
+        } catch (ParserConfigurationException e) {
+            throw new IllegalStateException("the default parser configuration must be usable", e);
+        }
     }
 
     /**
@@ -901,6 +1000,166 @@ class CorpusRecordingLaneTest {
                 "the loud notify row claims the monitor is not held, and notifyAll outside a "
                         + "monitor must throw IllegalMonitorStateException. The JVM said: "
                         + ILLEGAL_NOTIFY_OUTCOME.get());
+    }
+
+    // --- LatchMisuse and BlockingQueue -------------------------------------------------------
+
+    /**
+     * Registers a latch of one and counts it down twice.
+     *
+     * <p>Both subjects in this section are created inside the body rather than held in a field.
+     * One {@code AsyncTestContext} serves every execution of every round, so a registration made
+     * once would collect 240 executions' worth of counts and report on arithmetic that has
+     * nothing to do with what the row is claiming.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_latch_countedDownPastItsCount() {
+        CountDownLatch latch = new CountDownLatch(1);
+        AsyncTestContext.latchMisuseDetector().registerLatch(latch, "corpus-latch", 1);
+        AsyncTestContext.latchMisuseDetector().recordCountDown(latch);
+        AsyncTestContext.latchMisuseDetector().recordCountDown(latch);
+        AsyncTestContext.latchMisuseDetector().recordAwait(latch);
+    }
+
+    /** The same registration and await, counted down exactly once. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_latch_countedDownExactly() {
+        CountDownLatch latch = new CountDownLatch(1);
+        AsyncTestContext.latchMisuseDetector().registerLatch(latch, "corpus-latch", 1);
+        AsyncTestContext.latchMisuseDetector().recordCountDown(latch);
+        AsyncTestContext.latchMisuseDetector().recordAwait(latch);
+    }
+
+    /**
+     * Fills a queue to its registered capacity and never drains it.
+     *
+     * <p>The detector reads the live {@code size()} at each recorded call, so the peak is a
+     * function of the interleaving unless nothing removes anything. Nothing here does, which makes
+     * the peak monotone and the outcome the same however the threads were scheduled.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_blockingQueue_filledToCapacity() {
+        BlockingQueue<String> queue = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
+        AsyncTestContext.blockingQueueDetector()
+                .registerQueue(queue, "corpus-queue", QUEUE_CAPACITY);
+        for (int i = 0; i < QUEUE_CAPACITY; i++) {
+            boolean accepted = queue.offer("item");
+            AsyncTestContext.blockingQueueDetector()
+                    .recordOffer(queue, "corpus-queue", accepted);
+        }
+    }
+
+    /** The same capacity, with every offer followed by a poll, so the peak stays at one. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_blockingQueue_drainedAsItFilled() {
+        BlockingQueue<String> queue = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
+        AsyncTestContext.blockingQueueDetector()
+                .registerQueue(queue, "corpus-queue", QUEUE_CAPACITY);
+        for (int i = 0; i < QUEUE_CAPACITY; i++) {
+            boolean accepted = queue.offer("item");
+            AsyncTestContext.blockingQueueDetector()
+                    .recordOffer(queue, "corpus-queue", accepted);
+            boolean taken = queue.poll() != null;
+            AsyncTestContext.blockingQueueDetector().recordPoll(queue, "corpus-queue", taken);
+        }
+    }
+
+    // --- The rest of the shared-instance family ----------------------------------------------
+
+    /** Every thread records against the one CRC32, holding nothing. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_checksum_sharedAcrossThreads() {
+        SHARED_CHECKSUM.update(PAYLOAD_BYTES);
+        AsyncTestContext.sharedChecksumDetector()
+                .recordAccess(SHARED_CHECKSUM, "update", Thread.currentThread());
+    }
+
+    /** A CRC32 per thread, through the same recorded call. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_checksum_oneInstancePerThread() {
+        CRC32 mine = CONFINED_CHECKSUM.get();
+        mine.update(PAYLOAD_BYTES);
+        AsyncTestContext.sharedChecksumDetector()
+                .recordAccess(mine, "update", Thread.currentThread());
+    }
+
+    /** Every thread records against the one Deflater. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_deflater_sharedAcrossThreads() {
+        AsyncTestContext.sharedDeflaterDetector()
+                .recordAccess(SHARED_DEFLATER, "corpus-deflater", Thread.currentThread());
+    }
+
+    /** A Deflater per thread, through the same overload. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_deflater_oneInstancePerThread() {
+        AsyncTestContext.sharedDeflaterDetector()
+                .recordAccess(CONFINED_DEFLATER.get(), "corpus-deflater", Thread.currentThread());
+    }
+
+    /**
+     * Every thread records against the one derivation object, unguarded.
+     *
+     * <p>A {@code SecretKeyFactory} stands in for {@code javax.crypto.KDF}, which the detector's
+     * own javadoc quotes but which does not exist before JDK 24 - and this corpus compiles and
+     * runs on 21. The detector's parameter is {@code Object} for exactly that reason, so the
+     * substitution is the one its author anticipated rather than a way around a type.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_kdf_sharedAcrossThreads() {
+        AsyncTestContext.sharedKdfDetector()
+                .recordAccess(sharedKeyFactory, KDF_ALGORITHM, "deriveKey",
+                        Thread.currentThread());
+    }
+
+    /** The same one object, with every record made inside its own monitor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_kdf_guardedByItsOwnMonitor() {
+        synchronized (sharedKeyFactory) {
+            AsyncTestContext.sharedKdfDetector()
+                    .recordAccess(sharedKeyFactory, KDF_ALGORITHM, "deriveKey",
+                            Thread.currentThread());
+        }
+    }
+
+    /** Every thread mutates and records the one zone. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_timeZone_mutatedByEveryThread() {
+        SHARED_TIME_ZONE.setRawOffset(3_600_000);
+        AsyncTestContext.sharedTimeZoneDetector()
+                .recordMutation(SHARED_TIME_ZONE, "setRawOffset", Thread.currentThread());
+    }
+
+    /** Each thread mutates and records its own zone. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_timeZone_oneInstancePerThread() {
+        TimeZone mine = CONFINED_TIME_ZONE.get();
+        mine.setRawOffset(3_600_000);
+        AsyncTestContext.sharedTimeZoneDetector()
+                .recordMutation(mine, "setRawOffset", Thread.currentThread());
+    }
+
+    /** Every thread records against the one DocumentBuilder. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_xmlParser_sharedAcrossThreads() {
+        sharedDocumentBuilder.reset();
+        AsyncTestContext.sharedXmlParserDetector()
+                .recordAccess(sharedDocumentBuilder, "DocumentBuilder", Thread.currentThread());
+    }
+
+    /**
+     * A builder per thread, which is what the factory javadoc tells you to do.
+     *
+     * <p>The factory stays shared, which the same javadoc permits: it is the builder that is not
+     * thread-safe. Sharing the factory and confining the builder must read as correct, or the
+     * detector is flagging the API rather than its misuse.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_xmlParser_oneInstancePerThread() {
+        DocumentBuilder mine = CONFINED_DOCUMENT_BUILDER.get();
+        mine.reset();
+        AsyncTestContext.sharedXmlParserDetector()
+                .recordAccess(mine, "DocumentBuilder", Thread.currentThread());
     }
 
     // --- StaticInitDeadlock ------------------------------------------------------------------
