@@ -546,7 +546,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 125: exposure zero, nothing said in
-either direction. That is now measured for ninety-six of them, in its own lane, and the separation
+either direction. That is now measured for a hundred and eight of them, in its own lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -1176,10 +1176,44 @@ declaration, any worker that reached its access first created an arena-less stat
 became invisible for the whole run. Declaring the arena in every body removes the race - both
 calls keep the first arena and the first owner, so repeating them is free.
 
+**The fifteenth wave, which closes the set**
+
+Twelve pairs take the lane to **108 of 146 detectors, in 219 rows**, and that is the end of the
+work rather than a place to stop: **every one of the 125 recording-fed detectors now has either a
+both-directions pair or a refusal with its reason written down.** 107 are paired here, 18 are
+refused, and the two lists add up with nothing left over - which is checkable rather than
+asserted, by diffing the detector column of the generated report against `DetectorFeeds`.
+
+The wave covers `SHARED_RANDOM`, `SCHEDULED_EXECUTOR`, `FORK_JOIN_POOL`, `BUSY_WAITING`,
+`HTTP_CLIENT`, `HIGH_CONTENTION_ATOMIC`, `EXECUTOR_DEADLOCK`, `FUTURE_BLOCKING`,
+`FLOW_PUBLISHER_CONCURRENCY`, and then the three the triage had missed: `STAMPED_LOCK`,
+`INTERRUPT_MISHANDLING` - which the classification silently dropped rather than bucketing - and
+`SHARED_SECURE_RANDOM`, which belongs with `SHARED_RANDOM` as a contention note whose *confined*
+twin is silent even though its *guarded* twin fires by design.
+
+Four rows needed correcting, and all four were the row rather than the detector. Each had missed
+a threshold or a precondition the detector documents:
+
+- `HIGH_CONTENTION_ATOMIC` needs 1000 attempts before it will speak; the row was making 240.
+  Both halves now make the same larger number, so the failure ratio is the only difference - a
+  silent twin that fell short of the threshold would have been silent for want of traffic.
+- `EXECUTOR_DEADLOCK` and `FUTURE_BLOCKING` both require *queued work* as well as blocked
+  workers. A body that submits and starts exactly one task leaves nothing queued and reports
+  nothing however many waits it records.
+- `SCHEDULED_EXECUTOR` also reports a scheduler that was registered and never shut down, so the
+  silent twin was firing for a reason unrelated to task duration. Both halves now record the
+  shutdown and the pair separates on the duration alone.
+- `STAMPED_LOCK` does not infer a leak from an unmatched stamp: `analyze()` reports what the
+  caller declared, so the loud row has to call `recordStampNotReleased`. That is the same
+  caller-declares shape as the interrupt pairs, and it is a fair description of what the
+  detector knows.
+
 ### How far this lane can go, and where it stops
 
-"Ninety-six of 146" invites the reading that 50 rows are waiting to be written. They are not,
-and the ceiling is worth stating so nobody spends a week discovering it one detector at a time.
+This section used to state a ceiling nobody had reached, so that nobody would spend a week
+rediscovering it one detector at a time. The ceiling has now been reached: every recording-fed
+detector has a pair or a refusal, and what follows is the record of *why* the remaining eighteen
+cannot have one.
 
 A recording row needs a third-party subject the detector can actually accept. Classifying every
 detector's `record*`/`register*` parameter types, and any `instanceof` gate on the record path:
@@ -1263,18 +1297,21 @@ expectations are structural:
 | `VIRTUAL_THREAD_CPU_BOUND` | a measured segment against a 50 ms threshold |
 | `VIRTUAL_THREAD_CARRIER_EXHAUSTION` | concurrently blocked threads against `availableProcessors`, so it fires on small runners |
 
-**Where that leaves it.** 29 RECORDING-fed detectors still have no row. That figure is the one
+**Where that leaves it.** 18 RECORDING-fed detectors still have no row. That figure is the one
 the feed table yields directly - 146 detectors, 18 agent-fed, 3 zero-config, leaving 125
-recording-fed, of which 96 are paired here - and it replaces a "47" that earlier revisions of
-this paragraph decremented wave by wave without anyone being able to re-derive it. Eighteen of
-the 29 are refused with the reason on record: five for want of any documented contract, and the
-thirteen the triage rejected as having no recordable correct twin or no structural outcome. The
-rest take JDK primitives - locks,
-latches, `wait`/`notify`, scopes, threads. A corpus of third-party subjects has nothing to offer
-them; the third wave's route, a JDK subject whose own javadoc states a contract, is open to some
-of them but is not a backlog either, because most of those primitives' javadocs state a usage
-protocol rather than a thread-safety contract. Extending the lane with another library instead
-means a new corpus dependency, and `docs/DEPENDENCIES.md` makes that a proposal with a reason
+recording-fed, of which 107 are paired here - and it replaces a "47" that earlier revisions of
+this paragraph decremented wave by wave without anyone being able to re-derive it. All eighteen
+are refused with the reason on record: five for want of any documented contract, and the thirteen
+the triage rejected as having no recordable correct twin or no structural outcome.
+
+So the two lists are now exhaustive, and that is the property worth keeping rather than the
+count. Anyone can check it: take the detector column of `corpus-eval-recording.md`, subtract it
+from the `RECORDING` rows of `DetectorFeeds`, and the remainder should be exactly the eighteen
+tabulated above. A detector that appears in neither list is a gap, and the check that finds it
+is one command rather than a reading of this document.
+
+Extending the lane further now means a new corpus dependency, and `docs/DEPENDENCIES.md` makes
+that a proposal with a reason
 rather than an install.
 
 The binding constraint is not the detector count. It is finding a library class whose own javadoc

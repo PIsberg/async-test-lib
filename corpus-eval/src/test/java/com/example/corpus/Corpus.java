@@ -2526,7 +2526,224 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "the same computation producing a value under a key unique to the "
                             + "invocation, which is a cache filling correctly. The pair "
-                            + "separates on the value and not on the traffic")
+                            + "separates on the value and not on the traffic"),
+
+            // --- The last of the pairable set. Four pool and executor models, two protocol
+            //     models, one spin model, one contention model, and the generator the accuracy
+            //     eval keeps firing on by design.
+
+            new RecordingSubject("recorded_random_sharedAcrossThreads", JDK,
+                    "java.util.Random",
+                    DetectorType.SHARED_RANDOM, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one generator is recorded from six threads. Random is thread-safe, so this "
+                            + "is a contention finding rather than a corruption one: its seed is "
+                            + "a single CAS every caller retries on, which is why "
+                            + "ThreadLocalRandom exists. The row is here because the pair below "
+                            + "shows the detector still distinguishes confinement"),
+
+            new RecordingSubject("recorded_random_confinedToOneThreadEach", JDK,
+                    "java.util.Random",
+                    DetectorType.SHARED_RANDOM, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a generator per thread, recorded the same number of times. Nothing contends, "
+                            + "so nothing is reported - which is the distinction that matters for "
+                            + "a detector whose guarded twin fires by design: it reports "
+                            + "contention, and confinement removes the contention"),
+
+            new RecordingSubject("recorded_scheduledExecutor_taskOverranItsPeriod", JDK,
+                    "java.util.concurrent.ScheduledExecutorService",
+                    DetectorType.SCHEDULED_EXECUTOR, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a task on a single-threaded scheduler is recorded taking five seconds. The "
+                            + "duration is a parameter rather than a measurement, so the row "
+                            + "states a slow task rather than waiting for one: on a scheduler of "
+                            + "one, a task that overruns delays every task behind it"),
+
+            new RecordingSubject("recorded_scheduledExecutor_taskFinishedPromptly", JDK,
+                    "java.util.concurrent.ScheduledExecutorService",
+                    DetectorType.SCHEDULED_EXECUTOR, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same scheduler recorded through schedule, start and a completion that "
+                            + "took milliseconds, then shut down. The pair separates on the "
+                            + "duration the body reports, which no clock in the run can move"),
+
+            new RecordingSubject("recorded_forkJoin_forkedWithoutJoining", JDK,
+                    "java.util.concurrent.ForkJoinPool",
+                    DetectorType.FORK_JOIN_POOL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a task is recorded as forked and never joined. Fork-join's whole contract "
+                            + "is that every fork is joined: an unjoined task's result is "
+                            + "discarded and its exception with it, and the pool cannot help "
+                            + "because it does not know the caller stopped caring"),
+
+            new RecordingSubject("recorded_forkJoin_forkedAndJoined", JDK,
+                    "java.util.concurrent.ForkJoinPool",
+                    DetectorType.FORK_JOIN_POOL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same fork with its join recorded behind it and a task time reported. "
+                            + "The pair separates on whether the fork was ever collected"),
+
+            new RecordingSubject("recorded_spinLoop_ranWithoutYielding", JDK,
+                    "java.lang.Thread",
+                    DetectorType.BUSY_WAITING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "ten thousand loop iterations are recorded before any yield, which is the "
+                            + "detector's stated spin threshold. A spin that long is a core held "
+                            + "at full power to wait, and it starves whatever it is waiting for "
+                            + "on a machine with fewer cores than spinners"),
+
+            new RecordingSubject("recorded_spinLoop_yieldedOften", JDK,
+                    "java.lang.Thread",
+                    DetectorType.BUSY_WAITING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a hundred iterations between yields, recorded the same way. Short spins "
+                            + "before parking are the normal shape of a lock's fast path, so "
+                            + "the pair separates on the iteration count and not on the loop"),
+
+            new RecordingSubject("recorded_httpRequest_sentWithNoResponse", JDK,
+                    "java.net.http.HttpClient",
+                    DetectorType.HTTP_CLIENT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a request is recorded as sent and no response is ever recorded for it. "
+                            + "HttpClient is thread-safe and that is not the question: a request "
+                            + "in flight that nobody accounts for holds a connection from a "
+                            + "bounded pool until it times out, which starves every later call"),
+
+            new RecordingSubject("recorded_httpRequest_answered", JDK,
+                    "java.net.http.HttpClient",
+                    DetectorType.HTTP_CLIENT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same request with its response recorded under the same name, which is "
+                            + "unique to the invocation so no two bodies can answer for each "
+                            + "other. The pair separates on whether the exchange completed"),
+
+            new RecordingSubject("recorded_atomic_casRetriedUnderContention", JDK,
+                    "java.util.concurrent.atomic.AtomicLong",
+                    DetectorType.HIGH_CONTENTION_ATOMIC, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every recorded compare-and-set fails. A failed CAS is work thrown away and "
+                            + "retried, so an atomic under this much contention costs more than "
+                            + "the lock it replaced - which is what LongAdder exists for. "
+                            + "Nothing is incorrect here, which is why the finding is advisory"),
+
+            new RecordingSubject("recorded_atomic_casSucceededFirstTime", JDK,
+                    "java.util.concurrent.atomic.AtomicLong",
+                    DetectorType.HIGH_CONTENTION_ATOMIC, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same number of recorded attempts, every one succeeding, which is an "
+                            + "uncontended atomic doing exactly what it is for. The pair "
+                            + "separates on the failure ratio the body reports"),
+
+            new RecordingSubject("recorded_executor_taskWaitedOnItsSibling", JDK,
+                    "java.util.concurrent.ExecutorService",
+                    DetectorType.EXECUTOR_DEADLOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a task on a pool of one is recorded waiting for another task on the same "
+                            + "pool. The sibling cannot start until this one finishes and this "
+                            + "one will not finish until the sibling does, which is a deadlock "
+                            + "the pool has no way to break"),
+
+            new RecordingSubject("recorded_executor_taskWaitedWithThreadsToSpare", JDK,
+                    "java.util.concurrent.ExecutorService",
+                    DetectorType.EXECUTOR_DEADLOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the identical wait on a pool with more threads than this run can ever "
+                            + "occupy. The waiting counter only grows, so the silent row's pool "
+                            + "is sized above the whole run rather than above one body - a "
+                            + "sibling can always be scheduled, so no wait can close the cycle"),
+
+            new RecordingSubject("recorded_future_blockedOnAFullPool", JDK,
+                    "java.util.concurrent.ExecutorService",
+                    DetectorType.FUTURE_BLOCKING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread of a pool of one is recorded blocked waiting on a future. A "
+                            + "pool whose workers are all parked on results has nobody left to "
+                            + "produce them, which is the same shape as the sibling deadlock "
+                            + "seen from the future's end"),
+
+            new RecordingSubject("recorded_future_blockedWithThreadsToSpare", JDK,
+                    "java.util.concurrent.ExecutorService",
+                    DetectorType.FUTURE_BLOCKING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same blocking wait on a pool sized above the whole run, for the same "
+                            + "monotonic-counter reason as the pair above. Workers remain to run "
+                            + "the work being waited for"),
+
+            new RecordingSubject("recorded_flowSubscriber_signalledAfterCompletion", JDK,
+                    "java.util.concurrent.Flow",
+                    DetectorType.FLOW_PUBLISHER_CONCURRENCY, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "an onNext is recorded after the subscriber has already been completed. The "
+                            + "Reactive Streams rule the Flow API adopts is that onComplete is "
+                            + "terminal and nothing may follow it, so a subscriber that receives "
+                            + "one is being handed state it has already torn down"),
+
+            new RecordingSubject("recorded_flowSubscriber_signalledInOrder", JDK,
+                    "java.util.concurrent.Flow",
+                    DetectorType.FLOW_PUBLISHER_CONCURRENCY, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a subscriber per invocation taken through subscribe, request, one onNext "
+                            + "and onComplete in that order. That is the protocol as specified, "
+                            + "and the pair separates on where the terminal signal sits"),
+
+            // --- The last three, which close the recording-fed set: every detector the lane can
+            //     feed now has either a pair or a refusal with a reason.
+
+            new RecordingSubject("recorded_stampedLock_stampNeverReleased", JDK,
+                    "java.util.concurrent.locks.StampedLock",
+                    DetectorType.STAMPED_LOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a write stamp is taken and the body declares it unreleased. StampedLock is "
+                            + "not reentrant and holds no owner, so a leaked stamp is a lock "
+                            + "nobody can release and every later writer waits on it forever. "
+                            + "The declaration is load-bearing: this detector reports what the "
+                            + "caller reported and does not infer a leak from an unmatched "
+                            + "stamp, which is the caller-declares shape the interrupt pairs "
+                            + "have too"),
+
+            new RecordingSubject("recorded_stampedLock_stampReleased", JDK,
+                    "java.util.concurrent.locks.StampedLock",
+                    DetectorType.STAMPED_LOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same acquisition with its unlock recorded against the same stamp, which "
+                            + "is the whole discipline the class asks of a caller. The pair "
+                            + "separates on whether the stamp came back"),
+
+            new RecordingSubject("recorded_interruptedException_swallowedWholesale", JDK,
+                    "java.lang.InterruptedException",
+                    DetectorType.INTERRUPT_MISHANDLING, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "an InterruptedException is recorded as caught and no restore is ever "
+                            + "recorded. This is the same defect the INTERRUPT_SWALLOWING pair "
+                            + "covers, seen by the monitor that counts catches against restores "
+                            + "rather than by the one that reads a per-catch flag"),
+
+            new RecordingSubject("recorded_interruptedException_restoredAfterCatching", JDK,
+                    "java.lang.InterruptedException",
+                    DetectorType.INTERRUPT_MISHANDLING, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same catch with a recorded restore behind it, so catches and restores "
+                            + "balance. The pair separates on whether the interrupt was put back"),
+
+            new RecordingSubject("recorded_secureRandom_sharedAcrossThreads", JDK,
+                    "java.security.SecureRandom",
+                    DetectorType.SHARED_SECURE_RANDOM, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one SecureRandom is recorded from six threads. Like Random it is "
+                            + "thread-safe, so this is a contention note rather than a "
+                            + "corruption claim - and entropy draws serialise, which makes the "
+                            + "queue behind a shared instance longer than the one behind a "
+                            + "shared Random"),
+
+            new RecordingSubject("recorded_secureRandom_confinedToOneThreadEach", JDK,
+                    "java.security.SecureRandom",
+                    DetectorType.SHARED_SECURE_RANDOM, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "an instance per thread, recorded the same number of times. This is the "
+                            + "second detector whose guarded twin fires by design and whose "
+                            + "confined twin does not: wrapping a shared generator in a lock "
+                            + "adds to the contention, and giving each thread its own removes it")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()

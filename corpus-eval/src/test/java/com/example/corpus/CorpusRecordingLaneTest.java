@@ -691,6 +691,74 @@ class CorpusRecordingLaneTest {
     /** One shared cached value, so the degradation row's twin sees one instance not many. */
     private static final Object ONE_CACHED_INSTANCE = new Object();
 
+    /** One Random for the run: thread-safe, and contended by every worker. */
+    private static final java.util.Random SHARED_RANDOM = new java.util.Random(7);
+
+    /** A Random per thread, which is what removes the contention. */
+    private static final ThreadLocal<java.util.Random> CONFINED_RANDOM =
+            ThreadLocal.withInitial(() -> new java.util.Random(7));
+
+    /** Single-threaded scheduler whose task is reported as overrunning. */
+    private static java.util.concurrent.ScheduledExecutorService slowScheduler;
+
+    /** The twin whose task is reported as finishing in milliseconds. */
+    private static java.util.concurrent.ScheduledExecutorService promptScheduler;
+
+    /** The pool both fork-join rows name; only the second one joins. */
+    private static final java.util.concurrent.ForkJoinPool FORK_JOIN_POOL =
+            java.util.concurrent.ForkJoinPool.commonPool();
+
+    /** Ten thousand iterations is the detector's spin threshold; recorded once for the run. */
+    private final AtomicBoolean spinRecorded = new AtomicBoolean();
+
+    /** Every recorded compare-and-set on this one fails: the contended atomic. */
+    private static final java.util.concurrent.atomic.AtomicLong CONTENDED_ATOMIC =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    /** The twin whose attempts all succeed. */
+    private static final java.util.concurrent.atomic.AtomicLong UNCONTENDED_ATOMIC =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    /** A pool of one, whose task waits on a sibling it can never let run. */
+    private static final Object DEADLOCKING_POOL = new Object();
+
+    /**
+     * The twin, sized above the whole run rather than above one body.
+     *
+     * <p>{@code ExecutorDeadlockDetector.waitingOnSibling} and its counterpart in
+     * {@code FutureBlockingDetector} only ever grow - nothing decrements them when the wait ends
+     * - so the silent row has to declare a pool larger than {@code THREADS * INVOCATIONS}, or it
+     * would eventually out-count its own capacity and report for a reason unrelated to the model.
+     */
+    private static final Object ROOMY_POOL = new Object();
+
+    /** The same shape for the future-blocking pair. */
+    private static final Object BLOCKED_POOL = new Object();
+
+    private static final Object ROOMY_BLOCKED_POOL = new Object();
+
+    /** The subscriber the loud Flow row signals after completing it. */
+    private static final Object COMPLETED_SUBSCRIBER = new Object();
+
+    /** What the silent executor rows declare: above the whole run, not above one body. */
+    private static final int MORE_THREADS_THAN_THE_RUN = THREADS * INVOCATIONS * 10;
+
+    /** The lock whose write stamps are never released. */
+    private static final java.util.concurrent.locks.StampedLock LEAKED_STAMPED_LOCK =
+            new java.util.concurrent.locks.StampedLock();
+
+    /** The twin whose every stamp comes back. */
+    private static final java.util.concurrent.locks.StampedLock RELEASED_STAMPED_LOCK =
+            new java.util.concurrent.locks.StampedLock();
+
+    /** One CSPRNG for the run: thread-safe, and contended by every worker. */
+    private static final java.security.SecureRandom SHARED_SECURE_RANDOM =
+            new java.security.SecureRandom();
+
+    /** One per thread, which is what removes the contention. */
+    private static final ThreadLocal<java.security.SecureRandom> CONFINED_SECURE_RANDOM =
+            ThreadLocal.withInitial(java.security.SecureRandom::new);
+
     @BeforeAll
     static void installRecorder() throws IOException, SQLException, NoSuchAlgorithmException {
         CorpusRecorder.install();
@@ -740,6 +808,9 @@ class CorpusRecordingLaneTest {
                 1, 1, 0L, TimeUnit.MILLISECONDS, new java.util.concurrent.LinkedBlockingQueue<>(),
                 Executors.defaultThreadFactory());
 
+        slowScheduler = Executors.newSingleThreadScheduledExecutor();
+        promptScheduler = Executors.newSingleThreadScheduledExecutor();
+
         streamFile = Files.createTempFile("corpus-stream", ".bin");
         Files.write(streamFile, new byte[256]);
         leakedStream = Files.newInputStream(streamFile);
@@ -780,6 +851,8 @@ class CorpusRecordingLaneTest {
         futuresPool.shutdownNow();
         pooledVirtualExecutor.shutdownNow();
         pooledPlatformExecutor.shutdownNow();
+        slowScheduler.shutdownNow();
+        promptScheduler.shutdownNow();
         cleanTimer.cancel();
         failingTimer.cancel();
         leakedStream.close();
@@ -3601,6 +3674,306 @@ class CorpusRecordingLaneTest {
         detector.recordGet("lazy-cache-filled", key, self);
         detector.recordComputeStart("lazy-cache-filled", key, self);
         detector.recordComputeEnd("lazy-cache-filled", key, self, "value");
+    }
+
+    // --- The last of the pairable set ------------------------------------------------------------
+
+    /** One Random contended by six threads: thread-safe, and a contention note all the same. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_random_sharedAcrossThreads() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.sharedRandomDetector();
+        detector.registerRandom(SHARED_RANDOM, "shared-random");
+        detector.recordRandomAccess(SHARED_RANDOM, "shared-random", "nextInt");
+        SHARED_RANDOM.nextInt();
+    }
+
+    /** A Random per thread, which is what removes the contention the row above reports. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_random_confinedToOneThreadEach() {
+        CorpusRecorder.countBodyExecution();
+        java.util.Random mine = CONFINED_RANDOM.get();
+        var detector = AsyncTestContext.sharedRandomDetector();
+        detector.registerRandom(mine, "confined-random");
+        detector.recordRandomAccess(mine, "confined-random", "nextInt");
+        mine.nextInt();
+    }
+
+    /** A task on a single-threaded scheduler recorded as taking five seconds. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_scheduledExecutor_taskOverranItsPeriod() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.scheduledExecutorDetector();
+        detector.registerExecutor(slowScheduler, "slow-scheduler", 1);
+        detector.recordTaskComplete(slowScheduler, "slow-scheduler", "overrunning", 5_000L);
+        // Both halves record the shutdown. analyze() also reports a scheduler that was
+        // registered and never shut down, so leaving it out of either row would make the pair
+        // separate on two things at once - and would have let the silent twin report for a
+        // reason that has nothing to do with how long the task took.
+        detector.recordShutdown(slowScheduler);
+    }
+
+    /** The same scheduler through schedule, start, a millisecond completion and a shutdown. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_scheduledExecutor_taskFinishedPromptly() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.scheduledExecutorDetector();
+        detector.registerExecutor(promptScheduler, "prompt-scheduler", 1);
+        detector.recordSchedule(promptScheduler, "prompt-scheduler", "prompt");
+        detector.recordTaskStart(promptScheduler, "prompt-scheduler", "prompt");
+        detector.recordTaskComplete(promptScheduler, "prompt-scheduler", "prompt", 5L);
+        detector.recordShutdown(promptScheduler);
+    }
+
+    /** A task recorded as forked and never joined: its result and its exception both go. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_forkJoin_forkedWithoutJoining() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.forkJoinPoolDetector()
+                .recordForkWithoutJoin("orphaned-pool", perInvocation("orphan-task"));
+    }
+
+    /** The same fork with its join recorded behind it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_forkJoin_forkedAndJoined() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.forkJoinPoolDetector();
+        detector.registerPool(FORK_JOIN_POOL, "joined-pool", 4);
+        String task = perInvocation("joined-task");
+        detector.recordFork(FORK_JOIN_POOL, "joined-pool", task);
+        detector.recordJoin(FORK_JOIN_POOL, "joined-pool", task);
+        detector.recordTaskTime(FORK_JOIN_POOL, "joined-pool", 1L);
+    }
+
+    /**
+     * Ten thousand iterations before any yield: the detector's stated spin threshold.
+     *
+     * <p>Recorded once for the run rather than per body. The threshold is a count on one shared
+     * detector, so one body reaching it is what the finding needs, and doing it 240 times would
+     * add 2.4 million calls to the lane for no extra evidence.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_spinLoop_ranWithoutYielding() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.busyWaitDetector();
+        if (spinRecorded.compareAndSet(false, true)) {
+            for (int i = 0; i < 10_000; i++) {
+                detector.recordLoopIteration();
+            }
+            detector.recordYield();
+        }
+    }
+
+    /** A hundred iterations between yields: the fast path of an ordinary lock. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_spinLoop_yieldedOften() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.busyWaitDetector();
+        for (int i = 0; i < 100; i++) {
+            detector.recordLoopIteration();
+        }
+        detector.recordYield();
+    }
+
+    /** A request recorded as sent with no response ever recorded for it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_httpRequest_sentWithNoResponse() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.httpClientDetector();
+        Object client = new Object();
+        detector.recordClientCreated(client, "unanswered-client");
+        detector.recordRequestSent(new Object(), perInvocation("unanswered-request"));
+    }
+
+    /** The same request with its response recorded under the same unique name. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_httpRequest_answered() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.httpClientDetector();
+        Object client = new Object();
+        detector.recordClientCreated(client, "answered-client");
+        String name = perInvocation("answered-request");
+        detector.recordRequestSent(new Object(), name);
+        detector.recordResponseReceived(new Object(), name);
+    }
+
+    /** Every recorded compare-and-set fails: work thrown away and retried. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_atomic_casRetriedUnderContention() {
+        CorpusRecorder.countBodyExecution();
+        // Ten per body, so the run clears the detector's 1000-attempt threshold with room to
+        // spare. Both halves of this pair make the same number of attempts: the ratio is the
+        // only thing that differs, and a silent twin that fell short of the threshold would be
+        // silent for want of traffic rather than because the model decided anything.
+        var detector = AsyncTestContext.highContentionAtomicDetector();
+        for (int i = 0; i < 10; i++) {
+            detector.recordCasAttempt(CONTENDED_ATOMIC, false);
+        }
+    }
+
+    /** The same attempts, every one succeeding: an uncontended atomic. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_atomic_casSucceededFirstTime() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.highContentionAtomicDetector();
+        for (int i = 0; i < 10; i++) {
+            detector.recordCasAttempt(UNCONTENDED_ATOMIC, true);
+        }
+    }
+
+    /** A task on a pool of one waiting for a sibling that pool can never start. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_executor_taskWaitedOnItsSibling() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.executorDeadlockDetector();
+        detector.registerExecutor(DEADLOCKING_POOL, "deadlocking-pool", 1);
+        // Two submissions to one start, so submitted minus running leaves work queued. The rule
+        // is "every worker is waiting on a sibling AND something is still queued": a body that
+        // submits and starts exactly one task leaves nothing queued and reports nothing, however
+        // many waits it records. Both halves of the pair keep this shape, so only the pool size
+        // separates them.
+        detector.recordTaskSubmitted(DEADLOCKING_POOL);
+        detector.recordTaskSubmitted(DEADLOCKING_POOL);
+        detector.recordTaskStarted(DEADLOCKING_POOL);
+        detector.recordWaitingOnSibling(DEADLOCKING_POOL);
+    }
+
+    /** The identical wait on a pool sized above the whole run. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_executor_taskWaitedWithThreadsToSpare() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.executorDeadlockDetector();
+        detector.registerExecutor(ROOMY_POOL, "roomy-pool", MORE_THREADS_THAN_THE_RUN);
+        detector.recordTaskSubmitted(ROOMY_POOL);
+        detector.recordTaskSubmitted(ROOMY_POOL);
+        detector.recordTaskStarted(ROOMY_POOL);
+        detector.recordWaitingOnSibling(ROOMY_POOL);
+    }
+
+    /** Every thread of a pool of one recorded blocked waiting on a future. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_future_blockedOnAFullPool() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.futureBlockingDetector();
+        detector.registerExecutor(BLOCKED_POOL, "blocked-pool", 1);
+        detector.recordTaskSubmitted(BLOCKED_POOL);
+        detector.recordTaskSubmitted(BLOCKED_POOL);
+        detector.recordTaskStarted(BLOCKED_POOL);
+        detector.recordBlockingWait(BLOCKED_POOL);
+    }
+
+    /** The same blocking wait on a pool sized above the whole run. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_future_blockedWithThreadsToSpare() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.futureBlockingDetector();
+        detector.registerExecutor(ROOMY_BLOCKED_POOL, "roomy-blocked-pool",
+                MORE_THREADS_THAN_THE_RUN);
+        detector.recordTaskSubmitted(ROOMY_BLOCKED_POOL);
+        detector.recordTaskSubmitted(ROOMY_BLOCKED_POOL);
+        detector.recordTaskStarted(ROOMY_BLOCKED_POOL);
+        detector.recordBlockingWait(ROOMY_BLOCKED_POOL);
+    }
+
+    /** An onNext delivered after the subscriber was completed: onComplete is terminal. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_flowSubscriber_signalledAfterCompletion() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.flowPublisherConcurrencyDetector();
+        detector.recordSubscribe(COMPLETED_SUBSCRIBER, "completed-subscriber", self);
+        detector.recordComplete(COMPLETED_SUBSCRIBER, self);
+        detector.recordNextStart(COMPLETED_SUBSCRIBER, self);
+        detector.recordNextEnd(COMPLETED_SUBSCRIBER);
+    }
+
+    /** A subscriber per invocation taken through the protocol in the order it specifies. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_flowSubscriber_signalledInOrder() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.flowPublisherConcurrencyDetector();
+        Object subscriber = new Object();
+        detector.recordSubscribe(subscriber, perInvocation("ordered-subscriber"), self);
+        detector.recordRequest(subscriber, 1L);
+        detector.recordNextStart(subscriber, self);
+        detector.recordNextEnd(subscriber);
+        detector.recordComplete(subscriber, self);
+    }
+
+    // --- The last three -------------------------------------------------------------------------
+
+    /** A write stamp taken and never released: StampedLock has no owner to recover it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_stampedLock_stampNeverReleased() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.stampedLockDetector();
+        detector.registerLock(LEAKED_STAMPED_LOCK, "leaked-stamp");
+        long stamp = UNIQUE_KEYS.incrementAndGet();
+        detector.recordWriteLock(LEAKED_STAMPED_LOCK, "leaked-stamp", stamp);
+        // Declared, not inferred. analyze() reports only what the body reported: an unmatched
+        // recordWriteLock produces nothing on its own, because the detector does not treat a
+        // missing unlock as a leak. That is the same caller-declares shape as the interrupt
+        // pairs, and it is why this detector reads as a prompt rather than a verdict.
+        detector.recordStampNotReleased("leaked-stamp", stamp);
+    }
+
+    /** The same acquisition with its unlock recorded against the same stamp. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_stampedLock_stampReleased() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.stampedLockDetector();
+        detector.registerLock(RELEASED_STAMPED_LOCK, "released-stamp");
+        long stamp = UNIQUE_KEYS.incrementAndGet();
+        detector.recordWriteLock(RELEASED_STAMPED_LOCK, "released-stamp", stamp);
+        detector.recordUnlock(RELEASED_STAMPED_LOCK, "released-stamp", stamp);
+    }
+
+    /** A caught InterruptedException with no restore recorded against it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_interruptedException_swallowedWholesale() {
+        CorpusRecorder.countBodyExecution();
+        Thread.currentThread().interrupt();
+        try {
+            Thread.sleep(1);
+        } catch (InterruptedException caught) {
+            AsyncTestContext.interruptMonitor().recordInterruptException(caught);
+        }
+    }
+
+    /** The same catch with the restore recorded behind it, so catches and restores balance. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_interruptedException_restoredAfterCatching() {
+        CorpusRecorder.countBodyExecution();
+        var monitor = AsyncTestContext.interruptMonitor();
+        Thread.currentThread().interrupt();
+        try {
+            Thread.sleep(1);
+        } catch (InterruptedException caught) {
+            monitor.recordInterruptException(caught);
+            Thread.currentThread().interrupt();
+            monitor.recordInterruptRestored();
+        }
+        // Cleared after the record, for the same reason as the INTERRUPT_SWALLOWING twin: the
+        // restored flag is the fix under test, not something to hand to the runner's barrier.
+        Thread.interrupted();
+    }
+
+    /** One SecureRandom recorded from six threads: a contention note, not a corruption claim. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_secureRandom_sharedAcrossThreads() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.sharedSecureRandomDetector()
+                .recordAccess(SHARED_SECURE_RANDOM, "shared-csprng", Thread.currentThread());
+    }
+
+    /** An instance per thread, which is what removes the contention. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_secureRandom_confinedToOneThreadEach() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.sharedSecureRandomDetector()
+                .recordAccess(CONFINED_SECURE_RANDOM.get(), "confined-csprng",
+                        Thread.currentThread());
     }
 
     private static void toleratingCorruption(Runnable operation) {
