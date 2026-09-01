@@ -2,6 +2,8 @@ package se.deversity.asynctest;
 
 import java.time.Duration;
 
+import org.jspecify.annotations.Nullable;
+
 import se.deversity.asynctest.diagnostics.HeldLocks;
 import se.deversity.asynctest.diagnostics.SleepInLockDetector;
 import se.deversity.vibetags.annotations.AIContract;
@@ -30,7 +32,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.10.0
  */
-@AIContract(reason = "Called from bytecode the agent rewrites, through the static substitution path: the method name and erased signature here are matched by CollectionAccessWeaver.STATIC_ENTRIES and cannot change independently of it. The guard is the point - recording only when HeldLocks.topHeld() returns a lock is what separates the bug from rate limiting, back-off and polling, which are ordinary uses of Thread.sleep and vastly more common. Record before sleeping, not after: a sleep interrupted mid-way still held the lock for as long as it lasted, and the finding is about the holding rather than the completing. The hook must perform the original sleep and propagate InterruptedException unchanged. It must pass the monitor to recordSleep rather than calling the single-argument overload: that one resolves the held monitors through ThreadMXBean, which does not report virtual threads, so on the runner's default workers it answers none and the detector never fires.")
+@AIContract(reason = "Called from bytecode the agent rewrites, through the static substitution path: the method name and erased signature here are matched by CollectionAccessWeaver.STATIC_ENTRIES and cannot change independently of it. The guard is the point - recording only when HeldLocks.topHeld() returns a lock is what separates the bug from rate limiting, back-off and polling, which are ordinary uses of Thread.sleep and vastly more common. Record before sleeping, not after: a sleep interrupted mid-way still held the lock for as long as it lasted, and the finding is about the holding rather than the completing. The hook must perform the original sleep and propagate InterruptedException unchanged. It must pass the monitor to recordSleep rather than calling the single-argument overload: that one resolves the held monitors through ThreadMXBean, which does not report virtual threads, so on the runner's default workers it answers none and the detector never fires. A sub-millisecond sleep must round up to one rather than truncate to zero: recordSleep drops anything at or below zero, so truncating turns a real lock-holding pause into the same silence an unwoven call site produces.")
 public final class AgentSleepHooks {
 
     private AgentSleepHooks() {
@@ -95,9 +97,8 @@ public final class AgentSleepHooks {
      * {@code long} sibling was (#440). Whether a sleep is a bug depends on whether a lock was
      * held, not on which overload expressed the duration.
      *
-     * <p>A duration under a millisecond records nothing, because {@code toMillis()} truncates to
-     * zero and the detector ignores a zero-length sleep. That matches what
-     * {@code sleep(0)} already does rather than introducing a second rule.
+     * <p>A duration under a millisecond is recorded as one millisecond rather than dropped; the
+     * reason is on {@link #recordableMillis(Duration)}.
      *
      * @param duration how long to sleep
      * @throws InterruptedException if interrupted while sleeping
@@ -105,7 +106,7 @@ public final class AgentSleepHooks {
     public static void sleep(Duration duration) throws InterruptedException {
         Object held = HeldLocks.topHeld();
         if (held != null) {
-            recordHeld(duration.toMillis(), held);
+            recordHeld(recordableMillis(duration), held);
         }
         Thread.sleep(duration);
     }
@@ -119,16 +120,17 @@ public final class AgentSleepHooks {
      */
     public static void sleepHoldingMonitor(Duration duration, Object monitor)
             throws InterruptedException {
-        recordHeld(duration.toMillis(), monitor);
+        recordHeld(recordableMillis(duration), monitor);
         Thread.sleep(duration);
     }
 
     /**
      * Weaves {@code Thread.sleep(long, int)} outside a synchronized method.
      *
-     * <p>The nanosecond argument is not part of the finding. The detector's question is how long a
-     * lock went un-progressed, and no lock is held meaningfully differently for an extra 999999
-     * nanoseconds; recording the millisecond component keeps one unit across all four overloads.
+     * <p>The nanosecond argument adds nothing to the finding while the millisecond part is
+     * positive: the detector's question is how long a lock went un-progressed, and no lock is held
+     * meaningfully differently for an extra 999999 nanoseconds. It decides the finding when the
+     * millisecond part is zero, which is what {@link #recordableMillis(long, int)} is for.
      *
      * @param millis how long to sleep, in milliseconds
      * @param nanos  the additional nanoseconds to sleep
@@ -137,7 +139,7 @@ public final class AgentSleepHooks {
     public static void sleep(long millis, int nanos) throws InterruptedException {
         Object held = HeldLocks.topHeld();
         if (held != null) {
-            recordHeld(millis, held);
+            recordHeld(recordableMillis(millis, nanos), held);
         }
         Thread.sleep(millis, nanos);
     }
@@ -152,7 +154,7 @@ public final class AgentSleepHooks {
      */
     public static void sleepHoldingMonitor(long millis, int nanos, Object monitor)
             throws InterruptedException {
-        recordHeld(millis, monitor);
+        recordHeld(recordableMillis(millis, nanos), monitor);
         Thread.sleep(millis, nanos);
     }
 
@@ -173,5 +175,41 @@ public final class AgentSleepHooks {
         if (detector != null) {
             detector.recordSleep(millis, monitor);
         }
+    }
+
+    /**
+     * {@return the milliseconds to record for a sleep of {@code millis} plus {@code nanos}}
+     *
+     * <p>Rounded up when the millisecond part is zero, rather than truncated. {@code recordSleep}
+     * drops anything at or below zero, so truncating would make {@code sleep(0, 500_000)} under a
+     * lock record nothing - silence indistinguishable from an unwoven call site, which is the one
+     * failure this weaving surface exists to remove. The sleep is real: on JDK 26,
+     * {@code sleep(0, 500_000)} blocks for about 1.5ms against about 17us for {@code sleep(0)}.
+     *
+     * <p>Nothing is added when the millisecond part is already positive. One unit across all four
+     * overloads is worth more than 999999 nanoseconds of precision the detector cannot use.
+     *
+     * @param millis the milliseconds the caller asked for
+     * @param nanos  the additional nanoseconds the caller asked for
+     */
+    private static long recordableMillis(long millis, int nanos) {
+        return millis > 0 || nanos <= 0 ? millis : 1L;
+    }
+
+    /**
+     * {@return the milliseconds to record for a sleep of {@code duration}}
+     *
+     * <p>Rounded up for the reason {@link #recordableMillis(long, int)} gives. Null-tolerant
+     * because a {@code null} here is the caller's {@code NullPointerException} to receive from
+     * {@code Thread.sleep}, not this hook's to throw first out of a recording path.
+     *
+     * @param duration the duration the caller asked for
+     */
+    private static long recordableMillis(@Nullable Duration duration) {
+        if (duration == null) {
+            return 0L;
+        }
+        long millis = duration.toMillis();
+        return millis > 0 || duration.isZero() || duration.isNegative() ? millis : 1L;
     }
 }
