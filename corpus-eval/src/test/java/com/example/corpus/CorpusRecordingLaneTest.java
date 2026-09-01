@@ -653,6 +653,44 @@ class CorpusRecordingLaneTest {
     /** One initialisation for the whole run, which is what the lazy-init idiom guarantees. */
     private final AtomicBoolean lazyFieldInitialised = new AtomicBoolean();
 
+    /**
+     * Four unstarted virtual threads, shared by the virtual-thread rows.
+     *
+     * <p>The lane's own workers are platform threads, so these rows have to supply the virtual
+     * ones. Unstarted is enough: the four detectors read {@code isVirtual()}, {@code threadId()}
+     * and {@code getName()}, all of which an unstarted instance answers, and starting them would
+     * add scheduling to rows whose outcomes are supposed to be structural.
+     */
+    private static final List<Thread> VIRTUAL_THREADS = List.of(
+            Thread.ofVirtual().name("corpus-vt-1").unstarted(() -> { }),
+            Thread.ofVirtual().name("corpus-vt-2").unstarted(() -> { }),
+            Thread.ofVirtual().name("corpus-vt-3").unstarted(() -> { }),
+            Thread.ofVirtual().name("corpus-vt-4").unstarted(() -> { }));
+
+    /** A pool over a virtual-thread factory: pooling what costs nothing to create. */
+    private static ExecutorService pooledVirtualExecutor;
+
+    /** The identical pool over the default platform factory. */
+    private static ExecutorService pooledPlatformExecutor;
+
+    /** The segment every thread writes the same eight bytes of. */
+    private static final Object OVERLAPPING_SEGMENT = new Object();
+
+    /** The same sharing at offsets that cannot overlap. */
+    private static final Object DISJOINT_SEGMENT = new Object();
+
+    /** A confined arena opened once and then accessed from other threads. */
+    private static final Object ESCAPED_ARENA = new Object();
+
+    /** The segment allocated in that arena. */
+    private static final Object ESCAPED_SEGMENT = new Object();
+
+    /** One declaration for the run: an arena is opened once, not once per body. */
+    private final AtomicBoolean escapedArenaOpened = new AtomicBoolean();
+
+    /** One shared cached value, so the degradation row's twin sees one instance not many. */
+    private static final Object ONE_CACHED_INSTANCE = new Object();
+
     @BeforeAll
     static void installRecorder() throws IOException, SQLException, NoSuchAlgorithmException {
         CorpusRecorder.install();
@@ -695,6 +733,13 @@ class CorpusRecordingLaneTest {
         parkedNonDaemon.setDaemon(false);
         parkedNonDaemon.start();
 
+        pooledVirtualExecutor = new java.util.concurrent.ThreadPoolExecutor(
+                1, 1, 0L, TimeUnit.MILLISECONDS, new java.util.concurrent.LinkedBlockingQueue<>(),
+                Thread.ofVirtual().factory());
+        pooledPlatformExecutor = new java.util.concurrent.ThreadPoolExecutor(
+                1, 1, 0L, TimeUnit.MILLISECONDS, new java.util.concurrent.LinkedBlockingQueue<>(),
+                Executors.defaultThreadFactory());
+
         streamFile = Files.createTempFile("corpus-stream", ".bin");
         Files.write(streamFile, new byte[256]);
         leakedStream = Files.newInputStream(streamFile);
@@ -733,6 +778,8 @@ class CorpusRecordingLaneTest {
         // runs. Closing it here keeps the fork's thread count honest without touching the row.
         leakedPool.shutdownNow();
         futuresPool.shutdownNow();
+        pooledVirtualExecutor.shutdownNow();
+        pooledPlatformExecutor.shutdownNow();
         cleanTimer.cancel();
         failingTimer.cancel();
         leakedStream.close();
@@ -3331,6 +3378,229 @@ class CorpusRecordingLaneTest {
         synchronized (GUARDED_TARGET) {
             AsyncTestContext.raceConditionDetector().recordFieldWrite(GUARDED_TARGET, "counter");
         }
+    }
+
+    // --- The virtual-thread family ----------------------------------------------------------------
+
+    /** An inheritable thread-local set on a virtual thread and never removed. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_virtualThread_contextNeverRemoved() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.virtualThreadContextLeakDetector()
+                .recordThreadLocalSet("request-context", VIRTUAL_THREADS.get(0), true);
+    }
+
+    /** The same set, not inheritable, with a recorded removal behind it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_virtualThread_contextRemoved() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.virtualThreadContextLeakDetector();
+        Thread vt = VIRTUAL_THREADS.get(1);
+        detector.recordThreadLocalSet("scoped-context", vt, false);
+        detector.recordThreadLocalRemoved("scoped-context", vt);
+    }
+
+    /** More virtual threads queue for a resource of capacity one than it can ever serve. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_virtualThreads_saturatedAScarceResource() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.vthreadResourceSaturationDetector();
+        detector.registerResource("scarce-pool", 1);
+        for (Thread vt : VIRTUAL_THREADS) {
+            detector.recordAcquireStart("scarce-pool", vt);
+        }
+    }
+
+    /** The same acquisitions against a resource sized well above the demand. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_virtualThreads_withinResourceCapacity() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.vthreadResourceSaturationDetector();
+        detector.registerResource("ample-pool", 32);
+        for (Thread vt : VIRTUAL_THREADS) {
+            detector.recordAcquireStart("ample-pool", vt);
+            detector.recordAcquired("ample-pool", vt);
+        }
+    }
+
+    /** Four virtual threads entering one monitor and none acquiring it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_virtualThreads_serialisedOnAMonitor() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.vthreadMonitorSerializationDetector();
+        for (Thread vt : VIRTUAL_THREADS) {
+            detector.recordMonitorEnter(CONTENDED_MONITOR, "serialising-monitor", vt);
+        }
+    }
+
+    /** The same entries recorded as acquired, on a monitor private to each invocation. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_virtualThreads_acquiredTheMonitor() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.vthreadMonitorSerializationDetector();
+        Object monitor = new Object();
+        for (int i = 0; i < 2; i++) {
+            Thread vt = VIRTUAL_THREADS.get(i);
+            detector.recordMonitorEnter(monitor, "acquired-monitor", vt);
+            detector.recordMonitorAcquired(monitor, vt);
+        }
+    }
+
+    /** A distinct cached instance recorded for each virtual thread. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_threadLocalCache_onePerVirtualThread() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.threadLocalCacheDegradationDetector();
+        for (Thread vt : VIRTUAL_THREADS) {
+            detector.recordCachedValue("per-thread-buffer", new Object(), vt);
+        }
+    }
+
+    /** The same recordings of one shared instance. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_threadLocalCache_sharedAcrossVirtualThreads() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.threadLocalCacheDegradationDetector();
+        for (Thread vt : VIRTUAL_THREADS) {
+            detector.recordCachedValue("shared-buffer", ONE_CACHED_INSTANCE, vt);
+        }
+    }
+
+    /** A fixed pool built over a virtual-thread factory: pooling what costs nothing to create. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_executor_pooledItsVirtualThreads() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.virtualThreadPoolingDetector()
+                .registerExecutor(pooledVirtualExecutor, "pooled-virtual");
+    }
+
+    /** The identical pool over the default platform factory, which is what pooling is for. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_executor_pooledItsPlatformThreads() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.virtualThreadPoolingDetector()
+                .registerExecutor(pooledPlatformExecutor, "pooled-platform");
+    }
+
+    // --- The foreign-memory family ------------------------------------------------------------
+
+    /** Six threads writing the same eight bytes of one segment with no guard named. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_memorySegment_overlappingWrites() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.sharedMemorySegmentRaceDetector()
+                .recordAccess(OVERLAPPING_SEGMENT, "overlapping-segment", 0L, 8L, true,
+                        Thread.currentThread());
+    }
+
+    /** The same segment written at offsets that cannot overlap. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_memorySegment_disjointWrites() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        // threadId() itself, not threadId() % THREADS: the modulo can map two distinct workers
+        // onto one slot, and the row would then overlap for a reason unrelated to the model it
+        // is testing. Thread ids are unique for the life of the JVM, so these cannot collide.
+        long slot = self.threadId() * 8L;
+        AsyncTestContext.sharedMemorySegmentRaceDetector()
+                .recordAccess(DISJOINT_SEGMENT, "disjoint-segment", slot, 8L, true, self);
+    }
+
+    /** A segment from a confined arena accessed by threads other than its owner. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_confinedArena_accessedFromAnotherThread() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.confinedArenaThreadEscapeDetector();
+        // Declared by every body rather than once, and that is load-bearing. The detector fixes
+        // a segment's arena link when it first sees the segment: recordAccess creates the state
+        // with no arena, and a recordAllocation arriving afterwards does not backfill it. With a
+        // one-shot declaration any worker that reached its access first created an arena-less
+        // state, the escape became invisible, and the row was silent for the whole run. Both
+        // calls keep the first arena and the first owner, so declaring per body is harmless and
+        // removes the ordering race entirely.
+        detector.recordArena(ESCAPED_ARENA, "escaped-arena", Thread.currentThread());
+        detector.recordAllocation(ESCAPED_SEGMENT, ESCAPED_ARENA, "escaped-segment", 64L);
+        detector.recordAccess(ESCAPED_SEGMENT, "escaped-segment", Thread.currentThread(), true);
+    }
+
+    /** An arena per invocation, allocated, accessed and closed by the thread that opened it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_confinedArena_accessedByItsOwner() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.confinedArenaThreadEscapeDetector();
+        Object arena = new Object();
+        Object segment = new Object();
+        detector.recordArena(arena, "confined-arena", self);
+        detector.recordAllocation(segment, arena, "confined-segment", 64L);
+        detector.recordAccess(segment, "confined-segment", self, true);
+        detector.recordClose(arena, self);
+    }
+
+    // --- Three value-lifecycle stragglers -------------------------------------------------------
+
+    /** A gatherer declared parallel with no combiner, integrated from six threads. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_gatherer_parallelWithoutACombiner() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.gathererConcurrencyMisuseDetector();
+        detector.registerGatherer("parallel-gatherer", false, true);
+        detector.recordIntegrate("parallel-gatherer", Thread.currentThread());
+    }
+
+    /** The same integrations against a sequential gatherer that has a combiner. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_gatherer_sequentialWithACombiner() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.gathererConcurrencyMisuseDetector();
+        detector.registerGatherer("sequential-gatherer", true, false);
+        detector.recordIntegrate("sequential-gatherer", Thread.currentThread());
+    }
+
+    /** A lazy constant whose computation finishes with no value. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_lazyConstant_computedToNothing() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.lazyConstantMisuseDetector();
+        String name = perInvocation("empty-constant");
+        detector.recordComputeStart(name, self);
+        detector.recordComputeEnd(name, self, null);
+    }
+
+    /** The same computation ending with a value, on a name unique to this invocation. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_lazyConstant_computedToAValue() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.lazyConstantMisuseDetector();
+        String name = perInvocation("filled-constant");
+        detector.recordGet(name, self);
+        detector.recordComputeStart(name, self);
+        detector.recordComputeEnd(name, self, "value");
+    }
+
+    /** A lazily computed entry that finishes with no value, so the key stays absent. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_lazyCollection_entryComputedToNothing() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.lazyCollectionMisuseDetector();
+        String key = perInvocation("empty-entry");
+        detector.recordComputeStart("lazy-cache", key, self);
+        detector.recordComputeEnd("lazy-cache", key, self, null);
+    }
+
+    /** The same computation producing a value, under a key unique to this invocation. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_lazyCollection_entryComputedToAValue() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.lazyCollectionMisuseDetector();
+        String key = perInvocation("filled-entry");
+        detector.recordGet("lazy-cache-filled", key, self);
+        detector.recordComputeStart("lazy-cache-filled", key, self);
+        detector.recordComputeEnd("lazy-cache-filled", key, self, "value");
     }
 
     private static void toleratingCorruption(Runnable operation) {

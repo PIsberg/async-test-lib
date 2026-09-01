@@ -2344,7 +2344,189 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "the identical writes made inside synchronized on the object itself, which "
                             + "Thread.holdsLock sees with no agent attached. A finding here "
-                            + "would report the most common correct guarding idiom in Java")
+                            + "would report the most common correct guarding idiom in Java"),
+
+            // --- The virtual-thread family. Four detectors whose model turns on the fact that
+            //     virtual threads are cheap and numerous, so a per-thread cost that was
+            //     negligible for a pool of eight is ruinous for a million. The lane's workers
+            //     are platform threads, so these rows hand the detectors virtual threads built
+            //     with Thread.ofVirtual().unstarted(...) - the detectors read isVirtual(),
+            //     threadId() and getName(), all of which an unstarted instance answers.
+
+            new RecordingSubject("recorded_virtualThread_contextNeverRemoved", JDK,
+                    "java.lang.Thread",
+                    DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "an inheritable thread-local is set on a virtual thread and never removed. "
+                            + "Every virtual thread inherits a copy, and where a pool has eight "
+                            + "carriers an application may have a million virtual threads, so "
+                            + "the per-thread cost that was invisible becomes the heap"),
+
+            new RecordingSubject("recorded_virtualThread_contextRemoved", JDK,
+                    "java.lang.Thread",
+                    DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same set, not inheritable and with a recorded removal behind it. The "
+                            + "pair separates on inheritance and cleanup rather than on the "
+                            + "kind of thread, which both rows hold constant"),
+
+            new RecordingSubject("recorded_virtualThreads_saturatedAScarceResource", JDK,
+                    "java.lang.Thread",
+                    DetectorType.VIRTUAL_THREAD_RESOURCE_SATURATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "more virtual threads queue for a resource of capacity one than it can ever "
+                            + "serve, and none is recorded as acquiring it. Virtual threads make "
+                            + "it trivial to have more work in flight than the pool behind it, "
+                            + "and the queue forms where nobody is looking"),
+
+            new RecordingSubject("recorded_virtualThreads_withinResourceCapacity", JDK,
+                    "java.lang.Thread",
+                    DetectorType.VIRTUAL_THREAD_RESOURCE_SATURATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same acquisitions against a resource sized well above the demand, each "
+                            + "recorded as acquired. The pair separates on whether the resource "
+                            + "could serve what asked for it"),
+
+            new RecordingSubject("recorded_virtualThreads_serialisedOnAMonitor", JDK,
+                    "java.lang.Object",
+                    DetectorType.VIRTUAL_THREAD_MONITOR_SERIALIZATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "four virtual threads are recorded entering one monitor and none acquiring "
+                            + "it. A monitor serialises whatever asks for it, so a construct "
+                            + "whose whole point is unbounded concurrency ends up single-file - "
+                            + "and on older runtimes each blocked virtual thread also pinned its "
+                            + "carrier"),
+
+            new RecordingSubject("recorded_virtualThreads_acquiredTheMonitor", JDK,
+                    "java.lang.Object",
+                    DetectorType.VIRTUAL_THREAD_MONITOR_SERIALIZATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same entries recorded as acquired, on a monitor private to each "
+                            + "invocation. Taking a lock is not a defect; a queue of threads "
+                            + "waiting on one is what the detector reports"),
+
+            new RecordingSubject("recorded_threadLocalCache_onePerVirtualThread", JDK,
+                    "java.lang.ThreadLocal",
+                    DetectorType.THREAD_LOCAL_CACHE_DEGRADATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a distinct cached instance is recorded for each virtual thread. A "
+                            + "ThreadLocal cache is an optimisation that assumes few, long-lived "
+                            + "threads; with virtual threads it becomes an allocation per task, "
+                            + "which is the opposite of what it was added for"),
+
+            new RecordingSubject("recorded_threadLocalCache_sharedAcrossVirtualThreads", JDK,
+                    "java.lang.ThreadLocal",
+                    DetectorType.THREAD_LOCAL_CACHE_DEGRADATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same number of recordings of one shared instance, which is what the "
+                            + "cache looks like once it stops being per-thread. The pair "
+                            + "separates on how many instances the threads saw"),
+
+            new RecordingSubject("recorded_executor_pooledItsVirtualThreads", JDK,
+                    "java.util.concurrent.ThreadPoolExecutor",
+                    DetectorType.VIRTUAL_THREAD_POOLING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a fixed pool is built over a virtual-thread factory. Pooling exists to "
+                            + "amortise the cost of creating a thread, and creating a virtual "
+                            + "thread costs almost nothing - so the pool caps the concurrency "
+                            + "the caller was trying to buy and gives nothing back"),
+
+            new RecordingSubject("recorded_executor_pooledItsPlatformThreads", JDK,
+                    "java.util.concurrent.ThreadPoolExecutor",
+                    DetectorType.VIRTUAL_THREAD_POOLING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the identical pool over the default platform-thread factory, which is what "
+                            + "pooling is for. The pair separates on the factory alone"),
+
+            // --- The foreign-memory pair: both rows share one segment, and what differs is
+            //     whether two threads write the same bytes.
+
+            new RecordingSubject("recorded_memorySegment_overlappingWrites", JDK,
+                    "java.lang.foreign.MemorySegment",
+                    DetectorType.SHARED_MEMORY_SEGMENT_RACE, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "six threads write the same eight bytes of one segment with no guard named. "
+                            + "Off-heap memory has none of the protections the heap has: there "
+                            + "is no header, no type check and no bounds beyond what the caller "
+                            + "declares, so a torn write is simply wrong bytes"),
+
+            new RecordingSubject("recorded_memorySegment_disjointWrites", JDK,
+                    "java.lang.foreign.MemorySegment",
+                    DetectorType.SHARED_MEMORY_SEGMENT_RACE, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same segment written by the same six threads at offsets that cannot "
+                            + "overlap. Slicing one segment into per-thread ranges is the "
+                            + "documented way to share it, and a finding here would report the "
+                            + "fix"),
+
+            new RecordingSubject("recorded_confinedArena_accessedFromAnotherThread", JDK,
+                    "java.lang.foreign.Arena",
+                    DetectorType.CONFINED_ARENA_THREAD_ESCAPE, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a segment allocated in a confined arena is accessed by threads other than "
+                            + "the one that opened it. Confinement is the arena's entire safety "
+                            + "argument - it is what lets it skip synchronization - so an escape "
+                            + "removes the guarantee rather than merely bending it"),
+
+            new RecordingSubject("recorded_confinedArena_accessedByItsOwner", JDK,
+                    "java.lang.foreign.Arena",
+                    DetectorType.CONFINED_ARENA_THREAD_ESCAPE, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "an arena per invocation, allocated, accessed and closed by the one thread "
+                            + "that opened it. That is confinement observed, and it is the "
+                            + "pattern the API is built around"),
+
+            // --- Three stragglers, each a value-lifecycle model like wave 10's.
+
+            new RecordingSubject("recorded_gatherer_parallelWithoutACombiner", JDK,
+                    "java.util.stream.Gatherer",
+                    DetectorType.GATHERER_CONCURRENCY_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a gatherer is declared parallel with no combiner and then integrated from "
+                            + "six threads. A parallel pipeline splits the work and has nothing "
+                            + "to merge the halves with, so the integrator's state is shared "
+                            + "rather than combined"),
+
+            new RecordingSubject("recorded_gatherer_sequentialWithACombiner", JDK,
+                    "java.util.stream.Gatherer",
+                    DetectorType.GATHERER_CONCURRENCY_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same integrations against a gatherer that has a combiner and is not "
+                            + "parallel. The pair separates on the two flags the model reads and "
+                            + "on nothing the threads did"),
+
+            new RecordingSubject("recorded_lazyConstant_computedToNothing", JDK,
+                    "java.lang.Object",
+                    DetectorType.LAZY_CONSTANT_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a lazy constant's computation is recorded as finishing with no value. A "
+                            + "holder meant to be computed once and kept forever that ends up "
+                            + "holding nothing will be recomputed by every later caller, which "
+                            + "is the opposite of the memoisation it was written for"),
+
+            new RecordingSubject("recorded_lazyConstant_computedToAValue", JDK,
+                    "java.lang.Object",
+                    DetectorType.LAZY_CONSTANT_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same computation ending with a value, on a name unique to the "
+                            + "invocation so no other body's calls can answer for it. The pair "
+                            + "separates on what the computation produced"),
+
+            new RecordingSubject("recorded_lazyCollection_entryComputedToNothing", JDK,
+                    "java.util.Map",
+                    DetectorType.LAZY_COLLECTION_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a lazily computed entry finishes with no value, so the key stays absent. "
+                            + "Every later lookup recomputes it, which turns a cache into a "
+                            + "guarantee that the expensive path runs every time"),
+
+            new RecordingSubject("recorded_lazyCollection_entryComputedToAValue", JDK,
+                    "java.util.Map",
+                    DetectorType.LAZY_COLLECTION_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same computation producing a value under a key unique to the "
+                            + "invocation, which is a cache filling correctly. The pair "
+                            + "separates on the value and not on the traffic")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()

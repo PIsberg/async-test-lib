@@ -546,7 +546,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 125: exposure zero, nothing said in
-either direction. That is now measured for eighty-six of them, in its own lane, and the separation
+either direction. That is now measured for ninety-six of them, in its own lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -1134,9 +1134,51 @@ initialisation ran. The pairs therefore vary a number or a flag rather than an i
 That is the model-varying family exhausted. What remains is mostly virtual-thread and
 foreign-memory detectors, plus the two whose silent rows need a pool larger than the run.
 
+**The fourteenth wave: virtual threads, foreign memory, and a detector that could not report**
+
+Ten pairs take the lane to **96 of 146**, in 195 rows: the four virtual-thread detectors
+(`VIRTUAL_THREAD_CONTEXT_LEAKS`, `VIRTUAL_THREAD_RESOURCE_SATURATION`,
+`VIRTUAL_THREAD_MONITOR_SERIALIZATION`, `THREAD_LOCAL_CACHE_DEGRADATION`) plus
+`VIRTUAL_THREAD_POOLING`, the two foreign-memory ones (`SHARED_MEMORY_SEGMENT_RACE`,
+`CONFINED_ARENA_THREAD_ESCAPE`), and three value-lifecycle stragglers. The lane's own workers are
+platform threads, so the virtual-thread rows supply their subjects with
+`Thread.ofVirtual().unstarted(...)`: those detectors read `isVirtual()`, `threadId()` and
+`getName()`, all of which an unstarted instance answers, and starting them would put scheduling
+into rows whose outcomes must be structural.
+
+Three of the twenty rows failed first, and the three causes were different - which is the useful
+part.
+
+**One was the detector, and it could not report at all under real concurrency.**
+`GathererConcurrencyMisuseDetector` emitted its finding only when
+`integratingThreadIds.size() == 2` - an equality test on a set the other workers are adding to at
+that same instant. The thread whose add takes the set to two can read it back as five, no other
+thread sees two either, and the report is then never emitted. In the lane that was not marginal:
+240 body executions across six workers produced **zero** findings, twice over. The condition is
+now "at least two distinct threads, and claim the report once", which cannot be missed however
+the adds interleave.
+
+The honest part of that fix is what the new unit test does *not* do. Measured against the old
+code, sixteen and sixty-four threads on a barrier missed 0 times in 30, and 240 threads missed 1
+in 30 - so a unit test at that rate would be a flaky gate, and the one added here is an invariant
+guard rather than a reproduction. The regression test for this bug is the corpus row, which is
+what actually failed.
+
+**One was the row, and the modulo was the bug.** The disjoint-writes twin sliced the segment by
+`threadId() % THREADS`, which can map two distinct workers onto one slot - so the row overlapped
+for a reason that had nothing to do with the model. It now uses `threadId()` itself, which is
+unique for the life of the JVM.
+
+**One was an ordering hazard between the two.** `ConfinedArenaThreadEscapeDetector` fixes a
+segment's arena link when it first sees the segment: `recordAccess` creates the state with no
+arena, and a `recordAllocation` arriving later does not backfill it. With a one-shot arena
+declaration, any worker that reached its access first created an arena-less state and the escape
+became invisible for the whole run. Declaring the arena in every body removes the race - both
+calls keep the first arena and the first owner, so repeating them is free.
+
 ### How far this lane can go, and where it stops
 
-"Eighty-six of 146" invites the reading that 60 rows are waiting to be written. They are not,
+"Ninety-six of 146" invites the reading that 50 rows are waiting to be written. They are not,
 and the ceiling is worth stating so nobody spends a week discovering it one detector at a time.
 
 A recording row needs a third-party subject the detector can actually accept. Classifying every
@@ -1221,11 +1263,11 @@ expectations are structural:
 | `VIRTUAL_THREAD_CPU_BOUND` | a measured segment against a 50 ms threshold |
 | `VIRTUAL_THREAD_CARRIER_EXHAUSTION` | concurrently blocked threads against `availableProcessors`, so it fires on small runners |
 
-**Where that leaves it.** 39 RECORDING-fed detectors still have no row. That figure is the one
+**Where that leaves it.** 29 RECORDING-fed detectors still have no row. That figure is the one
 the feed table yields directly - 146 detectors, 18 agent-fed, 3 zero-config, leaving 125
-recording-fed, of which 86 are paired here - and it replaces a "47" that earlier revisions of
+recording-fed, of which 96 are paired here - and it replaces a "47" that earlier revisions of
 this paragraph decremented wave by wave without anyone being able to re-derive it. Eighteen of
-the 39 are refused with the reason on record: five for want of any documented contract, and the
+the 29 are refused with the reason on record: five for want of any documented contract, and the
 thirteen the triage rejected as having no recordable correct twin or no structural outcome. The
 rest take JDK primitives - locks,
 latches, `wait`/`notify`, scopes, threads. A corpus of third-party subjects has nothing to offer
