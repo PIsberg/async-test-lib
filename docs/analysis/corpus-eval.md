@@ -546,7 +546,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 125: exposure zero, nothing said in
-either direction. That is now measured for fifteen of them, in a third lane, and the separation
+either direction. That is now measured for seventeen of them, in its own lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -852,6 +852,27 @@ reachable by any unit test that already existed, because every existing test rec
 sharing and asserted the firing direction. The row that had to stay silent is what forced the
 model to distinguish the fix from the bug.
 
+**The fourth wave: two pairs, two refusals (2026-08-31)**
+
+`SHARED_CHARSET_CODER` and `EXECUTOR_SHUTDOWN` take the lane to seventeen detectors, both on the
+JDK route. The coder pair is the Mac pair's confinement shape on `CharsetEncoder`, whose class
+javadoc states the contract outright ("Instances of this class are not safe for use by multiple
+concurrent threads"); the executor pair is a protocol pair like the ResourceLeak rows, on the
+lifecycle `ExecutorService`'s javadoc prescribes ("An unused ExecutorService should be shut down
+to allow reclamation of its resources") - one declared-owned pool that never records a shutdown
+must fire, a fresh pool per body run through the full shutdown-and-await protocol must stay
+silent.
+
+The refusals matter as much as the rows. `SHARED_CHECKSUM` and `SHARED_DEFLATER` were the
+obvious next two - JDK subjects exist, both detectors carry the lockset, both pairs would have
+passed - and neither `CRC32`, `Checksum` nor `Deflater` states one word about thread safety in
+its javadoc (checked against the JDK 26 sources). A row would have carried a
+`Contract.NOT_THREAD_SAFE` label the platform's own documentation does not support, which is the
+folklore this document already flags on the netty rows, and both detectors' fire and silent
+directions are pinned per-detector by `SharedTypeAccuracyEvalTest` anyway. A corpus whose
+premise is documented contracts adds nothing by restating that eval under an undocumented label,
+so those two stay refused until the JDK documents the contract.
+
 ### How far this lane can go, and where it stops
 
 "Ten of 146" invites the reading that 136 rows are waiting to be written. They are not, and the
@@ -912,7 +933,7 @@ each rejection is worth more than the row would have been:
   by the documented contract, which is not what this lane measures.
 
 **Where that leaves it.** Of the 47 RECORDING-fed detectors that had no denominator when this
-section was first written, 44 remain after the third wave, and they take JDK primitives - locks,
+section was first written, 42 remain after the fourth wave (two of them refused above rather than waiting), and they take JDK primitives - locks,
 latches, `wait`/`notify`, scopes, threads. A corpus of third-party subjects has nothing to offer
 them; the third wave's route, a JDK subject whose own javadoc states a contract, is open to some
 of them but is not a backlog either, because most of those primitives' javadocs state a usage
