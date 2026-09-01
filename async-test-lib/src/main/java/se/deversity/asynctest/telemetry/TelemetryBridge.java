@@ -89,6 +89,29 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
     }
 
     /**
+     * {@return an active bridge that {@link TelemetryRegistry} has never been told about}
+     *
+     * <p>Every public factory ends in {@link TelemetryRegistry#start}, because a bridge only earns
+     * its keep once agent events flow into it. That also makes a bridge impossible to exercise on
+     * its own: obtaining one installs it as the process-wide drain callback, so a test that puts a
+     * bridge under contention hijacks the telemetry of the run driving the test. This builds one
+     * the registry never sees, so the bridge's own behaviour, in particular that {@link #close()}
+     * is a hard stop, can be put under contention without touching global state.
+     *
+     * <p>Package-private on purpose. This is a seam for the tests in this package, not API: a
+     * bridge that forwards nowhere is of no use to a caller outside them.
+     *
+     * @param atomicityValidator the detector to feed
+     * @param workerFilter       which thread ids to forward
+     */
+    static TelemetryBridge detached(AtomicityValidator atomicityValidator,
+                                    LongPredicate workerFilter) {
+        TelemetryBridge bridge = new TelemetryBridge(atomicityValidator, workerFilter);
+        bridge.active = true;
+        return bridge;
+    }
+
+    /**
      * Creates a bridge and registers it as the {@link TelemetryRegistry} drain callback so
      * that agent field-access events begin flowing into {@code atomicityValidator}.
      *
