@@ -5,10 +5,14 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.security.MessageDigest;
 import java.text.NumberFormat;
 import java.text.ParseException;
+import java.text.ParsePosition;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.nio.ByteBuffer;
+import java.security.DigestException;
 import java.util.Date;
 import java.util.Formatter;
+import java.util.Locale;
 import java.util.regex.Matcher;
 
 import se.deversity.asynctest.diagnostics.CalendarDetector;
@@ -88,6 +92,26 @@ public final class AgentSharedInstanceHooks {
     }
 
     /**
+     * Weaves {@code SimpleDateFormat.parse(String, ParsePosition)}.
+     *
+     * <p>The incremental parse, used when walking a string containing several dates. It advances
+     * the position object and drives the same internal calendar the other overload does, and it
+     * was not woven (#434).
+     *
+     * @param receiver the formatter
+     * @param source   the text to parse
+     * @param position where to start, updated to where parsing stopped
+     * @return the parsed date, or {@code null} if the text did not match
+     */
+    public static Date parse(SimpleDateFormat receiver, String source, ParsePosition position) {
+        SimpleDateFormatDetector detector = AsyncTestContext.currentSimpleDateFormatDetector();
+        if (detector != null) {
+            detector.recordParse(receiver, receiver.getClass().getName());
+        }
+        return receiver.parse(source, position);
+    }
+
+    /**
      * Weaves {@code Matcher.find()}.
      *
      * @param receiver the matcher
@@ -118,6 +142,46 @@ public final class AgentSharedInstanceHooks {
     public static String group(Matcher receiver) {
         recordMatcher(receiver);
         return receiver.group();
+    }
+
+    /**
+     * Weaves {@code Matcher.group(int)}.
+     *
+     * <p>{@code find()} then {@code group(1)} is the standard idiom, and the group-taking overload
+     * was the one not woven - so the most common way of reading a shared matcher's result was
+     * unobserved while the zero-argument form was seen (#434).
+     *
+     * @param receiver the matcher
+     * @param group    the group index
+     * @return the matched subsequence
+     */
+    public static String group(Matcher receiver, int group) {
+        recordMatcher(receiver);
+        return receiver.group(group);
+    }
+
+    /**
+     * Weaves {@code Matcher.group(String)}, the named-group form of the overload above.
+     *
+     * @param receiver the matcher
+     * @param name     the group name
+     * @return the matched subsequence
+     */
+    public static String group(Matcher receiver, String name) {
+        recordMatcher(receiver);
+        return receiver.group(name);
+    }
+
+    /**
+     * Weaves {@code Matcher.find(int)}, which resets the matcher before searching.
+     *
+     * @param receiver the matcher
+     * @param start    the index to start from
+     * @return whether a match was found
+     */
+    public static boolean find(Matcher receiver, int start) {
+        recordMatcher(receiver);
+        return receiver.find(start);
     }
 
     private static void recordMatcher(Matcher receiver) {
@@ -161,6 +225,57 @@ public final class AgentSharedInstanceHooks {
         return receiver.digest(input);
     }
 
+    /**
+     * Weaves {@code MessageDigest.update(byte)}.
+     *
+     * @param receiver the digest
+     * @param input    the byte to accumulate
+     */
+    public static void update(MessageDigest receiver, byte input) {
+        recordDigest(receiver);
+        receiver.update(input);
+    }
+
+    /**
+     * Weaves {@code MessageDigest.update(byte[], int, int)}, the ranged form.
+     *
+     * @param receiver the digest
+     * @param input    the buffer to accumulate from
+     * @param offset   where to start
+     * @param length   how many bytes
+     */
+    public static void update(MessageDigest receiver, byte[] input, int offset, int length) {
+        recordDigest(receiver);
+        receiver.update(input, offset, length);
+    }
+
+    /**
+     * Weaves {@code MessageDigest.update(ByteBuffer)}.
+     *
+     * @param receiver the digest
+     * @param input    the buffer to accumulate from
+     */
+    public static void update(MessageDigest receiver, ByteBuffer input) {
+        recordDigest(receiver);
+        receiver.update(input);
+    }
+
+    /**
+     * Weaves {@code MessageDigest.digest(byte[], int, int)}.
+     *
+     * @param receiver the digest
+     * @param output   where to write the digest
+     * @param offset   where to start writing
+     * @param length   how much room there is
+     * @return the number of bytes written
+     * @throws DigestException if the output buffer is too small
+     */
+    public static int digest(MessageDigest receiver, byte[] output, int offset, int length)
+            throws DigestException {
+        recordDigest(receiver);
+        return receiver.digest(output, offset, length);
+    }
+
     private static void recordDigest(MessageDigest receiver) {
         SharedMessageDigestDetector detector =
                 AsyncTestContext.currentSharedMessageDigestDetector();
@@ -202,6 +317,63 @@ public final class AgentSharedInstanceHooks {
     }
 
     /**
+     * Weaves {@code Calendar.set(int, int, int)}.
+     *
+     * <p>The three date-setting overloads below are how calendars are actually populated -
+     * {@code set(field, value)} one field at a time is the rarer shape - and none of them was
+     * woven (#434).
+     *
+     * @param receiver the calendar
+     * @param year     the calendar year, as Calendar.YEAR takes it
+     * @param month    the zero-based month, as Calendar.MONTH takes it
+     * @param date     the day of month
+     */
+    public static void set(Calendar receiver, int year, int month, int date) {
+        recordCalendarSet(receiver);
+        receiver.set(year, month, date);
+    }
+
+    /**
+     * Weaves {@code Calendar.set(int, int, int, int, int)}.
+     *
+     * @param receiver the calendar
+     * @param year     the calendar year, as Calendar.YEAR takes it
+     * @param month    the zero-based month, as Calendar.MONTH takes it
+     * @param date     the day of month
+     * @param hour     the hour of day
+     * @param minute   the minutes past the hour
+     */
+    public static void set(Calendar receiver, int year, int month, int date, int hour,
+                           int minute) {
+        recordCalendarSet(receiver);
+        receiver.set(year, month, date, hour, minute);
+    }
+
+    /**
+     * Weaves {@code Calendar.set(int, int, int, int, int, int)}.
+     *
+     * @param receiver the calendar
+     * @param year     the calendar year, as Calendar.YEAR takes it
+     * @param month    the zero-based month, as Calendar.MONTH takes it
+     * @param date     the day of month
+     * @param hour     the hour of day
+     * @param minute   the minutes past the hour
+     * @param second   the seconds past the minute
+     */
+    public static void set(Calendar receiver, int year, int month, int date, int hour,
+                           int minute, int second) {
+        recordCalendarSet(receiver);
+        receiver.set(year, month, date, hour, minute, second);
+    }
+
+    private static void recordCalendarSet(Calendar receiver) {
+        CalendarDetector detector = AsyncTestContext.currentCalendarDetector();
+        if (detector != null) {
+            detector.recordSet(receiver, receiver.getClass().getName());
+        }
+    }
+
+    /**
      * Weaves {@code StringBuilder.append(String)}.
      *
      * @param receiver the builder
@@ -225,11 +397,105 @@ public final class AgentSharedInstanceHooks {
         return receiver.append(value);
     }
 
+    /**
+     * Weaves {@code StringBuilder.append(char)}.
+     *
+     * <p>The five overloads below carry no new argument about correctness. They exist because the
+     * weaver matches an exact descriptor, so a shared builder appended to with a {@code char} was
+     * invisible while the same builder appended to with a {@code String} was not - and
+     * {@code append(char)} reads {@code count}, writes the array and writes {@code count} back
+     * exactly as the others do. The gap was found by a corpus row that had to fire and did not
+     * (#434).
+     *
+     * @param receiver the builder
+     * @param value    the character to append
+     * @return the builder, so the call chain is unchanged
+     */
+    public static StringBuilder append(StringBuilder receiver, char value) {
+        recordBuilder(receiver);
+        return receiver.append(value);
+    }
+
+    /**
+     * Weaves {@code StringBuilder.append(long)}.
+     *
+     * @param receiver the builder
+     * @param value    the number to append
+     * @return the builder, so the call chain is unchanged
+     */
+    public static StringBuilder append(StringBuilder receiver, long value) {
+        recordBuilder(receiver);
+        return receiver.append(value);
+    }
+
+    /**
+     * Weaves {@code StringBuilder.append(double)}.
+     *
+     * @param receiver the builder
+     * @param value    the number to append
+     * @return the builder, so the call chain is unchanged
+     */
+    public static StringBuilder append(StringBuilder receiver, double value) {
+        recordBuilder(receiver);
+        return receiver.append(value);
+    }
+
+    /**
+     * Weaves {@code StringBuilder.append(boolean)}.
+     *
+     * @param receiver the builder
+     * @param value    the flag to append
+     * @return the builder, so the call chain is unchanged
+     */
+    public static StringBuilder append(StringBuilder receiver, boolean value) {
+        recordBuilder(receiver);
+        return receiver.append(value);
+    }
+
+    /**
+     * Weaves {@code StringBuilder.append(Object)}.
+     *
+     * @param receiver the builder
+     * @param value    the value to append
+     * @return the builder, so the call chain is unchanged
+     */
+    public static StringBuilder append(StringBuilder receiver, Object value) {
+        recordBuilder(receiver);
+        return receiver.append(value);
+    }
+
+    /**
+     * Weaves {@code StringBuilder.append(CharSequence)}.
+     *
+     * @param receiver the builder
+     * @param value    the sequence to append
+     * @return the builder, so the call chain is unchanged
+     */
+    public static StringBuilder append(StringBuilder receiver, CharSequence value) {
+        recordBuilder(receiver);
+        return receiver.append(value);
+    }
+
     private static void recordBuilder(StringBuilder receiver) {
         StringBuilderDetector detector = AsyncTestContext.currentStringBuilderDetector();
         if (detector != null) {
             detector.recordAppend(receiver, receiver.getClass().getName());
         }
+    }
+
+    /**
+     * Weaves {@code NumberFormat.format(long)}.
+     *
+     * <p>Formatting an integral value is at least as common as formatting a {@code double}, and
+     * only the {@code double} overload was woven (#434).
+     *
+     * @param receiver the format
+     * @param value    the number to format
+     * @return the formatted text
+     */
+    public static String format(NumberFormat receiver, long value) {
+        recordNumberFormat(receiver);
+        return receiver.format(value);
     }
 
     /**
@@ -240,13 +506,17 @@ public final class AgentSharedInstanceHooks {
      * @return the formatted text
      */
     public static String format(NumberFormat receiver, double value) {
+        recordNumberFormat(receiver);
+        return receiver.format(value);
+    }
+
+    private static void recordNumberFormat(NumberFormat receiver) {
         SharedDecimalFormatDetector detector =
                 AsyncTestContext.currentSharedDecimalFormatDetector();
         if (detector != null) {
             detector.recordAccess(receiver, receiver.getClass().getName(),
                     Thread.currentThread());
         }
-        return receiver.format(value);
     }
 
     /**
@@ -263,11 +533,37 @@ public final class AgentSharedInstanceHooks {
     // format argument and cannot see that it is the same value the user already passed, so the
     // finding is true of every substitution hook and false of all of them.
     public static Formatter format(Formatter receiver, String format, Object... args) {
+        recordFormatter(receiver);
+        return receiver.format(format, args);
+    }
+
+    /**
+     * Weaves {@code Formatter.format(Locale, String, Object...)}.
+     *
+     * <p>The locale-taking overload is the one an internationalised codebase actually calls, and
+     * it was invisible while its two-argument sibling was woven. Same receiver, same interleaved
+     * output, different descriptor (#434).
+     *
+     * @param receiver the formatter
+     * @param locale   the locale to format with
+     * @param format   the format string
+     * @param args     the format arguments
+     * @return the formatter, so the call chain is unchanged
+     */
+    @SuppressFBWarnings("FORMAT_STRING_MANIPULATION")
+    // Same reasoning as the overload above: the format string is the call site's own and reaches
+    // the original method unchanged.
+    public static Formatter format(Formatter receiver, Locale locale, String format,
+                                   Object... args) {
+        recordFormatter(receiver);
+        return receiver.format(locale, format, args);
+    }
+
+    private static void recordFormatter(Formatter receiver) {
         SharedFormatterDetector detector = AsyncTestContext.currentSharedFormatterDetector();
         if (detector != null) {
             detector.recordAccess(receiver, receiver.getClass().getName(),
                     Thread.currentThread());
         }
-        return receiver.format(format, args);
     }
 }

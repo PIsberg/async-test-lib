@@ -88,6 +88,102 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * Weaves {@code Semaphore.acquire(int)}.
+     *
+     * <p>The permit-count overloads matter more than they look. The detector's finding is a
+     * balance - acquisitions against releases - so a semaphore used as {@code acquire(3)} then
+     * {@code release(1)} leaks two permits, and recording one event for each call would have made
+     * that read as balanced. Each permit is therefore recorded separately, which is what keeps
+     * the arithmetic meaning what it says. None of these overloads was woven at all before
+     * (#434), so a pool sized in permits was invisible.
+     *
+     * @param receiver the semaphore
+     * @param permits  how many permits to take
+     * @throws InterruptedException if interrupted while waiting
+     */
+    public static void acquire(Semaphore receiver, int permits) throws InterruptedException {
+        receiver.acquire(permits);
+        recordAcquired(receiver, permits);
+    }
+
+    /**
+     * Weaves {@code Semaphore.tryAcquire(int)}.
+     *
+     * @param receiver the semaphore
+     * @param permits  how many permits to take
+     * @return whether they were taken
+     */
+    public static boolean tryAcquire(Semaphore receiver, int permits) {
+        boolean acquired = receiver.tryAcquire(permits);
+        if (acquired) {
+            recordAcquired(receiver, permits);
+        }
+        return acquired;
+    }
+
+    /**
+     * Weaves {@code Semaphore.tryAcquire(long, TimeUnit)}, the timed form.
+     *
+     * @param receiver the semaphore
+     * @param timeout  how long to wait
+     * @param unit     the unit of {@code timeout}
+     * @return whether a permit was taken
+     * @throws InterruptedException if interrupted while waiting
+     */
+    public static boolean tryAcquire(Semaphore receiver, long timeout, TimeUnit unit)
+            throws InterruptedException {
+        boolean acquired = receiver.tryAcquire(timeout, unit);
+        if (acquired) {
+            recordAcquired(receiver, 1);
+        }
+        return acquired;
+    }
+
+    /**
+     * Weaves {@code Semaphore.tryAcquire(int, long, TimeUnit)}.
+     *
+     * @param receiver the semaphore
+     * @param permits  how many permits to take
+     * @param timeout  how long to wait
+     * @param unit     the unit of {@code timeout}
+     * @return whether they were taken
+     * @throws InterruptedException if interrupted while waiting
+     */
+    public static boolean tryAcquire(Semaphore receiver, int permits, long timeout, TimeUnit unit)
+            throws InterruptedException {
+        boolean acquired = receiver.tryAcquire(permits, timeout, unit);
+        if (acquired) {
+            recordAcquired(receiver, permits);
+        }
+        return acquired;
+    }
+
+    /**
+     * Weaves {@code Semaphore.release(int)}.
+     *
+     * @param receiver the semaphore
+     * @param permits  how many permits to return
+     */
+    public static void release(Semaphore receiver, int permits) {
+        SemaphoreMisuseDetector detector = AsyncTestContext.currentSemaphoreMisuseDetector();
+        if (detector != null) {
+            for (int i = 0; i < permits; i++) {
+                detector.recordRelease(receiver, receiver.getClass().getName());
+            }
+        }
+        receiver.release(permits);
+    }
+
+    private static void recordAcquired(Semaphore receiver, int permits) {
+        SemaphoreMisuseDetector detector = AsyncTestContext.currentSemaphoreMisuseDetector();
+        if (detector != null) {
+            for (int i = 0; i < permits; i++) {
+                detector.recordAcquire(receiver, receiver.getClass().getName());
+            }
+        }
+    }
+
+    /**
      * Weaves {@code CountDownLatch.countDown()}.
      *
      * @param receiver the latch
@@ -169,6 +265,50 @@ public final class AgentConcurrencyUtilHooks {
             detector.recordOffer(receiver, receiver.getClass().getName(), added);
         }
         return added;
+    }
+
+    /**
+     * Weaves {@code BlockingQueue.offer(Object, long, TimeUnit)}, the timed form.
+     *
+     * <p>The timed overloads are the ones production code reaches for - an untimed {@code offer}
+     * that returns immediately and an untimed {@code poll} that returns {@code null} are the
+     * shapes people avoid - and neither was woven (#434). The discarded boolean is the same bug
+     * either way.
+     *
+     * @param receiver the queue
+     * @param element  the element to add
+     * @param timeout  how long to wait for space
+     * @param unit     the unit of {@code timeout}
+     * @return whether the element was added
+     * @throws InterruptedException if interrupted while waiting
+     */
+    public static boolean offer(BlockingQueue<Object> receiver, Object element, long timeout,
+                                TimeUnit unit) throws InterruptedException {
+        boolean added = receiver.offer(element, timeout, unit);
+        BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
+        if (detector != null) {
+            detector.recordOffer(receiver, receiver.getClass().getName(), added);
+        }
+        return added;
+    }
+
+    /**
+     * Weaves {@code BlockingQueue.poll(long, TimeUnit)}, the timed form.
+     *
+     * @param receiver the queue
+     * @param timeout  how long to wait for an element
+     * @param unit     the unit of {@code timeout}
+     * @return the head of the queue, or {@code null} on timeout
+     * @throws InterruptedException if interrupted while waiting
+     */
+    public static Object poll(BlockingQueue<Object> receiver, long timeout, TimeUnit unit)
+            throws InterruptedException {
+        Object taken = receiver.poll(timeout, unit);
+        BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
+        if (detector != null) {
+            detector.recordPoll(receiver, receiver.getClass().getName(), taken != null);
+        }
+        return taken;
     }
 
     /**

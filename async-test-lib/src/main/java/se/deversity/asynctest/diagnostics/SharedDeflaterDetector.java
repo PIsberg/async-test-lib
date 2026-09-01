@@ -18,8 +18,10 @@ import java.util.zip.Inflater;
  *
  * <p><strong>Why it matters.</strong> Both classes wrap a native zlib stream
  * whose state machine ({@code setInput} then {@code deflate}/{@code inflate}
- * until {@code finished}) is advanced by every call. They are <em>not</em>
- * thread-safe. Unsynchronized concurrent use of
+ * until {@code finished}) is advanced by every call, which the javadoc describes and which is
+ * the whole of the argument here - the JDK states no thread-safety contract for either class.
+ * A state machine advanced from two threads at once is not in a state either of them can reason
+ * about. Unsynchronized concurrent use of
  * one instance interleaves bytes from different logical streams, producing
  * corrupt/undecompressable output or a {@code NullPointerException} from the
  * native layer once one thread calls {@code end()} while another is mid-stream.
@@ -117,7 +119,8 @@ public final class SharedDeflaterDetector {
             if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
             String msg = String.format(
                     "%s '%s' accessed from %d threads (%s) — java.util.zip %s wraps a "
-                            + "stateful native zlib stream and is not thread-safe; unsynchronized concurrent use "
+                            + "stateful native zlib stream, and the JDK states no thread-safety "
+                            + "contract for it; unsynchronized concurrent use "
                             + "corrupts output or crashes when one thread calls end() mid-stream"
                             + SelfGuard.REPORT_NOTE + ".",
                     s.kind,
