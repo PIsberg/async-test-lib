@@ -102,8 +102,18 @@ public final class StaticInitDeadlockDetector {
      *
      * <p>Long enough that ordinary class initialization has finished, short enough that it is only
      * ever paid when two threads already look stuck in two different initializers.
+     *
+     * <p>Package-private and non-final so that a test can widen it, which is a deliberate
+     * affordance rather than an oversight. The negative case this window exists for - two classes
+     * initializing at once and both finishing - can only be tested by having an initializer take
+     * measurably longer than nothing and still finish inside the window. At 150 ms against a 20 ms
+     * initializer that is a 7x margin, and a loaded CI runner starving the initializing thread for
+     * 130 ms turned it red (#457). Widening the window under test keeps the assertion exactly as
+     * it was and removes the machine from it; narrowing it in production would do the opposite.
+     * Nothing outside this class's own tests writes it, and they restore it.
      */
-    private static final long SECOND_SAMPLE_DELAY_MS = 150;
+    @SuppressWarnings("PMD.MutableStaticState")
+    static volatile long secondSampleDelayMs = 150;
 
     private record Waiter(long threadId, String threadName, String requestedClass) { }
 
@@ -261,7 +271,7 @@ public final class StaticInitDeadlockDetector {
         try {
             List<Parked> first = withoutPreexisting(parkedInInitializer());
             if (spansTwoInitializers(first)) {
-                Thread.sleep(SECOND_SAMPLE_DELAY_MS);
+                Thread.sleep(secondSampleDelayMs);
                 confirmed = stillThere(first, parkedInInitializer());
             }
         } catch (InterruptedException interrupted) {
