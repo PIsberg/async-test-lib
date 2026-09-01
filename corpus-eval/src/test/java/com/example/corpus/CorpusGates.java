@@ -62,6 +62,17 @@ final class CorpusGates {
     private static final Set<DetectorType> EXERCISED_AGENT_DETECTORS =
             EnumSet.of(DetectorType.ATOMICITY_VIOLATIONS, DetectorType.SHARED_COLLECTIONS);
 
+    /**
+     * {@return the agent-fed detectors lane one holds to firing on the documented-unsafe group}
+     *
+     * <p>Exposed so that {@link DetectorCoverage} counts them as paired from the same set this
+     * gate enforces. Restating the two names there would be a second copy of a fact that already
+     * has an owner, and the copy is the one that goes stale.
+     */
+    static Set<DetectorType> exercisedAgentDetectors() {
+        return EXERCISED_AGENT_DETECTORS;
+    }
+
     private CorpusGates() {
     }
 

@@ -793,6 +793,151 @@ final class Corpus {
      */
     private static final List<RecordingSubject> RECORDING_SUBJECTS = List.of(
 
+            // --- LatchMisuse and BlockingQueue. Both are classified AGENT-fed and neither can
+            //     report in an agent-only run, because every record path resolves through a
+            //     registry only register* populates and no hook calls it (#436). That makes them
+            //     unreachable *there*, not unreachable: a recording body may call register*
+            //     itself, which is the whole point of this lane. Both verdicts are pure counter
+            //     arithmetic over the calls made, with no clock and no blocking anywhere in them.
+            //
+            //     Every subject is created inside the body on purpose. One AsyncTestContext
+            //     serves all invocations x threads executions, so an instance held in a field
+            //     would accumulate 240 executions' worth of counts against one registration and
+            //     report for arithmetic that has nothing to do with the row.
+
+            new RecordingSubject("recorded_latch_countedDownPastItsCount", JDK,
+                    "java.util.concurrent.CountDownLatch",
+                    DetectorType.LATCH_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the latch is registered with a count of one and counted down twice, which is "
+                            + "the extraCountDowns condition exactly. A latch counted past zero "
+                            + "released waiters that its author believed were still gated"),
+
+            new RecordingSubject("recorded_latch_countedDownExactly", JDK,
+                    "java.util.concurrent.CountDownLatch",
+                    DetectorType.LATCH_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same registration and the same await, counted down once. Neither "
+                            + "condition holds: one is not above one, and one is not below one. "
+                            + "The rows differ by a single recorded call"),
+
+            new RecordingSubject("recorded_blockingQueue_filledToCapacity", JDK,
+                    "java.util.concurrent.ArrayBlockingQueue",
+                    DetectorType.BLOCKING_QUEUE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "five offers into a queue registered with capacity five and nothing taken "
+                            + "out, so the observed peak reaches the 90% saturation threshold. "
+                            + "Nothing drains it, which is what makes the peak monotone and the "
+                            + "outcome independent of how the threads interleaved"),
+
+            new RecordingSubject("recorded_blockingQueue_drainedAsItFilled", JDK,
+                    "java.util.concurrent.ArrayBlockingQueue",
+                    DetectorType.BLOCKING_QUEUE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same registered capacity, with every offer followed by a poll, so the "
+                            + "peak never leaves one. A queue that keeps up with its producer is "
+                            + "the ordinary case and must not read as saturated"),
+
+            // --- The rest of the shared-instance family. Five detectors refused at wave 15 for
+            //     want of a corpus library class with a documented contract - which was the wrong
+            //     question. Each keeps its state per instance identity, so the pair is the same
+            //     one the agent lane writes: one instance every thread records against, versus
+            //     one per thread. The subject is the JDK type the detector models.
+            //
+            //     Only two of the five can cite the JDK. SHARED_KDF's detector quotes
+            //     javax.crypto.KDF verbatim, and DocumentBuilderFactory's javadoc says outright
+            //     that it "is not guaranteed to be thread safe". For CRC32, Deflater and TimeZone
+            //     the JDK states no thread-safety contract at all, and the detectors' own javadoc
+            //     asserts one without quoting a source. Those three rows therefore rest on
+            //     documented *statefulness* - update/getValue, setRawOffset - rather than on a
+            //     documented guarantee, and the NOT_THREAD_SAFE label on them is the corpus's
+            //     reading rather than the JDK's word. Recorded here rather than left implied,
+            //     because an unattributed contract sitting unremarked in this corpus is the same
+            //     defect the netty ByteBuf note already calls out. See #437.
+
+            new RecordingSubject("recorded_checksum_sharedAcrossThreads", JDK,
+                    "java.util.zip.CRC32",
+                    DetectorType.SHARED_CHECKSUM, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread records against the one CRC32, with nothing held, so the "
+                            + "instance's thread set exceeds one and its lockset is empty. update "
+                            + "accumulates into the instance and getValue reads it back, so a "
+                            + "shared one checksums an interleaving of everybody's bytes"),
+
+            new RecordingSubject("recorded_checksum_oneInstancePerThread", JDK,
+                    "java.util.zip.CRC32",
+                    DetectorType.SHARED_CHECKSUM, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a CRC32 per thread, recorded through the same method. The detector keys on "
+                            + "identity, so each instance sees one thread; a finding here would "
+                            + "mean it counts calls rather than sharing"),
+
+            new RecordingSubject("recorded_deflater_sharedAcrossThreads", JDK,
+                    "java.util.zip.Deflater",
+                    DetectorType.SHARED_DEFLATER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one Deflater recorded by every thread with no lock held. A Deflater holds a "
+                            + "native compression stream and an input buffer between calls, which "
+                            + "is why it also needs an explicit end()"),
+
+            new RecordingSubject("recorded_deflater_oneInstancePerThread", JDK,
+                    "java.util.zip.Deflater",
+                    DetectorType.SHARED_DEFLATER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a Deflater per thread, ended after use, recorded through the same overload. "
+                            + "Distinct identities, one thread each"),
+
+            new RecordingSubject("recorded_kdf_sharedAcrossThreads", JDK,
+                    "javax.crypto.SecretKeyFactory",
+                    DetectorType.SHARED_KDF, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the one derivation object, recorded from every thread unguarded. This is the "
+                            + "detector with a verbatim JDK citation behind it: javax.crypto.KDF "
+                            + "states that its methods are not thread-safe and that threads "
+                            + "sharing one object should synchronize amongst themselves"),
+
+            new RecordingSubject("recorded_kdf_guardedByItsOwnMonitor", JDK,
+                    "javax.crypto.SecretKeyFactory",
+                    DetectorType.SHARED_KDF, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same one object, with every record made inside synchronized on it. That "
+                            + "is precisely the remedy the KDF javadoc names, so the lockset "
+                            + "never empties and the sharing is not the finding it would "
+                            + "otherwise be"),
+
+            new RecordingSubject("recorded_timeZone_mutatedByEveryThread", JDK,
+                    "java.util.TimeZone",
+                    DetectorType.SHARED_TIMEZONE, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one TimeZone whose raw offset every thread records mutating. setRawOffset "
+                            + "and setID are the documented mutators; a zone reached from a "
+                            + "static field and then adjusted is the shape this models"),
+
+            new RecordingSubject("recorded_timeZone_oneInstancePerThread", JDK,
+                    "java.util.TimeZone",
+                    DetectorType.SHARED_TIMEZONE, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "each thread mutates its own SimpleTimeZone and records that. Same call, same "
+                            + "operation label, distinct identities - which is the only thing "
+                            + "that may separate the two rows"),
+
+            new RecordingSubject("recorded_xmlParser_sharedAcrossThreads", JDK,
+                    "javax.xml.parsers.DocumentBuilder",
+                    DetectorType.SHARED_XML_PARSER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one DocumentBuilder parsed from every thread. DocumentBuilderFactory's own "
+                            + "javadoc states it is not guaranteed to be thread safe and that an "
+                            + "application should use one builder per thread, which is the "
+                            + "contract this row is the violation of"),
+
+            new RecordingSubject("recorded_xmlParser_oneInstancePerThread", JDK,
+                    "javax.xml.parsers.DocumentBuilder",
+                    DetectorType.SHARED_XML_PARSER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "newDocumentBuilder() per thread, which is what the factory javadoc tells you "
+                            + "to do. The factory stays shared, exactly as the same javadoc "
+                            + "permits, so only the builder's scope differs"),
+
             // --- StaticInitDeadlock: a ZERO_CONFIG detector with a recordable path. Its live
             //     sampler walks the JVM's stacks and needs two threads genuinely wedged in
             //     <clinit>, which poisons those classes for the life of the classloader. Its

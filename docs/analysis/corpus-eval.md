@@ -1212,8 +1212,10 @@ a threshold or a precondition the detector documents:
 
 This section used to state a ceiling nobody had reached, so that nobody would spend a week
 rediscovering it one detector at a time. The ceiling has now been reached: every recording-fed
-detector has a pair or a refusal, and what follows is the record of *why* the remaining eighteen
-cannot have one.
+detector has a pair or a refusal, and what follows is the record of *why* the remaining thirteen
+cannot have one. (A later pass reopened five that this section had refused; the correction is at
+the end of the document rather than spliced in here, because how the mistake was made is worth as
+much as the rows it produced.)
 
 A recording row needs a third-party subject the detector can actually accept. Classifying every
 detector's `record*`/`register*` parameter types, and any `instanceof` gate on the record path:
@@ -1297,18 +1299,22 @@ expectations are structural:
 | `VIRTUAL_THREAD_CPU_BOUND` | a measured segment against a 50 ms threshold |
 | `VIRTUAL_THREAD_CARRIER_EXHAUSTION` | concurrently blocked threads against `availableProcessors`, so it fires on small runners |
 
-**Where that leaves it.** 18 RECORDING-fed detectors still have no row. That figure is the one
-the feed table yields directly - 146 detectors, 18 agent-fed, 3 zero-config, leaving 125
-recording-fed, of which 107 are paired here - and it replaces a "47" that earlier revisions of
-this paragraph decremented wave by wave without anyone being able to re-derive it. All eighteen
-are refused with the reason on record: five for want of any documented contract, and the thirteen
-the triage rejected as having no recordable correct twin or no structural outcome.
+**Where that leaves it, and where a later pass proved it wrong.** This paragraph used to read
+"18 RECORDING-fed detectors still have no row", derived from the feed table - 146 detectors, 18
+agent-fed, 3 zero-config, leaving 125 recording-fed - and split into five refused for want of any
+documented contract plus the thirteen the triage rejected.
 
-So the two lists are now exhaustive, and that is the property worth keeping rather than the
-count. Anyone can check it: take the detector column of `corpus-eval-recording.md`, subtract it
-from the `RECORDING` rows of `DetectorFeeds`, and the remainder should be exactly the eighteen
-tabulated above. A detector that appears in neither list is a gap, and the check that finds it
-is one command rather than a reading of this document.
+The thirteen still stand and are tabulated above. The five did not. They were refused because no
+*corpus library* class documents a contract that reaches them, which is true and is the wrong
+question: `SHARED_CHECKSUM`, `SHARED_DEFLATER`, `SHARED_KDF`, `SHARED_TIMEZONE` and
+`SHARED_XML_PARSER` all key their state on instance identity, and the subject they want is the JDK
+type itself. All five are paired further down, along with two more that had been refused for being
+unreachable in a different lane. The corrected figure is thirteen, and it is no longer a figure
+this document maintains - see "Reopening the refusals" below.
+
+So the two lists are exhaustive, and that is the property worth keeping rather than the count.
+It is now checked rather than asserted: `EveryDetectorIsPairedOrRefusedTest` fails if any detector
+is in neither list, and fails again if one is in both.
 
 Extending the lane further now means a new corpus dependency, and `docs/DEPENDENCIES.md` makes
 that a proposal with a reason
@@ -1495,29 +1501,95 @@ guaranteed silent. Worse, the detector is inert altogether under the default
 announces this once per JVM as `runner.detector.inert`. Any row that did fire it would be an
 artifact of the harness rather than a property of a subject.
 
+### Reopening the refusals, and what seven of them were hiding
+
+The accounting above was arithmetically right and wrong underneath, in two places. Both were
+found by turning this document's exhaustiveness claim into a gate rather than by re-reading it,
+which is the argument for the gate.
+
+`EveryDetectorIsPairedOrRefusedTest` asserts that every `DetectorType` is either paired by a
+corpus row or carries a written refusal in `DetectorCoverage`, and - the direction that earns its
+keep - that no detector is on the refusal list *and* paired. A refusal gets written once, when
+the detector looks unreachable, and nothing in a normal workflow ever revisits it, so a stale
+refusal outlives its reason indefinitely. Now pairing a refused detector fails the build until
+the entry is deleted. Both directions verified by mutation: dropping the `EXPLICIT_GC` entry
+reports `nothing records why: [EXPLICIT_GC]`, and adding a stale `SEMAPHORE` entry reports
+`delete the entry: [SEMAPHORE]`.
+
+**Five were refused for answering the wrong question.** `SHARED_CHECKSUM`, `SHARED_DEFLATER`,
+`SHARED_KDF`, `SHARED_TIMEZONE` and `SHARED_XML_PARSER` were refused because no corpus *library*
+class documents a contract that reaches them. That is true and it is not the question: all five
+key their state on instance identity, exactly like the seven the agent-pair lane had just paired,
+and the subject they want is the JDK type itself. One instance every thread records against,
+against one instance per thread.
+
+**Two were refused for being unreachable in a different lane.** `LATCH_MISUSE` and
+`BLOCKING_QUEUE` cannot report in an agent-only run, which is what #436 records and why they were
+refused. That makes them unreachable *there*, not unreachable: a recording body may call
+`registerLatch` and `registerQueue` itself, which is the entire point of this lane. Both verdicts
+turn out to be counter arithmetic with no clock and no blocking in them - `extraCountDowns` is
+`countDownCalls > initialCount`, saturation is `maxObservedSize >= capacity * 0.9`. The refusal
+had been inherited from the other lane's constraint without being re-asked here.
+
+Seven detectors, fourteen rows, all as stated on the first run. One trap was worth the reading
+first: `ConcurrencyRunner` builds one `AsyncTestContext` before the invocation loop, so a latch or
+queue held in a field accumulates 240 executions' worth of counts against a single registration
+and reports on arithmetic that has nothing to do with the row. Both subjects are created inside
+the body for that reason.
+
+**What these rows made visible, filed rather than smoothed over.** Three of the five
+shared-instance detectors state a JDK thread-safety contract in the library's own words with no
+source behind it: `SharedChecksumDetector`'s "None of the JDK implementations are thread-safe",
+`SharedDeflaterDetector`'s "They are *not* thread-safe", and `SharedTimeZoneDetector`'s claim that
+"read operations are effectively safe in practice". The JDK javadoc for `Checksum`, `CRC32`,
+`Deflater` and `TimeZone` carries no thread-safety sentence at all. `SHARED_KDF` is the exception
+and quotes `javax.crypto.KDF` verbatim.
+
+The pairs are sound regardless: they measure whether the detector separates a shared instance from
+a confined one, which does not depend on the JDK's wording. But three of them carry a
+`Contract.NOT_THREAD_SAFE` label that is this corpus's reading rather than the JDK's word, which
+is the same defect the netty `ByteBuf` note above refuses to leave unremarked. It is recorded in
+`Corpus`'s own comment and filed as #437.
+
 ### Where the roster stands, derived rather than counted
 
 | | Detectors |
 |---|---|
-| Paired in the recording lane | 109 |
+| Paired in the recording lane | 116 |
 | Paired in the agent-pair lane | 14 |
 | ...less `SHARED_MESSAGE_DIGEST`, which is paired in both | -1 |
 | Paired by lane one over 82 subjects (`ATOMICITY_VIOLATIONS`, `SHARED_COLLECTIONS`) | +2 |
-| **Total paired** | **124** |
-| Refused, RECORDING-fed, in the two exhaustive lists above | 18 |
-| Refused by design (`EXPLICIT_GC`) or as unmeasurable (`LIVELOCKS`) | 2 |
-| Unable to report at all in an agent-only run (#436) | 2 |
+| **Total paired** | **131** |
+| Refused: every recorded event is a finding, so no silent twin can exist | 7 |
+| Refused: the outcome is a threshold or a clock, not the recorded calls | 8 |
 | **Total** | **146** |
 
-Both lane figures come from the generated reports, not from this document:
+Nothing in that table is maintained by hand. The two lane figures come from the generated
+reports:
 
 ```bash
-grep -E "MUST_FIRE|MUST_STAY_SILENT" corpus-eval/target/corpus-eval/corpus-eval-recording.md \
-  | awk -F'|' '{print $4}' | sort -u | wc -l
+grep -E "MUST_" corpus-eval/target/corpus-eval/corpus-eval-recording.md | cut -d"|" -f4 | sort -u | wc -l
 ```
 
-That is the property worth keeping. A detector that appears in no report and on no refusal list is
-a gap, and finding it is a command rather than a careful reading.
+and the two refusal figures are the size of `DetectorCoverage.refused()`, which
+`EveryDetectorIsPairedOrRefusedTest` holds to covering exactly the detectors no lane pairs.
+
+That is the property worth keeping, and it is no longer one this document asserts about itself. A
+detector that appears in no report and on no refusal list is a gap, and the build finds it - twice
+over, since a refusal that outlives its pair fails too.
+
+**What the fifteen refusals actually cost, which is less than the number suggests.** The library's
+own `DetectorFiringContractTest` already requires every detector to have a test asserting a
+positive finding, so "can it fire" is gated for all 146 whether or not this corpus pairs them.
+What a corpus pair adds on top is the *other* direction: a case that goes through the same calls
+and must stay silent. That is the false-positive half, and it is the one no unit test tends to
+write, which is why it is worth a corpus at all.
+
+So the fifteen are not fifteen untested detectors. They are fifteen detectors whose
+false-positive half either provably cannot exist - seven whose every recorded event is a finding
+by construction - or exists but cannot be asserted without the assertion resting on a clock, a
+core count or a GC pause. A row like that does not measure a detector; it measures the machine
+the build happened to run on, and it fails on somebody else's.
 
 ## Reproducing it
 
