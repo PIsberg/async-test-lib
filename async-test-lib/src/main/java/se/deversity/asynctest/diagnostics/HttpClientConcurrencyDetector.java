@@ -61,6 +61,9 @@ public class HttpClientConcurrencyDetector {
         }
     }
 
+    /** Key the client state is filed under when a request arrives before any client was registered. */
+    private static final String UNKNOWN_CLIENT = "unknown";
+
     private final Map<String, ClientState> clients = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
@@ -105,13 +108,15 @@ public class HttpClientConcurrencyDetector {
         String key = String.valueOf(System.identityHashCode(request));
         RequestState requestState = new RequestState(name);
         
-        // Find or create client state
+        // Find or create client state. computeIfAbsent, not the get-then-put this used to be:
+        // when no client has been registered, racing threads all found the map empty, each built
+        // its own ClientState and each put discarded the one before it. Every thread but the last
+        // then counted into an object no longer reachable from the map, so analyze() read one
+        // request where four were recorded and one thread where four had been at work. Both feed
+        // the report, and a request count that low stops requests > responses tripping at all:
+        // the detector went quiet on exactly the contention it exists to observe.
         ClientState client = clients.values().stream().findFirst()
-            .orElseGet(() -> {
-                ClientState newClient = new ClientState(name);
-                clients.put("unknown", newClient);
-                return newClient;
-            });
+            .orElseGet(() -> clients.computeIfAbsent(UNKNOWN_CLIENT, k -> new ClientState(name)));
         
         client.requestCount.incrementAndGet();
         client.pendingRequests.incrementAndGet();
