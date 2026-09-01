@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -18,13 +19,16 @@ public class LatchMisuseDetector {
 
     private static class LatchState {
         final String name;
-        final int initialCount;
+        // The count the latch started from: declared by registerLatch, or inferred by
+        // observeLatch as the largest count anything has seen the latch hold. Mutable because the
+        // inference only converges as observations arrive.
+        final AtomicInteger initialCount;
         final AtomicInteger countDownCalls = new AtomicInteger();
         final AtomicInteger awaitCalls = new AtomicInteger();
 
         LatchState(String name, int initialCount) {
             this.name = name;
-            this.initialCount = initialCount;
+            this.initialCount = new AtomicInteger(initialCount);
         }
     }
 
@@ -42,6 +46,36 @@ public class LatchMisuseDetector {
         }
         latches.putIfAbsent(System.identityHashCode(latch),
             new LatchState(name == null || name.isBlank() ? "CountDownLatch" : name, initialCount));
+    }
+
+    /**
+     * Registers a latch nobody instrumented, reading its starting count off the latch itself.
+     *
+     * <p>Called by the agent's woven {@code countDown} and {@code await} hooks <em>before</em> the
+     * operation runs, which is what makes the inference sound. {@code getCount()} never increases,
+     * and every count-down the run performs is preceded, on that same thread, by one of these
+     * observations. So the globally first count-down is preceded by an observation that no
+     * count-down has yet touched, and that observation reads the latch's starting count exactly.
+     * Taking the maximum over all observations therefore recovers it, whatever order the threads
+     * arrived in.
+     *
+     * <p>The maximum is also what keeps an explicit {@link #registerLatch} authoritative: a
+     * declared count is the true starting count, and no later reading can exceed it.
+     *
+     * <p>Anything that is not a {@link CountDownLatch} is ignored, because the count is the only
+     * thing here worth inferring and nothing else carries one.
+     *
+     * @param latch the latch the woven call site is about to operate on
+     * @since 1.11.1
+     */
+    public void observeLatch(Object latch) {
+        if (!(latch instanceof CountDownLatch countDownLatch)) {
+            return;
+        }
+        int key = System.identityHashCode(latch);
+        int observed = (int) Math.min(countDownLatch.getCount(), Integer.MAX_VALUE);
+        latches.computeIfAbsent(key, absent -> new LatchState("CountDownLatch@" + absent, observed))
+            .initialCount.accumulateAndGet(observed, Math::max);
     }
     /**
      * Records await so it can be analysed at the end of the run.
@@ -78,21 +112,21 @@ public class LatchMisuseDetector {
         LatchMisuseReport report = new LatchMisuseReport();
 
         for (LatchState state : latches.values()) {
-            if (state.awaitCalls.get() > 0 && state.countDownCalls.get() < state.initialCount) {
+            if (state.awaitCalls.get() > 0 && state.countDownCalls.get() < state.initialCount.get()) {
                 report.missingCountDowns.add(String.format(
                     "%s: awaited %d time(s) but only %d/%d countDown() calls were recorded",
                     state.name,
                     state.awaitCalls.get(),
                     state.countDownCalls.get(),
-                    state.initialCount
+                    state.initialCount.get()
                 ));
             }
-            if (state.countDownCalls.get() > state.initialCount) {
+            if (state.countDownCalls.get() > state.initialCount.get()) {
                 report.extraCountDowns.add(String.format(
                     "%s: countDown() called %d times for initial count %d",
                     state.name,
                     state.countDownCalls.get(),
-                    state.initialCount
+                    state.initialCount.get()
                 ));
             }
         }

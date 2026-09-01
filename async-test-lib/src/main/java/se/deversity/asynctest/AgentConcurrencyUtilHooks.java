@@ -37,7 +37,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.10.0
  */
-@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.CONCURRENCY_ENTRIES and cannot change independently of it. Every hook must perform the original operation and propagate its exceptions unchanged, InterruptedException included - these types throw it as a matter of course and swallowing one would change the interruption semantics of the code under test. Record after acquiring and before releasing, the containment rule AgentLockHooks documents, and record nothing when the underlying call throws. offer, poll and the timed await must record their actual return value: the boolean a caller discards is the whole bug these detectors report.")
+@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.CONCURRENCY_ENTRIES and cannot change independently of it. Every hook must perform the original operation and propagate its exceptions unchanged, InterruptedException included - these types throw it as a matter of course and swallowing one would change the interruption semantics of the code under test. Record after acquiring and before releasing, the containment rule AgentLockHooks documents, and record nothing when the underlying call throws. offer, poll and the timed await must record their actual return value: the boolean a caller discards is the whole bug these detectors report. The observe* call must stay ahead of the operation: it is where LatchMisuseDetector and BlockingQueueDetector learn a subject exists at all, and the latch's starting count is only readable before this call decrements it.")
 public final class AgentConcurrencyUtilHooks {
 
     private AgentConcurrencyUtilHooks() {
@@ -186,15 +186,22 @@ public final class AgentConcurrencyUtilHooks {
     /**
      * Weaves {@code CountDownLatch.countDown()}.
      *
+     * <p>The latch is observed before it is counted down, which is what lets
+     * {@code LatchMisuseDetector} recover the count it started from. Observing afterwards would
+     * read a count this very call has already decremented.
+     *
      * @param receiver the latch
      */
     public static void countDown(CountDownLatch receiver) {
+        LatchMisuseDetector misuse = AsyncTestContext.currentLatchMisuseDetector();
+        if (misuse != null) {
+            misuse.observeLatch(receiver);
+        }
         receiver.countDown();
         CountDownLatchDetector counts = AsyncTestContext.currentCountDownLatchDetector();
         if (counts != null) {
             counts.recordCountDown(receiver);
         }
-        LatchMisuseDetector misuse = AsyncTestContext.currentLatchMisuseDetector();
         if (misuse != null) {
             misuse.recordCountDown(receiver);
         }
@@ -209,6 +216,7 @@ public final class AgentConcurrencyUtilHooks {
     public static void await(CountDownLatch receiver) throws InterruptedException {
         LatchMisuseDetector misuse = AsyncTestContext.currentLatchMisuseDetector();
         if (misuse != null) {
+            misuse.observeLatch(receiver);
             misuse.recordAwait(receiver);
         }
         receiver.await();
@@ -234,6 +242,7 @@ public final class AgentConcurrencyUtilHooks {
             throws InterruptedException {
         LatchMisuseDetector misuse = AsyncTestContext.currentLatchMisuseDetector();
         if (misuse != null) {
+            misuse.observeLatch(receiver);
             misuse.recordAwait(receiver);
         }
         boolean reachedZero = receiver.await(timeout, unit);
@@ -259,8 +268,11 @@ public final class AgentConcurrencyUtilHooks {
      * @return whether the element was added
      */
     public static boolean offer(BlockingQueue<Object> receiver, Object element) {
-        boolean added = receiver.offer(element);
         BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
+        if (detector != null) {
+            detector.observeQueue(receiver);
+        }
+        boolean added = receiver.offer(element);
         if (detector != null) {
             detector.recordOffer(receiver, receiver.getClass().getName(), added);
         }
@@ -284,8 +296,11 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static boolean offer(BlockingQueue<Object> receiver, Object element, long timeout,
                                 TimeUnit unit) throws InterruptedException {
-        boolean added = receiver.offer(element, timeout, unit);
         BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
+        if (detector != null) {
+            detector.observeQueue(receiver);
+        }
+        boolean added = receiver.offer(element, timeout, unit);
         if (detector != null) {
             detector.recordOffer(receiver, receiver.getClass().getName(), added);
         }
@@ -303,8 +318,11 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static Object poll(BlockingQueue<Object> receiver, long timeout, TimeUnit unit)
             throws InterruptedException {
-        Object taken = receiver.poll(timeout, unit);
         BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
+        if (detector != null) {
+            detector.observeQueue(receiver);
+        }
+        Object taken = receiver.poll(timeout, unit);
         if (detector != null) {
             detector.recordPoll(receiver, receiver.getClass().getName(), taken != null);
         }
@@ -318,8 +336,11 @@ public final class AgentConcurrencyUtilHooks {
      * @return the head of the queue, or {@code null} when it was empty
      */
     public static Object poll(BlockingQueue<Object> receiver) {
-        Object taken = receiver.poll();
         BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
+        if (detector != null) {
+            detector.observeQueue(receiver);
+        }
+        Object taken = receiver.poll();
         if (detector != null) {
             detector.recordPoll(receiver, receiver.getClass().getName(), taken != null);
         }
@@ -335,8 +356,11 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static void put(BlockingQueue<Object> receiver, Object element)
             throws InterruptedException {
-        receiver.put(element);
         BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
+        if (detector != null) {
+            detector.observeQueue(receiver);
+        }
+        receiver.put(element);
         if (detector != null) {
             detector.recordPut(receiver, receiver.getClass().getName());
         }

@@ -23,6 +23,8 @@ import java.util.Formatter;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -377,6 +379,72 @@ class CorpusAgentPairLaneTest {
             CountDownLatch reached = new CountDownLatch(1);
             reached.countDown();
             reached.await(1, TimeUnit.SECONDS);
+        });
+    }
+
+    // --- Latch misuse -------------------------------------------------------------------------
+
+    /**
+     * Counts a latch of one down twice, which is one count-down more than it was created for.
+     *
+     * <p>Nothing here says what the count is. {@code LatchMisuseDetector} has to read it off the
+     * latch through the woven {@code countDown} call site, before the first count-down takes it
+     * away, and this row fails if it reads anything but one: two recorded count-downs against an
+     * inferred count of two is not a finding.
+     *
+     * <p>The latch is created in the body, so the arithmetic is over this execution's two calls
+     * and nothing else.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_latchMisuse_countedDownPastItsCount() {
+        counted(() -> {
+            CountDownLatch overCounted = new CountDownLatch(1);
+            overCounted.countDown();
+            overCounted.countDown();
+            overCounted.await(1, TimeUnit.SECONDS);
+        });
+    }
+
+    /** The same two call sites on the same latch, counted down as many times as it was made for. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_latchMisuse_countedDownExactly() {
+        counted(() -> {
+            CountDownLatch exact = new CountDownLatch(1);
+            exact.countDown();
+            exact.await(1, TimeUnit.SECONDS);
+        });
+    }
+
+    // --- Blocking queue -----------------------------------------------------------------------
+
+    /**
+     * Fills a queue of two before draining any of it, so its observed peak reaches its bound.
+     *
+     * <p>The bound is nowhere in this body either: {@code BlockingQueueDetector} has to take it
+     * from the queue, as {@code remainingCapacity() + size()}, through the same woven call sites
+     * that deliver the operations. The variable is typed as the interface because that is the
+     * owner the weaver substitutes on - an {@code ArrayBlockingQueue}-typed call site is a
+     * different method reference and would go unwoven.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_blockingQueue_filledToCapacity() {
+        counted(() -> {
+            BlockingQueue<String> saturated = new ArrayBlockingQueue<>(2);
+            saturated.put("first");
+            saturated.offer("second");
+            saturated.poll();
+        });
+    }
+
+    /** The same three call sites on the same bound, with the poll moved in between. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_blockingQueue_drainedAsItFilled() {
+        counted(() -> {
+            BlockingQueue<String> keepingUp = new ArrayBlockingQueue<>(2);
+            keepingUp.put("first");
+            keepingUp.poll();
+            keepingUp.offer("second");
+            keepingUp.poll();
         });
     }
 
