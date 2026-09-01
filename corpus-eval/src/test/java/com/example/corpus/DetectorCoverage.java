@@ -34,6 +34,19 @@ final class DetectorCoverage {
     private static final Map<DetectorType, String> REFUSED = new EnumMap<>(DetectorType.class);
 
     static {
+        // --- What a refusal here does and does not cost.
+        //
+        //     The library's own DetectorFiringContractTest already requires every detector to
+        //     have a test asserting a positive finding, so "can it fire" is gated for all 146
+        //     whether or not the corpus pairs them. What a corpus pair adds on top is the other
+        //     direction: a case that goes through the same calls and must stay silent, which is
+        //     the false-positive half and the one no unit test tends to write.
+        //
+        //     So every entry below is a statement about that half specifically, not about the
+        //     detector being untested. For the first group the silent half provably cannot exist;
+        //     for the second it exists but cannot be asserted without the assertion depending on
+        //     a clock or a core count.
+
         // --- Every recorded event is a finding, so the silent half would be a row that made no
         //     call. That is the shape #410 removed from this lane, and adding it back for the
         //     sake of a count would be adding back the exact defect the lane was built to fix.

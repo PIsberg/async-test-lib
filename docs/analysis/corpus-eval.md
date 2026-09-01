@@ -1578,6 +1578,19 @@ That is the property worth keeping, and it is no longer one this document assert
 detector that appears in no report and on no refusal list is a gap, and the build finds it - twice
 over, since a refusal that outlives its pair fails too.
 
+**What the fifteen refusals actually cost, which is less than the number suggests.** The library's
+own `DetectorFiringContractTest` already requires every detector to have a test asserting a
+positive finding, so "can it fire" is gated for all 146 whether or not this corpus pairs them.
+What a corpus pair adds on top is the *other* direction: a case that goes through the same calls
+and must stay silent. That is the false-positive half, and it is the one no unit test tends to
+write, which is why it is worth a corpus at all.
+
+So the fifteen are not fifteen untested detectors. They are fifteen detectors whose
+false-positive half either provably cannot exist - seven whose every recorded event is a finding
+by construction - or exists but cannot be asserted without the assertion resting on a clock, a
+core count or a GC pause. A row like that does not measure a detector; it measures the machine
+the build happened to run on, and it fails on somebody else's.
+
 ## Reproducing it
 
 ```bash
