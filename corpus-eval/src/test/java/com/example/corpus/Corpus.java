@@ -1997,7 +1997,180 @@ final class Corpus {
                     DetectorType.SHARED_SPLITTABLE_RANDOM, Contract.NOT_THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "a generator per thread, which is what split() is for and what the javadoc "
-                            + "prescribes. No instance is ever recorded from a second thread")
+                            + "prescribes. No instance is ever recorded from a second thread"),
+
+            // --- The CompletableFuture protocol family. Five detectors on the same class, each
+            //     asking a different question about what the caller did with the pipeline: was
+            //     it terminated, was the pool it blocks on the one running it, did two threads
+            //     race to complete it, did a cancel reach the work, was the combinator awaited.
+
+            new RecordingSubject("recorded_completableFuture_chainNeverJoined", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLEFUTURE_CHAIN, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a future is created and the chain is never joined or handled, so nothing "
+                            + "ever observes its outcome. A dangling chain runs for its side "
+                            + "effects and reports neither result nor failure to anyone"),
+
+            new RecordingSubject("recorded_completableFuture_chainJoined", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLEFUTURE_CHAIN, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same creation followed by a recorded chain operation, a handler and a "
+                            + "join, which is the whole pipeline terminated properly. The pair "
+                            + "separates on whether anything consumed the end of the chain"),
+
+            new RecordingSubject("recorded_completableFuture_blockedOnItsOwnPool", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.CF_COMMON_POOL_BLOCKING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a join is recorded on a future submitted to the common pool, from a thread "
+                            + "the common pool runs. Blocking a pool worker on work that pool "
+                            + "must run is how the default parallelism deadlocks under load, "
+                            + "and the common pool is one per JVM so the blast radius is the "
+                            + "whole process"),
+
+            new RecordingSubject("recorded_completableFuture_blockedOnADedicatedPool", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.CF_COMMON_POOL_BLOCKING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the identical join recorded against a future that was never submitted to "
+                            + "the common pool. Waiting on work running somewhere else is the "
+                            + "ordinary case and is what the fix looks like"),
+
+            new RecordingSubject("recorded_completableFuture_completedTwice", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_COMPLETION_RACE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "two threads attempt to complete one future and one of them loses. "
+                            + "complete() returning false is the loser being told its value was "
+                            + "discarded, and a caller that ignores that return has silently "
+                            + "dropped a result somebody computed"),
+
+            new RecordingSubject("recorded_completableFuture_completedOnce", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_COMPLETION_RACE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one completion attempt per future, each on a future private to its own "
+                            + "invocation, so no attempt ever loses. That is what a pipeline "
+                            + "with a single producer looks like"),
+
+            new RecordingSubject("recorded_completableFuture_cancelDidNotReachTheWork", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a cancel is recorded with mayInterruptIfRunning, which CompletableFuture's "
+                            + "javadoc says has no effect on it. The caller believes the work "
+                            + "stopped, the future completes exceptionally, and the task carries "
+                            + "on holding whatever it holds"),
+
+            new RecordingSubject("recorded_completableFuture_cancelAfterTheWorkFinished", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a pipeline whose stage is recorded as started and completed before a cancel "
+                            + "that asks for no interruption. Nothing was running to be left "
+                            + "running, which is the case the detector must not report"),
+
+            new RecordingSubject("recorded_completableFuture_combinatorNeverAwaited", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_COMBINATOR_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "an allOf is recorded and never awaited. The combinator's whole purpose is "
+                            + "to be waited on; building one and dropping it means the "
+                            + "constituents' failures go the way of any unobserved future"),
+
+            new RecordingSubject("recorded_completableFuture_combinatorAwaited", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_COMBINATOR_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same combinator with both constituents recorded as completed and a "
+                            + "recorded await, which is the complete pattern. The pair "
+                            + "separates on whether anybody waited"),
+
+            // --- The structured-concurrency family. Four detectors on scope lifecycles, where
+            //     the whole promise of the construct is that a scope does not outlive its
+            //     subtasks - so each pair is a lifecycle that closed properly against one that
+            //     skipped a step.
+
+            new RecordingSubject("recorded_scope_closedWithoutForking", JDK,
+                    "java.util.concurrent.StructuredTaskScope",
+                    DetectorType.STRUCTURED_CONCURRENCY, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a scope is opened and closed with nothing forked into it. A scope with no "
+                            + "subtasks is either dead code or a fork that was lost in a "
+                            + "refactor, and the construct's cost buys nothing either way"),
+
+            new RecordingSubject("recorded_scope_forkedJoinedAndRead", JDK,
+                    "java.util.concurrent.StructuredTaskScope",
+                    DetectorType.STRUCTURED_CONCURRENCY, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same scope with a subtask forked, joined and its result read before "
+                            + "the close, which is the lifecycle the API is shaped around"),
+
+            new RecordingSubject("recorded_taskScope_closedWithoutJoining", JDK,
+                    "java.util.concurrent.StructuredTaskScope",
+                    DetectorType.STRUCTURED_TASK_SCOPE_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a subtask is forked and the scope closes without a join. Close cancels "
+                            + "whatever is still running, so the work is abandoned mid-flight "
+                            + "and its result and its failure are both discarded"),
+
+            new RecordingSubject("recorded_taskScope_joinedBeforeClosing", JDK,
+                    "java.util.concurrent.StructuredTaskScope",
+                    DetectorType.STRUCTURED_TASK_SCOPE_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the identical fork with the join and the result read in between, which is "
+                            + "what the try-with-resources shape in every example does"),
+
+            new RecordingSubject("recorded_scopeJoiner_boundToTwoScopes", JDK,
+                    "java.util.concurrent.StructuredTaskScope",
+                    DetectorType.SCOPE_JOINER_MISUSE, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one joiner is bound to two different scopes. A joiner accumulates the "
+                            + "results of the scope it belongs to, so reusing one merges two "
+                            + "scopes' outcomes into state neither scope's owner expects"),
+
+            new RecordingSubject("recorded_scopeJoiner_boundToOneScope", JDK,
+                    "java.util.concurrent.StructuredTaskScope",
+                    DetectorType.SCOPE_JOINER_MISUSE, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a joiner per invocation bound to exactly one scope and taken through its "
+                            + "whole callback lifecycle on the owning thread. One joiner, one "
+                            + "scope is the contract"),
+
+            new RecordingSubject("recorded_scope_configurationSilentlyIgnored", JDK,
+                    "java.util.concurrent.StructuredTaskScope",
+                    DetectorType.SCOPE_CONFIGURATION_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the configuration the caller asked for and the one that took effect differ. "
+                            + "A scope built with a name and a timeout that are quietly not the "
+                            + "ones in force is a debugging trap: the thread dump and the "
+                            + "deadline both say something the code does not"),
+
+            new RecordingSubject("recorded_scope_configurationApplied", JDK,
+                    "java.util.concurrent.StructuredTaskScope",
+                    DetectorType.SCOPE_CONFIGURATION_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same scope whose effective configuration matches what was requested, "
+                            + "on a name unique to the invocation so no two scopes collide. The "
+                            + "pair separates on whether the request survived"),
+
+            new RecordingSubject("recorded_scopeResult_readAfterTheScopeClosed", JDK,
+                    "java.util.concurrent.StructuredTaskScope",
+                    DetectorType.SCOPE_RESULT_ESCAPE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a subtask's result handle is read after its scope has closed. The handle is "
+                            + "only defined for the scope's lifetime, so a read past the close "
+                            + "is the structured-concurrency form of using a closed resource"),
+
+            new RecordingSubject("recorded_scopeResult_readBeforeTheScopeClosed", JDK,
+                    "java.util.concurrent.StructuredTaskScope",
+                    DetectorType.SCOPE_RESULT_ESCAPE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same handle read after the join completed and before the close, which "
+                            + "is the only window the API defines it in. The pair separates on "
+                            + "which side of the close the read sits")
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()

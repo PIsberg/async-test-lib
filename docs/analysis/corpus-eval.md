@@ -546,7 +546,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 125: exposure zero, nothing said in
-either direction. That is now measured for sixty-six of them, in its own lane, and the separation
+either direction. That is now measured for seventy-six of them, in its own lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -1079,9 +1079,36 @@ hazard - so the row moved to a plain `ArrayList`. As with the non-capturing lamb
 pair caught the row rather than the detector, and the reason is now in a comment beside the field
 so the next person does not rediscover it.
 
+**The twelfth wave: two families that are really one question each**
+
+Ten pairs take the lane to **76 of 146**, in 155 rows, and they divide cleanly in two.
+
+The five `CompletableFuture` detectors all watch the same class and ask different questions about
+what the caller did with the pipeline: was the chain ever terminated
+(`COMPLETABLEFUTURE_CHAIN`), is the pool it blocks on the pool that has to run it
+(`CF_COMMON_POOL_BLOCKING`), did two threads race to complete it
+(`COMPLETABLE_FUTURE_COMPLETION_RACE`), did a cancel reach the work
+(`COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION`), was the combinator awaited
+(`COMPLETABLE_FUTURE_COMBINATOR_MISUSE`). Every one of them is a thread-safe class with a wrong
+caller, which is now the largest family in the lane.
+
+The four structured-concurrency detectors ask one question in four places: did the lifecycle
+complete, or did it skip a step? A scope closed without forking, a scope closed without joining,
+a joiner bound to two scopes, a result handle read after its scope closed - against the same
+lifecycle run to completion.
+
+One row in the *first* family is worth a line for its citation.
+`COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION`'s loud half records a cancel with
+`mayInterruptIfRunning` set, and `CompletableFuture`'s own javadoc says that parameter has no
+effect on it - so a caller who passes `true` and believes the work stopped is relying on
+something the class documents as not happening.
+
+All twenty rows behaved on the first run. Six of the ten needed `perInvocation(...)` keys, which
+is now routine rather than a discovery.
+
 ### How far this lane can go, and where it stops
 
-"Sixty-six of 146" invites the reading that 80 rows are waiting to be written. They are not,
+"Seventy-six of 146" invites the reading that 70 rows are waiting to be written. They are not,
 and the ceiling is worth stating so nobody spends a week discovering it one detector at a time.
 
 A recording row needs a third-party subject the detector can actually accept. Classifying every
@@ -1166,11 +1193,11 @@ expectations are structural:
 | `VIRTUAL_THREAD_CPU_BOUND` | a measured segment against a 50 ms threshold |
 | `VIRTUAL_THREAD_CARRIER_EXHAUSTION` | concurrently blocked threads against `availableProcessors`, so it fires on small runners |
 
-**Where that leaves it.** 59 RECORDING-fed detectors still have no row. That figure is the one
+**Where that leaves it.** 49 RECORDING-fed detectors still have no row. That figure is the one
 the feed table yields directly - 146 detectors, 18 agent-fed, 3 zero-config, leaving 125
-recording-fed, of which 66 are paired here - and it replaces a "47" that earlier revisions of
+recording-fed, of which 76 are paired here - and it replaces a "47" that earlier revisions of
 this paragraph decremented wave by wave without anyone being able to re-derive it. Eighteen of
-the 59 are refused with the reason on record: five for want of any documented contract, and the
+the 49 are refused with the reason on record: five for want of any documented contract, and the
 thirteen the triage rejected as having no recordable correct twin or no structural outcome. The
 rest take JDK primitives - locks,
 latches, `wait`/`notify`, scopes, threads. A corpus of third-party subjects has nothing to offer

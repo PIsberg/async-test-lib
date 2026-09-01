@@ -2842,6 +2842,247 @@ class CorpusRecordingLaneTest {
         mine.nextInt();
     }
 
+    // --- The CompletableFuture protocol family --------------------------------------------------
+
+    /** A chain created and never joined or handled: nothing observes its outcome. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_completableFuture_chainNeverJoined() {
+        CorpusRecorder.countBodyExecution();
+        CompletableFuture<String> orphan = new CompletableFuture<>();
+        AsyncTestContext.cfChainDetector().recordFutureCreated(orphan, "orphan-chain");
+    }
+
+    /** The same creation with a chain operation, a handler and a join recorded. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_completableFuture_chainJoined() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.cfChainDetector();
+        CompletableFuture<String> head = CompletableFuture.completedFuture("value");
+        detector.recordFutureCreated(head, "joined-chain");
+        CompletableFuture<String> tail = head.thenApply(v -> v);
+        detector.recordChainOperation(head, tail, "thenApply");
+        detector.recordHandle(tail);
+        tail.join();
+        detector.recordFutureJoined(tail, "joined-chain");
+    }
+
+    /** A join recorded on a common-pool future, from a thread that pool runs. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_completableFuture_blockedOnItsOwnPool() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.cfCommonPoolBlockingDetector();
+        CompletableFuture<String> onCommonPool = new CompletableFuture<>();
+        detector.recordCommonPoolSubmission(onCommonPool, self, "common-pool-task");
+        detector.recordBlockingCall(onCommonPool, self, "join");
+    }
+
+    /** The identical join against a future that was never submitted to the common pool. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_completableFuture_blockedOnADedicatedPool() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.cfCommonPoolBlockingDetector();
+        CompletableFuture<String> onCommonPool = new CompletableFuture<>();
+        CompletableFuture<String> onOwnPool = new CompletableFuture<>();
+        detector.recordCommonPoolSubmission(onCommonPool, self, "common-pool-task");
+        detector.recordBlockingCall(onOwnPool, self, "join");
+    }
+
+    /** Two completion attempts on one future: one wins and one is silently discarded. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_completableFuture_completedTwice() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.cfCompletionRaceDetector();
+        CompletableFuture<String> contested = new CompletableFuture<>();
+        detector.recordCompletionAttempt(contested, "contested", "first", true, self);
+        detector.recordCompletionAttempt(contested, "contested", "second", false, self);
+    }
+
+    /** One attempt per future, each future private to its invocation, so nothing ever loses. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_completableFuture_completedOnce() {
+        CorpusRecorder.countBodyExecution();
+        CompletableFuture<String> mine = new CompletableFuture<>();
+        AsyncTestContext.cfCompletionRaceDetector()
+                .recordCompletionAttempt(mine, perInvocation("single-producer"), "value", true,
+                        Thread.currentThread());
+    }
+
+    /** A cancel asking for interruption, which CompletableFuture documents as having no effect. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_completableFuture_cancelDidNotReachTheWork() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.cfCancellationPropagationDetector()
+                .recordCancel("orphaned-pipeline", "stage", true, true, Thread.currentThread());
+    }
+
+    /** A stage recorded as started and finished before a cancel that asks for no interruption. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_completableFuture_cancelAfterTheWorkFinished() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.cfCancellationPropagationDetector();
+        String pipeline = perInvocation("finished-pipeline");
+        detector.recordWorkStarted(pipeline, "stage", self);
+        detector.recordWorkCompleted(pipeline, "stage", self);
+        detector.recordCancel(pipeline, "stage", false, true, self);
+    }
+
+    /** An allOf recorded and never awaited: the constituents' failures go nowhere. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_completableFuture_combinatorNeverAwaited() {
+        CorpusRecorder.countBodyExecution();
+        CompletableFuture<Void> dropped = CompletableFuture.allOf();
+        AsyncTestContext.cfCombinatorMisuseDetector()
+                .recordCombinator(dropped, "dropped-allOf", "allOf", 2, Thread.currentThread());
+    }
+
+    /** The same combinator with both constituents completed and a recorded await. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_completableFuture_combinatorAwaited() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.cfCombinatorMisuseDetector();
+        CompletableFuture<Void> awaited = CompletableFuture.allOf();
+        detector.recordCombinator(awaited, "awaited-allOf", "allOf", 2, self);
+        detector.recordConstituentCompleted(awaited, "first", false, self);
+        detector.recordConstituentCompleted(awaited, "second", false, self);
+        awaited.join();
+        detector.recordAwait(awaited, "join", self);
+    }
+
+    // --- The structured-concurrency family ------------------------------------------------------
+
+    /** A scope opened and closed with nothing forked into it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_scope_closedWithoutForking() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.structuredConcurrencyMisuseDetector();
+        String scopeId = detector.recordScopeOpened("StructuredTaskScope");
+        detector.recordScopeClosed(scopeId);
+    }
+
+    /** The same scope with a subtask forked, joined and read before the close. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_scope_forkedJoinedAndRead() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.structuredConcurrencyMisuseDetector();
+        String scopeId = detector.recordScopeOpened("StructuredTaskScope");
+        detector.recordSubtaskForked(scopeId);
+        detector.recordJoinCalled(scopeId);
+        detector.recordResultAccessed(scopeId);
+        detector.recordScopeClosed(scopeId);
+    }
+
+    /** A subtask forked and the scope closed with no join: the work is abandoned mid-flight. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_taskScope_closedWithoutJoining() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.structuredTaskScopeMisuseDetector();
+        String scopeId = perInvocation("unjoined-scope");
+        detector.recordScopeOpened(scopeId, self);
+        detector.recordFork(scopeId, "subtask", self);
+        detector.recordScopeClosed(scopeId, self);
+    }
+
+    /** The identical fork with the join and result read in between. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_taskScope_joinedBeforeClosing() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.structuredTaskScopeMisuseDetector();
+        String scopeId = perInvocation("joined-scope");
+        detector.recordScopeOpened(scopeId, self);
+        detector.recordFork(scopeId, "subtask", self);
+        detector.recordJoin(scopeId, self);
+        detector.recordResultRead(scopeId, "subtask", self);
+        detector.recordScopeClosed(scopeId, self);
+    }
+
+    /** One joiner bound to two different scopes: two scopes' outcomes merge into one accumulator. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_scopeJoiner_boundToTwoScopes() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.scopeJoinerMisuseDetector();
+        Object joiner = new Object();
+        detector.recordJoinerBound(joiner, "reused-joiner", perInvocation("scope-a"), self);
+        detector.recordJoinerBound(joiner, "reused-joiner", perInvocation("scope-b"), self);
+    }
+
+    /** A joiner per invocation bound once and taken through its whole callback lifecycle. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_scopeJoiner_boundToOneScope() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.scopeJoinerMisuseDetector();
+        Object joiner = new Object();
+        detector.recordJoinerBound(joiner, "own-joiner", perInvocation("scope-own"), self);
+        detector.recordFork(joiner, self);
+        detector.recordOnCompleteEnter(joiner, self);
+        detector.recordAccumulate(joiner, self);
+        detector.recordOnCompleteExit(joiner, self, false);
+        detector.recordResult(joiner, self);
+    }
+
+    /** The configuration asked for and the one in force differ. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_scope_configurationSilentlyIgnored() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.scopeConfigurationMisuseDetector();
+        String scopeId = perInvocation("ignored-config");
+        detector.recordScopeOpened(scopeId, "requested-name", 5_000L, null, self);
+        detector.recordEffectiveConfiguration(scopeId, "some-other-name", 1_000L);
+    }
+
+    /** The same scope whose effective configuration matches what was requested. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_scope_configurationApplied() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.scopeConfigurationMisuseDetector();
+        String scopeId = perInvocation("applied-config");
+        String name = perInvocation("scope-name");
+        detector.recordScopeOpened(scopeId, name, 5_000L, null, self);
+        detector.recordEffectiveConfiguration(scopeId, name, 5_000L);
+        detector.recordFork(scopeId);
+        detector.recordJoinOutcome(scopeId, false);
+        detector.recordScopeClosed(scopeId);
+    }
+
+    /** A result handle read after its scope closed. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_scopeResult_readAfterTheScopeClosed() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.scopeResultEscapeDetector();
+        String scopeId = perInvocation("escaped-scope");
+        Object handle = new Object();
+        detector.recordScopeOpened(scopeId, self);
+        detector.recordResultHandle(handle, "subtask-result", scopeId);
+        detector.recordScopeClosed(scopeId);
+        detector.recordHandleRead(handle, self);
+    }
+
+    /** The same handle read after the join and before the close: the window the API defines. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_scopeResult_readBeforeTheScopeClosed() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.scopeResultEscapeDetector();
+        String scopeId = perInvocation("contained-scope");
+        Object handle = new Object();
+        detector.recordScopeOpened(scopeId, self);
+        detector.recordResultHandle(handle, "subtask-result", scopeId);
+        detector.recordJoinCompleted(scopeId);
+        detector.recordHandleRead(handle, self);
+        detector.recordScopeClosed(scopeId);
+    }
+
     private static void toleratingCorruption(Runnable operation) {
         try {
             operation.run();
