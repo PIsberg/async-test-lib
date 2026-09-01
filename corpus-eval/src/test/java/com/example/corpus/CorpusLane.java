@@ -36,7 +36,25 @@ enum CorpusLane {
      * {@code record*} call the test made - which is what lets its assertions be structural
      * rather than probabilistic.
      */
-    RECORDING("recording", "corpus-eval-recording.md");
+    RECORDING("recording", "corpus-eval-recording.md"),
+
+    /**
+     * The agent attached, and the body records nothing at all.
+     *
+     * <p>The recording lane cannot reach the agent-fed detectors: their input is a call site the
+     * weaver substitutes, and no {@code record*} API exists to stand in for it. This lane pairs
+     * them the only way that is left, by writing the call itself. A must-fire row shares one real
+     * {@code SimpleDateFormat} across the threads; its twin gives each thread its own. The
+     * difference between the two rows is a field declaration, and everything the detector sees in
+     * between comes from the agent rewriting {@code format} at the call site.
+     *
+     * <p>The body making no {@code record*} call is the whole premise, so it is a gate rather than
+     * a convention: {@link AgentRowPremise} fails the lane if a body in it touches the recording
+     * API. That is the inverse of {@link SilentRowPremise} on the recording lane, and for the same
+     * reason. There, a silent row that reaches no detector proves nothing; here, a firing row that
+     * recorded its own finding proves nothing about the agent.
+     */
+    AGENT_PAIRS("agent-pairs", "corpus-eval-agent-pairs.md");
 
     private final String propertyValue;
     private final String reportFile;
@@ -66,6 +84,6 @@ enum CorpusLane {
         }
         throw new IllegalStateException("-Dcorpus.lane=" + configured + " names no lane; expected "
                 + AGENT_ON.propertyValue + ", " + AGENT_OFF.propertyValue + " or "
-                + RECORDING.propertyValue);
+                + RECORDING.propertyValue + " or " + AGENT_PAIRS.propertyValue);
     }
 }

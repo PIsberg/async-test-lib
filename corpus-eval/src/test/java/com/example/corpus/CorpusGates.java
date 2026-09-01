@@ -92,13 +92,19 @@ final class CorpusGates {
      * @param findings what the detectors reported
      * @param lane     the lane that produced them
      */
-    static void checkRecordingLane(List<CorpusRecorder.Finding> findings, CorpusLane lane) {
-        everyRecordingSubjectIsExercised();
-        everyRecordingFindingIsAttributed(findings);
+    static void checkPairLane(List<CorpusRecorder.Finding> findings,
+                              CorpusLane lane,
+                              Class<?> laneTest) {
+        everyRecordingSubjectIsExercised(lane, laneTest);
+        everyRecordingFindingIsAttributed(findings, lane);
         theAgentIsAttachedTheWayThisLaneRequires(lane);
-        everyRecordedDetectorIsExposed(lane);
+        everyPairedDetectorIsExposed(lane);
         everyReportingDetectorWasExposed(findings, lane);
-        everySubjectGotTheOutcomeItsRecordedCallsOblige(findings);
+        everySubjectGotTheOutcomeItsRecordedCallsOblige(findings, lane);
+        if (lane == CorpusLane.AGENT_PAIRS) {
+            noAgentRowRecordedItsOwnFinding();
+            return;
+        }
         everyCorpusBackedVerdictResolvesToItsPair();
         everySilentRowReachesItsDetector();
     }
@@ -111,6 +117,27 @@ final class CorpusGates {
      * calls the detector satisfies that for free. {@link SilentRowPremise} carries the reasoning
      * and the one row that was doing it.
      */
+    /**
+     * Refuses an agent-lane row that fed its own detector.
+     *
+     * <p>The mirror image of {@link #everySilentRowReachesItsDetector()}. That one refuses a
+     * silence that came from making no call; this one refuses a finding that came from making
+     * one. Both rows of an agent pair have to get their entire input from the substituted call
+     * sites, or the pair measures the test rather than the agent. {@link AgentRowPremise} carries
+     * the reasoning.
+     */
+    private static void noAgentRowRecordedItsOwnFinding() {
+        List<String> recording = AgentRowPremise.linesThatRecord();
+        List<String> dropped = AgentRowPremise.pairsWhoseSilentRowDropsACall();
+        assertTrue(dropped.isEmpty(),
+                "a silent row here is only evidence if it went through the same substituted call "
+                        + "sites as the row it is paired with: " + dropped);
+        assertTrue(recording.isEmpty(),
+                "the agent-pair lane's whole claim is that the woven call sites feed these "
+                        + "detectors with nothing instrumented, and a body that records is "
+                        + "measuring the recording API instead: " + recording);
+    }
+
     private static void everySilentRowReachesItsDetector() {
         List<String> broken = SilentRowPremise.rowsThatNeverReachTheirDetector();
         assertTrue(broken.isEmpty(),
@@ -199,12 +226,12 @@ final class CorpusGates {
     }
 
     /** A recording test method without a row would be a subject with no stated expectation. */
-    private static void everyRecordingSubjectIsExercised() {
-        Set<String> exercised = Arrays.stream(CorpusRecordingLaneTest.class.getDeclaredMethods())
+    private static void everyRecordingSubjectIsExercised(CorpusLane lane, Class<?> laneTest) {
+        Set<String> exercised = Arrays.stream(laneTest.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(AsyncTest.class))
                 .map(Method::getName)
                 .collect(Collectors.toUnmodifiableSet());
-        Set<String> declared = Corpus.recordingSubjects().stream()
+        Set<String> declared = Corpus.subjectsFor(lane).stream()
                 .map(RecordingSubject::testMethod)
                 .collect(Collectors.toUnmodifiableSet());
 
@@ -213,10 +240,11 @@ final class CorpusGates {
                         + "and every row a method");
     }
 
-    private static void everyRecordingFindingIsAttributed(List<CorpusRecorder.Finding> findings) {
+    private static void everyRecordingFindingIsAttributed(List<CorpusRecorder.Finding> findings,
+                                                          CorpusLane lane) {
         List<String> orphans = findings.stream()
                 .map(CorpusRecorder.Finding::subject)
-                .filter(subject -> Corpus.recordingByTestMethod(subject) == null)
+                .filter(subject -> Corpus.pairByTestMethod(lane, subject) == null)
                 .distinct()
                 .toList();
         assertTrue(orphans.isEmpty(), "findings attributed to no recording subject: " + orphans);
@@ -232,8 +260,8 @@ final class CorpusGates {
      *
      * @param lane the lane that ran
      */
-    private static void everyRecordedDetectorIsExposed(CorpusLane lane) {
-        List<String> unexposed = Corpus.recordedDetectors().stream()
+    private static void everyPairedDetectorIsExposed(CorpusLane lane) {
+        List<String> unexposed = Corpus.pairedDetectors(lane).stream()
                 .filter(type -> !DetectorExposure.isExposed(type, lane))
                 .map(Enum::name)
                 .toList();
@@ -254,9 +282,9 @@ final class CorpusGates {
      * @param findings what the detectors reported
      */
     private static void everySubjectGotTheOutcomeItsRecordedCallsOblige(
-            List<CorpusRecorder.Finding> findings) {
+            List<CorpusRecorder.Finding> findings, CorpusLane lane) {
         List<String> wrong = new ArrayList<>();
-        for (RecordingSubject subject : Corpus.recordingSubjects()) {
+        for (RecordingSubject subject : Corpus.subjectsFor(lane)) {
             String detectorClass = DetectorExposure.classOf(subject.detector());
             boolean fired = findings.stream()
                     .anyMatch(finding -> finding.subject().equals(subject.testMethod())
@@ -378,7 +406,7 @@ final class CorpusGates {
                 .anyMatch(argument -> argument.startsWith("-javaagent:")
                         && argument.contains("async-test-agent"));
 
-        if (lane == CorpusLane.AGENT_ON) {
+        if (lane == CorpusLane.AGENT_ON || lane == CorpusLane.AGENT_PAIRS) {
             assertTrue(launched,
                     "the agent-on lane must attach the agent with -javaagent at JVM startup. "
                             + "Self-attaching from the first @AsyncTest weaves only classes loaded "

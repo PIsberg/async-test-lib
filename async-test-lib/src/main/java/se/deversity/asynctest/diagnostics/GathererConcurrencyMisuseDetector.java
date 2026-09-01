@@ -68,6 +68,18 @@ public class GathererConcurrencyMisuseDetector {
         final Set<Long> integratingThreadIds = ConcurrentHashMap.newKeySet();
         final AtomicInteger integrations = new AtomicInteger(0);
 
+        /**
+         * Claims the one report this gatherer is allowed to produce.
+         *
+         * <p>Replaces an equality test on {@code integratingThreadIds.size()}, which was a racy
+         * read of a concurrently mutated set: when several workers are released together, the
+         * thread whose add took the set to two can read it back as four or five, no other thread
+         * sees two either, and the report is then never emitted at all. A claim flag reports once
+         * per gatherer however the adds interleave.
+         */
+        final java.util.concurrent.atomic.AtomicBoolean reported =
+                new java.util.concurrent.atomic.AtomicBoolean();
+
         GathererInfo(boolean hasCombiner, boolean parallel) {
             this.hasCombiner = hasCombiner;
             this.parallel = parallel;
@@ -115,8 +127,12 @@ public class GathererConcurrencyMisuseDetector {
         info.integrations.incrementAndGet();
         boolean firstFromThisThread = info.integratingThreadIds.add(thread.threadId());
 
-        // Only meaningful once we have evidence of multi-thread execution.
-        if (firstFromThisThread && info.integratingThreadIds.size() == 2) {
+        // Only meaningful once we have evidence of multi-thread execution. "At least two, claimed
+        // once" rather than "exactly two": size() is a racy read of a set the other workers are
+        // adding to at that same moment, so an equality test can be missed by every thread at
+        // once - which reports nothing under exactly the concurrency this detector exists for.
+        if (firstFromThisThread && info.integratingThreadIds.size() >= 2
+                && info.reported.compareAndSet(false, true)) {
             if (!info.hasCombiner) {
                 missingCombinerReports.add(
                     "Gatherer '" + name + "': integrator ran on multiple threads but the gatherer "

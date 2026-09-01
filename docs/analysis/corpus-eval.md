@@ -546,7 +546,7 @@ shape the settled single-check rule excuses.
 ## The recording lane: a denominator for detectors the corpus cannot reach
 
 The bullet above used to end this document's account of the 125: exposure zero, nothing said in
-either direction. That is now measured for seventeen of them, in its own lane, and the separation
+either direction. That is now measured for a hundred and eight of them, in its own lane, and the separation
 matters more than the number.
 
 **What it is.** The same unmodified third-party classes, with test bodies that call the recording
@@ -873,10 +873,347 @@ directions are pinned per-detector by `SharedTypeAccuracyEvalTest` anyway. A cor
 premise is documented contracts adds nothing by restating that eval under an undocumented label,
 so those two stay refused until the JDK documents the contract.
 
+**The fifth wave: two lifecycle pairs, three refusals (2026-08-31)**
+
+`TIMER` and `FUTURE_IGNORED` take the lane to nineteen. Both are protocol models on classes the
+JDK documents as thread-safe, so both pairs live in the thread-safe-class, wrong-caller family:
+a real `TimerTask` that records its uncaught exception and then throws it - really terminating
+the timer's single task-execution thread - must fire, and the same schedule-and-complete
+lifecycle with nothing thrown must stay silent; a submitted `Future` nobody ever inspects must
+fire, and the same submission followed by a recorded inspection and a real `get()` must stay
+silent. The timer's silent row deliberately records schedule and complete but not
+`recordTaskRun`: the run-to-complete path is judged against a 100 ms wall-clock threshold, and a
+MUST_STAY_SILENT row must not be breakable by a GC pause - the same species of choice as the
+iterator pair's `hasNext()`.
+
+Three refusals, each for a different reason, all worth keeping:
+
+- **`SHARED_XML_PARSER`.** The famous "an implementation is NOT guaranteed to be thread safe"
+  line is nowhere in the JDK 26 sources: neither `DocumentBuilderFactory` nor `DocumentBuilder`
+  states anything about thread safety any more. Same rule as the checksum and deflater refusals
+  above - no statement, no row.
+- **`SHARED_TIMEZONE`.** `TimeZone` has never stated a thread-safety contract. Same rule.
+- **`SHARED_KDF`.** The opposite problem: `javax.crypto.KDF` has a model contract - a dedicated
+  "Concurrent Access" section saying the methods "are not thread-safe" and callers "should
+  synchronize amongst themselves" - and the class exists only since JDK 24, while this module
+  keeps a JDK 21 leg because the library targets 21. A row that cannot execute on every leg
+  cannot state a MUST outcome the gates hold on every leg, so this pair waits for the corpus to
+  drop JDK 21, not for the JDK to document anything.
+
+**The sixth wave: three pairs, and a premise the JVM answers (2026-08-31)**
+
+`NOTIFY_WITHOUT_MONITOR`, `INTERRUPT_SWALLOWING` and `STREAM_CLOSING` take the lane to
+twenty-two of the 146.
+
+`NOTIFY_WITHOUT_MONITOR` is the tightest pair the lane holds. Both rows record the identical
+call on the identical monitor object, and the only difference is whether the body sits inside
+`synchronized (monitor)` - the detector samples `Thread.holdsLock` as the attempt is recorded,
+so its own probe is the discriminator and nothing else varies at all. `java.lang.Object` states
+the contract in the `@throws` clause of `notify`/`notifyAll`: `IllegalMonitorStateException` "if
+the current thread is not the owner of this object's monitor".
+
+That row also carries the lane's second measured premise, after the pooled connection's. Its 240
+findings all rest on the claim that the recording thread genuinely does not hold the monitor,
+and the JVM is the only authority on that - so the row really calls `notifyAll()` outside the
+monitor once, and `theIllegalNotifyReallyThrew()` fails the run unless the JVM threw. The gate
+was verified by breaking it: wrapping that one call in `synchronized` makes it report "The JVM
+said: returned normally" and go red, which is the difference between a gate and a comment.
+
+`INTERRUPT_SWALLOWING` is a caller-declares model and the rows say so, which is also why the
+detector sits at `PROMPT`: the finding is only as good as the declaration behind it. Both bodies
+suffer a real `InterruptedException` - self-interrupt, then `sleep`, so the throw is
+deterministic rather than timed - and differ in the one boolean. The silent row restores the
+flag as the fix prescribes and then clears it before returning, because the fix under test is
+not something to hand to the runner's barrier.
+
+`STREAM_CLOSING` is the ResourceLeak shape on file descriptors: one real file-backed stream
+recorded open and never closed must fire, a fresh stream per body opened and closed by the same
+thread must stay silent. The loud row leaks exactly one descriptor rather than 240, because the
+leak is the point and 240 of them would exhaust the runner instead of demonstrating anything.
+
+**The seventh wave: eight pairs, written from a triage rather than one at a time (2026-08-31)**
+
+The first six waves each discovered their detectors' models by reading them one by one. This one
+started from a classification of every remaining recording-fed detector against the four rules a
+pair has to satisfy - the silent side must actually call the detector, both outcomes must follow
+from the calls rather than from timing, the parameter types must admit a subject we can build,
+and the finding must not be a contention note whose correct twin is supposed to fire anyway.
+That triage put 84 of the remaining detectors in reach and refused 13, and it is what the
+remaining waves are being written from. The refusals are in the two lists below.
+
+The eight rows here fall into three families, which is the point of writing them together -
+each family is one model seen through different types:
+
+- **A blocking call is fine alone and a hazard while something is held.** `NESTED_MONITOR_LOCKOUT`,
+  `FORK_JOIN_TASK_BLOCKING` and `COMPLETABLE_FUTURE_BLOCKING_CALLBACK` record the identical three
+  calls and differ only in whether the block sits inside the monitor, the task, or the callback.
+  Moving one line past the release is the entire difference between fire and silence.
+- **What you lock on, rather than what you do inside.** `SYNCHRONIZED_ON_LITERAL` and
+  `BOXED_PRIMITIVE_LOCK` each swap a JVM-wide shared instance - an interned literal, a cached
+  `Integer.valueOf` - for a private final `Object`, with the same recorded acquisition either way.
+  Both hazards are invisible at the call site, which is what makes them worth a detector.
+- **Each operation is atomic and the sequence is not.** `ATOMIC_NON_ATOMIC_UPDATE` is the
+  `AtomicInteger` form of the check-then-act pair, get-then-set against get-then-compareAndSet.
+
+`SPURIOUS_WAKEUP_HAZARD` and `MDC_CONTEXT_LEAK` complete the wave: a wait declared outside its
+condition loop against one inside it, and a task ending with a diagnostic key it did not start
+with against one ending exactly as it began.
+
+**A measurement bug this wave caught, in the eval rather than in a detector.** Wave 7's first run
+failed on wave 3's guarded `WeakHashMap` row, which had been green for four waves. The cause was
+not the new rows: `~/.m2` held a library jar that predated the `WeakHashMapSharedDetector` lock
+fix, so the lane had been resolving a build whose `State` class did not extend
+`SelfGuard.TrackedInstance` while the working tree's did. Same version number, different bytes -
+the failure mode this repository has already hit with a locally installed vibetags processor. It
+is worth stating plainly because the lane's whole output is a measurement: nothing in the report
+identifies *which build* of the library produced it, so a stale install changes every number
+silently and the only symptom is a row that used to pass. Filed as an issue rather than fixed
+here.
+
+**The eighth wave: nine pairs, and two silent rows that fired for different reasons**
+
+`WAIT_TIMEOUT`, `MISSED_SIGNAL`, `OPTIMISTIC_READ_VALIDATION`, `LOCK_UPGRADE_DEADLOCK`,
+`SCOPED_VALUE`, `STATEFUL_LAMBDA`, `SYSTEM_PROPERTY_MUTATION`, `WEAK_REFERENCE_RACE` and
+`VOLATILE_ARRAY` take the lane to thirty-nine. Seven behaved on the first run. The two that did
+not are the interesting part, because they failed the same way - a MUST_STAY_SILENT row fired -
+for opposite reasons.
+
+**The lambda row was wrong, and the detector was right.** Its silent twin was
+`ThreadLocal.withInitial(() -> () -> { })`, which reads as a lambda per thread and is not one: a
+non-capturing lambda is a JVM-wide singleton, so every worker received the same object and
+`StatefulLambdaDetector`, which keys on identity, correctly reported it as shared. Measured on
+JDK 26 before changing anything: the non-capturing form yields **1** distinct instance across
+four threads, the capturing form yields **4**. The row now captures per-thread state, and the
+comment records the measurement so the next person writing a confinement twin does not repeat it.
+
+**The array row was right, and the detector was wrong.** `VolatileArrayDetector.findArrayInfo`
+resolved an access by `info.array == array || info.name.equals(arrayName)`, so distinct arrays
+sharing a label collapsed onto whichever registered first: the second worker's registration
+found the first worker's entry and returned early, and every worker's writes then landed in that
+one entry. Six private arrays read as one array written by six threads. That is a false positive
+on the standard per-thread-buffer pattern - a `ThreadLocal<int[]>` registered under one stable
+name in every worker is confined, correct code - and it is the same shape as the `WeakHashMap`
+defect in wave 3: the detector reported the fix as loudly as the bug. Registration now asks for
+identity alone, and access resolution prefers identity and keeps the label only as a fallback for
+an array that was never registered. `VolatileArrayDetectorTest` pins both directions, and the
+failing direction was confirmed by reverting the one line and watching it go red.
+
+Two waves, two detector defects, both found by a row that had to stay silent rather than by a row
+that had to fire. That asymmetry is the argument for pairs restated: the firing direction is what
+a detector's own unit tests already cover, and the silent direction is where the false positives
+live.
+
+**The ninth wave: ten pairs, and the first wave where nothing broke**
+
+`COMPLETABLE_FUTURE_EXCEPTIONS`, `COMPLETABLE_FUTURE_COMPLETION_LEAKS`, `UNBOUNDED_QUEUE`,
+`COPY_ON_WRITE_COLLECTIONS`, `PARALLEL_STREAMS`, `THREAD_LOCAL_LEAKS`, `DOUBLE_CHECKED_LOCKING`,
+`SYNCHRONIZED_NON_FINAL`, `FINAL_FIELD_MUTATION` and `PUBLIC_LOCK_EXPOSURE` take the lane to
+**49 of 146**, in 101 rows. All twenty behaved on the first run, which is worth stating only
+because the previous two waves did not: the triage's job was to predict which models would
+separate structurally, and on this batch it was right ten times out of ten.
+
+Three of them are worth a sentence each for the shape they add:
+
+- **`COPY_ON_WRITE_COLLECTIONS` is the first pair where both halves are the same class under
+  different workloads.** The subject is correct by construction - a `CopyOnWriteArrayList` is
+  thread-safe whatever you do to it - so the only thing that can separate fire from silence is
+  the read/write mix, write-heavy against read-heavy. It is the model for every advisory
+  detector whose finding is "right answer, wrong data structure".
+- **`DOUBLE_CHECKED_LOCKING` separates on a single boolean** among four declared flags: both
+  checks, inside synchronized, and the field volatile or not. That is the whole difference
+  between the broken singleton and the version that has been correct since Java 5.
+- **`FINAL_FIELD_MUTATION`'s silent row records reads and nothing else.** Every recorded mutation
+  fires unconditionally, so the correct twin is a field that is only read - which still hands the
+  detector traffic and still makes it decide, rather than being the empty row #410 removed.
+
+**The tenth wave: the synchronizers, and keys that cannot be borrowed**
+
+`CYCLIC_BARRIER`, `REENTRANT_LOCK`, `PHASER`, `EXCHANGER` and `CONDITION_VARIABLES` take the
+`java.util.concurrent` coordinators in one batch, because their detectors all ask one question:
+did the protocol complete, or did it end in the state the class documents as terminal? Each pair
+records a finished cycle against an abandoned one - a barrier left broken against one that
+arrives, awaits and completes; a `tryLock` that timed out against a lock taken and released; a
+phaser terminated against one that advanced a phase; an exchange carrying null against one
+carrying a payload; an await nobody signalled against the whole handshake.
+
+`ABA_PROBLEM`, `STABLE_VALUE_MISUSE` and `VAR_HANDLE_NON_ATOMIC_UPDATE` complete the wave at
+**57 of 146**, in 117 rows.
+
+Those last three needed something the earlier waves did not. Their detectors accumulate over the
+whole run, keyed on a caller-supplied name, so a silent row using a fixed name would let one body
+execution's calls satisfy another's - a `recordSet` from invocation 7 answering for the
+`recordRead` in invocation 8, and the row passing for a reason that has nothing to do with the
+model. Per-thread keys are not enough either, because each thread runs the body forty times. The
+lane now has a `perInvocation(...)` helper that appends a monotonic counter, and the three rows
+use it. This is the run-wide accumulation hazard the triage flagged, met for the first time.
+
+`VAR_HANDLE_NON_ATOMIC_UPDATE` is worth one more line: it is the `AtomicInteger` pair one level
+down. A plain get and a plain set are neither atomic nor ordered, and the twin expresses the same
+read-modify-write as a volatile read plus an atomic update - so the pair separates purely on the
+access mode the caller asked for, which is the whole of what a `VarHandle` lets you choose.
+
+**The eleventh wave: threads as the subject, and a three-band classifier**
+
+`THREAD_LEAKS`, `UNCAUGHT_EXCEPTION_HANDLER`, `DAEMON_THREAD_HYGIENE`, `THREAD_FACTORY`,
+`INHERITABLE_THREAD_LOCAL`, `THREAD_LOCAL_CONTAMINATION`, `LAMBDA_LOST_UPDATE`,
+`RECORD_MUTABLE_COMPONENT_LEAK` and `SHARED_SPLITTABLE_RANDOM` take the lane to **66 of 146**, in
+135 rows. These are the first detectors whose subject is a thread rather than something threads
+share: was it joined, did anyone hear it die, will it hold the JVM open, was it built with the
+name and handler a pool needs.
+
+**Two rows here need a thread that is genuinely alive at analysis**, which no earlier row did.
+`ThreadLeakDetector` only reports a tracked thread still `isAlive()`, and the whole point of the
+daemon-hygiene row is a non-daemon thread - the one kind that keeps the JVM from exiting. Both
+use a thread parked on a latch for the run rather than starting 240 of their own, and the latch
+is released as the **first statement** of `reportAndGate`, before any assertion: a gate that
+fails must not be able to leave the JVM unable to exit. That ordering is the row's real safety
+property and is worth stating, because getting it wrong turns a red test into a hung build.
+
+**The record row was wrong before it was right, for the third time in this series.**
+`RECORD_MUTABLE_COMPONENT_LEAK`'s loud row first held a `CopyOnWriteArrayList` and stayed silent.
+Reading the detector rather than guessing showed why: it sorts a component into three bands, not
+two. Immutable is silent; a `java.util.concurrent` collection is *also* silent, with the source
+comment "mutable on purpose, and safely"; and only an unsynchronized mutable component fires.
+That exemption is correct - sharing a record that holds a concurrent collection is not the
+hazard - so the row moved to a plain `ArrayList`. As with the non-capturing lambda in wave 8, the
+pair caught the row rather than the detector, and the reason is now in a comment beside the field
+so the next person does not rediscover it.
+
+**The twelfth wave: two families that are really one question each**
+
+Ten pairs take the lane to **76 of 146**, in 155 rows, and they divide cleanly in two.
+
+The five `CompletableFuture` detectors all watch the same class and ask different questions about
+what the caller did with the pipeline: was the chain ever terminated
+(`COMPLETABLEFUTURE_CHAIN`), is the pool it blocks on the pool that has to run it
+(`CF_COMMON_POOL_BLOCKING`), did two threads race to complete it
+(`COMPLETABLE_FUTURE_COMPLETION_RACE`), did a cancel reach the work
+(`COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION`), was the combinator awaited
+(`COMPLETABLE_FUTURE_COMBINATOR_MISUSE`). Every one of them is a thread-safe class with a wrong
+caller, which is now the largest family in the lane.
+
+The four structured-concurrency detectors ask one question in four places: did the lifecycle
+complete, or did it skip a step? A scope closed without forking, a scope closed without joining,
+a joiner bound to two scopes, a result handle read after its scope closed - against the same
+lifecycle run to completion.
+
+One row in the *first* family is worth a line for its citation.
+`COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION`'s loud half records a cancel with
+`mayInterruptIfRunning` set, and `CompletableFuture`'s own javadoc says that parameter has no
+effect on it - so a caller who passes `true` and believes the work stopped is relying on
+something the class documents as not happening.
+
+All twenty rows behaved on the first run. Six of the ten needed `perInvocation(...)` keys, which
+is now routine rather than a discovery.
+
+**The thirteenth wave: the detectors whose subject is a description**
+
+`VISIBILITY`, `WAKEUP_ISSUES`, `CONSTRUCTOR_SAFETY`, `SYNCHRONIZERS`, `THREAD_POOL`,
+`ASYNC_PIPELINE`, `READ_WRITE_LOCK_FAIRNESS`, `LAZY_INIT_RACE`, `LOCK_CONTENTION` and
+`RACE_CONDITIONS` take the lane to **86 of 146**, in 175 rows. All twenty behaved on the first
+run.
+
+What these have in common is that the body does not hand the detector an object to watch; it
+hands it a *description* - a field identifier and the value this thread saw, a pool's sizing, a
+stage's published and processed counts, a lock's read/write ratio, how many times an
+initialisation ran. The pairs therefore vary a number or a flag rather than an instance:
+
+- `VISIBILITY` records one field identifier with a per-thread value against one every thread
+  agrees on, which is what a visibility failure and a properly published value each look like
+  from the outside.
+- `SYNCHRONIZERS` sizes a barrier to a thousand parties and gives it six. The party count is a
+  construction-time constant, so the stall is structural and not a schedule.
+- `THREAD_POOL` records a rejection from a pool of one against a completed task on a pool sized
+  for the work, and `ASYNC_PIPELINE` records events published and never processed against events
+  published and processed. Both are counting arguments with no clock in them.
+- `RACE_CONDITIONS` is the oldest shape in the library reached last: six threads writing one
+  field with nothing held, against the identical writes inside `synchronized` on the object -
+  which `Thread.holdsLock` sees with no agent attached, the same probe the `WeakHashMap` fix in
+  wave 3 turned on.
+
+That is the model-varying family exhausted. What remains is mostly virtual-thread and
+foreign-memory detectors, plus the two whose silent rows need a pool larger than the run.
+
+**The fourteenth wave: virtual threads, foreign memory, and a detector that could not report**
+
+Ten pairs take the lane to **96 of 146**, in 195 rows: the four virtual-thread detectors
+(`VIRTUAL_THREAD_CONTEXT_LEAKS`, `VIRTUAL_THREAD_RESOURCE_SATURATION`,
+`VIRTUAL_THREAD_MONITOR_SERIALIZATION`, `THREAD_LOCAL_CACHE_DEGRADATION`) plus
+`VIRTUAL_THREAD_POOLING`, the two foreign-memory ones (`SHARED_MEMORY_SEGMENT_RACE`,
+`CONFINED_ARENA_THREAD_ESCAPE`), and three value-lifecycle stragglers. The lane's own workers are
+platform threads, so the virtual-thread rows supply their subjects with
+`Thread.ofVirtual().unstarted(...)`: those detectors read `isVirtual()`, `threadId()` and
+`getName()`, all of which an unstarted instance answers, and starting them would put scheduling
+into rows whose outcomes must be structural.
+
+Three of the twenty rows failed first, and the three causes were different - which is the useful
+part.
+
+**One was the detector, and it could not report at all under real concurrency.**
+`GathererConcurrencyMisuseDetector` emitted its finding only when
+`integratingThreadIds.size() == 2` - an equality test on a set the other workers are adding to at
+that same instant. The thread whose add takes the set to two can read it back as five, no other
+thread sees two either, and the report is then never emitted. In the lane that was not marginal:
+240 body executions across six workers produced **zero** findings, twice over. The condition is
+now "at least two distinct threads, and claim the report once", which cannot be missed however
+the adds interleave.
+
+The honest part of that fix is what the new unit test does *not* do. Measured against the old
+code, sixteen and sixty-four threads on a barrier missed 0 times in 30, and 240 threads missed 1
+in 30 - so a unit test at that rate would be a flaky gate, and the one added here is an invariant
+guard rather than a reproduction. The regression test for this bug is the corpus row, which is
+what actually failed.
+
+**One was the row, and the modulo was the bug.** The disjoint-writes twin sliced the segment by
+`threadId() % THREADS`, which can map two distinct workers onto one slot - so the row overlapped
+for a reason that had nothing to do with the model. It now uses `threadId()` itself, which is
+unique for the life of the JVM.
+
+**One was an ordering hazard between the two.** `ConfinedArenaThreadEscapeDetector` fixes a
+segment's arena link when it first sees the segment: `recordAccess` creates the state with no
+arena, and a `recordAllocation` arriving later does not backfill it. With a one-shot arena
+declaration, any worker that reached its access first created an arena-less state and the escape
+became invisible for the whole run. Declaring the arena in every body removes the race - both
+calls keep the first arena and the first owner, so repeating them is free.
+
+**The fifteenth wave, which closes the set**
+
+Twelve pairs take the lane to **108 of 146 detectors, in 219 rows**, and that is the end of the
+work rather than a place to stop: **every one of the 125 recording-fed detectors now has either a
+both-directions pair or a refusal with its reason written down.** 107 are paired here, 18 are
+refused, and the two lists add up with nothing left over - which is checkable rather than
+asserted, by diffing the detector column of the generated report against `DetectorFeeds`.
+
+The wave covers `SHARED_RANDOM`, `SCHEDULED_EXECUTOR`, `FORK_JOIN_POOL`, `BUSY_WAITING`,
+`HTTP_CLIENT`, `HIGH_CONTENTION_ATOMIC`, `EXECUTOR_DEADLOCK`, `FUTURE_BLOCKING`,
+`FLOW_PUBLISHER_CONCURRENCY`, and then the three the triage had missed: `STAMPED_LOCK`,
+`INTERRUPT_MISHANDLING` - which the classification silently dropped rather than bucketing - and
+`SHARED_SECURE_RANDOM`, which belongs with `SHARED_RANDOM` as a contention note whose *confined*
+twin is silent even though its *guarded* twin fires by design.
+
+Four rows needed correcting, and all four were the row rather than the detector. Each had missed
+a threshold or a precondition the detector documents:
+
+- `HIGH_CONTENTION_ATOMIC` needs 1000 attempts before it will speak; the row was making 240.
+  Both halves now make the same larger number, so the failure ratio is the only difference - a
+  silent twin that fell short of the threshold would have been silent for want of traffic.
+- `EXECUTOR_DEADLOCK` and `FUTURE_BLOCKING` both require *queued work* as well as blocked
+  workers. A body that submits and starts exactly one task leaves nothing queued and reports
+  nothing however many waits it records.
+- `SCHEDULED_EXECUTOR` also reports a scheduler that was registered and never shut down, so the
+  silent twin was firing for a reason unrelated to task duration. Both halves now record the
+  shutdown and the pair separates on the duration alone.
+- `STAMPED_LOCK` does not infer a leak from an unmatched stamp: `analyze()` reports what the
+  caller declared, so the loud row has to call `recordStampNotReleased`. That is the same
+  caller-declares shape as the interrupt pairs, and it is a fair description of what the
+  detector knows.
+
 ### How far this lane can go, and where it stops
 
-"Ten of 146" invites the reading that 136 rows are waiting to be written. They are not, and the
-ceiling is worth stating so nobody spends a week discovering it one detector at a time.
+This section used to state a ceiling nobody had reached, so that nobody would spend a week
+rediscovering it one detector at a time. The ceiling has now been reached: every recording-fed
+detector has a pair or a refusal, and what follows is the record of *why* the remaining eighteen
+cannot have one.
 
 A recording row needs a third-party subject the detector can actually accept. Classifying every
 detector's `record*`/`register*` parameter types, and any `instanceof` gate on the record path:
@@ -932,13 +1269,49 @@ each rejection is worth more than the row would have been:
   what the class promises. A pair there would be separated by the size of the numbers rather than
   by the documented contract, which is not what this lane measures.
 
-**Where that leaves it.** Of the 47 RECORDING-fed detectors that had no denominator when this
-section was first written, 42 remain after the fourth wave (two of them refused above rather than waiting), and they take JDK primitives - locks,
-latches, `wait`/`notify`, scopes, threads. A corpus of third-party subjects has nothing to offer
-them; the third wave's route, a JDK subject whose own javadoc states a contract, is open to some
-of them but is not a backlog either, because most of those primitives' javadocs state a usage
-protocol rather than a thread-safety contract. Extending the lane with another library instead
-means a new corpus dependency, and `docs/DEPENDENCIES.md` makes that a proposal with a reason
+**The thirteen the triage refused.** Six because the correct twin cannot be recorded at all - the
+detector's only recording method produces a finding for every event it receives, so a silent row
+would be a row that made no call, which is the shape #410 removed from this lane rather than the
+shape to add back:
+
+| Detector | Why no correct twin exists |
+|---|---|
+| `VIRTUAL_THREAD_PINNING` | every recorded pinning event is a finding; the platform-thread variant records nothing |
+| `THREAD_POOL_DEADLOCK` | any `nestedSubmissionCount > 0` fires, whatever the pool size |
+| `THIS_ESCAPE` | reports every instance with a non-empty escape set; the correct twin's calls are no-ops |
+| `THREAD_LOCAL_RANDOM_MISUSE` | `ThreadLocalRandom.current()` is a JVM-wide singleton, so no per-thread instance exists to confine |
+| `COMPLETABLE_FUTURE_OBTRUDE_ABUSE` | `recordObtrude` is the only method and every entry is a violation |
+| `DEPRECATED_THREAD_API` | `recordApiUse` is the only method and every entry is a violation |
+
+Seven more because the outcome is not a function of the recorded calls. A row whose expectation
+a GC pause or a core count can flip is a flaky gate, and this lane's whole claim is that its
+expectations are structural:
+
+| Detector | What the outcome actually depends on |
+|---|---|
+| `FALSE_SHARING` | an experimental flag, a 100-access threshold, and two fields' accessing-thread sets differing |
+| `MEMORY_ORDERING` | a write and a read landing adjacent in a concurrently appended log, from different threads |
+| `THREAD_STARVATION` | elapsed `nanoTime` against a 1000 ms threshold |
+| `LOCK_DOWNGRADE` | the structural branch is deferred to `LockUpgradeDeadlockDetector` by the registry; what is left needs a cross-thread gap |
+| `PLATFORM_THREAD_PER_TASK` | a probe task against a 200 ms deadline |
+| `VIRTUAL_THREAD_CPU_BOUND` | a measured segment against a 50 ms threshold |
+| `VIRTUAL_THREAD_CARRIER_EXHAUSTION` | concurrently blocked threads against `availableProcessors`, so it fires on small runners |
+
+**Where that leaves it.** 18 RECORDING-fed detectors still have no row. That figure is the one
+the feed table yields directly - 146 detectors, 18 agent-fed, 3 zero-config, leaving 125
+recording-fed, of which 107 are paired here - and it replaces a "47" that earlier revisions of
+this paragraph decremented wave by wave without anyone being able to re-derive it. All eighteen
+are refused with the reason on record: five for want of any documented contract, and the thirteen
+the triage rejected as having no recordable correct twin or no structural outcome.
+
+So the two lists are now exhaustive, and that is the property worth keeping rather than the
+count. Anyone can check it: take the detector column of `corpus-eval-recording.md`, subtract it
+from the `RECORDING` rows of `DetectorFeeds`, and the remainder should be exactly the eighteen
+tabulated above. A detector that appears in neither list is a gap, and the check that finds it
+is one command rather than a reading of this document.
+
+Extending the lane further now means a new corpus dependency, and `docs/DEPENDENCIES.md` makes
+that a proposal with a reason
 rather than an install.
 
 The binding constraint is not the detector count. It is finding a library class whose own javadoc
@@ -947,11 +1320,210 @@ so many. Rows should keep being added while that holds and stop when it stops, r
 padded out to a number.
 
 
+## The agent-pair lane: pairing the detectors no recording call can reach
+
+The section above is right that the recording lane has reached its ceiling, and easy to misread
+about what that ceiling covers. It closes the 125 RECORDING-fed detectors. It says nothing about
+the other 21, and those were unpaired for a reason no amount of further recording could fix: 18
+are AGENT-fed and 3 are ZERO_CONFIG-fed. An agent-fed detector's input is a JDK call site the
+weaver substitutes. No `record*` method stands in for it, so the recording lane could not reach
+them even in principle, and they sat in the roster with "no false positive from detector X" and "X
+never ran" indistinguishable, which is the exact defect the recording lane was built to end.
+
+**What the weaver actually does, which is what made a pair possible.** `CollectionAccessWeaver`
+rewrites named JDK call sites: `SimpleDateFormat.format`, `Matcher.find`, `MessageDigest.update`,
+`StringBuilder.append`, `Semaphore.acquire`, `Thread.sleep` and the rest. It sees the receiver and
+the calling thread together, which is the pair of facts nothing else in the run has. So a pair
+here needs no instrumentation at all. It needs one instance in a static field that every thread
+calls, against one instance per thread, with the same calls in between. The difference between the
+two rows is a field declaration.
+
+That is lane four, `corpus-eval-agent-pairs.md`, run by the `agent-pairs` Surefire execution with
+the agent attached and nothing recorded. It is the mirror image of lane three, and for the same
+reason: exactly one feed is live, so every finding has exactly one possible source.
+
+**The first seven pairs, all as stated on the first complete run:**
+
+| Detector | Fires on | Stays silent on |
+|---|---|---|
+| `SIMPLE_DATE_FORMAT` | one static `SimpleDateFormat` | `ThreadLocal.withInitial(...)` |
+| `SHARED_MATCHER` | one static `Matcher` | `PATTERN.matcher(...)` per call |
+| `SHARED_MESSAGE_DIGEST` | one static `MessageDigest` | `getInstance()` per thread |
+| `CALENDAR` | one static `Calendar` | `Calendar.getInstance()` per call |
+| `STRING_BUILDER` | one static `StringBuilder` | a builder local to the body |
+| `SHARED_DECIMAL_FORMAT` | one static `DecimalFormat` | `ThreadLocal.withInitial(...)` |
+| `SHARED_FORMATTER` | one static `Formatter` | a `Formatter` over a local builder |
+
+**Two of the eighteen needed no row here, and checking that first was worth the minute it took.**
+`ATOMICITY_VIOLATIONS` and `SHARED_COLLECTIONS` are the two agent-fed detectors lane one already
+exercises, and lane one pairs them at a scale no hand-written row reaches. From
+`corpus-eval.md`:
+
+| Detector | Safe subjects exposed | ...with a finding | Unsafe subjects exposed | ...with a finding |
+|---|---|---|---|---|
+| `AtomicityValidator` | 60 | 0 | 22 | 16 |
+| `SharedCollectionDetector` | 60 | 0 | 22 | 14 |
+
+Both directions, over 82 unmodified third-party subjects: fires on documented-not-thread-safe
+code, silent on all 60 documented-thread-safe ones, which is what
+`noFalsePositiveOnDocumentedThreadSafeCode` has been asserting all along. Writing a two-row pair
+for either would add a weaker measurement next to a stronger one and let the roster count go up
+by two for nothing.
+
+**Two gates, because this lane's premise is not lane three's.** There, a silent row is evidence
+only if it called its detector, which `SilentRowPremise` checks by accessor name. Here there is no
+call to look for, and two different failures replace it.
+
+`AgentRowPremise.linesThatRecord()` refuses the recording API anywhere in the lane. A MUST_FIRE row
+with one `AsyncTestContext` call in it would still pass, still read as evidence, and no longer say
+anything about the agent. Verified by adding the import: the lane goes red naming the line.
+
+`AgentRowPremise.pairsWhoseSilentRowDropsACall()` refuses a pair whose silent half stopped making a
+call its firing half makes. That is the failure that turns a confined row from a measurement into
+decoration - silent because it went quiet, not because confining the instance worked. Verified by
+deleting `mine.reset()` from the confined matcher row: the lane goes red naming the dropped call.
+
+**What the first run caught, which is the argument for the lane.** Two MUST_FIRE rows came out
+silent, `STRING_BUILDER` and `SHARED_FORMATTER`, and neither was a detector defect. The weaver
+substitutes `append(String)` and `append(int)` but not `append(char)`, and
+`format(String, Object...)` but not `format(Locale, String, Object...)`; the first draft of both
+rows used the overload that is not substituted. The rows were fixed to call the substituted
+signatures.
+
+The gap itself is real and fixing the rows does not fix it: a shared `StringBuilder` that appends
+characters is exactly as broken and exactly as invisible. Filed rather than papered over, because
+the same-calls gate cannot catch it - `append(char)` and `append(String)` both read as `append`
+there - so a pair can satisfy every structural check while measuring nothing. The MUST_FIRE half
+is what caught it, by having to actually fire, which is the second time in this document that a
+row's obligation to produce a finding found something no silent row could.
+
+### The coordination and lock families: six more pairs
+
+Six detectors whose subject is a protocol rather than an object. Sharing a `Semaphore` is the
+point of one, so nothing here turns on which instance is the receiver; what the detector reports
+is a permit that never came back, an `await` whose `false` return was discarded, two locks nested
+both ways round. All twelve rows came out as stated on the first run.
+
+| Detector | Fires on | Stays silent on |
+|---|---|---|
+| `SEMAPHORE` | `acquire()` with no `release()` | acquire-try-finally-release |
+| `COUNTDOWN_LATCH` | `await(1, MILLISECONDS)` on a latch nothing counts down | the same await after `countDown()` |
+| `SLEEP_IN_LOCK` | `Thread.sleep(1)` inside a `synchronized` method | the same sleep with nothing held |
+| `LOCK_ORDER` | B nested in A, then A nested in B | always A before B |
+| `LOCK_LEAKS` | `lock()` with no `unlock()` | lock-try-finally-unlock |
+| `TRY_LOCK_MISUSE` | `unlock()` after a `tryLock()` that returned `false` | `unlock()` inside the branch `tryLock()` guards |
+
+Three of these needed a decision about how to write a bug without suffering it, and each decision
+is in the test's own javadoc rather than only here. The leaking semaphore and the leaking lock get
+a fresh instance per body execution, so the leak cannot starve the other five workers and hang the
+round. The lock-order inversion is done twice by *one* body rather than once by each of two
+threads: the edges are pooled by lock identity across the whole run, so one body closes the cycle,
+and writing the inversion across threads would be writing a genuine deadlock for the corpus to
+hang on. A monitor serialises that region, and adds no edge of its own, because monitor
+acquisitions are not delivered to this detector - only `Lock` acquisitions are.
+
+`TRY_LOCK_MISUSE` was the one that looked untestable. Making `tryLock()` return false is normally
+a contention race, which is exactly the kind of outcome this lane refuses to depend on. The way
+out is a type whose refusal is structural: `StampedLock` is not reentrant, so a write lock the
+calling thread already holds refuses its own `tryLock` on every attempt, whoever else is running.
+
+### Three refusals, two of which are a defect rather than a limit
+
+`EXPLICIT_GC` is a clean refusal. `AgentGcHooks` records every `System.gc()` and `analyze()` turns
+every event into a violation, deliberately and with no lock guard - an explicit collection
+distorts every latency the run measures whether or not a lock was held. Its own javadoc says
+`System.gc()` "has no such innocent twin", so there is no silent row to write and a MUST_FIRE row
+on its own would prove only that a detector with no predicate fires.
+
+`LATCH_MISUSE` and `BLOCKING_QUEUE` are a different matter. Both are classified `AGENT` in
+`DetectorFeeds`, which is the claim that the woven streams can feed them with nothing
+instrumented. Reading their record paths says otherwise: every one goes through a registry lookup
+that returns null when absent, and only the public `registerLatch` / `registerQueue` populates it -
+which no hook calls.
+
+That reading was checked rather than believed. Both were written as MUST_FIRE rows in their most
+incriminating shape - a latch of one counted down twice, an `ArrayBlockingQueue` of capacity one
+filled and then offered to twice - with the agent attached and every substituted call site
+(`countDown`, `await(long, TimeUnit)`, `put`, `offer`, `poll`) exercised. Both came out silent,
+and the lane reported them as `SILENT but must fire`. The rows were then removed, because a
+detector that cannot report is not a pair, and #436 carries the defect.
+
+So of the 18 AGENT-fed detectors: 13 are paired here, 2 were already paired by lane one at a
+larger scale, 1 is refused by design, and 2 cannot report at all in the configuration their own
+feed classification claims for them.
+
+### The three ZERO_CONFIG detectors, which turn out to want three different homes
+
+Fed by the JVM and the harness with no recording call, and unpaired in every lane until now. They
+have almost nothing else in common.
+
+**`DEADLOCKS` is paired here.** `DeadlockDetector.analyze()` samples
+`ThreadMXBean.findDeadlockedThreads()`, which reports *any* deadlocked thread in the JVM and not
+only a worker. That is the whole opening: the row starts two daemon threads that take two monitors
+in opposite order and stay there, while the workers carry on and finish their rounds. A deadlock
+among the workers would end the run in a round timeout rather than a finding, which is why this
+detector had no MUST_FIRE row before.
+
+It comes with a cost that no other row in the corpus has: a real deadlock does not end, so the JVM
+is permanently changed from the moment that row runs. Both deadlock rows are therefore ordered
+last, and the silent row does not assume it went first - it records what it saw and
+`theDeadlockRowsRanInOrder()` fails the lane if it ran on a JVM that was already deadlocked.
+Verified by moving the firing row first: the premise reports
+`It observed DEADLOCK_STARTED=true when it ran`. Without it, a reordering would leave the silent
+row passing for the exact opposite reason and nothing would say so.
+
+**`STATIC_INIT_DEADLOCK` is paired in the recording lane instead**, which is where it belongs. It
+has two paths: a live sampler that walks the JVM's stacks for threads parked in `<clinit>` frames,
+and a recorded path that is pure bookkeeping over `recordInitStart` / `recordInitRequest` /
+`recordInitEnd`. The sampler needs two threads genuinely wedged inside a class initializer, and a
+class whose initializer never returns can never be initialized again for the life of the
+classloader - the corpus would be poisoning itself to observe one finding, and it would be
+observing a 150 ms persistence window rather than a structural fact. The recorded path is
+deterministic and carries the CRITICAL, VERDICT-tier finding, so that is the one now pinned: half
+the threads hold Alpha and ask for Beta, the other half the reverse, against a twin that ends the
+initializer it started.
+
+**`LIVELOCKS` is refused, on two independent grounds.** Its three findings are all thresholds over
+sampled thread state: starvation needs at least three snapshots, the last five all `BLOCKED` or
+`WAITING`, and the thread's CPU time *bit-identical* between its first and last sample; the
+rapid-state-changer rule needs ten snapshots with five state flips among them. Nothing about that
+is a function of what the code does. And a busy retry loop is explicitly not a finding -
+`madeProgress` returns true for any `RUNNABLE` thread by design, pinned by
+`LivelockDetectorTest.aBusyRunnableThreadIsNotReported` - so the obvious MUST_FIRE row is
+guaranteed silent. Worse, the detector is inert altogether under the default
+`useVirtualThreads = true`, because virtual threads do not appear in `dumpAllThreads`; the runner
+announces this once per JVM as `runner.detector.inert`. Any row that did fire it would be an
+artifact of the harness rather than a property of a subject.
+
+### Where the roster stands, derived rather than counted
+
+| | Detectors |
+|---|---|
+| Paired in the recording lane | 109 |
+| Paired in the agent-pair lane | 14 |
+| ...less `SHARED_MESSAGE_DIGEST`, which is paired in both | -1 |
+| Paired by lane one over 82 subjects (`ATOMICITY_VIOLATIONS`, `SHARED_COLLECTIONS`) | +2 |
+| **Total paired** | **124** |
+| Refused, RECORDING-fed, in the two exhaustive lists above | 18 |
+| Refused by design (`EXPLICIT_GC`) or as unmeasurable (`LIVELOCKS`) | 2 |
+| Unable to report at all in an agent-only run (#436) | 2 |
+| **Total** | **146** |
+
+Both lane figures come from the generated reports, not from this document:
+
+```bash
+grep -E "MUST_FIRE|MUST_STAY_SILENT" corpus-eval/target/corpus-eval/corpus-eval-recording.md \
+  | awk -F'|' '{print $4}' | sort -u | wc -l
+```
+
+That is the property worth keeping. A detector that appears in no report and on no refusal list is
+a gap, and finding it is a command rather than a careful reading.
+
 ## Reproducing it
 
 ```bash
 mvn install -DskipTests -Djacoco.skip=true    # the reactor, so the module can resolve the version
-mvn -f corpus-eval/pom.xml test               # writes all three lanes under corpus-eval/target/corpus-eval/
+mvn -f corpus-eval/pom.xml test               # writes all four lanes under corpus-eval/target/corpus-eval/
 ```
 
 The generated reports carry the lane, the JVM, the OS, the configuration, the exposure tables and
