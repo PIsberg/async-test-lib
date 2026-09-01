@@ -18,7 +18,17 @@ build/
 # VibeTags generated artifacts
 vibetags.log
 .vibetags-cache
-.vibetags-mod-*
+
+# .vibetags-mod-* is deliberately NOT ignored. Each file is one module's guardrail block,
+# and the root aggregate in CLAUDE.md / GEMINI.md is assembled from whichever ones are on
+# disk: a region whose mod file is absent is dropped, not preserved. async-test-lib is the
+# first reactor module, so on a tree without them it wrote an aggregate holding only its
+# own block and deleted the agent and analysis regions (#423). Committing them is what
+# makes the aggregate independent of build order and of which modules a build touched.
+#
+# The per-module .vibetags-mod-_root_ caches stay ignored: they carry regionId=_root_, no
+# region in any aggregate references them, and the current processor no longer writes them.
+*/.vibetags-mod-_root_
 
 # AI / tooling caches
 .antigravitycli/
