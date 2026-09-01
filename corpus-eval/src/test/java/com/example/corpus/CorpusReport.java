@@ -57,6 +57,7 @@ final class CorpusReport {
                 .append(", detectAll=true, agent=")
                 .append(System.getProperty("asynctest.agent", "(not attached)")).append('\n')
                 .append("- Body executions: ").append(CorpusRecorder.bodyExecutions()).append('\n')
+                .append(LibraryBuild.describe()).append('\n')
                 // An access the buffer threw away is an access no detector saw. A run that lost
                 // events has weaker evidence than its finding list looks like, in both directions,
                 // so the number belongs next to the numbers it qualifies rather than in a log.
@@ -144,7 +145,8 @@ final class CorpusReport {
                 .append(lane == CorpusLane.AGENT_PAIRS
                         ? "fields=true,collections=true (the only feed in this lane)\n"
                         : "(not attached, on purpose)\n")
-                .append("- Body executions: ").append(CorpusRecorder.bodyExecutions()).append("\n\n");
+                .append("- Body executions: ").append(CorpusRecorder.bodyExecutions()).append('\n')
+                .append(LibraryBuild.describe()).append("\n\n");
 
         out.append("## Per subject\n\n")
                 .append("| Subject | Library | Detector | Class contract | Expected | Observed | Result |\n")
