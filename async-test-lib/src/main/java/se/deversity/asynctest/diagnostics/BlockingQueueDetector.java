@@ -321,6 +321,19 @@ public class BlockingQueueDetector {
          * which is where activity belongs; saturation is the one signal that says something is
          * actually wrong with the sizing.
          *
+         * <p>The counts are not dead output. Both paths that surface this detector render the
+         * report only when this method returns {@code true}, and then render all of it, so the
+         * three arrive as context beneath a saturation finding and never on their own.
+         * {@code BlockingQueueReportReachabilityTest} pins both halves.
+         *
+         * <p>Widening the gate would need a fact this detector does not have. "The caller
+         * discarded the boolean" is the real defect behind a rejected {@code offer}, and
+         * {@code recordOffer} is told only what the call returned, not whether anyone looked. The
+         * bytecode does distinguish them - a discarded result compiles to a {@code POP} after the
+         * invocation, where a checked one compiles to {@code IFNE}, {@code ISTORE} or
+         * {@code IRETURN} - so the weaver could answer it with one instruction of lookahead. That
+         * is #454, and it is a change to the substitution path rather than to this class.
+         *
          * @return {@code true} when this detector recorded something worth acting on
          */
         public boolean hasIssues() {
