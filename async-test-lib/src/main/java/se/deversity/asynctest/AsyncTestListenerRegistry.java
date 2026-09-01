@@ -4,28 +4,21 @@ import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 
 import org.jspecify.annotations.Nullable;
-import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
-import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AIContract;
 import se.deversity.vibetags.annotations.AIIdempotent;
 import se.deversity.vibetags.annotations.AIPublicAPI;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.time.Instant;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.regex.Pattern;
 
 /**
  * Thread-safe registry for {@link AsyncTestListener} instances.
  *
  * <p>This class manages a global (JVM-wide) list of listeners that receive
- * callbacks for async-test lifecycle events. Listeners are stored in a
- * {@link CopyOnWriteArrayList} to allow concurrent iteration without locking.
+ * callbacks for async-test lifecycle events. It is the static face of a single
+ * {@link ListenerRegistryCore}, which holds the listener set as one immutable list swapped
+ * atomically, so a fire never observes a half-applied change.
  *
  * <p><strong>⚠ Lifetime warning:</strong> The listener list is <em>JVM-wide</em>
  * static state. A listener registered in one test will continue to fire in every
@@ -68,11 +61,8 @@ import java.util.regex.Pattern;
 @API(status = Status.STABLE)
 public final class AsyncTestListenerRegistry {
 
-    private static final Logger log = LoggerFactory.getLogger(AsyncTestListenerRegistry.class);
-    private static final List<AsyncTestListener> LISTENERS = new CopyOnWriteArrayList<>();
-
-    /** ANSI SGR sequences, as {@link IssueSeverity#format()} renders severity markers. */
-    private static final Pattern ANSI = Pattern.compile("\\e\\[[;\\d]*m");
+    /** The one listener set this JVM has. Everything below is a name for an operation on it. */
+    private static final ListenerRegistryCore GLOBAL = new ListenerRegistryCore();
 
     // Prevent instantiation
     private AsyncTestListenerRegistry() {}
@@ -84,10 +74,7 @@ public final class AsyncTestListenerRegistry {
      * @throws IllegalArgumentException if listener is null
      */
     public static void register(AsyncTestListener listener) {
-        if (listener == null) {
-            throw new IllegalArgumentException("Listener must not be null");
-        }
-        LISTENERS.add(listener);
+        GLOBAL.register(listener);
     }
 
     /**
@@ -96,9 +83,9 @@ public final class AsyncTestListenerRegistry {
      * @param listener the listener to unregister
      * @return true if the listener was registered and has been removed
      */
-    @AIIdempotent(reason = "Backed by List.remove which is a no-op when the listener is absent; second call returns false but produces no observable side effect.")
+    @AIIdempotent(reason = "Removes one occurrence when present and is a no-op when absent; a second call returns false but produces no observable side effect.")
     public static boolean unregister(AsyncTestListener listener) {
-        return LISTENERS.remove(listener);
+        return GLOBAL.unregister(listener);
     }
 
     /**
@@ -108,14 +95,7 @@ public final class AsyncTestListenerRegistry {
      * @param threads the number of threads
      */
     public static void fireInvocationStarted(int round, int threads) {
-        for (AsyncTestListener listener : LISTENERS) {
-            try {
-                listener.onInvocationStarted(round, threads);
-            } catch (RuntimeException e) {
-                // Log but don't propagate listener exceptions
-                log.warn("AsyncTestListener.onInvocationStarted threw: {}", e.toString(), e);
-            }
-        }
+        GLOBAL.fireInvocationStarted(round, threads);
     }
 
     /**
@@ -125,13 +105,7 @@ public final class AsyncTestListenerRegistry {
      * @param durationMs the duration in milliseconds
      */
     public static void fireInvocationCompleted(int round, long durationMs) {
-        for (AsyncTestListener listener : LISTENERS) {
-            try {
-                listener.onInvocationCompleted(round, durationMs);
-            } catch (RuntimeException e) {
-                log.warn("AsyncTestListener.onInvocationCompleted threw: {}", e.toString(), e);
-            }
-        }
+        GLOBAL.fireInvocationCompleted(round, durationMs);
     }
 
     /**
@@ -140,13 +114,7 @@ public final class AsyncTestListenerRegistry {
      * @param cause the failure cause
      */
     public static void fireTestFailed(Throwable cause) {
-        for (AsyncTestListener listener : LISTENERS) {
-            try {
-                listener.onTestFailed(cause);
-            } catch (RuntimeException e) {
-                log.warn("AsyncTestListener.onTestFailed threw: {}", e.toString(), e);
-            }
-        }
+        GLOBAL.fireTestFailed(cause);
     }
 
     /**
@@ -160,28 +128,7 @@ public final class AsyncTestListenerRegistry {
      * @param report the report content
      */
     public static void fireDetectorReport(String detectorName, String report) {
-        // One pass over the listener snapshot, and no Violation built when nobody is listening:
-        // with no listeners registered this method has no observable effect anyway.
-        if (LISTENERS.isEmpty()) {
-            return;
-        }
-        IssueSeverity severity = DetectorDefaultSeverity.of(detectorName, report);
-        Violation violation = toViolation(detectorName, severity, report);
-        for (AsyncTestListener listener : LISTENERS) {
-            try {
-                listener.onDetectorReport(detectorName, report);
-            } catch (RuntimeException e) {
-                log.warn("AsyncTestListener.onDetectorReport threw: {}", e.toString(), e);
-            }
-            try {
-                listener.onStructuredReport(detectorName, severity, report);
-            } catch (RuntimeException e) {
-                log.warn("AsyncTestListener.onStructuredReport threw: {}", e.toString(), e);
-            }
-            if (violation != null) {
-                notifyViolation(listener, violation);
-            }
-        }
+        GLOBAL.fireDetectorReport(detectorName, report);
     }
 
     /**
@@ -195,58 +142,7 @@ public final class AsyncTestListenerRegistry {
      * @since 1.9.0
      */
     public static void fireViolation(@Nullable Violation violation) {
-        if (violation == null) return;
-        for (AsyncTestListener listener : LISTENERS) {
-            notifyViolation(listener, violation);
-        }
-    }
-
-    /** One listener's {@code onViolation}, contained: a thrower must not silence its peers. */
-    private static void notifyViolation(AsyncTestListener listener, Violation violation) {
-        try {
-            listener.onViolation(violation);
-        } catch (RuntimeException e) {
-            log.warn("AsyncTestListener.onViolation threw: {}", e.toString(), e);
-        }
-    }
-
-    /**
-     * Builds the structured form of a text report: the detector as reported, the parsed
-     * severity, the report's first non-blank line as the message (severity markers are
-     * rendered with ANSI colour, which is stripped), and the whole report kept under the
-     * {@code "report"} attribute so nothing is lost in the conversion.
-     *
-     * @return the violation, or {@code null} if one could not be built — a listener callback
-     *         is not worth failing a test run over
-     */
-    private static @Nullable Violation toViolation(String detectorName, IssueSeverity severity, String report) {
-        try {
-            String detector = (detectorName == null || detectorName.isBlank())
-                    ? "UnknownDetector" : detectorName;
-            String text = (report == null) ? "" : report;
-            String message = firstMeaningfulLine(text);
-            return new Violation(
-                    detector,
-                    severity,
-                    message.isEmpty() ? detector + " reported a finding" : message,
-                    List.of(),
-                    Map.of("report", text,
-                           "trustTier", DetectorTrust.tierOfDetector(detector).name()),
-                    Instant.now());
-        } catch (RuntimeException e) {
-            log.warn("Could not build a Violation for detector {}: {}", detectorName, e.toString(), e);
-            return null;
-        }
-    }
-
-    private static String firstMeaningfulLine(String report) {
-        for (String line : report.split("\n", -1)) {
-            String stripped = ANSI.matcher(line).replaceAll("").trim();
-            if (!stripped.isEmpty()) {
-                return stripped;
-            }
-        }
-        return "";
+        GLOBAL.fireViolation(violation);
     }
 
     /**
@@ -255,13 +151,7 @@ public final class AsyncTestListenerRegistry {
      * @param timeoutMs the timeout in milliseconds
      */
     public static void fireTimeout(long timeoutMs) {
-        for (AsyncTestListener listener : LISTENERS) {
-            try {
-                listener.onTimeout(timeoutMs);
-            } catch (RuntimeException e) {
-                log.warn("AsyncTestListener.onTimeout threw: {}", e.toString(), e);
-            }
-        }
+        GLOBAL.fireTimeout(timeoutMs);
     }
 
     /**
@@ -270,7 +160,7 @@ public final class AsyncTestListenerRegistry {
      * @return the listener count
      */
     public static int getListenerCount() {
-        return LISTENERS.size();
+        return GLOBAL.listenerCount();
     }
 
     /**
@@ -278,9 +168,9 @@ public final class AsyncTestListenerRegistry {
      *
      * <p>Useful for test cleanup to avoid listener leakage between tests.
      */
-    @AIIdempotent(reason = "List.clear() on an already-empty list is a no-op; repeated calls have identical observable effect (empty registry).")
+    @AIIdempotent(reason = "Publishes the empty set; doing so twice has identical observable effect (empty registry).")
     public static void clearAll() {
-        LISTENERS.clear();
+        GLOBAL.clearAll();
     }
 
     /**
@@ -313,20 +203,22 @@ public final class AsyncTestListenerRegistry {
      * @since 1.6.0
      */
     public static Snapshot snapshot() {
-        return new Snapshot(List.copyOf(LISTENERS));
+        return new Snapshot(GLOBAL.snapshot());
     }
 
     /**
      * Restores the registry to the state captured by {@link #snapshot()}.
      * Listeners added since the snapshot are removed; listeners removed are re-added.
      *
+     * <p>The set is put back in a single write. It used to be cleared and then refilled, and a
+     * fire landing between those two steps saw an empty registry and dropped the finding.
+     *
      * @param snapshot a snapshot previously obtained from {@link #snapshot()}
      * @since 1.6.0
      */
     public static void restoreSnapshot(Snapshot snapshot) {
         if (snapshot == null) throw new IllegalArgumentException("Snapshot must not be null");
-        LISTENERS.clear();
-        LISTENERS.addAll(snapshot.listeners);
+        GLOBAL.restore(snapshot.listeners);
     }
 
     /**
