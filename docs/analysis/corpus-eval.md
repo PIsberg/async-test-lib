@@ -1320,11 +1320,72 @@ so many. Rows should keep being added while that holds and stop when it stops, r
 padded out to a number.
 
 
+## The agent-pair lane: pairing the detectors no recording call can reach
+
+The section above is right that the recording lane has reached its ceiling, and easy to misread
+about what that ceiling covers. It closes the 125 RECORDING-fed detectors. It says nothing about
+the other 21, and those were unpaired for a reason no amount of further recording could fix: 18
+are AGENT-fed and 3 are ZERO_CONFIG-fed. An agent-fed detector's input is a JDK call site the
+weaver substitutes. No `record*` method stands in for it, so the recording lane could not reach
+them even in principle, and they sat in the roster with "no false positive from detector X" and "X
+never ran" indistinguishable, which is the exact defect the recording lane was built to end.
+
+**What the weaver actually does, which is what made a pair possible.** `CollectionAccessWeaver`
+rewrites named JDK call sites: `SimpleDateFormat.format`, `Matcher.find`, `MessageDigest.update`,
+`StringBuilder.append`, `Semaphore.acquire`, `Thread.sleep` and the rest. It sees the receiver and
+the calling thread together, which is the pair of facts nothing else in the run has. So a pair
+here needs no instrumentation at all. It needs one instance in a static field that every thread
+calls, against one instance per thread, with the same calls in between. The difference between the
+two rows is a field declaration.
+
+That is lane four, `corpus-eval-agent-pairs.md`, run by the `agent-pairs` Surefire execution with
+the agent attached and nothing recorded. It is the mirror image of lane three, and for the same
+reason: exactly one feed is live, so every finding has exactly one possible source.
+
+**The first seven pairs, all as stated on the first complete run:**
+
+| Detector | Fires on | Stays silent on |
+|---|---|---|
+| `SIMPLE_DATE_FORMAT` | one static `SimpleDateFormat` | `ThreadLocal.withInitial(...)` |
+| `SHARED_MATCHER` | one static `Matcher` | `PATTERN.matcher(...)` per call |
+| `SHARED_MESSAGE_DIGEST` | one static `MessageDigest` | `getInstance()` per thread |
+| `CALENDAR` | one static `Calendar` | `Calendar.getInstance()` per call |
+| `STRING_BUILDER` | one static `StringBuilder` | a builder local to the body |
+| `SHARED_DECIMAL_FORMAT` | one static `DecimalFormat` | `ThreadLocal.withInitial(...)` |
+| `SHARED_FORMATTER` | one static `Formatter` | a `Formatter` over a local builder |
+
+**Two gates, because this lane's premise is not lane three's.** There, a silent row is evidence
+only if it called its detector, which `SilentRowPremise` checks by accessor name. Here there is no
+call to look for, and two different failures replace it.
+
+`AgentRowPremise.linesThatRecord()` refuses the recording API anywhere in the lane. A MUST_FIRE row
+with one `AsyncTestContext` call in it would still pass, still read as evidence, and no longer say
+anything about the agent. Verified by adding the import: the lane goes red naming the line.
+
+`AgentRowPremise.pairsWhoseSilentRowDropsACall()` refuses a pair whose silent half stopped making a
+call its firing half makes. That is the failure that turns a confined row from a measurement into
+decoration - silent because it went quiet, not because confining the instance worked. Verified by
+deleting `mine.reset()` from the confined matcher row: the lane goes red naming the dropped call.
+
+**What the first run caught, which is the argument for the lane.** Two MUST_FIRE rows came out
+silent, `STRING_BUILDER` and `SHARED_FORMATTER`, and neither was a detector defect. The weaver
+substitutes `append(String)` and `append(int)` but not `append(char)`, and
+`format(String, Object...)` but not `format(Locale, String, Object...)`; the first draft of both
+rows used the overload that is not substituted. The rows were fixed to call the substituted
+signatures.
+
+The gap itself is real and fixing the rows does not fix it: a shared `StringBuilder` that appends
+characters is exactly as broken and exactly as invisible. Filed rather than papered over, because
+the same-calls gate cannot catch it - `append(char)` and `append(String)` both read as `append`
+there - so a pair can satisfy every structural check while measuring nothing. The MUST_FIRE half
+is what caught it, by having to actually fire, which is the second time in this document that a
+row's obligation to produce a finding found something no silent row could.
+
 ## Reproducing it
 
 ```bash
 mvn install -DskipTests -Djacoco.skip=true    # the reactor, so the module can resolve the version
-mvn -f corpus-eval/pom.xml test               # writes all three lanes under corpus-eval/target/corpus-eval/
+mvn -f corpus-eval/pom.xml test               # writes all four lanes under corpus-eval/target/corpus-eval/
 ```
 
 The generated reports carry the lane, the JVM, the OS, the configuration, the exposure tables and

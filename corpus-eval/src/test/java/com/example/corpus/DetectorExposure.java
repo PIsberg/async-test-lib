@@ -49,6 +49,7 @@ final class DetectorExposure {
             // recording subject it already had - so it stays exposed there too, or the subject
             // records into a denominator this table says is zero.
             case AGENT -> lane == CorpusLane.AGENT_ON
+                    || lane == CorpusLane.AGENT_PAIRS
                     || (lane == CorpusLane.RECORDING
                             && Corpus.recordedDetectors().contains(type));
             // Exposure is what a lane actually feeds, not what it could feed in principle. The

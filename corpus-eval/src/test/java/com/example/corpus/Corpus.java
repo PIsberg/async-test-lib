@@ -525,6 +525,137 @@ final class Corpus {
     );
 
     /**
+     * The agent-pair lane's subjects: JDK types, with bodies that record nothing.
+     *
+     * <p>These detectors are fed by a call site the agent substitutes, so there is no
+     * {@code record*} call that could stand in for the feed and no way to reach them from the
+     * recording lane. Each pair is therefore written the way the bug is actually written: one
+     * instance in a static field that every thread calls, against one instance per thread. The
+     * two bodies are otherwise the same code, which is what makes the silent half evidence -
+     * every substitution the firing half goes through, the confined half goes through too, and
+     * the detector still has to tell them apart.
+     */
+    private static final List<RecordingSubject> AGENT_SUBJECTS = List.of(
+
+            // --- The shared-instance family. Seven JDK types that keep mutable state across a
+            //     call, are documented as unsafe to share, and are expensive enough to build that
+            //     caching one in a field is the normal thing to do. That is the whole bug: the
+            //     field outlives the confinement its author assumed.
+
+            new RecordingSubject("agent_simpleDateFormat_oneInstanceForEveryThread", JDK,
+                    "java.text.SimpleDateFormat",
+                    DetectorType.SIMPLE_DATE_FORMAT, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "format() writes into the instance's own Calendar before reading it back, so "
+                            + "two threads in one instance interleave a write with a read. The "
+                            + "class javadoc says to synchronize or give each thread its own"),
+
+            new RecordingSubject("agent_simpleDateFormat_oneInstancePerThread", JDK,
+                    "java.text.SimpleDateFormat",
+                    DetectorType.SIMPLE_DATE_FORMAT, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the ThreadLocal supplier is the fix the javadoc names. The call site the "
+                            + "agent substitutes is the same one, so a finding here would mean "
+                            + "the detector reports the type rather than the sharing"),
+
+            new RecordingSubject("agent_matcher_oneInstanceForEveryThread", JDK,
+                    "java.util.regex.Matcher",
+                    DetectorType.SHARED_MATCHER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a Matcher carries the append position and the group bounds of the last "
+                            + "match, so find() on a shared one leaves group() reading another "
+                            + "thread's result. Pattern is thread-safe and Matcher is not"),
+
+            new RecordingSubject("agent_matcher_oneInstancePerThread", JDK,
+                    "java.util.regex.Matcher",
+                    DetectorType.SHARED_MATCHER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "each thread calls matcher() on the shared Pattern, which is the documented "
+                            + "way to use one. Sharing the Pattern and not the Matcher must read "
+                            + "as correct or the detector is flagging the regex package"),
+
+            new RecordingSubject("agent_messageDigest_oneInstanceForEveryThread", JDK,
+                    "java.security.MessageDigest",
+                    DetectorType.SHARED_MESSAGE_DIGEST, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "update() accumulates into the instance and digest() drains it, so two "
+                            + "threads sharing one produce a hash over an interleaving of both "
+                            + "inputs. This one is silent in production: the digest is wrong, "
+                            + "not absent"),
+
+            new RecordingSubject("agent_messageDigest_oneInstancePerThread", JDK,
+                    "java.security.MessageDigest",
+                    DetectorType.SHARED_MESSAGE_DIGEST, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "getInstance() per thread is the documented pattern and the JCA is built "
+                            + "for it. The threads still all call update() and digest(), so the "
+                            + "substituted call sites see the same traffic as the firing row"),
+
+            new RecordingSubject("agent_calendar_oneInstanceForEveryThread", JDK,
+                    "java.util.Calendar",
+                    DetectorType.CALENDAR, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "get() computes the whole field set from the instance's time on first call "
+                            + "and caches it, so a set() from another thread invalidates a read "
+                            + "already in flight. Calendar is documented as not thread-safe"),
+
+            new RecordingSubject("agent_calendar_oneInstancePerThread", JDK,
+                    "java.util.Calendar",
+                    DetectorType.CALENDAR, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "getInstance() returns a fresh Calendar, so the confined body does the same "
+                            + "get/set traffic against state no other thread can see"),
+
+            new RecordingSubject("agent_stringBuilder_oneInstanceForEveryThread", JDK,
+                    "java.lang.StringBuilder",
+                    DetectorType.STRING_BUILDER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "append() reads count, writes the array and then writes count back, "
+                            + "unsynchronized by design - StringBuffer exists because "
+                            + "StringBuilder dropped the locking. A shared one loses appends or "
+                            + "throws from the array copy"),
+
+            new RecordingSubject("agent_stringBuilder_oneInstancePerThread", JDK,
+                    "java.lang.StringBuilder",
+                    DetectorType.STRING_BUILDER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a StringBuilder local to the body is the overwhelmingly common use, and the "
+                            + "one the compiler itself emits for string concatenation. A finding "
+                            + "here would fire on most Java ever written"),
+
+            new RecordingSubject("agent_decimalFormat_oneInstanceForEveryThread", JDK,
+                    "java.text.DecimalFormat",
+                    DetectorType.SHARED_DECIMAL_FORMAT, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "DecimalFormat inherits NumberFormat's mutable digit list and formats "
+                            + "through it, so a shared instance interleaves two numbers into one "
+                            + "buffer. NumberFormat's javadoc states formats are not "
+                            + "synchronized"),
+
+            new RecordingSubject("agent_decimalFormat_oneInstancePerThread", JDK,
+                    "java.text.DecimalFormat",
+                    DetectorType.SHARED_DECIMAL_FORMAT, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the ThreadLocal twin is the documented remedy, and the pattern string is "
+                            + "identical, so nothing but the sharing separates the two rows"),
+
+            new RecordingSubject("agent_formatter_oneInstanceForEveryThread", JDK,
+                    "java.util.Formatter",
+                    DetectorType.SHARED_FORMATTER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a Formatter appends into the Appendable it was constructed over and keeps "
+                            + "the last IOException, so sharing one interleaves output as well "
+                            + "as error state. Its javadoc requires external synchronization"),
+
+            new RecordingSubject("agent_formatter_oneInstancePerThread", JDK,
+                    "java.util.Formatter",
+                    DetectorType.SHARED_FORMATTER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "each thread formats through its own Formatter over its own StringBuilder, "
+                            + "which is what String.format does internally on every call")
+    );
+
+    /**
      * The recording lane's subjects: the same libraries, with bodies that cooperate.
      *
      * <p>Every row is a both-directions pair with its twin, because one direction on its own
@@ -2762,6 +2893,32 @@ final class Corpus {
 
     static long count(Contract contract) {
         return SUBJECTS.stream().filter(subject -> subject.contract() == contract).count();
+    }
+
+    /**
+     * {@return the paired subjects of {@code lane}}
+     *
+     * <p>Both pair lanes are the same measurement over a different feed, so everything downstream
+     * of the subject list - the report, the per-subject outcome gate, the exposure denominators -
+     * is written once against this and reads the same either way.
+     */
+    static List<RecordingSubject> subjectsFor(CorpusLane lane) {
+        return lane == CorpusLane.AGENT_PAIRS ? AGENT_SUBJECTS : RECORDING_SUBJECTS;
+    }
+
+    /** {@return the detectors {@code lane} pairs, which is its whole denominator} */
+    static Set<DetectorType> pairedDetectors(CorpusLane lane) {
+        return subjectsFor(lane).stream()
+                .map(RecordingSubject::detector)
+                .collect(Collectors.toCollection(() -> EnumSet.noneOf(DetectorType.class)));
+    }
+
+    /** {@return the subject of {@code lane} for {@code testMethod}, or {@code null}} */
+    static RecordingSubject pairByTestMethod(CorpusLane lane, String testMethod) {
+        return subjectsFor(lane).stream()
+                .filter(subject -> subject.testMethod().equals(testMethod))
+                .findFirst()
+                .orElse(null);
     }
 
     /** {@return the recording lane's subjects} */

@@ -122,10 +122,14 @@ final class CorpusReport {
                                int invocations,
                                CorpusLane lane) {
         StringBuilder out = new StringBuilder();
-        out.append("# Corpus eval run - recording lane\n\n")
+        out.append("# Corpus eval run - ").append(lane.propertyValue()).append(" lane\n\n")
                 .append("The subjects are the same unmodified third-party classes the other lanes ")
-                .append("use. What differs is the test body, which calls the recording API the ")
-                .append("way a user following `AsyncTestContext` would. These numbers are a ")
+                .append(lane == CorpusLane.AGENT_PAIRS
+                        ? "use, except that these subjects are JDK types. What differs is the "
+                        + "test body, which records nothing and gets its entire input from the "
+                        + "call sites the agent substitutes. These numbers are a "
+                        : "use. What differs is the test body, which calls the recording API the "
+                        + "way a user following `AsyncTestContext` would. These numbers are a ")
                 .append("different measurement over a different denominator and must not be ")
                 .append("merged into the unmodified lanes'.\n\n")
                 .append("- Lane: ").append(lane.propertyValue()).append('\n')
@@ -136,14 +140,17 @@ final class CorpusReport {
                 .append(" (").append(System.getProperty("os.arch")).append(")\n")
                 .append("- Configuration: threads=").append(threads)
                 .append(", invocations=").append(invocations)
-                .append(", detectAll=true, agent=(not attached, on purpose)\n")
+                .append(", detectAll=true, agent=")
+                .append(lane == CorpusLane.AGENT_PAIRS
+                        ? "fields=true,collections=true (the only feed in this lane)\n"
+                        : "(not attached, on purpose)\n")
                 .append("- Body executions: ").append(CorpusRecorder.bodyExecutions()).append("\n\n");
 
         out.append("## Per subject\n\n")
                 .append("| Subject | Library | Detector | Class contract | Expected | Observed | Result |\n")
                 .append("|---|---|---|---|---|---|---|\n");
 
-        for (RecordingSubject subject : Corpus.recordingSubjects()) {
+        for (RecordingSubject subject : Corpus.subjectsFor(lane)) {
             String detectorClass = DetectorExposure.classOf(subject.detector());
             List<CorpusRecorder.Finding> mine = findings.stream()
                     .filter(finding -> finding.subject().equals(subject.testMethod()))
@@ -161,7 +168,7 @@ final class CorpusReport {
         }
 
         out.append("\nWhy each row must come out as it does:\n\n");
-        for (RecordingSubject subject : Corpus.recordingSubjects()) {
+        for (RecordingSubject subject : Corpus.subjectsFor(lane)) {
             out.append("- `").append(subject.testMethod()).append("` - ")
                     .append(subject.rationale()).append(".\n");
         }
@@ -194,7 +201,7 @@ final class CorpusReport {
      * @return the exposure section
      */
     static String recordingExposure(List<CorpusRecorder.Finding> findings, CorpusLane lane) {
-        long subjects = Corpus.recordingSubjects().size();
+        long subjects = Corpus.subjectsFor(lane).size();
 
         StringBuilder out = new StringBuilder("## Detector exposure\n\n")
                 .append("Exposure here is not the whole RECORDING feed. A detector is exposed ")
@@ -226,8 +233,8 @@ final class CorpusReport {
                 .append("| Detector | Subjects | Must fire | ...that did | Must stay silent | ...that did |\n")
                 .append("|---|---:|---:|---:|---:|---:|\n");
 
-        for (DetectorType type : Corpus.recordedDetectors()) {
-            List<RecordingSubject> mine = Corpus.recordingSubjects().stream()
+        for (DetectorType type : Corpus.pairedDetectors(lane)) {
+            List<RecordingSubject> mine = Corpus.subjectsFor(lane).stream()
                     .filter(subject -> subject.detector() == type)
                     .toList();
             long mustFire = mine.stream()
@@ -258,20 +265,20 @@ final class CorpusReport {
      * @param lane     the lane that ran
      */
     static String recordingSummary(List<CorpusRecorder.Finding> findings, CorpusLane lane) {
-        long mustFire = Corpus.recordingSubjects().stream()
+        long mustFire = Corpus.subjectsFor(lane).stream()
                 .filter(s -> s.expectation() == RecordingSubject.Expectation.MUST_FIRE).count();
-        long mustBeSilent = Corpus.recordingSubjects().size() - mustFire;
-        long firedAsStated = Corpus.recordingSubjects().stream()
+        long mustBeSilent = Corpus.subjectsFor(lane).size() - mustFire;
+        long firedAsStated = Corpus.subjectsFor(lane).stream()
                 .filter(s -> s.expectation() == RecordingSubject.Expectation.MUST_FIRE)
                 .filter(s -> firedFor(findings, s)).count();
-        long silentAsStated = Corpus.recordingSubjects().stream()
+        long silentAsStated = Corpus.subjectsFor(lane).stream()
                 .filter(s -> s.expectation() == RecordingSubject.Expectation.MUST_STAY_SILENT)
                 .filter(s -> !firedFor(findings, s)).count();
 
         return "## Summary\n\n"
                 + "| Measure | Value |\n|---|---|\n"
                 + row("Lane", lane.propertyValue())
-                + row("Detectors recorded to", Corpus.recordedDetectors().size()
+                + row("Detectors recorded to", Corpus.pairedDetectors(lane).size()
                       + " of " + DetectorTrust.DETECTOR_COUNT)
                 + row("Detectors exposed at all", DetectorExposure.exposed(lane).size()
                       + " of " + DetectorTrust.DETECTOR_COUNT)

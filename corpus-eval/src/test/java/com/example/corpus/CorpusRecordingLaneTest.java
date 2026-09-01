@@ -863,7 +863,8 @@ class CorpusRecordingLaneTest {
                 CorpusRecorder.findings(), THREADS, INVOCATIONS, lane);
         System.out.println("Corpus recording-lane report written to " + report.toAbsolutePath());
         System.out.println(CorpusReport.recordingSummary(CorpusRecorder.findings(), lane));
-        CorpusGates.checkRecordingLane(CorpusRecorder.findings(), lane);
+        CorpusGates.checkPairLane(
+                CorpusRecorder.findings(), lane, CorpusRecordingLaneTest.class);
     }
 
     /**

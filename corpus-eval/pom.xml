@@ -171,6 +171,11 @@
                                  between the woven stream and the body's own recorded calls. -->
                             <excludes>
                                 <exclude>**/CorpusRecordingLaneTest.java</exclude>
+                                <!-- The agent-pair lane wants the agent, but on its own: it
+                                     installs CorpusRecorder and gates per subject, and sharing a
+                                     fork with CorpusEvalTest would mix two subject sets into one
+                                     static findings list. -->
+                                <exclude>**/CorpusAgentPairLaneTest.java</exclude>
                             </excludes>
                             <!-- The agent is attached at JVM startup rather than self-attached
                                  from the first @AsyncTest, and that is a measurement decision,
@@ -219,6 +224,32 @@
                             <systemPropertyVariables>
                                 <license.mock.mode>true</license.mock.mode>
                                 <corpus.lane>recording</corpus.lane>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </execution>
+                    <!-- Lane four: the agent attached, and the bodies record nothing. The mirror
+                         image of lane three. Eighteen detectors are fed by a JDK call site the
+                         weaver substitutes and by nothing else, so no record* call reaches them
+                         and the recording lane cannot pair them at all. Here the pair is written
+                         the way the bug is written - one instance in a static field against one
+                         per thread - and everything the detector sees comes from the agent. The
+                         same either-or reasoning as lane three, from the other side: exactly one
+                         feed is live, so a finding has exactly one possible source, and
+                         AgentRowPremise fails the lane if a body touches the recording API. -->
+                    <execution>
+                        <id>agent-pairs</id>
+                        <phase>test</phase>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <includes>
+                                <include>**/CorpusAgentPairLaneTest.java</include>
+                            </includes>
+                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=fields=true,collections=true</argLine>
+                            <reportsDirectory>${project.build.directory}/surefire-reports-agent-pairs</reportsDirectory>
+                            <systemPropertyVariables>
+                                <license.mock.mode>true</license.mock.mode>
+                                <corpus.lane>agent-pairs</corpus.lane>
+                                <asynctest.agent>fields=true,collections=true</asynctest.agent>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>
