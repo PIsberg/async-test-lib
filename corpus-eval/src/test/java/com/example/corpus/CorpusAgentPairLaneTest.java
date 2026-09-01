@@ -2,10 +2,15 @@ package com.example.corpus;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.extension.ExtendWith;
 import se.deversity.asynctest.AsyncTest;
 
 import java.io.IOException;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -24,6 +29,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.StampedLock;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * The agent-pair lane: JDK types, with test bodies that record nothing at all.
@@ -55,6 +61,7 @@ import java.util.concurrent.locks.StampedLock;
  * site has already reported. Letting it out would fail the run for succeeding.
  */
 @ExtendWith(SubjectTracking.class)
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class CorpusAgentPairLaneTest {
 
     static final int THREADS = 6;
@@ -129,6 +136,7 @@ class CorpusAgentPairLaneTest {
                 CorpusRecorder.findings(), THREADS, INVOCATIONS, lane);
         System.out.println("Corpus agent-pair-lane report written to " + report.toAbsolutePath());
         System.out.println(CorpusReport.recordingSummary(CorpusRecorder.findings(), lane));
+        theDeadlockRowsRanInOrder();
         CorpusGates.checkPairLane(
                 CorpusRecorder.findings(), lane, CorpusAgentPairLaneTest.class);
     }
@@ -525,6 +533,125 @@ class CorpusAgentPairLaneTest {
                 }
             }
         });
+    }
+
+    /**
+     * Refuses a pass the silent deadlock row would not have earned.
+     *
+     * <p>Its claim is that the detector saw a clean JVM and said nothing. That holds only if it
+     * ran before its twin deadlocked two threads for good, and method order is a weaker guarantee
+     * than an assertion. Without this, a reordering would leave the row passing for the opposite
+     * reason - silent because the finding was already everywhere - and nothing would say so.
+     */
+    private static void theDeadlockRowsRanInOrder() {
+        assertTrue(SILENT_ROW_RAN_ON_A_CLEAN_JVM.get(),
+                "the silent deadlock row has to run before the row that deadlocks two threads "
+                        + "permanently, or its silence is measuring the wrong JVM. It observed "
+                        + "DEADLOCK_STARTED=" + DEADLOCK_STARTED.get() + " when it ran");
+    }
+
+    // --- Deadlock ----------------------------------------------------------------------------
+
+    /** The two monitors the deadlock rows take, in opposite orders. */
+    private static final Object DEAD_A = new Object();
+
+    private static final Object DEAD_B = new Object();
+
+    /** True once the deadlocked pair has been started, which is a one-way door. */
+    private static final AtomicBoolean DEADLOCK_STARTED = new AtomicBoolean();
+
+    /** What the silent row observed about the JVM it ran in. */
+    private static final AtomicBoolean SILENT_ROW_RAN_ON_A_CLEAN_JVM = new AtomicBoolean();
+
+    /**
+     * Runs the same monitor traffic with no deadlock anywhere in the JVM.
+     *
+     * <p>Unlike every other silent row in this lane, this one does not have to call anything to be
+     * evidence: {@code DeadlockDetector.analyze()} samples
+     * {@code ThreadMXBean.findDeadlockedThreads()} on its own, on every invocation, whether or not
+     * the body did a thing. So its silence is the detector deciding, not the detector being
+     * unfed - which is the distinction {@link SilentRowPremise} exists to enforce elsewhere.
+     *
+     * <p>It must run before its twin, because a real deadlock does not end and the JVM is never
+     * clean again afterwards. {@code @Order} arranges that; {@link #theDeadlockRowsRanInOrder()}
+     * refuses to let the row pass if it ever stops being true.
+     */
+    @Order(Integer.MAX_VALUE - 1)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_deadlock_noThreadBlockedOnAnother() {
+        counted(() -> {
+            SILENT_ROW_RAN_ON_A_CLEAN_JVM.set(!DEADLOCK_STARTED.get());
+            synchronized (DEAD_A) {
+                synchronized (DEAD_B) {
+                    Thread.sleep(1);
+                }
+            }
+        });
+    }
+
+    /**
+     * Deadlocks two daemon threads on the same two monitors and leaves them there.
+     *
+     * <p>The workers are deliberately not the threads that deadlock.
+     * {@code findDeadlockedThreads()} reports any deadlocked thread in the JVM, so the corpus can
+     * write a genuine deadlock and still finish its rounds - which is the only way this detector
+     * gets a MUST_FIRE row at all. A deadlock among the workers would end the run in a round
+     * timeout rather than a finding.
+     *
+     * <p>The pair is started once and never released, because a deadlock cannot be released. The
+     * threads are daemons so the fork can still exit, and this row is ordered last so that nothing
+     * else runs in the JVM it has permanently changed.
+     */
+    @Order(Integer.MAX_VALUE)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_deadlock_twoThreadsBlockedOnEachOther() {
+        counted(() -> {
+            deadlockTwoDaemonsOnce();
+            synchronized (DEAD_C) {
+                Thread.sleep(1);
+            }
+        });
+    }
+
+    /** A third monitor, so the firing row's own body cannot join the deadlock it creates. */
+    private static final Object DEAD_C = new Object();
+
+    /**
+     * Starts the deadlocked pair on the first call and waits for it to be genuinely stuck.
+     *
+     * <p>Each thread takes one monitor, sleeps long enough for the other to take the other, and
+     * then asks for the one it does not have. Neither ever gets it.
+     */
+    private static void deadlockTwoDaemonsOnce() {
+        if (!DEADLOCK_STARTED.compareAndSet(false, true)) {
+            return;
+        }
+        startDaemon("corpus-deadlock-a-then-b", DEAD_A, DEAD_B);
+        startDaemon("corpus-deadlock-b-then-a", DEAD_B, DEAD_A);
+        settle();
+    }
+
+    private static void startDaemon(String name, Object first, Object second) {
+        Thread thread = new Thread(() -> {
+            synchronized (first) {
+                settle();
+                synchronized (second) {
+                    throw new AssertionError("this row's whole claim is that neither thread "
+                            + "reaches the second monitor");
+                }
+            }
+        }, name);
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    /** Long enough for both daemons to hold one monitor and be blocked on the other. */
+    private static void settle() {
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /** A body that may throw a checked exception, which every coordination row can. */

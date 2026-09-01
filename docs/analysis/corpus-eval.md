@@ -1452,6 +1452,73 @@ So of the 18 AGENT-fed detectors: 13 are paired here, 2 were already paired by l
 larger scale, 1 is refused by design, and 2 cannot report at all in the configuration their own
 feed classification claims for them.
 
+### The three ZERO_CONFIG detectors, which turn out to want three different homes
+
+Fed by the JVM and the harness with no recording call, and unpaired in every lane until now. They
+have almost nothing else in common.
+
+**`DEADLOCKS` is paired here.** `DeadlockDetector.analyze()` samples
+`ThreadMXBean.findDeadlockedThreads()`, which reports *any* deadlocked thread in the JVM and not
+only a worker. That is the whole opening: the row starts two daemon threads that take two monitors
+in opposite order and stay there, while the workers carry on and finish their rounds. A deadlock
+among the workers would end the run in a round timeout rather than a finding, which is why this
+detector had no MUST_FIRE row before.
+
+It comes with a cost that no other row in the corpus has: a real deadlock does not end, so the JVM
+is permanently changed from the moment that row runs. Both deadlock rows are therefore ordered
+last, and the silent row does not assume it went first - it records what it saw and
+`theDeadlockRowsRanInOrder()` fails the lane if it ran on a JVM that was already deadlocked.
+Verified by moving the firing row first: the premise reports
+`It observed DEADLOCK_STARTED=true when it ran`. Without it, a reordering would leave the silent
+row passing for the exact opposite reason and nothing would say so.
+
+**`STATIC_INIT_DEADLOCK` is paired in the recording lane instead**, which is where it belongs. It
+has two paths: a live sampler that walks the JVM's stacks for threads parked in `<clinit>` frames,
+and a recorded path that is pure bookkeeping over `recordInitStart` / `recordInitRequest` /
+`recordInitEnd`. The sampler needs two threads genuinely wedged inside a class initializer, and a
+class whose initializer never returns can never be initialized again for the life of the
+classloader - the corpus would be poisoning itself to observe one finding, and it would be
+observing a 150 ms persistence window rather than a structural fact. The recorded path is
+deterministic and carries the CRITICAL, VERDICT-tier finding, so that is the one now pinned: half
+the threads hold Alpha and ask for Beta, the other half the reverse, against a twin that ends the
+initializer it started.
+
+**`LIVELOCKS` is refused, on two independent grounds.** Its three findings are all thresholds over
+sampled thread state: starvation needs at least three snapshots, the last five all `BLOCKED` or
+`WAITING`, and the thread's CPU time *bit-identical* between its first and last sample; the
+rapid-state-changer rule needs ten snapshots with five state flips among them. Nothing about that
+is a function of what the code does. And a busy retry loop is explicitly not a finding -
+`madeProgress` returns true for any `RUNNABLE` thread by design, pinned by
+`LivelockDetectorTest.aBusyRunnableThreadIsNotReported` - so the obvious MUST_FIRE row is
+guaranteed silent. Worse, the detector is inert altogether under the default
+`useVirtualThreads = true`, because virtual threads do not appear in `dumpAllThreads`; the runner
+announces this once per JVM as `runner.detector.inert`. Any row that did fire it would be an
+artifact of the harness rather than a property of a subject.
+
+### Where the roster stands, derived rather than counted
+
+| | Detectors |
+|---|---|
+| Paired in the recording lane | 109 |
+| Paired in the agent-pair lane | 14 |
+| ...less `SHARED_MESSAGE_DIGEST`, which is paired in both | -1 |
+| Paired by lane one over 82 subjects (`ATOMICITY_VIOLATIONS`, `SHARED_COLLECTIONS`) | +2 |
+| **Total paired** | **124** |
+| Refused, RECORDING-fed, in the two exhaustive lists above | 18 |
+| Refused by design (`EXPLICIT_GC`) or as unmeasurable (`LIVELOCKS`) | 2 |
+| Unable to report at all in an agent-only run (#436) | 2 |
+| **Total** | **146** |
+
+Both lane figures come from the generated reports, not from this document:
+
+```bash
+grep -E "MUST_FIRE|MUST_STAY_SILENT" corpus-eval/target/corpus-eval/corpus-eval-recording.md \
+  | awk -F'|' '{print $4}' | sort -u | wc -l
+```
+
+That is the property worth keeping. A detector that appears in no report and on no refusal list is
+a gap, and finding it is a command rather than a careful reading.
+
 ## Reproducing it
 
 ```bash

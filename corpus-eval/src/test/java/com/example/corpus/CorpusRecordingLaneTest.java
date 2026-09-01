@@ -903,6 +903,49 @@ class CorpusRecordingLaneTest {
                         + ILLEGAL_NOTIFY_OUTCOME.get());
     }
 
+    // --- StaticInitDeadlock ------------------------------------------------------------------
+
+    /** The two classes the class-init rows name; identities only, never actually initialised. */
+    private static final class Alpha {
+    }
+
+    private static final class Beta {
+    }
+
+    /**
+     * Half the threads hold Alpha and ask for Beta, the other half the reverse.
+     *
+     * <p>{@code findCycles} walks waiter to holder to waiter and reports when the walk comes back
+     * round. Two threads on opposite sides close it, and a self-edge is skipped, so the split by
+     * thread id is what makes the cycle rather than the volume of calls.
+     *
+     * <p>The recorded path is used rather than the live sampler on purpose. The sampler wants two
+     * threads genuinely stuck inside a {@code <clinit>}, and a class whose initialiser never
+     * returns can never be initialised again for the life of the classloader - the corpus would be
+     * poisoning itself to observe one finding.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_classInit_twoThreadsWaitingOnEachOther() {
+        Thread me = Thread.currentThread();
+        boolean alphaSide = me.threadId() % 2 == 0;
+        AsyncTestContext.staticInitDeadlockDetector()
+                .recordInitStart(alphaSide ? Alpha.class : Beta.class, me);
+        AsyncTestContext.staticInitDeadlockDetector()
+                .recordInitRequest(alphaSide ? Beta.class : Alpha.class, me);
+    }
+
+    /** The same two calls, with each thread finishing the initialiser it started. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_classInit_eachInitialiserCompleted() {
+        Thread me = Thread.currentThread();
+        boolean alphaSide = me.threadId() % 2 == 0;
+        Class<?> mine = alphaSide ? Alpha.class : Beta.class;
+        AsyncTestContext.staticInitDeadlockDetector().recordInitStart(mine, me);
+        AsyncTestContext.staticInitDeadlockDetector()
+                .recordInitRequest(alphaSide ? Beta.class : Alpha.class, me);
+        AsyncTestContext.staticInitDeadlockDetector().recordInitEnd(mine, me);
+    }
+
     // --- SharedJsonMapperReconfig ------------------------------------------------------------
 
     /**

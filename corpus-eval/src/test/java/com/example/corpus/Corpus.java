@@ -758,7 +758,30 @@ final class Corpus {
                     "the same lock, unlock and tryLock call sites, with the unlock inside the "
                             + "branch the tryLock guards. That is the whole rule, and the row "
                             + "matters because the detector keys on the thread's last outcome for "
-                            + "the lock and could convict a later honest unlock instead")
+                            + "the lock and could convict a later honest unlock instead"),
+
+            // --- Deadlock. The one detector here whose input is the JVM rather than a woven call
+            //     site, and the one whose MUST_FIRE row leaves the JVM permanently changed: a real
+            //     deadlock does not end. Both rows are therefore ordered last, and the silent row
+            //     asserts it ran while the JVM was still clean rather than assuming it.
+
+            new RecordingSubject("agent_deadlock_noThreadBlockedOnAnother", JDK,
+                    "java.lang.Thread",
+                    DetectorType.DEADLOCKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the detector samples ThreadMXBean.findDeadlockedThreads() on every analysis "
+                            + "whether or not anything called it, so this silence is a decision "
+                            + "rather than an absent call. Nothing in the JVM is deadlocked when "
+                            + "this row runs, and its premise gate asserts exactly that"),
+
+            new RecordingSubject("agent_deadlock_twoThreadsBlockedOnEachOther", JDK,
+                    "java.lang.Thread",
+                    DetectorType.DEADLOCKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "two daemon threads take two monitors in opposite order and stay there. "
+                            + "findDeadlockedThreads() reports any deadlocked thread in the JVM, "
+                            + "not only a worker, which is what lets the corpus write a real "
+                            + "deadlock without the workers being the ones stuck in it")
     );
 
     /**
@@ -769,6 +792,31 @@ final class Corpus {
      * that was never wired up passes a MUST_STAY_SILENT row. Only the pair says the model works.
      */
     private static final List<RecordingSubject> RECORDING_SUBJECTS = List.of(
+
+            // --- StaticInitDeadlock: a ZERO_CONFIG detector with a recordable path. Its live
+            //     sampler walks the JVM's stacks and needs two threads genuinely wedged in
+            //     <clinit>, which poisons those classes for the life of the classloader. Its
+            //     recorded path is pure bookkeeping over start/request/end and is deterministic,
+            //     so that is the one worth pinning.
+
+            new RecordingSubject("recorded_classInit_twoThreadsWaitingOnEachOther", JDK,
+                    "java.lang.Class",
+                    DetectorType.STATIC_INIT_DEADLOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "half the threads hold Alpha and ask for Beta while the other half do the "
+                            + "reverse, which is the cycle findCycles walks. This is the deadlock "
+                            + "the JVM's own class-init lock produces, recorded rather than "
+                            + "suffered: a real one wedges both classes permanently"),
+
+            new RecordingSubject("recorded_classInit_eachInitialiserCompleted", JDK,
+                    "java.lang.Class",
+                    DetectorType.STATIC_INIT_DEADLOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same start and request calls, with each thread ending its own "
+                            + "initialiser. Ending a class clears its holder and every wait on it, "
+                            + "so an initialiser that touches another class and then finishes - "
+                            + "which is most of them - must not read as a cycle"),
+
 
             // --- SharedJsonMapperReconfig: the cleanest both-directions case in the corpus.
             //     The two Jackson mappers are separate instances of the same class, and the only
