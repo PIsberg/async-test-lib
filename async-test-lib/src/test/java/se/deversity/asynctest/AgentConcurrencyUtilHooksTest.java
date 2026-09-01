@@ -5,6 +5,11 @@ import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.diagnostics.BlockingQueueDetector;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
@@ -201,5 +206,61 @@ class AgentConcurrencyUtilHooksTest {
         assertFalse(AgentConcurrencyUtilHooks.offer(queue, "r"), "the queue is full");
         assertEquals("q", AgentConcurrencyUtilHooks.poll(queue), "poll returns the head");
         assertNull(AgentConcurrencyUtilHooks.poll(queue), "and null once it is empty");
+    }
+
+    @Test
+    @DisplayName("every queue hook registers its receiver, including the overloads added later")
+    void everyQueueHookRegistersItsReceiver() throws Exception {
+        List<Method> queueHooks = Arrays.stream(AgentConcurrencyUtilHooks.class.getMethods())
+                .filter(m -> Modifier.isStatic(m.getModifiers()))
+                .filter(m -> m.getParameterCount() > 0)
+                .filter(m -> m.getParameterTypes()[0] == BlockingQueue.class)
+                .sorted(Comparator.comparing(Method::toString))
+                .toList();
+        assertEquals(5, queueHooks.size(),
+                "the weaver's BlockingQueue entries and this class's hooks are one list; if that "
+                        + "count moved, the new hook belongs in this gate too. Found: " + queueHooks);
+
+        installContext();
+        try {
+            BlockingQueueDetector detector = AsyncTestContext.blockingQueueDetector();
+            for (Method hook : queueHooks) {
+                BlockingQueue<Object> fresh = new ArrayBlockingQueue<>(4);
+                hook.invoke(null, argumentsFor(hook, fresh));
+
+                assertTrue(detector.analyze().toString().contains("queue@" + System.identityHashCode(fresh)),
+                        hook.getName() + Arrays.toString(hook.getParameterTypes())
+                                + " left its receiver unregistered, so this queue is invisible to "
+                                + "every later call on it. An overload that records without "
+                                + "registering is silent in exactly the way an unwoven one is");
+            }
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    /**
+     * The arguments a queue hook needs after its receiver.
+     *
+     * <p>Deliberately shaped by parameter type rather than by method name, so that an overload
+     * added tomorrow is exercised by this gate without being named in it.
+     *
+     * @param hook  the hook to call
+     * @param queue the receiver
+     */
+    private static Object[] argumentsFor(Method hook, BlockingQueue<Object> queue) {
+        Class<?>[] types = hook.getParameterTypes();
+        Object[] arguments = new Object[types.length];
+        arguments[0] = queue;
+        for (int i = 1; i < types.length; i++) {
+            if (types[i] == long.class) {
+                arguments[i] = 1L;
+            } else if (types[i] == TimeUnit.class) {
+                arguments[i] = TimeUnit.MILLISECONDS;
+            } else {
+                arguments[i] = "element";
+            }
+        }
+        return arguments;
     }
 }

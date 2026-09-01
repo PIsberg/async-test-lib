@@ -296,8 +296,11 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static boolean offer(BlockingQueue<Object> receiver, Object element, long timeout,
                                 TimeUnit unit) throws InterruptedException {
-        boolean added = receiver.offer(element, timeout, unit);
         BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
+        if (detector != null) {
+            detector.observeQueue(receiver);
+        }
+        boolean added = receiver.offer(element, timeout, unit);
         if (detector != null) {
             detector.recordOffer(receiver, receiver.getClass().getName(), added);
         }
@@ -315,8 +318,11 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static Object poll(BlockingQueue<Object> receiver, long timeout, TimeUnit unit)
             throws InterruptedException {
-        Object taken = receiver.poll(timeout, unit);
         BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
+        if (detector != null) {
+            detector.observeQueue(receiver);
+        }
+        Object taken = receiver.poll(timeout, unit);
         if (detector != null) {
             detector.recordPoll(receiver, receiver.getClass().getName(), taken != null);
         }
