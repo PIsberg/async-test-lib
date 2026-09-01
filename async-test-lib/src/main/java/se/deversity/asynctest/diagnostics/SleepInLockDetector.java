@@ -247,7 +247,7 @@ public class SleepInLockDetector {
         public final @Nullable String lockName;
         /** Label identifying the sleeping thread in the report. */
         public final String threadName;
-        /** How long the thread slept while holding the lock, in nanoseconds. */
+        /** How long the thread slept while holding the lock, in milliseconds. */
         public final long sleepDuration;
         /** Where the sleep happened. */
         public final StackTraceElement[] stackTrace;

@@ -3,9 +3,13 @@ package se.deversity.asynctest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.text.DecimalFormat;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Calendar;
 import java.util.Formatter;
@@ -18,6 +22,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import se.deversity.asynctest.diagnostics.SleepInLockDetector.SleepInLockReport;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -27,8 +33,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>{@code WovenOverloadCoverageTest} in the agent module proves the weaver's table lists these
  * overloads. It cannot prove the hook behind an entry behaves - a hook that called the wrong
- * overload, or dropped a return value, would satisfy it completely. These two tests are that
- * other half.
+ * overload, or dropped a return value, would satisfy it completely. These tests are that other
+ * half.
  *
  * <p>The delegation test matters more than it looks. A substitution hook stands between the
  * caller and the JDK on every call, so a hook that quietly changed behaviour would corrupt the
@@ -132,6 +138,82 @@ class NewlyWovenOverloadHooksTest {
                 "sleep(long, int) with no lock held is a backoff, not a finding");
     }
 
+    @Test
+    @DisplayName("a sub-millisecond sleep under a monitor is reported, not truncated away")
+    void subMillisecondSleepsUnderAMonitorAreReported() {
+        // recordSleep drops anything at or below zero, so a hook that truncated the sub-
+        // millisecond part would leave these silent - and silence is what an unwoven call site
+        // looks like, which is the one thing this weaving surface exists to remove. The sleep is
+        // real: on JDK 26, sleep(0, 500_000) blocks for about 1.5ms against about 17us for
+        // sleep(0).
+        assertTrue(sleepReportsHoldingTheLock(
+                        () -> AgentSleepHooks.sleepHoldingMonitor(Duration.ofNanos(500_000), LOCK)),
+                "sleepHoldingMonitor(Duration, Object) must report a half-millisecond sleep");
+        assertTrue(sleepReportsHoldingTheLock(
+                        () -> AgentSleepHooks.sleepHoldingMonitor(0L, 500_000, LOCK)),
+                "sleepHoldingMonitor(long, int, Object) must report a half-millisecond sleep");
+    }
+
+    @Test
+    @DisplayName("a zero-length sleep under a monitor stays silent")
+    void zeroLengthSleepsUnderAMonitorStaySilent() {
+        // The boundary the rounding must not cross. sleep(0) and Duration.ZERO hold the lock for
+        // no measurable time, so rounding them up would report every one of them - and sleep(0)
+        // is a yield idiom, not a bug.
+        assertFalse(sleepReportsHoldingTheLock(
+                        () -> AgentSleepHooks.sleepHoldingMonitor(Duration.ZERO, LOCK)),
+                "a zero Duration is not a sleep");
+        assertFalse(sleepReportsHoldingTheLock(
+                        () -> AgentSleepHooks.sleepHoldingMonitor(0L, 0, LOCK)),
+                "sleep(0, 0) is not a sleep");
+    }
+
+    @Test
+    @DisplayName("the duration a finding carries is in milliseconds")
+    void theReportedDurationIsInMilliseconds() {
+        // SleepInLockEventSnapshot.sleepDuration was documented as nanoseconds. Both recordSleep
+        // overloads take milliseconds and the report prints "ms", so the javadoc was wrong rather
+        // than the code - and a public field's unit is not something to leave to a reader's guess.
+        SleepInLockReport report = sleepReportHoldingTheLock(
+                () -> AgentSleepHooks.sleepHoldingMonitor(7L, LOCK));
+
+        assertEquals(1, report.getEvents().size(), "one sleep, one event: " + report);
+        assertEquals(7L, report.getEvents().get(0).sleepDuration,
+                "a 7ms sleep is recorded as 7, so the field is milliseconds, not nanoseconds");
+    }
+
+    @Test
+    @DisplayName("every sleep hook has the monitor-taking variant the weaver resolves by name")
+    void everySleepHookHasItsSynchronizedVariant() {
+        List<Method> plain = Arrays.stream(AgentSleepHooks.class.getMethods())
+                .filter(m -> Modifier.isStatic(m.getModifiers()))
+                .filter(m -> "sleep".equals(m.getName()))
+                .toList();
+        assertEquals(3, plain.size(),
+                "Thread.sleep has three overloads and all three are woven; found: " + plain);
+
+        for (Method hook : plain) {
+            Class<?>[] withMonitor = Arrays.copyOf(hook.getParameterTypes(),
+                    hook.getParameterCount() + 1);
+            withMonitor[withMonitor.length - 1] = Object.class;
+            assertTrue(hasMethod("sleepHoldingMonitor", withMonitor),
+                    "CollectionAccessWeaver resolves a whenSynchronized hook as the entry's own "
+                            + "parameters plus the monitor, so a missing variant fails the table "
+                            + "build rather than quietly leaving one overload unwoven. Missing "
+                            + "for " + Arrays.toString(hook.getParameterTypes()));
+        }
+    }
+
+    /** {@return whether {@code AgentSleepHooks} declares {@code name} with {@code signature}} */
+    private static boolean hasMethod(String name, Class<?>... signature) {
+        try {
+            AgentSleepHooks.class.getMethod(name, signature);
+            return true;
+        } catch (NoSuchMethodException absent) {
+            return false;
+        }
+    }
+
     /**
      * {@return whether {@code body} reported, run with {@link #LOCK} genuinely held}
      *
@@ -141,7 +223,12 @@ class NewlyWovenOverloadHooksTest {
      * this has to reproduce for the assertion to mean anything.
      */
     private static boolean sleepReportsHoldingTheLock(Sleeping body) {
-        return sleepReports(() -> {
+        return sleepReportHoldingTheLock(body).hasIssues();
+    }
+
+    /** {@return the report {@code body} produced, run with {@link #LOCK} genuinely held} */
+    private static SleepInLockReport sleepReportHoldingTheLock(Sleeping body) {
+        return sleepReport(() -> {
             synchronized (LOCK) {
                 body.run();
             }
@@ -150,13 +237,18 @@ class NewlyWovenOverloadHooksTest {
 
     /** {@return whether {@code body} produced a sleep-in-lock finding} */
     private static boolean sleepReports(Sleeping body) {
+        return sleepReport(body).hasIssues();
+    }
+
+    /** {@return the sleep-in-lock report {@code body} produced} */
+    private static SleepInLockReport sleepReport(Sleeping body) {
         AsyncTestConfig cfg = AsyncTestConfig.builder().detectSleepInLock(true).build();
         AsyncTestContext ctx = new AsyncTestContext(cfg);
         AsyncTestContext.install(ctx);
         try {
             AsyncTestContext.sleepInLockDetector().startMonitoring();
             body.run();
-            return AsyncTestContext.sleepInLockDetector().analyze().hasIssues();
+            return AsyncTestContext.sleepInLockDetector().analyze();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new AssertionError("nothing here interrupts", e);
