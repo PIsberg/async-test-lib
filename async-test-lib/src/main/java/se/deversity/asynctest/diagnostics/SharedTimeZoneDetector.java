@@ -13,8 +13,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * being accessed from multiple threads.
  *
  * <p>{@code TimeZone} is a mutable class: {@code setRawOffset()} and {@code setID()}
- * alter the shared instance in place. Although read operations are effectively safe
- * in practice, unsynchronized concurrent writes (or a write concurrent with a read) produce
+ * alter the shared instance in place, which is what the javadoc documents; the JDK states no
+ * thread-safety contract for {@code TimeZone} either way. This detector reports only recorded
+ * mutations, so concurrent reads never reach it - a decision about what is worth reporting
+ * rather than a guarantee that reading a zone somebody else is mutating is safe.
+ * Unsynchronized concurrent writes (or a write concurrent with a read) produce
  * non-deterministic timezone offsets and IDs — silently wrong date/time arithmetic
  * that is notoriously hard to reproduce.
  *

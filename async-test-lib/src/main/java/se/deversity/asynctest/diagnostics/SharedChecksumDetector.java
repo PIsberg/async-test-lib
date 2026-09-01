@@ -18,8 +18,11 @@ import java.util.zip.Checksum;
  *
  * <p><strong>Why it matters.</strong> A {@code Checksum} accumulates internal
  * running state with every {@code update()} call; {@code getValue()} reads that
- * accumulated state and {@code reset()} clears it. None of the JDK
- * implementations are thread-safe. Unsynchronized concurrent {@code update()}/{@code getValue()}/
+ * accumulated state and {@code reset()} clears it. The JDK states no thread-safety contract for
+ * {@code Checksum} or any of its implementations, in either direction. What it does document is
+ * the accumulation, and that is enough on its own: an accumulator advanced from two threads with
+ * no synchronization has no defined value.
+ * Unsynchronized concurrent {@code update()}/{@code getValue()}/
  * {@code reset()} calls from multiple threads interleave updates to the same
  * accumulator, silently producing a wrong checksum value — there is no exception,
  * no crash, just data-integrity corruption that surfaces later as a checksum
@@ -99,8 +102,9 @@ public final class SharedChecksumDetector {
             if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
             String msg = String.format(
                     "Checksum '%s' accessed from %d threads (%s) via %s — java.util.zip "
-                            + "Checksum implementations accumulate mutable running state and are "
-                            + "not thread-safe; unsynchronized concurrent update()/getValue()/reset() calls "
+                            + "Checksum implementations accumulate mutable running state, and the "
+                            + "JDK states no thread-safety contract for them; unsynchronized "
+                            + "concurrent update()/getValue()/reset() calls "
                             + "produce wrong checksum values with no exception"
                             + SelfGuard.REPORT_NOTE + ".",
                     s.label,
