@@ -1591,6 +1591,40 @@ by construction - or exists but cannot be asserted without the assertion resting
 core count or a GC pause. A row like that does not measure a detector; it measures the machine
 the build happened to run on, and it fails on somebody else's.
 
+### Which build produced a number
+
+Every generated report now carries the artifact it measured, digest and all:
+
+```
+- Library under test: async-test-lib-1.11.0.jar (sha256:fb5183978109)
+```
+
+This module resolves the library from the local repository rather than from the reactor, on
+purpose - it measures the library a user would get, not the one the build happens to be holding.
+The cost is a failure mode with no symptom. Change a detector, forget `mvn install`, and every
+number in every report comes from the previous build while the source says otherwise.
+
+That is not hypothetical. Wave 7 opened with a row that had been green for four waves failing for
+no visible reason, and the cause was a jar in `~/.m2` built before a detector fix: same version
+string, different bytes. It was caught only because a pinned pair happened to cover the detector
+that had changed. A detector with no pair would have moved the headline rates with nothing going
+red at all.
+
+`ResolvedLibraryIsCurrentTest` closes that: it compares the resolved jar against the working
+tree's compiled classes and fails the run when the tree is newer, naming the command to fix it.
+Verified by reproducing the incident - touching one class file under `async-test-lib/target/classes`
+turns the lane red with `is older than the working tree's compiled classes`. Where there is no
+working tree to compare against, which is what running the corpus against a released artifact
+looks like, it reports as unchecked rather than as passed.
+
+The check covers the agent jar too, and that was not the original plan. The library half went in
+first and immediately missed a case it should have caught: a run with a new agent against an old
+library produced an empty findings list from a lane that had been detecting. The two are separate
+artifacts that call each other by name - the weaver substitutes a call site with a hook method the
+library declares - so a mismatched pair fails by *substituting nothing*, with no error anywhere.
+Same defect as a stale library, arriving from the other side. Verified the same way, by touching a
+class under `async-test-agent/target/classes`.
+
 ## Reproducing it
 
 ```bash
