@@ -652,7 +652,113 @@ final class Corpus {
                     DetectorType.SHARED_FORMATTER, Contract.NOT_THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "each thread formats through its own Formatter over its own StringBuilder, "
-                            + "which is what String.format does internally on every call")
+                            + "which is what String.format does internally on every call"),
+
+            // --- The coordination and lock families. These types are thread-safe and sharing
+            //     them is the point, so nothing here turns on which object is the receiver. What
+            //     the detector reports is protocol: a permit that never came back, an await whose
+            //     false return was discarded, two locks nested both ways round. The correct twin
+            //     is the same protocol, completed.
+
+            new RecordingSubject("agent_semaphore_permitNeverReturned", JDK,
+                    "java.util.concurrent.Semaphore",
+                    DetectorType.SEMAPHORE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the body acquires and never releases, so acquireCount exceeds releaseCount. "
+                            + "A leaked permit is the semaphore bug that does not announce "
+                            + "itself: the pool just gets smaller until it is empty"),
+
+            new RecordingSubject("agent_semaphore_permitReturnedInFinally", JDK,
+                    "java.util.concurrent.Semaphore",
+                    DetectorType.SEMAPHORE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "acquire-try-finally-release is the documented shape and leaves the two "
+                            + "counts equal. Both rows go through the same substituted call "
+                            + "sites, so a finding here would mean the detector counts calls "
+                            + "rather than balance"),
+
+            new RecordingSubject("agent_countDownLatch_awaitTimedOut", JDK,
+                    "java.util.concurrent.CountDownLatch",
+                    DetectorType.COUNTDOWN_LATCH, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "await(1, MILLISECONDS) on a latch nothing counts down must return false, and "
+                            + "the discarded false is the finding. The count is one and no thread "
+                            + "in the run can reach it, so the timeout is structural rather than "
+                            + "a race the scheduler might win"),
+
+            new RecordingSubject("agent_countDownLatch_awaitSawItsCount", JDK,
+                    "java.util.concurrent.CountDownLatch",
+                    DetectorType.COUNTDOWN_LATCH, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same thread counts the latch down before awaiting it, so the timed await "
+                            + "returns true with no timing assumption at all. Same await(long, "
+                            + "TimeUnit) call site, opposite outcome"),
+
+            new RecordingSubject("agent_sleep_whileHoldingTheMonitor", JDK,
+                    "java.lang.Thread",
+                    DetectorType.SLEEP_IN_LOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "sleeping inside a synchronized method holds the monitor for the whole "
+                            + "duration, so every other thread waits on a lock whose holder is "
+                            + "doing nothing. Whether a sleep is a bug depends entirely on that, "
+                            + "which is why the substitution carries the monitor with it"),
+
+            new RecordingSubject("agent_sleep_holdingNothing", JDK,
+                    "java.lang.Thread",
+                    DetectorType.SLEEP_IN_LOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same Thread.sleep(1) with no monitor held. A sleep is not a finding, and "
+                            + "a detector that reported this one would fire on every backoff loop "
+                            + "and every poll interval ever written"),
+
+            new RecordingSubject("agent_lockOrder_nestedBothWays", JDK,
+                    "java.util.concurrent.locks.ReentrantLock",
+                    DetectorType.LOCK_ORDER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the body nests B inside A and then A inside B, which puts both edges in the "
+                            + "pooled graph and closes a two-cycle. That is the deadlock, "
+                            + "recorded without having to suffer one"),
+
+            new RecordingSubject("agent_lockOrder_nestedOneWay", JDK,
+                    "java.util.concurrent.locks.ReentrantLock",
+                    DetectorType.LOCK_ORDER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same two locks, always A then B. A consistent global order is the "
+                            + "textbook remedy and yields the single edge A to B, so a finding "
+                            + "here would mean nesting itself reads as a defect"),
+
+            new RecordingSubject("agent_lock_acquiredAndNeverReleased", JDK,
+                    "java.util.concurrent.locks.ReentrantLock",
+                    DetectorType.LOCK_LEAKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "lock() with no unlock() leaves acquireCount above releaseCount and the lock "
+                            + "held at analysis. This is the bug an early return or a thrown "
+                            + "exception writes for you when the unlock is not in a finally"),
+
+            new RecordingSubject("agent_lock_releasedInFinally", JDK,
+                    "java.util.concurrent.locks.ReentrantLock",
+                    DetectorType.LOCK_LEAKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "lock-try-finally-unlock, which is what the ReentrantLock javadoc's own "
+                            + "example shows. Balanced counts, and nothing held when the run ends"),
+
+            new RecordingSubject("agent_tryLock_unlockedAfterFailing", JDK,
+                    "java.util.concurrent.locks.StampedLock",
+                    DetectorType.TRY_LOCK_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the body unlocks after a tryLock that returned false, releasing a lock this "
+                            + "call never took. StampedLock is not reentrant, so a write lock the "
+                            + "thread already holds refuses its own tryLock every time - the "
+                            + "failure is a property of the type, not of who else is running"),
+
+            new RecordingSubject("agent_tryLock_unlockedOnlyWhenAcquired", JDK,
+                    "java.util.concurrent.locks.StampedLock",
+                    DetectorType.TRY_LOCK_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same lock, unlock and tryLock call sites, with the unlock inside the "
+                            + "branch the tryLock guards. That is the whole rule, and the row "
+                            + "matters because the detector keys on the thread's last outcome for "
+                            + "the lock and could convict a later honest unlock instead")
     );
 
     /**

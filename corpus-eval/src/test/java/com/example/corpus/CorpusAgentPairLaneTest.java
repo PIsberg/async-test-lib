@@ -18,6 +18,12 @@ import java.util.Formatter;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.StampedLock;
 
 /**
  * The agent-pair lane: JDK types, with test bodies that record nothing at all.
@@ -79,6 +85,22 @@ class CorpusAgentPairLaneTest {
     private static final DecimalFormat SHARED_DECIMAL_FORMAT = new DecimalFormat("#,##0.00");
 
     private static final Formatter SHARED_FORMATTER = new Formatter(new StringBuilder());
+
+    // --- The lock-order pair'"'"'s two locks. Static, because the detector pools its edges by lock
+    //     identity across the whole run: a fresh pair per body execution would produce a fresh
+    //     pair of node names and never close a cycle.
+
+    private static final ReentrantLock LOCK_A = new ReentrantLock();
+
+    private static final ReentrantLock LOCK_B = new ReentrantLock();
+
+    /**
+     * Serialises the lock-order rows, so that writing an inversion does not mean suffering one.
+     *
+     * <p>A monitor rather than a Lock on purpose: monitor acquisitions are not delivered to
+     * LockOrderValidator, so this adds no edge to the graph the pair is measuring.
+     */
+    private static final Object ORDER_GUARD = new Object();
 
     // --- The confined halves. A ThreadLocal where building the instance is the expense that made
     //     someone cache it in the first place, and a plain local where it is not.
@@ -278,6 +300,256 @@ class CorpusAgentPairLaneTest {
                 mine.format("%d;", 1);
             }
         });
+    }
+
+    /**
+     * Sleeps one millisecond with this class's monitor held, which is the finding.
+     */
+    private static synchronized void sleepHoldingTheClassMonitor() throws InterruptedException {
+        Thread.sleep(1);
+    }
+
+    /** The same millisecond with nothing held, which is not. */
+    private static void sleepHoldingNothing() throws InterruptedException {
+        Thread.sleep(1);
+    }
+
+    // --- Semaphore ---------------------------------------------------------------------------
+
+    /**
+     * Takes a permit and never gives it back.
+     *
+     * <p>One semaphore per body execution, so the leak cannot starve the other workers and hang
+     * the round. The detector counts acquisitions against releases, and one unmatched acquire is
+     * the whole precondition.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_semaphore_permitNeverReturned() {
+        counted(() -> {
+            Semaphore leaked = new Semaphore(1);
+            leaked.acquire();
+        });
+    }
+
+    /** The same two call sites with the release where it belongs. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_semaphore_permitReturnedInFinally() {
+        counted(() -> {
+            Semaphore balanced = new Semaphore(1);
+            balanced.acquire();
+            try {
+                Thread.onSpinWait();
+            } finally {
+                balanced.release();
+            }
+        });
+    }
+
+    // --- CountDownLatch ----------------------------------------------------------------------
+
+    /**
+     * Waits on a latch nothing will ever count down, and drops the false.
+     *
+     * <p>The latch is local and its count is one, so no thread in the run can reach it. The timed
+     * await must return false, which makes the finding a property of the code rather than of the
+     * scheduler.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_countDownLatch_awaitTimedOut() {
+        counted(() -> {
+            CountDownLatch unreachable = new CountDownLatch(1);
+            unreachable.await(1, TimeUnit.MILLISECONDS);
+        });
+    }
+
+    /** The same timed await, on a latch this thread has already counted down. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_countDownLatch_awaitSawItsCount() {
+        counted(() -> {
+            CountDownLatch reached = new CountDownLatch(1);
+            reached.countDown();
+            reached.await(1, TimeUnit.SECONDS);
+        });
+    }
+
+    // --- Thread.sleep ------------------------------------------------------------------------
+
+    /**
+     * Sleeps inside a synchronized method, so the monitor is held for the duration.
+     *
+     * <p>The sleep is one level down because the substitution keyed to it is conditional on the
+     * enclosing method being synchronized: that is where the monitor it reports comes from. The
+     * two rows therefore differ in the {@code synchronized} modifier on the helper and in nothing
+     * else, and the same-calls gate has nothing to compare here - the MUST_FIRE half having to
+     * fire is what carries this pair.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_sleep_whileHoldingTheMonitor() {
+        counted(CorpusAgentPairLaneTest::sleepHoldingTheClassMonitor);
+    }
+
+    /** The same one-millisecond sleep with no monitor held anywhere above it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_sleep_holdingNothing() {
+        counted(CorpusAgentPairLaneTest::sleepHoldingNothing);
+    }
+
+    // --- Lock order --------------------------------------------------------------------------
+
+    /**
+     * Nests the two locks one way and then the other.
+     *
+     * <p>The edges are pooled by lock identity across the whole run, so the two orderings need not
+     * come from two threads: one body doing both closes the cycle. That is deliberate. Writing the
+     * inversion across threads would be writing a real deadlock, and the corpus would hang on it
+     * rather than report it. {@code ORDER_GUARD} serialises the region for the same reason, and
+     * contributes no edge of its own because a monitor is not delivered to this detector - only
+     * {@code Lock} acquisitions are.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_lockOrder_nestedBothWays() {
+        counted(() -> {
+            synchronized (ORDER_GUARD) {
+                LOCK_A.lock();
+                try {
+                    LOCK_B.lock();
+                    LOCK_B.unlock();
+                } finally {
+                    LOCK_A.unlock();
+                }
+                LOCK_B.lock();
+                try {
+                    LOCK_A.lock();
+                    LOCK_A.unlock();
+                } finally {
+                    LOCK_B.unlock();
+                }
+            }
+        });
+    }
+
+    /** The same two locks, always A before B, which is the consistent global order. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_lockOrder_nestedOneWay() {
+        counted(() -> {
+            synchronized (ORDER_GUARD) {
+                LOCK_A.lock();
+                try {
+                    LOCK_B.lock();
+                    LOCK_B.unlock();
+                } finally {
+                    LOCK_A.unlock();
+                }
+                LOCK_A.lock();
+                try {
+                    LOCK_B.lock();
+                    LOCK_B.unlock();
+                } finally {
+                    LOCK_A.unlock();
+                }
+            }
+        });
+    }
+
+    // --- Lock leaks --------------------------------------------------------------------------
+
+    /**
+     * Acquires a lock and returns without releasing it.
+     *
+     * <p>A fresh lock per body execution, so the leak cannot block another worker. What the
+     * detector sees is still an acquire with no matching release, and a lock still held when the
+     * run is analysed.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_lock_acquiredAndNeverReleased() {
+        counted(() -> {
+            ReentrantLock leaked = new ReentrantLock();
+            leaked.lock();
+        });
+    }
+
+    /** The shape the ReentrantLock javadoc's own example shows. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_lock_releasedInFinally() {
+        counted(() -> {
+            ReentrantLock balanced = new ReentrantLock();
+            balanced.lock();
+            try {
+                Thread.onSpinWait();
+            } finally {
+                balanced.unlock();
+            }
+        });
+    }
+
+    // --- tryLock -----------------------------------------------------------------------------
+
+    /**
+     * Unlocks after a tryLock that returned false.
+     *
+     * <p>Forcing the failure without another thread is what makes this structural. StampedLock is
+     * not reentrant, so a write lock the calling thread already holds refuses its own
+     * {@code tryLock} on every attempt, whoever else is running. The {@code unlock} then releases
+     * the lock the earlier {@code lock()} took, which is exactly the bug: the code believes the
+     * tryLock handed it something.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_tryLock_unlockedAfterFailing() {
+        counted(() -> {
+            Lock write = new StampedLock().asWriteLock();
+            write.lock();
+            write.tryLock();
+            write.unlock();
+        });
+    }
+
+    /**
+     * The same call sites with the unlock inside the branch the tryLock guards.
+     *
+     * <p>It takes and releases the lock first so that both halves of the pair go through
+     * {@code lock} as well as {@code tryLock} and {@code unlock}. The detector keys on the
+     * thread's last recorded outcome for a lock, so a row that skipped the plain acquisition
+     * would be skipping the shape most likely to be misjudged.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_tryLock_unlockedOnlyWhenAcquired() {
+        counted(() -> {
+            Lock write = new StampedLock().asWriteLock();
+            write.lock();
+            write.unlock();
+            if (write.tryLock()) {
+                try {
+                    Thread.onSpinWait();
+                } finally {
+                    write.unlock();
+                }
+            }
+        });
+    }
+
+    /** A body that may throw a checked exception, which every coordination row can. */
+    @FunctionalInterface
+    private interface InterruptibleBody {
+        void run() throws InterruptedException;
+    }
+
+    /**
+     * Runs {@code body} and counts the execution.
+     *
+     * <p>Nothing in this lane interrupts a worker, so an {@code InterruptedException} here is the
+     * harness misbehaving rather than the subject. It fails the run rather than being folded into
+     * the silence a row might be claiming.
+     *
+     * @param body the JDK calls under measurement
+     */
+    private static void counted(InterruptibleBody body) {
+        CorpusRecorder.countBodyExecution();
+        try {
+            body.run();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("nothing in this lane interrupts a worker", e);
+        }
     }
 
     /**

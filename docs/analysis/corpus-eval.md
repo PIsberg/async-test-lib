@@ -1397,6 +1397,61 @@ there - so a pair can satisfy every structural check while measuring nothing. Th
 is what caught it, by having to actually fire, which is the second time in this document that a
 row's obligation to produce a finding found something no silent row could.
 
+### The coordination and lock families: six more pairs
+
+Six detectors whose subject is a protocol rather than an object. Sharing a `Semaphore` is the
+point of one, so nothing here turns on which instance is the receiver; what the detector reports
+is a permit that never came back, an `await` whose `false` return was discarded, two locks nested
+both ways round. All twelve rows came out as stated on the first run.
+
+| Detector | Fires on | Stays silent on |
+|---|---|---|
+| `SEMAPHORE` | `acquire()` with no `release()` | acquire-try-finally-release |
+| `COUNTDOWN_LATCH` | `await(1, MILLISECONDS)` on a latch nothing counts down | the same await after `countDown()` |
+| `SLEEP_IN_LOCK` | `Thread.sleep(1)` inside a `synchronized` method | the same sleep with nothing held |
+| `LOCK_ORDER` | B nested in A, then A nested in B | always A before B |
+| `LOCK_LEAKS` | `lock()` with no `unlock()` | lock-try-finally-unlock |
+| `TRY_LOCK_MISUSE` | `unlock()` after a `tryLock()` that returned `false` | `unlock()` inside the branch `tryLock()` guards |
+
+Three of these needed a decision about how to write a bug without suffering it, and each decision
+is in the test's own javadoc rather than only here. The leaking semaphore and the leaking lock get
+a fresh instance per body execution, so the leak cannot starve the other five workers and hang the
+round. The lock-order inversion is done twice by *one* body rather than once by each of two
+threads: the edges are pooled by lock identity across the whole run, so one body closes the cycle,
+and writing the inversion across threads would be writing a genuine deadlock for the corpus to
+hang on. A monitor serialises that region, and adds no edge of its own, because monitor
+acquisitions are not delivered to this detector - only `Lock` acquisitions are.
+
+`TRY_LOCK_MISUSE` was the one that looked untestable. Making `tryLock()` return false is normally
+a contention race, which is exactly the kind of outcome this lane refuses to depend on. The way
+out is a type whose refusal is structural: `StampedLock` is not reentrant, so a write lock the
+calling thread already holds refuses its own `tryLock` on every attempt, whoever else is running.
+
+### Three refusals, two of which are a defect rather than a limit
+
+`EXPLICIT_GC` is a clean refusal. `AgentGcHooks` records every `System.gc()` and `analyze()` turns
+every event into a violation, deliberately and with no lock guard - an explicit collection
+distorts every latency the run measures whether or not a lock was held. Its own javadoc says
+`System.gc()` "has no such innocent twin", so there is no silent row to write and a MUST_FIRE row
+on its own would prove only that a detector with no predicate fires.
+
+`LATCH_MISUSE` and `BLOCKING_QUEUE` are a different matter. Both are classified `AGENT` in
+`DetectorFeeds`, which is the claim that the woven streams can feed them with nothing
+instrumented. Reading their record paths says otherwise: every one goes through a registry lookup
+that returns null when absent, and only the public `registerLatch` / `registerQueue` populates it -
+which no hook calls.
+
+That reading was checked rather than believed. Both were written as MUST_FIRE rows in their most
+incriminating shape - a latch of one counted down twice, an `ArrayBlockingQueue` of capacity one
+filled and then offered to twice - with the agent attached and every substituted call site
+(`countDown`, `await(long, TimeUnit)`, `put`, `offer`, `poll`) exercised. Both came out silent,
+and the lane reported them as `SILENT but must fire`. The rows were then removed, because a
+detector that cannot report is not a pair, and #436 carries the defect.
+
+So of the 18 AGENT-fed detectors: 13 are paired here, 2 were already paired by lane one at a
+larger scale, 1 is refused by design, and 2 cannot report at all in the configuration their own
+feed classification claims for them.
+
 ## Reproducing it
 
 ```bash
