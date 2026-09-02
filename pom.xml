@@ -80,7 +80,7 @@
              soak. -P fast raises it locally; override anywhere with -Dsurefire.forkCount=N. -->
         <surefire.forkCount>1</surefire.forkCount>
         <!-- Plugin versions -->
-        <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
+        <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
         <maven-shade-plugin.version>3.6.2</maven-shade-plugin.version>
         <!-- Pinned because nothing else does: without it Maven falls back to its built-in
