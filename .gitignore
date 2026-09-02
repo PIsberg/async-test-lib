@@ -33,6 +33,10 @@ vibetags.log
 # AI / tooling caches
 .antigravitycli/
 .pytest_cache/
+# .vibetags-locks is the processor's opt-in signal for its locks_report service, not a
+# cache. While it exists, every build adds a locks_report= line to each tracked
+# .vibetags-mod-* file; Guardrail Drift's clean build never has it, so those lines fail
+# the gate (#466). Delete it before regenerating the mod files for a commit.
 .vibetags-locks
 evals/results/
 .claude/lineage/
