@@ -72,6 +72,7 @@ jobs:
           # Scoped to the generated files. Build outputs elsewhere are gitignored, but a
           # tracked build artifact appearing here would be a real finding too.
           paths="CLAUDE.md GEMINI.md AGENTS.md .claudeignore .vibetags-roles .vibetags-root-index .gemini
+                 .vibetags-mod-async-test-lib .vibetags-mod-async-test-agent .vibetags-mod-async-test-analysis
                  async-test-lib/CLAUDE.md async-test-lib/.claudeignore async-test-lib/.vibetags-roles async-test-lib/.claude/rules
                  async-test-agent/CLAUDE.md async-test-agent/.claude/rules
                  async-test-analysis/CLAUDE.md async-test-analysis/.claude/rules"
