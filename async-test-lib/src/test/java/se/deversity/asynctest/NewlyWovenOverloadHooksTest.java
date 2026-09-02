@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import se.deversity.asynctest.diagnostics.HeldLocks;
 import se.deversity.asynctest.diagnostics.SleepInLockDetector.SleepInLockReport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -310,6 +311,82 @@ class NewlyWovenOverloadHooksTest {
             throw new AssertionError("nothing here blocks", e);
         } finally {
             AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("the untimed semaphore hooks and the timed permit try record like their counted forms")
+    void untimedAndTimedPermitHooksAreRecorded() throws InterruptedException {
+        AsyncTestConfig cfg = AsyncTestConfig.builder().monitorSemaphore(true).build();
+        AsyncTestContext.install(new AsyncTestContext(cfg));
+        try {
+            Semaphore semaphore = new Semaphore(3);
+            AgentConcurrencyUtilHooks.acquire(semaphore);
+            assertTrue(AgentConcurrencyUtilHooks.tryAcquire(semaphore), "a permit is free");
+            assertTrue(AgentConcurrencyUtilHooks.tryAcquire(semaphore, 1, 10, TimeUnit.MILLISECONDS),
+                    "the last permit is taken by the timed permit try");
+            assertFalse(AgentConcurrencyUtilHooks.tryAcquire(semaphore), "none is left");
+            assertEquals(0, semaphore.availablePermits(), "every hook really took its permit");
+            AgentConcurrencyUtilHooks.release(semaphore);
+
+            // Three out through three different hooks and one back is a leak of two.
+            assertTrue(AsyncTestContext.semaphoreMisuseDetector().analyze().hasIssues(),
+                    "acquire(), tryAcquire() and the timed permit try each record the permit they "
+                            + "took, so one release() leaves two unreturned and must report");
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("the untimed semaphore hooks balanced by release() stay silent")
+    void untimedPermitHooksBalancedAreSilent() throws InterruptedException {
+        AsyncTestConfig cfg = AsyncTestConfig.builder().monitorSemaphore(true).build();
+        AsyncTestContext.install(new AsyncTestContext(cfg));
+        try {
+            Semaphore semaphore = new Semaphore(2);
+            AgentConcurrencyUtilHooks.acquire(semaphore);
+            assertTrue(AgentConcurrencyUtilHooks.tryAcquire(semaphore, 1, 10, TimeUnit.MILLISECONDS));
+            AgentConcurrencyUtilHooks.release(semaphore);
+            AgentConcurrencyUtilHooks.release(semaphore);
+            assertEquals(2, semaphore.availablePermits(), "both permits are back");
+            assertFalse(AsyncTestContext.semaphoreMisuseDetector().analyze().hasIssues(),
+                    "two out and two back is balanced and must stay silent");
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("every sleep form reports when the lockset says a monitor is held")
+    void everySleepFormReportsUnderALocksetHeldMonitor() {
+        // The plain forms consult HeldLocks rather than being handed the monitor, which is the
+        // path a woven MONITORENTER feeds. Registering the monitor with the lockset by hand is
+        // what the woven instruction would have done, and the block really holds it so that
+        // recordSleep's own Thread.holdsLock check agrees.
+        assertTrue(sleepReportsHoldingTheLock(() -> withLocksetEntry(() -> AgentSleepHooks.sleep(2L))),
+                "sleep(long) under a monitor the lockset knows must report");
+        assertTrue(sleepReportsHoldingTheLock(
+                        () -> withLocksetEntry(() -> AgentSleepHooks.sleep(Duration.ofMillis(2)))),
+                "sleep(Duration) under a monitor the lockset knows must report");
+        assertTrue(sleepReportsHoldingTheLock(() -> withLocksetEntry(() -> AgentSleepHooks.sleep(2L, 0))),
+                "sleep(long, int) under a monitor the lockset knows must report");
+    }
+
+    @Test
+    @DisplayName("the plain sleep(long) with nothing held is a backoff, not a finding")
+    void plainSleepWithNothingHeldIsSilent() {
+        assertFalse(sleepReports(() -> AgentSleepHooks.sleep(2L)),
+                "sleep(long) with no lock held is a backoff, not a finding");
+    }
+
+    /** Runs {@code body} with {@link #LOCK} registered in the lockset for its duration. */
+    private static void withLocksetEntry(Sleeping body) throws InterruptedException {
+        HeldLocks.acquired(LOCK);
+        try {
+            body.run();
+        } finally {
+            HeldLocks.released(LOCK);
         }
     }
 }
