@@ -37,7 +37,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.10.0
  */
-@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.CONCURRENCY_ENTRIES and cannot change independently of it. Every hook must perform the original operation and propagate its exceptions unchanged, InterruptedException included - these types throw it as a matter of course and swallowing one would change the interruption semantics of the code under test. Record after acquiring and before releasing, the containment rule AgentLockHooks documents, and record nothing when the underlying call throws. offer, poll and the timed await must record their actual return value: the boolean a caller discards is the whole bug these detectors report. The observe* call must stay ahead of the operation: it is where LatchMisuseDetector and BlockingQueueDetector learn a subject exists at all, and the latch's starting count is only readable before this call decrements it.")
+@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.CONCURRENCY_ENTRIES and cannot change independently of it. Every hook must perform the original operation and propagate its exceptions unchanged, InterruptedException included - these types throw it as a matter of course and swallowing one would change the interruption semantics of the code under test. Record after acquiring and before releasing, the containment rule AgentLockHooks documents, and record nothing when the underlying call throws. offer, poll and the timed await must record their actual return value: the boolean a caller discards is the whole bug these detectors report. The observe* call must stay ahead of the operation: it is where LatchMisuseDetector and BlockingQueueDetector learn a subject exists at all, and the latch's starting count is only readable before this call decrements it. offerResultDiscarded is not an operation: the weaver substitutes it for the POP that follows an offer whose boolean the caller never read, so it is always the instruction after one of the offer hooks on the same thread, and it must stay that way - the detector correlates it to the offer recorded immediately before, and that correlation is exact only because the weaver emits it in place of the POP and nowhere else.")
 public final class AgentConcurrencyUtilHooks {
 
     private AgentConcurrencyUtilHooks() {
@@ -305,6 +305,28 @@ public final class AgentConcurrencyUtilHooks {
             detector.recordOffer(receiver, receiver.getClass().getName(), added);
         }
         return added;
+    }
+
+    /**
+     * Weaves the {@code POP} that follows a {@code BlockingQueue.offer} whose result the caller
+     * never read.
+     *
+     * <p>Not an operation of its own. The offer already happened and was recorded by
+     * {@link #offer(BlockingQueue, Object)} or its timed form, on this thread, as the instruction
+     * before this one: the weaver substitutes this call for the {@code POP} and for nothing else,
+     * so adjacency is guaranteed by construction rather than assumed. What this adds is the one
+     * fact the return value cannot carry - nobody looked. A {@code false} that was branched on is
+     * backpressure working; a {@code false} that was popped is an element dropped on the floor,
+     * and the detector counts only the second as a finding (#454).
+     *
+     * @param added what the offer returned, which is the value the caller discarded
+     * @since 1.11.1
+     */
+    public static void offerResultDiscarded(boolean added) {
+        BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
+        if (detector != null) {
+            detector.recordOfferResultDiscarded(added);
+        }
     }
 
     /**

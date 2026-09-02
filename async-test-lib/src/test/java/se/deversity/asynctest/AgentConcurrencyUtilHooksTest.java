@@ -14,6 +14,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -193,6 +194,52 @@ class AgentConcurrencyUtilHooksTest {
     // --- The contract every hook owes its call site -------------------------------------------
 
     @Test
+    @DisplayName("a rejected offer whose result was popped is reported through the hooks alone")
+    void aDroppedOfferIsReachedThroughTheHooksAlone() {
+        installContext();
+        try {
+            BlockingQueueDetector detector = AsyncTestContext.blockingQueueDetector();
+            // No capacity to saturate and no consumer waiting: the offer is rejected, and the
+            // only thing that can make this a finding is the fact that nobody read the false.
+            BlockingQueue<Object> handoff = new SynchronousQueue<>();
+
+            boolean added = AgentConcurrencyUtilHooks.offer(handoff, "dropped");
+            // What the weaver substitutes for the POP after that offer, and for nothing else.
+            AgentConcurrencyUtilHooks.offerResultDiscarded(added);
+
+            assertFalse(added, "the handoff has no taker, so the offer is rejected");
+            BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+            assertTrue(report.hasIssues(),
+                    "a rejected offer whose boolean was popped is an element dropped, which is "
+                            + "the one rejected offer that is a finding (#454). Report: " + report);
+            assertTrue(report.toString().contains("discarded the result"),
+                    "the finding must say the result was discarded; got " + report);
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("the same rejected offer with its result read stays a count")
+    void aCheckedRejectionStaysSilentThroughTheHooks() {
+        installContext();
+        try {
+            BlockingQueueDetector detector = AsyncTestContext.blockingQueueDetector();
+            BlockingQueue<Object> handoff = new SynchronousQueue<>();
+
+            assertFalse(AgentConcurrencyUtilHooks.offer(handoff, "checked"),
+                    "rejected here too; the difference is that this test read the false");
+
+            BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+            assertFalse(report.hasIssues(),
+                    "a false the caller branched on is backpressure working, not a finding; "
+                            + "got " + report);
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
     @DisplayName("every hook performs the operation it replaced with no context installed")
     void hooksDelegateOutsideAnAsyncTest() throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
@@ -204,6 +251,8 @@ class AgentConcurrencyUtilHooksTest {
         BlockingQueue<Object> queue = new ArrayBlockingQueue<>(1);
         AgentConcurrencyUtilHooks.put(queue, "q");
         assertFalse(AgentConcurrencyUtilHooks.offer(queue, "r"), "the queue is full");
+        // Stands in for a POP: with no context there is nothing to record, and nothing to throw.
+        AgentConcurrencyUtilHooks.offerResultDiscarded(false);
         assertEquals("q", AgentConcurrencyUtilHooks.poll(queue), "poll returns the head");
         assertNull(AgentConcurrencyUtilHooks.poll(queue), "and null once it is empty");
     }

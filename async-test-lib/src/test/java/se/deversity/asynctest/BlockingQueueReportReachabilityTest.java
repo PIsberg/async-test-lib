@@ -7,6 +7,7 @@ import se.deversity.asynctest.diagnostics.BlockingQueueDetector;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.SynchronousQueue;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -14,7 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Where the three counts {@code hasIssues()} does not gate on actually end up.
  *
- * <p>{@code BlockingQueueReport.hasIssues()} returns {@code !saturation.isEmpty()}. The rejected
+ * <p>{@code BlockingQueueReport.hasIssues()} gates on saturation and, since #454, on a dropped
+ * element; nothing else. The rejected
  * offers, the empty polls and the producer/consumer ratio are counted and printed but never make
  * the report a finding, and #447 asked whether that meant they were computed for nobody.
  *
@@ -65,6 +67,28 @@ class BlockingQueueReportReachabilityTest {
         assertTrue(report.contains("max size: 2"),
                 "and the activity line carries the raw counts a reader sizes it by. Got:\n"
                         + report);
+    }
+
+    @Test
+    @DisplayName("a dropped element reaches the reader on its own, with no saturation to ride on")
+    void aDroppedElementIsAFindingOnItsOwn() {
+        DetectorRegistry registry = new DetectorRegistry(
+                AsyncTestConfig.builder().detectAll(true).build());
+        // No capacity, so no saturation line can ever carry this: what reaches the reader is
+        // the dropped element or nothing.
+        BlockingQueue<Object> handoff = new SynchronousQueue<>();
+        registry.blockingQueueDetector.observeQueue(handoff);
+
+        boolean added = handoff.offer("dropped");
+        registry.blockingQueueDetector.recordOffer(handoff, "handoff", added);
+        registry.blockingQueueDetector.recordOfferResultDiscarded(added);
+
+        Map<String, String> named = registry.analyzeAllNamed();
+        assertTrue(named.containsKey("BlockingQueueDetector"),
+                "a rejected offer whose result was popped is the one rejected offer that is a "
+                        + "finding, and it must reach the path a user reads (#454). Got: " + named);
+        assertTrue(named.get("BlockingQueueDetector").contains("discarded the result"),
+                "and say what it is: " + named.get("BlockingQueueDetector"));
     }
 
     @Test

@@ -448,6 +448,42 @@ class CorpusAgentPairLaneTest {
         });
     }
 
+    /**
+     * Fills a queue of two, then offers a third as a statement and never looks at the answer.
+     *
+     * <p>The offer is rejected and its {@code false} is popped: that is the instruction the
+     * weaver's lookahead reads, and the drop it reports is the finding (#454). Saturation fires
+     * here too, at two of two, so this row alone would not distinguish the two; its twin does.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_blockingQueue_rejectionDiscarded() {
+        counted(() -> {
+            BlockingQueue<String> full = new ArrayBlockingQueue<>(2);
+            full.put("first");
+            full.put("second");
+            full.offer("third");
+        });
+    }
+
+    /**
+     * The same puts and the same offer-as-a-statement, with a poll after each put.
+     *
+     * <p>The offer is accepted, so the popped boolean is {@code true}, and the peak never leaves
+     * one, so saturation cannot carry a finding either. This is the commonest shape offer takes
+     * in production, and a lookahead that reported every popped result would fire on it.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_blockingQueue_discardedOfferAccepted() {
+        counted(() -> {
+            BlockingQueue<String> roomy = new ArrayBlockingQueue<>(2);
+            roomy.put("first");
+            roomy.poll();
+            roomy.put("second");
+            roomy.poll();
+            roomy.offer("third");
+        });
+    }
+
     // --- Thread.sleep ------------------------------------------------------------------------
 
     /**
