@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.SynchronousQueue;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -475,5 +476,82 @@ public class BlockingQueueDetectorTest {
         assertTrue(rendered.contains("orders"),
             "The activity counts must still be reported — the fix is to stop calling them "
                 + "issues, not to stop recording them. Report was:\n" + rendered);
+    }
+
+    @Test
+    void testDiscardedRejectionIsAFindingOnItsOwn() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        // A SynchronousQueue has no capacity, so it never saturates, and offer() with no consumer
+        // waiting returns false: a rejected offer with nothing else in the report to hide behind.
+        BlockingQueue<String> handoff = new SynchronousQueue<>();
+        detector.observeQueue(handoff);
+
+        boolean added = handoff.offer("item");
+        detector.recordOffer(handoff, "handoff", added);
+        // What the agent emits in place of the POP after an offer nobody read (#454).
+        detector.recordOfferResultDiscarded(added);
+
+        BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+        assertFalse(added, "no consumer is waiting, so the handoff is rejected");
+        assertTrue(report.hasIssues(),
+                "a rejected offer whose result was discarded is an element dropped, which is a "
+                        + "finding on its own. Report: " + report);
+        assertTrue(report.saturation.isEmpty(), "and it is not saturation carrying it: " + report);
+        assertTrue(report.toString().contains(
+                        "offer() returned false 1 times and the caller discarded the result"),
+                "the finding names the dropped count; got " + report);
+    }
+
+    @Test
+    void testCheckedRejectionStaysACount() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        BlockingQueue<String> handoff = new SynchronousQueue<>();
+        detector.observeQueue(handoff);
+
+        detector.recordOffer(handoff, "handoff", handoff.offer("item"));
+        // No recordOfferResultDiscarded: the caller read the false. That is backpressure.
+
+        BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+        assertFalse(report.hasIssues(),
+                "the same rejected offer with its result read is correct code: " + report);
+        assertFalse(report.silentFailures.isEmpty(), "it is still counted, as context");
+        assertTrue(report.droppedElements.isEmpty(), "but nothing was dropped");
+    }
+
+    @Test
+    void testDiscardedSuccessIsNotAFinding() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        BlockingQueue<String> roomy = new ArrayBlockingQueue<>(10);
+        detector.registerQueue(roomy, "roomy", 10);
+
+        detector.recordOffer(roomy, "roomy", roomy.offer("item"));
+        detector.recordOfferResultDiscarded(true);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "offering into a queue with room and not looking is the commonest shape in "
+                        + "production and drops nothing");
+    }
+
+    @Test
+    void testDiscardWithoutAPrecedingOfferRecordsNothing() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        detector.recordOfferResultDiscarded(false);
+        assertFalse(detector.analyze().hasIssues(),
+                "nothing was offered on this thread, so there is nothing to attribute it to");
+    }
+
+    @Test
+    void testADiscardConsumesTheOfferItFollows() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        BlockingQueue<String> handoff = new SynchronousQueue<>();
+        detector.observeQueue(handoff);
+
+        detector.recordOffer(handoff, "handoff", handoff.offer("item"));
+        detector.recordOfferResultDiscarded(false);
+        detector.recordOfferResultDiscarded(false);
+
+        assertTrue(detector.analyze().toString().contains("returned false 1 times and the caller"),
+                "the second discard has no offer left to attach to: one offer, one drop. Got "
+                        + detector.analyze());
     }
 }

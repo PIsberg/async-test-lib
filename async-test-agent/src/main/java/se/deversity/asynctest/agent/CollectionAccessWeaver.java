@@ -31,10 +31,15 @@ import net.bytebuddy.description.field.FieldList;
 import net.bytebuddy.description.method.MethodList;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.implementation.Implementation;
+import net.bytebuddy.jar.asm.AnnotationVisitor;
+import net.bytebuddy.jar.asm.Attribute;
 import net.bytebuddy.jar.asm.ClassVisitor;
+import net.bytebuddy.jar.asm.Handle;
+import net.bytebuddy.jar.asm.Label;
 import net.bytebuddy.jar.asm.MethodVisitor;
 import net.bytebuddy.jar.asm.Opcodes;
 import net.bytebuddy.jar.asm.Type;
+import net.bytebuddy.jar.asm.TypePath;
 import net.bytebuddy.pool.TypePool;
 
 import se.deversity.vibetags.annotations.AIContract;
@@ -84,7 +89,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.9.8
  */
-@AIContract(reason = "The hook class name and the method names here are the other half of AgentCollectionHooks and AgentLockHooks: they are matched by erased signature at weave time, so renaming a hook or changing a parameter type breaks weaving with a NoSuchMethodError inside user code rather than at compile time. Each substitution must consume exactly the stack its original invocation consumed - stack-shape-neutral and member-free is what keeps retransformation safe under disableClassFormatChanges(). The visitor must never touch invokedynamic: parsing its constants is what made every Java record fail to instrument when this went through MemberSubstitution. Collection weaving is opt-in (collections=true) because it instruments every listed call in every matched class.")
+@AIContract(reason = "The hook class name and the method names here are the other half of AgentCollectionHooks and AgentLockHooks: they are matched by erased signature at weave time, so renaming a hook or changing a parameter type breaks weaving with a NoSuchMethodError inside user code rather than at compile time. Each substitution must consume exactly the stack its original invocation consumed - stack-shape-neutral and member-free is what keeps retransformation safe under disableClassFormatChanges(). The visitor must never touch invokedynamic: parsing its constants is what made every Java record fail to instrument when this went through MemberSubstitution. Collection weaving is opt-in (collections=true) because it instruments every listed call in every matched class. The one-instruction lookahead behind whenResultDiscarded is a flag meaning the instruction just emitted was a substituted call whose result may be discarded: visitInsn(POP) is its only consumer and every other visit method must clear it, because a stale flag would turn an unrelated POP into a call whose parameter does not match the value on the stack, which is a VerifyError in the user's class at load time. SubstitutingVisitorClearsLookaheadEverywhereTest enumerates MethodVisitor to keep that override list complete.")
 final class CollectionAccessWeaver {
 
     /**
@@ -129,12 +134,13 @@ final class CollectionAccessWeaver {
                          @org.jspecify.annotations.Nullable Class<?> returning,
                          boolean isStatic,
                          @org.jspecify.annotations.Nullable String synchronizedHook,
+                         @org.jspecify.annotations.Nullable String resultDiscardedHook,
                          Class<?>... parameters) {
 
         Entry(Class<?> declaredBy, String method, String hook,
               @org.jspecify.annotations.Nullable Class<?> returning, boolean isStatic,
               Class<?>... parameters) {
-            this(declaredBy, method, hook, returning, isStatic, null, parameters);
+            this(declaredBy, method, hook, returning, isStatic, null, null, parameters);
         }
 
         /** An entry matched by name and arguments alone, whatever the call returns. */
@@ -167,7 +173,25 @@ final class CollectionAccessWeaver {
          * at the call site: {@code this} for an instance method, the class for a static one.
          */
         Entry whenSynchronized(String hook) {
-            return new Entry(declaredBy, method, this.hook, returning, isStatic, hook, parameters);
+            return new Entry(declaredBy, method, this.hook, returning, isStatic, hook,
+                    resultDiscardedHook, parameters);
+        }
+
+        /**
+         * The hook to hand the result to when the call site discards it.
+         *
+         * <p>Only meaningful where a discarded return value is itself the defect, which today is
+         * {@code BlockingQueue.offer}: a {@code false} nobody read is an element dropped on the
+         * floor, where a {@code false} the caller branched on is backpressure working. The
+         * bytecode tells them apart - a discarded result is a {@code POP} immediately after the
+         * invocation, a checked one is {@code IFNE}, {@code ISTORE} or {@code IRETURN} - so the
+         * weaver replaces that {@code POP}, and only that {@code POP}, with a call to this hook.
+         * It takes the popped value and returns nothing, which makes it stack-identical to the
+         * instruction it replaces and keeps it inside the no-frames constraint (#454).
+         */
+        Entry whenResultDiscarded(String hook) {
+            return new Entry(declaredBy, method, this.hook, returning, isStatic, synchronizedHook,
+                    hook, parameters);
         }
     }
 
@@ -363,12 +387,16 @@ final class CollectionAccessWeaver {
             Entry.call(CountDownLatch.class, "countDown", "countDown"),
             Entry.call(CountDownLatch.class, "await", "await"),
             Entry.call(CountDownLatch.class, "await", "await", long.class, TimeUnit.class),
-            Entry.call(BlockingQueue.class, "offer", "offer", Object.class),
+            // The boolean a caller discards is the finding (#454): the POP after either offer
+            // becomes a call to offerResultDiscarded, and a branch, store or return is left alone.
+            Entry.call(BlockingQueue.class, "offer", "offer", Object.class)
+                    .whenResultDiscarded("offerResultDiscarded"),
             Entry.call(BlockingQueue.class, "poll", "poll"),
             Entry.call(BlockingQueue.class, "put", "put", Object.class),
             // The timed forms are what production code reaches for, and neither was woven (#434).
             Entry.call(BlockingQueue.class, "offer", "offer",
-                    Object.class, long.class, TimeUnit.class),
+                    Object.class, long.class, TimeUnit.class)
+                    .whenResultDiscarded("offerResultDiscarded"),
             Entry.call(BlockingQueue.class, "poll", "poll", long.class, TimeUnit.class));
 
     /**
@@ -418,11 +446,18 @@ final class CollectionAccessWeaver {
                           TypeDescription receiverType, String hookOwnerInternalName,
                           String hookMethodName, String hookDescriptor, boolean isStatic,
                           @org.jspecify.annotations.Nullable String synchronizedHookName,
-                          @org.jspecify.annotations.Nullable String synchronizedHookDescriptor) {
+                          @org.jspecify.annotations.Nullable String synchronizedHookDescriptor,
+                          @org.jspecify.annotations.Nullable String discardHookName,
+                          @org.jspecify.annotations.Nullable String discardHookDescriptor) {
 
         /** {@return whether this target has a variant for use inside a synchronized method} */
         boolean hasSynchronizedVariant() {
             return synchronizedHookName != null;
+        }
+
+        /** {@return whether this target has a hook for a result the call site discards} */
+        boolean hasDiscardVariant() {
+            return discardHookName != null;
         }
     }
 
@@ -451,7 +486,9 @@ final class CollectionAccessWeaver {
                     hookType.getDescriptor(),
                     entry.isStatic(),
                     entry.synchronizedHook(),
-                    synchronizedDescriptorFor(hooks, entry)));
+                    synchronizedDescriptorFor(hooks, entry),
+                    entry.resultDiscardedHook(),
+                    discardDescriptorFor(hooks, entry, hook)));
         }
         return targets;
     }
@@ -483,6 +520,50 @@ final class CollectionAccessWeaver {
                     "no synchronized-method hook " + hooks.getName() + "." + hookName
                             + " for " + entry.declaredBy().getName() + "." + entry.method()
                             + "; agent and library versions disagree", e);
+        }
+    }
+
+    /**
+     * {@return the descriptor of the entry's discarded-result hook, or {@code null}}
+     *
+     * <p>The hook takes exactly the value the ordinary hook leaves on the stack and returns
+     * nothing, so it consumes what the {@code POP} it replaces would have consumed. Checked here
+     * rather than trusted, for the reason the other two resolutions are: a missing or mis-shaped
+     * hook is a version skew between the agent and the library, and it has to fail while the
+     * table is built rather than emit a call to a method that is not there or a class that will
+     * not verify.
+     *
+     * @param hooks the hooks class the table resolves against
+     * @param entry the entry, whose {@code resultDiscardedHook} may be unset
+     * @param hook  the entry's ordinary hook, whose return type is what gets discarded
+     */
+    private static @org.jspecify.annotations.Nullable String discardDescriptorFor(
+            Class<?> hooks, Entry entry, Method hook) {
+        String hookName = entry.resultDiscardedHook();
+        if (hookName == null) {
+            return null;
+        }
+        Class<?> discarded = hook.getReturnType();
+        if (discarded == void.class || discarded == long.class || discarded == double.class) {
+            // A void call leaves nothing to pop, and a long or double is popped by POP2. Either
+            // would need a different instruction than the one this lookahead watches for.
+            throw new IllegalStateException(
+                    "whenResultDiscarded on " + entry.declaredBy().getName() + "." + entry.method()
+                            + " needs a category-1 result, not " + discarded.getName());
+        }
+        try {
+            Method discard = hooks.getMethod(hookName, discarded);
+            if (discard.getReturnType() != void.class) {
+                throw new IllegalStateException(
+                        "discarded-result hook " + hooks.getName() + "." + hookName
+                                + " must return void: it stands in for a POP");
+            }
+            return Type.getType(discard).getDescriptor();
+        } catch (NoSuchMethodException e) {
+            throw new IllegalStateException(
+                    "no discarded-result hook " + hooks.getName() + "." + hookName + "("
+                            + discarded.getName() + ") for " + entry.declaredBy().getName() + "."
+                            + entry.method() + "; agent and library versions disagree", e);
         }
     }
 
@@ -662,6 +743,22 @@ final class CollectionAccessWeaver {
         /** The class being woven, for loading its {@code Class} as a static method's monitor. */
         private final String owningClassInternalName;
 
+        /**
+         * The target whose substituted call was the instruction just emitted, when that target
+         * has a discarded-result hook; {@code null} after anything else.
+         *
+         * <p>A one-instruction lookahead written as a one-instruction memory. Its only consumer
+         * is {@link #visitInsn}: a {@code POP} arriving while it is set is the caller discarding
+         * the result, and is replaced by the hook. Every other visit method clears it, including
+         * the ones that emit no instruction, because a label or a frame between the call and a
+         * {@code POP} means the {@code POP} is reachable another way and may not be consuming
+         * this call's result at all. A stale value here would rewrite an unrelated {@code POP}
+         * into a call whose parameter does not match what is on the stack, which is a
+         * {@code VerifyError} in somebody else's class at load time - so the override list is
+         * gated by {@code SubstitutingVisitorClearsLookaheadEverywhereTest}.
+         */
+        private @org.jspecify.annotations.Nullable Target justSubstituted;
+
         SubstitutingMethodVisitor(MethodVisitor delegate, List<Target> targets,
                                   TypePool typePool, Map<String, Boolean> assignable,
                                   int access, String owningClassInternalName) {
@@ -677,6 +774,7 @@ final class CollectionAccessWeaver {
         @Override
         public void visitMethodInsn(int opcode, String owner, String name, String descriptor,
                                     boolean isInterface) {
+            justSubstituted = null;
             // Virtual and interface invocations only. A super.get() call is INVOKESPECIAL on
             // purpose: replacing it with a static that calls receiver.get() would re-dispatch
             // virtually, land back in the overriding subclass, and recurse until the stack ran
@@ -692,6 +790,7 @@ final class CollectionAccessWeaver {
                         super.visitMethodInsn(Opcodes.INVOKESTATIC,
                                 target.hookOwnerInternalName(), target.hookMethodName(),
                                 target.hookDescriptor(), false);
+                        justSubstituted = target.hasDiscardVariant() ? target : null;
                         return;
                     }
                 }
@@ -736,6 +835,201 @@ final class CollectionAccessWeaver {
                 }
             }
             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+        }
+
+        @Override
+        public void visitInsn(int opcode) {
+            Target discarded = justSubstituted;
+            justSubstituted = null;
+            if (opcode == Opcodes.POP && discarded != null) {
+                // The instruction after a substituted offer is a POP exactly when the caller
+                // discarded the boolean, which is the defect itself (#454). The hook takes the one
+                // category-1 value the POP would have taken and returns nothing, so the frame
+                // after it is the frame after the POP: no branch, no handler, no new frames.
+                super.visitMethodInsn(Opcodes.INVOKESTATIC, discarded.hookOwnerInternalName(),
+                        discarded.discardHookName(), discarded.discardHookDescriptor(), false);
+                return;
+            }
+            super.visitInsn(opcode);
+        }
+
+        // --- Everything below clears the lookahead and delegates. The list is every visit method
+        //     MethodVisitor declares, minus the deprecated four-argument visitMethodInsn (which
+        //     ASM routes through the five-argument one above) - and a test enumerates the class
+        //     to keep it that way, because a method missing here is the stale-flag VerifyError.
+
+        @Override
+        public void visitParameter(String name, int access) {
+            justSubstituted = null;
+            super.visitParameter(name, access);
+        }
+
+        @Override
+        public AnnotationVisitor visitAnnotationDefault() {
+            justSubstituted = null;
+            return super.visitAnnotationDefault();
+        }
+
+        @Override
+        public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
+            justSubstituted = null;
+            return super.visitAnnotation(descriptor, visible);
+        }
+
+        @Override
+        public AnnotationVisitor visitTypeAnnotation(int typeRef, TypePath typePath, String descriptor, boolean visible) {
+            justSubstituted = null;
+            return super.visitTypeAnnotation(typeRef, typePath, descriptor, visible);
+        }
+
+        @Override
+        public void visitAnnotableParameterCount(int parameterCount, boolean visible) {
+            justSubstituted = null;
+            super.visitAnnotableParameterCount(parameterCount, visible);
+        }
+
+        @Override
+        public AnnotationVisitor visitParameterAnnotation(int parameter, String descriptor, boolean visible) {
+            justSubstituted = null;
+            return super.visitParameterAnnotation(parameter, descriptor, visible);
+        }
+
+        @Override
+        public void visitAttribute(Attribute attribute) {
+            justSubstituted = null;
+            super.visitAttribute(attribute);
+        }
+
+        @Override
+        public void visitCode() {
+            justSubstituted = null;
+            super.visitCode();
+        }
+
+        @Override
+        public void visitFrame(int type, int numLocal, Object[] local, int numStack, Object[] stack) {
+            justSubstituted = null;
+            super.visitFrame(type, numLocal, local, numStack, stack);
+        }
+
+        @Override
+        public void visitIntInsn(int opcode, int operand) {
+            justSubstituted = null;
+            super.visitIntInsn(opcode, operand);
+        }
+
+        @Override
+        public void visitVarInsn(int opcode, int varIndex) {
+            justSubstituted = null;
+            super.visitVarInsn(opcode, varIndex);
+        }
+
+        @Override
+        public void visitTypeInsn(int opcode, String type) {
+            justSubstituted = null;
+            super.visitTypeInsn(opcode, type);
+        }
+
+        @Override
+        public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
+            justSubstituted = null;
+            super.visitFieldInsn(opcode, owner, name, descriptor);
+        }
+
+        @Override
+        public void visitInvokeDynamicInsn(String name, String descriptor, Handle bootstrapMethodHandle, Object... bootstrapMethodArguments) {
+            justSubstituted = null;
+            super.visitInvokeDynamicInsn(name, descriptor, bootstrapMethodHandle, bootstrapMethodArguments);
+        }
+
+        @Override
+        public void visitJumpInsn(int opcode, Label label) {
+            justSubstituted = null;
+            super.visitJumpInsn(opcode, label);
+        }
+
+        @Override
+        public void visitLabel(Label label) {
+            justSubstituted = null;
+            super.visitLabel(label);
+        }
+
+        @Override
+        public void visitLdcInsn(Object value) {
+            justSubstituted = null;
+            super.visitLdcInsn(value);
+        }
+
+        @Override
+        public void visitIincInsn(int varIndex, int increment) {
+            justSubstituted = null;
+            super.visitIincInsn(varIndex, increment);
+        }
+
+        @Override
+        public void visitTableSwitchInsn(int min, int max, Label dflt, Label... labels) {
+            justSubstituted = null;
+            super.visitTableSwitchInsn(min, max, dflt, labels);
+        }
+
+        @Override
+        public void visitLookupSwitchInsn(Label dflt, int[] keys, Label[] labels) {
+            justSubstituted = null;
+            super.visitLookupSwitchInsn(dflt, keys, labels);
+        }
+
+        @Override
+        public void visitMultiANewArrayInsn(String descriptor, int numDimensions) {
+            justSubstituted = null;
+            super.visitMultiANewArrayInsn(descriptor, numDimensions);
+        }
+
+        @Override
+        public AnnotationVisitor visitInsnAnnotation(int typeRef, TypePath typePath, String descriptor, boolean visible) {
+            justSubstituted = null;
+            return super.visitInsnAnnotation(typeRef, typePath, descriptor, visible);
+        }
+
+        @Override
+        public void visitTryCatchBlock(Label start, Label end, Label handler, String type) {
+            justSubstituted = null;
+            super.visitTryCatchBlock(start, end, handler, type);
+        }
+
+        @Override
+        public AnnotationVisitor visitTryCatchAnnotation(int typeRef, TypePath typePath, String descriptor, boolean visible) {
+            justSubstituted = null;
+            return super.visitTryCatchAnnotation(typeRef, typePath, descriptor, visible);
+        }
+
+        @Override
+        public void visitLocalVariable(String name, String descriptor, String signature, Label start, Label end, int index) {
+            justSubstituted = null;
+            super.visitLocalVariable(name, descriptor, signature, start, end, index);
+        }
+
+        @Override
+        public AnnotationVisitor visitLocalVariableAnnotation(int typeRef, TypePath typePath, Label[] start, Label[] end, int[] index, String descriptor, boolean visible) {
+            justSubstituted = null;
+            return super.visitLocalVariableAnnotation(typeRef, typePath, start, end, index, descriptor, visible);
+        }
+
+        @Override
+        public void visitLineNumber(int line, Label start) {
+            justSubstituted = null;
+            super.visitLineNumber(line, start);
+        }
+
+        @Override
+        public void visitMaxs(int maxStack, int maxLocals) {
+            justSubstituted = null;
+            super.visitMaxs(maxStack, maxLocals);
+        }
+
+        @Override
+        public void visitEnd() {
+            justSubstituted = null;
+            super.visitEnd();
         }
 
         /**

@@ -13,7 +13,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Detects BlockingQueue misuse patterns in concurrent code.
  * 
  * Common BlockingQueue issues detected:
- * - Silent failures: offer() returns false but return value ignored, poll() returns null unchecked
+ * - Dropped elements: offer() returned false and the caller discarded the result. A rejected
+ *   offer the caller checked is backpressure and is only counted; one the caller popped is a finding
  * - Queue saturation: queue fills up faster than consumers can process
  * - Unbounded queue growth: no capacity limits leading to memory issues
  * - Producer/consumer imbalance: producers outpacing consumers or vice versa
@@ -55,6 +56,9 @@ public class BlockingQueueDetector {
         final AtomicInteger pollCount = new AtomicInteger(0);
         final AtomicInteger offerSuccessCount = new AtomicInteger(0);
         final AtomicInteger offerFailureCount = new AtomicInteger(0);
+        // The subset of offerFailureCount whose boolean the caller never read. The agent tells
+        // the two apart from the bytecode (#454); a manual recorder says so explicitly.
+        final AtomicInteger discardedRejectionCount = new AtomicInteger(0);
         final AtomicInteger pollSuccessCount = new AtomicInteger(0);
         final AtomicInteger pollFailureCount = new AtomicInteger(0);
         final AtomicInteger putCount = new AtomicInteger(0);
@@ -78,6 +82,18 @@ public class BlockingQueueDetector {
 
     private final Map<Integer, QueueState> queues = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
+
+    /**
+     * The queue state this thread most recently recorded an offer against, so that a following
+     * {@link #recordOfferResultDiscarded} can be attributed to it.
+     *
+     * <p>Per thread because the correlation is per thread: the agent emits the discarded call in
+     * place of the {@code POP} that follows the offer, on the thread that made it, with nothing
+     * in between. Overwritten by every offer, so a result that was checked leaves the previous
+     * state in the slot until the next offer replaces it; nothing reads the slot except the
+     * discarded call, which clears it.
+     */
+    private final ThreadLocal<QueueState> lastOffer = new ThreadLocal<>();
 
     /**
      * Register a BlockingQueue for monitoring.
@@ -151,6 +167,7 @@ public class BlockingQueueDetector {
             return;
         }
         QueueState state = queues.get(System.identityHashCode(queue));
+        lastOffer.set(state);
         if (state != null) {
             state.offerCount.incrementAndGet();
             state.producerThreads.add(Thread.currentThread().threadId());
@@ -160,6 +177,35 @@ public class BlockingQueueDetector {
                 state.offerFailureCount.incrementAndGet();
             }
             updateSizeState(state);
+        }
+    }
+
+    /**
+     * Records that the caller discarded the result of the offer this thread recorded last.
+     *
+     * <p>Called by the agent immediately after {@link #recordOffer}: the weaver substitutes the
+     * call for the {@code POP} that follows an {@code offer} whose boolean nobody read, so the two
+     * are adjacent on one thread by construction. A manual recorder mirrors that sequence,
+     * {@code recordOffer(q, name, added)} then {@code recordOfferResultDiscarded(added)}, and a
+     * call with no offer recorded on this thread records nothing.
+     *
+     * <p>This is the fact {@link #recordOffer} cannot carry. A {@code false} the caller inspected
+     * is backpressure working and stays a count; a {@code false} the caller popped is an element
+     * dropped with nothing in the program knowing, which is the one rejected offer this detector
+     * treats as a finding (#454). A discarded {@code true} is the commonest shape in production,
+     * offering into a queue with room and not caring, and adds nothing.
+     *
+     * @param success what the offer returned
+     * @since 1.11.1
+     */
+    public void recordOfferResultDiscarded(boolean success) {
+        if (!enabled) {
+            return;
+        }
+        QueueState state = lastOffer.get();
+        lastOffer.set(null);
+        if (state != null && !success) {
+            state.discardedRejectionCount.incrementAndGet();
         }
     }
 
@@ -252,6 +298,16 @@ public class BlockingQueueDetector {
                     state.name, state.offerFailureCount.get()));
             }
 
+            // A rejected offer whose boolean the caller never read is the other thing entirely:
+            // the element is gone and nothing in the program knows. This is the defect the count
+            // above only hinted at, and the one rejected offer that is a finding (#454).
+            if (state.discardedRejectionCount.get() > 0) {
+                report.droppedElements.add(String.format(
+                    "%s: offer() returned false %d times and the caller discarded the result "
+                        + "(those elements were dropped and nothing in the program knows)",
+                    state.name, state.discardedRejectionCount.get()));
+            }
+
             // Likewise a null poll(): the canonical correct drain loop
             //     while ((x = q.poll()) != null) { ... }
             // ends with exactly one null per drain. Calling that "signal loss" flagged the
@@ -289,8 +345,9 @@ public class BlockingQueueDetector {
 
             // Track queue activity
             report.queueActivity.put(state.name, String.format(
-                "offers: %d (success: %d, failed: %d), polls: %d (success: %d, empty: %d), puts: %d, takes: %d, max size: %d",
+                "offers: %d (success: %d, failed: %d, failed and discarded: %d), polls: %d (success: %d, empty: %d), puts: %d, takes: %d, max size: %d",
                 state.offerCount.get(), state.offerSuccessCount.get(), state.offerFailureCount.get(),
+                state.discardedRejectionCount.get(),
                 state.pollCount.get(), state.pollSuccessCount.get(), state.pollFailureCount.get(),
                 state.putCount.get(), state.takeCount.get(), state.maxObservedSize.get()));
         }
@@ -303,6 +360,7 @@ public class BlockingQueueDetector {
      */
     public static class BlockingQueueReport {
         private boolean enabled = true;
+        final java.util.List<String> droppedElements = new java.util.ArrayList<>();
         final java.util.List<String> silentFailures = new java.util.ArrayList<>();
         final java.util.List<String> emptyPolls = new java.util.ArrayList<>();
         final java.util.List<String> saturation = new java.util.ArrayList<>();
@@ -326,18 +384,19 @@ public class BlockingQueueDetector {
          * three arrive as context beneath a saturation finding and never on their own.
          * {@code BlockingQueueReportReachabilityTest} pins both halves.
          *
-         * <p>Widening the gate would need a fact this detector does not have. "The caller
-         * discarded the boolean" is the real defect behind a rejected {@code offer}, and
-         * {@code recordOffer} is told only what the call returned, not whether anyone looked. The
-         * bytecode does distinguish them - a discarded result compiles to a {@code POP} after the
-         * invocation, where a checked one compiles to {@code IFNE}, {@code ISTORE} or
-         * {@code IRETURN} - so the weaver could answer it with one instruction of lookahead. That
-         * is #454, and it is a change to the substitution path rather than to this class.
+         * <p>The one rejected offer that does gate is the one whose boolean the caller never read.
+         * "The caller discarded the result" is the real defect behind a rejected {@code offer},
+         * and {@code recordOffer} is told only what the call returned, not whether anyone looked.
+         * The bytecode does distinguish them - a discarded result compiles to a {@code POP} after
+         * the invocation, where a checked one compiles to {@code IFNE}, {@code ISTORE} or
+         * {@code IRETURN} - and the weaver answers it with one instruction of lookahead, calling
+         * {@link BlockingQueueDetector#recordOfferResultDiscarded} in place of that {@code POP}
+         * (#454). A dropped element is a finding on its own, saturation or not.
          *
          * @return {@code true} when this detector recorded something worth acting on
          */
         public boolean hasIssues() {
-            return !saturation.isEmpty();
+            return !saturation.isEmpty() || !droppedElements.isEmpty();
         }
 
         @Override
@@ -348,6 +407,13 @@ public class BlockingQueueDetector {
 
             StringBuilder sb = new StringBuilder();
             sb.append("BLOCKING QUEUE ISSUES DETECTED:\n");
+
+            if (!droppedElements.isEmpty()) {
+                sb.append("  Dropped Elements (offer returned false, result discarded):\n");
+                for (String issue : droppedElements) {
+                    sb.append("    - ").append(issue).append("\n");
+                }
+            }
 
             if (!silentFailures.isEmpty()) {
                 sb.append("  Silent Failures (offer returned false):\n");
@@ -389,7 +455,7 @@ public class BlockingQueueDetector {
             }
 
             sb.append("""
-  Why: offer() returns false when a bounded queue is full. That is the API working, not a defect — but the rejected item has to go somewhere. Check the caller handles the false return rather than discarding it.
+  Why: offer() returns false when a bounded queue is full. That is the API working, not a defect, as long as the caller reads the false and the rejected item goes somewhere. A false the caller discarded is the defect: that element is gone and nothing in the program knows.
        An empty poll() returning null instead of blocking causes downstream logic to proceed with missing data, producing wrong results.
        Queue saturation stalls producers and can cascade into a deadlock if producers are also consumers.
   Fix: always check offer() return value; use put() to block on full queues; use take() or poll(timeout) instead of poll()\

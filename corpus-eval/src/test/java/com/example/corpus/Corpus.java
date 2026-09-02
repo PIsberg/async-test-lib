@@ -742,6 +742,27 @@ final class Corpus {
                             + "the offer, so the peak never leaves one. A queue that keeps up with "
                             + "its producer is the ordinary case and must not read as saturated"),
 
+            new RecordingSubject("agent_blockingQueue_rejectionDiscarded", JDK,
+                    "java.util.concurrent.ArrayBlockingQueue",
+                    DetectorType.BLOCKING_QUEUE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "two puts fill a queue of two, then an offer as a statement: the false it "
+                            + "returns is popped before anything can read it, and that element "
+                            + "is gone with nothing in the program knowing. The weaver reads the "
+                            + "POP after the call and hands the popped boolean to the detector "
+                            + "(#454); the finding is the drop, not the rejection"),
+
+            new RecordingSubject("agent_blockingQueue_discardedOfferAccepted", JDK,
+                    "java.util.concurrent.ArrayBlockingQueue",
+                    DetectorType.BLOCKING_QUEUE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same puts and the same offer-as-a-statement, with a poll after each put, "
+                            + "so the offer is accepted and the popped boolean is true. Offering "
+                            + "into a queue with room and not looking is the commonest shape in "
+                            + "production; a lookahead that reported every popped result would "
+                            + "fire here, and the peak never leaves one so saturation cannot "
+                            + "carry it either"),
+
             new RecordingSubject("agent_sleep_whileHoldingTheMonitor", JDK,
                     "java.lang.Thread",
                     DetectorType.SLEEP_IN_LOCK, Contract.THREAD_SAFE,
