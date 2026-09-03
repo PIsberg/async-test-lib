@@ -16,6 +16,7 @@ import java.util.concurrent.locks.StampedLock;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -247,5 +248,103 @@ class AgentLockHooksTest {
                 "the write view of a StampedLock is its owner, held exclusive");
         AgentLockHooks.unlock(stampedWriteView);
         assertEquals(0L, HeldLocks.lockFingerprint(true), "and released");
+    }
+
+    @Test
+    @DisplayName("the untimed StampedLock tries record what they took, and unlock frees the lock")
+    void untimedStampedTriesRecordTheirAcquisition() {
+        StampedLock stamped = new StampedLock();
+
+        long write = AgentLockHooks.tryWriteLock(stamped);
+        assertNotEquals(0L, write, "an untimed write try on a free lock succeeds");
+        long exclusive = HeldLocks.lockFingerprint(true);
+        assertNotEquals(0L, exclusive, "and the stamp it handed back must be recorded as a write");
+        AgentLockHooks.unlockWrite(stamped, write);
+
+        long read = AgentLockHooks.tryReadLock(stamped);
+        assertNotEquals(0L, read, "an untimed read try on a free lock succeeds");
+        assertEquals(exclusive, HeldLocks.lockFingerprint(false),
+                "the read stamp resolves to the same owner, held shared");
+        assertEquals(0L, HeldLocks.lockFingerprint(true), "a read stamp guards no write");
+
+        AgentLockHooks.unlock(stamped, read);
+        assertEquals(0L, HeldLocks.lockFingerprint(false), "the entry leaves the lockset");
+        long afterwards = stamped.tryWriteLock();
+        assertNotEquals(0L, afterwards,
+                "and the lock itself is free again: the hook must release the real lock, not only "
+                        + "its bookkeeping");
+        stamped.unlockWrite(afterwards);
+    }
+
+    @Test
+    @DisplayName("both tryLock hooks hand their result to the misuse detector, failures included")
+    void tryLockResultsReachTheMisuseDetector() throws InterruptedException {
+        ReentrantLock lock = new ReentrantLock();
+        CountDownLatch taken = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Thread holder = new Thread(() -> {
+            lock.lock();
+            taken.countDown();
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                lock.unlock();
+            }
+        }, "trylock-misuse-holder");
+        holder.start();
+        taken.await();
+        try {
+            assertTrue(misuseSeen(lock, () -> assertFalse(AgentLockHooks.tryLock(lock),
+                            "the lock is held elsewhere")),
+                    "the untimed try's false must reach the detector, or the unlock that follows "
+                            + "it reads as an ordinary release and the misuse goes unreported");
+            assertTrue(misuseSeen(lock, () -> assertFalse(timedTry(lock),
+                            "and the timed try times out on it")),
+                    "the timed overload must deliver its false the same way");
+        } finally {
+            release.countDown();
+            holder.join();
+        }
+
+        assertFalse(misuseSeen(lock, () -> assertTrue(AgentLockHooks.tryLock(lock),
+                        "the lock is free once the holder is gone")),
+                "a try that succeeded and was then released is not misuse; reporting it would "
+                        + "make the detector fire on the correct idiom");
+    }
+
+    /** {@code AgentLockHooks.tryLock(lock, ...)} with the checked exception out of the lambda. */
+    private static boolean timedTry(Lock lock) {
+        try {
+            return AgentLockHooks.tryLock(lock, 1, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * Runs {@code attempt} and then unlocks {@code lock} through the hook, both under a fresh
+     * context, and {@return whether the misuse detector reported anything}.
+     *
+     * <p>Unlocking a lock this thread never acquired throws, which is the misuse doing what the
+     * misuse does; the hook records before it delegates, so the record has already happened.
+     */
+    private static boolean misuseSeen(Lock lock, Runnable attempt) {
+        AsyncTestContext ctx =
+                new AsyncTestContext(AsyncTestConfig.builder().detectAll(true).build());
+        AsyncTestContext.install(ctx);
+        try {
+            attempt.run();
+            try {
+                AgentLockHooks.unlock(lock);
+            } catch (IllegalMonitorStateException unheld) { // NOPMD - the misuse throwing is the point
+                assertNotNull(unheld, "the throw is the misuse, and the record preceded it");
+            }
+            return AsyncTestContext.tryLockMisuseDetector().analyze().hasIssues();
+        } finally {
+            AsyncTestContext.uninstall();
+        }
     }
 }
