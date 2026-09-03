@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`CountDownLatchDetector` no longer reports a latch that timed out and later fell.** A
+  `CountDownLatch` only counts down, and once it is at zero every await returns at once, so it
+  cannot succeed and then start timing out again: an await that completed proves the latch reached
+  zero, which makes a timeout recorded earlier a wait that started too early rather than a
+  `countDown()` that never came. Reporting the latter accuses code that worked, and a slow start
+  under load is exactly when it happened.
+
+  `recordAwaitSuccess` is what clears it. Until now that method set a field nothing in the library
+  ever read, so calling it had no effect at all (#477) - which also meant the agent's
+  `AgentConcurrencyUtilHooks.await` had been recording successes into a void. The record now lives
+  against the latch rather than its registry entry, so it works on the agent-fed path, where
+  nothing calls `registerLatch`.
+
 ## [1.11.0] - 2026-08-30
 
 ### Added

@@ -35,10 +35,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * predicate is asked in both directions, because a detector that fired either way would pass the
  * positive half on its own.
  *
- * <p>Two mutants are deliberately left alive, and the reason is a defect rather than a gap:
- * {@code CountDownLatchDetector.recordAwaitSuccess} sets {@code LatchInfo.awaitSuccess}, which
- * nothing in this repository ever reads. Dropping either call to it changes no report, so no test
- * can see it. That is tracked separately rather than papered over with an assertion on internals.
+ * <p>Both {@code recordAwaitSuccess} call sites are asserted here since #477 gave that record an
+ * effect: a success clears a timeout already recorded against the same latch, because a
+ * {@code CountDownLatch} only counts down and never blocks again once it is at zero. Before that
+ * the call set a field nothing read, and neither mutant could be killed by any test.
  */
 class AgentConcurrencyUtilHooksEachAloneTest {
 
@@ -271,6 +271,44 @@ class AgentConcurrencyUtilHooksEachAloneTest {
         } finally {
             AsyncTestContext.uninstall();
         }
+    }
+
+    @Test
+    @DisplayName("a later success clears the timeout, through either await hook")
+    void aLaterSuccessClearsTheTimeout() throws Exception {
+        assertFalse(stillReportsATimeoutAfter(latch -> AgentConcurrencyUtilHooks.await(latch)),
+                "the untimed await must deliver its success: the latch reached zero, so the "
+                        + "timeout recorded before it was a wait that started too early (#477)");
+        assertFalse(stillReportsATimeoutAfter(
+                        latch -> AgentConcurrencyUtilHooks.await(latch, 1, TimeUnit.SECONDS)),
+                "and so must the timed await's success branch");
+    }
+
+    /**
+     * Times a wait out on a latch, then falls the latch and waits again through {@code second},
+     * and {@return whether the counting detector still reports the timeout}.
+     */
+    private static boolean stillReportsATimeoutAfter(LatchCase second) throws Exception {
+        CountDownLatch latch = new CountDownLatch(1);
+        AsyncTestContext ctx = underAFreshContext(() -> {
+            assertFalse(AgentConcurrencyUtilHooks.await(latch, 5, TimeUnit.MILLISECONDS),
+                    "nothing has counted the latch down yet, so the first wait expires");
+            latch.countDown();
+            second.run(latch);
+        });
+
+        AsyncTestContext.install(ctx);
+        try {
+            return AsyncTestContext.countDownLatchDetector().analyze().hasIssues();
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    /** One await overload, applied to a latch. */
+    @FunctionalInterface
+    private interface LatchCase {
+        void run(CountDownLatch latch) throws Exception;
     }
 
     // --- BlockingQueue ------------------------------------------------------------------------

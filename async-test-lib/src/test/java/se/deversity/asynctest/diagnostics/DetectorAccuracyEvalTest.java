@@ -1990,4 +1990,57 @@ class DetectorAccuracyEvalTest {
                 "every set was matched by a remove() in a finally block; there is no leak to "
                         + "report. Report:\n" + monitor.analyzeThreadLocalLeaks());
     }
+
+    @Test
+    @DisplayName("countdown latch: a worker that never signals makes the waiter time out (true positive)")
+    void countDownLatchFiresWhenAWorkerNeverSignals() throws InterruptedException {
+        CountDownLatchDetector detector = new CountDownLatchDetector();
+        CountDownLatch startup = new CountDownLatch(2);
+        detector.registerLatch(startup, "startup", 2);
+
+        Runnable signals = () -> {
+            detector.recordCountDown(startup);
+            startup.countDown();
+        };
+        Runnable forgets = () -> { }; // the bug: this worker never reports itself ready
+        onTwoThreads(signals, forgets);
+
+        boolean fell = startup.await(20, java.util.concurrent.TimeUnit.MILLISECONDS);
+        assertFalse(fell, "one countDown of two arrived, so the latch cannot reach zero");
+        detector.recordTimeout(startup);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "a latch awaited to expiry and never counted down to zero is the coordination "
+                        + "failure this detector exists to report");
+    }
+
+    @Test
+    @DisplayName("countdown latch: the twin that signals late stays silent (true negative)")
+    void countDownLatchStaysSilentWhenTheLatchOnlyFellLate() throws InterruptedException {
+        CountDownLatchDetector detector = new CountDownLatchDetector();
+        CountDownLatch startup = new CountDownLatch(2);
+        detector.registerLatch(startup, "startup", 2);
+
+        // The waiter gives up before the workers have run. Nothing is wrong here: the wait was
+        // simply shorter than the start-up it was waiting for.
+        assertFalse(startup.await(1, java.util.concurrent.TimeUnit.MILLISECONDS),
+                "neither worker has run yet");
+        detector.recordTimeout(startup);
+
+        Runnable signals = () -> {
+            detector.recordCountDown(startup);
+            startup.countDown();
+        };
+        onTwoThreads(signals, signals);
+
+        assertTrue(startup.await(1, java.util.concurrent.TimeUnit.SECONDS),
+                "both workers signalled, so the second wait completes");
+        detector.recordAwaitSuccess(startup);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "the latch reached zero, which a later await proved. A CountDownLatch only "
+                        + "counts down and never blocks again once it is at zero, so the earlier "
+                        + "timeout was a wait that started too early rather than a countDown() "
+                        + "that never came (#477). Report: " + detector.analyze());
+    }
 }
