@@ -19,6 +19,7 @@ public class CountDownLatchDetector {
 
     private final Map<CountDownLatch, LatchInfo> latchRegistry = new ConcurrentHashMap<>();
     private final Set<CountDownLatch> timedOutLatches = ConcurrentHashMap.newKeySet();
+    private final Set<CountDownLatch> succeededLatches = ConcurrentHashMap.newKeySet();
     private final Set<CountDownLatch> extraCountDownLatches = ConcurrentHashMap.newKeySet();
 
     /**
@@ -60,15 +61,23 @@ public class CountDownLatchDetector {
     }
 
     /**
-     * Record a successful await() call.
+     * Record an await() call that returned because the latch reached zero.
+     *
+     * <p>This is what clears a timeout already recorded against the same latch. A
+     * {@code CountDownLatch} only counts down, and once it is at zero every later await returns
+     * at once, so it cannot succeed and then start timing out again: a success proves the latch
+     * did reach zero, which makes an earlier timeout a wait that started too early rather than a
+     * {@code countDown()} that never came. Reporting the latter is an accusation against code
+     * that worked.
+     *
+     * <p>Recorded against the latch rather than against its registry entry, because the agent's
+     * {@code AgentConcurrencyUtilHooks} records timeouts and successes without ever calling
+     * {@link #registerLatch}, and that is where most of these records come from.
      *
      * @param latch the latch being recorded, tracked by identity
      */
     public void recordAwaitSuccess(CountDownLatch latch) {
-        LatchInfo info = latchRegistry.get(latch);
-        if (info != null) {
-            info.awaitSuccess = true;
-        }
+        succeededLatches.add(latch);
     }
 
     /**
@@ -77,9 +86,11 @@ public class CountDownLatchDetector {
      * @return the findings this detector collected during the run
      */
     public CountDownLatchReport analyze() {
+        Set<CountDownLatch> unresolvedTimeouts = new HashSet<>(timedOutLatches);
+        unresolvedTimeouts.removeAll(succeededLatches);
         return new CountDownLatchReport(
             latchRegistry,
-            timedOutLatches,
+            unresolvedTimeouts,
             extraCountDownLatches
         );
     }
@@ -178,7 +189,6 @@ public class CountDownLatchDetector {
         final String name;
         final int initialCount;
         int currentCount;
-        boolean awaitSuccess = false;
 
         LatchInfo(String name, int initialCount) {
             this.name = name;
