@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **CI stopped queueing behind its own fan-out.** Wall time for `Tests & Build` had grown
+  from a 23.4-minute median to 28.9 over three days while every job stayed the same speed
+  to the tenth of a minute - at one point 40 runs were queued behind 4 running jobs. Two
+  causes, both structural. The `Test Suite` matrix ran nine legs on every pull request, six
+  of them `continue-on-error` windows and macos jobs that could never fail a PR and that
+  `Build Maven Project` nonetheless waited for; those now run on pushes to `main`, on the
+  nightly schedule, and on demand via a new `workflow_dispatch`, which is how an
+  OS-sensitive branch still gets all nine before merging. And nine of the nineteen
+  workflows had no `concurrency` group, so a force-push left the previous run alive to
+  compete with its replacement; every workflow now has one, cancelling in progress for
+  pull requests only. `publish.yml` deliberately has none: cancelling a release mid-flight
+  is worse than queueing behind it. Nothing left the required set. (#484)
 - **The agent-fed hook shims are measured rather than assumed.** The six `Agent*Hooks` classes
   are called only from bytecode the agent rewrites, so PIT reported about 130 of their mutants
   as having no coverage and the roster was read as unmeasurable without an attached agent
