@@ -488,6 +488,17 @@ When a change is OS-sensitive, ask for the full matrix on the branch:
 `gh workflow run tests.yml --ref <branch>`. A dispatch is not a pull request, so it runs
 all nine legs.
 
+The other half of #484 was that nine of the nineteen workflows had no `concurrency:` group, so
+a force-push left the previous run alive to compete for runners with the one replacing it.
+`WorkflowConcurrencyTest` holds that closed from both directions a new workflow can open it:
+one check requires a top-level `concurrency:` block on every workflow triggered by a pull
+request, the other requires its group to vary per branch and to cancel what it supersedes. A
+group shared across branches serialises unrelated pull requests instead, which looks like a
+fix and is not. `javadoc.yml` is the one documented exemption: GitHub allows a single Pages
+deployment at a time, and a half-applied site is worse than a queued one. Neither check can be
+replaced by watching the pipeline, because queueing fails nothing - every check still goes
+green, just later.
+
 **Skipped is not passed.** Every lane that can lack credit (Inquisitor, Copilot, evals) says
 SKIPPED in its step summary when it does; a green job with a SKIPPED summary is a job that did not
 run, and the required-checks list only contains lanes that cannot skip. Since 2026-08-15 the
