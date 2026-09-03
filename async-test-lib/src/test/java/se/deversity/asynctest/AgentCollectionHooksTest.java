@@ -150,4 +150,49 @@ class AgentCollectionHooksTest {
         }
         return ctx.sharedCollectionDetector.analyze().hasIssues();
     }
+
+    @Test
+    @DisplayName("one writer and several readers through the hooks is reported; one reader is not")
+    void aWriterAndSeveralReadersAreReported() throws InterruptedException {
+        // The read path of record(): every case above writes, so a hook that dropped the read
+        // half would leave a reader's access invisible. The detector's rule is one writer with
+        // more than one reader in a round, which is the visibility shape; a single reader is
+        // deliberately below it, and pinning that boundary is what keeps this from passing on a
+        // detector that reports every collection two threads touched.
+        assertTrue(readersReport(2),
+                "a HashMap written by one thread and read by two others through the hooks is "
+                        + "the visibility finding, and the read half of record() is what delivers "
+                        + "the readers' accesses");
+        assertFalse(readersReport(1),
+                "one writer and one reader is below the detector's rule and must stay silent");
+    }
+
+    /** One writer, then {@code readerCount} readers, each on its own thread, through the hooks. */
+    private static boolean readersReport(int readerCount) throws InterruptedException {
+        AsyncTestConfig cfg = AsyncTestConfig.builder().detectSharedCollections(true).build();
+        AsyncTestContext ctx = new AsyncTestContext(cfg);
+        Map<Object, Object> map = new HashMap<>();
+        onItsOwnThread(ctx, () -> AgentCollectionHooks.mapPut(map, "k", "v"));
+        for (int i = 0; i < readerCount; i++) {
+            onItsOwnThread(ctx, () -> {
+                assertEquals("v", AgentCollectionHooks.mapGet(map, "k"), "the read delegates");
+                assertTrue(AgentCollectionHooks.mapContainsKey(map, "k"), "so does containsKey");
+            });
+        }
+        return ctx.sharedCollectionDetector.analyze().hasIssues();
+    }
+
+    /** Runs {@code body} on a fresh thread with {@code ctx} installed, and waits for it. */
+    private static void onItsOwnThread(AsyncTestContext ctx, Runnable body) throws InterruptedException {
+        Thread thread = new Thread(() -> {
+            AsyncTestContext.install(ctx);
+            try {
+                body.run();
+            } finally {
+                AsyncTestContext.uninstall();
+            }
+        });
+        thread.start();
+        thread.join();
+    }
 }
