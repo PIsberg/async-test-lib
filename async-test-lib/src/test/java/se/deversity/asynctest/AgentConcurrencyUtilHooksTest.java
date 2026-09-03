@@ -247,6 +247,10 @@ class AgentConcurrencyUtilHooksTest {
         assertEquals(0L, latch.getCount(), "countDown must have counted down");
         assertTrue(AgentConcurrencyUtilHooks.await(latch, 1, TimeUnit.SECONDS),
                 "the latch is at zero, so the timed await returns true");
+        // The untimed overload too: it looks up its detector after the await, and woven code runs
+        // where there is no context to find. A hook that dereferenced that null would throw
+        // inside somebody's production call site.
+        AgentConcurrencyUtilHooks.await(latch);
 
         BlockingQueue<Object> queue = new ArrayBlockingQueue<>(1);
         AgentConcurrencyUtilHooks.put(queue, "q");
