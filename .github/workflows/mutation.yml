@@ -56,8 +56,31 @@ jobs:
       # (a bare goal in the reactor resolves siblings from the repository). Scoped to
       # async-test-lib: it is the only module with a pitest configuration, and the only one
       # whose tests are a mutation-killing suite.
+      # DIAGNOSTIC BRANCH ONLY (#479). The run itself is unchanged - same command, same flags,
+      # no JVM tuning - because the question is what the runner looks like when it dies, and
+      # changing the run would change the answer. The sampler prints to this step's stdout
+      # rather than to a file: an uploaded artifact needs a post-step, and there is no post-step
+      # after the VM is killed. Every run to date has died mid-coverage with the runner shut
+      # down and 13 minutes of silence before it, so the last SAMPLE line in the log is the
+      # evidence this exists to capture.
       - name: Run mutation coverage (fails below the pom's mutationThreshold)
-        run: mvn -B -pl async-test-lib -am test-compile org.pitest:pitest-maven:mutationCoverage -Djacoco.skip=true
+        run: |
+          (
+            while true; do
+              used=$(free -m | sed -n '2p' | awk '{print $3}')
+              avail=$(free -m | sed -n '2p' | awk '{print $7}')
+              swap=$(free -m | sed -n '3p' | awk '{print $3}')
+              threads=$(ps -eLf | wc -l)
+              javas=$(pgrep -c java || true)
+              disk=$(df -m / | tail -1 | awk '{print $4}')
+              load=$(cut -d' ' -f1-3 /proc/loadavg)
+              echo "SAMPLE $(date -u +%H:%M:%S) used_mb=$used avail_mb=$avail swap_mb=$swap os_threads=$threads java_procs=$javas root_avail_mb=$disk load=$load"
+              sleep 15
+            done
+          ) &
+          sampler=$!
+          trap 'kill $sampler 2>/dev/null || true' EXIT
+          mvn -B -pl async-test-lib -am test-compile org.pitest:pitest-maven:mutationCoverage -Djacoco.skip=true
 
       - name: Upload PIT mutation report
         if: always()
