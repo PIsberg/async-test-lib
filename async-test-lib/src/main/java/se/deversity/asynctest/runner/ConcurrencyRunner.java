@@ -1139,9 +1139,26 @@ public class ConcurrencyRunner {
     }
 
     /**
-     * Names platform worker threads {@code async-test-worker-N}. A fresh factory (and
-     * counter) per {@link #execute} call keeps numbering stable within a run without any
-     * cross-run shared state.
+     * Names platform worker threads {@code async-test-worker-N} and makes them daemon. A fresh
+     * factory (and counter) per {@link #execute} call keeps numbering stable within a run without
+     * any cross-run shared state.
+     *
+     * <p><strong>Daemon is load-bearing.</strong> A worker blocked on a monitor cannot be
+     * interrupted out of it - not by {@code shutdownNow}, not by anything - so a test body that
+     * deadlocks leaves its workers alive for the life of the process. While these were the
+     * non-daemon threads {@code Executors.defaultThreadFactory()} produces, that deadlock did not
+     * merely fail one test: it held the whole JVM open, and this library must never be the reason
+     * a host cannot exit.
+     *
+     * <p>Surefire hid it, because {@code reuseForks=false} gives every class its own fork and
+     * kills it. PIT did not: it runs every class in one JVM and waits for that JVM to exit, so two
+     * deadlocked workers stopped a mutation run for three hours at zero CPU (#479). Virtual
+     * threads, which are the default, have always been daemon by construction - this makes the
+     * platform path agree with the path almost every run already takes.
+     *
+     * <p>Nothing is lost by it. The runner quiesces its own workers with a bounded grace and
+     * reports what is still stuck, so results are gathered before the test method returns; a
+     * daemon worker that outlives the JVM is by definition one that was never going to finish.
      */
     private static java.util.concurrent.ThreadFactory namedWorkerFactory() {
         java.util.concurrent.ThreadFactory defaults = Executors.defaultThreadFactory();
@@ -1149,6 +1166,7 @@ public class ConcurrencyRunner {
         return runnable -> {
             Thread thread = defaults.newThread(runnable);
             thread.setName(WORKER_THREAD_PREFIX + seq.getAndIncrement());
+            thread.setDaemon(true);
             return thread;
         };
     }
