@@ -388,6 +388,75 @@ class ConcurrencyRunnerTest {
         }
     }
 
+    // ---- execute(): a failed round quiesces cancelled workers before the after-hooks ----
+
+    /** Set by {@link StubbornWithAfterHookFixture}'s hook: had the worker exited when it ran? */
+    private static final java.util.concurrent.atomic.AtomicBoolean AFTER_HOOK_SAW_WORKER_EXITED =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
+    /**
+     * The stubborn body again, with an {@code @AfterEachInvocation} hook that records whether the
+     * worker had exited by the time the hook ran.
+     *
+     * <p>The runner has two quiesce points on a timed-out round: one in the round's own
+     * {@code finally}, before the after-hooks, and one in the {@code AssertionError} branch,
+     * before reporting. {@code execute_roundTimeout_quiescesCancelledWorkersBeforeReporting}
+     * observes at {@code onTimeout}, which comes after both, so deleting either one alone
+     * leaves the other to satisfy it, and PIT reported both surviving (#426). The after-hook is
+     * the one observation point that only the first quiesce protects.
+     */
+    static final class StubbornWithAfterHookFixture {
+        private void ignoresInterruptsBriefly() {
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(1000);
+            while (System.nanoTime() < deadline) {
+                try {
+                    Thread.sleep(5);
+                } catch (InterruptedException ignored) {
+                    // Deliberately swallowed: the worker must keep running after cancel(true).
+                }
+            }
+            STUBBORN_WORKER_EXITED.set(true);
+        }
+
+        @AfterEachInvocation
+        void afterEach() {
+            AFTER_HOOK_SAW_WORKER_EXITED.set(STUBBORN_WORKER_EXITED.get());
+        }
+    }
+
+    @Test
+    void execute_roundTimeout_quiescesCancelledWorkersBeforeAfterHooks() throws Exception {
+        String previousLicense = System.getProperty("license.mock.mode");
+        String previousMultiplier = System.getProperty("async-test.timeout.multiplier");
+        System.setProperty("license.mock.mode", "true");
+        System.setProperty("async-test.timeout.multiplier", "1");
+        STUBBORN_WORKER_EXITED.set(false);
+        AFTER_HOOK_SAW_WORKER_EXITED.set(false);
+        try {
+            // 100ms budget, ~1000ms unwind, default 2000ms grace: the hook can only see an exited
+            // worker if the runner waited for it. Without the quiesce the hook runs within
+            // milliseconds of the cancel, some 900ms before the worker is done.
+            AsyncTestConfig config = AsyncTestConfig.builder()
+                    .threads(1).invocations(1).useVirtualThreads(false)
+                    .timeoutMs(100).detectAll(false).detectDeadlocks(false)
+                    .build();
+            StubbornWithAfterHookFixture fixture = new StubbornWithAfterHookFixture();
+            Method method = StubbornWithAfterHookFixture.class.getDeclaredMethod("ignoresInterruptsBriefly");
+            assertThrows(AssertionError.class, () -> se.deversity.asynctest.runner.ConcurrencyRunner
+                    .execute(new FakeInvocationContext(fixture, method, List.of()), config));
+
+            assertTrue(AFTER_HOOK_SAW_WORKER_EXITED.get(),
+                    "the after-hook ran while the cancelled worker was still inside the test body. "
+                            + "A hook tearing down state a live worker is touching is the failure "
+                            + "the round's quiesce exists to prevent, and a hook that blocked on "
+                            + "worker-held state would hang the runner with nothing left to bound "
+                            + "it (#426)");
+        } finally {
+            restoreProperty("async-test.timeout.multiplier", previousMultiplier);
+            restoreProperty("license.mock.mode", previousLicense);
+        }
+    }
+
     // ---- Worker threads carry the harness name prefix ----
 
     /** Set by {@link NameCaptureFixture}; reset per test iteration. */

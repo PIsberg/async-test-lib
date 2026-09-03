@@ -521,7 +521,10 @@ public class ConcurrencyRunner {
             // contained by DetectorRegistry.ifIssue as a silently empty report — on
             // exactly the timeout runs where the diagnosis matters most. Quiesce first.
             // For an AssertionError from a completed round the workers have already
-            // finished and this is a fast no-op.
+            // finished and this is a fast no-op. Every path here has also passed the
+            // quiesce in the round's finally, so this call is redundant by construction:
+            // PIT reports its deletion surviving, and that is expected rather than a
+            // missing test (#426). It stays as the guard local to this branch.
             quiesceWorkers(executor, testMethod);
             if (isTimeoutLike(e)) {
                 throw timeoutError(effectiveTimeoutMs, e, phase1, phase2Analysis,
