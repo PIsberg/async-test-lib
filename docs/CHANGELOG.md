@@ -40,6 +40,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A deadlocked worker held the whole JVM open.** The runner cannot interrupt a worker
+  blocked on a monitor - nothing can - so a test body that deadlocks leaves its workers
+  alive for the life of the process. Those platform workers came from
+  `Executors.defaultThreadFactory()` and were therefore non-daemon, which turned a failing
+  test into a JVM that could not exit. They are daemon now, which is what virtual threads -
+  the default - have always been.
+
+  Surefire hid it completely: `reuseForks=false` gives every test class its own fork and
+  kills it. PIT does not, and that is where it surfaced - the weekly mutation job has never
+  once completed, because it runs every class in one JVM and then waits for that JVM to
+  exit. An instrumented run sat at zero CPU for three hours after its last output, using
+  2.3 GB of a 16 GB machine, and ended with the runner reporting orphaned java processes;
+  a thread dump of the reproduction showed nothing left but `DestroyJavaVM` and two BLOCKED
+  `async-test-worker-*` threads. The same trap was available to any consumer running an
+  `@AsyncTest` with `useVirtualThreads = false` outside a forking test runner. (#479,
+  `WorkerThreadsAreDaemonTest`)
+
 - **`CountDownLatchDetector` no longer reports a latch that timed out and later fell.** A
   `CountDownLatch` only counts down, and once it is at zero every await returns at once, so it
   cannot succeed and then start timing out again: an await that completed proves the latch reached
