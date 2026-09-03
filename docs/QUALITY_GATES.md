@@ -470,6 +470,35 @@ a property that held by habit into one that fails a build.
 | Copilot review | `copilot-review.yml` | PR opened | never; it requests a GitHub Copilot review, verifies the request was recorded, and reports SKIPPED otherwise (it did on PR #262: no review request was recorded, so Copilot code review is not active for this account yet). Advisory by design |
 | Instruction evals | `instruction-evals.yml` | PR touching the instruction files, dispatch | never; runs `evals/` on the Copilot CLI (`COPILOT_GITHUB_TOKEN` secret, the maintainer's Copilot Free quota) and prints the adherence table plus a `::warning::` per rule below its floor. Advisory by decision: each measured rule has an enforcing gate behind it, and those block. Skips loudly without the secret or on exhausted quota. First measured run 2026-08-15, locally: `evals/README.md` |
 
+## Which operating systems a change is tested on
+
+The `Test Suite` matrix is three JDKs on ubuntu for a pull request, and the same three JDKs
+on ubuntu, windows and macos for a push to `main` and for the nightly schedule.
+
+The windows and macos legs are `continue-on-error` and always have been, which means they
+could never fail a pull request: they were six jobs of about eighteen minutes that nobody
+could act on before merging, and `Build Maven Project` waited for all nine legs before it
+could start. Running them where their result is read instead - on `main`, within the hour,
+against a commit rather than a diff - took the median `Tests & Build` wall time from about
+29 minutes back down, with no job made faster and nothing dropped from the gate (#484).
+
+What this costs: an OS-specific break is now found after merge rather than before. That is
+the same exposure the `continue-on-error` flag already accepted, made explicit and cheaper.
+When a change is OS-sensitive, ask for the full matrix on the branch:
+`gh workflow run tests.yml --ref <branch>`. A dispatch is not a pull request, so it runs
+all nine legs.
+
+The other half of #484 was that nine of the nineteen workflows had no `concurrency:` group, so
+a force-push left the previous run alive to compete for runners with the one replacing it.
+`WorkflowConcurrencyTest` holds that closed from both directions a new workflow can open it:
+one check requires a top-level `concurrency:` block on every workflow triggered by a pull
+request, the other requires its group to vary per branch and to cancel what it supersedes. A
+group shared across branches serialises unrelated pull requests instead, which looks like a
+fix and is not. `javadoc.yml` is the one documented exemption: GitHub allows a single Pages
+deployment at a time, and a half-applied site is worse than a queued one. Neither check can be
+replaced by watching the pipeline, because queueing fails nothing - every check still goes
+green, just later.
+
 **Skipped is not passed.** Every lane that can lack credit (Inquisitor, Copilot, evals) says
 SKIPPED in its step summary when it does; a green job with a SKIPPED summary is a job that did not
 run, and the required-checks list only contains lanes that cannot skip. Since 2026-08-15 the

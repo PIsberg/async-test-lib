@@ -15,6 +15,14 @@ on:
     branches: ["main"]
 
 # Declare default permissions as read only.
+concurrency:
+  # One run per workflow per ref. cancel-in-progress only for pull requests: a superseded
+  # push has nothing to say, while a run on main or a schedule is the record of that commit
+  # and must finish. Without this a force-push left the previous run alive and both competed
+  # for the same runners (#484).
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions: read-all
 
 jobs:

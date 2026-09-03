@@ -14,6 +14,9 @@ on:
     branches: [ main, develop ]
   schedule:
     - cron: '0 6 * * *'
+  # So an OS-sensitive branch can still get all nine legs before it merges: a
+  # dispatch is not a pull request, and the matrix below keys on that (#484).
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -34,7 +37,17 @@ jobs:
       fail-fast: false
       matrix:
         java-version: [ '21', '25', '26' ]
-        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        # Three operating systems on a push or a schedule, ubuntu alone on a pull
+        # request. The windows and macos legs are continue-on-error above, which means
+        # they have never been able to fail a PR: they were six jobs of about 18
+        # minutes each that no one could act on before merging, and the build job below
+        # waited for all nine before it could start. They still run on every push to
+        # main and on the nightly schedule, which is where an OS-specific break is
+        # caught - within the hour, against a green main rather than a PR diff (#484).
+        os: >-
+          ${{ github.event_name == 'pull_request'
+              && fromJson('["ubuntu-latest"]')
+              || fromJson('["ubuntu-latest","windows-latest","macos-latest"]') }}
 
     # Slow/shared CI runners (e.g. 3-core macOS/windows-latest runners) can turn ~121
     # detectors' setup overhead in ConcurrencyRunner.execute into a meaningful fraction of a
