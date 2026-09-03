@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The agent-fed hook shims are measured rather than assumed.** The six `Agent*Hooks` classes
+  are called only from bytecode the agent rewrites, so PIT reported about 130 of their mutants
+  as having no coverage and the roster was read as unmeasurable without an attached agent
+  (#427). It was not: a hook is a static method that records and delegates, and a test can
+  call it the way woven code would. All six now stand at **0 uncovered and 0 surviving
+  mutants**: from the ~130 uncovered #427 opened with, and from the 53 survivors #476 listed
+  by method across the four classes that remained.
+
+  What the tests added is the half the earlier ones never asked for. A hook is substituted
+  for the call it replaces, so it owes its call site two things beyond reaching a detector:
+  it must perform the original operation, and it must return what that operation returned.
+  Every `MessageDigest.update`, `Calendar.set` and `Thread.sleep` form is now checked against
+  a twin driven through the JDK call directly, `System.gc()` against a cleared weak reference,
+  and every predicate in the direction that can fail - a `contains` that is false, a `put`
+  with something to displace, an `offer` a full queue refuses, a `tryAcquire` on an exhausted
+  semaphore. No production code changed. (#427, #476)
+
 ### Fixed
 
 - **`CountDownLatchDetector` no longer reports a latch that timed out and later fell.** A

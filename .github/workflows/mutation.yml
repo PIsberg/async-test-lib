@@ -56,13 +56,21 @@ jobs:
       # (a bare goal in the reactor resolves siblings from the repository). Scoped to
       # async-test-lib: it is the only module with a pitest configuration, and the only one
       # whose tests are a mutation-killing suite.
-      # DIAGNOSTIC BRANCH ONLY (#479). The run itself is unchanged - same command, same flags,
-      # no JVM tuning - because the question is what the runner looks like when it dies, and
-      # changing the run would change the answer. The sampler prints to this step's stdout
-      # rather than to a file: an uploaded artifact needs a post-step, and there is no post-step
-      # after the VM is killed. Every run to date has died mid-coverage with the runner shut
-      # down and 13 minutes of silence before it, so the last SAMPLE line in the log is the
-      # evidence this exists to capture.
+      # The sampler is here because this job has never once completed (#479). Three runs, on
+      # 2026-08-16, -23 and -30, each died about 19 minutes in, during the coverage phase, with
+      # the runner shut down rather than the job timing out - and nothing in the log said why,
+      # because nothing in it reported the machine's state.
+      #
+      # It prints to this step's own stdout rather than to a file, deliberately: an uploaded
+      # artifact needs a post-step, and there is no post-step after the VM is killed, so the
+      # last SAMPLE line in the job log is the only evidence that survives that ending.
+      #
+      # The mvn command and every JVM flag below are unchanged from before the sampler, and
+      # should stay that way while #479 is open: tuning the run would change the thing being
+      # measured. Note the sampler is not known to be inert - what preceded every kill was 13
+      # minutes of total silence, and a line every 15 seconds may itself be why the first
+      # instrumented run outlived the three that died. Deciding that needs the unmodified
+      # workflow re-run for comparison, which is what #479 tracks.
       - name: Run mutation coverage (fails below the pom's mutationThreshold)
         run: |
           (
