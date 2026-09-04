@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-09-04
+
+### Added
+
+- **A discarded `offer` result is a finding; a checked one stays a count.**
+  `BlockingQueueDetector` counted offers that returned `false` but could not say whether
+  anyone read the `false`, so a rejected offer stayed context under the saturation finding
+  and never became a finding of its own. The defect is not the rejection, which is
+  backpressure working: it is the `false` nobody looked at, which is an element dropped with
+  nothing in the program knowing.
+
+  The bytecode tells the two apart. A discarded result compiles to a `POP` right after the
+  `invokeinterface`; a checked one compiles to `IFNE`, `ISTORE` or `IRETURN`. The weaver
+  carries a one-instruction lookahead and replaces that `POP` with a call consuming the same
+  category-1 value, so no branch, no handler and no new frames appear and retransformation
+  under `disableClassFormatChanges` stays safe. `hasIssues()` now gates on a dropped element
+  as well as on saturation, so a `SynchronousQueue`, which cannot saturate, can carry the
+  finding on its own. (#454, #462)
+
 ### Changed
 
 - **CI stopped queueing behind its own fan-out.** Wall time for `Tests & Build` had grown
@@ -37,6 +56,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and every predicate in the direction that can fail - a `contains` that is false, a `put`
   with something to displace, an `offer` a full queue refuses, a `tryAcquire` on an exhausted
   semaphore. No production code changed. (#427, #476)
+
+- **31 unwoven sibling overloads now reach their detectors.** The weaver matches an exact
+  descriptor, so an unwoven overload produced silence indistinguishable from correct code:
+  nothing failed, no log line said a call site was skipped, the detector simply never spoke.
+  A corpus row written to fire came back silent, and the gate written for it found 31 gaps
+  across the whole weaving surface - among them `Matcher.group(int)`, which is what `find()`
+  is followed by; `Semaphore.acquire(int)`, so a pool sized in permits was entirely
+  invisible; `BlockingQueue.poll(long, TimeUnit)`, the form production code prefers;
+  `NumberFormat.format(long)`; and `Calendar.set(int, int, int)`. Semaphore permits are
+  recorded per permit rather than per call, so `acquire(3)` followed by `release(1)` reads as
+  the leak of two that it is rather than as balanced.
+
+  `WovenOverloadCoverageTest` enumerates every public overload of every woven method and
+  requires each to be woven, refused as a decision, or listed as a tracked gap naming an
+  issue. The last three gaps - `Thread.sleep(Duration)`, `Thread.sleep(long, int)` and
+  `Map.remove(Object, Object)` - are now woven too, and `KNOWN_GAP` is empty. (#434, #440,
+  #441, #456)
+
+- **Three `Shared*` detectors stopped quoting a JDK contract that does not exist.**
+  `SharedChecksumDetector` said "None of the JDK implementations are thread-safe",
+  `SharedDeflaterDetector` said "They are not thread-safe", and `SharedTimeZoneDetector`
+  called reads "effectively safe in practice". The javadoc for `Checksum`, `CRC32`,
+  `Deflater`, `Inflater` and `TimeZone` states no thread-safety contract in either
+  direction, so all three were the library's inference presented as the platform's word, and
+  two of them said it in the message a user reads and might go looking for. Each now says
+  what is actually documented and names the gap. `SharedKdfDetector` is untouched: it quotes
+  `javax.crypto.KDF` verbatim and is the one member of the family whose claim had a source.
+  (#437, #441)
+
+- **Every corpus number names the build behind it.** `corpus-eval` resolves the library from
+  the local repository rather than from the reactor, deliberately, because it measures the
+  library a user would get. The cost was a failure mode with no symptom: change a detector,
+  forget `mvn install`, and every number comes from the previous build while the source says
+  otherwise. A row green for four waves failed for no visible reason against a `1.11.0` jar
+  built before a detector fix - same version string, different bytes. Report headers now
+  name the artifact with a digest, and `ResolvedLibraryIsCurrentTest` fails the run when the
+  working tree is newer, naming the command that fixes it. Where there is no working tree it
+  reports as unchecked, not as passed. The gate covers the agent jar too, because a
+  mismatched pair fails by substituting nothing, with no error anywhere. (#425, #445)
 
 ### Fixed
 
@@ -69,6 +127,118 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AgentConcurrencyUtilHooks.await` had been recording successes into a void. The record now lives
   against the latch rather than its registry entry, so it works on the agent-fed path, where
   nothing calls `registerLatch`.
+
+- **`LATCH_MISUSE` and `BLOCKING_QUEUE` were agent-fed on paper and inert in practice.** Both
+  are classified AGENT-fed in `DetectorFeeds`, which is the claim that attaching the agent
+  and writing no instrumentation is enough to reach them. It was false: every record path on
+  either detector resolved its state through a registry only the public `register*` methods
+  populated, and no hook in `AgentConcurrencyUtilHooks` called one, so both iterated an empty
+  map and could report nothing in either direction. The weaving for `countDown`, `await`,
+  `offer`, `poll` and `put` was already in place, feeding detectors that could not act on it.
+
+  The hooks now register the subject on first observation. A latch's starting count is read
+  off `getCount()` before the operation and the largest reading wins, which is exact because
+  `getCount()` never increases and the globally first count-down is preceded by a reading no
+  count-down has touched. A queue's bound is `remainingCapacity() + size()` and the widest
+  reading wins, because under-reading the bound is what would invent a saturation finding.
+  The two timed overloads, `offer(E, long, TimeUnit)` and `poll(long, TimeUnit)`, recorded
+  without registering their receiver and are fixed with them;
+  `everyQueueHookRegistersItsReceiver` builds each hook's arguments from their types rather
+  than from the method name, so an overload added tomorrow is exercised without being named.
+  (#436, #446)
+
+- **`HttpClientConcurrencyDetector` lost 12% of requests to a racing registration.**
+  `recordClientCreated` is optional, so the ordinary path is that the first
+  `recordRequestSent` auto-creates the client state - and that auto-creation was a
+  `findFirst()` over an empty map followed by a plain `put`, the check-then-act shape this
+  library exists to find, in a detector. Racing threads each built their own `ClientState`
+  and each `put` discarded the one before it, so every thread but the last counted into an
+  object no longer reachable from the map. Both lost numbers are load bearing: a request
+  count that low stops `requests > responses` tripping, and `maxConcurrentRequests > 50`
+  stops tripping for the same reason, so the detector went quiet on exactly the contention it
+  exists to observe. Measured, not estimated: 352 of 400 requests accounted for, short in 35
+  of 100 rounds. The window is one round wide, so the regression test gives each round its
+  own detector rather than testing a single registration. (#439)
+
+- **`GathererConcurrencyMisuseDetector` could report nothing under real concurrency.** The
+  finding was emitted only when `integratingThreadIds.size() == 2` - an equality test on a
+  set the other workers are adding to at that same instant. The thread whose add takes the
+  set to two can read it back as five, no other thread sees two either, and the report is
+  then never emitted at all. The corpus recording lane is where it showed: 240 body
+  executions across six workers produced zero findings, twice over, while the class's own
+  tests stayed green because they start their two threads one after the other. The condition
+  is now "at least two distinct threads", claimed once through an `AtomicBoolean`.
+
+- **`VolatileArrayDetector` reported per-thread buffers as one shared array.**
+  `findArrayInfo` resolved an access by identity **or** name, so distinct arrays sharing a
+  label collapsed onto whichever registered first and six private arrays read as one array
+  written by six threads. That is a false positive on the standard per-thread-buffer pattern:
+  a `ThreadLocal<int[]>` registered under one stable name in every worker is confined,
+  correct code. Registration now asks for identity with no name fallback; access resolution
+  prefers identity and keeps the label only for an array that was never registered.
+
+- **`WeakHashMapSharedDetector` flagged `synchronized (map)` as loudly as the bug.** The
+  detector reduced its input to how many threads touched the map and never joined the
+  `SelfGuard.TrackedInstance` lockset rollout, so the guarded twin - every access inside
+  `synchronized (map)`, the external synchronization the `WeakHashMap` javadoc asks for -
+  drew the same PROMPT/HIGH finding as unguarded sharing. A user who fixed their race was
+  told the fix is as broken as the bug. The record path now probes the accessing thread,
+  `analyze()` gates on an unguarded access, and the finding carries `SelfGuard.REPORT_NOTE`
+  so the report states what the probe can and cannot see.
+
+- **`StaticInitDeadlockDetector` reported wedges that predate the run.** It took no
+  construction baseline, so threads another test had left permanently wedged inside a class
+  initializer were re-reported by every later detector instance, inside real `@AsyncTest`
+  runs included. `DeadlockDetector` already baselines at construction for exactly this
+  reason. Surfaced by reproducing pitest's shared JVM with a JUnit `Launcher` harness, where
+  it was one of two roots behind 13 failures; the other was six license test classes whose
+  shared helper saved the previous system-property value with `Map.putIfAbsent`, which treats
+  a null-valued mapping as absent and so let `license.provider` and `ls.store.id` leak
+  between tests.
+
+- **Restoring a listener snapshot dropped findings fired during the restore.**
+  `restoreSnapshot` cleared the listener list and then refilled it. That is two mutations of
+  a shared `CopyOnWriteArrayList`, and a fire landing between them iterated an empty
+  registry. Nothing threw: the listener simply never heard about a finding that had been
+  reported, and nothing said so. `snapshot`/`restoreSnapshot` is the documented way to scope
+  listeners around a block, so a `@BeforeEach` / `@AfterEach` pair restoring while worker
+  threads still fire is the ordinary case. The listener set is now one immutable list in a
+  volatile field, replaced wholesale, so a reader sees the set before or the set after and
+  never a gap; writers take a private lock, readers never do, so firing stays as lock-free as
+  it was. Measured on the old behaviour: 102 of 18,000 findings lost, in 10 of 30 rounds. The
+  state moved to `ListenerRegistryCore` and `AsyncTestListenerRegistry` keeps every signature
+  it had, which japicmp confirms. (#424, #450)
+
+- **A sub-millisecond sleep taken under a lock went unreported.** `Thread.sleep(Duration)`
+  and `Thread.sleep(long, int)` truncated to whole milliseconds before recording, and
+  `recordSleep` drops anything at or below zero, so a sleep shorter than a millisecond under
+  a lock recorded nothing at all - the same silence an unwoven call site produces. The sleep
+  is real: measured on JDK 26, `sleep(0, 500_000)` blocks for about 1.5 ms against about
+  17 us for `sleep(0)`. `recordableMillis` rounds up only when the millisecond part is zero,
+  so `Duration.ZERO` and `sleep(0, 0)` stay silent, because `sleep(0)` is a yield idiom
+  rather than a bug. `SleepInLockEventSnapshot.sleepDuration` was documented as nanoseconds
+  while both `recordSleep` overloads take milliseconds and the report prints "ms"; the
+  javadoc on that public field was simply wrong and a test now pins the unit. (#440, #459)
+
+- **A partial build could strip 93 lines of guardrails out of the root aggregate.** The
+  reactor-root aggregate in `CLAUDE.md` and `GEMINI.md` is assembled from the
+  `.vibetags-mod-*` files present on disk, one per module, and a region whose file is absent
+  is dropped rather than preserved. Those files were gitignored and `async-test-lib` is the
+  first module in `<modules>`, so any build that regenerated it on a tree where the other two
+  had not yet produced theirs wrote an aggregate holding only its own block. Version skew was
+  proposed as the cause, tested, and ruled out: the locally installed and the published
+  vibetags-processor 1.3.0 are different artifacts, but both delete the identical 93 lines
+  from the same reproduction. The three files are committed now, so every checkout carries
+  every region. `GuardrailAggregateCoversEveryModuleTest` is the gate. (#423, #460)
+
+- **A concurrent-initializer test asserted on a guess and on the machine.** Its premise,
+  "both are inside their initializers now", was a fixed `Thread.sleep(5)`, so a run where
+  that was wrong passed for the wrong reason and said so to nobody; each progressing
+  initializer now counts down on entry and the test awaits it. And the margin was the
+  runner's: the initializers take 20 ms against a 150 ms production window between samples,
+  so a loaded machine starving those threads past the second sample turned ordinary class
+  loading into a reported deadlock. `SECOND_SAMPLE_DELAY_MS` is a package-private field the
+  test widens and restores, which changes nothing about what is asserted. (#457, #458)
 
 ## [1.11.0] - 2026-08-30
 
