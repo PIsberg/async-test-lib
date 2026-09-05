@@ -239,4 +239,19 @@ class ThreadPoolDeadlockDetectorTest {
             pool.shutdown();
         }
     }
+
+    @Test
+    void oneNestedSubmissionIntoASingleThreadExecutorIsAnIssue() {
+        ThreadPoolDeadlockDetector detector = new ThreadPoolDeadlockDetector();
+        ExecutorService pool = Executors.newSingleThreadExecutor();   // a delegating wrapper, not a ThreadPoolExecutor
+        try {
+            detector.registerPool(pool, "single");
+            detector.recordNestedSubmission(pool, "single");
+            assertTrue(detector.analyze().hasIssues(),
+                "the one worker is busy submitting to itself: the classic self-deadlock, and the "
+                    + "size estimate must not guess 4 for the wrapper Executors hands out");
+        } finally {
+            pool.shutdown();
+        }
+    }
 }
