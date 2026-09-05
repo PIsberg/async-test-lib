@@ -367,8 +367,10 @@ public class ConcurrencyRunner {
 
         // Discover @BeforeEachInvocation / @AfterEachInvocation methods once
         Object testInstance = invocationContext.getTarget().orElse(null);
-        List<Method> beforeInvocationMethods = findLifecycleMethods(testInstance, BeforeEachInvocation.class);
-        List<Method> afterInvocationMethods  = findLifecycleMethods(testInstance, AfterEachInvocation.class);
+        List<Method> beforeInvocationMethods =
+                findLifecycleMethods(testInstance, BeforeEachInvocation.class, true);
+        List<Method> afterInvocationMethods =
+                findLifecycleMethods(testInstance, AfterEachInvocation.class, false);
 
         // Single choke point where config.timeoutMs becomes the effective budget: every
         // downstream timing value (deadlineNanos below, each round's remainingMs, the
@@ -1292,21 +1294,54 @@ public class ConcurrencyRunner {
 
     // ---- Per-invocation lifecycle helpers ----
 
+    /**
+     * Discovers the {@code @BeforeEachInvocation} / {@code @AfterEachInvocation} hooks of
+     * {@code target}, with the inheritance rules of {@code @BeforeEach} / {@code @AfterEach}.
+     *
+     * <p>A hook is inherited from a superclass unless a subclass declares a method of the same
+     * signature, annotated or not; the subclass method then supersedes it, and is itself a hook
+     * only if it carries the annotation. Superseding is decided on the signature alone, as JUnit
+     * does, so a private superclass hook is replaced too. Without this rule an overridden hook was
+     * collected at both levels, and since {@code Method.invoke} on the superclass method dispatches
+     * virtually to the override, the override ran twice per round; an un-annotated override was
+     * invoked through its annotated parent although it is not a hook at all.
+     *
+     * <p>Before-hooks run superclass first and after-hooks subclass first, again as JUnit orders
+     * them, so a subclass can rely on its parent's state being set up before its own hook runs and
+     * torn down after.
+     *
+     * @param superclassFirst {@code true} for before-hooks, {@code false} for after-hooks
+     */
     private static <A extends java.lang.annotation.Annotation> List<Method> findLifecycleMethods(
-            @Nullable Object target, Class<A> annotationType) {
+            @Nullable Object target, Class<A> annotationType, boolean superclassFirst) {
         if (target == null) return List.of();
-        List<Method> found = new ArrayList<>();
+        List<List<Method>> levels = new ArrayList<>();
+        Set<String> superseded = new java.util.HashSet<>();
         Class<?> klass = target.getClass();
         while (klass != null && klass != Object.class) {
+            List<Method> level = new ArrayList<>();
             for (Method m : klass.getDeclaredMethods()) {
-                if (m.isAnnotationPresent(annotationType)
-                        && m.getParameterCount() == 0
-                        && m.getReturnType() == void.class) {
+                if (m.getParameterCount() != 0 || m.getReturnType() != void.class) {
+                    continue;
+                }
+                // Zero parameters, so the name is the whole signature.
+                if (!superseded.add(m.getName())) {
+                    continue;
+                }
+                if (m.isAnnotationPresent(annotationType)) {
                     m.setAccessible(true);
-                    found.add(m);
+                    level.add(m);
                 }
             }
+            levels.add(level);
             klass = klass.getSuperclass();
+        }
+        if (superclassFirst) {
+            java.util.Collections.reverse(levels);
+        }
+        List<Method> found = new ArrayList<>();
+        for (List<Method> level : levels) {
+            found.addAll(level);
         }
         return found;
     }

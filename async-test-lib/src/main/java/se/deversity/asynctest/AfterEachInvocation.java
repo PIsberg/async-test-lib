@@ -17,6 +17,11 @@ import java.lang.annotation.Target;
  * produced failures, so it can be used for resource cleanup or round-level
  * assertions (e.g. verify an invariant after each burst of N threads).
  *
+ * <p>Inheritance follows {@code @AfterEach}: a hook declared in a superclass is inherited unless
+ * a subclass declares a method of the same signature, which supersedes it and is a hook
+ * only if it carries this annotation itself. When both levels contribute hooks,
+ * subclass hooks run before superclass hooks.
+ *
  * <p>The method must be non-private and take no arguments. If it throws, the
  * exception is reported alongside any thread failures from the same round.
  *

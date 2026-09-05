@@ -17,6 +17,11 @@ import java.lang.annotation.Target;
  * invocation round (i.e. M times). This makes it easy to reset shared state
  * between rounds without embedding reset logic inside the test body.
  *
+ * <p>Inheritance follows {@code @BeforeEach}: a hook declared in a superclass is inherited unless
+ * a subclass declares a method of the same signature, which supersedes it and is a hook
+ * only if it carries this annotation itself. When both levels contribute hooks,
+ * superclass hooks run before subclass hooks.
+ *
  * <p>The method is called on the main test thread, before any worker threads are
  * launched for that round. It must be non-private and take no arguments.
  *
