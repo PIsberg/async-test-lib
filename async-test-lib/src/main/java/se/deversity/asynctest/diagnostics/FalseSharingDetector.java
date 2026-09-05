@@ -161,8 +161,12 @@ public class FalseSharingDetector {
             if (history.size() < FIELD_ACCESS_THRESHOLD) continue;
             
             // Check for high-frequency access to adjacent fields
+            List<AccessEvent> snapshot;
+            synchronized (history) {
+                snapshot = new ArrayList<>(history);
+            }
             Map<Long, Integer> threadAccessCounts = new HashMap<>();
-            for (AccessEvent event : history) {
+            for (AccessEvent event : snapshot) {
                 threadAccessCounts.merge(event.threadId, 1, Integer::sum);
             }
             

@@ -170,4 +170,13 @@ public class ParallelStreamDetectorTest {
         assertFalse(report.nonThreadSafeCollectors.isEmpty(), "Should report unsafe collectors");
         assertFalse(report.sideEffects.isEmpty(), "Should report side effects");
     }
+
+    @Test
+    void aSideEffectReportedWithoutPriorRegistrationIsNotDropped() {
+        ParallelStreamDetector detector = new ParallelStreamDetector();
+        detector.recordSideEffect("unregistered", "shared ArrayList");
+        assertTrue(detector.analyze().hasIssues(),
+            "A caller that only reports the defect must not be silently ignored because it "
+                + "did not call recordParallelStream first");
+    }
 }

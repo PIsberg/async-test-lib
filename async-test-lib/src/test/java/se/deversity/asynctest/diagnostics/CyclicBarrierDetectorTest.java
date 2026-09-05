@@ -162,4 +162,19 @@ public class CyclicBarrierDetectorTest {
         assertTrue(reportStr.contains("BrokenBarrierException"), "Report should explain the hazard");
         assertTrue(reportStr.contains("reset()"), "Report should mention the fix");
     }
+
+    @Test
+    void nullBarrierIsIgnoredOnEveryRecordPath() {
+        CyclicBarrierDetector detector = new CyclicBarrierDetector();
+        assertDoesNotThrow(() -> {
+            detector.registerBarrier(null, "n", 2);
+            detector.recordArrival(null);
+            detector.recordTimeout(null);
+            detector.recordBroken(null);
+            detector.recordReset(null);
+            detector.recordAwait(null);
+            detector.recordBarrierComplete(null);
+            detector.analyze();
+        });
+    }
 }

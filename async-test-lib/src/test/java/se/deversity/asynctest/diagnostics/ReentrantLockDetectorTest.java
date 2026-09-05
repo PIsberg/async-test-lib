@@ -113,4 +113,16 @@ public class ReentrantLockDetectorTest {
         assertTrue(reportStr.contains("REENTRANTLOCK ISSUES DETECTED"), "Report should have header");
         assertTrue(reportStr.contains("Lock Timeouts"), "Report should mention timeouts");
     }
+
+    @Test
+    void nullLockIsIgnoredOnEveryRecordPath() {
+        ReentrantLockDetector detector = new ReentrantLockDetector();
+        assertDoesNotThrow(() -> {
+            detector.registerLock(null, "n");
+            detector.recordLockAcquired(null, "t");
+            detector.recordLockReleased(null, "t");
+            detector.recordLockTimeout(null);
+            detector.analyze();
+        });
+    }
 }

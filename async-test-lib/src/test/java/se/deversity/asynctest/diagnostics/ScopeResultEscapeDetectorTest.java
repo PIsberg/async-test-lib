@@ -153,4 +153,26 @@ class ScopeResultEscapeDetectorTest {
         d.recordScopeClosed(null);
         assertFalse(d.analyze().hasIssues());
     }
+
+    @Test
+    void aScopeIdReopenedInTheNextRoundStartsFresh() {
+        var d = new ScopeResultEscapeDetector();
+        Object first = new Object();
+        Object second = new Object();
+        d.recordScopeOpened("scope-1", Thread.currentThread());
+        d.recordJoinCompleted("scope-1");
+        d.recordResultHandle(first, "orders", "scope-1");
+        d.recordHandleRead(first, Thread.currentThread());
+        d.recordScopeClosed("scope-1");
+
+        d.recordScopeOpened("scope-1", Thread.currentThread());      // same id, next round
+        d.recordJoinCompleted("scope-1");
+        d.recordResultHandle(second, "orders", "scope-1");
+        d.recordHandleRead(second, Thread.currentThread());
+        d.recordScopeClosed("scope-1");
+
+        assertFalse(d.analyze().hasIssues(),
+            "the read happened inside the reopened scope; comparing it against the previous "
+                + "round's close invented a read-after-close: " + d.analyze());
+    }
 }

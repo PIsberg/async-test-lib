@@ -60,7 +60,7 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class FileChannelPositionRaceDetector {
 
-    private static final class State {
+    private static final class State extends SelfGuard.TrackedInstance {
         final String label;
         final Set<String> operations = ConcurrentHashMap.newKeySet();
         final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
@@ -85,6 +85,7 @@ public final class FileChannelPositionRaceDetector {
     public void recordImplicitPositionAccess(Object channel, String operation) {
         if (channel == null) return;
         State s = stateFor(channel);
+        s.noteAccess(channel);
         if (operation != null) {
             s.operations.add(operation);
         }
@@ -124,12 +125,12 @@ public final class FileChannelPositionRaceDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1) continue;
+            if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
             String msg = String.format(
                     "Channel '%s' had implicit-position operations (%s) from %d threads (%s) — "
                             + "the shared cursor is advanced by every implicit read/write/position call; "
                             + "concurrent use interleaves I/O at unpredictable offsets, corrupting file "
-                            + "contents or silently losing writes.",
+                            + "contents or silently losing writes." + SelfGuard.REPORT_NOTE,
                     s.label,
                     String.join(", ", s.operations),
                     s.accessingThreadIds.size(),

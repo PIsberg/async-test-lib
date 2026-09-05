@@ -143,4 +143,12 @@ class VirtualThreadCarrierExhaustionDetectorTest {
         var report = detector.analyze();
         assertEquals(2, report.getCarrierCount());
     }
+
+    @Test
+    void analyzeIsIdempotentForAThreadStillBlocked() {
+        detector.recordBlockingStart("socket-read");
+        int first = detector.analyze().getExhaustionDetails().size();
+        int second = detector.analyze().getExhaustionDetails().size();
+        assertEquals(first, second, "analyze() appended the still-blocked line to instance state on every call");
+    }
 }

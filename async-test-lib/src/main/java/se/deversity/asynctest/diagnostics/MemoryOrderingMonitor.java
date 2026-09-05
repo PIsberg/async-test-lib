@@ -67,7 +67,11 @@ public class MemoryOrderingMonitor {
         MemoryOrderingReport report = new MemoryOrderingReport();
         
         Map<String, List<MemoryAccess>> locationAccesses = new HashMap<>();
-        for (MemoryAccess access : accessLog) {
+        List<MemoryAccess> snapshot;
+        synchronized (accessLog) {
+            snapshot = new ArrayList<>(accessLog);
+        }
+        for (MemoryAccess access : snapshot) {
             locationAccesses.computeIfAbsent(access.location, k -> new ArrayList<>()).add(access);
         }
         

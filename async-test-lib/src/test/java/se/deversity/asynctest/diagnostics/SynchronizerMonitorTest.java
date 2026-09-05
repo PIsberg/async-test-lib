@@ -114,4 +114,45 @@ class SynchronizerMonitorTest {
         assertEquals(viaAnalyzeSynchronizers.hasIssues(), viaAnalyze.hasIssues());
         assertEquals(viaAnalyzeSynchronizers.toString(), viaAnalyze.toString());
     }
+
+    @Test
+    void nullSynchronizerIsIgnoredOnRegistration() {
+        SynchronizerMonitor monitor = new SynchronizerMonitor();
+        assertDoesNotThrow(() -> monitor.registerSynchronizer(null, 2));
+    }
+
+    @Test
+    void aBarrierReusedForASecondGenerationIsNotADuplicateArrival() throws InterruptedException {
+        SynchronizerMonitor monitor = new SynchronizerMonitor();
+        Object barrier = new Object();
+        monitor.registerSynchronizer(barrier, 2);
+        // The same two threads meet at the barrier twice, as pool workers do across rounds.
+        java.util.concurrent.ExecutorService peer = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            for (int generation = 0; generation < 2; generation++) {
+                monitor.recordBarrierArrival(barrier);                           // this thread
+                peer.submit(() -> monitor.recordBarrierArrival(barrier)).get();  // the same peer thread
+            }
+        } catch (java.util.concurrent.ExecutionException e) {
+            throw new AssertionError(e);
+        } finally {
+            peer.shutdownNow();
+        }
+        SynchronizerMonitor.SynchronizerReport report = monitor.analyzeSynchronizers();
+        assertTrue(report.duplicateArrivals.isEmpty(),
+            "four arrivals by two threads on a 2-party barrier are two complete generations, not "
+                + "a thread arriving twice: " + report);
+        assertFalse(report.hasIssues(), report.toString());
+    }
+
+    @Test
+    void theSameThreadArrivingTwiceInOneGenerationIsADuplicate() {
+        SynchronizerMonitor monitor = new SynchronizerMonitor();
+        Object barrier = new Object();
+        monitor.registerSynchronizer(barrier, 3);
+        monitor.recordBarrierArrival(barrier);
+        monitor.recordBarrierArrival(barrier);
+        assertFalse(monitor.analyzeSynchronizers().duplicateArrivals.isEmpty(),
+            "two arrivals by one thread before the barrier trips is the real defect");
+    }
 }

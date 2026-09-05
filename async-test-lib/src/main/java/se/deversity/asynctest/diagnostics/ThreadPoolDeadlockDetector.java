@@ -222,16 +222,18 @@ public class ThreadPoolDeadlockDetector {
      * Estimate the pool size using reflection if possible.
      */
     private int estimatePoolSize(ExecutorService pool) {
-        try {
-            // Try to get pool size via reflection for common pool types
-            if (pool instanceof java.util.concurrent.ThreadPoolExecutor tpe) {
-                return tpe.getCorePoolSize();
-            }
-        } catch (Exception ignored) { // NOPMD EmptyCatchBlock — reflection probe fails silently; default pool size used
-            // Ignore and return default
+        if (pool instanceof java.util.concurrent.ThreadPoolExecutor tpe) {
+            return tpe.getCorePoolSize();
         }
-        // Default assumption: small fixed pool
-        return 4;
+        if (pool instanceof java.util.concurrent.ForkJoinPool fjp) {
+            return fjp.getParallelism();
+        }
+        // Executors.newSingleThreadExecutor() and newSingleThreadScheduledExecutor() hand out a
+        // delegating wrapper, not a ThreadPoolExecutor, and a size of 1 is the classic
+        // self-deadlock shape. A pool of unknown type is assumed to be that size too: the
+        // former guess of 4 made every nested submission into such a pool invisible, which is
+        // the wrong direction for a detector that prompts a check.
+        return 1;
     }
 
     /**
@@ -275,7 +277,9 @@ public class ThreadPoolDeadlockDetector {
          * @since 1.9.2
          */
         public boolean hasIssues() {
-            return hasDeadlockRisk();
+            // The registry binds this, so it must apply the detector's own threshold (active tasks
+            // reached the pool size) rather than fire on any nested submission into a wide pool.
+            return totalDeadlockRisks > 0;
         }
 
         /**

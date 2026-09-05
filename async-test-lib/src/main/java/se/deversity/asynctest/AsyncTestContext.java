@@ -809,6 +809,15 @@ public final class AsyncTestContext {
         if (registry.threadLocalMonitor != null) {
             registry.threadLocalMonitor.markInvocationStart();
         }
+        if (registry.atomicNonAtomicUpdateDetector != null) {
+            registry.atomicNonAtomicUpdateDetector.markInvocationStart();
+        }
+        if (registry.busyWaitDetector != null) {
+            registry.busyWaitDetector.markInvocationStart();
+        }
+        if (registry.sharedMemorySegmentRaceDetector != null) {
+            registry.sharedMemorySegmentRaceDetector.markInvocationStart();
+        }
     }
 
     /**

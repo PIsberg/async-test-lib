@@ -205,4 +205,14 @@ class GathererConcurrencyMisuseDetectorTest {
                 + "threads and claim the report once, rather than for exactly two.");
         }
     }
+
+    @Test
+    void sequentialGathererWithoutCombinerOnManyThreadsIsNotMissingACombiner() throws Exception {
+        detector.registerGatherer("seq", /* hasCombiner */ false, /* parallel */ false);
+        integrateOnTwoThreads("seq");
+        GathererConcurrencyMisuseDetector.GathererConcurrencyMisuseReport report = detector.analyze();
+        assertFalse(report.hasIssues(),
+            "A sequential gatherer needs no combiner however many threads run their own "
+                + "sequential streams through it: " + report);
+    }
 }

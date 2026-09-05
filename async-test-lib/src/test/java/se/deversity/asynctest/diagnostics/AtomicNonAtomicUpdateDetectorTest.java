@@ -93,4 +93,37 @@ public class AtomicNonAtomicUpdateDetectorTest {
         assertTrue(s.contains("Fix"));
         assertTrue(s.contains("compareAndSet"));
     }
+
+    @Test
+    void getThenSetUnderTheAtomicsOwnMonitorIsNotALostUpdate() throws Exception {
+        AtomicNonAtomicUpdateDetector d = new AtomicNonAtomicUpdateDetector();
+        AtomicInteger counter = new AtomicInteger();
+        Runnable body = () -> {
+            for (int i = 0; i < 100; i++) {
+                synchronized (counter) {
+                    d.recordGet(counter, "counter", Thread.currentThread());
+                    counter.set(counter.get() + 1);
+                    d.recordSet(counter, "counter", Thread.currentThread());
+                }
+            }
+        };
+        Thread a = new Thread(body, "guarded-a");
+        Thread b = new Thread(body, "guarded-b");
+        a.start(); b.start(); a.join(); b.join();
+        assertFalse(d.analyze().hasIssues(),
+            "get+set inside synchronized(counter) is mutually excluded and cannot lose an update; "
+                + "a VERDICT-tier detector must consult the lockset like its siblings: " + d.analyze());
+    }
+
+    @Test
+    void aGetInOneRoundAndASetInTheNextAreNotPaired() {
+        AtomicNonAtomicUpdateDetector d = new AtomicNonAtomicUpdateDetector();
+        AtomicInteger counter = new AtomicInteger();
+        Thread t = Thread.currentThread();
+        d.recordGet(counter, "counter", t);
+        d.markInvocationStart();          // the runner orders rounds; a pool thread is reused across them
+        d.recordSet(counter, "counter", t);
+        assertFalse(d.analyze().hasIssues(),
+            "a pending get must not survive the round boundary on a reused pool thread");
+    }
 }

@@ -56,6 +56,10 @@ public class StampedLockDetector {
      * @param validated the {@code validated} flag
      */
     public void recordOptimisticValidation(StampedLock lock, String lockName, long stamp, boolean validated) {
+        LockInfo info = lockRegistry.get(lock);
+        if (info != null) {
+            info.recordValidation();
+        }
         if (!validated) {
             unvalidatedOptimisticReads.add(lockName + " (stamp: " + stamp + ")");
         }
@@ -119,8 +123,18 @@ public class StampedLockDetector {
      * @return the findings this detector collected during the run
      */
     public StampedLockReport analyze() {
+        // An optimistic read the code never asked validate() about: the value was used as read,
+        // which is the defect the class documents. Counted per lock; more reads than validations
+        // means at least one went unchecked.
+        Set<String> unvalidated = new HashSet<>(unvalidatedOptimisticReads);
+        for (LockInfo info : lockRegistry.values()) {
+            int unchecked = info.unvalidatedReads();
+            if (unchecked > 0) {
+                unvalidated.add(info.name + " (" + unchecked + " optimistic read(s) never validated)");
+            }
+        }
         return new StampedLockReport(
-            unvalidatedOptimisticReads,
+            unvalidated,
             stampNotReleased
         );
     }
@@ -205,6 +219,7 @@ public class StampedLockDetector {
         int readLockCount = 0;
         int writeLockCount = 0;
         int unlockCount = 0;
+        int validationCount = 0;
 
         LockInfo(String name) {
             this.name = name;
@@ -224,6 +239,14 @@ public class StampedLockDetector {
 
         synchronized void recordUnlock(long stamp) {
             unlockCount++;
+        }
+
+        synchronized void recordValidation() {
+            validationCount++;
+        }
+
+        synchronized int unvalidatedReads() {
+            return Math.max(0, optimisticReadCount - validationCount);
         }
     }
 }

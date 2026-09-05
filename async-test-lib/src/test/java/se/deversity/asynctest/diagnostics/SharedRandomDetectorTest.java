@@ -304,4 +304,12 @@ public class SharedRandomDetectorTest {
         assertTrue(report.randomActivity.get("activity-random").contains("3 threads"),
                    "Should report 3 threads");
     }
+
+    @Test
+    void nullMethodNameIsIgnored() {
+        SharedRandomDetector detector = new SharedRandomDetector();
+        java.util.Random random = new java.util.Random();
+        detector.registerRandom(random, "r");
+        assertDoesNotThrow(() -> detector.recordRandomAccess(random, "r", null));
+    }
 }

@@ -139,4 +139,23 @@ class FileChannelPositionRaceDetectorTest {
         assertEquals(first.structuredViolations.size(), second.structuredViolations.size());
         assertEquals(first.toString(), second.toString());
     }
+
+    @Test
+    void implicitPositionAccessUnderTheChannelsMonitorIsNotFlagged() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        synchronized (channel) {
+            d.recordImplicitPositionAccess(channel, "read");
+        }
+        Thread t = new Thread(() -> {
+            synchronized (channel) {
+                d.recordImplicitPositionAccess(channel, "write");
+            }
+        });
+        t.start();
+        t.join();
+        assertFalse(d.analyze().hasIssues(),
+            "both threads held the channel's monitor around the cursor-moving call, so the "
+                + "cursor cannot interleave: " + d.analyze());
+    }
 }

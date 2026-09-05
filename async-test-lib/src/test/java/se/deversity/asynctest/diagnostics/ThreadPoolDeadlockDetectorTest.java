@@ -220,4 +220,38 @@ class ThreadPoolDeadlockDetectorTest {
         
         pool.shutdown();
     }
+
+    @Test
+    void oneNestedSubmissionIntoALargePoolIsNotAnIssueOnTheReportingPath() {
+        ThreadPoolDeadlockDetector detector = new ThreadPoolDeadlockDetector();
+        java.util.concurrent.ThreadPoolExecutor pool = new java.util.concurrent.ThreadPoolExecutor(
+            64, 64, 0L, java.util.concurrent.TimeUnit.MILLISECONDS,
+            new java.util.concurrent.LinkedBlockingQueue<>());
+        try {
+            detector.registerPool(pool, "wide-pool");
+            detector.recordNestedSubmission(pool, "wide-pool");
+            ThreadPoolDeadlockDetector.ThreadPoolDeadlockReport report = detector.analyze();
+            assertFalse(detector.hasDeadlockRisk(), "1 active task in a 64-thread pool is below the threshold");
+            assertFalse(report.hasIssues(),
+                "hasIssues() is what DetectorRegistry binds; it disagreed with the detector's own "
+                    + "threshold and reported any nested submission as HIGH");
+        } finally {
+            pool.shutdown();
+        }
+    }
+
+    @Test
+    void oneNestedSubmissionIntoASingleThreadExecutorIsAnIssue() {
+        ThreadPoolDeadlockDetector detector = new ThreadPoolDeadlockDetector();
+        ExecutorService pool = Executors.newSingleThreadExecutor();   // a delegating wrapper, not a ThreadPoolExecutor
+        try {
+            detector.registerPool(pool, "single");
+            detector.recordNestedSubmission(pool, "single");
+            assertTrue(detector.analyze().hasIssues(),
+                "the one worker is busy submitting to itself: the classic self-deadlock, and the "
+                    + "size estimate must not guess 4 for the wrapper Executors hands out");
+        } finally {
+            pool.shutdown();
+        }
+    }
 }

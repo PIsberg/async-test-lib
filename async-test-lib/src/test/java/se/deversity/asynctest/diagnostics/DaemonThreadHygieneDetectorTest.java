@@ -98,4 +98,22 @@ class DaemonThreadHygieneDetectorTest {
         assertFalse(d.analyze().hasIssues(),
                 "A non-daemon thread that has cleanly terminated does not block JVM exit");
     }
+
+    @Test
+    void aLeakedThreadIsMediumAtTheGate() throws Exception {
+        DaemonThreadHygieneDetector d = new DaemonThreadHygieneDetector();
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        Thread t = new Thread(() -> { try { release.await(); } catch (InterruptedException ignored) { } }, "leak");
+        t.setDaemon(false);
+        t.start();
+        try {
+            d.recordThread(t, "leak");
+            String report = d.analyze().toString();
+            assertEquals(IssueSeverity.MEDIUM, DetectorDefaultSeverity.of("DaemonThreadHygieneDetector", report),
+                "the Violation says MEDIUM but the text path, which the gate reads, said nothing and fell to HIGH");
+        } finally {
+            release.countDown();
+            t.join();
+        }
+    }
 }

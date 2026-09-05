@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class AtomicNonAtomicUpdateDetector {
 
-    private static class AtomicState {
+    private static class AtomicState extends SelfGuard.TrackedInstance {
         final String name;
         final Map<Long, Integer> pendingGetByThread = new ConcurrentHashMap<>();
         final AtomicInteger      nonAtomicUpdates   = new AtomicInteger();
@@ -54,7 +54,9 @@ public class AtomicNonAtomicUpdateDetector {
      */
     public void recordGet(Object atomic, String name, Thread thread) {
         if (atomic == null || thread == null) return;
-        stateFor(atomic, name).pendingGetByThread.put(thread.threadId(), 1);
+        AtomicState s = stateFor(atomic, name);
+        s.noteAccess(atomic, false);
+        s.pendingGetByThread.put(thread.threadId(), 1);
     }
 
     /**
@@ -69,6 +71,7 @@ public class AtomicNonAtomicUpdateDetector {
     public void recordSet(Object atomic, String name, Thread thread) {
         if (atomic == null || thread == null) return;
         AtomicState s = stateFor(atomic, name);
+        s.noteAccess(atomic, true);
         Integer pending = s.pendingGetByThread.remove(thread.threadId());
         if (pending != null) {
             s.nonAtomicUpdates.incrementAndGet();
@@ -91,13 +94,27 @@ public class AtomicNonAtomicUpdateDetector {
     }
 
     /**
+     * Closes the round in progress: a get left pending on a pool thread must not pair with a
+     * set that the same thread makes in the next round, which the runner orders after it.
+     *
+     * @since 1.11.2
+     */
+    public void markInvocationStart() {
+        for (AtomicState s : atomics.values()) {
+            s.pendingGetByThread.clear();
+        }
+    }
+
+    /**
      * {@return report of non-atomic compound updates}
      */
     public AtomicNonAtomicUpdateReport analyze() {
         AtomicNonAtomicUpdateReport r = new AtomicNonAtomicUpdateReport();
         for (AtomicState s : atomics.values()) {
-            if (s.nonAtomicUpdates.get() > 0) {
-                r.violations.add(String.format("%s: %d non-atomic get+set sequence(s) detected",
+            // A get+set pair inside a critical section every access shares is excluded from the
+            // interleaving this detector names, so the lockset decides, as for the Shared* family.
+            if (s.nonAtomicUpdates.get() > 0 && s.sawUnguardedAccess()) {
+                r.violations.add(String.format("%s: %d non-atomic get+set sequence(s) detected" + SelfGuard.REPORT_NOTE,
                     s.name, s.nonAtomicUpdates.get()));
                 r.details.addAll(s.details);
             }

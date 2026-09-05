@@ -96,4 +96,22 @@ class FutureBlockingDetectorTest {
         FutureBlockingDetector.FutureBlockingReport report = detector.analyze();
         assertFalse(report.hasIssues());
     }
+
+    @Test
+    void aBlockingWaitThatCompletedIsNotStarvationOnTheNextRound() {
+        Object executor = new Object();
+        detector.registerExecutor(executor, "pool", 2);
+        for (int round = 0; round < 2; round++) {
+            detector.recordTaskSubmitted(executor);
+            detector.recordTaskSubmitted(executor);
+            detector.recordTaskStarted(executor);
+            detector.recordTaskStarted(executor);
+            detector.recordBlockingWait(executor);
+            detector.recordTaskCompleted(executor);
+            detector.recordTaskCompleted(executor);
+        }
+        assertFalse(detector.analyze().hasIssues(),
+            "Every task completed, nothing is queued; a completed wait must not be reported "
+                + "as workers blocked while tasks remain queued");
+    }
 }

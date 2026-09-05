@@ -204,4 +204,16 @@ class LazyCollectionMisuseDetectorTest {
         d.recordComputeEnd(null, 1, Thread.currentThread(), "x");
         assertFalse(d.analyze().hasIssues());
     }
+
+    @Test
+    void aSelfReentrantElementIsCriticalAtTheGate() {
+        LazyCollectionMisuseDetector d = new LazyCollectionMisuseDetector();
+        Thread t = Thread.currentThread();
+        d.recordComputeStart("BOARDS", 3, t);
+        d.recordComputeStart("BOARDS", 3, t);
+        d.recordComputeEnd("BOARDS", 3, t, "x");
+        String report = d.analyze().toString();
+        assertEquals(IssueSeverity.CRITICAL, DetectorDefaultSeverity.of("LazyCollectionMisuseDetector", report),
+            "each finding carries a severity in its Violation, but the text the gate reads carried none");
+    }
 }

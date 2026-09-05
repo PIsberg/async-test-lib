@@ -79,6 +79,7 @@ public class ReentrantLockDetector {
      * @param name a label identifying the lock in the report
      */
     public void registerLock(ReentrantLock lock, String name) {
+        if (lock == null) return;
         LockLeakDetector peer = leakReporter;
         if (peer != null) {
             peer.registerLock(lock, name);
@@ -96,6 +97,7 @@ public class ReentrantLockDetector {
      * @param threadName a label identifying the thread in the report
      */
     public void recordLockAcquired(ReentrantLock lock, String threadName) {
+        if (lock == null) return;
         LockLeakDetector peer = leakReporter;
         if (peer != null) {
             peer.recordLockAcquired(lock, nameOf(lock));
@@ -113,6 +115,7 @@ public class ReentrantLockDetector {
      * @param threadName a label identifying the thread in the report
      */
     public void recordLockReleased(ReentrantLock lock, String threadName) {
+        if (lock == null) return;
         LockLeakDetector peer = leakReporter;
         if (peer != null) {
             peer.recordLockReleased(lock, nameOf(lock));
@@ -129,6 +132,7 @@ public class ReentrantLockDetector {
      * @param lock the lock being recorded, tracked by identity rather than equality
      */
     public void recordLockTimeout(ReentrantLock lock) {
+        if (lock == null) return;
         timeoutLocks.add(lock);
     }
 

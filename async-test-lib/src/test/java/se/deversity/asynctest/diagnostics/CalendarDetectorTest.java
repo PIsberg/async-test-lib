@@ -167,4 +167,26 @@ public class CalendarDetectorTest {
                 .anyMatch(s -> s.contains("cal2"));
         assertFalse(cal2Flagged, "cal2 should not be flagged (single-thread use)");
     }
+
+    @Test
+    void aCalendarGuardedByItsOwnMonitorIsNotReported() throws InterruptedException {
+        CalendarDetector detector = new CalendarDetector();
+        Calendar cal = Calendar.getInstance();
+        Runnable body = () -> {
+            for (int i = 0; i < 5; i++) {
+                synchronized (cal) {
+                    cal.set(Calendar.DAY_OF_MONTH, i + 1);
+                    detector.recordSet(cal, "guarded-calendar");
+                    cal.get(Calendar.DAY_OF_MONTH);
+                    detector.recordGet(cal, "guarded-calendar");
+                }
+            }
+        };
+        Thread t1 = new Thread(body);
+        Thread t2 = new Thread(body);
+        t1.start(); t2.start(); t1.join(); t2.join();
+        assertFalse(detector.analyze().hasIssues(),
+            "every access held the calendar's monitor; the synchronized twin must stay silent: "
+                + detector.analyze());
+    }
 }

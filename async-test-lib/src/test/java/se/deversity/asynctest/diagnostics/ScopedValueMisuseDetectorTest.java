@@ -218,4 +218,19 @@ class ScopedValueMisuseDetectorTest {
         assertTrue(report.hasIssues(), "Thread B's unbound get should be detected");
         assertEquals(1, report.getUnboundGetCount(), "Only thread B violated");
     }
+
+    @Test
+    void nestedRebindingKeepsTheOuterBindingAliveAfterTheInnerScopeExits() {
+        Thread thread = Thread.currentThread();
+        detector.recordBindingEntered("USER", thread);
+        detector.recordBindingEntered("USER", thread);   // inner rebinding, shown as legal in the class docs
+        detector.recordBindingExited("USER", thread);    // inner scope ends
+        detector.recordGetCalled("USER", thread);        // still inside the outer scope
+
+        ScopedValueMisuseDetector.ScopedValueMisuseReport report = detector.analyze();
+        assertEquals(0, report.getUnboundGetCount(),
+            "The outer binding is still active; a set of names cannot represent two bindings "
+                + "of one name, so the inner exit removed the outer: " + report.getUnboundGetIssues());
+        assertEquals(1, report.getRebindIssues().size(), "the rebinding itself is still noted");
+    }
 }

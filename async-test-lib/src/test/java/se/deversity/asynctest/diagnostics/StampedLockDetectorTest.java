@@ -114,4 +114,20 @@ public class StampedLockDetectorTest {
         assertNotNull(reportStr);
         assertTrue(reportStr.contains("STAMPEDLOCK ISSUES DETECTED"), "Report should have header");
     }
+
+    @Test
+    void anOptimisticReadThatIsNeverValidatedIsReported() {
+        StampedLockDetector detector = new StampedLockDetector();
+        java.util.concurrent.locks.StampedLock lock = new java.util.concurrent.locks.StampedLock();
+        detector.registerLock(lock, "neverValidated");
+        long stamp = lock.tryOptimisticRead();
+        detector.recordOptimisticRead(lock, "neverValidated", stamp);
+        // no recordOptimisticValidation: the value read is used without validate()
+
+        StampedLockDetector.StampedLockReport report = detector.analyze();
+        assertTrue(report.hasIssues(),
+            "The class promises to detect an optimistic read without validate(); the counters "
+                + "that would show it were never consulted by analyze(): " + report);
+        assertTrue(report.toString().contains("neverValidated"), report.toString());
+    }
 }

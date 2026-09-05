@@ -83,7 +83,7 @@ public class TimerDetector {
      * @param taskName a descriptive name for the task
      */
     public void recordTaskSchedule(java.util.Timer timer, String name, String taskName) {
-        if (!enabled || timer == null) return;
+        if (!enabled || timer == null || taskName == null) return;
         TimerState state = resolve(timer, name);
         state.scheduledTasks.incrementAndGet();
         state.taskStartTimes.put(taskName + "@" + System.nanoTime(), System.currentTimeMillis());
@@ -97,7 +97,7 @@ public class TimerDetector {
      * @param taskName a descriptive name for the task
      */
     public void recordTaskRun(java.util.Timer timer, String name, String taskName) {
-        if (!enabled || timer == null) return;
+        if (!enabled || timer == null || taskName == null) return;
         TimerState state = resolve(timer, name);
         state.taskStartTimes.put(taskName, System.currentTimeMillis());
     }
@@ -110,7 +110,7 @@ public class TimerDetector {
      * @param taskName a descriptive name for the task
      */
     public void recordTaskComplete(java.util.Timer timer, String name, String taskName) {
-        if (!enabled || timer == null) return;
+        if (!enabled || timer == null || taskName == null) return;
         TimerState state = resolve(timer, name);
         state.completedTasks.incrementAndGet();
 

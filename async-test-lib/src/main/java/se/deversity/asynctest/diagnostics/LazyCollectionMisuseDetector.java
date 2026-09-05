@@ -385,7 +385,8 @@ public final class LazyCollectionMisuseDetector {
         public final List<Violation> structuredViolations = new ArrayList<>();
 
         void add(String detector, IssueSeverity severity, String message, Map<String, Object> context) {
-            violations.add(message);
+            // The text is what the failOn gate classifies, so each line carries its own label.
+            violations.add(severity.getLabel() + " " + message);
             structuredViolations.add(
                     new Violation(detector, severity, message, List.of(), context, Instant.now()));
         }

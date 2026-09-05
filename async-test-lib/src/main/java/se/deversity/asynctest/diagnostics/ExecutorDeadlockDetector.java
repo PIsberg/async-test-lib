@@ -22,6 +22,7 @@ public class ExecutorDeadlockDetector {
         final AtomicInteger submitted = new AtomicInteger();
         final AtomicInteger running = new AtomicInteger();
         final AtomicInteger waitingOnSibling = new AtomicInteger();
+        final AtomicInteger completed = new AtomicInteger();
 
         ExecutorState(String name, int maxThreads) {
             this.name = name;
@@ -86,6 +87,7 @@ public class ExecutorDeadlockDetector {
         ExecutorState state = stateFor(executor);
         if (state != null) {
             state.running.updateAndGet(current -> Math.max(0, current - 1));
+            state.completed.incrementAndGet();
         }
     }
 
@@ -101,7 +103,9 @@ public class ExecutorDeadlockDetector {
         ExecutorDeadlockReport report = new ExecutorDeadlockReport();
 
         for (ExecutorState state : executors.values()) {
-            int queued = Math.max(0, state.submitted.get() - state.running.get());
+            // Submitted minus running counted every completed task as still queued, so after the
+            // first completion the finding degenerated to a lifetime count of sibling waits.
+            int queued = Math.max(0, state.submitted.get() - state.running.get() - state.completed.get());
             if (state.waitingOnSibling.get() >= state.maxThreads && queued > 0) {
                 report.selfDeadlocks.add(String.format(
                     "%s: all %d worker(s) are waiting on sibling tasks while %d task(s) remain queued",

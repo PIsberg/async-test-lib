@@ -158,4 +158,16 @@ class VirtualThreadCpuBoundTaskDetectorTest {
         var report = detector.analyze();
         assertTrue(report.toString().contains("No CPU-bound tasks detected"));
     }
+
+    @Test
+    void analyzeIsIdempotentForATaskStillRunning() throws Exception {
+        VirtualThreadCpuBoundTaskDetector d = new VirtualThreadCpuBoundTaskDetector(1);
+        Thread vt = Thread.ofVirtual().unstarted(() -> { });
+        d.recordTaskStart("spin", vt);
+        Thread.sleep(10);
+        int first = d.analyze().getViolations().size();
+        int second = d.analyze().getViolations().size();
+        assertEquals(1, first, "a virtual task over threshold and still running is one violation");
+        assertEquals(first, second, "analyze() appended the still-running line to instance state on every call");
+    }
 }

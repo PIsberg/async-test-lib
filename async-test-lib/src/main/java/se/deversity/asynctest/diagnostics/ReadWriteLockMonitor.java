@@ -97,7 +97,9 @@ public class ReadWriteLockMonitor {
         
         state.writeLockCount.incrementAndGet();
         state.writeWaitTime.addAndGet(waitTimeMs);
-        state.maxWriteWaitTime = Math.max(state.maxWriteWaitTime, waitTimeMs);
+        synchronized (state) {
+            state.maxWriteWaitTime = Math.max(state.maxWriteWaitTime, waitTimeMs);
+        }
         state.currentWriter = Thread.currentThread().threadId();
         
         // Check for writer starvation (lots of readers, high write wait time)

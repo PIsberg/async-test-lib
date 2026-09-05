@@ -85,7 +85,7 @@ public final class SharedMemorySegmentRaceDetector {
     private static final int MAX_REPORTED_PAIRS = 3;
 
     private record Access(long threadId, String threadName, long start, long end,
-                          boolean write, @Nullable String guard) { }
+                          boolean write, @Nullable String guard, long epoch) { }
 
     private static final class SegmentState {
         final String label;
@@ -99,6 +99,20 @@ public final class SharedMemorySegmentRaceDetector {
     }
 
     private final Map<Integer, SegmentState> segments = new ConcurrentHashMap<>();
+
+    private final java.util.concurrent.atomic.AtomicLong invocationEpoch =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    /**
+     * Closes the round in progress. The runner ends a round by awaiting its workers and starts the
+     * next by submitting fresh tasks, so an access in round n happens-before every access in
+     * round n+1 and the two cannot overlap in time whatever bytes they touch.
+     *
+     * @since 1.11.2
+     */
+    public void markInvocationStart() {
+        invocationEpoch.incrementAndGet();
+    }
 
     /**
      * Record an access to a byte range of a shared segment, with no lock information.
@@ -147,7 +161,7 @@ public final class SharedMemorySegmentRaceDetector {
             return;
         }
         s.accesses.add(new Access(thread.threadId(), thread.getName(),
-                                  offset, offset + length, write, guard));
+                                  offset, offset + length, write, guard, invocationEpoch.get()));
     }
 
     /**
@@ -239,6 +253,7 @@ public final class SharedMemorySegmentRaceDetector {
                 Access b = sorted.get(j);
                 if (b.start() >= a.end()) break;              // sorted by start: nothing later overlaps
                 if (a.threadId() == b.threadId()) continue;   // same thread cannot race itself
+                if (a.epoch() != b.epoch()) continue;         // different rounds are ordered by the runner
                 if (!a.write() && !b.write()) continue;       // read/read is always safe
 
                 boolean bothGuarded = a.guard() != null && b.guard() != null;

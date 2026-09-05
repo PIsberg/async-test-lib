@@ -128,9 +128,10 @@ public class VirtualThreadCarrierExhaustionDetector {
      */
     public CarrierExhaustionReport analyze() {
         // Any threads still active at analysis time
+        List<String> details = new ArrayList<>(exhaustionDetails);
         if (!activeBlocksByThread.isEmpty()) {
             for (Map.Entry<Long, String> entry : activeBlocksByThread.entrySet()) {
-                exhaustionDetails.add(String.format(
+                details.add(String.format(
                     "Virtual thread (id=%d) still blocked in '%s' at analysis time",
                     entry.getKey(), entry.getValue()
                 ));
@@ -138,7 +139,7 @@ public class VirtualThreadCarrierExhaustionDetector {
         }
 
         return new CarrierExhaustionReport(
-            new ArrayList<>(exhaustionDetails),
+            details,
             peakConcurrentlyBlocked.get(),
             exhaustionEvents.get(),
             carrierCount

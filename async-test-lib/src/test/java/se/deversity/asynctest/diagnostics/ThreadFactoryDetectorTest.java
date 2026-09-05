@@ -170,4 +170,22 @@ public class ThreadFactoryDetectorTest {
         assertNotNull(reportStr);
         assertTrue(reportStr.contains("THREADFACTORY ISSUES DETECTED"), "Report should have header");
     }
+
+    @Test
+    void aNamedDaemonThreadWithoutAHandlerIsStillReportedForTheMissingHandler() {
+        ThreadFactoryDetector detector = new ThreadFactoryDetector();
+        ThreadFactory factory = r -> {
+            Thread t = new Thread(r, "worker-without-handler");
+            t.setDaemon(true);
+            return t;
+        };
+        detector.registerFactory(factory, "daemonFactory");
+        Thread thread = factory.newThread(() -> { });
+        detector.recordThreadCreated(factory, "daemonFactory", thread);
+
+        assertTrue(detector.analyze().hasIssues(),
+            "A live thread with no handler set returns its ThreadGroup from "
+                + "getUncaughtExceptionHandler(), never null, so the null check could not fire; "
+                + "the daemon flag and the name are set so nothing else can carry this test");
+    }
 }

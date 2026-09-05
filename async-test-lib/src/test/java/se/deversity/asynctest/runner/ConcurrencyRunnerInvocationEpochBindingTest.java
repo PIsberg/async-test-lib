@@ -8,6 +8,7 @@ import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.AsyncTestListener;
 import se.deversity.asynctest.AsyncTestListenerRegistry;
 import se.deversity.asynctest.E2E;
+import se.deversity.asynctest.diagnostics.AtomicNonAtomicUpdateDetector;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
 
 import java.util.Map;
@@ -95,6 +96,55 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
                 "a write and a read by two threads in the same round must be reported; if this "
                         + "is silent the recording never reached the validator and the cross-round "
                         + "test proves nothing. Reports: " + REPORTS.keySet());
+    }
+
+    public static class AtomicCrossRoundOnly {
+        static final AtomicInteger EXECUTIONS = new AtomicInteger();
+        static final AtomicInteger SUBJECT = new AtomicInteger();
+
+        // One platform worker, so the same pool thread runs both rounds: a get left pending in
+        // round one would pair with the set in round two unless the runner resets the epoch.
+        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
+                   detectAtomicNonAtomicUpdates = true)
+        void body() {
+            int n = EXECUTIONS.getAndIncrement();
+            AtomicNonAtomicUpdateDetector d = AsyncTestContext.atomicNonAtomicUpdateDetector();
+            if (n == 0) {
+                d.recordGet(SUBJECT, "subject", Thread.currentThread());
+            } else {
+                d.recordSet(SUBJECT, "subject", Thread.currentThread());
+            }
+        }
+    }
+
+    public static class AtomicSameRound {
+        static final AtomicInteger SUBJECT = new AtomicInteger();
+
+        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = false,
+                   detectAtomicNonAtomicUpdates = true)
+        void body() {
+            AtomicNonAtomicUpdateDetector d = AsyncTestContext.atomicNonAtomicUpdateDetector();
+            d.recordGet(SUBJECT, "subject", Thread.currentThread());
+            d.recordSet(SUBJECT, "subject", Thread.currentThread());
+        }
+    }
+
+    @Test
+    @DisplayName("a get in one round and a set in the next are not paired by AtomicNonAtomicUpdateDetector")
+    void atomicCrossRoundAccessesAreNotPaired() {
+        run(AtomicCrossRoundOnly.class);
+        assertFalse(REPORTS.containsKey("AtomicNonAtomicUpdateDetector"),
+                "the pending get survived the round boundary on the reused pool thread; "
+                        + "AsyncTestContext.markInvocationStart must reach this detector. Report: "
+                        + REPORTS.get("AtomicNonAtomicUpdateDetector"));
+    }
+
+    @Test
+    @DisplayName("the same get and set inside one round are paired, so the silence above is not vacuous")
+    void atomicSameRoundAccessesArePaired() {
+        run(AtomicSameRound.class);
+        assertTrue(REPORTS.containsKey("AtomicNonAtomicUpdateDetector"),
+                "a get followed by a set on one thread in one round must be reported: " + REPORTS.keySet());
     }
 
     private static void run(Class<?> fixture) {

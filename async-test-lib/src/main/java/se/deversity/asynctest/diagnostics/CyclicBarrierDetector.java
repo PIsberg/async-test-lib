@@ -30,6 +30,7 @@ public class CyclicBarrierDetector {
      * @param parties the number of parties the barrier was created for
      */
     public void registerBarrier(CyclicBarrier barrier, String name, int parties) {
+        if (barrier == null) return;
         // First registration wins: re-registering a subject must not discard what has
         // been observed about it. An @AsyncTest body runs once per thread, so a consumer
         // registering inside it registers once per worker.
@@ -42,6 +43,7 @@ public class CyclicBarrierDetector {
      * @param barrier the barrier being recorded, tracked by identity
      */
     public void recordArrival(CyclicBarrier barrier) {
+        if (barrier == null) return;
         BarrierInfo info = barrierRegistry.get(barrier);
         if (info != null) {
             info.arrive();
@@ -54,6 +56,7 @@ public class CyclicBarrierDetector {
      * @param barrier the barrier being recorded, tracked by identity
      */
     public void recordTimeout(CyclicBarrier barrier) {
+        if (barrier == null) return;
         timedOutBarriers.add(barrier);
     }
 
@@ -63,6 +66,7 @@ public class CyclicBarrierDetector {
      * @param barrier the barrier being recorded, tracked by identity
      */
     public void recordBroken(CyclicBarrier barrier) {
+        if (barrier == null) return;
         brokenBarriers.add(barrier);
     }
 
@@ -73,6 +77,7 @@ public class CyclicBarrierDetector {
      * @param barrier the barrier being recorded, tracked by identity
      */
     public void recordReset(CyclicBarrier barrier) {
+        if (barrier == null) return;
         brokenBarriers.remove(barrier);
     }
 
@@ -84,6 +89,7 @@ public class CyclicBarrierDetector {
      * @param barrier the barrier being recorded, tracked by identity
      */
     public void recordAwait(CyclicBarrier barrier) {
+        if (barrier == null) return;
         if (brokenBarriers.contains(barrier)) {
             reuseAfterBrokenBarriers.add(barrier);
         }
@@ -95,6 +101,7 @@ public class CyclicBarrierDetector {
      * @param barrier the barrier being recorded, tracked by identity
      */
     public void recordBarrierComplete(CyclicBarrier barrier) {
+        if (barrier == null) return;
         BarrierInfo info = barrierRegistry.get(barrier);
         if (info != null) {
             info.cycleComplete();

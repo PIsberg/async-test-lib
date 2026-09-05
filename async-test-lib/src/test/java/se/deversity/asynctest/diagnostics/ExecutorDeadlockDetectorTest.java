@@ -101,4 +101,22 @@ class ExecutorDeadlockDetectorTest {
         ExecutorDeadlockDetector.ExecutorDeadlockReport report = detector.analyze();
         assertFalse(report.hasIssues());
     }
+
+    @Test
+    void aSiblingWaitThatCompletedIsNotADeadlockOnTheNextRound() {
+        Object executor = new Object();
+        detector.registerExecutor(executor, "pool", 2);
+        for (int round = 0; round < 2; round++) {
+            detector.recordTaskSubmitted(executor);
+            detector.recordTaskSubmitted(executor);
+            detector.recordTaskStarted(executor);
+            detector.recordTaskStarted(executor);
+            detector.recordWaitingOnSibling(executor);
+            detector.recordTaskCompleted(executor);
+            detector.recordTaskCompleted(executor);
+        }
+        assertFalse(detector.analyze().hasIssues(),
+            "Every task completed, nothing is queued; 'queued' was submitted minus running and "
+                + "never drained on completion, so a finished wait counted forever");
+    }
 }

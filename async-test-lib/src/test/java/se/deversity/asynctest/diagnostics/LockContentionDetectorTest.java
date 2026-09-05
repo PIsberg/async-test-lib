@@ -151,4 +151,21 @@ public class LockContentionDetectorTest {
         assertNotNull(report);
         assertFalse(report.hasIssues(), "Empty detector should have no issues");
     }
+
+    @Test
+    void aHotLockCarriesTheDeclaredMediumSeverityAtTheGate() {
+        LockContentionDetector detector = new LockContentionDetector();
+        Object lock = new Object();
+        for (int i = 0; i < 5; i++) {
+            detector.recordAcquireAttempt(lock, "hot");
+            detector.recordContention(lock, "hot");
+            detector.recordAcquired(lock, "hot");
+            detector.recordReleased(lock, "hot");
+        }
+        LockContentionDetector.LockContentionReport report = detector.analyze();
+        assertTrue(report.hasIssues());
+        assertEquals(IssueSeverity.MEDIUM,
+            DetectorDefaultSeverity.of("LockContentionDetector", report.toString()),
+            "the bare word HIGH in the report text shadowed the MEDIUM the table declares");
+    }
 }

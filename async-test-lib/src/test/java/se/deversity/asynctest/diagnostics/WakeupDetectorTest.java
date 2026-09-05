@@ -99,4 +99,15 @@ class WakeupDetectorTest {
         assertEquals(viaAnalyzeWakeups.hasIssues(), viaAnalyze.hasIssues());
         assertEquals(viaAnalyzeWakeups.toString(), viaAnalyze.toString());
     }
+
+    @Test
+    void nullMonitorIsIgnoredAndDoesNotBreakAnalysis() {
+        WakeupDetector detector = new WakeupDetector();
+        assertDoesNotThrow(() -> {
+            detector.recordWaitEnter(null);
+            detector.recordNotify(null, false);
+            detector.recordWaitExit(null, true);
+            detector.analyzeWakeups();
+        });
+    }
 }

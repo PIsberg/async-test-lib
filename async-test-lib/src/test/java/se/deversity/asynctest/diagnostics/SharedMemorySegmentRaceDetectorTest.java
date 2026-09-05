@@ -189,4 +189,14 @@ class SharedMemorySegmentRaceDetectorTest {
         assertEquals("ringBuffer", report.structuredViolations.get(0).attributes().get("label"),
                 "Machine-readable output must carry the label the test author chose");
     }
+
+    @Test
+    void writesFromDifferentRoundsAreNotPaired() {
+        detector.recordAccess(segment, "ringBuffer", 0, 8, true, t1);
+        detector.markInvocationStart();
+        detector.recordAccess(segment, "ringBuffer", 0, 8, true, t2);
+        assertFalse(detector.analyze().hasIssues(),
+            "the runner orders rounds through its latch, so a write in round one and a write in "
+                + "round two cannot race");
+    }
 }

@@ -43,7 +43,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class StringBuilderDetector {
 
-    private static class BuilderState {
+    private static class BuilderState extends SelfGuard.TrackedInstance {
         final String name;
         final AtomicInteger appendCount  = new AtomicInteger(0);
         final AtomicInteger insertCount  = new AtomicInteger(0);
@@ -123,6 +123,7 @@ public class StringBuilderDetector {
     public void recordRead(StringBuilder builder, String name) {
         if (!enabled || builder == null) return;
         BuilderState state = resolve(builder, name);
+        state.noteAccess(builder, false);
         state.readingThreads.add(Thread.currentThread().threadId());
         state.readCount.incrementAndGet();
     }
@@ -143,6 +144,7 @@ public class StringBuilderDetector {
     private void recordMutation(StringBuilder builder, String name, String type) {
         if (!enabled || builder == null) return;
         BuilderState state = resolve(builder, name);
+        state.noteAccess(builder, true);
         state.mutatingThreads.add(Thread.currentThread().threadId());
         switch (type) {
             case "append"  -> state.appendCount.incrementAndGet();
@@ -178,9 +180,9 @@ public class StringBuilderDetector {
 
             report.totalBuilders++;
 
-            if (mutators > 1) {
+            if (mutators > 1 && state.sawUnguardedAccess()) {
                 report.sharedBuilderViolations.add(String.format(
-                        "%s: mutated by %d threads (append: %d, insert: %d, delete: %d, replace: %d) — NOT THREAD SAFE!",
+                        "%s: mutated by %d threads (append: %d, insert: %d, delete: %d, replace: %d) — NOT THREAD SAFE!" + SelfGuard.REPORT_NOTE,
                         state.name, mutators,
                         state.appendCount.get(), state.insertCount.get(),
                         state.deleteCount.get(), state.replaceCount.get()));

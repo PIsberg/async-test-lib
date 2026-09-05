@@ -25,6 +25,8 @@ public class SynchronizerMonitor {
         final int expectedParties;
         final AtomicInteger arrivedCount = new AtomicInteger(0);
         final Set<Long> arrivedThreads = ConcurrentHashMap.newKeySet();
+        final Map<Long, Integer> lastGenerationByThread = new ConcurrentHashMap<>();
+        final AtomicInteger duplicateArrivals = new AtomicInteger(0);
         final List<String> events = Collections.synchronizedList(new ArrayList<>());
         
         BarrierState(String name, int parties) {
@@ -43,7 +45,7 @@ public class SynchronizerMonitor {
      * @param expectedParties the number of parties expected to arrive
      */
     public void registerSynchronizer(Object synchronizer, int expectedParties) {
-        if (!enabled) return;
+        if (!enabled || synchronizer == null) return;
         
         int id = System.identityHashCode(synchronizer);
         synchronizers.putIfAbsent(id, new BarrierState(
@@ -65,10 +67,18 @@ public class SynchronizerMonitor {
         if (state == null) return;
         
         long threadId = Thread.currentThread().threadId();
-        state.arrivedCount.incrementAndGet();
+        int count = state.arrivedCount.incrementAndGet();
         state.arrivedThreads.add(threadId);
+        // The barrier trips every expectedParties arrivals and is reused for the next generation;
+        // the runner reuses its pool threads across rounds, so the same thread arriving again is
+        // only a defect within one generation.
+        int generation = state.expectedParties > 0 ? (count - 1) / state.expectedParties : 0;
+        Integer previous = state.lastGenerationByThread.put(threadId, generation);
+        if (previous != null && previous == generation) {
+            state.duplicateArrivals.incrementAndGet();
+        }
         state.events.add(String.format("T-%d arrived (%d/%d)",
-            threadId, state.arrivedCount.get(), state.expectedParties));
+            threadId, count, state.expectedParties));
     }
     
     /**
@@ -101,6 +111,7 @@ public class SynchronizerMonitor {
         
         state.arrivedCount.set(0);
         state.arrivedThreads.clear();
+        state.lastGenerationByThread.clear();
         state.events.add("Barrier reset");
     }
     
@@ -114,17 +125,16 @@ public class SynchronizerMonitor {
         
         for (BarrierState state : synchronizers.values()) {
             // Check for partial arrivals
-            if (state.arrivedCount.get() > 0 && state.arrivedCount.get() < state.expectedParties) {
-                if (state.arrivedThreads.size() < state.expectedParties) {
-                    report.incompleteBarriers.add(String.format(
-                        "%s: %d/%d parties arrived",
-                        state.synchronizerName, state.arrivedCount.get(), state.expectedParties
-                    ));
-                }
+            int count = state.arrivedCount.get();
+            if (count > 0 && state.expectedParties > 0 && count % state.expectedParties != 0) {
+                report.incompleteBarriers.add(String.format(
+                    "%s: %d/%d parties arrived",
+                    state.synchronizerName, count % state.expectedParties, state.expectedParties
+                ));
             }
             
             // Check for duplicate arrivals
-            if (state.arrivedThreads.size() != state.arrivedCount.get()) {
+            if (state.duplicateArrivals.get() > 0) {
                 report.duplicateArrivals.add(String.format(
                     "%s: Thread arrived multiple times",
                     state.synchronizerName

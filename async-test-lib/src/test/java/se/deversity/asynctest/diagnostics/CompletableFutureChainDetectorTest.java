@@ -205,4 +205,40 @@ class CompletableFutureChainDetectorTest {
         // future-2 was not recorded (disabled), so only future-1 exists and is joined
         assertFalse(report.hasIssues());
     }
+
+    @Test
+    void unnamedFutureDoesNotThrowWhenHandlersAreRecorded() {
+        java.util.concurrent.CompletableFuture<String> f = new java.util.concurrent.CompletableFuture<>();
+        java.util.concurrent.CompletableFuture<String> g = new java.util.concurrent.CompletableFuture<>();
+        detector.recordFutureCreated(f, null);
+        detector.recordChainOperation(f, g, "thenApply");
+        assertDoesNotThrow(() -> detector.recordExceptionally(g));
+        assertDoesNotThrow(() -> detector.recordHandle(f));
+        assertDoesNotThrow(() -> detector.analyze());
+    }
+
+    @Test
+    void chainOperationsRecordedFromManyThreadsDoNotThrow() throws Exception {
+        java.util.concurrent.CompletableFuture<String> f = new java.util.concurrent.CompletableFuture<>();
+        detector.recordFutureCreated(f, "shared");
+        java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(8);
+        java.util.List<Throwable> failures = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Thread[] workers = new Thread[8];
+        for (int i = 0; i < workers.length; i++) {
+            workers[i] = new Thread(() -> {
+                try {
+                    start.await();
+                    for (int k = 0; k < 5_000; k++) {
+                        detector.recordChainOperation(f, new java.util.concurrent.CompletableFuture<>(), "thenApply");
+                    }
+                } catch (Throwable t) {
+                    failures.add(t);
+                }
+            });
+            workers[i].start();
+        }
+        for (Thread w : workers) w.join();
+        assertTrue(failures.isEmpty(),
+            "chainOperations was a plain ArrayList appended from worker threads: " + failures);
+    }
 }

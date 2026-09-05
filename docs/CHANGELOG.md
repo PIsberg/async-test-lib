@@ -18,6 +18,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is a hook only if annotated itself. Before-hooks run superclass first and after-hooks subclass
   first, where they previously both ran subclass first. Pinned by `PerInvocationLifecycleTest`.
 
+- **Detector correctness sweep: 39 detectors, each change pinned by a test that was red first.**
+  Reported correct code: `RecordMutableComponentLeak` graded a mutated `java.util.concurrent`
+  component, its own recommended fix, as a VERDICT; `ScopedValueMisuse` collapsed a nested
+  rebinding into one set entry so the outer scope's `get()` became CRITICAL; `BoxedPrimitiveLock`
+  reported every runtime-built lock string, because `obj == obj.intern()` is true for any string
+  not yet pooled and pinned it in the pool as a side effect; `ExecutorDeadlock` and
+  `FutureBlocking` never drained `queued` on completion, so one finished sibling wait made every
+  later round CRITICAL; `Gatherer` demanded a combiner from a sequential gatherer;
+  `ThreadPoolDeadlock`'s report fired on any nested submission where the detector's own
+  threshold is the pool size; `AtomicNonAtomicUpdate` (VERDICT), `Calendar`, `StringBuilder`,
+  `FileChannelPositionRace` and `JdbcConnectionShared` reported accesses made under the
+  instance's own monitor, and now consult the lockset like the `Shared*` family;
+  `SynchronizerMonitor` called a barrier reused for a second generation a duplicate arrival;
+  `BusyWait`, `AtomicNonAtomicUpdate` and `SharedMemorySegmentRace` summed or paired state
+  across rounds the runner orders, and now close their round on `markInvocationStart`;
+  `ScopeResultEscape` and `ScopeConfigurationMisuse` continued a closed scope when its id was
+  reopened in the next round.
+  Could not report what they document: `ThreadFactory`'s missing-handler check compared against
+  `null` where a live thread returns its `ThreadGroup`; `StampedLock` never read its
+  optimistic-read counters; `ParallelStream` dropped a side effect reported before registration.
+  Severity at the `failOn` gate: `HighContentionAtomic` carried a bare `HIGH` in its header and
+  ranked an advisory as HIGH; `LockContention`'s text shadowed its declared MEDIUM;
+  `DaemonThreadHygiene` and `LazyCollectionMisuse` marked no severity in the text the gate reads.
+  Record path: null subjects threw `NullPointerException` into the test body from
+  `CountDownLatch`, `CyclicBarrier`, `Phaser`, `ReentrantLock`, `ScheduledExecutor`,
+  `SharedRandom`, `Timer`, `SynchronizerMonitor` and `Wakeup`; `CompletableFutureChain` appended
+  to a plain `ArrayList` from worker threads and NPEd on an unnamed future; `ScheduledExecutor`'s
+  exception count and `ReadWriteLockMonitor`'s maximum wait lost updates; `FalseSharing` and
+  `MemoryOrdering` iterated a `synchronizedList` without its lock; `StructuredConcurrencyMisuse`,
+  `VirtualThreadCarrierExhaustion` and `VirtualThreadCpuBoundTask` appended to instance state in
+  `analyze()`, doubling findings on a second call.
+
 ## [1.11.1] - 2026-09-04
 
 ### Added

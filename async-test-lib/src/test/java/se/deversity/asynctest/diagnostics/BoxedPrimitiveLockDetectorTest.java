@@ -181,4 +181,16 @@ public class BoxedPrimitiveLockDetectorTest {
         assertTrue(s.contains("Fix:"));
         assertTrue(s.contains("Fix (value-based classes)"));
     }
+
+    @Test
+    void runtimeBuiltStringIsNotReportedAsInterned() {
+        BoxedPrimitiveLockDetector detector = new BoxedPrimitiveLockDetector();
+        // Not a literal and not in the pool: a private lock string built at runtime.
+        String lock = "lock-" + java.util.UUID.randomUUID();
+        detector.recordLockAcquire(lock, Thread.currentThread(), "test");
+        BoxedPrimitiveLockDetector.BoxedPrimitiveLockReport report = detector.analyze();
+        assertFalse(report.hasIssues(),
+            "obj == obj.intern() is true for ANY string not yet in the pool, because intern() "
+                + "inserts and returns the receiver; the probe must not report a runtime string: " + report);
+    }
 }

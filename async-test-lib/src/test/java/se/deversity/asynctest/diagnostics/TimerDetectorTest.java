@@ -147,4 +147,21 @@ public class TimerDetectorTest {
         assertTrue(activity.contains("completed: 5"), "Should track completed count");
         timer.cancel();
     }
+
+    @Test
+    void nullTaskNameIsIgnoredOnEveryRecordPath() {
+        TimerDetector detector = new TimerDetector();
+        java.util.Timer timer = new java.util.Timer(true);
+        try {
+            detector.registerTimer(timer, "t");
+            assertDoesNotThrow(() -> {
+                detector.recordTaskSchedule(timer, "t", null);
+                detector.recordTaskRun(timer, "t", null);
+                detector.recordTaskComplete(timer, "t", null);
+                detector.analyze();
+            });
+        } finally {
+            timer.cancel();
+        }
+    }
 }

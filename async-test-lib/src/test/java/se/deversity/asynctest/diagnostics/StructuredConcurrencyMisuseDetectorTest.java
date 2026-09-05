@@ -224,4 +224,13 @@ class StructuredConcurrencyMisuseDetectorTest {
         assertFalse(report.hasIssues());
         assertTrue(report.toString().contains("No structured concurrency issues"));
     }
+
+    @Test
+    void analyzeIsIdempotentForAnUnclosedScope() {
+        detector.recordScopeOpened("ShutdownOnFailure");
+        int first = detector.analyze().getUnclosedScopes().size();
+        int second = detector.analyze().getUnclosedScopes().size();
+        assertEquals(1, first);
+        assertEquals(first, second, "analyze() appended the still-open scope to instance state on every call");
+    }
 }
