@@ -114,4 +114,10 @@ class SynchronizerMonitorTest {
         assertEquals(viaAnalyzeSynchronizers.hasIssues(), viaAnalyze.hasIssues());
         assertEquals(viaAnalyzeSynchronizers.toString(), viaAnalyze.toString());
     }
+
+    @Test
+    void nullSynchronizerIsIgnoredOnRegistration() {
+        SynchronizerMonitor monitor = new SynchronizerMonitor();
+        assertDoesNotThrow(() -> monitor.registerSynchronizer(null, 2));
+    }
 }

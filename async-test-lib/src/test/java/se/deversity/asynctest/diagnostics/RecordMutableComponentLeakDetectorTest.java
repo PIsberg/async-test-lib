@@ -178,4 +178,19 @@ class RecordMutableComponentLeakDetectorTest {
         assertEquals(detector.analyze().toString(), detector.analyze().toString(),
                 "Repeated analyze() on quiescent state must produce identical reports");
     }
+
+    @Test
+    void mutatedConcurrentComponentIsNotReported() {
+        Map<String, String> attributes = new ConcurrentHashMap<>();
+        Concurrent c = new Concurrent("c-2", attributes);
+
+        detector.recordShared(c, "concurrent", threadA);
+        detector.recordShared(c, "concurrent", threadB);
+        attributes.put("k", "v");   // the recommended fix in action: a CHM mutated while shared
+
+        RecordMutableComponentLeakDetector.Report report = detector.analyze();
+        assertFalse(report.hasIssues(),
+            "Mutating a java.util.concurrent component is what the Fix text recommends; "
+                + "reporting it as an observed mutation contradicts the detector's own advice: " + report);
+    }
 }

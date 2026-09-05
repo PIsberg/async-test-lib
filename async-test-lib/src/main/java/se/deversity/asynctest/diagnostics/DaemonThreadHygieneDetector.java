@@ -198,7 +198,7 @@ public final class DaemonThreadHygieneDetector {
         @Override
         public String toString() {
             if (violations.isEmpty()) return "DAEMON THREAD HYGIENE — clean";
-            StringBuilder sb = new StringBuilder("DAEMON THREAD HYGIENE DETECTED:\n");
+            StringBuilder sb = new StringBuilder("DAEMON THREAD HYGIENE DETECTED (" + IssueSeverity.MEDIUM.getLabel() + "):\n");
             for (String v : violations) sb.append("  - ").append(v).append('\n');
             sb.append("  Fix:\n")
               .append("    - Call thread.setDaemon(true) BEFORE start() if the thread should not block JVM exit.\n")

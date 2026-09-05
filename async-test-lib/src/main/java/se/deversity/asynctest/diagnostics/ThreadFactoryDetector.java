@@ -47,7 +47,8 @@ public class ThreadFactoryDetector {
             info.recordThreadCreated(thread);
             
             // Check for missing exception handler
-            if (thread.getUncaughtExceptionHandler() == null) {
+            Thread.UncaughtExceptionHandler handler = thread.getUncaughtExceptionHandler();
+            if (handler == null || handler instanceof ThreadGroup) {
                 missingExceptionHandler.add(factoryName + ":" + thread.getName());
             }
             

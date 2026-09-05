@@ -174,10 +174,11 @@ public class VirtualThreadCpuBoundTaskDetector {
      */
     public CpuBoundTaskReport analyze() {
         // Evaluate tasks still active at analysis time
+        List<String> found = new ArrayList<>(violations);
         for (TaskRecord rec : activeTasks.values()) {
             long maxSegmentMs = rec.maxSegmentMs();
             if (rec.isVirtual && maxSegmentMs > cpuThresholdMs) {
-                violations.add(String.format(
+                found.add(String.format(
                     "Virtual thread (id=%d) task '%s': still running after %dms "
                     + "without a yield point (threshold=%dms).",
                     rec.threadId, rec.taskName, maxSegmentMs, cpuThresholdMs
@@ -188,7 +189,7 @@ public class VirtualThreadCpuBoundTaskDetector {
         int count = totalTasks.get();
         long avgMs = count > 0 ? totalDurationMs.get() / count : 0;
         return new CpuBoundTaskReport(
-            new ArrayList<>(violations),
+            found,
             count,
             avgMs,
             maxObservedMs.get(),

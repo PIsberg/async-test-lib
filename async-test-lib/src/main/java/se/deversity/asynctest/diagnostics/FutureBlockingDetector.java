@@ -21,6 +21,7 @@ public class FutureBlockingDetector {
         final int maxThreads;
         final AtomicInteger submittedTasks = new AtomicInteger();
         final AtomicInteger runningTasks = new AtomicInteger();
+        final AtomicInteger completedTasks = new AtomicInteger();
         final AtomicInteger blockingTasks = new AtomicInteger();
 
         ExecutorState(String name, int maxThreads) {
@@ -95,6 +96,7 @@ public class FutureBlockingDetector {
         ExecutorState state = stateFor(executor);
         if (state != null) {
             state.runningTasks.updateAndGet(current -> Math.max(0, current - 1));
+            state.completedTasks.incrementAndGet();
         }
     }
 
@@ -113,7 +115,9 @@ public class FutureBlockingDetector {
         FutureBlockingReport report = new FutureBlockingReport();
 
         for (ExecutorState state : executors.values()) {
-            int queued = Math.max(0, state.submittedTasks.get() - state.runningTasks.get());
+            // Completed tasks are not queued; see ExecutorDeadlockDetector for the same defect.
+            int queued = Math.max(0, state.submittedTasks.get() - state.runningTasks.get()
+                    - state.completedTasks.get());
             if (state.blockingTasks.get() >= state.maxThreads && queued > 0) {
                 report.starvationRisks.add(String.format(
                     "%s: %d/%d workers blocked waiting on futures while %d task(s) remain queued",

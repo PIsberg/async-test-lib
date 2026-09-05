@@ -133,7 +133,7 @@ public class GathererConcurrencyMisuseDetector {
         // once - which reports nothing under exactly the concurrency this detector exists for.
         if (firstFromThisThread && info.integratingThreadIds.size() >= 2
                 && info.reported.compareAndSet(false, true)) {
-            if (!info.hasCombiner) {
+            if (!info.hasCombiner && info.parallel) {
                 missingCombinerReports.add(
                     "Gatherer '" + name + "': integrator ran on multiple threads but the gatherer "
                     + "declares no combiner. On a parallel stream the per-thread states cannot be "

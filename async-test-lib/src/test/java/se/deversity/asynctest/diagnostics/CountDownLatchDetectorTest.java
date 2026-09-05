@@ -187,4 +187,16 @@ public class CountDownLatchDetectorTest {
         assertFalse(detector.analyze().hasIssues(),
                 "the same rule has to hold for a latch that only the hooks ever saw");
     }
+
+    @Test
+    void nullLatchIsIgnoredOnEveryRecordPath() {
+        CountDownLatchDetector detector = new CountDownLatchDetector();
+        assertDoesNotThrow(() -> {
+            detector.registerLatch(null, "n", 1);
+            detector.recordCountDown(null);
+            detector.recordTimeout(null);
+            detector.recordAwaitSuccess(null);
+            detector.analyze();
+        });
+    }
 }

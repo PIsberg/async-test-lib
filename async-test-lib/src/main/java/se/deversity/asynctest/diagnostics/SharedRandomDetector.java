@@ -103,8 +103,10 @@ public class SharedRandomDetector {
         }
         state.lastAccessTime = now;
         
-        state.methodCounts.computeIfAbsent(methodName, k -> new AtomicInteger(0))
-            .incrementAndGet();
+        if (methodName != null) {
+            state.methodCounts.computeIfAbsent(methodName, k -> new AtomicInteger(0))
+                .incrementAndGet();
+        }
     }
 
     /**

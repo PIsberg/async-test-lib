@@ -42,7 +42,7 @@ public class WakeupDetector {
      * @param monitor the object being used as a monitor, tracked by identity
      */
     public void recordWaitEnter(Object monitor) {
-        if (!enabled) return;
+        if (!enabled || monitor == null) return;
         
         MonitorState state = monitors.computeIfAbsent(System.identityHashCode(monitor), 
             k -> new MonitorState(monitor)
@@ -63,7 +63,7 @@ public class WakeupDetector {
      * @param wasNotified the {@code wasNotified} flag
      */
     public void recordWaitExit(Object monitor, boolean wasNotified) {
-        if (!enabled) return;
+        if (!enabled || monitor == null) return;
         
         MonitorState state = monitors.get(System.identityHashCode(monitor));
         if (state == null) return;
@@ -90,7 +90,7 @@ public class WakeupDetector {
      * @param notifyAll the {@code notifyAll} flag
      */
     public void recordNotify(Object monitor, boolean notifyAll) {
-        if (!enabled) return;
+        if (!enabled || monitor == null) return;
         
         MonitorState state = monitors.computeIfAbsent(System.identityHashCode(monitor),
             k -> new MonitorState(monitor)

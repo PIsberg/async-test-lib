@@ -235,7 +235,8 @@ public final class RecordMutableComponentLeakDetector {
                 String before = s.firstSight.get(rc.getName());
                 String now    = fingerprint(value);
 
-                if (before != null && now != null && !Objects.equals(before, now)) {
+                if (before != null && now != null && !Objects.equals(before, now)
+                        && isMutable(value)) {
                     mutated.add(String.format("'%s' (%s) changed contents while shared",
                             rc.getName(), describe(value, rc)));
                 } else if (isMutable(value)) {

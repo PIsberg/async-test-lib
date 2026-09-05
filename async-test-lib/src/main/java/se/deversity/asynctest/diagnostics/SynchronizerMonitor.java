@@ -43,7 +43,7 @@ public class SynchronizerMonitor {
      * @param expectedParties the number of parties expected to arrive
      */
     public void registerSynchronizer(Object synchronizer, int expectedParties) {
-        if (!enabled) return;
+        if (!enabled || synchronizer == null) return;
         
         int id = System.identityHashCode(synchronizer);
         synchronizers.putIfAbsent(id, new BarrierState(

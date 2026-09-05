@@ -287,4 +287,42 @@ public class ScheduledExecutorDetectorTest {
         field.setAccessible(true);
         return field.getInt(info);
     }
+
+    @Test
+    void nullExecutorIsIgnoredOnEveryRecordPath() {
+        ScheduledExecutorDetector detector = new ScheduledExecutorDetector();
+        assertDoesNotThrow(() -> {
+            detector.registerExecutor(null, "n", 1);
+            detector.recordSchedule(null, "n", "task");
+            detector.recordTaskStart(null, "n", "task");
+            detector.recordTaskComplete(null, "n", "task", 1);
+            detector.recordException(null, "n");
+            detector.recordShutdown(null);
+            detector.analyze();
+        });
+    }
+
+    @Test
+    void exceptionsRecordedFromManyThreadsAreAllCounted() throws Exception {
+        ScheduledExecutorDetector detector = new ScheduledExecutorDetector();
+        java.util.concurrent.ScheduledExecutorService executor =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+        try {
+            detector.registerExecutor(executor, "pool", 1);
+            java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(8);
+            Thread[] workers = new Thread[8];
+            for (int i = 0; i < workers.length; i++) {
+                workers[i] = new Thread(() -> {
+                    try { start.await(); } catch (Exception e) { throw new RuntimeException(e); }
+                    for (int k = 0; k < 20_000; k++) detector.recordException(executor, "pool");
+                });
+                workers[i].start();
+            }
+            for (Thread w : workers) w.join();
+            assertTrue(detector.analyze().toString().contains("Exceptions in Scheduled Tasks: 160000"),
+                "a plain int counter incremented from worker threads loses updates: " + detector.analyze());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
 }

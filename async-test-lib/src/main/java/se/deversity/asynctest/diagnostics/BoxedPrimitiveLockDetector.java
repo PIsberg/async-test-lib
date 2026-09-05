@@ -138,7 +138,11 @@ public class BoxedPrimitiveLockDetector {
         if (obj instanceof Long v) {
             if (v >= -128 && v <= 127) return "cached Long(" + v + ")";
         }
-        if (obj instanceof String s && obj == s.intern()) {
+        // intern() on a copy: if s was already pooled the copy interns to s and the identity
+        // test holds; if not, the pool now holds the collectable copy and s stays untouched.
+        // Calling s.intern() itself inserted s and returned it, so every runtime-built string
+        // tested positive and was pinned in the pool as a side effect.
+        if (obj instanceof String s && new String(s).intern() == s) {
             return "interned String(\"" + obj + "\")";
         }
         return null;

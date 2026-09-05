@@ -101,11 +101,9 @@ public class ParallelStreamDetector {
         if (!enabled || streamName == null) {
             return;
         }
-        StreamState state = streams.get(streamName);
-        if (state != null) {
-            state.hasNonThreadSafeCollector.set(true);
-            updateAccessTime(state);
-        }
+        StreamState state = streams.computeIfAbsent(streamName, StreamState::new);
+        state.hasNonThreadSafeCollector.set(true);
+        updateAccessTime(state);
     }
 
     /**
@@ -118,11 +116,9 @@ public class ParallelStreamDetector {
         if (!enabled || streamName == null) {
             return;
         }
-        StreamState state = streams.get(streamName);
-        if (state != null) {
-            state.hasSideEffects.set(true);
-            updateAccessTime(state);
-        }
+        StreamState state = streams.computeIfAbsent(streamName, StreamState::new);
+        state.hasSideEffects.set(true);
+        updateAccessTime(state);
     }
 
     private void recordOperation(String streamName, String operation, boolean stateful) {

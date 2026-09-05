@@ -275,7 +275,9 @@ public class ThreadPoolDeadlockDetector {
          * @since 1.9.2
          */
         public boolean hasIssues() {
-            return hasDeadlockRisk();
+            // The registry binds this, so it must apply the detector's own threshold (active tasks
+            // reached the pool size) rather than fire on any nested submission into a wide pool.
+            return totalDeadlockRisks > 0;
         }
 
         /**

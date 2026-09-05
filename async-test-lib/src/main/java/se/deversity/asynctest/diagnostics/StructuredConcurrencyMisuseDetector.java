@@ -174,13 +174,14 @@ public class StructuredConcurrencyMisuseDetector {
      */
     public StructuredConcurrencyReport analyze() {
         // Any scopes still in openScopes at analysis time are unclosed
+        List<String> unclosed = new ArrayList<>(unclosedScopes);
         for (ScopeRecord rec : openScopes.values()) {
-            unclosedScopes.add("Scope " + rec.scopeType + " (id=" + rec.id
+            unclosed.add("Scope " + rec.scopeType + " (id=" + rec.id
                 + ") was never closed — subtasks may outlive their scope (resource leak)");
         }
 
         return new StructuredConcurrencyReport(
-            new ArrayList<>(unclosedScopes),
+            unclosed,
             new ArrayList<>(closedWithoutJoin),
             new ArrayList<>(resultAccessedBeforeJoin),
             new ArrayList<>(emptyScopes),

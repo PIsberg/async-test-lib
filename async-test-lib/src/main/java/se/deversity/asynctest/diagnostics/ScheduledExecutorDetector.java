@@ -20,7 +20,8 @@ public class ScheduledExecutorDetector {
     private final Map<ScheduledExecutorService, ExecutorInfo> executorRegistry = new ConcurrentHashMap<>();
     private final Set<ScheduledExecutorService> notShutdownExecutors = ConcurrentHashMap.newKeySet();
     private final Set<String> longRunningTasks = ConcurrentHashMap.newKeySet();
-    private int exceptionInTasks = 0;
+    private final java.util.concurrent.atomic.AtomicInteger exceptionInTasks =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     /**
      * Register a ScheduledExecutorService for monitoring.
@@ -30,6 +31,7 @@ public class ScheduledExecutorDetector {
      * @param corePoolSize the configured core pool size
      */
     public void registerExecutor(ScheduledExecutorService executor, String name, int corePoolSize) {
+        if (executor == null) return;
         // First registration wins: re-registering a subject must not discard what has
         // been observed about it. An @AsyncTest body runs once per thread, so a consumer
         // registering inside it registers once per worker.
@@ -44,6 +46,7 @@ public class ScheduledExecutorDetector {
      * @param taskName a label identifying the task in the report
      */
     public void recordSchedule(ScheduledExecutorService executor, String executorName, String taskName) {
+        if (executor == null) return;
         ExecutorInfo info = executorRegistry.get(executor);
         if (info != null) {
             info.recordSchedule(taskName);
@@ -58,6 +61,7 @@ public class ScheduledExecutorDetector {
      * @param taskName a label identifying the task in the report
      */
     public void recordTaskStart(ScheduledExecutorService executor, String executorName, String taskName) {
+        if (executor == null) return;
         ExecutorInfo info = executorRegistry.get(executor);
         if (info != null) {
             info.recordTaskStart(taskName);
@@ -73,6 +77,7 @@ public class ScheduledExecutorDetector {
      * @param durationMs the duration in milliseconds
      */
     public void recordTaskComplete(ScheduledExecutorService executor, String executorName, String taskName, long durationMs) {
+        if (executor == null) return;
         ExecutorInfo info = executorRegistry.get(executor);
         if (info != null) {
             info.recordTaskComplete(taskName, durationMs);
@@ -89,7 +94,8 @@ public class ScheduledExecutorDetector {
      * @param executorName a label identifying the executor in the report
      */
     public void recordException(ScheduledExecutorService executor, String executorName) {
-        exceptionInTasks++;
+        if (executor == null) return;
+        exceptionInTasks.incrementAndGet();
     }
 
     /**
@@ -98,6 +104,7 @@ public class ScheduledExecutorDetector {
      * @param executor the executor being recorded, tracked by identity
      */
     public void recordShutdown(ScheduledExecutorService executor) {
+        if (executor == null) return;
         ExecutorInfo info = executorRegistry.get(executor);
         if (info != null) {
             info.shutdown = true;
@@ -126,7 +133,7 @@ public class ScheduledExecutorDetector {
             executorRegistry,
             notShutdownExecutors,
             longRunningTasks,
-            exceptionInTasks
+            exceptionInTasks.get()
         );
     }
 

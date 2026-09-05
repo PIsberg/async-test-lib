@@ -94,4 +94,18 @@ public class PhaserDetectorTest {
         assertNotNull(reportStr);
         assertTrue(reportStr.contains("PHASER ISSUES DETECTED"), "Report should have header");
     }
+
+    @Test
+    void nullPhaserIsIgnoredOnEveryRecordPath() {
+        PhaserDetector detector = new PhaserDetector();
+        assertDoesNotThrow(() -> {
+            detector.registerPhaser(null, "n", 1);
+            detector.recordArrive(null);
+            detector.recordArriveAwaitAdvance(null);
+            detector.recordTimeout(null);
+            detector.recordTermination(null);
+            detector.recordPhaseComplete(null, 0);
+            detector.analyze();
+        });
+    }
 }

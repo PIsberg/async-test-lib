@@ -204,7 +204,9 @@ public final class HighContentionAtomicDetector {
         @Override
         public String toString() {
             if (violations.isEmpty()) return "HIGH CONTENTION ATOMIC — clean";
-            StringBuilder sb = new StringBuilder("HIGH CONTENTION ATOMIC (ADVISORY):\n");
+            // The header names the severity explicitly: the gate reads the text, and a bare
+            // "HIGH" in the old header made an advisory rank as a data-corruption finding.
+            StringBuilder sb = new StringBuilder("ATOMIC CONTENTION ADVISORY (" + IssueSeverity.LOW.getLabel() + "):\n");
             for (String v : violations) sb.append("  - ").append(v).append('\n');
             sb.append("  Fix:\n")
               .append("    - For pure counters/statistics, replace AtomicLong/AtomicInteger with LongAdder,\n")

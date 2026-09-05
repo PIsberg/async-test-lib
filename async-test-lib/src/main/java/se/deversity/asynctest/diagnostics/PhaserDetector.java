@@ -29,6 +29,7 @@ public class PhaserDetector {
      * @param parties the number of parties the barrier was created for
      */
     public void registerPhaser(Phaser phaser, String name, int parties) {
+        if (phaser == null) return;
         // First registration wins: re-registering a subject must not discard what has
         // been observed about it. An @AsyncTest body runs once per thread, so a consumer
         // registering inside it registers once per worker.
@@ -41,6 +42,7 @@ public class PhaserDetector {
      * @param phaser the phaser being recorded, tracked by identity
      */
     public void recordArrive(Phaser phaser) {
+        if (phaser == null) return;
         PhaserInfo info = phaserRegistry.get(phaser);
         if (info != null) {
             info.arrive();
@@ -53,6 +55,7 @@ public class PhaserDetector {
      * @param phaser the phaser being recorded, tracked by identity
      */
     public void recordArriveAwaitAdvance(Phaser phaser) {
+        if (phaser == null) return;
         PhaserInfo info = phaserRegistry.get(phaser);
         if (info != null) {
             info.arrive();
@@ -66,6 +69,7 @@ public class PhaserDetector {
      * @param phaser the phaser being recorded, tracked by identity
      */
     public void recordTimeout(Phaser phaser) {
+        if (phaser == null) return;
         timedOutPhasers.add(phaser);
     }
 
@@ -75,6 +79,7 @@ public class PhaserDetector {
      * @param phaser the phaser being recorded, tracked by identity
      */
     public void recordTermination(Phaser phaser) {
+        if (phaser == null) return;
         terminatedPhasers.add(phaser);
     }
 
@@ -85,6 +90,7 @@ public class PhaserDetector {
      * @param phase the phase number this event belongs to
      */
     public void recordPhaseComplete(Phaser phaser, int phase) {
+        if (phaser == null) return;
         PhaserInfo info = phaserRegistry.get(phaser);
         if (info != null) {
             info.phaseComplete(phase);

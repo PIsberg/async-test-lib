@@ -56,7 +56,7 @@ public class ScopedValueMisuseDetector {
     private static final int HIGH_BINDING_COUNT_THRESHOLD = 8;
 
     // Per-thread active binding set: threadId → Set<variableName>
-    private final Map<Long, Set<String>> activeBindings = new ConcurrentHashMap<>();
+    private final Map<Long, Map<String, Integer>> activeBindings = new ConcurrentHashMap<>();
 
     private final List<String> unboundGetReports  = Collections.synchronizedList(new ArrayList<>());
     private final List<String> rebindReports       = Collections.synchronizedList(new ArrayList<>());
@@ -76,10 +76,10 @@ public class ScopedValueMisuseDetector {
     public void recordBindingEntered(String variableName, Thread thread) {
         if (thread == null || variableName == null) return;
         long tid = thread.threadId();
-        Set<String> bound = activeBindings.computeIfAbsent(tid, k -> ConcurrentHashMap.newKeySet());
+        Map<String, Integer> bound = activeBindings.computeIfAbsent(tid, k -> new ConcurrentHashMap<>());
 
         // Detect re-binding (nested where().run() with the same variable)
-        if (bound.contains(variableName)) {
+        if (bound.containsKey(variableName)) {
             rebindReports.add(
                 "Thread " + thread.getName() + " (id=" + tid + "): "
                 + "ScopedValue '" + variableName + "' is being re-bound in a nested scope. "
@@ -87,7 +87,7 @@ public class ScopedValueMisuseDetector {
             );
         }
 
-        bound.add(variableName);
+        bound.merge(variableName, 1, Integer::sum);
         int count = bound.size();
         totalBindings.incrementAndGet();
 
@@ -110,9 +110,10 @@ public class ScopedValueMisuseDetector {
     public void recordBindingExited(String variableName, Thread thread) {
         if (thread == null || variableName == null) return;
         long tid = thread.threadId();
-        Set<String> bound = activeBindings.get(tid);
+        Map<String, Integer> bound = activeBindings.get(tid);
         if (bound != null) {
-            bound.remove(variableName);
+            // The innermost binding ends; an outer binding of the same name stays active.
+            bound.computeIfPresent(variableName, (k, depth) -> depth > 1 ? depth - 1 : null);
         }
     }
 
@@ -127,8 +128,8 @@ public class ScopedValueMisuseDetector {
         if (thread == null || variableName == null) return;
         totalGetCalls.incrementAndGet();
         long tid = thread.threadId();
-        Set<String> bound = activeBindings.get(tid);
-        boolean isBound = bound != null && bound.contains(variableName);
+        Map<String, Integer> bound = activeBindings.get(tid);
+        boolean isBound = bound != null && bound.containsKey(variableName);
 
         if (!isBound) {
             unboundGetCount.incrementAndGet();

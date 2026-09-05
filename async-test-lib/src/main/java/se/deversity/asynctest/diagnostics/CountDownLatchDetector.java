@@ -30,6 +30,7 @@ public class CountDownLatchDetector {
      * @param initialCount the count the latch was created with
      */
     public void registerLatch(CountDownLatch latch, String name, int initialCount) {
+        if (latch == null) return;
         // First registration wins: re-registering a subject must not discard what has
         // been observed about it. An @AsyncTest body runs once per thread, so a consumer
         // registering inside it registers once per worker.
@@ -42,6 +43,7 @@ public class CountDownLatchDetector {
      * @param latch the latch being recorded, tracked by identity
      */
     public void recordCountDown(CountDownLatch latch) {
+        if (latch == null) return;
         LatchInfo info = latchRegistry.get(latch);
         if (info != null) {
             boolean extra = info.countDown();
@@ -57,6 +59,7 @@ public class CountDownLatchDetector {
      * @param latch the latch being recorded, tracked by identity
      */
     public void recordTimeout(CountDownLatch latch) {
+        if (latch == null) return;
         timedOutLatches.add(latch);
     }
 
@@ -77,6 +80,7 @@ public class CountDownLatchDetector {
      * @param latch the latch being recorded, tracked by identity
      */
     public void recordAwaitSuccess(CountDownLatch latch) {
+        if (latch == null) return;
         succeededLatches.add(latch);
     }
 

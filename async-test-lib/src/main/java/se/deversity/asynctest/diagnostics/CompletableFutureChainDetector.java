@@ -44,7 +44,7 @@ public class CompletableFutureChainDetector {
         volatile boolean joined;
         volatile boolean exceptionallyAdded;
         volatile boolean handled;
-        final java.util.List<String> chainOperations = new java.util.ArrayList<>();
+        final java.util.List<String> chainOperations = new java.util.concurrent.CopyOnWriteArrayList<>();
 
         FutureState(String name) {
             this.name = name;
@@ -84,7 +84,7 @@ public class CompletableFutureChainDetector {
             return;
         }
         int key = System.identityHashCode(future);
-        FutureState state = new FutureState(name);
+        FutureState state = new FutureState(name != null ? name : "CompletableFuture@" + Integer.toHexString(key));
         futures.put(key, state);
         totalCreated.incrementAndGet();
     }

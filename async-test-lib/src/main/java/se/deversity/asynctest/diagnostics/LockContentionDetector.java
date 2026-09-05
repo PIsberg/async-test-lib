@@ -133,7 +133,7 @@ public class LockContentionDetector {
             double ratio = (double) contended / attempts;
             if (ratio >= CONTENTION_THRESHOLD || contended >= 5) {
                 report.hotLocks.add(String.format(
-                        "%s: %d acquire attempt(s), %d contention event(s) (%.0f%% contention ratio) — HIGH CONTENTION",
+                        "%s: %d acquire attempt(s), %d contention event(s) (%.0f%% contention ratio) — contended",
                         state.name, attempts, contended, ratio * 100));
             }
         }

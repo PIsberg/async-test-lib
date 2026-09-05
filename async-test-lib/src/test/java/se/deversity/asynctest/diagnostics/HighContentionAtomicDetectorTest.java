@@ -174,7 +174,7 @@ class HighContentionAtomicDetectorTest {
         hammer(d, counter, 10, 10);
 
         String rendered = d.analyze().toString();
-        assertTrue(rendered.contains("HIGH CONTENTION ATOMIC (ADVISORY)"));
+        assertTrue(rendered.contains("ATOMIC CONTENTION ADVISORY"));
         assertTrue(rendered.contains("25 attempt"));
         assertTrue(rendered.contains("2 threads"));
         assertTrue(rendered.contains("25 failed CAS"));
@@ -198,5 +198,18 @@ class HighContentionAtomicDetectorTest {
         assertEquals(first.violations, second.violations);
         assertEquals(first.structuredViolations.size(), second.structuredViolations.size());
         assertEquals(first.structuredViolations.get(0).attributes(), second.structuredViolations.get(0).attributes());
+    }
+
+    @Test
+    void anAdvisoryFindingIsLowAtTheGateNotHigh() throws InterruptedException {
+        HighContentionAtomicDetector d = new HighContentionAtomicDetector(10);
+        var counter = new AtomicLong();
+        for (int i = 0; i < 15; i++) {
+            d.recordCasAttempt(counter, false);
+        }
+        hammer(d, counter, 10, 10);
+        String rendered = d.analyze().toString();
+        assertEquals(IssueSeverity.LOW, DetectorDefaultSeverity.of("HighContentionAtomicDetector", rendered),
+            "the header carried the bare word HIGH, which the gate read as the severity of an advisory");
     }
 }

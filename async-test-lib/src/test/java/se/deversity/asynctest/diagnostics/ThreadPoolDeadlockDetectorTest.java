@@ -220,4 +220,23 @@ class ThreadPoolDeadlockDetectorTest {
         
         pool.shutdown();
     }
+
+    @Test
+    void oneNestedSubmissionIntoALargePoolIsNotAnIssueOnTheReportingPath() {
+        ThreadPoolDeadlockDetector detector = new ThreadPoolDeadlockDetector();
+        java.util.concurrent.ThreadPoolExecutor pool = new java.util.concurrent.ThreadPoolExecutor(
+            64, 64, 0L, java.util.concurrent.TimeUnit.MILLISECONDS,
+            new java.util.concurrent.LinkedBlockingQueue<>());
+        try {
+            detector.registerPool(pool, "wide-pool");
+            detector.recordNestedSubmission(pool, "wide-pool");
+            ThreadPoolDeadlockDetector.ThreadPoolDeadlockReport report = detector.analyze();
+            assertFalse(detector.hasDeadlockRisk(), "1 active task in a 64-thread pool is below the threshold");
+            assertFalse(report.hasIssues(),
+                "hasIssues() is what DetectorRegistry binds; it disagreed with the detector's own "
+                    + "threshold and reported any nested submission as HIGH");
+        } finally {
+            pool.shutdown();
+        }
+    }
 }
