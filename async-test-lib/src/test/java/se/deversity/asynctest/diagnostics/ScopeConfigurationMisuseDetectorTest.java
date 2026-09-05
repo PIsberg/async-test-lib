@@ -201,4 +201,19 @@ class ScopeConfigurationMisuseDetectorTest {
         d.recordScopeClosed(null);
         assertFalse(d.analyze().hasIssues());
     }
+
+    @Test
+    void forksDoNotAccumulateAcrossAReopenedScopeId() {
+        var d = new ScopeConfigurationMisuseDetector();
+        for (int round = 0; round < 4; round++) {
+            d.recordScopeOpened("scope-1", "orders", NONE, factory(), Thread.currentThread());
+            d.recordEffectiveConfiguration("scope-1", "orders", NONE);
+            for (int i = 0; i < 5; i++) d.recordFork("scope-1");
+            d.recordJoinOutcome("scope-1", false);
+            d.recordScopeClosed("scope-1");
+        }
+        assertFalse(d.analyze().hasIssues(),
+            "five forks per scope is bounded; the count was summed over four scopes that "
+                + "reused one id: " + d.analyze());
+    }
 }

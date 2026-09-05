@@ -133,7 +133,10 @@ public final class ScopeResultEscapeDetector {
     public void recordScopeOpened(String scopeId, Thread owner) {
         if (!enabled || scopeId == null || owner == null) return;
         long ownerId = owner.threadId();
-        scopes.computeIfAbsent(scopeId, k -> new ScopeState(scopeId, ownerId));
+        // A closed scope reopened under the same id (the next round, the next thread) starts
+        // fresh; its handles still point at the state they were registered against.
+        scopes.compute(scopeId, (k, old) ->
+                old == null || old.closeSeq != Long.MAX_VALUE ? new ScopeState(scopeId, ownerId) : old);
     }
 
     /**

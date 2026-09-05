@@ -135,6 +135,8 @@ public final class ScopeConfigurationMisuseDetector {
     }
 
     private final Map<String, ScopeState> scopes   = new ConcurrentHashMap<>();
+    /** Closed scopes whose id was reopened; analysed alongside the live ones. */
+    private final List<ScopeState> retired = new java.util.concurrent.CopyOnWriteArrayList<>();
     private final AtomicLong              sequence = new AtomicLong();
     private final int                     unboundedForkThreshold;
     private volatile boolean              enabled  = true;
@@ -170,8 +172,20 @@ public final class ScopeConfigurationMisuseDetector {
                                   Thread owner) {
         if (!enabled || scopeId == null || owner == null) return;
         int factoryId = threadFactory != null ? System.identityHashCode(threadFactory) : 0;
-        scopes.computeIfAbsent(scopeId, k -> new ScopeState(
-                scopeId, requestedName, requestedTimeoutMillis, factoryId, sequence.incrementAndGet()));
+        // A closed scope reopened under the same id is a new scope: its forks and joins are its
+        // own, not a continuation of the previous round's. The closed state keeps its findings.
+        scopes.compute(scopeId, (k, old) -> {
+            if (old == null) {
+                return new ScopeState(scopeId, requestedName, requestedTimeoutMillis, factoryId,
+                        sequence.incrementAndGet());
+            }
+            if (old.closeSeq == Long.MAX_VALUE) {
+                return old;
+            }
+            retired.add(old);
+            return new ScopeState(scopeId, requestedName, requestedTimeoutMillis, factoryId,
+                    sequence.incrementAndGet());
+        });
     }
 
     /**
@@ -248,6 +262,7 @@ public final class ScopeConfigurationMisuseDetector {
     public Report analyze() {
         Report r = new Report();
         List<ScopeState> all = new ArrayList<>(scopes.values());
+        all.addAll(retired);
         all.sort((a, b) -> Long.compare(a.openSeq, b.openSeq));
 
         for (ScopeState s : all) {

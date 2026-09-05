@@ -226,4 +226,22 @@ class JdbcConnectionSharedDetectorTest {
                 new Class<?>[] {Connection.class},
                 (proxy, method, args) -> null);
     }
+
+    @Test
+    void aConnectionGuardedByItsOwnMonitorIsNotFlagged() throws Exception {
+        var d = new JdbcConnectionSharedDetector();
+        Connection c = proxy(Connection.class);
+        synchronized (c) {
+            d.recordAccess(c, "tx-conn", Thread.currentThread());
+        }
+        Thread t = new Thread(() -> {
+            synchronized (c) {
+                d.recordAccess(c, "tx-conn", Thread.currentThread());
+            }
+        });
+        t.start();
+        t.join();
+        assertFalse(d.analyze().hasIssues(),
+            "both uses held the connection's monitor, which serialises them: " + d.analyze());
+    }
 }

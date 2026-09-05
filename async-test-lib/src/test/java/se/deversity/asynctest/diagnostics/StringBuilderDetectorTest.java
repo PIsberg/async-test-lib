@@ -191,4 +191,24 @@ public class StringBuilderDetectorTest {
         assertTrue(activity.contains("writes: 5"), "Should count all write operations");
         assertTrue(activity.contains("reads: 1"), "Should count read operations");
     }
+
+    @Test
+    void aBuilderGuardedByItsOwnMonitorIsNotReported() throws InterruptedException {
+        StringBuilderDetector detector = new StringBuilderDetector();
+        StringBuilder sb = new StringBuilder();
+        Runnable body = () -> {
+            for (int i = 0; i < 5; i++) {
+                synchronized (sb) {
+                    sb.append(i);
+                    detector.recordAppend(sb, "guarded-builder");
+                }
+            }
+        };
+        Thread t1 = new Thread(body);
+        Thread t2 = new Thread(body);
+        t1.start(); t2.start(); t1.join(); t2.join();
+        assertFalse(detector.analyze().hasIssues(),
+            "every mutation held the builder's monitor; the synchronized twin must stay silent: "
+                + detector.analyze());
+    }
 }

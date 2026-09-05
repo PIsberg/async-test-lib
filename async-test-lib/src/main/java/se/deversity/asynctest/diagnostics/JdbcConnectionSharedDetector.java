@@ -81,7 +81,7 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class JdbcConnectionSharedDetector {
 
-    private static final class State {
+    private static final class State extends SelfGuard.TrackedInstance {
         final String label;
         final String type;
         final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
@@ -134,6 +134,7 @@ public final class JdbcConnectionSharedDetector {
                     (name != null) ? name : finalType + "@" + k,
                     finalType));
         }
+        s.noteAccess(resource);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
         s.currentHolders.add(thread.threadId());
@@ -189,6 +190,8 @@ public final class JdbcConnectionSharedDetector {
             // handle doing its job, handed to one thread at a time. Reporting it would flag the
             // documented fix for the defect this detector exists to find.
             if (s.ownershipModelled && s.overlappingThreadNames.isEmpty()) continue;
+            // Every use held the resource's own monitor or a declared lock: serialised by hand.
+            if (!s.sawUnguardedAccess()) continue;
             String specificRisk = switch (s.type) {
                 case "Connection" -> "concurrent statement execution on one Connection corrupts the "
                         + "driver's protocol state and leaks transaction boundaries between threads";
@@ -202,7 +205,7 @@ public final class JdbcConnectionSharedDetector {
             };
             String msg = String.format(
                     "'%s' (%s) accessed from %d threads (%s) — JDBC spec does NOT require "
-                            + "thread safety on %s; %s. Use a per-thread Connection (pool checkout).",
+                            + "thread safety on %s; %s. Use a per-thread Connection (pool checkout)." + SelfGuard.REPORT_NOTE,
                     s.label,
                     s.type,
                     s.ownershipModelled ? s.overlappingThreadNames.size() : s.accessingThreadIds.size(),

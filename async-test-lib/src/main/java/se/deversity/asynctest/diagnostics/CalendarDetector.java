@@ -45,7 +45,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class CalendarDetector {
 
-    private static class CalendarState {
+    private static class CalendarState extends SelfGuard.TrackedInstance {
         final String name;
         final AtomicInteger getCount   = new AtomicInteger(0);
         final AtomicInteger setCount   = new AtomicInteger(0);
@@ -126,6 +126,7 @@ public class CalendarDetector {
                 k -> new CalendarState(calendar, name));
 
         long now = System.currentTimeMillis();
+        state.noteAccess(calendar, !"get".equals(method));
         state.accessingThreads.add(Thread.currentThread().threadId());
         if (state.firstAccessTime == 0) state.firstAccessTime = now;
 
@@ -156,9 +157,9 @@ public class CalendarDetector {
 
             report.totalCalendars++;
 
-            if (threads > 1) {
+            if (threads > 1 && state.sawUnguardedAccess()) {
                 report.sharedCalendars.add(String.format(
-                        "%s: accessed by %d threads (get: %d, set: %d, add: %d) — NOT THREAD SAFE!",
+                        "%s: accessed by %d threads (get: %d, set: %d, add: %d) — NOT THREAD SAFE!" + SelfGuard.REPORT_NOTE,
                         state.name, threads,
                         state.getCount.get(), state.setCount.get(), state.addCount.get()));
             }

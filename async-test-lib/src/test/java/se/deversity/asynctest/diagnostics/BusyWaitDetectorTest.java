@@ -175,4 +175,16 @@ public class BusyWaitDetectorTest {
         assertEquals(viaAnalyzeBusyWaiting.hasIssues(), viaAnalyze.hasIssues());
         assertEquals(viaAnalyzeBusyWaiting.toString(), viaAnalyze.toString());
     }
+
+    @Test
+    void iterationsDoNotAccumulateAcrossRounds() {
+        BusyWaitDetector detector = new BusyWaitDetector();
+        for (int round = 0; round < 3; round++) {
+            for (int i = 0; i < 4_000; i++) detector.recordLoopIteration();   // a bounded loop, no yield
+            detector.markInvocationStart();
+        }
+        assertFalse(detector.analyzeBusyWaiting().hasIssues(),
+            "4,000 iterations per round is below the spin threshold; summing rounds on a reused "
+                + "pool thread reported a loop that never spun");
+    }
 }
