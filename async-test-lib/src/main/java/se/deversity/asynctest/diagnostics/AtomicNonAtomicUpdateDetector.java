@@ -94,9 +94,6 @@ public class AtomicNonAtomicUpdateDetector {
     }
 
     /**
-     * {@return report of non-atomic compound updates}
-     */
-    /**
      * Closes the round in progress: a get left pending on a pool thread must not pair with a
      * set that the same thread makes in the next round, which the runner orders after it.
      *
@@ -108,6 +105,9 @@ public class AtomicNonAtomicUpdateDetector {
         }
     }
 
+    /**
+     * {@return report of non-atomic compound updates}
+     */
     public AtomicNonAtomicUpdateReport analyze() {
         AtomicNonAtomicUpdateReport r = new AtomicNonAtomicUpdateReport();
         for (AtomicState s : atomics.values()) {

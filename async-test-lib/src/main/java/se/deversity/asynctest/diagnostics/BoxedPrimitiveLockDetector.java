@@ -124,10 +124,12 @@ public class BoxedPrimitiveLockDetector {
         }
     }
 
-    @SuppressFBWarnings("ES_COMPARING_STRINGS_WITH_EQ")
+    @SuppressFBWarnings(value = {"ES_COMPARING_STRINGS_WITH_EQ", "DM_STRING_CTOR"},
+            justification = "the copy is the probe: interning a copy answers whether the receiver was "
+                    + "already pooled without inserting the receiver itself")
     // Intentional reference comparison: obj == obj.intern() is true only when obj is an interned
     // (literal) String — which is exactly what we want to detect as a dangerous lock target.
-    @SuppressWarnings({"PMD.CompareObjectsWithEquals", "ReferenceEquality"}) // reference equality with intern() is intentional to detect interned strings
+    @SuppressWarnings({"PMD.CompareObjectsWithEquals", "PMD.UseEqualsToCompareStrings", "ReferenceEquality"}) // reference equality with intern() is intentional to detect interned strings
     private static @Nullable String detectCachedPrimitive(Object obj) {
         if (obj instanceof Boolean) {
             return "Boolean cached instance (" + obj + ")";

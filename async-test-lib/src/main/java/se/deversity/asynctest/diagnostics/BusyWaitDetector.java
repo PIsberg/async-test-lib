@@ -61,9 +61,6 @@ public class BusyWaitDetector {
         }
     }
     /**
-     * Records yield so it can be analysed at the end of the run.
-     */
-    /**
      * Closes the round in progress: a bounded loop that ran in one round must not be summed with
      * the next round's on a reused pool thread and reported as a spin that never yielded. Spin
      * events already recorded are kept.
@@ -79,6 +76,9 @@ public class BusyWaitDetector {
         }
     }
 
+    /**
+     * Records yield so it can be analysed at the end of the run.
+     */
     public void recordYield() {
         if (!enabled) {
             return;
