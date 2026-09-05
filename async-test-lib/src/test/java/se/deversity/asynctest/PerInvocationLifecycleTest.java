@@ -191,4 +191,110 @@ class PerInvocationLifecycleTest {
                 + "rather than discarded — losing it would just invert the original bug. What "
                 + "surfaced: " + rendered);
     }
+
+    // ---- inherited hooks follow the @BeforeEach/@AfterEach rules ----
+    //
+    // JUnit: a lifecycle method is inherited from a superclass unless it is overridden, and
+    // an override is a hook only if it carries the annotation itself. Superclass before-hooks
+    // run before subclass ones; subclass after-hooks run before superclass ones.
+
+    static class HookBase {
+        final java.util.List<String> calls =
+            java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
+        @BeforeEachInvocation
+        void before() { calls.add("base.before"); }
+
+        @AfterEachInvocation
+        void after() { calls.add("base.after"); }
+    }
+
+    static class OverridesAnnotatedHooks extends HookBase {
+        @Override
+        @BeforeEachInvocation
+        void before() { calls.add("sub.before"); }
+
+        @Override
+        @AfterEachInvocation
+        void after() { calls.add("sub.after"); }
+
+        @AsyncTest(threads = 2, invocations = 2, timeoutMs = 5_000,
+                   useVirtualThreads = false, detectDeadlocks = false)
+        void noOp() { /* nothing */ }
+
+        @AfterEach
+        void verify() {
+            assertEquals(java.util.List.of("sub.before", "sub.after", "sub.before", "sub.after"),
+                calls, "an overriding hook replaces the inherited one and runs once per round");
+        }
+    }
+
+    static class OverridesWithoutAnnotation extends HookBase {
+        @Override
+        void before() { calls.add("sub.before-unannotated"); }
+
+        @AsyncTest(threads = 2, invocations = 2, timeoutMs = 5_000,
+                   useVirtualThreads = false, detectDeadlocks = false)
+        void noOp() { /* nothing */ }
+
+        @AfterEach
+        void verify() {
+            assertEquals(java.util.List.of("base.after", "base.after"), calls,
+                "an un-annotated override is not a hook, and the inherited hook it replaced "
+                    + "must not run through it either");
+        }
+    }
+
+    static class AddsHooksAlongsideInherited extends HookBase {
+        @BeforeEachInvocation
+        void subBefore() { calls.add("sub.before"); }
+
+        @AfterEachInvocation
+        void subAfter() { calls.add("sub.after"); }
+
+        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 5_000,
+                   useVirtualThreads = false, detectDeadlocks = false)
+        void noOp() { /* nothing */ }
+
+        @AfterEach
+        void verify() {
+            assertEquals(java.util.List.of("base.before", "sub.before", "sub.after", "base.after"),
+                calls, "superclass before-hooks first, subclass after-hooks first");
+        }
+    }
+
+    /**
+     * Pins inheritance semantics. Before the fix, {@code findLifecycleMethods} collected an
+     * overridden hook from both the subclass and the superclass; {@code Method.invoke} on the
+     * superclass method dispatches virtually to the override, so it ran twice per round, and an
+     * un-annotated override was invoked through its annotated parent even though it is not a
+     * hook at all.
+     */
+    @Test
+    void anOverridingHookReplacesTheInheritedOneAndRunsOncePerRound() {
+        assertPasses(OverridesAnnotatedHooks.class);
+    }
+
+    @Test
+    void anUnannotatedOverrideIsNotAHookAndDoesNotRunThroughItsParent() {
+        assertPasses(OverridesWithoutAnnotation.class);
+    }
+
+    @Test
+    void inheritedHooksRunInTheJUnitOrder() {
+        assertPasses(AddsHooksAlongsideInherited.class);
+    }
+
+    private static void assertPasses(Class<?> testClass) {
+        Events events = EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(testClass))
+            .execute()
+            .testEvents();
+        String failures = events.failed().stream()
+            .map(e -> e.getRequiredPayload(org.junit.platform.engine.TestExecutionResult.class)
+                .getThrowable().map(Throwable::getMessage).orElse("?"))
+            .collect(java.util.stream.Collectors.joining("; "));
+        assertEquals(0, events.failed().count(),
+            testClass.getSimpleName() + " must pass, but failed with: " + failures);
+    }
 }

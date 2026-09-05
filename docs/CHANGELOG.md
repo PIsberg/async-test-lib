@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **An overridden `@BeforeEachInvocation` / `@AfterEachInvocation` hook ran twice per round.**
+  Hook discovery walked the class hierarchy and collected an overridden hook from both the
+  subclass and the superclass; `Method.invoke` on the superclass method dispatches to the
+  override, so it ran once for each. An override without the annotation was invoked through its
+  annotated parent although it is not a hook. Discovery now follows the `@BeforeEach` /
+  `@AfterEach` rules: a subclass method of the same signature supersedes the inherited hook, and
+  is a hook only if annotated itself. Before-hooks run superclass first and after-hooks subclass
+  first, where they previously both ran subclass first. Pinned by `PerInvocationLifecycleTest`.
+
 ## [1.11.1] - 2026-09-04
 
 ### Added
