@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`InheritableThreadLocalMisuse` reported inheritance working as designed.** It flagged any
+  variable touched by more than one thread, which is what an `InheritableThreadLocal` is for -
+  the value is inherited by child threads by design, so under `@AsyncTest`, where N workers share
+  a static holder, it fired in every run. The count moves to `threadActivity` and out of
+  `hasIssues()`; the two findings that remain both require the caller to have declared which
+  threads are pooled, which is the thread-pool situation the class is about (#518).
+
+- **`CompletableFutureCompletionLeak`'s completion CAS gains the guardrail it can have.** The
+  change shipped without a test, because no deterministic behavioural test distinguishes a
+  check-then-set from a compare-and-set here: every sequential ordering of the two paths behaves
+  identically, since the second caller sees the flag already set. The test pins the mechanism
+  instead - the flag must be an `AtomicBoolean`, as a `volatile boolean` cannot claim anything
+  exactly once - and its javadoc says why it is structural (#518).
+
 - **Six detector false positives from the 2026-09-05 correctness hunt, each pinned by a test
   that was red first.** `ConcurrentModification` reported two threads iterating a collection
   nobody mutates, at VERDICT tier, whose contract is that a finding means the code is wrong; a

@@ -131,9 +131,17 @@ public class ExchangerDetector {
 
         /**
          * {@return whether there are issues}
+         *
+         * <p>A null payload counts. #517 argued it should not, on the grounds that
+         * {@code Exchanger.exchange(null)} is permitted and a payload-free rendezvous is a normal
+         * use of one. The corpus already answers that in the other direction:
+         * {@code recorded_exchanger_exchangedNothing} is a MUST_FIRE row whose written rationale
+         * is that an empty swap is "a handshake that succeeded and transferred nothing", paired
+         * against {@code recorded_exchanger_exchangedAPayload}. That pair is deliberate ground
+         * truth, so changing this is the owner's call rather than a defect fix.
          */
         public boolean hasIssues() {
-            return !timedOutExchangers.isEmpty() 
+            return !timedOutExchangers.isEmpty()
                 || !interruptedExchangers.isEmpty()
                 || nullValueExchanges > 0;
         }
@@ -186,7 +194,8 @@ public class ExchangerDetector {
             }
 
             if (nullValueExchanges > 0) {
-                sb.append("  Null Value Exchanges: ").append(nullValueExchanges).append("\n");
+                sb.append("  Null value exchanges (legal; a rendezvous carries no payload): ")
+                  .append(nullValueExchanges).append(System.lineSeparator());
                 sb.append("  Warning: Exchanging null values may indicate logic errors\n");
             }
 

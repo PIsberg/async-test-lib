@@ -11,6 +11,36 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class CompletableFutureCompletionLeakDetectorTest {
 
+    /**
+     * The completion has to be claimed once, by whichever of the {@code whenComplete} callback
+     * and {@code recordFutureCompleted} arrives first.
+     *
+     * <p><strong>Why this is a structural test and not a behavioural one.</strong> The defect it
+     * guards (#516) is a check-then-set: both paths read the flag, both see {@code false}, both
+     * decrement {@code leakCount}. The count then sits below the true number of open futures and
+     * a genuine leak stops being reported. Every sequential ordering of the two paths behaves
+     * identically before and after the fix, because the second caller sees the flag already set,
+     * so no deterministic behavioural test can tell them apart. A 2,000-round barrier-aligned
+     * stress probe never hit the window either, and was deleted rather than committed green:
+     * a test that passes on the buggy code is worse than no test, because it reads as evidence.
+     *
+     * <p>So this pins the mechanism instead. A {@code volatile boolean} cannot claim anything
+     * exactly once; an {@code AtomicBoolean} claimed with {@code compareAndSet} can. Reverting
+     * the field type is the way this regression would come back, and that is what fails here.
+     */
+    @Test
+    void theCompletionFlagIsClaimedAtomically() throws Exception {
+        Class<?> state = Class.forName(
+                "se.deversity.asynctest.diagnostics.CompletableFutureCompletionLeakDetector$FutureState");
+        java.lang.reflect.Field completed = state.getDeclaredField("completed");
+
+        assertEquals(java.util.concurrent.atomic.AtomicBoolean.class, completed.getType(),
+                "FutureState.completed must be an AtomicBoolean so the whenComplete callback and "
+                    + "recordFutureCompleted can claim the completion exactly once. A volatile "
+                    + "boolean read-then-set lets both decrement leakCount, which hides a real "
+                    + "leak (#516)");
+    }
+
     @Test
     void completedFuture_noLeakDetected() {
         CompletableFutureCompletionLeakDetector detector = new CompletableFutureCompletionLeakDetector();

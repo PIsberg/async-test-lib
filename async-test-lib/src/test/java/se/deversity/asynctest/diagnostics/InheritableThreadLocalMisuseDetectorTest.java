@@ -56,7 +56,31 @@ public class InheritableThreadLocalMisuseDetectorTest {
     }
 
     @Test
-    void testDetectsMultiThreadAccess() throws InterruptedException {
+    void inheritanceWorkingAsDesignedIsNotAFinding() throws InterruptedException {
+        InheritableThreadLocalMisuseDetector detector = new InheritableThreadLocalMisuseDetector();
+
+        // Four threads read one InheritableThreadLocal, and nobody declared a pooled thread.
+        // Several threads seeing the value is what InheritableThreadLocal is FOR - the value is
+        // inherited by children by design - so this is the mechanism working, not a defect. The
+        // two findings that are grounded in evidence, pooledGet and pooledSet, need the caller
+        // to have said which threads are pooled, and none did here (#517).
+        Thread[] readers = new Thread[4];
+        for (int i = 0; i < readers.length; i++) {
+            readers[i] = new Thread(() -> detector.recordGet(USER_CONTEXT, "REQUEST_ID"));
+            readers[i].start();
+        }
+        for (Thread r : readers) {
+            r.join();
+        }
+
+        InheritableThreadLocalMisuseDetector.InheritableThreadLocalReport report = detector.analyze();
+        assertFalse(report.hasIssues(),
+                "inheritance across threads is the point of an InheritableThreadLocal, so it "
+                        + "cannot on its own be misuse: " + report);
+    }
+
+    @Test
+    void multiThreadAccessIsReportedAsContextRatherThanAsAFinding() throws InterruptedException {
         InheritableThreadLocalMisuseDetector detector = new InheritableThreadLocalMisuseDetector();
 
         Thread t1 = new Thread(() -> detector.recordGet(USER_CONTEXT, "SHARED_VAR"));
@@ -65,21 +89,25 @@ public class InheritableThreadLocalMisuseDetectorTest {
         t1.join();  t2.join();
 
         InheritableThreadLocalMisuseDetector.InheritableThreadLocalReport report = detector.analyze();
-        assertTrue(report.hasIssues(), "Should flag multi-thread access");
-        assertFalse(report.multiThreadAccess.isEmpty());
-        assertTrue(report.multiThreadAccess.get(0).contains("2 threads"));
+        assertFalse(report.hasIssues(),
+                "two threads reading an InheritableThreadLocal is inheritance doing its job, so "
+                        + "it is shown but not counted as misuse (#517): " + report);
+        assertTrue(report.threadActivity.containsKey("SHARED_VAR"),
+                "the count is still reported, as context: " + report.threadActivity);
+        assertTrue(report.threadActivity.get("SHARED_VAR").contains("2 threads"));
     }
 
     @Test
-    void testSingleThreadAccessDoesNotFlagMultiAccess() {
+    void testSingleThreadAccessIsNotEvenReportedAsActivity() {
         InheritableThreadLocalMisuseDetector detector = new InheritableThreadLocalMisuseDetector();
         detector.recordGet(USER_CONTEXT, "SINGLE_VAR");
         detector.recordGet(USER_CONTEXT, "SINGLE_VAR");
 
-        // Same thread, two reads — no multi-thread issue
+        // Same thread, two reads — nothing to say at all
         InheritableThreadLocalMisuseDetector.InheritableThreadLocalReport report = detector.analyze();
-        assertTrue(report.multiThreadAccess.isEmpty(),
-                "Single-thread access should not flag multi-thread access");
+        assertTrue(report.threadActivity.isEmpty(),
+                "one thread is not multi-thread access, so there is not even activity to show");
+        assertFalse(report.hasIssues());
     }
 
     @Test
