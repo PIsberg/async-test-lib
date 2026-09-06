@@ -111,6 +111,11 @@ public class ConcurrentMapComputeRecursionDetector {
      * <p>Nesting on a <em>different map</em> is neither, and is not reported: the contract is
      * per map, and a mapping function that consults some other structure is ordinary code.
      *
+     * <p>Pair this with {@code recordComputeEnd} in a {@code finally}. A supplier or mapping
+     * function that throws past an unpaired start leaves the entry in flight, and every later
+     * record on this thread then reads as re-entrancy. {@link #markInvocationStart()} bounds
+     * that to the round it happened in; only a {@code finally} prevents it inside one.
+     *
      * @param map     the ConcurrentHashMap (null-safe)
      * @param key     the key being computed (null-safe)
      * @param thread  the calling thread (null-safe)
@@ -166,6 +171,23 @@ public class ConcurrentMapComputeRecursionDetector {
         if (active.isEmpty()) {
             activeByScope.remove(scope, active);
         }
+    }
+
+    /**
+     * Clears the per-thread in-flight state left over from the previous invocation round.
+     *
+     * <p>Called by {@code ConcurrencyRunner} before each round, after the previous round's
+     * workers have all finished, so nothing is legitimately in flight when it runs.
+     *
+     * <p>{@code recordComputeStart} and {@code recordComputeEnd} are paired, and a mapping
+     * function that throws without a {@code finally} leaves its key in the thread's scope.
+     * Platform worker threads are pooled, so every later compute by that thread on that map
+     * read as cross-key recursion against a key nothing was still computing (#498).
+     *
+     * @since 1.11.2
+     */
+    public void markInvocationStart() {
+        activeByScope.clear();
     }
 
     /**

@@ -17,6 +17,24 @@ class StableValueMisuseDetectorTest {
         detector = new StableValueMisuseDetector();
     }
 
+    @Test
+    void aSupplierThatThrewInAnEarlierRoundDoesNotLookReentrantInTheNext() {
+        Thread t = Thread.currentThread();
+
+        // Round one: the supplier throws before recordSupplierEnd, leaving the name in flight.
+        detector.recordSupplierStart("CONFIG", t);
+
+        detector.markInvocationStart();
+
+        detector.recordSupplierStart("CONFIG", t);
+        detector.recordSupplierEnd("CONFIG", t);
+
+        assertTrue(detector.analyze().getReentrantIssues().isEmpty(),
+            "a supplier that threw in an earlier round left its name in activeSuppliers; the next "
+                + "round's supplier on the reused thread is not reentrant: "
+                + detector.analyze().getReentrantIssues());
+    }
+
     // ---- Happy path ----
 
     @Test

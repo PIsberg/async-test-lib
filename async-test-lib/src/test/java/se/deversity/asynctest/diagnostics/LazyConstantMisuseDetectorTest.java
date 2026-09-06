@@ -17,6 +17,26 @@ class LazyConstantMisuseDetectorTest {
         detector = new LazyConstantMisuseDetector();
     }
 
+    @Test
+    void aSupplierThatThrewInAnEarlierRoundDoesNotLookReentrantInTheNext() {
+        Thread t = Thread.currentThread();
+
+        // Round one: the supplier throws, so the caller never reaches recordComputeEnd. Platform
+        // worker threads are pooled, so the same thread comes back for round two.
+        detector.recordComputeStart("CONFIG", t);
+
+        detector.markInvocationStart();
+
+        // Round two on the reused thread: a fresh, well-behaved computation.
+        detector.recordComputeStart("CONFIG", t);
+        detector.recordComputeEnd("CONFIG", t, "value");
+
+        assertTrue(detector.analyze().getReentrantIssues().isEmpty(),
+            "round two's supplier is not re-entering round one's - the runner's latch separates "
+                + "them. The stale in-flight entry must not survive the round boundary: "
+                + detector.analyze().getReentrantIssues());
+    }
+
     // ---- Happy path ----
 
     @Test

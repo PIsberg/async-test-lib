@@ -12,6 +12,27 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class LazyCollectionMisuseDetectorTest {
 
     @Test
+    void aMappingFunctionThatThrewInAnEarlierRoundDoesNotLookReentrantInTheNext() {
+        var d = new LazyCollectionMisuseDetector();
+        Thread t = Thread.currentThread();
+
+        // Round one: the mapping function throws, so the caller never reaches recordComputeEnd
+        // and the element stays on this thread's in-flight stack.
+        d.recordComputeStart("BOARDS", 0, t);
+
+        d.markInvocationStart();
+
+        // Round two on the reused pool thread: the same element, computed properly this time.
+        d.recordGet("BOARDS", 0, t);
+        d.recordComputeStart("BOARDS", 0, t);
+        d.recordComputeEnd("BOARDS", 0, t, "value");
+
+        assertFalse(d.analyze().hasIssues(),
+            "round two's computation is not re-entering round one's, and no other thread is "
+                + "waiting behind a computation that ended when the round did: " + d.analyze());
+    }
+
+    @Test
     void cleanWhenNothingRecorded() {
         var d = new LazyCollectionMisuseDetector();
         assertFalse(d.analyze().hasIssues());
