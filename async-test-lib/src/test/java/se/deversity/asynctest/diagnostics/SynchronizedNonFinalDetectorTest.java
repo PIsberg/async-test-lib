@@ -10,6 +10,60 @@ import static org.junit.jupiter.api.Assertions.*;
 public class SynchronizedNonFinalDetectorTest {
 
     @Test
+    void withoutAnOwnerTheReportDoesNotClaimTheLockIsNonFinal() {
+        SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
+
+        // The three-argument form, which is what every existing caller uses. Four workers each
+        // with their own final lock are indistinguishable from one reassigned field here, so the
+        // finding stands - but it must not assert which, and it used to assert NOT FINAL (#501).
+        for (int i = 0; i < 4; i++) {
+            detector.recordLockObject(new Object(), "lock", Object.class);
+        }
+
+        java.util.List<String> violations = detector.analyze().violations;
+        assertEquals(1, violations.size(), "the ambiguity is still worth reporting");
+        assertFalse(violations.get(0).contains("NOT FINAL"),
+            "this recording cannot tell a reassigned field from four instances each with their "
+                + "own final lock, so it must not claim the first: " + violations.get(0));
+        assertTrue(violations.get(0).contains("recordLockObject"),
+            "and it should say how to have that decided: " + violations.get(0));
+    }
+
+    @Test
+    void perInstanceFinalLocksAreNotClaimedToBeNonFinal() {
+        SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
+
+        // Four workers, each with its own service object, each holding its own final lock. That
+        // is correct code: every instance guards itself. Keyed by class and field name alone the
+        // four monitors land in one slot and look like one field reassigned four times, and the
+        // report asserted "lock reference is NOT FINAL" - a fact the detector cannot know (#501).
+        for (int i = 0; i < 4; i++) {
+            Object owner = new Object();
+            Object perInstanceFinalLock = new Object();
+            detector.recordLockObject(perInstanceFinalLock, "lock", Object.class, owner);
+        }
+
+        assertTrue(detector.analyze().violations.isEmpty(),
+            "each instance has its own final lock: " + detector.analyze().violations);
+    }
+
+    @Test
+    void oneInstanceReassigningItsLockIsStillReported() {
+        SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
+        Object owner = new Object();
+
+        // The twin: one object, two different monitors, which is the reassignment the detector
+        // exists for and the only shape that justifies the NOT FINAL wording.
+        detector.recordLockObject(new Object(), "lock", Object.class, owner);
+        detector.recordLockObject(new Object(), "lock", Object.class, owner);
+
+        assertFalse(detector.analyze().violations.isEmpty(),
+            "one instance synchronized on two objects is a reassigned lock");
+        assertTrue(detector.analyze().violations.get(0).contains("NOT FINAL"),
+            "and only here is that claim earned: " + detector.analyze().violations);
+    }
+
+    @Test
     void testSingleObjectNoIssues() {
         SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
         Object lock = new Object();

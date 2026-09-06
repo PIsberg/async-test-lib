@@ -28,7 +28,14 @@ public class ConstructorSafetyValidator {
          */
         final long constructingThreadId;
         volatile boolean constructionComplete = false;
-        final AtomicInteger threadsThatAccessedDuringConstruction = new AtomicInteger(0);
+        /** Accesses made before construction finished, by a thread other than the constructor's. */
+        final AtomicInteger accessesDuringConstruction = new AtomicInteger(0);
+        /**
+         * The distinct threads behind {@link #accessesDuringConstruction}. Kept apart because the
+         * report speaks of threads: one thread reading the half-built object ten times is one
+         * escape, and counting the accesses as threads overstated every finding (#501).
+         */
+        final Set<Long> threadsAccessingDuringConstruction = ConcurrentHashMap.newKeySet();
         final Set<Long> accessingThreadIds = ConcurrentHashMap.newKeySet();
         final Map<String, FieldAccessInfo> fieldAccesses = new ConcurrentHashMap<>();
 
@@ -104,7 +111,8 @@ public class ConstructorSafetyValidator {
             // point — the previous check compared threadId to Thread.currentThread().threadId(),
             // the expression it had just been assigned from, so it was always false and this
             // counter never moved.
-            state.threadsThatAccessedDuringConstruction.incrementAndGet();
+            state.accessesDuringConstruction.incrementAndGet();
+            state.threadsAccessingDuringConstruction.add(threadId);
         }
     }
     
@@ -117,12 +125,13 @@ public class ConstructorSafetyValidator {
         ConstructorSafetyReport report = new ConstructorSafetyReport();
         
         for (ObjectState state : objects.values()) {
-            if (state.threadsThatAccessedDuringConstruction.get() > 0) {
-                // Object accessed by multiple threads before construction finished
+            if (state.accessesDuringConstruction.get() > 0) {
+                // Object accessed by another thread before construction finished
                 report.unsafeObjects.add(String.format(
-                    "%s: Accessed by %d threads during construction",
+                    "%s: Accessed by %d thread(s) during construction, %d access(es) in total",
                     state.className,
-                    state.threadsThatAccessedDuringConstruction.get()
+                    state.threadsAccessingDuringConstruction.size(),
+                    state.accessesDuringConstruction.get()
                 ));
             }
             

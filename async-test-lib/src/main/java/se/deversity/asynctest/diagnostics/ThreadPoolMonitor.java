@@ -32,11 +32,26 @@ public class ThreadPoolMonitor {
         volatile long peakQueueSize = 0;
         volatile long maxTaskDuration = 0;
         final List<String> rejections = Collections.synchronizedList(new ArrayList<>());
+        /**
+         * Whether {@code maxSize} and {@code queueCapacity} came from a caller.
+         *
+         * <p>False for a pool this monitor invented on a rejection it was told about without a
+         * prior registration. Both bounds are 0 there, which is not "a pool of zero threads with
+         * a queue of zero" - it is "nobody said". The rules that compare against a bound are
+         * skipped for such a pool, because 0 >= 0 made every one of them report "All 0 threads
+         * busy" on a pool whose real size nothing here knows (#501).
+         */
+        final boolean boundsDeclared;
 
         PoolState(String name, int max, int queue) {
+            this(name, max, queue, true);
+        }
+
+        PoolState(String name, int max, int queue, boolean boundsDeclared) {
             this.poolName = name;
             this.maxSize = max;
             this.queueCapacity = queue;
+            this.boundsDeclared = boundsDeclared;
         }
     }
     
@@ -120,7 +135,7 @@ public class ThreadPoolMonitor {
         
         int id = System.identityHashCode(executor);
         PoolState state = pools.computeIfAbsent(id, k -> 
-            new PoolState("Unknown", 0, 0)
+            new PoolState("Unregistered pool", 0, 0, false)
         );
         
         state.rejectedTasks.incrementAndGet();
@@ -143,7 +158,7 @@ public class ThreadPoolMonitor {
                 ));
             }
             
-            if (state.peakQueueSize > state.queueCapacity * 0.8) {
+            if (state.boundsDeclared && state.peakQueueSize > state.queueCapacity * 0.8) {
                 report.saturatedQueues.add(String.format(
                     "%s: Queue near capacity (peak: %d)",
                     state.poolName, state.peakQueueSize
@@ -157,7 +172,7 @@ public class ThreadPoolMonitor {
                 ));
             }
             
-            if (state.activeThreads.get() >= state.maxSize) {
+            if (state.boundsDeclared && state.activeThreads.get() >= state.maxSize) {
                 report.threadStarvation.add(String.format(
                     "%s: All %d threads busy (queue depth: %d)",
                     state.poolName, state.maxSize, state.queuedTasks.get()

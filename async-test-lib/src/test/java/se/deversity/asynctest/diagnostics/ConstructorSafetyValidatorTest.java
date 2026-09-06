@@ -7,6 +7,32 @@ import static org.junit.jupiter.api.Assertions.*;
 class ConstructorSafetyValidatorTest {
 
     @Test
+    void theReportCountsThreadsRatherThanAccesses() throws InterruptedException {
+        ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
+        Object subject = new Object();
+
+        validator.recordConstructionStart(subject);
+        // One other thread, reading the half-built object three times. That is one escape, not
+        // three threads, and the message says threads (#501).
+        Thread escapee = new Thread(() -> {
+            for (int i = 0; i < 3; i++) {
+                validator.recordFieldAccess(subject, "state", System.nanoTime());
+            }
+        });
+        escapee.start();
+        escapee.join();
+
+        ConstructorSafetyValidator.ConstructorSafetyReport report =
+                validator.validateConstructorSafety();
+        assertEquals(1, report.unsafeObjects.size(), "one object escaped");
+        String finding = report.unsafeObjects.iterator().next();
+        assertTrue(finding.contains("1 thread(s)"),
+            "one thread made all three accesses: " + finding);
+        assertTrue(finding.contains("3 access(es)"),
+            "and the access count is still shown: " + finding);
+    }
+
+    @Test
     void noRecordingsReturnNoIssues() {
         ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
         ConstructorSafetyValidator.ConstructorSafetyReport report = validator.validateConstructorSafety();

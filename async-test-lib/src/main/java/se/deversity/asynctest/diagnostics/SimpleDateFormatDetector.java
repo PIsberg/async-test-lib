@@ -117,6 +117,9 @@ public class SimpleDateFormatDetector {
             final String label = name != null ? name : "formatter@" + id;
             state = formatters.computeIfAbsent(id, k -> new FormatterState(formatter, label));
         }
+        // The thread that hit the error was using the formatter, so it counts toward the
+        // sharing the error finding now requires (#501).
+        state.accessingThreads.add(Thread.currentThread().threadId());
         state.errorCount.incrementAndGet();
         if (errorType != null) {
             state.errorTypes.add(errorType);
@@ -180,14 +183,18 @@ public class SimpleDateFormatDetector {
                 report.methodBreakdown.put(state.name, methods.toString());
             }
 
-            // Check for errors (potential corruption)
-            if (state.errorCount.get() > 0) {
+            // Check for errors, but only where sharing could explain them. A ParseException on
+            // one thread is a bad input string, and calling it "potential data corruption" blamed
+            // a race that did not happen. The count still appears under activity below (#501).
+            if (state.errorCount.get() > 0 && state.accessingThreads.size() > 1) {
                 String errorTypesSummary = state.errorTypes.isEmpty()
                     ? "unknown"
                     : String.join(", ", state.errorTypes);
                 report.formattingErrors.add(String.format(
-                    "%s: %d formatting/parsing errors detected (types: %s) (potential data corruption)",
-                    state.name, state.errorCount.get(), errorTypesSummary));
+                    "%s: %d formatting/parsing errors while %d threads shared this formatter "
+                        + "(types: %s) (potential data corruption)",
+                    state.name, state.errorCount.get(), state.accessingThreads.size(),
+                    errorTypesSummary));
             }
 
             // Track activity

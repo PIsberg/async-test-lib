@@ -11,6 +11,33 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 public class SimpleDateFormatDetectorTest {
 
+    /** Runs {@code body} on a second thread and waits for it, so two threads touch the subject. */
+    private static void onAnotherThread(Runnable body) {
+        Thread other = new Thread(body, "second-user");
+        other.start();
+        try {
+            other.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(e);
+        }
+    }
+
+    @Test
+    void aParseErrorOnOneThreadIsNotPotentialDataCorruption() {
+        SimpleDateFormatDetector detector = new SimpleDateFormatDetector();
+        java.text.SimpleDateFormat format = new java.text.SimpleDateFormat("yyyy-MM-dd");
+        detector.registerFormatter(format, "single");
+
+        detector.recordParse(format, "single");
+        // One thread, one bad input string. A ParseException here is the input, not a race.
+        detector.recordError(format, "single", "ParseException");
+
+        assertTrue(detector.analyze().formattingErrors.isEmpty(),
+            "one thread had sole use of this formatter, so nothing could have corrupted its "
+                + "internal state: " + detector.analyze().formattingErrors);
+    }
+
     @Test
     void testSingleThreadFormatterUsage() {
         SimpleDateFormatDetector detector = new SimpleDateFormatDetector();
@@ -90,7 +117,9 @@ public class SimpleDateFormatDetectorTest {
         detector.registerFormatter(sdf, "error-formatter");
 
         detector.recordFormat(sdf, "error-formatter");
-        detector.recordError(sdf, "error-formatter", "ParseException");
+        // Two threads sharing one SimpleDateFormat: the shape in which a parse error is evidence
+        // of corrupted internal state rather than of a bad input string (#501).
+        onAnotherThread(() -> detector.recordError(sdf, "error-formatter", "ParseException"));
 
         SimpleDateFormatDetector.SimpleDateFormatReport report = detector.analyze();
 
@@ -105,7 +134,8 @@ public class SimpleDateFormatDetectorTest {
 
         detector.registerFormatter(sdf, "typed-error-formatter");
 
-        detector.recordError(sdf, "typed-error-formatter", "ParseException");
+        detector.recordFormat(sdf, "typed-error-formatter");
+        onAnotherThread(() -> detector.recordError(sdf, "typed-error-formatter", "ParseException"));
 
         SimpleDateFormatDetector.SimpleDateFormatReport report = detector.analyze();
 
@@ -120,7 +150,9 @@ public class SimpleDateFormatDetectorTest {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
 
         // Note: no registerFormatter() call - recordError must auto-register
-        detector.recordError(sdf, "unregistered-formatter", "IllegalArgumentException");
+        detector.recordFormat(sdf, "unregistered-formatter");
+        onAnotherThread(() ->
+                detector.recordError(sdf, "unregistered-formatter", "IllegalArgumentException"));
 
         SimpleDateFormatDetector.SimpleDateFormatReport report = detector.analyze();
 

@@ -60,7 +60,8 @@ class DetectorSeverityMarkerTest {
                 "A detector that neither marks its report nor declares a default has its severity "
                         + "guessed by IssueSeverity.fromReport, which returns HIGH, so it reaches a "
                         + "failOn = HIGH merge gate as though it proved data corruption. That was "
-                        + "true of 86 detectors and is the defect DetectorDefaultSeverity closed. "
+                        + "true of 86 of the 142 detectors of the day, and is the defect "
+                        + "DetectorDefaultSeverity closed. "
                         + "Either open the report with IssueSeverity.<LEVEL>.getLabel() or add an "
                         + "entry to DetectorDefaultSeverity. Silent: " + silent);
     }

@@ -18,6 +18,24 @@ class ThreadStarvationDetectorTest {
     }
 
     @Test
+    void anUnrecordedSubmissionIsNotAWaitOfMillionsOfMilliseconds() {
+        ThreadStarvationDetector detector = new ThreadStarvationDetector();
+
+        // recordTaskSubmission returns 0 when it recorded nothing - a null executor, or the
+        // detector disabled. Callers pass that straight on, and 0 used to be subtracted from
+        // System.nanoTime() as if it were a timestamp, producing the JVM's nanoTime origin as a
+        // wait: millions of milliseconds, and starvation for a task that never queued (#501).
+        long noSubmission = detector.recordTaskSubmission(null);
+        assertEquals(0L, noSubmission, "the sentinel this test is about");
+
+        detector.registerExecutor(java.util.concurrent.Executors.newSingleThreadExecutor(), "pool", 1);
+        detector.recordTaskStart("pool", noSubmission);
+
+        assertFalse(detector.analyze().hasIssues(),
+            "no submission was recorded, so there is no wait to measure: " + detector.analyze());
+    }
+
+    @Test
     void noStarvation_whenTasksExecuteQuickly() {
         detector.setStarvationThresholdMs(5000);
         

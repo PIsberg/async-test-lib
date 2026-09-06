@@ -63,7 +63,14 @@ public class CompletableFutureCompletionLeakDetector {
         final long createdTimeNanos = System.nanoTime();
         final long creatorThreadId = Thread.currentThread().threadId();
         final StackTraceElement[] creationStackTrace = Thread.currentThread().getStackTrace();
-        volatile boolean completed = false;
+        /**
+         * Claimed exactly once, by whichever of the {@code whenComplete} callback and
+         * {@code recordFutureCompleted} gets there first. Both used to read the flag, see false,
+         * and set it, so a future completed on one thread and reported on another decremented
+         * {@code leakCount} twice and the detector under-counted its own leaks (#501).
+         */
+        final java.util.concurrent.atomic.AtomicBoolean completed =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
         volatile @Nullable Long completedTimeNanos = null;
         volatile @Nullable String completionType = null; // "complete", "completeExceptionally", "cancel"
         final AtomicInteger completionAttempts = new AtomicInteger(0);
@@ -95,9 +102,8 @@ public class CompletableFutureCompletionLeakDetector {
 
         // Attach a completion listener to auto-track completion
         future.whenComplete((result, ex) -> {
-            if (!state.completed) {
+            if (state.completed.compareAndSet(false, true)) {
                 // Mark as completed via whenComplete (not explicit call)
-                state.completed = true;
                 state.completedTimeNanos = System.nanoTime();
                 state.completionType = "whenComplete";
                 leakCount.decrementAndGet();
@@ -131,8 +137,7 @@ public class CompletableFutureCompletionLeakDetector {
         }
         int identity = System.identityHashCode(future);
         FutureState state = futures.get(identity);
-        if (state != null && !state.completed) {
-            state.completed = true;
+        if (state != null && state.completed.compareAndSet(false, true)) {
             state.completedTimeNanos = System.nanoTime();
             state.completionType = completionType;
             state.completionAttempts.incrementAndGet();
@@ -152,7 +157,7 @@ public class CompletableFutureCompletionLeakDetector {
 
         List<LeakedFuture> leaked = new ArrayList<>();
         for (FutureState state : futures.values()) {
-            if (!state.completed) {
+            if (!state.completed.get()) {
                 long ageMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - state.createdTimeNanos);
                 leaked.add(new LeakedFuture(
                     state.name,

@@ -16,6 +16,16 @@ import org.jspecify.annotations.Nullable;
  * - Spurious wakeup vulnerability: await() without while-loop condition check
  * - Missing signal: threads waiting indefinitely without corresponding signal
  * - Wrong condition: signaling wrong condition variable
+ *
+ * <p><strong>What "lost signal" here does and does not mean.</strong> The detector counts a
+ * signal made while no thread was recorded as waiting. That is not on its own a defect: the
+ * canonical producer/consumer shape has the consumer test its predicate before it awaits, so a
+ * producer that gets there first signals into an empty condition and the consumer never waits at
+ * all. The finding therefore fires on correct code whenever the producer wins the race, which
+ * under {@code @AsyncTest} is most rounds. Read it as "signals arrived with nobody waiting - if
+ * the consumer's predicate does not cover that case, this is the wakeup you lost", not as a
+ * verdict. Separating the two needs the predicate, which this detector is never shown.
+ *
  * 
  * Usage:
  * <pre>{@code
@@ -157,7 +167,10 @@ public class ConditionVariableDetector {
             // Check for signals without waiters (lost signals)
             if (state.signalsWithoutWaiters.get() > 0) {
                 report.lostSignals.add(String.format(
-                    "%s: signal() called %d times without waiting threads (lost signals)",
+                    "%s: signal() called %d time(s) with no thread waiting. That is a lost wakeup "
+                        + "only if the consumer's predicate does not already cover the case where "
+                        + "the value arrived first; a consumer that tests before it awaits "
+                        + "produces this on correct code",
                     state.name, state.signalsWithoutWaiters.get()));
             }
 

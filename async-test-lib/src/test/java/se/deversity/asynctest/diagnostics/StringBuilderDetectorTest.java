@@ -9,6 +9,33 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 public class StringBuilderDetectorTest {
 
+    /** Runs {@code body} on a second thread and waits for it, so two threads touch the subject. */
+    private static void onAnotherThread(Runnable body) {
+        Thread other = new Thread(body, "second-user");
+        other.start();
+        try {
+            other.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(e);
+        }
+    }
+
+    @Test
+    void anExceptionOnOneThreadIsNotBlamedOnConcurrentAccess() {
+        StringBuilderDetector detector = new StringBuilderDetector();
+        StringBuilder builder = new StringBuilder();
+        detector.registerBuilder(builder, "single");
+
+        detector.recordAppend(builder, "single");
+        // One thread, one exception out of its own indexing. Nothing concurrent happened.
+        detector.recordError(builder, "single", "StringIndexOutOfBoundsException");
+
+        assertTrue(detector.analyze().builderErrors.isEmpty(),
+            "one thread cannot race with itself, so this exception is not evidence of concurrent "
+                + "access: " + detector.analyze().builderErrors);
+    }
+
     @Test
     void testSingleThreadUsageNoIssues() {
         StringBuilderDetector detector = new StringBuilderDetector();
@@ -110,7 +137,10 @@ public class StringBuilderDetectorTest {
 
         detector.registerBuilder(sb, "error-builder");
         detector.recordAppend(sb, "error-builder");
-        detector.recordError(sb, "error-builder", "StringIndexOutOfBoundsException");
+        // Two threads sharing one StringBuilder: the shape in which the exception is evidence of
+        // a race rather than of the caller's own indexing (#501).
+        onAnotherThread(() ->
+                detector.recordError(sb, "error-builder", "StringIndexOutOfBoundsException"));
 
         StringBuilderDetector.StringBuilderReport report = detector.analyze();
 

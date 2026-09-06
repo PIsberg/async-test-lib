@@ -183,7 +183,7 @@ class EventEmitterTest {
      * To see the detection:
      * 1. Remove @Disabled
      * 2. Run this test — it fails with
-     *      EventEmitter: Accessed by 1 threads during construction
+     *      EventEmitter: Accessed by 1 thread(s) during construction, 1 access(es) in total
      * 3. Fix: move EventRegistry.register(this) to the last line of the constructor
      */
     @Disabled("Remove @Disabled to see the bug detected by ConstructorSafetyValidator")
