@@ -18,6 +18,15 @@ name: Inquisitor
 
 on:
   pull_request:
+    # Prose and pictures cannot change what this workflow reviews. Kept narrow on purpose:
+    # no source, build file or workflow path is listed. The workflows carrying a required
+    # status context are deliberately not filtered - a required check that never reports
+    # leaves the pull request permanently BLOCKED, which is worse than the fan-out (#484).
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'LICENSE'
 
 permissions:
   contents: read

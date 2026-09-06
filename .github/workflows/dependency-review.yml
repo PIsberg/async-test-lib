@@ -7,7 +7,17 @@
 #
 # Source repository: https://github.com/actions/dependency-review-action
 name: 'Dependency Review'
-on: [pull_request]
+on:
+  pull_request:
+    # Prose and pictures cannot change what this workflow reviews. Kept narrow on purpose:
+    # no source, build file or workflow path is listed. The workflows carrying a required
+    # status context are deliberately not filtered - a required check that never reports
+    # leaves the pull request permanently BLOCKED, which is worse than the fan-out (#484).
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'LICENSE'
 
 concurrency:
   # One run per workflow per ref. cancel-in-progress only for pull requests: a superseded
