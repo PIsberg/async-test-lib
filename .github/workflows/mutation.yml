@@ -123,6 +123,17 @@ jobs:
                 for pid in $(jps -q 2>/dev/null || true); do
                   echo "########## jstack -l $pid ##########"
                   jstack -l "$pid" 2>&1 || echo "(jstack failed for $pid)"
+                  # jstack shows carriers but not the virtual threads mounted on them, and the
+                  # first dump ended exactly there: all four ForkJoinPool carriers reported
+                  # "Carrying virtual thread #NNNN" inside Continuation.run, with no way to see
+                  # what those four were blocked in. Thread.dump_to_file enumerates virtual
+                  # threads with their stacks, which is what names the subjects that pin.
+                  echo "########## jcmd $pid Thread.dump_to_file ##########"
+                  if jcmd "$pid" Thread.dump_to_file -format=json -overwrite                           "$RUNNER_TEMP/threads-$pid.json" >/dev/null 2>&1; then
+                    cat "$RUNNER_TEMP/threads-$pid.json" 2>&1 || true
+                  else
+                    echo "(Thread.dump_to_file failed for $pid)"
+                  fi
                 done
                 echo "=== WATCHDOG: dump complete ==="
               fi
