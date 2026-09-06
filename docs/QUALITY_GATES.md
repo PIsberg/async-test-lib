@@ -462,6 +462,24 @@ request now means the demo's output changed.
 
 Dispatch it by hand before a release, when what the demo prints is the actual question.
 
+## What a docs-only change runs
+
+Six workflows carry no required status context and cannot be affected by prose, pictures or an
+issue template, so since #484 they skip a diff that touches only `docs/**`, `**/*.md`,
+`.github/ISSUE_TEMPLATE/**` or `LICENSE`: `e2e-tests.yml` (the largest, at roughly fifteen jobs),
+`load-tests.yml`, `codeql.yml`, `inquisitor.yml`, `copilot-review.yml` and
+`dependency-review.yml`.
+
+`tests.yml`, `gradle-tests.yml` and `guardrails.yml` are deliberately **not** filtered. They
+report the seven contexts `main` requires, and GitHub does not read "never ran" as "passed": a
+pull request whose required check never reported sits at BLOCKED with every visible check green
+and no way forward but an admin merge. That is worse than the fan-out. `corpus.yml` is not
+filtered either, because `CorpusClaimsInDocsTest` reads `README.md` and
+`docs/analysis/corpus-eval.md` - a prose change there is exactly what it checks.
+
+`RequiredCheckIsNeverPathFilteredTest` holds that line: it fails if a workflow declaring a
+required job name also declares a `paths` or `paths-ignore` filter on its triggers.
+
 ## Guardrail and review lanes
 
 The gates that keep the agent-facing layer honest, and the review lanes that read a PR before a
