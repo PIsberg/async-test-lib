@@ -444,6 +444,24 @@ timeouts. The script carries a `--self-test` that the workflow runs first, again
 input, because a job whose entire output is "nothing passed" is worthless if its parser has
 quietly stopped matching.
 
+## The demo recording
+
+`docs/diagrams/demo.gif`, the recording in the README, is re-recorded by `demo.yml` **weekly and
+on demand**, not on every merge. It used to run on every qualifying push to `main` and propose a
+pull request every single time, because a cast is a live capture of a running JVM and can never
+come out byte-identical: the header carries the recording's wall clock, every event is prefixed
+with elapsed seconds, the split into events follows PTY read timing, and the demo records an
+actual race that lands differently each run. Five such pull requests landed between 2026-08-28
+and 2026-09-03, each a diff of one binary and fourteen timing lines (#486).
+
+The workflow now compares a **normalised** cast: `tools/demo/normalise-cast.py` keeps only the
+output events, joins them so the event split cannot matter, strips ANSI, and masks identity
+hashes, thread ids and names, durations, and the verbs in the detector's access-sequence lines.
+Measured against the two recordings in #483, 35 differing raw lines come out identical. A pull
+request now means the demo's output changed.
+
+Dispatch it by hand before a release, when what the demo prints is the actual question.
+
 ## Guardrail and review lanes
 
 The gates that keep the agent-facing layer honest, and the review lanes that read a PR before a
