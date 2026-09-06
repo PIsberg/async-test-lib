@@ -15,6 +15,25 @@ class LatchMisuseDetectorTest {
     }
 
     @Test
+    void anAwaitThatReturnedIsNotAMissingCountdown() {
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(2);
+        detector.registerLatch(latch, "handoff", 2);
+
+        // Two executor tasks count the latch down in code the agent never wove, so the detector
+        // records neither. The woven await then returns, which it can only do at zero.
+        latch.countDown();
+        latch.countDown();
+        detector.recordAwait(latch);
+        detector.recordAwaitReturned(latch);
+
+        LatchMisuseDetector.LatchMisuseReport report = detector.analyze();
+        assertTrue(report.missingCountDowns.isEmpty(),
+            "await() returned, so the latch reached zero. The countdowns the detector did not "
+                + "see happened outside the weaving boundary, which is a gap in observation and "
+                + "not a missing countDown(): " + report.missingCountDowns);
+    }
+
+    @Test
     void noLatchesReturnNoIssues() {
         LatchMisuseDetector.LatchMisuseReport report = detector.analyze();
         assertFalse(report.hasIssues());

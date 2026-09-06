@@ -254,6 +254,95 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
                         + " -> " + report);
     }
 
+    /** A write release in round one and a read acquire in round two, on one pooled thread. */
+    public static class LockDowngradeCrossRoundOnly {
+        static final AtomicInteger EXECUTIONS = new AtomicInteger();
+        /** Shared with the same-round fixture so {@code writeOnce} names one subject. */
+        static final java.util.concurrent.locks.ReentrantReadWriteLock LOCK =
+                LockDowngradeSameRound.LOCK;
+
+        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
+                   detectAll = false, detectLockDowngrade = true)
+        void body() {
+            var d = AsyncTestContext.lockDowngradeDetector();
+            if (EXECUTIONS.getAndIncrement() == 0) {
+                LOCK.writeLock().lock();
+                d.recordWriteLockAcquired(LOCK, "shared");
+                LOCK.writeLock().unlock();
+                d.recordWriteLockReleased(LOCK, "shared");
+                // The writer inside the gap has to be another thread: a second write acquire by
+                // this thread would close its own gap before anything could be concluded.
+                writeOnce(d);
+            } else {
+                LOCK.readLock().lock();
+                d.recordReadLockAcquired(LOCK, "shared");
+                LOCK.readLock().unlock();
+                d.recordReadLockReleased(LOCK, "shared");
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("a downgrade gap left open in one round is not closed by the next round's read")
+    void lockDowngradeCrossRoundGapIsNotReported() {
+        run(LockDowngradeCrossRoundOnly.class);
+        String report = REPORTS.get("LockDowngradeDetector");
+        assertTrue(report == null || !report.contains("unsafe"),
+                "the write release and the read acquire are in different rounds, so nothing was "
+                        + "downgraded. AsyncTestContext.markInvocationStart must reach this "
+                        + "detector (#499). Report: " + report);
+    }
+
+    /** The same release-then-read, both inside one round: the shape that must still fire. */
+    public static class LockDowngradeSameRound {
+        static final java.util.concurrent.locks.ReentrantReadWriteLock LOCK =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+
+        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = false,
+                   detectAll = false, detectLockDowngrade = true)
+        void body() {
+            var d = AsyncTestContext.lockDowngradeDetector();
+            LOCK.writeLock().lock();
+            d.recordWriteLockAcquired(LOCK, "shared");
+            LOCK.writeLock().unlock();
+            d.recordWriteLockReleased(LOCK, "shared");
+            writeOnce(d);
+            LOCK.readLock().lock();
+            d.recordReadLockAcquired(LOCK, "shared");
+            LOCK.readLock().unlock();
+            d.recordReadLockReleased(LOCK, "shared");
+        }
+    }
+
+    @Test
+    @DisplayName("the same release-then-read inside one round is reported, so the silence above is not vacuous")
+    void lockDowngradeSameRoundGapIsReported() {
+        run(LockDowngradeSameRound.class);
+        String report = REPORTS.get("LockDowngradeDetector");
+        assertTrue(report != null && report.contains("unsafe"),
+                "a write released and a read taken back with another writer in between, inside "
+                        + "one round, is the unsafe downgrade this detector names; if this is "
+                        + "silent the recording never reached it. Reports: " + REPORTS.keySet()
+                        + " -> " + report);
+    }
+
+    /** One write acquire and release by a thread other than the caller's. */
+    private static void writeOnce(se.deversity.asynctest.diagnostics.LockDowngradeDetector d) {
+        var lock = LockDowngradeSameRound.LOCK;
+        Thread writer = new Thread(() -> {
+            lock.writeLock().lock();
+            d.recordWriteLockAcquired(lock, "shared");
+            lock.writeLock().unlock();
+            d.recordWriteLockReleased(lock, "shared");
+        });
+        writer.start();
+        try {
+            writer.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private static void run(Class<?> fixture) {
         REPORTS.clear();
         AsyncTestListener capture = new AsyncTestListener() {

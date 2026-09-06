@@ -220,6 +220,11 @@ public final class AgentConcurrencyUtilHooks {
             misuse.recordAwait(receiver);
         }
         receiver.await();
+        // Reached only at zero, which is what tells LatchMisuseDetector that countdowns it never
+        // saw happened in unwoven code rather than not at all (#499).
+        if (misuse != null) {
+            misuse.recordAwaitReturned(receiver);
+        }
         CountDownLatchDetector counts = AsyncTestContext.currentCountDownLatchDetector();
         if (counts != null) {
             counts.recordAwaitSuccess(receiver);
@@ -246,6 +251,10 @@ public final class AgentConcurrencyUtilHooks {
             misuse.recordAwait(receiver);
         }
         boolean reachedZero = receiver.await(timeout, unit);
+        // Only the true branch: a timed-out await proves nothing about the latch reaching zero.
+        if (misuse != null && reachedZero) {
+            misuse.recordAwaitReturned(receiver);
+        }
         CountDownLatchDetector counts = AsyncTestContext.currentCountDownLatchDetector();
         if (counts != null) {
             if (reachedZero) {

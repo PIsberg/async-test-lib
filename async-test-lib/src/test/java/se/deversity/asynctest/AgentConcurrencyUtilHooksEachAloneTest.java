@@ -184,8 +184,8 @@ class AgentConcurrencyUtilHooksEachAloneTest {
     }
 
     @Test
-    @DisplayName("the untimed await blocks until the latch falls, and is recorded before it does")
-    void untimedAwaitBlocksAndIsRecordedFirst() throws Exception {
+    @DisplayName("the untimed await blocks until the latch falls, and returning clears the finding")
+    void untimedAwaitBlocksAndItsReturnClearsTheFinding() throws Exception {
         CountDownLatch latch = new CountDownLatch(2);
         AtomicBoolean returned = new AtomicBoolean();
         AsyncTestContext ctx = newContext();
@@ -208,9 +208,47 @@ class AgentConcurrencyUtilHooksEachAloneTest {
                 "the hook must perform the await it replaced: the latch is at 2, so a hook that "
                         + "dropped the call would have returned already");
         latch.countDown();
-        latch.countDown(); // not through the hook, so only the await is recorded
+        latch.countDown(); // not through the hook, so neither count-down is recorded
         waiter.join();
         assertTrue(returned.get(), "and must return once the latch reaches zero");
+
+        AsyncTestContext.install(ctx);
+        try {
+            LatchMisuseDetector.LatchMisuseReport report =
+                    AsyncTestContext.latchMisuseDetector().analyze();
+            assertTrue(report.missingCountDowns.isEmpty(),
+                    "this latch was counted down twice outside the weaving boundary, so the "
+                            + "detector recorded 0 of 2 - and the await it did record came back, "
+                            + "which only happens at zero. Until #499 that was reported as "
+                            + "CRITICAL 'awaited 1 time(s) but only 0/2 countDown() calls', on a "
+                            + "run that worked; got " + report);
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("an untimed await that never returns keeps the missing-countdown finding")
+    void untimedAwaitThatNeverReturnsStillReportsTheMissingCountdown() throws Exception {
+        CountDownLatch latch = new CountDownLatch(2);
+        AsyncTestContext ctx = newContext();
+
+        // The positive control for the test above: same hook, same latch count, same single
+        // unwoven count-down - but the await is still parked, so nothing says the latch reached
+        // zero and the finding stands. This is also what proves the await hook observed the latch
+        // at 2 and recorded the await at all.
+        Thread waiter = new Thread(() -> {
+            AsyncTestContext.install(ctx);
+            try {
+                AgentConcurrencyUtilHooks.await(latch);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                AsyncTestContext.uninstall();
+            }
+        }, "untimed-await-parked");
+        waiter.start();
+        awaitBlocked(waiter);
 
         AsyncTestContext.install(ctx);
         try {
@@ -222,6 +260,9 @@ class AgentConcurrencyUtilHooksEachAloneTest {
                             + "got " + report);
         } finally {
             AsyncTestContext.uninstall();
+            latch.countDown();
+            latch.countDown();
+            waiter.join();
         }
     }
 

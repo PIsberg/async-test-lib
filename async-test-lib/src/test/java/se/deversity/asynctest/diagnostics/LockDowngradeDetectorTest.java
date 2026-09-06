@@ -9,6 +9,42 @@ import static org.junit.jupiter.api.Assertions.*;
 public class LockDowngradeDetectorTest {
 
     @Test
+    void aGapLeftOpenByAnEarlierRoundIsNotClosedByTheNextRoundsReadLock() throws Exception {
+        LockDowngradeDetector detector = new LockDowngradeDetector();
+        ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+
+        // Round one: this thread writes and releases, leaving the downgrade gap open. Nothing
+        // else of its own follows, which under @AsyncTest is an ordinary write-then-done round.
+        lock.writeLock().lock();
+        detector.recordWriteLockAcquired(lock, "myLock");
+        lock.writeLock().unlock();
+        detector.recordWriteLockReleased(lock, "myLock");
+
+        // Another thread writes in between, which is routine under the barrier and is what bumps
+        // the generation the gap is compared against.
+        Thread other = new Thread(() -> {
+            lock.writeLock().lock();
+            detector.recordWriteLockAcquired(lock, "myLock");
+            lock.writeLock().unlock();
+            detector.recordWriteLockReleased(lock, "myLock");
+        });
+        other.start();
+        other.join();
+
+        detector.markInvocationStart();
+
+        // Round two on the same pooled thread: a plain read, no downgrade attempted anywhere.
+        lock.readLock().lock();
+        detector.recordReadLockAcquired(lock, "myLock");
+        lock.readLock().unlock();
+        detector.recordReadLockReleased(lock, "myLock");
+
+        assertFalse(detector.analyze().hasIssues(),
+            "the write release and the read acquire are in different rounds, so nothing was "
+                + "downgraded: " + detector.analyze());
+    }
+
+    @Test
     void testNoIssueWithValidDowngrade() {
         LockDowngradeDetector detector = new LockDowngradeDetector();
         ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
