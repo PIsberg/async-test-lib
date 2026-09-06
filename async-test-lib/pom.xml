@@ -290,13 +290,23 @@
                         <value>-Djdk.attach.allowAttachSelf=true</value>
                         <value>-Dlicense.mock.mode=true</value>
                     </jvmArgs>
-                    <!-- Gate: the build fails below this mutation score. Measured full-run
-                         score is 77.5% (2026-08-31, 8732 mutants, e2e tier included via
-                         parseSurefireConfig=false above); the gate sits ~1.5pp below because
-                         TIMED_OUT mutant counts jitter between runs. Survivors are dominated
-                         by diagnostic output, timing-heuristic detector mutants that cannot
-                         be killed without flaky, timing-forced tests, and agent-fed hook
-                         shims that never execute without the bytecode agent attached. -->
+                    <!-- Gate: the build fails below this mutation score. Measured 81%
+                         (9019 mutations, 7272 killed) on 2026-09-06, run 34017000749 - the
+                         first CI run of this job ever to complete, and so the first score that
+                         came from the job rather than from somebody's laptop. Line coverage of
+                         mutated classes 92% (16121/17442); 525 mutations had no coverage at
+                         all; test strength 86%.
+
+                         The previous figure here, 77.5% on 2026-08-31, was a local run: every
+                         CI attempt died in the coverage phase until #479 was fixed. The two are
+                         not like for like, because that one predates both the detector sweep and
+                         the excludedTestClasses above.
+
+                         Survivors are dominated by diagnostic output, timing-heuristic detector
+                         mutants that cannot be killed without flaky, timing-forced tests, and
+                         agent-fed hook shims that never execute without the bytecode agent
+                         attached. The gate sits 5pp below the measurement because TIMED_OUT
+                         mutant counts jitter between runs. -->
                     <mutationThreshold>76</mutationThreshold>
                     <outputFormats>
                         <param>HTML</param>
