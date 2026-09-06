@@ -204,8 +204,17 @@ public class Phase2AsyncIntegrationTest {
         private final Object lock2 = new Object();
         private final AtomicInteger threadAssigner = new AtomicInteger(0);
 
+        // Platform threads, for the same reason DeadlockDiagnosticsDummy, DeadlockDummy and
+        // DeadlockingDummy already use them. This body deadlocks on purpose, and a monitor is
+        // the one thing cancel(true) cannot interrupt a worker out of, so both workers stay
+        // blocked for the life of the JVM. On a virtual thread that is not one leaked thread but
+        // one leaked *carrier*: before JEP 491 (JDK 24) a virtual thread blocked entering
+        // synchronized pins the carrier it is mounted on, and the scheduler's pool is sized to
+        // availableProcessors. Surefire hides this by forking per class; pitest runs all 1194
+        // test classes in one JVM, where this fixture and its sibling below took all four
+        // carriers on a four-core runner and every later virtual thread waited forever (#479).
         @AsyncTest(threads = 2, invocations = 2,
-                  validateLockOrder = true, timeoutMs = 5000)
+                  validateLockOrder = true, timeoutMs = 5000, useVirtualThreads = false)
         void testInconsistentLockOrder() throws InterruptedException {
             int threadId = threadAssigner.getAndIncrement();
             if (threadId % 2 == 0) {
@@ -439,11 +448,14 @@ public class Phase2AsyncIntegrationTest {
         private volatile long counter2 = 0;
         private final AtomicInteger threadId = new AtomicInteger(0);
 
+        // Platform threads, for the reason spelled out on testInconsistentLockOrder above:
+        // this body deadlocks on monitors by design, and on a virtual thread each blocked worker
+        // pins a carrier that never comes back (#479).
         @AsyncTest(threads = 2, invocations = 2,
                   validateLockOrder = true,
                   detectFalseSharing = true,
                   detectMemoryOrderingViolations = true,
-                  timeoutMs = 5000)
+                  timeoutMs = 5000, useVirtualThreads = false)
         void testMultipleDetectors() throws InterruptedException {
             int id = threadId.getAndIncrement();
             if (id % 2 == 0) {

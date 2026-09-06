@@ -60,7 +60,19 @@ class ReportingPathPredicateTest {
         Thread vt = Thread.ofVirtual().unstarted(
                 () -> detector.recordPinningEvent(Thread.currentThread(), "synchronized block"));
         vt.start();
-        vt.join();
+        // Bounded, because an unbounded join is what turned a scheduling problem into a hang.
+        // This is where the pitest coverage phase stopped for good: two fixtures deadlocking on
+        // monitors had pinned all four virtual-thread carriers, so this thread could never be
+        // scheduled and join() waited for the life of the job. The fixtures are fixed at their
+        // source; this bound is what makes a future recurrence a failing test with a message
+        // rather than a silent job that has to be cancelled to read (#479).
+        assertTrue(vt.join(java.time.Duration.ofSeconds(30)),
+                "the virtual thread that records the pinning event never ran. On a JVM whose "
+                        + "virtual-thread carriers are all pinned - the scheduler's pool is sized "
+                        + "to availableProcessors, and before JEP 491 a virtual thread blocked "
+                        + "entering synchronized pins its carrier - nothing new can be scheduled. "
+                        + "Look for a test subject that deadlocks on a monitor without "
+                        + "useVirtualThreads = false");
 
         VirtualThreadPinningDetector.PinningReport report = detector.analyzePinning();
         assertTrue(report.getEvents().size() == 1,
