@@ -150,9 +150,12 @@ public enum IssueSeverity {
      *
      * <p>Same matching as {@link #fromReport(String)}, without the {@code HIGH} default. The
      * distinction is the point: a caller can tell "this detector said HIGH" from "this detector
-     * said nothing and HIGH is what we assumed", and 86 of the 142 built-in detectors said
-     * nothing. {@code DetectorDefaultSeverity} supplies the answer for those instead of letting
-     * every one of them arrive at a merge gate ranked as though it proved data corruption.
+     * said nothing and HIGH is what we assumed". When {@code DetectorDefaultSeverity} was
+     * introduced, 86 of the 142 built-in detectors of the day said nothing; that table supplies
+     * the answer for them instead of letting every one arrive at a merge gate ranked as though it
+     * proved data corruption. {@code DetectorSeverityMarkerTest} now holds the count at zero, and
+     * the built-in count has since moved on - read 86 and 142 as the measurement that motivated
+     * the table, not as a description of today's registry.
      *
      * @param report the raw report text produced by a detector; {@code null} is treated as empty
      * @since 1.9.7

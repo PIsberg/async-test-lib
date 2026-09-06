@@ -7,6 +7,24 @@ import static org.junit.jupiter.api.Assertions.*;
 class ThreadPoolMonitorTest {
 
     @Test
+    void anUnregisteredPoolIsNotReportedAsFullOrSaturated() {
+        ThreadPoolMonitor monitor = new ThreadPoolMonitor();
+
+        // A rejection reported for a pool nobody registered. The monitor invents a state for it,
+        // and its bounds are 0 because nobody said - not because the pool has none. 0 >= 0 used
+        // to make "All 0 threads busy" fire on every such pool (#501).
+        monitor.recordTaskRejected(new Object(), "queue full");
+
+        ThreadPoolMonitor.ThreadPoolReport report = monitor.analyzePoolHealth();
+        assertTrue(report.threadStarvation.isEmpty(),
+            "nothing here knows the pool's size, so it cannot be full: " + report.threadStarvation);
+        assertTrue(report.saturatedQueues.isEmpty(),
+            "nor its queue capacity: " + report.saturatedQueues);
+        assertFalse(report.poolsWithRejections.isEmpty(),
+            "the rejection itself was observed and still stands");
+    }
+
+    @Test
     void noPoolsReturnNoIssues() {
         ThreadPoolMonitor monitor = new ThreadPoolMonitor();
         ThreadPoolMonitor.ThreadPoolReport report = monitor.analyzePoolHealth();

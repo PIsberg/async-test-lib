@@ -343,6 +343,38 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
         }
     }
 
+    /** Enables the pinning detector and does nothing else to start it. */
+    public static class PinningEnabledOnly {
+        static final AtomicInteger EVENTS_SEEN = new AtomicInteger(-1);
+
+        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = true,
+                   detectAll = false, detectVirtualThreadPinning = true)
+        void body() {
+            // No startMonitoring() call. Until #501 the detector's monitoring flag defaulted to
+            // false and nothing in main code turned it on, so recordPinningEvent returned early
+            // and detectVirtualThreadPinning = true advertised a check that never ran.
+            var detector = AsyncTestContext.virtualThreadPinningDetector();
+            detector.recordPinningEvent(Thread.currentThread(), "Object.wait on a monitor");
+            // Asserted on the recorded events rather than on hasIssues(): whether a cause still
+            // pins depends on the running JDK (JEP 491), and the question here is only whether
+            // the detector recorded anything at all.
+            EVENTS_SEEN.set(detector.analyzePinning().getEvents().size());
+        }
+    }
+
+    @Test
+    @DisplayName("enabling the pinning detector is enough to make it record")
+    void virtualThreadPinningDetectorIsNotInertWhenMerelyEnabled() {
+        PinningEnabledOnly.EVENTS_SEEN.set(-1);
+        run(PinningEnabledOnly.class);
+        assertTrue(PinningEnabledOnly.EVENTS_SEEN.get() > 0,
+                "a detector the config enabled has to be able to record. Constructing it and "
+                        + "never starting it left recordPinningEvent returning early, so "
+                        + "detectVirtualThreadPinning = true produced a clean report on code "
+                        + "that pins (#501). Events recorded: "
+                        + PinningEnabledOnly.EVENTS_SEEN.get());
+    }
+
     private static void run(Class<?> fixture) {
         REPORTS.clear();
         AsyncTestListener capture = new AsyncTestListener() {

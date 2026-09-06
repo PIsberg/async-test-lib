@@ -138,6 +138,10 @@ public class StringBuilderDetector {
     public void recordError(StringBuilder builder, String name, String errorType) {
         if (!enabled || builder == null) return;
         BuilderState state = resolve(builder, name);
+        // The thread that hit the error was using the builder, so it counts toward the sharing
+        // the error finding now requires (#501). Recorded as a read: an exception says the call
+        // did not complete, so claiming a mutation would be claiming more than was observed.
+        state.readingThreads.add(Thread.currentThread().threadId());
         state.errorCount.incrementAndGet();
     }
 
@@ -188,10 +192,16 @@ public class StringBuilderDetector {
                         state.deleteCount.get(), state.replaceCount.get()));
             }
 
-            if (errors > 0) {
+            // Concurrent access is part of the claim, so it has to be part of the evidence.
+            // One thread appending to its own StringBuilder and catching an exception has hit a
+            // bug in its own indexing; calling that "from concurrent access" attributes it to a
+            // race that did not happen. The count still shows up under activity below (#501).
+            int touchingThreads = distinctThreads(state);
+            if (errors > 0 && touchingThreads > 1) {
                 report.builderErrors.add(String.format(
-                        "%s: %d exception(s) from concurrent access (possible StringIndexOutOfBoundsException)",
-                        state.name, errors));
+                        "%s: %d exception(s) while %d threads used it (possible "
+                            + "StringIndexOutOfBoundsException from concurrent access)",
+                        state.name, errors, touchingThreads));
             }
 
             report.builderActivity.put(state.name, String.format(
@@ -200,6 +210,13 @@ public class StringBuilderDetector {
         }
 
         return report;
+    }
+
+    /** {@return how many distinct threads read or mutated this builder} */
+    private static int distinctThreads(BuilderState state) {
+        Set<Long> all = new java.util.HashSet<>(state.mutatingThreads);
+        all.addAll(state.readingThreads);
+        return all.size();
     }
 
     // ---- Report ----------------------------------------------------------------

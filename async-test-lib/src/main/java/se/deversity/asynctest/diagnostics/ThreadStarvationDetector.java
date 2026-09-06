@@ -103,7 +103,10 @@ public class ThreadStarvationDetector {
      * Record a task being submitted to an executor.
      *
      * @param executor the executor being recorded, tracked by identity
-     * @return the submission timestamp in nanoseconds
+     * @return the submission timestamp in nanoseconds, or 0 when nothing was recorded - the
+     *         detector is disabled, or {@code executor} is {@code null}. Pass it on to
+     *         {@link #recordTaskStart} regardless: that method knows 0 means "no submission" and
+     *         does not treat it as a timestamp.
      */
     public long recordTaskSubmission(ExecutorService executor) {
         if (!enabled || executor == null) return 0;
@@ -123,10 +126,15 @@ public class ThreadStarvationDetector {
      * Record a task starting execution.
      *
      * @param executorName a label identifying the executor in the report
-     * @param submitTimeNanos the submission time (from recordTaskSubmission)
+     * @param submitTimeNanos the submission time (from {@link #recordTaskSubmission}); 0 means
+     *                        no submission was recorded and the task is ignored
      */
     public void recordTaskStart(String executorName, long submitTimeNanos) {
         if (!enabled) return;
+        // 0 is recordTaskSubmission's "nothing recorded" answer, not a timestamp. Subtracting it
+        // from System.nanoTime() yields the JVM's arbitrary nanoTime origin, which is a wait of
+        // millions of milliseconds and starvation reported for a task that never queued (#501).
+        if (submitTimeNanos == 0) return;
 
         long startTime = System.nanoTime();
         long waitTimeNs = startTime - submitTimeNanos;

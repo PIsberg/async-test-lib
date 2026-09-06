@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -44,10 +46,13 @@ public class SynchronizedNonFinalDetector {
 
     private static final class LockSlot {
         final String fieldId;
+        /** Whether the caller identified the object that declares the field. */
+        final boolean ownerKnown;
         final Set<Integer> identityHashes = ConcurrentHashMap.newKeySet();
 
-        LockSlot(String fieldId) {
+        LockSlot(String fieldId, boolean ownerKnown) {
             this.fieldId = fieldId;
+            this.ownerKnown = ownerKnown;
         }
     }
 
@@ -66,9 +71,33 @@ public class SynchronizedNonFinalDetector {
      * @param ownerClass the class that declares the field (used in reports)
      */
     public void recordLockObject(Object lockObject, String fieldId, Class<?> ownerClass) {
+        recordLockObject(lockObject, fieldId, ownerClass, null);
+    }
+
+    /**
+     * Records a lock object together with the instance that declares the field.
+     *
+     * <p>The owner is what separates the two things a changing monitor can mean. Without it the
+     * slot is keyed by class and field name alone, so N workers each holding their own
+     * {@code new Service()} - each with its own {@code private final Object lock} - all record
+     * into one slot and look exactly like one field reassigned N times. That is correct code, and
+     * the finding used to assert it was not final, which is a fact the detector had no way to
+     * know (#501). Pass {@code owner} and each instance gets its own slot, so only a monitor that
+     * really changed on one object is reported.
+     *
+     * @param lockObject the object used as the monitor
+     * @param fieldId    a stable identifier for the field, e.g. {@code "MyService.lock"}
+     * @param ownerClass the class that declares the field (used in reports)
+     * @param owner      the instance that declares the field, or {@code null} when unknown
+     * @since 1.11.2
+     */
+    public void recordLockObject(Object lockObject, String fieldId, Class<?> ownerClass,
+                                 @Nullable Object owner) {
         if (lockObject == null || fieldId == null) return;
         String key = (ownerClass != null) ? ownerClass.getSimpleName() + "." + fieldId : fieldId;
-        LockSlot slot = slots.computeIfAbsent(key, LockSlot::new);
+        boolean ownerKnown = owner != null;
+        String slotKey = ownerKnown ? key + "@" + System.identityHashCode(owner) : key;
+        LockSlot slot = slots.computeIfAbsent(slotKey, k -> new LockSlot(key, ownerKnown));
         slot.identityHashes.add(System.identityHashCode(lockObject));
     }
 
@@ -85,9 +114,18 @@ public class SynchronizedNonFinalDetector {
 
         for (LockSlot slot : slots.values()) {
             if (slot.identityHashes.size() > 1) {
-                report.violations.add(String.format(
-                        "%s: synchronized on %d different object instances — lock reference is NOT FINAL, mutual exclusion is broken!",
-                        slot.fieldId, slot.identityHashes.size()));
+                report.violations.add(slot.ownerKnown
+                    ? String.format(
+                        "%s: one instance synchronized on %d different objects — lock reference is "
+                            + "NOT FINAL, mutual exclusion is broken!",
+                        slot.fieldId, slot.identityHashes.size())
+                    : String.format(
+                        "%s: synchronized on %d different objects. Either the field was reassigned, "
+                            + "in which case mutual exclusion is broken, or each of %d instances "
+                            + "has its own final lock, which is correct. This recording did not say "
+                            + "which instance each monitor belonged to; pass the owner to "
+                            + "recordLockObject to have that decided here.",
+                        slot.fieldId, slot.identityHashes.size(), slot.identityHashes.size()));
             }
         }
 

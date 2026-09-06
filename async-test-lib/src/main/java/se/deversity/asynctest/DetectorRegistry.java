@@ -391,6 +391,14 @@ final class DetectorRegistry {
                 ? new CompletableFutureCompletionLeakDetector() : null;
         virtualThreadPinningDetector = cfg.detectVirtualThreadPinning
                 ? new VirtualThreadPinningDetector() : null;
+        // The same defect SleepInLockDetector had below: recordBlockingOperation and
+        // recordSynchronizedBlock both return early on a monitoring flag that defaults to false,
+        // and nothing in main code turned it on - the javadoc, the fixture and example 92 each
+        // called startMonitoring() themselves, so detectVirtualThreadPinning = true on its own
+        // produced a clean report on code that pins all day (#501).
+        if (virtualThreadPinningDetector != null) {
+            virtualThreadPinningDetector.startMonitoring();
+        }
         threadPoolDeadlockDetector = cfg.detectThreadPoolDeadlocks
                 ? new ThreadPoolDeadlockDetector() : null;
         concurrentModificationDetector = cfg.detectConcurrentModifications
