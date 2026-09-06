@@ -92,21 +92,24 @@ class Phase07HighLevelPatternDetectorsFixtureTest {
     void cacheConcurrency() {
         reachable("cacheConcurrencyDetector()", AsyncTestContext::cacheConcurrencyDetector);
 
-        // computeIfAbsent on a shared cache: correct here, a cache stampede when the
-        // mapping function is expensive and the map is not concurrent.
         // A plain HashMap used as a shared cache is the hazard: the detector deliberately does
         // not flag a ConcurrentMap, so the earlier ConcurrentHashMap version of this fixture
         // could not have failed. Reads and writes both have to happen for the finding.
+        //
+        // Unguarded on purpose. This body used to wrap every access in synchronized (UNSAFE_CACHE),
+        // which made it a correctly guarded cache - the fixture demonstrated the fix while its
+        // comment described the bug, and it only reported because the detector had no lock model
+        // (#497). Both threads also miss and recompute the same key, which is the stampede.
         var cacheDetector = AsyncTestContext.cacheConcurrencyDetector();
         registerOnce("cache", () -> cacheDetector.registerCache(UNSAFE_CACHE, "shared-cache"));
-        synchronized (UNSAFE_CACHE) {
+        try {
             cacheDetector.recordGet(UNSAFE_CACHE, "shared-cache", "key");
-            Integer existing = UNSAFE_CACHE.get("key");
-            if (existing == null) {
-                UNSAFE_CACHE.put("key", spin(64));
-                cacheDetector.recordPut(UNSAFE_CACHE, "shared-cache", "key",
-                        UNSAFE_CACHE.get("key"));
-            }
+            UNSAFE_CACHE.get("key");
+            cacheDetector.recordPut(UNSAFE_CACHE, "shared-cache", "key", spin(64));
+            UNSAFE_CACHE.put("key", 1);
+        } catch (RuntimeException corruptedByTheRace) {
+            // A HashMap can throw out of its own resize under concurrent writes. That is the
+            // hazard, not a fixture failure: the finding is already recorded above.
         }
     }
 

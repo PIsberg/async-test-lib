@@ -235,7 +235,13 @@ public class CacheConcurrencyDetector {
             // under @AsyncTest measures the runner's barrier - it engineers exactly that overlap -
             // rather than anything about the cache. A key written by several threads is duplicated
             // work on one value, which is what a stampede is (#497).
-            for (Map.Entry<Object, Set<Long>> entry : state.writerThreadsByKey.entrySet()) {
+            // The receiver's type gates this the way it gates the rules above. The corpus pins
+            // that directly: recorded_lruMap_getAndPut and recorded_caffeineAsMap_getAndPut hand
+            // the detector identical evidence and differ only in the receiver, so a finding on the
+            // ConcurrentMap view is noise on correct code whichever rule produces it.
+            for (Map.Entry<Object, Set<Long>> entry :
+                    (isConcurrentMap ? Map.<Object, Set<Long>>of() : state.writerThreadsByKey)
+                        .entrySet()) {
                 int recomputingThreads = entry.getValue().size();
                 if (recomputingThreads > 1) {
                     report.cacheStampede.add(String.format(

@@ -123,7 +123,7 @@ class CacheConcurrencyDetectorTest {
 
     @Test
     void manyThreadsHittingDistinctKeysIsNotACacheStampede() throws InterruptedException {
-        Map<String, String> cache = new ConcurrentHashMap<>();
+        Map<String, String> cache = new HashMap<>();
         detector.registerCache(cache, "wide-cache");
 
         Runnable[] workers = new Runnable[12];
@@ -136,7 +136,7 @@ class CacheConcurrencyDetectorTest {
         }
         onThreads(workers);
 
-        assertFalse(detector.analyze().hasIssues(),
+        assertTrue(detector.analyze().cacheStampede.isEmpty(),
             "twelve threads each computing their own key is a cache doing its job. The old rule "
                 + "counted how many threads were inside the record methods at once, which under "
                 + "@AsyncTest measures the runner's barrier rather than the cache: "
@@ -145,7 +145,9 @@ class CacheConcurrencyDetectorTest {
 
     @Test
     void twoThreadsRecomputingTheSameKeyIsACacheStampede() throws InterruptedException {
-        Map<String, String> cache = new ConcurrentHashMap<>();
+        // A non-thread-safe cache: the receiver's type gates this rule as it gates the others,
+        // because on a ConcurrentMap the caller is using a class that keeps its contract.
+        Map<String, String> cache = new HashMap<>();
         detector.registerCache(cache, "hot-key-cache");
 
         Runnable missAndRecompute = () -> {
