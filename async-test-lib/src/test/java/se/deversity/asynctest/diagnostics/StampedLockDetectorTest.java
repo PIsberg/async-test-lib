@@ -65,6 +65,51 @@ public class StampedLockDetectorTest {
     }
 
     @Test
+    void aFailedValidationFollowedByAReadLockIsTheCorrectIdiom() {
+        StampedLockDetector detector = new StampedLockDetector();
+        StampedLock lock = new StampedLock();
+
+        detector.registerLock(lock, "fallbackLock");
+        long optimistic = lock.tryOptimisticRead();
+        detector.recordOptimisticRead(lock, "fallbackLock", optimistic);
+
+        // A writer intervened, so validate() returns false. This is the case StampedLock is
+        // designed around, and the documented answer is to take the read lock.
+        detector.recordOptimisticValidation(lock, "fallbackLock", optimistic, false);
+        long readStamp = lock.readLock();
+        detector.recordReadLock(lock, "fallbackLock", readStamp);
+        lock.unlockRead(readStamp);
+        detector.recordUnlock(lock, "fallbackLock", readStamp);
+
+        StampedLockDetector.StampedLockReport report = detector.analyze();
+
+        assertFalse(report.hasIssues(),
+            "validate() returning false and the caller falling back to readLock() is the "
+                + "canonical StampedLock idiom, so the detector must stay silent: " + report);
+    }
+
+    @Test
+    void aFailedValidationFollowedByARetriedOptimisticReadIsTheCorrectIdiom() {
+        StampedLockDetector detector = new StampedLockDetector();
+        StampedLock lock = new StampedLock();
+
+        detector.registerLock(lock, "retryLock");
+        long first = lock.tryOptimisticRead();
+        detector.recordOptimisticRead(lock, "retryLock", first);
+        detector.recordOptimisticValidation(lock, "retryLock", first, false);
+
+        long second = lock.tryOptimisticRead();
+        detector.recordOptimisticRead(lock, "retryLock", second);
+        detector.recordOptimisticValidation(lock, "retryLock", second, true);
+
+        StampedLockDetector.StampedLockReport report = detector.analyze();
+
+        assertFalse(report.hasIssues(),
+            "retrying the optimistic read after a failed validation is the other half of the "
+                + "documented idiom: " + report);
+    }
+
+    @Test
     void testReadLockUsage() {
         StampedLockDetector detector = new StampedLockDetector();
         StampedLock lock = new StampedLock();

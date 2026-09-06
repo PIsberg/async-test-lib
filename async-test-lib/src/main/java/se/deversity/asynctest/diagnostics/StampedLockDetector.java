@@ -13,11 +13,25 @@ import java.util.concurrent.locks.StampedLock;
  * - Lock upgrade issues (optimistic → write)
  * - Stamp not released in finally block
  * - Wrong stamp used for unlock
+ *
+ * <p>A failed {@code validate()} is not itself a finding. {@code StampedLock} exists for the case
+ * where a writer intervenes, and the documented answer is to fall back to {@code readLock()} or to
+ * retry the optimistic read; reporting the failure would fire stochastically on exactly the code
+ * that handles it correctly. The finding is a failed validation that is followed by neither, on
+ * the same thread and lock, which is the shape in which the stale value was used as read.
  */
 public class StampedLockDetector {
 
     private final Map<StampedLock, LockInfo> lockRegistry = new ConcurrentHashMap<>();
     private final Set<String> unvalidatedOptimisticReads = ConcurrentHashMap.newKeySet();
+    /**
+     * Failed validations still waiting to see what the caller did next, keyed by thread and lock
+     * name. {@code validate()} returning false is not a defect on its own: it is the case
+     * {@code StampedLock} exists for, and the documented answer is to fall back to
+     * {@code readLock()} or to retry the optimistic read. Only a failed validation that is
+     * followed by neither, on the same thread and lock, means the stale value was used (#496).
+     */
+    private final Map<String, Set<String>> pendingFailedValidations = new ConcurrentHashMap<>();
     private final Set<String> stampNotReleased = ConcurrentHashMap.newKeySet();
 
     /**
@@ -45,6 +59,7 @@ public class StampedLockDetector {
         if (info != null) {
             info.recordOptimisticRead(stamp);
         }
+        pendingFailedValidations.remove(fallbackKey(lockName));
     }
 
     /**
@@ -61,8 +76,19 @@ public class StampedLockDetector {
             info.recordValidation();
         }
         if (!validated) {
-            unvalidatedOptimisticReads.add(lockName + " (stamp: " + stamp + ")");
+            pendingFailedValidations
+                .computeIfAbsent(fallbackKey(lockName), k -> ConcurrentHashMap.newKeySet())
+                .add(lockName + " (stamp: " + stamp + ", validate() failed and nothing was "
+                     + "retried or read-locked afterwards)");
         }
+    }
+
+    /**
+     * Key for {@link #pendingFailedValidations}: the fallback has to happen on the thread that
+     * saw the validation fail, and on the same lock, to be that validation's fallback.
+     */
+    private static String fallbackKey(String lockName) {
+        return Thread.currentThread().threadId() + "|" + lockName;
     }
 
     /**
@@ -77,6 +103,7 @@ public class StampedLockDetector {
         if (info != null) {
             info.recordReadLock(stamp);
         }
+        pendingFailedValidations.remove(fallbackKey(lockName));
     }
 
     /**
@@ -91,6 +118,7 @@ public class StampedLockDetector {
         if (info != null) {
             info.recordWriteLock(stamp);
         }
+        pendingFailedValidations.remove(fallbackKey(lockName));
     }
 
     /**
@@ -127,6 +155,10 @@ public class StampedLockDetector {
         // which is the defect the class documents. Counted per lock; more reads than validations
         // means at least one went unchecked.
         Set<String> unvalidated = new HashSet<>(unvalidatedOptimisticReads);
+        // Failed validations nobody ever fell back from: the stale value was used as read.
+        for (Set<String> stillPending : pendingFailedValidations.values()) {
+            unvalidated.addAll(stillPending);
+        }
         for (LockInfo info : lockRegistry.values()) {
             int unchecked = info.unvalidatedReads();
             if (unchecked > 0) {
