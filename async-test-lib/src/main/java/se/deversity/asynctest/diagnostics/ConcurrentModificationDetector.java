@@ -247,11 +247,19 @@ public class ConcurrentModificationDetector {
                     state.name, state.concurrentModifications.get(), state.lastModificationType));
             }
 
-            // Check for multiple threads iterating same collection
-            if (!iterationIsSafe && state.allIteratingThreads.size() > 1) {
+            // Check for multiple threads iterating same collection.
+            // A mutation somewhere in the run is required, because concurrent iteration on its
+            // own is not a defect: two threads walking an ArrayList nobody writes to observe the
+            // same stable list and cannot tear. Only a write makes the shared iteration unsafe,
+            // and this detector is VERDICT tier, whose contract is that a finding means the code
+            // is wrong. Both counters are consulted: recordModification bumps modificationCount,
+            // recordModificationDuringIteration bumps only modifyingThreads (#494).
+            boolean wasMutated = state.modificationCount.get() > 0 || !state.modifyingThreads.isEmpty();
+            if (!iterationIsSafe && state.allIteratingThreads.size() > 1 && wasMutated) {
                 report.concurrentIterations.add(String.format(
-                    "%s: %d threads performed iteration (potential race condition)",
-                    state.name, state.allIteratingThreads.size()));
+                    "%s: %d threads performed iteration while the collection was modified "
+                        + "%d time(s) (potential race condition)",
+                    state.name, state.allIteratingThreads.size(), state.modificationCount.get()));
             }
 
             // Check for multiple threads modifying same collection
