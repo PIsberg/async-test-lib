@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit;
 
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -26,6 +27,27 @@ class TelemetryBridgeTest {
     void cleanup() {
         // Never leave the registry running between tests (mirrors TelemetryRegistryTest).
         TelemetryRegistry.stop();
+    }
+
+    @Test
+    void droppedNonWorkerEventsAreCountedSoTheGapCanBeAnnounced() {
+        AtomicityValidator av = new AtomicityValidator();
+        try (TelemetryBridge bridge =
+                     TelemetryBridge.activate(av, Set.of(WORKER_A, WORKER_B))) {
+            assertEquals(0L, bridge.droppedNonWorkerEvents(), "nothing dropped yet");
+
+            bridge.onEvent(WORKER_A, "com.example.Account.balance", false);
+            assertEquals(0L, bridge.droppedNonWorkerEvents(), "a worker's access is forwarded");
+
+            // The shape the count exists for: a body that started its own thread.
+            bridge.onEvent(NON_WORKER, "com.example.Account.balance", false);
+            bridge.onEvent(NON_WORKER, "com.example.Account.balance", true);
+
+            assertEquals(2L, bridge.droppedNonWorkerEvents(),
+                    "dropping is right - the bridge cannot attribute these to a round - but the "
+                        + "count is what lets the runner say so, instead of a clean atomicity "
+                        + "report silently meaning 'not observed'");
+        }
     }
 
     @Test

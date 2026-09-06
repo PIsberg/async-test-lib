@@ -170,6 +170,65 @@ public class RaceConditionDetectorTest {
     }
 
     @Test
+    void twoWritesUnderTheSameReadLockAreNotGuarded() throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Object shared = new Object();
+        Object readWriteLock = new Object();
+
+        // Both threads write while holding the same lock in shared mode. A read lock keeps
+        // writers out of the read side and nothing else: it admits every other reader, so two
+        // writers under it are racing. AtomicityValidator has always known that, because it uses
+        // the mode-aware fingerprint; this detector folded shared locks in as if exclusive.
+        Runnable writeUnderReadLock = () -> {
+            HeldLocks.acquired(readWriteLock, true);
+            try {
+                detector.recordFieldWrite(shared, "state");
+            } finally {
+                HeldLocks.released(readWriteLock, true);
+            }
+        };
+
+        Thread first = new Thread(writeUnderReadLock);
+        Thread second = new Thread(writeUnderReadLock);
+        first.start();
+        first.join();
+        second.start();
+        second.join();
+
+        assertTrue(detector.analyzeRaceConditions().hasIssues(),
+            "two writes under the same read lock have no common exclusive lock, so this is a "
+                + "write-write race: " + detector.analyzeRaceConditions());
+    }
+
+    @Test
+    void twoWritesUnderTheSameWriteLockAreGuarded() throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Object shared = new Object();
+        Object exclusiveLock = new Object();
+
+        // The twin: the same two writes, under the same lock held exclusively, are correct code.
+        Runnable writeUnderWriteLock = () -> {
+            HeldLocks.acquired(exclusiveLock, false);
+            try {
+                detector.recordFieldWrite(shared, "state");
+            } finally {
+                HeldLocks.released(exclusiveLock, false);
+            }
+        };
+
+        Thread first = new Thread(writeUnderWriteLock);
+        Thread second = new Thread(writeUnderWriteLock);
+        first.start();
+        first.join();
+        second.start();
+        second.join();
+
+        assertFalse(detector.analyzeRaceConditions().hasIssues(),
+            "one exclusive lock held across both writes is what guarding means: "
+                + detector.analyzeRaceConditions());
+    }
+
+    @Test
     void nullInputHandledGracefully() {
         RaceConditionDetector detector = new RaceConditionDetector();
 

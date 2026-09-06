@@ -123,8 +123,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="AsyncTestContext" data-target="LockLeakDetector" data-type="HAS" x="2485.8" y="1145.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">lockLeakDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="SharedRandomDetector" data-type="HAS" d="M3192.0 344.0 Q2187.6 601.8 1204.0 930.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestContext" data-target="SharedRandomDetector" data-type="HAS" x="2192.8" y="613.5" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">sharedRandomDetector</text>
-<path class="edge-line" data-source="AsyncTestContext" data-target="BlockingQueueDetector" data-type="HAS" d="M3192.0 344.0 Q2286.0 617.6 1404.0 960.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="AsyncTestContext" data-target="BlockingQueueDetector" data-type="HAS" x="2292.0" y="628.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">blockingQueueDetector</text>
+<path class="edge-line" data-source="AsyncTestContext" data-target="BlockingQueueDetector" data-type="HAS" d="M3192.0 344.0 Q2285.8 625.1 1404.0 975.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="AsyncTestContext" data-target="BlockingQueueDetector" data-type="HAS" x="2291.9" y="636.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">blockingQueueDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="ConditionVariableDetector" data-type="HAS" d="M3192.0 344.0 Q2385.1 610.7 1604.0 945.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestContext" data-target="ConditionVariableDetector" data-type="HAS" x="2391.6" y="621.7" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">conditionVariableDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="SimpleDateFormatDetector" data-type="HAS" d="M3192.0 344.0 Q2483.5 615.5 1804.0 953.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -133,8 +133,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="AsyncTestContext" data-target="ParallelStreamDetector" data-type="HAS" x="2589.8" y="630.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">parallelStreamDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="ResourceLeakDetector" data-type="HAS" d="M3192.0 344.0 Q2679.9 610.8 2204.0 938.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestContext" data-target="ResourceLeakDetector" data-type="HAS" x="2688.9" y="619.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">resourceLeakDetector</text>
-<path class="edge-line" data-source="AsyncTestContext" data-target="CountDownLatchDetector" data-type="HAS" d="M3192.0 344.0 Q2776.7 620.9 2404.0 953.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="AsyncTestContext" data-target="CountDownLatchDetector" data-type="HAS" x="2787.3" y="628.7" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">countDownLatchDetector</text>
+<path class="edge-line" data-source="AsyncTestContext" data-target="CountDownLatchDetector" data-type="HAS" d="M3192.0 344.0 Q2776.5 624.8 2404.0 960.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="AsyncTestContext" data-target="CountDownLatchDetector" data-type="HAS" x="2787.3" y="632.5" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">countDownLatchDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="CyclicBarrierDetector" data-type="HAS" d="M3192.0 344.0 Q1689.1 668.0 204.0 1065.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestContext" data-target="CyclicBarrierDetector" data-type="HAS" x="1693.6" y="680.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">cyclicBarrierDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="ReentrantLockDetector" data-type="HAS" d="M3192.0 344.0 Q2371.0 1128.3 1604.0 1965.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -213,8 +213,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="AsyncTestContext" data-target="InheritableThreadLocalMisuseDetector" data-type="HAS" x="2784.5" y="769.2" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">inheritableThreadLocalMisuseDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="ThreadLocalContaminationDetector" data-type="HAS" d="M3192.0 344.0 Q1686.5 784.9 204.0 1298.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestContext" data-target="ThreadLocalContaminationDetector" data-type="HAS" x="1692.2" y="796.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">threadLocalContaminationDetector</text>
-<path class="edge-line" data-source="AsyncTestContext" data-target="AtomicNonAtomicUpdateDetector" data-type="HAS" d="M3192.0 344.0 Q1785.8 785.2 404.0 1298.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="AsyncTestContext" data-target="AtomicNonAtomicUpdateDetector" data-type="HAS" x="1791.9" y="797.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">atomicNonAtomicUpdateDetector</text>
+<path class="edge-line" data-source="AsyncTestContext" data-target="AtomicNonAtomicUpdateDetector" data-type="HAS" d="M3192.0 344.0 Q1785.7 789.0 404.0 1305.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="AsyncTestContext" data-target="AtomicNonAtomicUpdateDetector" data-type="HAS" x="1791.8" y="800.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">atomicNonAtomicUpdateDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="SynchronizedCollectionIterationDetector" data-type="HAS" d="M3192.0 344.0 Q1885.1 778.1 604.0 1283.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestContext" data-target="SynchronizedCollectionIterationDetector" data-type="HAS" x="1891.6" y="789.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">synchronizedCollectionIterationDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="SharedFormatterDetector" data-type="HAS" d="M3192.0 344.0 Q1984.4 774.8 804.0 1275.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -317,8 +317,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="AsyncTestContext" data-target="FinalFieldMutationDetector" data-type="HAS" x="1889.5" y="974.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">finalFieldMutationDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="SharedKdfDetector" data-type="HAS" d="M3192.0 344.0 Q1980.0 956.5 804.0 1635.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestContext" data-target="SharedKdfDetector" data-type="HAS" x="1989.0" y="967.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">sharedKdfDetector</text>
-<path class="edge-line" data-source="AsyncTestContext" data-target="LatchMisuseDetector" data-type="HAS" d="M3192.0 344.0 Q2078.6 968.7 1004.0 1658.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="AsyncTestContext" data-target="LatchMisuseDetector" data-type="HAS" x="2088.3" y="978.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">latchMisuseDetector</text>
+<path class="edge-line" data-source="AsyncTestContext" data-target="LatchMisuseDetector" data-type="HAS" d="M3192.0 344.0 Q2078.5 972.5 1004.0 1665.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="AsyncTestContext" data-target="LatchMisuseDetector" data-type="HAS" x="2088.3" y="982.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">latchMisuseDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="ExecutorDeadlockDetector" data-type="HAS" d="M3192.0 344.0 Q2177.1 977.2 1204.0 1673.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestContext" data-target="ExecutorDeadlockDetector" data-type="HAS" x="2187.5" y="986.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">executorDeadlockDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="FutureBlockingDetector" data-type="HAS" d="M3192.0 344.0 Q2275.5 982.2 1404.0 1680.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -327,8 +327,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="AsyncTestContext" data-target="FlowPublisherConcurrencyDetector" data-type="HAS" x="2386.0" y="988.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">flowPublisherConcurrencyDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="ConfinedArenaThreadEscapeDetector" data-type="HAS" d="M3192.0 344.0 Q2471.8 996.7 1804.0 1703.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestContext" data-target="ConfinedArenaThreadEscapeDetector" data-type="HAS" x="2484.9" y="1004.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">confinedArenaThreadEscapeDetector</text>
-<path class="edge-line" data-source="AsyncTestContext" data-target="SharedMemorySegmentRaceDetector" data-type="HAS" d="M3192.0 344.0 Q2570.0 991.2 2004.0 1688.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="AsyncTestContext" data-target="SharedMemorySegmentRaceDetector" data-type="HAS" x="2584.0" y="997.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">sharedMemorySegmentRaceDetector</text>
+<path class="edge-line" data-source="AsyncTestContext" data-target="SharedMemorySegmentRaceDetector" data-type="HAS" d="M3192.0 344.0 Q2569.9 995.0 2004.0 1695.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="AsyncTestContext" data-target="SharedMemorySegmentRaceDetector" data-type="HAS" x="2583.9" y="1001.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">sharedMemorySegmentRaceDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="VarHandleNonAtomicUpdateDetector" data-type="HAS" d="M3282.0 484.0 Q2673.3 1004.7 2114.0 1578.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestContext" data-target="VarHandleNonAtomicUpdateDetector" data-type="HAS" x="2685.7" y="1011.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">varHandleNonAtomicUpdateDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="RecordMutableComponentLeakDetector" data-type="HAS" d="M3282.0 484.0 Q2772.0 1008.0 2314.0 1578.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -357,8 +357,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="AsyncTestContext" data-target="ThreadLocalCacheDegradationDetector" data-type="HAS" x="2685.2" y="1057.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">threadLocalCacheDegradationDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="ScopeJoinerMisuseDetector" data-type="HAS" d="M3282.0 484.0 Q2770.5 1053.5 2314.0 1668.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestContext" data-target="ScopeJoinerMisuseDetector" data-type="HAS" x="2784.3" y="1058.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">scopeJoinerMisuseDetector</text>
-<path class="edge-line" data-source="AsyncTestContext" data-target="ScopeConfigurationMisuseDetector" data-type="HAS" d="M3192.0 344.0 Q1680.5 1083.3 204.0 1890.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="AsyncTestContext" data-target="ScopeConfigurationMisuseDetector" data-type="HAS" x="1689.2" y="1094.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">scopeConfigurationMisuseDetector</text>
+<path class="edge-line" data-source="AsyncTestContext" data-target="ScopeConfigurationMisuseDetector" data-type="HAS" d="M3192.0 344.0 Q1680.4 1087.1 204.0 1898.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="AsyncTestContext" data-target="ScopeConfigurationMisuseDetector" data-type="HAS" x="1689.2" y="1098.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">scopeConfigurationMisuseDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="ScopeResultEscapeDetector" data-type="HAS" d="M3192.0 344.0 Q1779.7 1076.4 404.0 1875.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestContext" data-target="ScopeResultEscapeDetector" data-type="HAS" x="1788.8" y="1087.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">scopeResultEscapeDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="LazyCollectionMisuseDetector" data-type="HAS" d="M3192.0 344.0 Q1878.5 1084.6 604.0 1890.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -419,8 +419,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="DetectorRegistry" data-target="LockLeakDetector" data-type="HAS" x="1123.2" y="1088.7" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">lockLeakDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="SharedRandomDetector" data-type="HAS" d="M562.0 319.0 Q814.1 613.0 1114.0 858.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="SharedRandomDetector" data-type="HAS" x="826.1" y="594.7" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">sharedRandomDetector</text>
-<path class="edge-line" data-source="DetectorRegistry" data-target="BlockingQueueDetector" data-type="HAS" d="M652.0 216.5 Q909.9 610.1 1224.0 960.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="DetectorRegistry" data-target="BlockingQueueDetector" data-type="HAS" x="923.9" y="593.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">blockingQueueDetector</text>
+<path class="edge-line" data-source="DetectorRegistry" data-target="BlockingQueueDetector" data-type="HAS" d="M562.0 319.0 Q917.8 616.7 1314.0 858.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorRegistry" data-target="BlockingQueueDetector" data-type="HAS" x="927.9" y="596.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">blockingQueueDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="ConditionVariableDetector" data-type="HAS" d="M652.0 216.5 Q1013.7 606.8 1424.0 945.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="ConditionVariableDetector" data-type="HAS" x="1025.8" y="587.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">conditionVariableDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="SimpleDateFormatDetector" data-type="HAS" d="M652.0 216.5 Q1116.5 613.2 1624.0 953.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -429,8 +429,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="DetectorRegistry" data-target="ParallelStreamDetector" data-type="HAS" x="1228.4" y="597.7" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">parallelStreamDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="ResourceLeakDetector" data-type="HAS" d="M652.0 216.5 Q1321.1 609.3 2024.0 938.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="ResourceLeakDetector" data-type="HAS" x="1329.6" y="587.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">resourceLeakDetector</text>
-<path class="edge-line" data-source="DetectorRegistry" data-target="CountDownLatchDetector" data-type="HAS" d="M652.0 216.5 Q1422.5 617.8 2224.0 953.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="DetectorRegistry" data-target="CountDownLatchDetector" data-type="HAS" x="1430.2" y="595.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">countDownLatchDetector</text>
+<path class="edge-line" data-source="DetectorRegistry" data-target="CountDownLatchDetector" data-type="HAS" d="M652.0 216.5 Q1422.4 621.5 2224.0 960.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorRegistry" data-target="CountDownLatchDetector" data-type="HAS" x="1430.2" y="599.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">countDownLatchDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="CyclicBarrierDetector" data-type="HAS" d="M562.0 319.0 Q311.8 614.8 114.0 948.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="CyclicBarrierDetector" data-type="HAS" x="324.9" y="618.2" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">cyclicBarrierDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="ReentrantLockDetector" data-type="HAS" d="M562.0 319.0 Q1007.3 1102.6 1514.0 1848.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -519,8 +519,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="DetectorRegistry" data-target="InheritableThreadLocalMisuseDetector" data-type="HAS" x="1428.0" y="733.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">inheritableThreadLocalMisuseDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="ThreadLocalContaminationDetector" data-type="HAS" d="M562.0 319.0 Q307.3 753.2 114.0 1218.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="ThreadLocalContaminationDetector" data-type="HAS" x="322.6" y="754.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">threadLocalContaminationDetector</text>
-<path class="edge-line" data-source="DetectorRegistry" data-target="AtomicNonAtomicUpdateDetector" data-type="HAS" d="M562.0 319.0 Q405.6 759.6 314.0 1218.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="DetectorRegistry" data-target="AtomicNonAtomicUpdateDetector" data-type="HAS" x="421.8" y="758.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">atomicNonAtomicUpdateDetector</text>
+<path class="edge-line" data-source="DetectorRegistry" data-target="AtomicNonAtomicUpdateDetector" data-type="HAS" d="M562.0 319.0 Q405.8 759.6 314.0 1218.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorRegistry" data-target="AtomicNonAtomicUpdateDetector" data-type="HAS" x="421.9" y="758.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">atomicNonAtomicUpdateDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="SynchronizedCollectionIterationDetector" data-type="HAS" d="M562.0 319.0 Q504.3 766.7 514.0 1218.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="SynchronizedCollectionIterationDetector" data-type="HAS" x="521.2" y="761.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">synchronizedCollectionIterationDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="SharedFormatterDetector" data-type="HAS" d="M562.0 319.0 Q604.4 774.2 714.0 1218.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -623,8 +623,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="DetectorRegistry" data-target="FinalFieldMutationDetector" data-type="HAS" x="520.5" y="941.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">finalFieldMutationDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="SharedKdfDetector" data-type="HAS" d="M562.0 319.0 Q602.7 952.8 714.0 1578.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="SharedKdfDetector" data-type="HAS" x="620.4" y="944.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">sharedKdfDetector</text>
-<path class="edge-line" data-source="DetectorRegistry" data-target="LatchMisuseDetector" data-type="HAS" d="M562.0 319.0 Q704.1 958.0 914.0 1578.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="DetectorRegistry" data-target="LatchMisuseDetector" data-type="HAS" x="721.0" y="947.2" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">latchMisuseDetector</text>
+<path class="edge-line" data-source="DetectorRegistry" data-target="LatchMisuseDetector" data-type="HAS" d="M562.0 319.0 Q704.2 957.9 914.0 1578.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorRegistry" data-target="LatchMisuseDetector" data-type="HAS" x="721.1" y="947.2" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">latchMisuseDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="ExecutorDeadlockDetector" data-type="HAS" d="M562.0 319.0 Q805.7 962.7 1114.0 1578.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="ExecutorDeadlockDetector" data-type="HAS" x="821.8" y="949.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">executorDeadlockDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="FutureBlockingDetector" data-type="HAS" d="M562.0 319.0 Q907.4 966.8 1314.0 1578.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -633,7 +633,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="DetectorRegistry" data-target="FlowPublisherConcurrencyDetector" data-type="HAS" x="1023.5" y="953.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">flowPublisherConcurrencyDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="ConfinedArenaThreadEscapeDetector" data-type="HAS" d="M562.0 319.0 Q1111.2 973.0 1714.0 1578.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="ConfinedArenaThreadEscapeDetector" data-type="HAS" x="1124.6" y="954.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">confinedArenaThreadEscapeDetector</text>
-<path class="edge-line" data-source="DetectorRegistry" data-target="SharedMemorySegmentRaceDetector" data-type="HAS" d="M562.0 319.0 Q1212.8 975.6 1914.0 1578.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<path class="edge-line" data-source="DetectorRegistry" data-target="SharedMemorySegmentRaceDetector" data-type="HAS" d="M562.0 319.0 Q1212.9 975.5 1914.0 1578.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="SharedMemorySegmentRaceDetector" data-type="HAS" x="1225.4" y="956.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">sharedMemorySegmentRaceDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="VarHandleNonAtomicUpdateDetector" data-type="HAS" d="M652.0 216.5 Q1310.6 974.2 2024.0 1680.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="VarHandleNonAtomicUpdateDetector" data-type="HAS" x="1324.3" y="955.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">varHandleNonAtomicUpdateDetector</text>
@@ -663,8 +663,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="DetectorRegistry" data-target="ThreadLocalCacheDegradationDetector" data-type="HAS" x="1325.7" y="1001.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">threadLocalCacheDegradationDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="ScopeJoinerMisuseDetector" data-type="HAS" d="M652.0 216.5 Q1411.5 1020.4 2224.0 1770.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="ScopeJoinerMisuseDetector" data-type="HAS" x="1424.7" y="1000.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">scopeJoinerMisuseDetector</text>
-<path class="edge-line" data-source="DetectorRegistry" data-target="ScopeConfigurationMisuseDetector" data-type="HAS" d="M562.0 319.0 Q304.8 1028.2 114.0 1758.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="DetectorRegistry" data-target="ScopeConfigurationMisuseDetector" data-type="HAS" x="321.4" y="1027.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">scopeConfigurationMisuseDetector</text>
+<path class="edge-line" data-source="DetectorRegistry" data-target="ScopeConfigurationMisuseDetector" data-type="HAS" d="M562.0 319.0 Q304.9 1028.2 114.0 1758.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorRegistry" data-target="ScopeConfigurationMisuseDetector" data-type="HAS" x="321.5" y="1027.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">scopeConfigurationMisuseDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="ScopeResultEscapeDetector" data-type="HAS" d="M562.0 319.0 Q403.7 1032.6 314.0 1758.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="ScopeResultEscapeDetector" data-type="HAS" x="420.8" y="1029.5" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">scopeResultEscapeDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="LazyCollectionMisuseDetector" data-type="HAS" d="M562.0 319.0 Q503.6 1037.4 514.0 1758.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -731,8 +731,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="SharedMessageDigestDetectorFactory" data-target="DetectorFactory" data-type="IMPLEMENTS" x="462.5" y="162.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#1d4ed8" font-style="italic">implements</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="Detector" data-type="HAS" d="M652.0 216.5 Q669.9 198.1 672.0 172.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="Detector" data-type="HAS" x="666.0" y="190.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">byType</text>
-<path class="edge-line" data-source="TelemetryBridge" data-target="AtomicityValidator" data-type="HAS" d="M986.0 244.0 Q1039.3 1319.0 1164.0 2388.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="TelemetryBridge" data-target="AtomicityValidator" data-type="HAS" x="1057.1" y="1311.5" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">atomicityValidator</text>
+<path class="edge-line" data-source="TelemetryBridge" data-target="AtomicityValidator" data-type="HAS" d="M986.0 259.0 Q1039.4 1326.5 1164.0 2388.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="TelemetryBridge" data-target="AtomicityValidator" data-type="HAS" x="1057.2" y="1319.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">atomicityValidator</text>
 <path class="edge-line" data-source="TelemetryRegistry" data-target="TelemetryEventBuffer" data-type="HAS" d="M1076.0 254.0 Q1086.0 257.6 1096.0 254.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="TelemetryRegistry" data-target="TelemetryEventBuffer" data-type="HAS" x="1086.0" y="249.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">BUFFER</text>
 <g id="AfterEachInvocation">
@@ -751,9 +751,9 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3200.0" y="123.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">mapPut(Map&lt;Object,Object&gt;,…</text>
   <text x="3200.0" y="138.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">mapGet(Map&lt;Object,Object&gt;,…</text>
   <text x="3200.0" y="153.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">mapRemove(Map&lt;Object,Objec…</text>
-  <text x="3200.0" y="168.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">mapContainsKey(Map&lt;Object,…</text>
-  <text x="3200.0" y="183.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">collectionAdd(Collection&lt;O…</text>
-  <text x="3200.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+8 more)</text>
+  <text x="3200.0" y="168.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">mapRemove(Map&lt;Object,Objec…</text>
+  <text x="3200.0" y="183.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">mapContainsKey(Map&lt;Object,…</text>
+  <text x="3200.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+9 more)</text>
 </g>
 <g id="AgentConcurrencyUtilHooks">
   <title>AgentConcurrencyUtilHooks [CLASS]</title>
@@ -766,7 +766,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3400.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">acquire(Semaphore, int): v…</text>
   <text x="3400.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">tryAcquire(Semaphore, int)…</text>
   <text x="3400.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">tryAcquire(Semaphore, long…</text>
-  <text x="3400.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+11 more)</text>
+  <text x="3400.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+12 more)</text>
 </g>
 <g id="AgentGcHooks">
   <title>AgentGcHooks [CLASS]</title>
@@ -807,11 +807,16 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="AgentSleepHooks">
   <title>AgentSleepHooks [CLASS]</title>
-  <rect class="node-rect" x="3392.0" y="114.0" width="180.0" height="87.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="3392.0" y="114.0" width="180.0" height="162.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="3482.0" y="136.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">AgentSleepHooks</text>
   <line x1="3392.0" y1="158.0" x2="3572.0" y2="158.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="3400.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sleep(long): void</text>
   <text x="3400.0" y="186.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sleepHoldingMonitor(long, …</text>
+  <text x="3400.0" y="201.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sleep(Duration): void</text>
+  <text x="3400.0" y="216.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sleepHoldingMonitor(Durati…</text>
+  <text x="3400.0" y="231.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sleep(long, int): void</text>
+  <text x="3400.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sleepHoldingMonitor(long, …</text>
+  <text x="3400.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
 </g>
 <g id="AsyncAssert">
   <title>AsyncAssert [CLASS]</title>
@@ -1218,19 +1223,21 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="BlockingQueueDetector">
   <title>BlockingQueueDetector [CLASS]</title>
-  <rect class="node-rect" x="1224.0" y="858.0" width="180.0" height="205.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="1224.0" y="858.0" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="1314.0" y="880.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12.9" font-weight="bold" fill="#1f2937">BlockingQueueDetector</text>
   <line x1="1224.0" y1="902.0" x2="1404.0" y2="902.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="1232.0" y="915.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">queues: Map&lt;Integer,QueueS…</text>
-  <text x="1232.0" y="930.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
-  <line x1="1224.0" y1="944.0" x2="1404.0" y2="944.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="1232.0" y="957.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registerQueue(BlockingQueu…</text>
-  <text x="1232.0" y="972.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordOffer(BlockingQueue&lt;…</text>
-  <text x="1232.0" y="987.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordPoll(BlockingQueue&lt;?…</text>
-  <text x="1232.0" y="1002.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordPut(BlockingQueue&lt;?&gt;…</text>
-  <text x="1232.0" y="1017.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordTake(BlockingQueue&lt;?…</text>
-  <text x="1232.0" y="1032.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">updateSizeState(QueueState…</text>
-  <text x="1232.0" y="1047.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
+  <text x="1232.0" y="915.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">UNBOUNDED: int</text>
+  <text x="1232.0" y="930.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">queues: Map&lt;Integer,QueueS…</text>
+  <text x="1232.0" y="945.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
+  <text x="1232.0" y="960.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">lastOffer: ThreadLocal&lt;Que…</text>
+  <line x1="1224.0" y1="974.0" x2="1404.0" y2="974.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="1232.0" y="987.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registerQueue(BlockingQueu…</text>
+  <text x="1232.0" y="1002.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">observeQueue(BlockingQueue…</text>
+  <text x="1232.0" y="1017.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">observedCapacityOf(Blockin…</text>
+  <text x="1232.0" y="1032.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">widerBound(int, int): int</text>
+  <text x="1232.0" y="1047.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordOffer(BlockingQueue&lt;…</text>
+  <text x="1232.0" y="1062.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordOfferResultDiscarded…</text>
+  <text x="1232.0" y="1077.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+5 more)</text>
 </g>
 <g id="ConditionVariableDetector">
   <title>ConditionVariableDetector [CLASS]</title>
@@ -1292,18 +1299,19 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="CountDownLatchDetector">
   <title>CountDownLatchDetector [CLASS]</title>
-  <rect class="node-rect" x="2224.0" y="858.0" width="180.0" height="190.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="2224.0" y="858.0" width="180.0" height="205.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="2314.0" y="880.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12.3" font-weight="bold" fill="#1f2937">CountDownLatchDetector</text>
   <line x1="2224.0" y1="902.0" x2="2404.0" y2="902.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="2232.0" y="915.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">latchRegistry: Map&lt;CountDo…</text>
   <text x="2232.0" y="930.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">timedOutLatches: Set&lt;Count…</text>
-  <text x="2232.0" y="945.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">extraCountDownLatches: Set…</text>
-  <line x1="2224.0" y1="959.0" x2="2404.0" y2="959.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="2232.0" y="972.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registerLatch(CountDownLat…</text>
-  <text x="2232.0" y="987.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordCountDown(CountDownL…</text>
-  <text x="2232.0" y="1002.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordTimeout(CountDownLat…</text>
-  <text x="2232.0" y="1017.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAwaitSuccess(CountDo…</text>
-  <text x="2232.0" y="1032.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): CountDownLatchR…</text>
+  <text x="2232.0" y="945.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">succeededLatches: Set&lt;Coun…</text>
+  <text x="2232.0" y="960.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">extraCountDownLatches: Set…</text>
+  <line x1="2224.0" y1="974.0" x2="2404.0" y2="974.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="2232.0" y="987.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registerLatch(CountDownLat…</text>
+  <text x="2232.0" y="1002.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordCountDown(CountDownL…</text>
+  <text x="2232.0" y="1017.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordTimeout(CountDownLat…</text>
+  <text x="2232.0" y="1032.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAwaitSuccess(CountDo…</text>
+  <text x="2232.0" y="1047.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): CountDownLatchR…</text>
 </g>
 <g id="CyclicBarrierDetector">
   <title>CyclicBarrierDetector [CLASS]</title>
@@ -1494,7 +1502,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="2232.0" y="1005.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">executorRegistry: Map&lt;Sche…</text>
   <text x="2232.0" y="1020.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">notShutdownExecutors: Set&lt;…</text>
   <text x="2232.0" y="1035.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">longRunningTasks: Set&lt;Stri…</text>
-  <text x="2232.0" y="1050.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">exceptionInTasks: int</text>
+  <text x="2232.0" y="1050.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">exceptionInTasks: java.uti…</text>
   <line x1="2224.0" y1="1064.0" x2="2404.0" y2="1064.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="2232.0" y="1077.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registerExecutor(Scheduled…</text>
   <text x="2232.0" y="1092.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordSchedule(ScheduledEx…</text>
@@ -1734,7 +1742,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text class="node-label" x="314.0" y="1150.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10.8" font-weight="bold" fill="#1f2937">ScopedValueMisuseDetector</text>
   <line x1="224.0" y1="1172.0" x2="404.0" y2="1172.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="232.0" y="1185.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">HIGH_BINDING_COUNT_THRESHO…</text>
-  <text x="232.0" y="1200.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">activeBindings: Map&lt;Long,S…</text>
+  <text x="232.0" y="1200.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">activeBindings: Map&lt;Long,M…</text>
   <text x="232.0" y="1215.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">unboundGetReports: List&lt;St…</text>
   <text x="232.0" y="1230.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">rebindReports: List&lt;String&gt;</text>
   <text x="232.0" y="1245.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">highBindingWarnings: List&lt;…</text>
@@ -1943,7 +1951,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="AtomicNonAtomicUpdateDetector">
   <title>AtomicNonAtomicUpdateDetector [CLASS]</title>
-  <rect class="node-rect" x="224.0" y="1218.0" width="180.0" height="160.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="224.0" y="1218.0" width="180.0" height="175.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="314.0" y="1240.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="9.3" font-weight="bold" fill="#1f2937">AtomicNonAtomicUpdateDetector</text>
   <line x1="224.0" y1="1262.0" x2="404.0" y2="1262.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="232.0" y="1275.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">atomics: Map&lt;Integer,Atomi…</text>
@@ -1952,7 +1960,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="232.0" y="1317.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordGet(Object, String, …</text>
   <text x="232.0" y="1332.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordSet(Object, String, …</text>
   <text x="232.0" y="1347.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordCas(Object, String, …</text>
-  <text x="232.0" y="1362.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): AtomicNonAtomic…</text>
+  <text x="232.0" y="1362.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">markInvocationStart(): void</text>
+  <text x="232.0" y="1377.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): AtomicNonAtomic…</text>
 </g>
 <g id="SynchronizedCollectionIterationDetector">
   <title>SynchronizedCollectionIterationDetector [CLASS]</title>
@@ -2573,16 +2582,17 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="LatchMisuseDetector">
   <title>LatchMisuseDetector [CLASS]</title>
-  <rect class="node-rect" x="824.0" y="1578.0" width="180.0" height="160.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="824.0" y="1578.0" width="180.0" height="175.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="914.0" y="1600.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">LatchMisuseDetector</text>
   <line x1="824.0" y1="1622.0" x2="1004.0" y2="1622.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="832.0" y="1635.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">latches: Map&lt;Integer,Latch…</text>
   <line x1="824.0" y1="1649.0" x2="1004.0" y2="1649.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="832.0" y="1662.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registerLatch(Object, Stri…</text>
-  <text x="832.0" y="1677.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAwait(Object): void</text>
-  <text x="832.0" y="1692.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordCountDown(Object): v…</text>
-  <text x="832.0" y="1707.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">stateFor(Object): LatchSta…</text>
-  <text x="832.0" y="1722.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): LatchMisuseRepo…</text>
+  <text x="832.0" y="1677.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">observeLatch(Object): void</text>
+  <text x="832.0" y="1692.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAwait(Object): void</text>
+  <text x="832.0" y="1707.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordCountDown(Object): v…</text>
+  <text x="832.0" y="1722.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">stateFor(Object): LatchSta…</text>
+  <text x="832.0" y="1737.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): LatchMisuseRepo…</text>
 </g>
 <g id="ExecutorDeadlockDetector">
   <title>ExecutorDeadlockDetector [CLASS]</title>
@@ -2651,20 +2661,21 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="SharedMemorySegmentRaceDetector">
   <title>SharedMemorySegmentRaceDetector [CLASS]</title>
-  <rect class="node-rect" x="1824.0" y="1578.0" width="180.0" height="220.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="1824.0" y="1578.0" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="1914.0" y="1600.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="8.7" font-weight="bold" fill="#1f2937">SharedMemorySegmentRaceDetect…</text>
   <line x1="1824.0" y1="1622.0" x2="2004.0" y2="1622.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="1832.0" y="1635.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">MAX_TRACKED_ACCESSES: int</text>
   <text x="1832.0" y="1650.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">MAX_REPORTED_PAIRS: int</text>
   <text x="1832.0" y="1665.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">segments: Map&lt;Integer,Segm…</text>
-  <line x1="1824.0" y1="1679.0" x2="2004.0" y2="1679.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="1832.0" y="1692.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAccess(Object, Strin…</text>
-  <text x="1832.0" y="1707.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAccess(Object, Strin…</text>
-  <text x="1832.0" y="1722.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordClose(Object, String…</text>
-  <text x="1832.0" y="1737.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">stateFor(Object, String): …</text>
-  <text x="1832.0" y="1752.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): Report</text>
-  <text x="1832.0" y="1767.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">findOverlaps(SegmentState,…</text>
-  <text x="1832.0" y="1782.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+2 more)</text>
+  <text x="1832.0" y="1680.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">invocationEpoch: java.util…</text>
+  <line x1="1824.0" y1="1694.0" x2="2004.0" y2="1694.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="1832.0" y="1707.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">markInvocationStart(): void</text>
+  <text x="1832.0" y="1722.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAccess(Object, Strin…</text>
+  <text x="1832.0" y="1737.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAccess(Object, Strin…</text>
+  <text x="1832.0" y="1752.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordClose(Object, String…</text>
+  <text x="1832.0" y="1767.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">stateFor(Object, String): …</text>
+  <text x="1832.0" y="1782.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): Report</text>
+  <text x="1832.0" y="1797.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
 </g>
 <g id="VarHandleNonAtomicUpdateDetector">
   <title>VarHandleNonAtomicUpdateDetector [CLASS]</title>
@@ -2710,7 +2721,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <line x1="24.0" y1="1712.0" x2="204.0" y2="1712.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="32.0" y="1725.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">log: Logger</text>
   <text x="32.0" y="1740.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">CLINIT: String</text>
-  <text x="32.0" y="1755.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">SECOND_SAMPLE_DELAY_MS: lo…</text>
+  <text x="32.0" y="1755.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">secondSampleDelayMs: long</text>
   <text x="32.0" y="1770.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">holders: Map&lt;String,Holder&gt;</text>
   <text x="32.0" y="1785.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">waits: Map&lt;Long,Waiter&gt;</text>
   <text x="32.0" y="1800.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sample: AtomicReference&lt;Li…</text>
@@ -2907,23 +2918,24 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="ScopeConfigurationMisuseDetector">
   <title>ScopeConfigurationMisuseDetector [CLASS]</title>
-  <rect class="node-rect" x="24.0" y="1758.0" width="180.0" height="265.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="24.0" y="1758.0" width="180.0" height="280.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="114.0" y="1780.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="8.5" font-weight="bold" fill="#1f2937">ScopeConfigurationMisuseDetect…</text>
   <line x1="24.0" y1="1802.0" x2="204.0" y2="1802.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="32.0" y="1815.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">NO_TIMEOUT: long</text>
   <text x="32.0" y="1830.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DEFAULT_UNBOUNDED_FORK_THR…</text>
   <text x="32.0" y="1845.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">scopes: Map&lt;String,ScopeSt…</text>
-  <text x="32.0" y="1860.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sequence: AtomicLong</text>
-  <text x="32.0" y="1875.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">unboundedForkThreshold: int</text>
-  <text x="32.0" y="1890.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
-  <line x1="24.0" y1="1904.0" x2="204.0" y2="1904.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="32.0" y="1917.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordScopeOpened(String, …</text>
-  <text x="32.0" y="1932.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordEffectiveConfigurati…</text>
-  <text x="32.0" y="1947.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordFork(String): void</text>
-  <text x="32.0" y="1962.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordJoinOutcome(String, …</text>
-  <text x="32.0" y="1977.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordScopeClosed(String):…</text>
-  <text x="32.0" y="1992.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">state(String): ScopeState</text>
-  <text x="32.0" y="2007.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+10 more)</text>
+  <text x="32.0" y="1860.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">retired: List&lt;ScopeState&gt;</text>
+  <text x="32.0" y="1875.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sequence: AtomicLong</text>
+  <text x="32.0" y="1890.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">unboundedForkThreshold: int</text>
+  <text x="32.0" y="1905.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
+  <line x1="24.0" y1="1919.0" x2="204.0" y2="1919.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="32.0" y="1932.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordScopeOpened(String, …</text>
+  <text x="32.0" y="1947.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordEffectiveConfigurati…</text>
+  <text x="32.0" y="1962.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordFork(String): void</text>
+  <text x="32.0" y="1977.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordJoinOutcome(String, …</text>
+  <text x="32.0" y="1992.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordScopeClosed(String):…</text>
+  <text x="32.0" y="2007.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">state(String): ScopeState</text>
+  <text x="32.0" y="2022.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+10 more)</text>
 </g>
 <g id="ScopeResultEscapeDetector">
   <title>ScopeResultEscapeDetector [CLASS]</title>
@@ -3234,12 +3246,12 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="1082.0" y="2025.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
   <line x1="1074.0" y1="2039.0" x2="1254.0" y2="2039.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="1082.0" y="2052.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordLoopIteration(): void</text>
-  <text x="1082.0" y="2067.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordYield(): void</text>
-  <text x="1082.0" y="2082.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">reportSpinLoop(String, lon…</text>
-  <text x="1082.0" y="2097.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">inferCallSite(): String</text>
-  <text x="1082.0" y="2112.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeBusyWaiting(): Busy…</text>
-  <text x="1082.0" y="2127.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">addToReport(BusyWaitReport…</text>
-  <text x="1082.0" y="2142.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+4 more)</text>
+  <text x="1082.0" y="2067.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">markInvocationStart(): void</text>
+  <text x="1082.0" y="2082.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordYield(): void</text>
+  <text x="1082.0" y="2097.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">reportSpinLoop(String, lon…</text>
+  <text x="1082.0" y="2112.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">inferCallSite(): String</text>
+  <text x="1082.0" y="2127.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeBusyWaiting(): Busy…</text>
+  <text x="1082.0" y="2142.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+5 more)</text>
 </g>
 <g id="InterruptMonitor">
   <title>InterruptMonitor [CLASS]</title>
@@ -3370,7 +3382,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="1632.0" y="1917.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">released(Object): void</text>
   <text x="1632.0" y="1932.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">released(Object, boolean):…</text>
   <text x="1632.0" y="1947.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">holds(Object): boolean</text>
-  <text x="1632.0" y="1962.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+10 more)</text>
+  <text x="1632.0" y="1962.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+11 more)</text>
 </g>
 <g id="IssueDeduplicator">
   <title>IssueDeduplicator [CLASS]</title>
@@ -3889,20 +3901,21 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="TelemetryBridge">
   <title>TelemetryBridge [CLASS]</title>
-  <rect class="node-rect" x="896.0" y="24.0" width="180.0" height="220.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="896.0" y="24.0" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="986.0" y="46.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">TelemetryBridge</text>
   <line x1="896.0" y1="68.0" x2="1076.0" y2="68.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="904.0" y="81.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">atomicityValidator: Atomic…</text>
   <text x="904.0" y="96.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">workerFilter: LongPredicate</text>
   <text x="904.0" y="111.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">active: boolean</text>
-  <line x1="896.0" y1="125.0" x2="1076.0" y2="125.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="904.0" y="138.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">activate(AtomicityValidato…</text>
-  <text x="904.0" y="153.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">activateWithFilter(Atomici…</text>
-  <text x="904.0" y="168.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">forCurrentContext(Set&lt;Long…</text>
-  <text x="904.0" y="183.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">onEvent(long, String, bool…</text>
-  <text x="904.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">onEvent(long, String, bool…</text>
+  <text x="904.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">droppedNonWorkerEvents: ja…</text>
+  <line x1="896.0" y1="140.0" x2="1076.0" y2="140.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="904.0" y="153.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">detached(AtomicityValidato…</text>
+  <text x="904.0" y="168.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">activate(AtomicityValidato…</text>
+  <text x="904.0" y="183.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">activateWithFilter(Atomici…</text>
+  <text x="904.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">forCurrentContext(Set&lt;Long…</text>
   <text x="904.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">onEvent(long, String, bool…</text>
-  <text x="904.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+10 more)</text>
+  <text x="904.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">onEvent(long, String, bool…</text>
+  <text x="904.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+12 more)</text>
 </g>
 <g id="TelemetryEventBuffer">
   <title>TelemetryEventBuffer [CLASS]</title>
