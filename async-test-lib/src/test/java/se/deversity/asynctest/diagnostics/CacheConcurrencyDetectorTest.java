@@ -21,6 +21,41 @@ class CacheConcurrencyDetectorTest {
         detector = new CacheConcurrencyDetector();
     }
 
+    /**
+     * Runs each body on its own thread, released together, and rethrows whatever died.
+     *
+     * <p>A cache read and a cache write are only a race when two threads make them. Recording
+     * both from the test thread says nothing about concurrency, so the tests that assert a
+     * finding have to use two threads to be asserting anything (#497).
+     */
+    private static void onThreads(Runnable... bodies) throws InterruptedException {
+        java.util.concurrent.CyclicBarrier barrier =
+                new java.util.concurrent.CyclicBarrier(bodies.length);
+        java.util.concurrent.atomic.AtomicReference<Throwable> died =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        Thread[] threads = new Thread[bodies.length];
+        for (int i = 0; i < bodies.length; i++) {
+            Runnable body = bodies[i];
+            threads[i] = new Thread(() -> {
+                try {
+                    barrier.await();
+                    body.run();
+                } catch (Throwable t) {
+                    died.compareAndSet(null, t);
+                }
+            });
+        }
+        for (Thread t : threads) {
+            t.start();
+        }
+        for (Thread t : threads) {
+            t.join();
+        }
+        if (died.get() != null) {
+            throw new AssertionError("a worker died", died.get());
+        }
+    }
+
     @Test
     void testNoIssuesWithConcurrentHashMap() {
         Map<String, String> cache = new ConcurrentHashMap<>();
@@ -36,18 +71,92 @@ class CacheConcurrencyDetectorTest {
     }
 
     @Test
-    void testDetectsConcurrentReadWriteOnHashMap() {
+    void testDetectsConcurrentReadWriteOnHashMap() throws InterruptedException {
         Map<String, String> cache = new HashMap<>();
         detector.registerCache(cache, "unsafe-cache");
 
-        detector.recordGet(cache, "unsafe-cache", "key1");
-        detector.recordPut(cache, "unsafe-cache", "key2", "value2");
+        onThreads(
+            () -> detector.recordGet(cache, "unsafe-cache", "key1"),
+            () -> detector.recordPut(cache, "unsafe-cache", "key2", "value2"));
 
         CacheConcurrencyDetector.CacheConcurrencyReport report = detector.analyze();
 
         assertNotNull(report);
         // Should detect concurrent read+write on non-concurrent map
         assertTrue(report.hasIssues());
+    }
+
+    @Test
+    void aSingleThreadReadingAndWritingItsOwnHashMapIsNotAConcurrencyFinding() {
+        Map<String, String> cache = new HashMap<>();
+        detector.registerCache(cache, "confined-cache");
+
+        detector.recordPut(cache, "confined-cache", "key", "value");
+        detector.recordGet(cache, "confined-cache", "key");
+
+        assertFalse(detector.analyze().hasIssues(),
+            "one thread reading and writing a HashMap it owns is correct code; there is no "
+                + "concurrency here at all: " + detector.analyze());
+    }
+
+    @Test
+    void aHashMapGuardedByItsOwnMonitorIsNotAConcurrencyFinding() throws InterruptedException {
+        Map<String, String> cache = new HashMap<>();
+        detector.registerCache(cache, "guarded-cache");
+
+        onThreads(
+            () -> {
+                synchronized (cache) {
+                    detector.recordPut(cache, "guarded-cache", "key", "value");
+                }
+            },
+            () -> {
+                synchronized (cache) {
+                    detector.recordGet(cache, "guarded-cache", "key");
+                }
+            });
+
+        assertFalse(detector.analyze().hasIssues(),
+            "every access is inside synchronized (cache), so one lock covers them all and the "
+                + "HashMap is not racing: " + detector.analyze());
+    }
+
+    @Test
+    void manyThreadsHittingDistinctKeysIsNotACacheStampede() throws InterruptedException {
+        Map<String, String> cache = new ConcurrentHashMap<>();
+        detector.registerCache(cache, "wide-cache");
+
+        Runnable[] workers = new Runnable[12];
+        for (int i = 0; i < workers.length; i++) {
+            String key = "key-" + i;
+            workers[i] = () -> {
+                detector.recordGet(cache, "wide-cache", key);
+                detector.recordPut(cache, "wide-cache", key, "value");
+            };
+        }
+        onThreads(workers);
+
+        assertFalse(detector.analyze().hasIssues(),
+            "twelve threads each computing their own key is a cache doing its job. The old rule "
+                + "counted how many threads were inside the record methods at once, which under "
+                + "@AsyncTest measures the runner's barrier rather than the cache: "
+                + detector.analyze());
+    }
+
+    @Test
+    void twoThreadsRecomputingTheSameKeyIsACacheStampede() throws InterruptedException {
+        Map<String, String> cache = new ConcurrentHashMap<>();
+        detector.registerCache(cache, "hot-key-cache");
+
+        Runnable missAndRecompute = () -> {
+            detector.recordGet(cache, "hot-key-cache", "hot");    // miss
+            detector.recordPut(cache, "hot-key-cache", "hot", "value");   // recompute
+        };
+        onThreads(missAndRecompute, missAndRecompute);
+
+        var report = detector.analyze();
+        assertFalse(report.cacheStampede.isEmpty(),
+            "two threads recomputing the same key is what a cache stampede is: " + report);
     }
 
     @Test
@@ -80,18 +189,22 @@ class CacheConcurrencyDetectorTest {
     }
 
     @Test
-    void testMultipleCachesTracked() {
+    void testMultipleCachesTracked() throws InterruptedException {
         Map<String, String> cache1 = new HashMap<>();
         Map<String, String> cache2 = new HashMap<>();
 
         detector.registerCache(cache1, "cache-1");
         detector.registerCache(cache2, "cache-2");
 
-        detector.recordGet(cache1, "cache-1", "key1");
-        detector.recordPut(cache1, "cache-1", "key2", "value2");
-        
-        detector.recordGet(cache2, "cache-2", "key1");
-        detector.recordPut(cache2, "cache-2", "key2", "value2");
+        onThreads(
+            () -> {
+                detector.recordGet(cache1, "cache-1", "key1");
+                detector.recordGet(cache2, "cache-2", "key1");
+            },
+            () -> {
+                detector.recordPut(cache1, "cache-1", "key2", "value2");
+                detector.recordPut(cache2, "cache-2", "key2", "value2");
+            });
 
         CacheConcurrencyDetector.CacheConcurrencyReport report = detector.analyze();
 
@@ -100,12 +213,13 @@ class CacheConcurrencyDetectorTest {
     }
 
     @Test
-    void testReportToStringContainsIssues() {
+    void testReportToStringContainsIssues() throws InterruptedException {
         Map<String, String> cache = new HashMap<>();
 
         detector.registerCache(cache, "problematic-cache");
-        detector.recordGet(cache, "problematic-cache", "key1");
-        detector.recordPut(cache, "problematic-cache", "key2", "value2");
+        onThreads(
+            () -> detector.recordGet(cache, "problematic-cache", "key1"),
+            () -> detector.recordPut(cache, "problematic-cache", "key2", "value2"));
 
         CacheConcurrencyDetector.CacheConcurrencyReport report = detector.analyze();
 
@@ -124,12 +238,13 @@ class CacheConcurrencyDetectorTest {
     }
 
     @Test
-    void testAutoRegistrationOnAccess() {
+    void testAutoRegistrationOnAccess() throws InterruptedException {
         Map<String, String> cache = new HashMap<>();
-        
+
         // Access without explicit registration
-        detector.recordGet(cache, "auto-cache", "key1");
-        detector.recordPut(cache, "auto-cache", "key2", "value2");
+        onThreads(
+            () -> detector.recordGet(cache, "auto-cache", "key1"),
+            () -> detector.recordPut(cache, "auto-cache", "key2", "value2"));
 
         CacheConcurrencyDetector.CacheConcurrencyReport report = detector.analyze();
 
@@ -214,11 +329,12 @@ class CacheConcurrencyDetectorTest {
      * the detector stopped looking rather than that the code is correct.
      */
     @Test
-    void aPlainHashMapUsedAsACacheStillFires() {
+    void aPlainHashMapUsedAsACacheStillFires() throws InterruptedException {
         Map<String, String> cache = new java.util.HashMap<>();
         detector.registerCache(cache, "plain-cache");
-        detector.recordPut(cache, "plain-cache", "key", "value");
-        detector.recordGet(cache, "plain-cache", "key");
+        onThreads(
+            () -> detector.recordPut(cache, "plain-cache", "key", "value"),
+            () -> detector.recordGet(cache, "plain-cache", "key"));
 
         assertTrue(detector.analyze().hasIssues(),
                 "a HashMap read and written as a cache is the read/write race this detector "
