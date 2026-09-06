@@ -9,7 +9,7 @@ repositories {
     mavenLocal()
     mavenCentral()
 }
-val asyncTestVersion = "1.11.1"
+val asyncTestVersion = "1.11.2"
 val junitVersion = "6.1.3"
 val junitPlatformVersion = "6.1.3"
 dependencies {

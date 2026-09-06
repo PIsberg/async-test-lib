@@ -1,7 +1,7 @@
 // Gradle twin of consumer-fixture-langs/pom.xml. Same shape as consumer-fixture/build.gradle.kts:
 // the artifact comes from mavenLocal() first so CI tests the build it just produced, not the last
 // release on Central. The version pin below is what the release skill bumps.
-val asyncTestVersion = "1.11.1"
+val asyncTestVersion = "1.11.2"
 val junitVersion = "6.1.3"
 
 subprojects {

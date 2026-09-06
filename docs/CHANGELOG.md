@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.2] - 2026-09-06
+
 ### Fixed
 
 - **`InheritableThreadLocalMisuse` reported inheritance working as designed.** It flagged any

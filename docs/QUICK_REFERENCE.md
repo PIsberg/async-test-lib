@@ -25,7 +25,7 @@ Making your library available for others to install and use via Maven/Gradle wit
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>1.11.1</version>
+    <version>1.11.2</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -36,7 +36,7 @@ repositories {
     maven { url = uri("https://repo1.maven.org/maven2") }
 }
 dependencies {
-    testImplementation 'se.deversity.async-test-lib:async-test-lib:1.11.1'
+    testImplementation 'se.deversity.async-test-lib:async-test-lib:1.11.2'
 }
 ```
 
@@ -126,8 +126,8 @@ Repository:   https://repo1.maven.org/maven2
 
 ### Dependency Coordinates
 ```
-Maven:   se.deversity.async-test-lib:async-test-lib:1.11.1
-Gradle:  'se.deversity.async-test-lib:async-test-lib:1.11.1'
+Maven:   se.deversity.async-test-lib:async-test-lib:1.11.2
+Gradle:  'se.deversity.async-test-lib:async-test-lib:1.11.2'
 ```
 
 ### pom.xml Key Sections
@@ -293,7 +293,7 @@ GitHub Packages:
   └── 1.1.0 version
 
 Maven Central (in future):
-  se.deversity.async-test-lib:async-test-lib:1.11.1
+  se.deversity.async-test-lib:async-test-lib:1.11.2
   └── Available with no special configuration
 ```
 
