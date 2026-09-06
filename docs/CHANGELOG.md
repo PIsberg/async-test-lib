@@ -9,6 +9,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Six detector false positives from the 2026-09-05 correctness hunt, each pinned by a test
+  that was red first.** `ConcurrentModification` reported two threads iterating a collection
+  nobody mutates, at VERDICT tier, whose contract is that a finding means the code is wrong; a
+  mutation somewhere in the run is now required (#504). `CompletableFutureCancellationPropagation`
+  keyed pipeline state by the label alone, so one worker's cancel convicted another worker's
+  healthy stage and a cancel in one round convicted a stage in the next; state is now scoped per
+  round, and a completion is not reported when the thread that recorded it cancelled afterwards
+  (#505). `StampedLock` reported `validate()` returning false, which is the case the class exists
+  for; a failed validation is now held pending and cleared by the read lock or retry that
+  answers it (#506). `CacheConcurrency` reported one thread using its own `HashMap`, and its
+  stampede rule counted threads inside the record methods, which under `@AsyncTest` measures the
+  runner's barrier; read/write now needs two threads and a collapsed lockset, and a stampede is
+  the same key recomputed by more than one thread (#507). `LazyConstantMisuse`,
+  `LazyCollectionMisuse`, `StableValueMisuse` and `ConcurrentMapComputeRecursion` carried
+  in-flight state that only the matching `end` call cleared, so a supplier that threw without a
+  `finally` made the next round on a pooled worker read as re-entrancy; all four now clear it on
+  `markInvocationStart` (#508). `LockDowngrade` closed a gap opened in one round with a read lock
+  taken in another, and `LatchMisuse` called a latch that reached zero a missing countdown when
+  the countdowns happened outside the weaving boundary; the gap is now round-scoped and a
+  returned `await()` clears the finding (#509).
+
+- **Report defects: text that asserted what the detector could not know, and one inert
+  detector.** `SimpleDateFormat` and `StringBuilder` called a single-threaded exception
+  "potential data corruption" and "from concurrent access"; both now need more than one thread to
+  have touched the instance. `ThreadPoolMonitor` invented a pool with bounds of 0 for a rejection
+  on an unregistered executor, and `0 >= 0` reported "All 0 threads busy". `ThreadStarvation`
+  treated `recordTaskSubmission`'s 0 sentinel as a timestamp, turning `System.nanoTime()` into a
+  wait of millions of milliseconds. `ConstructorSafetyValidator` counted accesses and printed
+  them as threads. `SynchronizedNonFinal` told N instances each holding their own final lock that
+  the reference is "NOT FINAL", a fact it had no way to know; a new overload takes the owner
+  instance, and without one the report names both explanations. `ConditionVariable`'s "lost
+  signal" fires whenever a consumer tests its predicate before awaiting, which the class javadoc
+  now states. `VirtualThreadPinningDetector`'s monitoring flag defaulted to false and nothing in
+  main code turned it on, so `detectVirtualThreadPinning = true` alone recorded nothing.
+  `CompletableFutureCompletionLeak` check-then-set its completed flag from two paths, so racing
+  they decremented the leak count twice (#511).
+
+- **`RaceConditionDetector` folded a read-mode lock in as if it were exclusive.** It computed its
+  lockset with the mode-blind fingerprint while `AtomicityValidator` used the mode-aware one, so
+  two threads writing under the same `ReentrantReadWriteLock.readLock()` were treated as
+  consistently guarded - a false negative, and a divergence between two detectors that claim the
+  same model. A read lock admits every other reader and guards nothing a writer does (#510).
+
+- **The weekly mutation gate had never once completed, so the 76% threshold had never gated
+  anything.** The cause is virtual-thread carrier starvation, not the memory exhaustion first
+  suspected: an instrumented run measured memory flat at 2.3 GB of 16, swap at 0, threads near
+  320 and the load average at 0.00 for three hours. `StaticInitSampleSeesVirtualThreads` parks
+  four virtual threads inside a `<clinit>` and `VirtualThreadLockGraph` deadlocks two more, on
+  purpose in both cases, and before JEP 491 a virtual thread wedged that way pins its carrier -
+  six pins against a pool sized to `availableProcessors`, four on a runner. Surefire hides it by
+  forking per class; pitest runs all 1194 in one. Both classes are excluded from pitest, two
+  `Phase2AsyncIntegrationTest` fixtures that deadlock on monitors moved to platform threads, and
+  `SleepInLockDetectorTest` no longer asserts about a thread the harness owns, which had aborted
+  the run before any mutant was analysed. Coverage now completes on CI in 76 seconds (#514).
+
 - **An overridden `@BeforeEachInvocation` / `@AfterEachInvocation` hook ran twice per round.**
   Hook discovery walked the class hierarchy and collected an overridden hook from both the
   subclass and the superclass; `Method.invoke` on the superclass method dispatches to the
@@ -50,6 +105,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `VirtualThreadCarrierExhaustion` and `VirtualThreadCpuBoundTask` appended to instance state in
   `analyze()`, doubling findings on a second call.
 
+
+### Changed
+
+- **The demo GIF is re-recorded weekly, and only proposed when the demo's output changed.** The
+  workflow compared the recording byte for byte, which can never come out equal: the cast carries
+  the recording's wall clock, elapsed seconds on every event, an event split that follows PTY
+  read timing, and the demo is a recording of an actual race that lands differently each run. It
+  therefore opened a pull request after every qualifying merge - five between 2026-08-28 and
+  2026-09-03, each a diff of one binary and fourteen timing lines. `tools/demo/normalise-cast.py`
+  now reduces a cast to the text the demo says, masking identity hashes, thread ids, durations
+  and the verbs in the access-sequence lines; measured on the two recordings from #483, 35
+  differing raw lines come out identical. The trigger moves from every push to `main` to a Monday
+  schedule plus `workflow_dispatch` (#512).
+
+- **A docs-only pull request no longer runs the full check fan-out.** `e2e-tests`, `load-tests`,
+  `codeql`, `inquisitor`, `copilot-review` and `dependency-review` skip a diff limited to
+  `docs/**`, `**/*.md`, `.github/ISSUE_TEMPLATE/**` or `LICENSE`; between them that is roughly
+  twenty jobs, the largest being the fifteen in `e2e-tests`. The workflows reporting a required
+  status context are deliberately not filtered, because GitHub does not read "never ran" as
+  "passed" and a pull request whose required check never reported sits at BLOCKED with every
+  visible check green. `RequiredCheckIsNeverPathFilteredTest` now fails the build if one ever is
+  (#513).
 ## [1.11.1] - 2026-09-04
 
 ### Added
