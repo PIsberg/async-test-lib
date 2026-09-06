@@ -68,9 +68,10 @@ a green run that proves nothing.
 
 | Repo | Declares it in | Build command | Async classes |
 |---|---|---|---|
-| `blindbean` | `blindbean-tests/pom.xml` (bare `<version>`) | `./mvnw -B -pl blindbean-tests -am test` | 7 |
-| `vibetags` | `vibetags-parent/pom.xml` (property) **and** `vibetags/build.gradle` (literal) | see below | 5 |
+| `blindbean` | `blindbean-tests/pom.xml` (bare `<version>`) | `./mvnw -B -pl blindbean-tests -am test` | 11 |
+| `vibetags` | `vibetags-parent/pom.xml` (property) **only** | see below | 6 |
 | `skill3` | `build.gradle` (literal) | `./gradlew --no-daemon test` | 1 (8 methods) |
+| `nanometer` | `pom.xml` (property, consumed via `dependencyManagement`) **and** `nanometer-api/build.gradle.kts` **and** `nanometer-example/build.gradle.kts` | `mvn -B -U -pl nanometer-api -am test` | 1 (2 methods) |
 
 `codekarta` is **not** a consumer — checked 2026-08-08, no dependency and no `@AsyncTest`, only
 a passing mention in a `vibetags-usage` skill doc. Do not go looking again unless
@@ -89,14 +90,28 @@ so a plain `mvn` fails in the parent before it ever compiles a test.
 
 ### vibetags
 
-Two build systems declare the dependency separately. **Bump both or neither** — the comment
-beside each already says so, and bumping one leaves the tiers on different detector engines.
+**One declaration, two build systems.** `vibetags-parent/pom.xml` holds the property and
+`vibetags/build.gradle` reads it back with `pomVersion('async-test-lib.version')`, so the pom
+is the only place to edit. This used to say "bump both or neither" because the Gradle file
+carried a literal; it does not any more, and following the old instruction means hunting for a
+version string that is not there. Still run **both** tiers, to confirm the Gradle side picked
+the new value up.
+
+`mvn` on PATH is 3.8.6 and vibetags' spotbugs plugin requires 3.8.9+, so a plain `mvn` fails in
+`vibetags-annotations` before it compiles anything. `-Dspotbugs.skip=true` does not help: the
+check is a plugin prerequisite, not an execution. vibetags has no `mvnw`, so use the Maven the
+blindbean wrapper has already downloaded:
+
+```bash
+ls ~/.m2/wrapper/dists/            # apache-maven-3.9.11 was there on 2026-09-06
+M39=~/.m2/wrapper/dists/apache-maven-3.9.11/*/bin/mvn
+```
 
 Build order, and the tier that matters:
 
 ```bash
 cd vibetags-annotations && mvn -B -q install -DskipTests   # published to ~/.m2 for both builds
-cd ../vibetags          && mvn -B test -Pe2e               # 1936 tests (2026-08-17)
+cd ../vibetags          && mvn -B test -Pe2e               # 2616 tests (2026-09-06)
 cd ../vibetags          && ./gradlew --no-daemon test -Pe2e
 ```
 
