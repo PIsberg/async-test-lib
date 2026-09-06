@@ -15,6 +15,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - Read-write race conditions (stale reads, lost updates)
  * - Cache stampede (multiple threads recomputing same value simultaneously)
  *
+ * <p>Two of those are grounded in something the caller's code did rather than in how the run was
+ * scheduled. The read/write finding needs a non-thread-safe cache, a read, a write, more than one
+ * thread, and no lock held across every access; one thread using its own {@code HashMap}, or two
+ * threads that both go through {@code synchronized (cache)}, is correct code and stays silent.
+ * The stampede finding needs the same key written by more than one thread, which is duplicated
+ * computation of one value - not a count of how many threads happened to be inside the record
+ * methods at once, which under {@code @AsyncTest} measures the runner's barrier.
+ *
  * Usage:
  * <pre>{@code
  * @AsyncTest(threads = 10, detectCacheConcurrency = true)
@@ -35,20 +43,50 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class CacheConcurrencyDetector {
 
-    private static class CacheState {
+    /**
+     * How many distinct keys one cache is tracked at. A stampede shows up on the first hot key,
+     * so the cap costs nothing to the finding while keeping the per-run allocation bounded - the
+     * runner holds an 80,000-byte-per-execution budget that a test with an unbounded key space
+     * would otherwise blow.
+     */
+    private static final int MAX_TRACKED_KEYS = 512;
+
+    private static class CacheState extends SelfGuard.TrackedInstance {
         final String name;
         final Map<Object, Object> cache;
         final AtomicInteger readCount = new AtomicInteger(0);
         final AtomicInteger writeCount = new AtomicInteger(0);
         final Set<Long> readerThreads = ConcurrentHashMap.newKeySet();
         final Set<Long> writerThreads = ConcurrentHashMap.newKeySet();
-        final AtomicInteger concurrentAccess = new AtomicInteger(0);
-        final AtomicInteger maxConcurrentAccess = new AtomicInteger(0);
+        /**
+         * Threads that wrote each key. A cache stampede is several threads recomputing the same
+         * value at once, so the same key written by more than one thread is the shape - and,
+         * unlike a count of threads simultaneously inside the record methods, it is a property of
+         * the caller's cache rather than of the runner's barrier (#497).
+         */
+        final Map<Object, Set<Long>> writerThreadsByKey = new ConcurrentHashMap<>();
         volatile boolean iterationDetected = false;
 
         CacheState(Map<Object, Object> cache, String name) {
             this.cache = cache;
             this.name = name;
+        }
+
+        void noteWrite(Object key) {
+            if (key == null || writerThreadsByKey.size() >= MAX_TRACKED_KEYS
+                    && !writerThreadsByKey.containsKey(key)) {
+                return;
+            }
+            writerThreadsByKey
+                .computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet())
+                .add(Thread.currentThread().threadId());
+        }
+
+        /** {@return how many distinct threads touched this cache at all} */
+        int distinctThreads() {
+            Set<Long> all = new java.util.HashSet<>(readerThreads);
+            all.addAll(writerThreads);
+            return all.size();
         }
     }
 
@@ -109,15 +147,10 @@ public class CacheConcurrencyDetector {
             state = caches.computeIfAbsent(cacheKey, k -> new CacheState(typedCache, label));
         }
         
+        // Probe the locks first, while the caller is still inside whatever region it is in.
+        state.noteAccess(cache, false);
         state.readCount.incrementAndGet();
         state.readerThreads.add(Thread.currentThread().threadId());
-
-        int current = state.concurrentAccess.incrementAndGet();
-        try {
-            state.maxConcurrentAccess.updateAndGet(max -> Math.max(max, current));
-        } finally {
-            state.concurrentAccess.decrementAndGet();
-        }
     }
 
     /**
@@ -142,15 +175,10 @@ public class CacheConcurrencyDetector {
             state = caches.computeIfAbsent(cacheKey, k -> new CacheState(typedCache, label));
         }
         
+        state.noteAccess(cache, true);
         state.writeCount.incrementAndGet();
         state.writerThreads.add(Thread.currentThread().threadId());
-        
-        int current = state.concurrentAccess.incrementAndGet();
-        try {
-            state.maxConcurrentAccess.updateAndGet(max -> Math.max(max, current));
-        } finally {
-            state.concurrentAccess.decrementAndGet();
-        }
+        state.noteWrite(key);
     }
 
     /**
@@ -182,12 +210,17 @@ public class CacheConcurrencyDetector {
             int reads = state.readCount.get();
             int writes = state.writeCount.get();
 
-            // Check for concurrent read/write on non-concurrent map
+            // Check for concurrent read/write on non-concurrent map.
+            // Three things have to hold, and only the first used to. Reads and writes on one
+            // thread are not concurrent anything, and reads and writes that every thread made
+            // under one common lock are guarded, so neither is a finding (#497).
             boolean isConcurrentMap = synchronizesItself(state.cache);
-            if (!isConcurrentMap && reads > 0 && writes > 0) {
+            if (!isConcurrentMap && reads > 0 && writes > 0
+                    && state.distinctThreads() > 1 && state.sawUnguardedAccess()) {
                 report.concurrentReadWrite.add(String.format(
-                    "%s: concurrent reads (%d) and writes (%d) on non-thread-safe cache",
-                    state.name, reads, writes));
+                    "%s: concurrent reads (%d) and writes (%d) from %d threads on a "
+                        + "non-thread-safe cache%s",
+                    state.name, reads, writes, state.distinctThreads(), SelfGuard.REPORT_NOTE));
             }
 
             // Check for iteration with concurrent writes
@@ -197,11 +230,25 @@ public class CacheConcurrencyDetector {
                     state.name, writes));
             }
 
-            // Check for cache stampede (many concurrent accesses)
-            if (state.maxConcurrentAccess.get() > 10) {
-                report.cacheStampede.add(String.format(
-                    "%s: high concurrent access count (%d) may cause cache stampede",
-                    state.name, state.maxConcurrentAccess.get()));
+            // Check for cache stampede: the same key recomputed by more than one thread.
+            // This used to count how many threads were inside recordGet/recordPut at once, which
+            // under @AsyncTest measures the runner's barrier - it engineers exactly that overlap -
+            // rather than anything about the cache. A key written by several threads is duplicated
+            // work on one value, which is what a stampede is (#497).
+            // The receiver's type gates this the way it gates the rules above. The corpus pins
+            // that directly: recorded_lruMap_getAndPut and recorded_caffeineAsMap_getAndPut hand
+            // the detector identical evidence and differ only in the receiver, so a finding on the
+            // ConcurrentMap view is noise on correct code whichever rule produces it.
+            for (Map.Entry<Object, Set<Long>> entry :
+                    (isConcurrentMap ? Map.<Object, Set<Long>>of() : state.writerThreadsByKey)
+                        .entrySet()) {
+                int recomputingThreads = entry.getValue().size();
+                if (recomputingThreads > 1) {
+                    report.cacheStampede.add(String.format(
+                        "%s: key '%s' was recomputed by %d threads (cache stampede: each miss "
+                            + "started its own computation of the same value)",
+                        state.name, entry.getKey(), recomputingThreads));
+                }
             }
 
             // Track thread activity
