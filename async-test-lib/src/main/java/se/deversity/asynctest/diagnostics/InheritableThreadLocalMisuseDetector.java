@@ -122,12 +122,16 @@ public class InheritableThreadLocalMisuseDetector {
         report.pooledGetIssues.addAll(pooledGetIssues);
         report.pooledSetIssues.addAll(pooledSetIssues);
 
+        // Context, not a finding. An InheritableThreadLocal exists so that a child thread
+        // inherits the parent's value, so several threads seeing one is the mechanism working
+        // rather than evidence against it - and under @AsyncTest, where N workers share a static
+        // holder, it was true in every run. The two findings above are the grounded ones: both
+        // need the caller to have declared which threads are pooled, which is the situation this
+        // detector's javadoc is actually about (#517).
         for (Map.Entry<String, Set<Long>> entry : accessingThreads.entrySet()) {
             if (entry.getValue().size() > 1) {
-                report.multiThreadAccess.add(String.format(
-                    "InheritableThreadLocal '%s' accessed by %d threads — "
-                    + "verify inheritance is intentional and values are independent per task",
-                    entry.getKey(), entry.getValue().size()));
+                report.threadActivity.put(entry.getKey(), String.format(
+                    "accessed by %d threads", entry.getValue().size()));
             }
         }
         return report;
@@ -141,15 +145,19 @@ public class InheritableThreadLocalMisuseDetector {
     public static class InheritableThreadLocalReport {
         final List<String> pooledGetIssues  = new ArrayList<>();
         final List<String> pooledSetIssues  = new ArrayList<>();
-        final List<String> multiThreadAccess = new ArrayList<>();
+        /**
+         * How many threads touched each variable. Reported for context and deliberately not part
+         * of {@link #hasIssues()}: inheritance across threads is what an
+         * {@code InheritableThreadLocal} is for (#517).
+         */
+        final Map<String, String> threadActivity = new java.util.LinkedHashMap<>();
 
         /**
          * {@return whether there are issues}
          */
         public boolean hasIssues() {
             return !pooledGetIssues.isEmpty()
-                || !pooledSetIssues.isEmpty()
-                || !multiThreadAccess.isEmpty();
+                || !pooledSetIssues.isEmpty();
         }
 
         @Override
@@ -157,7 +165,10 @@ public class InheritableThreadLocalMisuseDetector {
             StringBuilder sb = new StringBuilder("INHERITABLE THREAD LOCAL MISUSE DETECTED:\n");
             for (String issue : pooledGetIssues)   sb.append("  - ").append(issue).append("\n");
             for (String issue : pooledSetIssues)   sb.append("  - ").append(issue).append("\n");
-            for (String issue : multiThreadAccess) sb.append("  - ").append(issue).append("\n");
+            for (Map.Entry<String, String> a : threadActivity.entrySet()) {
+                sb.append("  . ").append(a.getKey())
+                  .append(": ").append(a.getValue()).append(System.lineSeparator());
+            }
             sb.append("""
   Why: InheritableThreadLocal copies values at thread-creation time, not at task-submission time.
        In a thread pool the threads are created once at pool startup, so every task inherits the

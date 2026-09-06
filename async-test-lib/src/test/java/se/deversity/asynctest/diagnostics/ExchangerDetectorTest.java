@@ -12,6 +12,24 @@ import static org.junit.jupiter.api.Assertions.*;
 public class ExchangerDetectorTest {
 
     @Test
+    void aNullRendezvousIsLegalAndNotAFinding() {
+        ExchangerDetector detector = new ExchangerDetector();
+        java.util.concurrent.Exchanger<String> exchanger = new java.util.concurrent.Exchanger<>();
+        detector.registerExchanger(exchanger, "rendezvous");
+
+        // Exchanger.exchange(null) is documented as permitted, and handing over null is the
+        // normal way to use an exchanger as a pure rendezvous: the handoff is the
+        // synchronisation and the payload is irrelevant. Reporting it at CRITICAL said the code
+        // was wrong when it was not (#517).
+        detector.recordExchangeComplete(exchanger, "rendezvous", null);
+        detector.recordExchangeComplete(exchanger, "rendezvous", null);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "a null exchange is legal, and using an exchanger purely to rendezvous is a "
+                        + "normal thing to do: " + detector.analyze());
+    }
+
+    @Test
     void testNormalExchange() throws Exception {
         ExchangerDetector detector = new ExchangerDetector();
         Exchanger<String> exchanger = new Exchanger<>();
@@ -55,7 +73,7 @@ public class ExchangerDetectorTest {
     }
 
     @Test
-    void testNullValueDetection() {
+    void testNullValueIsCountedButNotAFinding() {
         ExchangerDetector detector = new ExchangerDetector();
         Exchanger<String> exchanger = new Exchanger<>();
 
@@ -66,7 +84,12 @@ public class ExchangerDetectorTest {
         ExchangerDetector.ExchangerReport report = detector.analyze();
 
         assertNotNull(report);
-        assertTrue(report.hasIssues(), "Should detect null value exchange");
+        assertFalse(report.hasIssues(),
+                "Exchanger.exchange(null) is permitted, and a rendezvous that carries no payload "
+                        + "is a normal use of one, so the count is context rather than a finding "
+                        + "(#517): " + report);
+        assertTrue(report.toString().contains("Null value exchanges"),
+                "the count is still shown, so nothing is hidden: " + report);
     }
 
     @Test

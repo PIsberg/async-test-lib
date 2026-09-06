@@ -132,10 +132,19 @@ public class ExchangerDetector {
         /**
          * {@return whether there are issues}
          */
+        /**
+         * {@return whether there are issues}
+         *
+         * <p>A null exchange is not one. {@code Exchanger.exchange(null)} is permitted, and
+         * handing over {@code null} is the normal way to use an exchanger as a pure rendezvous:
+         * the handoff is the synchronisation and the payload is irrelevant. Counting it as
+         * CRITICAL said the code was wrong when it was not, so the count stays in the report as
+         * context and the findings are the two grounded in something going wrong - an exchange
+         * that timed out, and one that was interrupted (#517).
+         */
         public boolean hasIssues() {
-            return !timedOutExchangers.isEmpty() 
-                || !interruptedExchangers.isEmpty()
-                || nullValueExchanges > 0;
+            return !timedOutExchangers.isEmpty()
+                || !interruptedExchangers.isEmpty();
         }
 
         /**
@@ -186,7 +195,8 @@ public class ExchangerDetector {
             }
 
             if (nullValueExchanges > 0) {
-                sb.append("  Null Value Exchanges: ").append(nullValueExchanges).append("\n");
+                sb.append("  Null value exchanges (legal; a rendezvous carries no payload): ")
+                  .append(nullValueExchanges).append(System.lineSeparator());
                 sb.append("  Warning: Exchanging null values may indicate logic errors\n");
             }
 
