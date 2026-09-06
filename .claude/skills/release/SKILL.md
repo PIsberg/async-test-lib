@@ -116,12 +116,24 @@ same gates CI runs, and **report failures verbatim rather than working around th
 
 ```bash
 mvn --batch-mode clean verify "-Dlicense.mock.mode=true"
-mvn --batch-mode checkstyle:check pmd:check spotbugs:check
 ```
 
 - Quote every `-D` arg in PowerShell or Maven parses it as a lifecycle phase.
 - The full suite (~133 classes, ~5 min) always runs; `-Dtest=` filters are ignored here.
 - Local runs need `-Dlicense.mock.mode=true`; CI mocks automatically via the `CI` env var.
+- **That one command is the whole gate.** Checkstyle, PMD and SpotBugs are bound to
+  `verify` in `pom.xml`, so it runs all three across every module - measured on the 1.11.2
+  release: checkstyle 4 executions, PMD 12, SpotBugs 12. Do **not** invoke them as bare
+  goals. A bare goal does not build sibling modules, so `async-test-agent` tries to resolve
+  `async-test-lib` at the version just bumped to, which exists neither in `~/.m2` nor on
+  Central, and the command dies before analysing anything:
+
+  ```
+  Could not resolve dependencies for project ...async-test-agent:jar:<version>
+  ```
+
+  This skill used to tell you to run them, contradicting `docs/RELEASE.md`, which has said
+  not to since the build became a reactor. The doc was right.
 
 ## 6. Commit, tag, push
 
@@ -129,7 +141,10 @@ Confirm with the user before this step — pushing the tag publishes to Maven Ce
 cannot be undone (Central does not allow re-releasing a version).
 
 ```bash
-git add -A
+git add -u && git add <any new files this release introduces>
+# NOT `git add -A`: it sweeps in untracked scratch files and any generated
+# guardrail output the build left behind. Check `git status` first, and leave
+# a dirty file you did not create alone.
 git commit -m "chore(release): <version>"
 git tag -a "v<version>" -m "Release <version>"
 git push origin main
