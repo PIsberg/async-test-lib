@@ -818,13 +818,11 @@ public final class AsyncTestContext {
         if (registry.sharedMemorySegmentRaceDetector != null) {
             registry.sharedMemorySegmentRaceDetector.markInvocationStart();
         }
-<<<<<<< HEAD
         if (completableFutureCancellationPropagationDetector != null) {
             completableFutureCancellationPropagationDetector.markInvocationStart();
-=======
+        }
         if (registry.lockDowngradeDetector != null) {
             registry.lockDowngradeDetector.markInvocationStart();
->>>>>>> 04b4d3bd (fix(detectors): round-scope the downgrade gap, and let a returned await clear the latch finding)
         }
         // In-flight computations a thrown supplier or mapping function abandoned. Worker threads
         // are pooled, so without this the stale entry follows the thread into the next round and
