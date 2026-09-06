@@ -90,13 +90,24 @@ class SleepInLockDetectorTest {
     }
 
     @Test
-    void noEvent_whenNoLockHeld_evenFromLockNamedMethod() {
+    void noEvent_whenNoLockHeld_evenFromLockNamedMethod() throws Exception {
         detector.startMonitoring();
-        recordSleepFromTryLockHelper();
+        // On a thread this test owns, so "no lock is held" is a fact about the recording and
+        // not about whatever the harness happened to be holding. recordSleep(long) asks the JVM
+        // which monitors the CALLING thread holds, and under surefire that is a thread whose
+        // whole stack is this test - but under pitest's coverage phase the same code runs on a
+        // thread pitest drives, and a monitor taken by the framework around the call was read as
+        // a lock the caller held. The test then failed as "did not pass without mutation" and
+        // aborted the run, which is one of the two things keeping the weekly gate from ever
+        // producing a score (#479).
+        Thread caller = new Thread(this::recordSleepFromTryLockHelper, "no-lock-caller");
+        caller.start();
+        caller.join();
 
         SleepInLockDetector.SleepInLockReport report = detector.analyze();
         assertFalse(report.hasIssues(),
-            "no lock is held — a caller method whose name contains 'Lock' must not be flagged");
+            "no lock is held — a caller method whose name contains 'Lock' must not be flagged: "
+                + report);
     }
 
     // The name contains "Lock" on purpose: it must NOT be mistaken for a held lock.
