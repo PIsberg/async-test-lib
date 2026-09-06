@@ -79,8 +79,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER,
         note = "One state object per collection name and element key in a ConcurrentHashMap; counters are "
-             + "atomics and waiter sets are concurrent. The per-thread stack of in-flight computations is a "
-             + "ArrayDeque per thread id, so it is touched by exactly one thread and needs no synchronisation. "
+             + "atomics and waiter sets are concurrent. The per-thread stack of in-flight computations is an "
+             + "ArrayDeque per thread id, so each is touched by exactly one thread and needs no synchronisation. "
              + "Dependency edges accumulate in a synchronized LinkedHashSet and are walked once in analyze(), "
              + "after the run has quiesced.")
 @AITestDriven(
