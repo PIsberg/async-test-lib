@@ -19,6 +19,7 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.StampedLock;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -1666,6 +1667,54 @@ class DetectorAccuracyEvalTest {
      * dying worker skipped its recording and the detector was silenced by its own scenario. The
      * mutation attempt happened either way, so it is recorded either way.
      */
+    @Test
+    @DisplayName("stamped lock: an optimistic read used without validating fires (true positive)")
+    void stampedLockDetectorFiresWhenAValidationFailureIsIgnored() throws InterruptedException {
+        StampedLockDetector detector = new StampedLockDetector();
+        StampedLock lock = new StampedLock();
+        detector.registerLock(lock, "config");
+        Runnable readAndTrustIt = () -> {
+            long stamp = lock.tryOptimisticRead();
+            detector.recordOptimisticRead(lock, "config", stamp);
+            // A writer intervened, and the value is used anyway: no fallback, no retry.
+            detector.recordOptimisticValidation(lock, "config", stamp, false);
+        };
+        onTwoThreads(readAndTrustIt, readAndTrustIt);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "a validation that failed and was never followed by a read lock or a retry means "
+                        + "the stale value was used as read, which is the defect this detector names");
+    }
+
+    @Test
+    @DisplayName("stamped lock: validate-then-readLock stays silent (true negative)")
+    void stampedLockDetectorStaysSilentOnTheDocumentedFallback() throws InterruptedException {
+        StampedLockDetector detector = new StampedLockDetector();
+        StampedLock lock = new StampedLock();
+        detector.registerLock(lock, "config");
+        Runnable readWithFallback = () -> {
+            long stamp = lock.tryOptimisticRead();
+            detector.recordOptimisticRead(lock, "config", stamp);
+            if (!lock.validate(stamp)) {
+                detector.recordOptimisticValidation(lock, "config", stamp, false);
+                long readStamp = lock.readLock();
+                detector.recordReadLock(lock, "config", readStamp);
+                lock.unlockRead(readStamp);
+                detector.recordUnlock(lock, "config", readStamp);
+            } else {
+                detector.recordOptimisticValidation(lock, "config", stamp, true);
+            }
+        };
+        onTwoThreads(readWithFallback, readWithFallback);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "validate() returning false and the caller taking the read lock is the canonical "
+                        + "StampedLock idiom - the case the class exists for. Until #496 the "
+                        + "detector reported every failed validation, so the finding fired "
+                        + "stochastically whenever a writer happened to intervene, which is exactly "
+                        + "the situation this code handles correctly");
+    }
+
     private static Runnable mutateUnder(ConcurrentModificationDetector detector,
                                         List<String> list, ReentrantLock lock) {
         return () -> {
