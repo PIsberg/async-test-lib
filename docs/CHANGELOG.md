@@ -9,19 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Two detectors reported correct code by design, and both now report it as context instead.**
-  `InheritableThreadLocalMisuse` flagged any variable touched by more than one thread, which is
-  what an `InheritableThreadLocal` is for - the value is inherited by child threads by design, so
-  under `@AsyncTest`, where N workers share a static holder, it fired in every run. The count
-  moves to `threadActivity` and out of `hasIssues()`; the two findings that remain both require
-  the caller to have declared which threads are pooled. `Exchanger` reported exchanging `null` at
-  CRITICAL, but `Exchanger.exchange(null)` is permitted and handing over `null` is the normal way
-  to use one as a pure rendezvous, where the handoff is the synchronisation and the payload is
-  irrelevant; the count stays in the report and the findings are the timeout and the interrupt.
-  `CompletableFutureCompletionLeak`'s completion CAS, which shipped without a test, gains a
-  guardrail that fails if the flag is reverted from `AtomicBoolean` to a `volatile boolean` -
-  structural because no deterministic behavioural test can distinguish the two, which its javadoc
-  explains (#518).
+- **`InheritableThreadLocalMisuse` reported inheritance working as designed.** It flagged any
+  variable touched by more than one thread, which is what an `InheritableThreadLocal` is for -
+  the value is inherited by child threads by design, so under `@AsyncTest`, where N workers share
+  a static holder, it fired in every run. The count moves to `threadActivity` and out of
+  `hasIssues()`; the two findings that remain both require the caller to have declared which
+  threads are pooled, which is the thread-pool situation the class is about (#518).
+
+- **`CompletableFutureCompletionLeak`'s completion CAS gains the guardrail it can have.** The
+  change shipped without a test, because no deterministic behavioural test distinguishes a
+  check-then-set from a compare-and-set here: every sequential ordering of the two paths behaves
+  identically, since the second caller sees the flag already set. The test pins the mechanism
+  instead - the flag must be an `AtomicBoolean`, as a `volatile boolean` cannot claim anything
+  exactly once - and its javadoc says why it is structural (#518).
 
 - **Six detector false positives from the 2026-09-05 correctness hunt, each pinned by a test
   that was red first.** `ConcurrentModification` reported two threads iterating a collection
