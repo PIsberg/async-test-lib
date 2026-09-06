@@ -83,6 +83,19 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      */
     private volatile boolean active;
 
+    /**
+     * Accesses dropped because the thread that made them is not one of the runner's workers.
+     *
+     * <p>A test body that submits its racing work to its own executor, or starts
+     * {@code new Thread(...)}, produces accesses on threads the runner never registered, and the
+     * filter above discards them. That is the honest thing to do - the bridge cannot attribute
+     * them to a round - but a clean atomicity report then means "nothing was observed" rather
+     * than "nothing was wrong", and nothing used to say so. Counting them lets the runner
+     * announce the gap (#500).
+     */
+    private final java.util.concurrent.atomic.LongAdder droppedNonWorkerEvents =
+            new java.util.concurrent.atomic.LongAdder();
+
     private TelemetryBridge(AtomicityValidator atomicityValidator, LongPredicate workerFilter) {
         this.atomicityValidator = atomicityValidator;
         this.workerFilter = workerFilter;
@@ -364,6 +377,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
             return;
         }
         if (!workerFilter.test(threadId)) {
+            droppedNonWorkerEvents.increment();
             return;
         }
         if (qualifiedName == null) return;
@@ -393,6 +407,19 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         atomicityValidator.recordFieldAccessUnderLocks(field, null, isWrite, threadId,
                 lockFingerprint, ownMonitor, methodMonitor, volatileField || safelyPublished,
                 constantTag, identity, storedIdentity);
+    }
+
+    /**
+     * {@return how many accesses were dropped because their thread is not a runner worker}
+     *
+     * <p>Non-zero means the agent saw field accesses this run cannot attribute: they came from
+     * threads the test body started itself. The atomicity evidence for those accesses is absent
+     * from the report, so a clean report covers the workers and nothing else.
+     *
+     * @since 1.11.2
+     */
+    public long droppedNonWorkerEvents() {
+        return droppedNonWorkerEvents.sum();
     }
 
     /**

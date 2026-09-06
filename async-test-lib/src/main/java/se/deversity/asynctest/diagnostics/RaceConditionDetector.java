@@ -166,7 +166,11 @@ public class RaceConditionDetector {
         // Guard-on-self probe, evaluated on the accessing thread at access time. holdsLock is
         // an intrinsic over the current thread's own lock records: no monitor is taken, so the
         // probe cannot serialize the racing threads (the same reason the queue below is lock-free).
-        long lockFingerprint = HeldLocks.lockFingerprint(object);
+        // Mode-aware, the way AtomicityValidator has always computed it. Folding a read-mode
+        // lock in as if exclusive made two threads writing under the same readLock() look
+        // consistently guarded, which is a false negative and a divergence between two detectors
+        // that claim the same model (#500).
+        long lockFingerprint = HeldLocks.lockFingerprint(object, write);
         state.fieldAccesses.computeIfAbsent(fieldName, ignored -> new ConcurrentLinkedQueue<>())
             .add(new FieldAccess(Thread.currentThread().threadId(), write, invocationEpoch.get(), lockFingerprint));
     }

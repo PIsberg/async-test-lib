@@ -295,8 +295,26 @@ public final class HeldLocks {
      * @param self the tracked instance, or {@code null} to ask about declared locks only
      */
     public static long lockFingerprint(@Nullable Object self) {
+        return lockFingerprint(self, false);
+    }
+
+    /**
+     * {@return a value identifying the locks this thread holds that guard an access of the given
+     * kind on {@code self}, or 0 for none}
+     *
+     * <p>The self-aware counterpart of {@link #lockFingerprint(boolean)}: {@code self}'s own
+     * monitor joins the set when this thread holds it, and a lock held in shared mode is left out
+     * for a write. Two threads writing under the same read lock therefore share no fingerprint,
+     * which is the point - a read lock admits every other reader and guards nothing a writer does
+     * (#500).
+     *
+     * @param self     the instance being accessed, whose own monitor counts as a lock on it
+     * @param forWrite whether the access being recorded is a write
+     * @since 1.11.2
+     */
+    public static long lockFingerprint(@Nullable Object self, boolean forWrite) {
         int selfHash = self != null && Thread.holdsLock(self) ? System.identityHashCode(self) : 0;
-        return FRAMES.get().fingerprint(selfHash);
+        return FRAMES.get().fingerprint(selfHash, forWrite);
     }
 
     /**

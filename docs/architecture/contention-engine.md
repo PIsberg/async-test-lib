@@ -170,6 +170,25 @@ is `AutoCloseable` (try-with-resources), idempotent on `close()`, and filters ou
 thread ids. `forCurrentContext(Set<Long>)` resolves the validator via
 `AsyncTestContext.atomicityValidator()`.
 
+#### What the filter cannot see
+
+`workerThreadIds` holds the ids of the runner's own workers, and each worker adds its id as it
+starts. A test body that submits its racing work to its own executor, or starts
+`new Thread(...)`, therefore produces accesses on threads that are not in the set, and the bridge
+drops them: it has no way to attribute them to a round.
+
+That is the right call, and it makes a clean atomicity report mean *the workers were clean*
+rather than *the code was clean*. Since 1.11.2 the gap is announced rather than silent. The
+bridge counts what it dropped (`droppedNonWorkerEvents()`), and `ConcurrencyRunner` logs one
+line per test at INFO when the count is non-zero:
+
+```
+runner.telemetry.unattributed test=… events=42 reason="…" hint="…"
+```
+
+To get evidence from that work, run it on the `@AsyncTest` workers themselves. Attributing child
+threads by parentage would need a thread-start hook in the agent and is not implemented.
+
 ---
 
 ### 4. StaticPinningScanner — Compile-Time Pinning Pre-Scanner
