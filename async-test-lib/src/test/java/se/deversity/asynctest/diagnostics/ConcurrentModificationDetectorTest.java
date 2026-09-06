@@ -48,7 +48,47 @@ public class ConcurrentModificationDetectorTest {
     }
 
     @Test
-    void testConcurrentIterationDetection() throws InterruptedException {
+    void readOnlyConcurrentIterationIsNotReported() throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new ArrayList<>();
+        list.add("item");
+
+        detector.registerCollection(list, "read-only-list");
+
+        java.util.concurrent.CountDownLatch startLatch = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch doneLatch = new java.util.concurrent.CountDownLatch(2);
+        Runnable readOnly = () -> {
+            try {
+                startLatch.await();
+                detector.recordIterationStarted(list, "read-only-list");
+                for (String ignored : list) {
+                    // read, never write
+                }
+                detector.recordIterationEnded(list, "read-only-list");
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            } finally {
+                doneLatch.countDown();
+            }
+        };
+
+        Thread t1 = new Thread(readOnly);
+        Thread t2 = new Thread(readOnly);
+        t1.start();
+        t2.start();
+        startLatch.countDown();
+        doneLatch.await();
+
+        ConcurrentModificationDetector.ConcurrentModificationReport report = detector.analyze();
+
+        assertTrue(report.concurrentIterations.isEmpty(),
+            "Two threads iterating a list nobody mutates is correct code, and this detector is "
+                + "VERDICT tier, so it must stay silent: " + report.concurrentIterations);
+        assertFalse(report.hasIssues(), "Read-only concurrent iteration is not an issue");
+    }
+
+    @Test
+    void testConcurrentIterationWithModificationIsReported() throws InterruptedException {
         ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
         List<String> list = new ArrayList<>();
         
@@ -88,7 +128,11 @@ public class ConcurrentModificationDetectorTest {
         t2.start();
         startLatch.countDown(); // Release both threads simultaneously
         doneLatch.await(); // Wait for both to complete
-        
+
+        // Someone mutates the list the two threads are walking. Without this the iteration is
+        // read-only, which is correct code and no longer reported.
+        detector.recordModification(list, "iterated-list", "add");
+
         ConcurrentModificationDetector.ConcurrentModificationReport report = detector.analyze();
         
         assertNotNull(report);

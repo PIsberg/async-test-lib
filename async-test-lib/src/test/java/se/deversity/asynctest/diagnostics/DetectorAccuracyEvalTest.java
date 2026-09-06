@@ -1403,6 +1403,31 @@ class DetectorAccuracyEvalTest {
     }
 
     @Test
+    @DisplayName("concurrent modification: read-only concurrent iteration stays silent (true negative)")
+    void concurrentModificationDetectorStaysSilentOnReadOnlyConcurrentIteration()
+            throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new ArrayList<>();
+        list.add("value");
+        detector.registerCollection(list, "list");
+        Runnable iterateOnly = () -> {
+            detector.recordIterationStarted(list, "list");
+            for (String ignored : list) {
+                // read, never write
+            }
+            detector.recordIterationEnded(list, "list");
+        };
+        onTwoThreads(iterateOnly, iterateOnly);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "two threads iterating an ArrayList nobody mutates is correct code: they observe "
+                        + "the same stable list and no iterator can tear. Until #494 analyze() "
+                        + "reported any collection iterated by more than one thread, with no "
+                        + "modification required and no lock consulted, at VERDICT tier - whose "
+                        + "contract is that a finding means the code is wrong");
+    }
+
+    @Test
     @DisplayName("concurrent modification: a thread-safe collection stays silent (true negative)")
     void concurrentModificationDetectorStaysSilentOnAThreadSafeCollection() throws InterruptedException {
         ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
