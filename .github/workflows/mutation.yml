@@ -64,21 +64,19 @@ jobs:
       # (a bare goal in the reactor resolves siblings from the repository). Scoped to
       # async-test-lib: it is the only module with a pitest configuration, and the only one
       # whose tests are a mutation-killing suite.
-      # The sampler is here because this job has never once completed (#479). Three runs, on
-      # 2026-08-16, -23 and -30, each died about 19 minutes in, during the coverage phase, with
-      # the runner shut down rather than the job timing out - and nothing in the log said why,
-      # because nothing in it reported the machine's state.
+      # The sampler and watchdog below are what diagnosed #479, and they stay. This job had
+      # never once completed: three runs, on 2026-08-16, -23 and -30, each died about 19 minutes
+      # in during the coverage phase, with the runner shut down rather than the job timing out,
+      # and nothing in the log said why because nothing in it reported the machine's state.
       #
-      # It prints to this step's own stdout rather than to a file, deliberately: an uploaded
-      # artifact needs a post-step, and there is no post-step after the VM is killed, so the
-      # last SAMPLE line in the job log is the only evidence that survives that ending.
+      # They print to this step's own stdout rather than to a file, deliberately: an uploaded
+      # artifact needs a post-step, and there is no post-step after the VM is killed, so the last
+      # SAMPLE line in the job log is the only evidence that survives that ending.
       #
-      # The mvn command and every JVM flag below are unchanged from before the sampler, and
-      # should stay that way while #479 is open: tuning the run would change the thing being
-      # measured. Note the sampler is not known to be inert - what preceded every kill was 13
-      # minutes of total silence, and a line every 15 seconds may itself be why the first
-      # instrumented run outlived the three that died. Deciding that needs the unmodified
-      # workflow re-run for comparison, which is what #479 tracks.
+      # The cause was virtual-thread carrier starvation, not the memory exhaustion first
+      # suspected - see the pom's excludedTestClasses for the two classes that wedged six virtual
+      # threads against a four-carrier pool. The load average is the field to read first: 0.00
+      # through a quiet stretch means blocked, and a healthy mutation phase runs at 5-6.
       - name: Run mutation coverage (fails below the pom's mutationThreshold)
         run: |
           # The sampler, and a watchdog beside it.
