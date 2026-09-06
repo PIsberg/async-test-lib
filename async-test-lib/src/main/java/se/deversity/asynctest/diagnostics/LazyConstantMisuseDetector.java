@@ -113,6 +113,25 @@ public class LazyConstantMisuseDetector {
     private final AtomicInteger totalGets     = new AtomicInteger(0);
     private final AtomicInteger totalComputes = new AtomicInteger(0);
 
+    /**
+     * Clears the per-thread in-flight state left over from the previous invocation round.
+     *
+     * <p>Called by {@code ConcurrencyRunner} before each round, after the previous round's
+     * workers have all finished, so nothing is legitimately in flight when it runs.
+     *
+     * <p>The record methods are paired, and a {@code recordComputeStart} whose matching
+     * {@code recordComputeEnd} never runs - because the caller's supplier threw and the caller had no
+     * {@code finally} - leaves an entry behind. Platform worker threads are pooled, so the same
+     * thread comes back for the next round and that stale entry made the next round's first
+     * computation look like a supplier re-entering itself. Clearing here bounds the damage to the round that
+     * produced it (#498).
+     *
+     * @since 1.11.2
+     */
+    public void markInvocationStart() {
+        activeComputations.clear();
+    }
+
     private State stateFor(String name) {
         State s = states.get(name);
         if (s == null) {
@@ -152,6 +171,11 @@ public class LazyConstantMisuseDetector {
      * Record the start of the constant's supplier computation. If the same
      * constant's supplier is already running on this thread, the supplier is
      * reading the value it is meant to produce (reentrant computation).
+     *
+     * <p>Pair this with {@code recordComputeEnd} in a {@code finally}. A supplier or mapping
+     * function that throws past an unpaired start leaves the entry in flight, and every later
+     * record on this thread then reads as re-entrancy. {@link #markInvocationStart()} bounds
+     * that to the round it happened in; only a {@code finally} prevents it inside one.
      *
      * @param name   a descriptive name for the LazyConstant
      * @param thread the current thread

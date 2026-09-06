@@ -820,6 +820,20 @@ public final class AsyncTestContext {
         }
         if (completableFutureCancellationPropagationDetector != null) {
             completableFutureCancellationPropagationDetector.markInvocationStart();
+        // In-flight computations a thrown supplier or mapping function abandoned. Worker threads
+        // are pooled, so without this the stale entry follows the thread into the next round and
+        // reads as reentrancy or as recursion there (#498).
+        if (lazyConstantMisuseDetector != null) {
+            lazyConstantMisuseDetector.markInvocationStart();
+        }
+        if (lazyCollectionMisuseDetector != null) {
+            lazyCollectionMisuseDetector.markInvocationStart();
+        }
+        if (stableValueMisuseDetector != null) {
+            stableValueMisuseDetector.markInvocationStart();
+        }
+        if (concurrentMapComputeRecursionDetector != null) {
+            concurrentMapComputeRecursionDetector.markInvocationStart();
         }
     }
 

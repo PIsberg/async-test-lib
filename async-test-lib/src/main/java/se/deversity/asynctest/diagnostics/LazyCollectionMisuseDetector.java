@@ -80,7 +80,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER,
         note = "One state object per collection name and element key in a ConcurrentHashMap; counters are "
              + "atomics and waiter sets are concurrent. The per-thread stack of in-flight computations is a "
-             + "ThreadLocal ArrayDeque, so it is touched by exactly one thread and needs no synchronisation. "
+             + "ArrayDeque per thread id, so it is touched by exactly one thread and needs no synchronisation. "
              + "Dependency edges accumulate in a synchronized LinkedHashSet and are walked once in analyze(), "
              + "after the run has quiesced.")
 @AITestDriven(
@@ -139,7 +139,39 @@ public final class LazyCollectionMisuseDetector {
     private final Map<Element, ElementState> elements = new ConcurrentHashMap<>();
     /** Directed edges outer to inner: computing the outer element caused the inner one to compute. */
     private final Set<Map.Entry<Element, Element>> dependencies = new LinkedHashSet<>();
-    private final ThreadLocal<Deque<Element>> inFlight = ThreadLocal.withInitial(ArrayDeque::new);
+    /**
+     * Per-thread stack of computations currently in flight, keyed by thread id rather than held
+     * in a {@code ThreadLocal}. Each deque is still touched by exactly one thread, so it needs no
+     * synchronisation of its own; keying by id is what lets {@link #markInvocationStart()} drop a
+     * stack a thrown mapping function abandoned, which a {@code ThreadLocal} cannot do from the
+     * runner's thread (#498).
+     */
+    private final Map<Long, Deque<Element>> inFlight = new ConcurrentHashMap<>();
+    private Deque<Element> inFlightStack() {
+        return inFlight.computeIfAbsent(Thread.currentThread().threadId(), k -> new ArrayDeque<>());
+    }
+
+    /**
+     * Clears the per-thread in-flight state left over from the previous invocation round.
+     *
+     * <p>Called by {@code ConcurrencyRunner} before each round, after the previous round's
+     * workers have all finished, so nothing is legitimately in flight when it runs.
+     *
+     * <p>{@code recordComputeStart} and {@code recordComputeEnd} are paired, and a mapping
+     * function that throws without a {@code finally} leaves its element on the thread's stack and
+     * its id in the element's computing set. Platform worker threads are pooled, so the next
+     * round's computation of that element on the same thread read as a self re-entry, and every
+     * other thread's get() on it counted as a waiter feeding the convoy finding (#498).
+     *
+     * @since 1.11.2
+     */
+    public void markInvocationStart() {
+        inFlight.clear();
+        for (ElementState s : elements.values()) {
+            s.computing.clear();
+        }
+    }
+
     private final int        convoyThreshold;
     private volatile boolean enabled = true;
 
@@ -176,6 +208,11 @@ public final class LazyCollectionMisuseDetector {
     /**
      * Record entry into the mapping function for one element.
      *
+     * <p>Pair this with {@code recordComputeEnd} in a {@code finally}. A supplier or mapping
+     * function that throws past an unpaired start leaves the entry in flight, and every later
+     * record on this thread then reads as re-entrancy. {@link #markInvocationStart()} bounds
+     * that to the round it happened in; only a {@code finally} prevents it inside one.
+     *
      * @param collection the collection's name
      * @param key        the element's index or key
      * @param thread     the computing thread
@@ -184,7 +221,7 @@ public final class LazyCollectionMisuseDetector {
         ElementState s = stateOrCreate(collection, key);
         if (s == null || thread == null) return;
 
-        Deque<Element> stack = inFlight.get();
+        Deque<Element> stack = inFlightStack();
         if (stack.contains(s.element)) {
             s.selfReentries.incrementAndGet();
         } else if (!stack.isEmpty()) {
@@ -211,7 +248,7 @@ public final class LazyCollectionMisuseDetector {
         ElementState s = stateOrCreate(collection, key);
         if (s == null || thread == null) return;
 
-        Deque<Element> stack = inFlight.get();
+        Deque<Element> stack = inFlightStack();
         stack.remove(s.element);
         s.computing.remove(thread.threadId());
         s.computeEnds.incrementAndGet();

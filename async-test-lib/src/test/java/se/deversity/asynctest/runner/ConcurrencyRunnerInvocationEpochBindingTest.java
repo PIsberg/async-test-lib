@@ -161,6 +161,22 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
             } else {
                 d.recordWorkStarted("report", "fetch", Thread.currentThread());
                 d.recordWorkCompleted("report", "fetch", Thread.currentThread());
+    /** A supplier that throws in round one, and a well-behaved one in round two. */
+    public static class LazyConstantCrossRoundOnly {
+        static final AtomicInteger EXECUTIONS = new AtomicInteger();
+
+        // One platform worker, so the same pool thread runs both rounds: the entry a thrown
+        // supplier leaves behind follows that thread into round two.
+        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
+                   detectAll = false, detectLazyConstantMisuse = true)
+        void body() {
+            var d = AsyncTestContext.lazyConstantMisuseDetector();
+            if (EXECUTIONS.getAndIncrement() == 0) {
+                // The supplier throws, and the caller had no finally, so no recordComputeEnd.
+                d.recordComputeStart("CONFIG", Thread.currentThread());
+            } else {
+                d.recordComputeStart("CONFIG", Thread.currentThread());
+                d.recordComputeEnd("CONFIG", Thread.currentThread(), "value");
             }
         }
     }
@@ -174,6 +190,15 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
             d.cancel(new java.util.concurrent.CompletableFuture<String>(), "report", "view", false);
             d.recordWorkStarted("report", "fetch", Thread.currentThread());
             d.recordWorkCompleted("report", "fetch", Thread.currentThread());
+    /** Both starts inside one round: the genuine re-entry that must still be reported. */
+    public static class LazyConstantSameRound {
+        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = false,
+                   detectAll = false, detectLazyConstantMisuse = true)
+        void body() {
+            var d = AsyncTestContext.lazyConstantMisuseDetector();
+            d.recordComputeStart("CONFIG", Thread.currentThread());
+            d.recordComputeStart("CONFIG", Thread.currentThread());
+            d.recordComputeEnd("CONFIG", Thread.currentThread(), "value");
         }
     }
 
@@ -198,6 +223,25 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
                 "a stage completing after a cancel in the same round must be reported; if this is "
                         + "silent the recording never reached the detector and the cross-round test "
                         + "proves nothing. Reports: " + REPORTS.keySet() + " -> " + report);
+    @DisplayName("a supplier abandoned in one round is not re-entrancy in the next")
+    void lazyConstantCrossRoundComputeIsNotReported() {
+        run(LazyConstantCrossRoundOnly.class);
+        String report = REPORTS.get("LazyConstantMisuseDetector");
+        assertTrue(report == null || !report.contains("re-entered"),
+                "the entry a thrown supplier left in flight followed the pooled worker into "
+                        + "round two. AsyncTestContext.markInvocationStart must reach this "
+                        + "detector (#498). Report: " + report);
+    }
+
+    @Test
+    @DisplayName("two starts inside one round are re-entrancy, so the silence above is not vacuous")
+    void lazyConstantSameRoundComputeIsReported() {
+        run(LazyConstantSameRound.class);
+        String report = REPORTS.get("LazyConstantMisuseDetector");
+        assertTrue(report != null && report.contains("re-entered"),
+                "a supplier entering itself inside one round must be reported; if this is silent "
+                        + "the recording never reached the detector. Reports: " + REPORTS.keySet()
+                        + " -> " + report);
     }
 
     private static void run(Class<?> fixture) {

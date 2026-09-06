@@ -8,6 +8,27 @@ import static org.junit.jupiter.api.Assertions.*;
 public class ConcurrentMapComputeRecursionDetectorTest {
 
     @Test
+    void aMappingFunctionThatThrewInAnEarlierRoundIsNotCrossKeyRecursionInTheNext() {
+        var d = new ConcurrentMapComputeRecursionDetector();
+        java.util.Map<String, String> map = new java.util.concurrent.ConcurrentHashMap<>();
+        Thread t = Thread.currentThread();
+
+        // Round one: the mapping function throws, so key "a" is never removed from this
+        // thread's scope for this map.
+        d.recordComputeStart(map, "a", t, "cache");
+
+        d.markInvocationStart();
+
+        // Round two on the reused pool thread: an unrelated key, computed properly.
+        d.recordComputeStart(map, "b", t, "cache");
+        d.recordComputeEnd(map, "b", t);
+
+        assertFalse(d.analyze().hasIssues(),
+            "key 'a' was left in flight by a round that has since ended; computing key 'b' in "
+                + "the next round is not a nested compute on the same map: " + d.analyze());
+    }
+
+    @Test
     void testNoIssuesWhenEmpty() {
         var d = new ConcurrentMapComputeRecursionDetector();
         assertFalse(d.analyze().hasIssues());
