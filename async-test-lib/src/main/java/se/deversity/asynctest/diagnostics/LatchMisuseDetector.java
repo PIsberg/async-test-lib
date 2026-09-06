@@ -14,6 +14,20 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Reachable from a test via {@code AsyncTestContext.latchMisuseDetector()} when
  * {@link se.deversity.asynctest.DetectorType#LATCH_MISUSE} is enabled.
+ *
+ * <h4>The weaving boundary</h4>
+ *
+ * <p>This detector counts what it was told about. Without the agent that is what the test called
+ * explicitly; with it, what the agent wove. A latch counted down inside code the agent never
+ * transformed - a third-party executor's task, a class outside the instrumented packages -
+ * contributes no {@link #recordCountDown}, so the recorded total falls short of the starting
+ * count while the latch itself reached zero.
+ *
+ * <p>{@link #recordAwaitReturned} is what keeps that from becoming a finding: {@code await()}
+ * returns only at zero, so one returned await proves the latch was fully counted down whatever
+ * this detector saw. The missing-countdown finding therefore needs an await that was recorded and
+ * never came back. The remaining blind spot is a latch nobody ever awaits through a woven call
+ * site, where there is nothing to observe in either direction.
  */
 public class LatchMisuseDetector {
 
@@ -25,6 +39,12 @@ public class LatchMisuseDetector {
         final AtomicInteger initialCount;
         final AtomicInteger countDownCalls = new AtomicInteger();
         final AtomicInteger awaitCalls = new AtomicInteger();
+        /**
+         * Awaits that came back. {@code await()} returns only once the latch has reached zero, so
+         * one of these is proof the latch was fully counted down whatever this detector managed
+         * to see (#499).
+         */
+        final AtomicInteger awaitReturns = new AtomicInteger();
 
         LatchState(String name, int initialCount) {
             this.name = name;
@@ -100,6 +120,25 @@ public class LatchMisuseDetector {
         }
     }
 
+    /**
+     * Records that an {@code await()} came back, which it can only do at zero.
+     *
+     * <p>Call this after the await returns - the agent's woven hooks do, and for the timed
+     * overload only when it returned {@code true}. It is what separates a latch nobody counted
+     * down from a latch counted down where this detector could not see it: countdowns performed
+     * in unwoven code, an executor task the agent never transformed, are invisible here, and
+     * without this the shortfall read as CRITICAL "missing countDown()" on a run that worked.
+     *
+     * @param latch the latch being recorded, tracked by identity
+     * @since 1.11.2
+     */
+    public void recordAwaitReturned(Object latch) {
+        LatchState state = stateFor(latch);
+        if (state != null) {
+            state.awaitReturns.incrementAndGet();
+        }
+    }
+
     private @Nullable LatchState stateFor(Object latch) {
         return latch == null ? null : latches.get(System.identityHashCode(latch));
     }
@@ -112,7 +151,10 @@ public class LatchMisuseDetector {
         LatchMisuseReport report = new LatchMisuseReport();
 
         for (LatchState state : latches.values()) {
-            if (state.awaitCalls.get() > 0 && state.countDownCalls.get() < state.initialCount.get()) {
+            // An await that returned settles it: the latch reached zero, so a shortfall in what
+            // this detector recorded is a gap in observation rather than a missing countDown().
+            if (state.awaitCalls.get() > 0 && state.awaitReturns.get() == 0
+                    && state.countDownCalls.get() < state.initialCount.get()) {
                 report.missingCountDowns.add(String.format(
                     "%s: awaited %d time(s) but only %d/%d countDown() calls were recorded",
                     state.name,

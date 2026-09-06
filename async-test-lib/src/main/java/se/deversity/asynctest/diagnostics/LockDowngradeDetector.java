@@ -104,6 +104,13 @@ public class LockDowngradeDetector {
         boolean gapOpen;
         /** {@link LockState#writeAcquireGeneration} at the moment the gap opened. */
         long gapOpenedAtGeneration;
+        /**
+         * The invocation round the gap opened in. A gap is a claim about two adjacent operations
+         * by one thread, and the runner's latch sits between rounds: a write released in round k
+         * and a read taken in round k+n are not a downgrade, however many writers ran in between
+         * (#499).
+         */
+        long gapOpenedInEpoch;
     }
 
     private static class LockState {
@@ -128,6 +135,11 @@ public class LockDowngradeDetector {
     }
 
     private final Map<Integer, LockState> locks = new ConcurrentHashMap<>();
+    /**
+     * Current invocation round, bumped by {@link #markInvocationStart()}. Standalone use without
+     * round marks leaves every gap in epoch 0, which preserves the single-run behaviour.
+     */
+    private final AtomicLong invocationEpoch = new AtomicLong();
 
     /**
      * Where to send upgrade observations instead of reporting them here, or {@code null} to
@@ -205,7 +217,8 @@ public class LockDowngradeDetector {
         // recorded additively so the write hold is not forgotten.
         state.threadHolds.compute(tid, (k, h) -> {
             if (h == null) h = new Holds();
-            if (h.gapOpen && h.read == 0 && h.write == 0) {
+            if (h.gapOpen && h.read == 0 && h.write == 0
+                    && h.gapOpenedInEpoch == invocationEpoch.get()) {
                 // The second half of an unsafe downgrade: the write lock was released and the
                 // read lock is being taken now, with nothing of this thread's in between.
                 state.downgradeShapes.incrementAndGet();
@@ -289,11 +302,24 @@ public class LockDowngradeDetector {
                     // downgrade takes the read lock first, so h.read > 0 here and nothing opens.
                     h.gapOpen = true;
                     h.gapOpenedAtGeneration = state.writeAcquireGeneration.get();
+                    h.gapOpenedInEpoch = invocationEpoch.get();
                     return h;
                 }
                 h.gapOpen = false;
                 return h;
             });
+    }
+
+    /**
+     * Marks the start of a new invocation round.
+     *
+     * <p>Called by {@code ConcurrencyRunner} before each round. A downgrade gap opened in an
+     * earlier round is no longer closed by this round's read lock.
+     *
+     * @since 1.11.2
+     */
+    public void markInvocationStart() {
+        invocationEpoch.incrementAndGet();
     }
 
     /**
