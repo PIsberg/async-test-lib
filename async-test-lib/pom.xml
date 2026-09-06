@@ -254,6 +254,24 @@
                              and are expensive under repeated forked execution -->
                         <param>se.deversity.asynctest.fuzz.*</param>
                         <param>se.deversity.asynctest.architecture.*</param>
+                        <!-- These two wedge virtual threads permanently, on purpose: one parks
+                             them inside a class initializer, the other deadlocks a pair of them,
+                             and each is testing exactly that. Before JEP 491 (JDK 24) such a
+                             thread pins the carrier it is mounted on, and the carrier pool is
+                             sized to availableProcessors - four on a runner. A json thread dump
+                             of the hung minion counted six wedged virtual threads from these two
+                             classes alone, so the scheduler had nothing left and every later
+                             test that started a virtual thread and joined it waited forever.
+                             That is what kept the weekly gate from ever completing (#479).
+
+                             Surefire never sees this because reuseForks=false gives each class
+                             its own JVM and the pinned carriers die with the fork; pitest runs
+                             all of them in one. They cannot move to platform threads either -
+                             a virtual thread is the subject. Excluding them costs their
+                             mutation-killing contribution, which is the price of the gate
+                             producing any number at all. -->
+                        <param>se.deversity.asynctest.diagnostics.StaticInitSampleSeesVirtualThreadsTest</param>
+                        <param>se.deversity.asynctest.diagnostics.VirtualThreadLockGraphTest</param>
                     </excludedTestClasses>
                     <threads>4</threads>
                     <!-- Surefire's argLine contains JaCoCo's late-bound @{argLine} which

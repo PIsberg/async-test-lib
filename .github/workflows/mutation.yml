@@ -64,23 +64,40 @@ jobs:
       # (a bare goal in the reactor resolves siblings from the repository). Scoped to
       # async-test-lib: it is the only module with a pitest configuration, and the only one
       # whose tests are a mutation-killing suite.
-      # The sampler is here because this job has never once completed (#479). Three runs, on
-      # 2026-08-16, -23 and -30, each died about 19 minutes in, during the coverage phase, with
-      # the runner shut down rather than the job timing out - and nothing in the log said why,
-      # because nothing in it reported the machine's state.
+      # The sampler and watchdog below are what diagnosed #479, and they stay. This job had
+      # never once completed: three runs, on 2026-08-16, -23 and -30, each died about 19 minutes
+      # in during the coverage phase, with the runner shut down rather than the job timing out,
+      # and nothing in the log said why because nothing in it reported the machine's state.
       #
-      # It prints to this step's own stdout rather than to a file, deliberately: an uploaded
-      # artifact needs a post-step, and there is no post-step after the VM is killed, so the
-      # last SAMPLE line in the job log is the only evidence that survives that ending.
+      # They print to this step's own stdout rather than to a file, deliberately: an uploaded
+      # artifact needs a post-step, and there is no post-step after the VM is killed, so the last
+      # SAMPLE line in the job log is the only evidence that survives that ending.
       #
-      # The mvn command and every JVM flag below are unchanged from before the sampler, and
-      # should stay that way while #479 is open: tuning the run would change the thing being
-      # measured. Note the sampler is not known to be inert - what preceded every kill was 13
-      # minutes of total silence, and a line every 15 seconds may itself be why the first
-      # instrumented run outlived the three that died. Deciding that needs the unmodified
-      # workflow re-run for comparison, which is what #479 tracks.
+      # The cause was virtual-thread carrier starvation, not the memory exhaustion first
+      # suspected - see the pom's excludedTestClasses for the two classes that wedged six virtual
+      # threads against a four-carrier pool. The load average is the field to read first: 0.00
+      # through a quiet stretch means blocked, and a healthy mutation phase runs at 5-6.
       - name: Run mutation coverage (fails below the pom's mutationThreshold)
         run: |
+          # The sampler, and a watchdog beside it.
+          #
+          # What the first instrumented run (33778474051) established, and what it ruled out:
+          # over three hours after the coverage phase went quiet, used memory moved 1652 -> 2344
+          # MB of 16 GB, swap stayed at 0, OS threads stayed near 320, and the load average sat
+          # at 0.00. So the minion is BLOCKED, not thrashing, and the accumulation hypothesis in
+          # #479 - deadlocked threads piling up until the kernel kills the VM - is refuted by its
+          # own numbers. A local full run on a fast box does not reproduce it either: coverage
+          # finishes in 77 seconds there.
+          #
+          # What is still unknown is what the minion is blocked ON, and the only artefact that
+          # answers it is a thread dump of the blocked JVM. The watchdog below takes one, once,
+          # after four minutes without a line from mvn, and prints it to this step's stdout. To
+          # stdout rather than an uploaded artifact on purpose: there is no post-step after the
+          # VM is killed, so the job log is the only place evidence survives that ending.
+          LOG="$RUNNER_TEMP/mvn.log"
+          DUMPED="$RUNNER_TEMP/jstack.done"
+          : > "$LOG"
+
           (
             while true; do
               used=$(free -m | sed -n '2p' | awk '{print $3}')
@@ -90,13 +107,44 @@ jobs:
               javas=$(pgrep -c java || true)
               disk=$(df -m / | tail -1 | awk '{print $4}')
               load=$(cut -d' ' -f1-3 /proc/loadavg)
-              echo "SAMPLE $(date -u +%H:%M:%S) used_mb=$used avail_mb=$avail swap_mb=$swap os_threads=$threads java_procs=$javas root_avail_mb=$disk load=$load"
+              quiet=$(( $(date +%s) - $(stat -c %Y "$LOG") ))
+              echo "SAMPLE $(date -u +%H:%M:%S) used_mb=$used avail_mb=$avail swap_mb=$swap os_threads=$threads java_procs=$javas root_avail_mb=$disk quiet_for=${quiet}s load=$load"
+
+              # Four minutes without a line from mvn. The three runs that died had thirteen
+              # minutes of silence before the kill, and the coverage phase's own quiet stretches
+              # are far shorter than this, so the threshold separates the hang from ordinary
+              # work. Taken once - a second dump of the same blocked JVM says nothing new and
+              # would bury the first.
+              if [ "$quiet" -gt 240 ] && [ ! -f "$DUMPED" ]; then
+                touch "$DUMPED"
+                echo "=== WATCHDOG: no mvn output for ${quiet}s; dumping every JVM ==="
+                for pid in $(jps -q 2>/dev/null || true); do
+                  echo "########## jstack -l $pid ##########"
+                  jstack -l "$pid" 2>&1 || echo "(jstack failed for $pid)"
+                  # jstack shows carriers but not the virtual threads mounted on them, and the
+                  # first dump ended exactly there: all four ForkJoinPool carriers reported
+                  # "Carrying virtual thread #NNNN" inside Continuation.run, with no way to see
+                  # what those four were blocked in. Thread.dump_to_file enumerates virtual
+                  # threads with their stacks, which is what names the subjects that pin.
+                  echo "########## jcmd $pid Thread.dump_to_file ##########"
+                  if jcmd "$pid" Thread.dump_to_file -format=json -overwrite                           "$RUNNER_TEMP/threads-$pid.json" >/dev/null 2>&1; then
+                    cat "$RUNNER_TEMP/threads-$pid.json" 2>&1 || true
+                  else
+                    echo "(Thread.dump_to_file failed for $pid)"
+                  fi
+                done
+                echo "=== WATCHDOG: dump complete ==="
+              fi
               sleep 15
             done
           ) &
           sampler=$!
           trap 'kill $sampler 2>/dev/null || true' EXIT
-          mvn -B -pl async-test-lib -am test-compile org.pitest:pitest-maven:mutationCoverage -Djacoco.skip=true
+
+          # tee so the watchdog can measure silence by the log's mtime. pipefail because a pipe
+          # otherwise reports tee's status and would turn a failed mutation run green.
+          set -o pipefail
+          mvn -B -pl async-test-lib -am test-compile org.pitest:pitest-maven:mutationCoverage -Djacoco.skip=true 2>&1 | tee "$LOG"
 
       - name: Upload PIT mutation report
         if: always()
