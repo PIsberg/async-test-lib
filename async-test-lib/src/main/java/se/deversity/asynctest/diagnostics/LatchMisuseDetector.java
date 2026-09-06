@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>Reachable from a test via {@code AsyncTestContext.latchMisuseDetector()} when
  * {@link se.deversity.asynctest.DetectorType#LATCH_MISUSE} is enabled.
  *
- * <h4>The weaving boundary</h4>
+ * <h2>The weaving boundary</h2>
  *
  * <p>This detector counts what it was told about. Without the agent that is what the test called
  * explicitly; with it, what the agent wove. A latch counted down inside code the agent never
