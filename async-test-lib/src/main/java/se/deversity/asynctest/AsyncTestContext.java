@@ -818,6 +818,9 @@ public final class AsyncTestContext {
         if (registry.sharedMemorySegmentRaceDetector != null) {
             registry.sharedMemorySegmentRaceDetector.markInvocationStart();
         }
+        if (completableFutureCancellationPropagationDetector != null) {
+            completableFutureCancellationPropagationDetector.markInvocationStart();
+        }
     }
 
     /**

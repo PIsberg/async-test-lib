@@ -6,6 +6,7 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -48,9 +49,22 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>The pipeline label is what ties a cancel to the stages it should have stopped, so it must
  * name one pipeline instance. Under {@code @AsyncTest} every worker builds its own, and a shared
- * literal would let one worker's cancel be matched against another worker's stages: derive the
- * label per instance (a request id, or {@code Thread.currentThread().getName()}) unless the
- * workers really do feed one shared future.
+ * literal makes them all record into one state: derive the label per instance (a request id, or
+ * {@code Thread.currentThread().getName()}) unless the workers really do feed one shared future.
+ *
+ * <p>Two scoping rules keep a shared label from convicting healthy code, and they are the reason
+ * a bare literal is merely imprecise rather than wrong:
+ * <ul>
+ *   <li>A cancel is only matched against stages recorded in the <em>same round</em>. The runner
+ *       orders rounds through the worker latch, so a stage in round k+1 cannot be downstream of a
+ *       cancel in round k.</li>
+ *   <li>A completion is not reported when the thread that recorded it cancelled something on the
+ *       same pipeline <em>afterwards</em>: that thread's stage finished before that thread
+ *       cancelled anything. The cost is a false negative in the unusual single-threaded shape
+ *       where one thread cancels, lets a stage finish, and then cancels again on the same
+ *       pipeline. The flagship true positive is untouched, because there the stage body runs on a
+ *       pool thread while the cancel comes from the test thread.</li>
+ * </ul>
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -85,14 +99,16 @@ public final class CompletableFutureCancellationPropagationDetector {
     private static final String COMPLETED = "completed";
     private static final class CancelEvent {
         final long    seq;
+        final long    epoch;
         final String  futureLabel;
         final String  threadName;
         final boolean mayInterruptIfRunning;
         final boolean cancelReturned;
 
-        CancelEvent(long seq, String futureLabel, String threadName,
+        CancelEvent(long seq, long epoch, String futureLabel, String threadName,
                     boolean mayInterruptIfRunning, boolean cancelReturned) {
             this.seq                   = seq;
+            this.epoch                 = epoch;
             this.futureLabel           = futureLabel;
             this.threadName            = threadName;
             this.mayInterruptIfRunning = mayInterruptIfRunning;
@@ -102,12 +118,14 @@ public final class CompletableFutureCancellationPropagationDetector {
 
     private static final class WorkEvent {
         final long   seq;
+        final long   epoch;
         final String stageLabel;
         final String threadName;
         final String kind;   // "started" or "completed"
 
-        WorkEvent(long seq, String stageLabel, String threadName, String kind) {
+        WorkEvent(long seq, long epoch, String stageLabel, String threadName, String kind) {
             this.seq        = seq;
+            this.epoch      = epoch;
             this.stageLabel = stageLabel;
             this.threadName = threadName;
             this.kind       = kind;
@@ -124,6 +142,14 @@ public final class CompletableFutureCancellationPropagationDetector {
 
     private final Map<String, PipelineState> pipelines = new ConcurrentHashMap<>();
     private final AtomicLong                 sequence  = new AtomicLong();
+    /**
+     * Current invocation round, bumped by {@link #markInvocationStart()}. A cancel is only ever
+     * matched against stages recorded in the same round: the runner orders rounds (the round's
+     * worker latch, then the next round's submissions), so a stage in round k+1 cannot be
+     * downstream of a cancel in round k. Standalone use without round marks leaves every event
+     * in epoch 0, which preserves the single-run behaviour.
+     */
+    private final AtomicLong                 invocationEpoch = new AtomicLong();
     private volatile boolean                 enabled   = true;
 
     /**
@@ -157,7 +183,7 @@ public final class CompletableFutureCancellationPropagationDetector {
                              boolean mayInterruptIfRunning, boolean cancelReturned, Thread thread) {
         if (!enabled || thread == null) return;
         state(pipeline).cancels.add(new CancelEvent(
-                sequence.incrementAndGet(),
+                sequence.incrementAndGet(), invocationEpoch.get(),
                 futureLabel != null ? futureLabel : "future",
                 thread.getName(), mayInterruptIfRunning, cancelReturned));
     }
@@ -196,7 +222,7 @@ public final class CompletableFutureCancellationPropagationDetector {
     private void recordWork(String pipeline, String stageLabel, Thread thread, String kind) {
         if (!enabled || thread == null) return;
         state(pipeline).work.add(new WorkEvent(
-                sequence.incrementAndGet(),
+                sequence.incrementAndGet(), invocationEpoch.get(),
                 stageLabel != null ? stageLabel : "stage",
                 thread.getName(), kind));
     }
@@ -204,6 +230,19 @@ public final class CompletableFutureCancellationPropagationDetector {
     private PipelineState state(String pipeline) {
         String key = pipeline != null ? pipeline : "pipeline";
         return pipelines.computeIfAbsent(key, PipelineState::new);
+    }
+
+    /**
+     * Marks the start of a new invocation round.
+     *
+     * <p>Called by {@code ConcurrencyRunner} before each round. Cancels and stage events carry the
+     * round they were recorded in, and analysis never pairs a completion with a cancel from an
+     * earlier round.
+     *
+     * @since 1.11.2
+     */
+    public void markInvocationStart() {
+        invocationEpoch.incrementAndGet();
     }
 
     /** Turn recording off; already-recorded events are kept. */
@@ -228,21 +267,45 @@ public final class CompletableFutureCancellationPropagationDetector {
             List<CancelEvent> cancels = new ArrayList<>(p.cancels);
             if (cancels.isEmpty()) continue;
 
-            CancelEvent firstCancel = cancels.get(0);
+            // The earliest cancel in each round, and the last cancel each thread made in each
+            // round. Both are per round, because the runner orders rounds and a cancel in round k
+            // can say nothing about a stage in round k+1 (#495).
+            Map<Long, CancelEvent> firstCancelInRound = new HashMap<>();
+            Map<Long, Map<String, Long>> lastCancelByThreadInRound = new HashMap<>();
             for (CancelEvent c : cancels) {
-                if (c.seq < firstCancel.seq) firstCancel = c;
+                firstCancelInRound.merge(c.epoch, c, (a, b) -> a.seq <= b.seq ? a : b);
+                lastCancelByThreadInRound
+                        .computeIfAbsent(c.epoch, k -> new HashMap<>())
+                        .merge(c.threadName, c.seq, Math::max);
             }
-            long firstCancelSeq = firstCancel.seq;
 
             List<WorkEvent> finishedAfter = new ArrayList<>();
+            CancelEvent firstCancel = null;
             int startedAfter = 0;
             for (WorkEvent w : p.work) {
-                if (w.seq <= firstCancelSeq) continue;
-                if (COMPLETED.equals(w.kind)) finishedAfter.add(w);
-                else startedAfter++;
+                CancelEvent roundCancel = firstCancelInRound.get(w.epoch);
+                if (roundCancel == null || w.seq <= roundCancel.seq) continue;
+                if (!COMPLETED.equals(w.kind)) {
+                    startedAfter++;
+                    continue;
+                }
+                // A thread whose own cancel came after this completion finished the stage before
+                // it cancelled anything, so nothing of that thread's ran past a cancellation. When
+                // workers share a pipeline label they record into one state, and without this an
+                // earlier worker's cancel convicts a later worker's healthy stage. The true
+                // positive is untouched: there the body runs on a pool thread while the cancel
+                // comes from the test thread, so the two never match.
+                Long ownCancelSeq = lastCancelByThreadInRound
+                        .getOrDefault(w.epoch, Map.of()).get(w.threadName);
+                if (ownCancelSeq != null && ownCancelSeq > w.seq) continue;
+                finishedAfter.add(w);
+                if (firstCancel == null || roundCancel.seq < firstCancel.seq) {
+                    firstCancel = roundCancel;
+                }
             }
 
-            if (!finishedAfter.isEmpty()) {
+            CancelEvent blamed = firstCancel;
+            if (blamed != null && !finishedAfter.isEmpty()) {
                 Set<String> stages = new LinkedHashSet<>();
                 Set<String> threads = new LinkedHashSet<>();
                 for (WorkEvent w : finishedAfter) {
@@ -257,7 +320,7 @@ public final class CompletableFutureCancellationPropagationDetector {
                         "Pipeline '%s': %d stage(s) ran to completion after '%s' was cancelled by thread '%s' "
                         + "- [%s] on thread(s) %s%s. cancel() completes only the future it is called on; the "
                         + "stage feeding it kept running, so its side effects still landed.",
-                        p.name, finishedAfter.size(), firstCancel.futureLabel, firstCancel.threadName,
+                        p.name, finishedAfter.size(), blamed.futureLabel, blamed.threadName,
                         String.join(", ", stages), String.join(", ", threads), startedNote);
                 r.violations.add(msg);
                 r.structuredViolations.add(new Violation(
@@ -267,8 +330,8 @@ public final class CompletableFutureCancellationPropagationDetector {
                         List.of(),
                         Map.of(
                                 "pipeline", p.name,
-                                "cancelledFuture", firstCancel.futureLabel,
-                                "cancelledBy", firstCancel.threadName,
+                                "cancelledFuture", blamed.futureLabel,
+                                "cancelledBy", blamed.threadName,
                                 "eventsAfterCancel", finishedAfter.size(),
                                 "startedAfterCancel", startedAfter,
                                 "stages", String.join(",", stages)

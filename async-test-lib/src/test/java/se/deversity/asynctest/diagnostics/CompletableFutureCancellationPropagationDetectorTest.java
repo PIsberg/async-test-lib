@@ -148,6 +148,54 @@ class CompletableFutureCancellationPropagationDetectorTest {
     }
 
     @Test
+    void aLaterRoundsWorkIsNotMatchedAgainstAnEarlierRoundsCancel() throws Exception {
+        var d = new CompletableFutureCancellationPropagationDetector();
+        var view = new CompletableFuture<String>();
+
+        // Round 1: the pipeline is cancelled and the stage cooperates, so nothing completes.
+        d.cancel(view, "report", "view", false);
+
+        d.markInvocationStart();
+
+        // Round 2: a fresh pipeline under the same label runs to completion, never cancelled.
+        d.recordWorkStarted("report", "fetch", here());
+        d.recordWorkCompleted("report", "fetch", here());
+
+        var report = d.analyze();
+        assertTrue(report.violations.stream().noneMatch(v -> v.contains("ran to completion")),
+                "the runner orders rounds, so round 2's stage cannot be downstream of round 1's "
+                        + "cancel: " + report.violations);
+    }
+
+    @Test
+    void aThreadThatCancelsAfterItsOwnStageFinishedIsNotReported() throws Exception {
+        var d = new CompletableFutureCancellationPropagationDetector();
+        var first = new CompletableFuture<String>();
+        var second = new CompletableFuture<String>();
+
+        // Worker A cancels its own pipeline early. Under @AsyncTest both workers share the
+        // label, so A's cancel lands in the same state B records into.
+        Thread a = new Thread(() -> d.cancel(first, "report", "view", false), "worker-a");
+        a.start();
+        a.join();
+
+        // Worker B's stage finished before B cancelled anything: B's pipeline behaved.
+        Thread b = new Thread(() -> {
+            d.recordWorkStarted("report", "fetch", Thread.currentThread());
+            d.recordWorkCompleted("report", "fetch", Thread.currentThread());
+            d.cancel(second, "report", "view", false);
+        }, "worker-b");
+        b.start();
+        b.join();
+
+        var report = d.analyze();
+        assertTrue(report.violations.stream().noneMatch(v -> v.contains("ran to completion")),
+                "worker-b completed its stage before worker-b cancelled, so nothing of b's ran "
+                        + "past a cancellation; only worker-a's earlier cancel makes it look that "
+                        + "way: " + report.violations);
+    }
+
+    @Test
     void cancelReturnValueIsRecorded() {
         var d = new CompletableFutureCancellationPropagationDetector();
         var already = CompletableFuture.completedFuture("done");

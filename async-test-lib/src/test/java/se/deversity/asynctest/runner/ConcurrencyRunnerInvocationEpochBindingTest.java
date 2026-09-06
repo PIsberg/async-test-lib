@@ -147,6 +147,59 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
                 "a get followed by a set on one thread in one round must be reported: " + REPORTS.keySet());
     }
 
+    /** Cancel in round one, an untouched pipeline running to completion in round two. */
+    public static class CfCrossRoundOnly {
+        static final AtomicInteger EXECUTIONS = new AtomicInteger();
+
+        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
+                   detectCompletableFutureCancellationPropagation = true)
+        void body() {
+            int n = EXECUTIONS.getAndIncrement();
+            var d = AsyncTestContext.cfCancellationPropagationDetector();
+            if (n == 0) {
+                d.cancel(new java.util.concurrent.CompletableFuture<String>(), "report", "view", false);
+            } else {
+                d.recordWorkStarted("report", "fetch", Thread.currentThread());
+                d.recordWorkCompleted("report", "fetch", Thread.currentThread());
+            }
+        }
+    }
+
+    /** The same cancel and completion inside one round: the pair that must still be reported. */
+    public static class CfSameRound {
+        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = false,
+                   detectCompletableFutureCancellationPropagation = true)
+        void body() {
+            var d = AsyncTestContext.cfCancellationPropagationDetector();
+            d.cancel(new java.util.concurrent.CompletableFuture<String>(), "report", "view", false);
+            d.recordWorkStarted("report", "fetch", Thread.currentThread());
+            d.recordWorkCompleted("report", "fetch", Thread.currentThread());
+        }
+    }
+
+    @Test
+    @DisplayName("a cancel in one round does not convict a stage that completed in the next")
+    void cfCrossRoundCompletionIsNotReported() {
+        run(CfCrossRoundOnly.class);
+        String report = REPORTS.get("CompletableFutureCancellationPropagationDetector");
+        assertTrue(report == null || !report.contains("ran to completion"),
+                "round two's stage was matched against round one's cancel. The runner orders "
+                        + "rounds, so it cannot be downstream of that cancel; the detector only "
+                        + "knows that because AsyncTestContext.markInvocationStart reaches it "
+                        + "(#495). Report: " + report);
+    }
+
+    @Test
+    @DisplayName("the same cancel and completion inside one round are reported, so the silence above is not vacuous")
+    void cfSameRoundCompletionIsReported() {
+        run(CfSameRound.class);
+        String report = REPORTS.get("CompletableFutureCancellationPropagationDetector");
+        assertTrue(report != null && report.contains("ran to completion"),
+                "a stage completing after a cancel in the same round must be reported; if this is "
+                        + "silent the recording never reached the detector and the cross-round test "
+                        + "proves nothing. Reports: " + REPORTS.keySet() + " -> " + report);
+    }
+
     private static void run(Class<?> fixture) {
         REPORTS.clear();
         AsyncTestListener capture = new AsyncTestListener() {
