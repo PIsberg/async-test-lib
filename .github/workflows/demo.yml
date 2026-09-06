@@ -1,26 +1,26 @@
 name: Update demo GIF
 
+# Weekly, and on demand. It used to run on every qualifying merge to main, and since the
+# recording is a live capture of a running JVM it proposed a pull request every time: five
+# such commits landed between 2026-08-28 and 2026-09-03, each a diff of one binary and
+# fourteen timing lines (#486). The comparison below now normalises the cast before deciding,
+# which fixes the cause; the schedule bounds the rate as well, so a masking pattern that turns
+# out to be too narrow costs one pull request a week rather than one per merge.
+#
+# Dispatch it by hand before a release, when the demo's output is the actual question.
 on:
-  push:
-    branches: [main]
-    paths:
-      # 'src/**' used to sit here and matched nothing: there has been no
-      # top-level src/ since the repository became a reactor, so a library
-      # change never re-recorded the demo the library is the subject of.
-      # Main sources only - a test change cannot alter what the demo prints.
-      - 'async-test-lib/src/main/**'
-      - 'tools/**'
-      - '.github/workflows/demo.yml'
+  schedule:
+    - cron: '0 3 * * 1'   # Mondays 03:00 UTC
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Back-to-back merges to main each trigger a recording; only the newest
-# result matters, so drop superseded runs instead of racing them.
+# Only the newest recording matters, so drop a superseded run instead of racing it. Not
+# cancel-in-progress on a schedule, where there is nothing to supersede.
 concurrency:
   group: demo-gif
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
 
 jobs:
   record:
@@ -63,21 +63,45 @@ jobs:
           sed -i "s/<asynctest.version>.*<\/asynctest.version>/<asynctest.version>${VERSION}<\/asynctest.version>/" \
             tools/demo/pom.xml
 
+      # Recorded beside the committed cast rather than over it, so the comparison below has
+      # both to look at and an unchanged demo leaves the working tree untouched.
       - name: Record demo
         run: |
-          asciinema rec docs/diagrams/demo.cast \
+          asciinema rec "$RUNNER_TEMP/demo.cast" \
             --command "bash tools/demo-commands.sh" \
             --cols 82 --rows 26 \
             --overwrite
 
-      - name: Convert cast to GIF
+      # The decision, and the whole point of #486. A cast is a live capture: its header carries
+      # the recording's wall clock, every event is prefixed with elapsed seconds, the split into
+      # events follows PTY read timing, and the demo records an actual race that lands
+      # differently each run. Comparing bytes therefore always differs. normalise-cast.py reduces
+      # a cast to the text the demo says, with those four things masked; measured on the two
+      # recordings from #483, 35 differing raw lines come out identical.
+      - name: Decide whether the demo output actually changed
+        id: compare
         run: |
+          set -euo pipefail
+          python3 tools/demo/normalise-cast.py docs/diagrams/demo.cast > "$RUNNER_TEMP/committed.txt"
+          python3 tools/demo/normalise-cast.py "$RUNNER_TEMP/demo.cast" > "$RUNNER_TEMP/fresh.txt"
+          if diff -u "$RUNNER_TEMP/committed.txt" "$RUNNER_TEMP/fresh.txt"; then
+            echo "The demo says the same thing it said before - nothing to propose."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Convert cast to GIF
+        if: steps.compare.outputs.changed == 'true'
+        run: |
+          cp "$RUNNER_TEMP/demo.cast" docs/diagrams/demo.cast
           agg docs/diagrams/demo.cast docs/diagrams/demo.gif \
             --font-size 14 \
             --speed 1.2 \
             --idle-time-limit 3
 
       - name: Propose the regenerated GIF as a pull request
+        if: steps.compare.outputs.changed == 'true'
         # This step used to push straight to main, and had failed on every run
         # since branch protection went on: GH006, "Changes must be made through
         # a pull request". Its retry loop could not have helped either - it
@@ -96,11 +120,6 @@ jobs:
           # The version stamp is a build-time mutation, not something to commit,
           # and leaving it dirty is what broke the old rebase.
           git checkout -- tools/demo/pom.xml
-
-          if ! git status --porcelain docs/diagrams/demo.cast docs/diagrams/demo.gif | grep -q .; then
-            echo "GIF unchanged - nothing to propose"
-            exit 0
-          fi
 
           BRANCH=chore/demo-gif
           git config user.name "github-actions[bot]"
