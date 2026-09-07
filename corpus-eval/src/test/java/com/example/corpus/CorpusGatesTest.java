@@ -1,0 +1,344 @@
+package com.example.corpus;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.opentest4j.AssertionFailedError;
+
+import se.deversity.asynctest.DetectorType;
+import se.deversity.asynctest.diagnostics.DetectorFeed;
+import se.deversity.asynctest.diagnostics.IssueSeverity;
+import se.deversity.asynctest.diagnostics.TrustTier;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+/**
+ * Shows that {@link CorpusGates} can fail, one gate at a time.
+ *
+ * <p>Every number this module publishes is trusted because a gate would have caught it being
+ * wrong, and nothing checked that any gate could catch anything. A gate here is a stream filtered
+ * down to a list that must be empty, which is the shape that passes silently once the filter stops
+ * matching: rename what a {@code Violation} carries as its detector, or change how a subject is
+ * attributed, and several of these would go green over an input they exist to reject. The lanes
+ * cannot notice, because a lane that is behaving produces exactly the input a broken gate also
+ * accepts.
+ *
+ * <p>The module recognised this once by hand already:
+ * {@code everyCorpusBackedVerdictResolvesToItsPair} asserts {@code lines > 0} with the message
+ * "this gate passed by reading nothing". This class is that idea applied to every gate whose input
+ * can be synthesised.
+ *
+ * <p>Each test feeds one gate the minimal input it must reject and asserts it throws. Where the
+ * gate is meant to be selective rather than absolute, a second test feeds it the neighbouring
+ * input it must accept: a gate that throws on everything is no more use than one that throws on
+ * nothing, and only the pair tells them apart.
+ *
+ * <p><strong>What this does not cover.</strong> Four gates read only static module state, so their
+ * failing direction cannot be induced without mutating {@link Corpus} or a lane's source:
+ * {@code everySubjectIsExercised}, {@code everySilentRowReachesItsDetector},
+ * {@code everyCorpusBackedVerdictResolvesToItsPair} and {@code noAgentRowRecordedItsOwnFinding}.
+ * {@code everyPairedDetectorIsExposed} is uncovered from the other side: no lane exists in which a
+ * paired detector is unexposed, so the input that would fail it cannot be built.
+ * {@code docs/analysis/corpus-eval-future-improvements.md} records both.
+ *
+ * <p>It runs in the agent-on lane because it needs no measurement, only the gate code and the
+ * static corpus. That the agent is attached in that fork is itself used once, by the test that
+ * holds the control lane's attachment gate to rejecting an attached JVM.
+ */
+class CorpusGatesTest {
+
+    // --- Attribution -------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("a finding attributed to no subject fails the attribution gate")
+    void anOrphanFindingFailsAttribution() {
+        assertThrows(AssertionFailedError.class, () -> CorpusGates.everyFindingIsAttributed(
+                List.of(finding("no_such_subject_exists", someDetectorClass())), List.of()));
+    }
+
+    @Test
+    @DisplayName("a finding attributed to a real subject passes it")
+    void anAttributedFindingPassesAttribution() {
+        assertDoesNotThrow(() -> CorpusGates.everyFindingIsAttributed(
+                List.of(finding(aSubjectWith(Contract.NOT_THREAD_SAFE).testMethod(),
+                        someDetectorClass())), List.of()));
+    }
+
+    @Test
+    @DisplayName("a recording finding attributed to no row fails the recording attribution gate")
+    void anOrphanRecordingFindingFailsAttribution() {
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everyRecordingFindingIsAttributed(
+                        List.of(finding("no_such_row_exists", someDetectorClass())),
+                        CorpusLane.RECORDING));
+    }
+
+    // --- False positives ---------------------------------------------------------------------
+
+    @Test
+    @DisplayName("a VERDICT/CRITICAL finding on documented-safe code fails the false-positive gate")
+    void aVerdictFindingOnSafeCodeFailsTheFalsePositiveGate() {
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.noFalsePositiveOnDocumentedThreadSafeCode(List.of(
+                        finding(aSubjectWith(Contract.THREAD_SAFE).testMethod(),
+                                someDetectorClass(), TrustTier.VERDICT, IssueSeverity.CRITICAL))));
+    }
+
+    @Test
+    @DisplayName("the same finding on documented-unsafe code passes, so the gate reads the contract")
+    void theSameFindingOnUnsafeCodePasses() {
+        assertDoesNotThrow(
+                () -> CorpusGates.noFalsePositiveOnDocumentedThreadSafeCode(List.of(
+                        finding(aSubjectWith(Contract.NOT_THREAD_SAFE).testMethod(),
+                                someDetectorClass(), TrustTier.VERDICT, IssueSeverity.CRITICAL))));
+    }
+
+    // --- Exposure ----------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("a detector the feed table cannot feed here fails the exposure gate by reporting")
+    void anUnexposedDetectorReportingFailsTheExposureGate() {
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everyReportingDetectorWasExposed(
+                        List.of(finding(aSubjectWith(Contract.NOT_THREAD_SAFE).testMethod(),
+                                DetectorExposure.classOf(unexposedIn(CorpusLane.AGENT_ON)))),
+                        CorpusLane.AGENT_ON));
+    }
+
+    @Test
+    @DisplayName("a detector name the trust table does not know fails it too")
+    void anUnknownDetectorNameFailsTheExposureGate() {
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everyReportingDetectorWasExposed(
+                        List.of(finding(aSubjectWith(Contract.NOT_THREAD_SAFE).testMethod(),
+                                "NoSuchDetector")),
+                        CorpusLane.AGENT_ON));
+    }
+
+    // --- Detection ---------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("a silent unsafe group fails the detection floor")
+    void aSilentGroupFailsTheDetectionFloor() {
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.theUnsafeGroupIsDetected(List.of()));
+    }
+
+    @Test
+    @DisplayName("a sweep by another detector still fails, because the two that must speak did not")
+    void aSweepByAnotherDetectorStillFailsTheDetectionGate() {
+        String other = DetectorExposure.classOf(
+                aDetectorOutside(CorpusGates.exercisedAgentDetectors()));
+        List<CorpusRecorder.Finding> everyUnsafeSubject = new ArrayList<>();
+        for (Subject subject : Corpus.subjects()) {
+            if (subject.contract() == Contract.NOT_THREAD_SAFE) {
+                everyUnsafeSubject.add(finding(subject.testMethod(), other));
+            }
+        }
+
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.theUnsafeGroupIsDetected(everyUnsafeSubject));
+    }
+
+    // --- The control lane --------------------------------------------------------------------
+
+    @Test
+    @DisplayName("an agent-fed detector speaking fails the control lane's silence gate")
+    void anAgentFedDetectorSpeakingFailsTheControlGate() {
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.theAgentFedSetIsSilentWithoutTheAgent(
+                        List.of(finding(aSubjectWith(Contract.NOT_THREAD_SAFE).testMethod(),
+                                DetectorExposure.classOf(anAgentFedDetector())))));
+    }
+
+    @Test
+    @DisplayName("the attachment gate rejects a control lane in this fork, which has the agent on")
+    void theAttachmentGateRejectsAnAttachedControlLane() {
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.theAgentIsAttachedTheWayThisLaneRequires(CorpusLane.AGENT_OFF));
+    }
+
+    @Test
+    @DisplayName("and accepts the attached lane it is running in")
+    void theAttachmentGateAcceptsTheAttachedLane() {
+        assertDoesNotThrow(
+                () -> CorpusGates.theAgentIsAttachedTheWayThisLaneRequires(CorpusLane.AGENT_ON));
+    }
+
+    // --- Pair outcomes -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("a recording lane that reported nothing fails every MUST_FIRE row")
+    void silenceEverywhereFailsTheOutcomeGate() {
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige(
+                        List.of(), CorpusLane.RECORDING));
+    }
+
+    @Test
+    @DisplayName("exactly the stated outcomes pass it")
+    void theStatedOutcomesPassTheOutcomeGate() {
+        assertDoesNotThrow(() -> CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige(
+                everyFiringRowFiring(), CorpusLane.RECORDING));
+    }
+
+    @Test
+    @DisplayName("one extra finding on a silent row's own detector fails it")
+    void oneFindingOnASilentRowFailsTheOutcomeGate() {
+        List<CorpusRecorder.Finding> findings = new ArrayList<>(everyFiringRowFiring());
+        RecordingSubject silent = aSilentRow();
+        findings.add(finding(silent.testMethod(), DetectorExposure.classOf(silent.detector())));
+
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige(
+                        findings, CorpusLane.RECORDING));
+    }
+
+    // --- Collateral silence ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("a VERDICT finding from another detector on a silent row fails the collateral gate")
+    void aVerdictCollateralFindingOnASilentRowFails() {
+        RecordingSubject silent = aSilentRow();
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.noCollateralFindingOnASilentRow(
+                        List.of(finding(silent.testMethod(),
+                                DetectorExposure.classOf(aDetectorOtherThan(silent.detector())),
+                                TrustTier.VERDICT, IssueSeverity.CRITICAL)),
+                        CorpusLane.RECORDING));
+    }
+
+    @Test
+    @DisplayName("the same finding at PROMPT tier passes, which is the bar lane one already uses")
+    void aPromptCollateralFindingOnASilentRowPasses() {
+        RecordingSubject silent = aSilentRow();
+        assertDoesNotThrow(() -> CorpusGates.noCollateralFindingOnASilentRow(
+                List.of(finding(silent.testMethod(),
+                        DetectorExposure.classOf(aDetectorOtherThan(silent.detector())),
+                        TrustTier.PROMPT, IssueSeverity.MEDIUM)),
+                CorpusLane.RECORDING));
+    }
+
+    @Test
+    @DisplayName("a VERDICT finding at LOW severity passes, as it does on a documented-safe subject")
+    void aLowSeverityVerdictCollateralFindingPasses() {
+        RecordingSubject silent = aSilentRow();
+        assertDoesNotThrow(() -> CorpusGates.noCollateralFindingOnASilentRow(
+                List.of(finding(silent.testMethod(),
+                        DetectorExposure.classOf(aDetectorOtherThan(silent.detector())),
+                        TrustTier.VERDICT, IssueSeverity.LOW)),
+                CorpusLane.RECORDING));
+    }
+
+    @Test
+    @DisplayName("a VERDICT finding on a firing row passes, since a second true positive is not noise")
+    void aCollateralFindingOnAFiringRowPasses() {
+        RecordingSubject firing = aFiringRow();
+        assertDoesNotThrow(() -> CorpusGates.noCollateralFindingOnASilentRow(
+                List.of(finding(firing.testMethod(),
+                        DetectorExposure.classOf(aDetectorOtherThan(firing.detector())),
+                        TrustTier.VERDICT, IssueSeverity.CRITICAL)),
+                CorpusLane.RECORDING));
+    }
+
+    @Test
+    @DisplayName("the stated outcomes carry no collateral, so the gate is not firing on the lane")
+    void theStatedOutcomesCarryNoCollateral() {
+        assertDoesNotThrow(() -> CorpusGates.noCollateralFindingOnASilentRow(
+                everyFiringRowFiring(), CorpusLane.RECORDING));
+    }
+
+    // --- Fixtures ----------------------------------------------------------------------------
+
+    /** {@return every MUST_FIRE row of the recording lane, reporting from its own detector} */
+    private static List<CorpusRecorder.Finding> everyFiringRowFiring() {
+        List<CorpusRecorder.Finding> findings = new ArrayList<>();
+        for (RecordingSubject subject : Corpus.subjectsFor(CorpusLane.RECORDING)) {
+            if (subject.expectation() == RecordingSubject.Expectation.MUST_FIRE) {
+                findings.add(finding(subject.testMethod(),
+                        DetectorExposure.classOf(subject.detector())));
+            }
+        }
+        return findings;
+    }
+
+    private static CorpusRecorder.Finding finding(String subject, String detectorClass) {
+        return finding(subject, detectorClass, TrustTier.PROMPT, IssueSeverity.HIGH);
+    }
+
+    private static CorpusRecorder.Finding finding(String subject,
+                                                  String detectorClass,
+                                                  TrustTier tier,
+                                                  IssueSeverity severity) {
+        return new CorpusRecorder.Finding(subject, detectorClass, severity, tier,
+                "synthetic finding built by CorpusGatesTest", "no evidence; nothing ran");
+    }
+
+    private static Subject aSubjectWith(Contract contract) {
+        return Corpus.subjects().stream()
+                .filter(subject -> subject.contract() == contract)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "the corpus holds no " + contract + " subject, so this gate cannot be "
+                                + "shown to discriminate on the contract"));
+    }
+
+    private static RecordingSubject aSilentRow() {
+        return aRowExpecting(RecordingSubject.Expectation.MUST_STAY_SILENT);
+    }
+
+    private static RecordingSubject aFiringRow() {
+        return aRowExpecting(RecordingSubject.Expectation.MUST_FIRE);
+    }
+
+    private static RecordingSubject aRowExpecting(RecordingSubject.Expectation expectation) {
+        return Corpus.subjectsFor(CorpusLane.RECORDING).stream()
+                .filter(subject -> subject.expectation() == expectation)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "the recording lane has no " + expectation + " row"));
+    }
+
+    /** {@return any detector the trust table knows, where which one is beside the point} */
+    private static String someDetectorClass() {
+        return DetectorExposure.classOf(DetectorType.values()[0]);
+    }
+
+    private static DetectorType aDetectorOtherThan(DetectorType type) {
+        for (DetectorType candidate : DetectorType.values()) {
+            if (candidate != type) {
+                return candidate;
+            }
+        }
+        throw new IllegalStateException("the library ships one detector, so nothing is collateral");
+    }
+
+    private static DetectorType aDetectorOutside(Set<DetectorType> excluded) {
+        for (DetectorType candidate : DetectorType.values()) {
+            if (!excluded.contains(candidate)) {
+                return candidate;
+            }
+        }
+        throw new IllegalStateException("every detector is one the detection gate holds to firing");
+    }
+
+    private static DetectorType anAgentFedDetector() {
+        return DetectorExposure.fedBy(DetectorFeed.AGENT).stream()
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("no detector is agent-fed"));
+    }
+
+    private static DetectorType unexposedIn(CorpusLane lane) {
+        for (DetectorType candidate : DetectorType.values()) {
+            if (!DetectorExposure.isExposed(candidate, lane)) {
+                return candidate;
+            }
+        }
+        throw new IllegalStateException(
+                lane + " exposes every detector, so the exposure gate cannot be shown to fail");
+    }
+}

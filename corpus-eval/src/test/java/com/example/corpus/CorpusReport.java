@@ -175,6 +175,7 @@ final class CorpusReport {
                     .append(subject.rationale()).append(".\n");
         }
 
+        out.append(collateral(findings, lane));
         out.append('\n').append(recordingExposure(findings, lane));
         out.append('\n').append(recordingSummary(findings, lane));
 
@@ -290,6 +291,50 @@ final class CorpusReport {
                 + row("...that stayed silent", silentAsStated)
                 + row("Total findings", findings.size())
                 + "\n";
+    }
+
+    /**
+     * {@return what a silent row drew from a detector other than its own, or nothing}
+     *
+     * <p>The per-subject table above filters each row to the detector it names, which is what the
+     * row is a claim about. That filter used to hide the rest: a finding from any other detector
+     * on a body the corpus writes down as correct appeared in no table and failed no gate.
+     * {@code CorpusGates.noCollateralFindingOnASilentRow} fails the run for one at VERDICT tier,
+     * where the library is claiming the code is wrong. Below that tier a finding on a correct twin
+     * is a question rather than a verdict, and the answer is a judgement about a body this module
+     * wrote - so it is printed here and left to a reader instead of being asserted.
+     *
+     * <p>Empty in the recording lane, where all 118 silent rows are silent across the whole
+     * roster. The one entry the agent-pair lane prints is discussed in
+     * {@code CorpusGates.noCollateralFindingOnASilentRow}.
+     *
+     * @param findings what the detectors reported
+     * @param lane     the lane that produced them
+     */
+    private static String collateral(List<CorpusRecorder.Finding> findings, CorpusLane lane) {
+        List<CorpusRecorder.Finding> collateral =
+                CorpusGates.collateralOnSilentRows(findings, lane);
+        if (collateral.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder out = new StringBuilder();
+        out.append("\n## Collateral findings on silent rows\n\n")
+                .append("A row below states that one named detector stays silent, and another ")
+                .append("detector reported on the same body. None is at VERDICT tier, which is ")
+                .append("the tier the run fails on; each is a remark about a body whose row only ")
+                .append("ever claimed its own hazard is absent.\n\n")
+                .append("| Subject | Its row's detector | Reported by | Tier / severity |\n")
+                .append("|---|---|---|---|\n");
+        for (CorpusRecorder.Finding finding : collateral) {
+            RecordingSubject subject = Corpus.pairByTestMethod(lane, finding.subject());
+            out.append("| `").append(finding.subject()).append("` | `")
+                    .append(DetectorExposure.classOf(subject.detector())).append("` | `")
+                    .append(finding.detector()).append("` | ")
+                    .append(finding.tier()).append(" / ").append(finding.severity())
+                    .append(" |\n");
+        }
+        return out.toString();
     }
 
     /** {@return whether {@code subject}'s own detector reported on it} */

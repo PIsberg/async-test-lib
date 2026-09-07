@@ -1651,3 +1651,68 @@ the per-subject rows for that run. The tables in this document are copies of one
 second source of truth: when the two disagree, the generated files are right and this document is
 stale. Adding `debug=true` to the agent option prints every instrumented type and every class the
 JVM refused to re-weave, which is how the round-four numbers above were taken.
+
+## What the gates could not catch, and three that now can
+
+The eval's numbers are trusted because a gate would have failed had they been wrong, so it is worth
+asking periodically what a gate would have to see to fail. A sweep on 2026-09-07 ran all four lanes
+with a probe that dumped every finding rather than only the one each row names, and the difference
+between those two sets is where the answers were.
+
+**A correct twin was held silent only for its own detector.** `everySubjectGotTheOutcomeItsRecordedCallsOblige`
+matches a finding to the detector its row names, and `CorpusReport` filtered the per-subject table
+the same way. That is the whole question for a `MUST_FIRE` row and half of it for a
+`MUST_STAY_SILENT` one: a silent row is this module writing down that a use is correct, so a
+VERDICT-tier finding from any of the other 145 detectors on that body is the library saying the
+same code is wrong, and it was neither asserted nor printed.
+
+`noCollateralFindingOnASilentRow` closes it at the tier lane one already uses: VERDICT with HIGH or
+CRITICAL severity, the same bar as `CorpusReport.isFalsePositive`. The tier is not a softening, and
+the first version of this gate was written without it. That version failed immediately, on
+`agent_deadlock_noThreadBlockedOnAnother`, whose two nested monitors are held across a
+`Thread.sleep` that `SleepInLockDetector` reports at PROMPT/MEDIUM - which looked like harness
+scaffolding drawing a finding on a body meant to be clean. Removing the sleep then failed
+`AgentRowPremise`: a silent row has to go through the same substituted call sites as the twin it is
+paired with, and the firing twin sleeps. So the sleep is load-bearing, the finding is a true
+PROMPT-tier observation, and the absolute gate was wrong rather than the row. A silent row's claim
+is that its own hazard is absent, not that the body is above every remark 146 detectors could make,
+and pricing that difference is what the tier system is for.
+
+Below VERDICT the report prints what the gate does not assert. A new "Collateral findings on silent
+rows" section lists every finding a silent row drew from a detector other than its own, so the set
+is visible to a reader instead of invisible to everyone; `CorpusGates.collateralOnSilentRows` is
+shared between the gate and the report so the two cannot mean different things by "collateral".
+The recording lane prints nothing there: all 118 of its silent rows are silent across the whole
+roster, at every tier, so those rows moved from "its detector said nothing" to "nothing said
+anything" for free. The agent-pair lane prints the one row above.
+
+Firing rows are out of scope at every tier. Their bodies are wrong on purpose, so a second detector
+speaking is a second true positive: both latch detectors report the timed-out await in
+`agent_countDownLatch_awaitTimedOut`, and both are right to.
+
+**Nothing showed that a gate could fail.** `CorpusGates` is five hundred lines deciding whether
+every number here can be believed, called from four lanes, and no test anywhere fed it input it
+should reject. Almost every gate is a stream filtered down to a list that must be empty, which is
+exactly the shape that goes quietly green once the filter stops matching: rename what a `Violation`
+carries as its detector, change how a subject is attributed, and several would pass over input they
+exist to refuse. A lane cannot notice, because a lane that is behaving produces exactly the input a
+broken gate also accepts.
+
+`CorpusGatesTest` feeds each gate the minimal input it must reject and asserts it throws, and where
+a gate is meant to be selective rather than absolute it also feeds it the neighbouring input it
+must accept. A VERDICT/CRITICAL finding on a documented-safe subject fails the false-positive gate;
+the identical finding on a documented-unsafe subject passes it, and only the pair shows the gate is
+reading the contract rather than the tier. Five gates are still uncovered, for two different
+reasons, and both are written down in
+[corpus-eval-future-improvements.md](corpus-eval-future-improvements.md) rather than left as a
+comment.
+
+**"Add subjects in pairs" was a rule with no gate.** `Corpus.pairedDetectors` counts a detector as
+paired if any row names it, direction ignored, so a lone `MUST_FIRE` row satisfied
+`EveryDetectorIsPairedOrRefusedTest` - passed, as the README itself points out, by any detector
+that fires on everything. All 129 detectors the pair lanes name happen to have both halves, so the
+new check costs nothing today and is purely a ratchet; that is the point. The rule was true by
+discipline, and discipline is what a gate is for.
+
+The rest of that sweep, the parts not closed here, is
+[corpus-eval-future-improvements.md](corpus-eval-future-improvements.md).

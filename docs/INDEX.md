@@ -133,6 +133,7 @@ document says so rather than being edited in place.
 |----------|---------|
 | [analysis/detector-accuracy-eval.md](analysis/detector-accuracy-eval.md) | Measured detector behavior on buggy code vs its synchronized twin, enforced by `DetectorAccuracyEvalTest` |
 | [analysis/corpus-eval.md](analysis/corpus-eval.md) | Measured detector behavior on 82 subjects with a documented thread-safety contract, with the exposure denominator every rate is over, produced by the standalone `corpus-eval` module and its own `corpus.yml` workflow |
+| [analysis/corpus-eval-future-improvements.md](analysis/corpus-eval-future-improvements.md) | What the corpus eval does not gate yet, found by the 2026-09-07 sweep: severity is unpinned on a firing row, five gates have no failing-direction test, the module README's own counts are unchecked, and a refusal is reviewed by nothing |
 | [analysis/regression-sweep.md](analysis/regression-sweep.md) | What the downstream sweep is, the failure each of its rules prevents, and the result of the latest run: three unrelated consuming projects run against the artifact on Maven Central |
 | [analysis/vibe-architecture-scorecard.md](analysis/vibe-architecture-scorecard.md) | Self-audit against the *Vibe Architecture* health scorecard (2026-08-15): 42 to 56 of 66, what each gate enforces, and the deferred decisions |
 
