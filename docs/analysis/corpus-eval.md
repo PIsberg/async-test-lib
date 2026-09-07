@@ -1735,8 +1735,8 @@ green every night and changed nothing.
 both halves, which is the bar this document already states. Four do not and stay held back on the
 rule that held three back in the first wave. Of the 116, a further filter applies in the recording
 lane: both halves must reach the detector through the same `record*`/`register*` methods, so that
-what separates them is the state the calls carry. That leaves 47 after the tier filter below, and
-they are promoted. **VERDICT goes from 21 of 146 to 68.**
+what separates them is the state the calls carry. That leaves 44 after the two filters below,
+and they are promoted. **VERDICT goes from 21 of 146 to 65.**
 
 The shape rule is a proxy for "varies the defect and nothing else", which is a judgement no rule
 can make, so it is deliberately conservative in both directions it can be wrong:
@@ -1753,6 +1753,27 @@ stay held back, as before. `FACT` and `ADVISORY` detectors are not candidates at
 classify the kind of claim a finding makes rather than record missing evidence - a `FACT` report
 says something was observed and leaves the judgement to the reader - so a pair does not turn one
 into a verdict. Two detectors were caught by that after a first pass tried to promote them.
+
+**The rule CI added.** A first pass promoted 47 and three of them were wrong, which the library's
+own suite caught on all four legs: `PerFindingTierGateTest` pins `RECORD_MUTABLE_COMPONENT_LEAK` at
+`PROMPT`, and said why in its failure message. That detector's report implements `GradedFindings`.
+It reports an observed mutation of a shared record's component at VERDICT grade and a shared record
+that merely holds a mutable component at PROMPT, and the detector is rated `PROMPT` because a tier
+carries the weakest grade the detector can produce. Raising it would let a `minTrust = VERDICT`
+gate admit the prompt-grade finding as well, which is a claim the library does not make.
+
+So a graded detector cannot be promoted on a pair at all: the pair exercises one grade and the tier
+is a floor over every grade. `SHARED_MEMORY_SEGMENT_RACE` and `VIRTUAL_THREAD_POOLING` were the
+other two, and the rule is now derived by reflection over the detector's nested report type rather
+than from a list of names, so an eighth detector that starts grading is held back without anyone
+remembering to add it. `EveryEligiblePairIsPromotedOrExplainedTest` also refuses a graded detector
+that is registered by hand.
+
+That correction is the argument for the whole arrangement, restated. The eligibility rule is a
+proxy, it was wrong in a way its author did not anticipate, and what caught it was a test written
+by somebody else for a different purpose that stated its own premise out loud. The value was in the
+premise being written down: "if this detector is ever promoted, the fixture below stops proving
+that a per-finding grade is what fails the gate".
 
 **What now prevents it recurring.** `EveryEligiblePairIsPromotedOrExplainedTest` derives
 eligibility from the rows rather than from a list, and fails until a qualifying pair is registered

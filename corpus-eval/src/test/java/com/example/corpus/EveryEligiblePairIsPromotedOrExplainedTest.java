@@ -71,6 +71,26 @@ class EveryEligiblePairIsPromotedOrExplainedTest {
                         + mismatched);
     }
 
+    @Test
+    @DisplayName("no detector with per-finding grades is registered as a corpus-backed VERDICT")
+    void noGradedDetectorIsPromoted() {
+        List<String> graded = new ArrayList<>();
+        for (DetectorType detector : PairEvidence.promoted()) {
+            if (PairEvidence.carriesPerFindingGrades(detector)) {
+                graded.add(detector.name());
+            }
+        }
+
+        assertTrue(graded.isEmpty(),
+                "a detector whose report implements GradedFindings carries a tier that is the "
+                        + "floor over every grade it can emit, so a pair exercising one grade "
+                        + "cannot raise it. Promoting one lets a minTrust=VERDICT gate admit the "
+                        + "weaker grades, which is a claim the library does not make - and it is "
+                        + "why PerFindingTierGateTest pins RECORD_MUTABLE_COMPONENT_LEAK at "
+                        + "PROMPT. The eligibility rule holds these back, so a name here means "
+                        + "one was registered by hand: " + graded);
+    }
+
     private static String names(Set<DetectorType> types) {
         Set<String> sorted = new TreeSet<>();
         for (DetectorType type : types) {

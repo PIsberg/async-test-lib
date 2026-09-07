@@ -71,9 +71,9 @@ tests in this repository, which the gate resolves by reflection: `DEADLOCKS`, `L
 `INTERRUPT_MISHANDLING`, `UNCAUGHT_EXCEPTION_HANDLER`, `COMPLETABLE_FUTURE_COMPLETION_LEAKS` and
 `THREAD_LEAKS`. Nine of those ten are in the `ESSENTIALS` preset, which is the one to gate on.
 
-Fifty-eight more are backed by the corpus eval's pair lanes, where the pair is two uses of an
+Fifty-five more are backed by the corpus eval's pair lanes, where the pair is two uses of an
 unmodified third-party class rather than a twin written here. Eleven were registered in the first
-wave; forty-seven followed on 2026-09-07, when it turned out they had been measured all along. The
+wave; forty-four followed on 2026-09-07, when it turned out they had been measured all along. The
 promotion channel and its bar were built when the recording lane held twelve pairs; the lane grew
 to 129 and nothing went back, because registering a pair is a manual step and no gate noticed one
 that skipped it. The library's own gate asks whether a VERDICT has evidence and never the reverse.
@@ -141,7 +141,7 @@ still produces a finding, and so does inconsistent locking - two threads holding
 have excluded nothing, which is a race however many locks were involved.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
-tier is one a reader has to rank alone. The split is 68 VERDICT, 65 PROMPT, 11 FACT and 4
+tier is one a reader has to rank alone. The split is 65 VERDICT, 66 PROMPT, 11 FACT and 4
 ADVISORY. PROMPT is the honest default rather than a result: it says nobody has measured that
 detector's silent-on-correct-code direction, not that the detector is wrong. FACT and ADVISORY are
 statements about the kind of claim a finding makes rather than about missing evidence - a FACT

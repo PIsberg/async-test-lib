@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`TrustTier.VERDICT` goes from 21 of 146 to 68.** 47 detectors were already measured in both
+- **`TrustTier.VERDICT` goes from 21 of 146 to 65.** 44 detectors were already measured in both
   directions by a corpus pair meeting the documented bar - same class, halves differing only in
   the state their calls carry - and sat at `PROMPT` because registering a pair is a manual step
   that nothing enforced. `DetectorTrustCoverageTest` asks whether a VERDICT has evidence and never

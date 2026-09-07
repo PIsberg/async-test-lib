@@ -17,6 +17,7 @@ import java.util.regex.Pattern;
 
 import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
+import se.deversity.asynctest.diagnostics.GradedFindings;
 import se.deversity.asynctest.diagnostics.TrustTier;
 
 /**
@@ -89,7 +90,23 @@ final class PairEvidence {
          */
         CALL_SHAPE("the halves call different detector methods, so the pair may separate on which "
                 + "call was made rather than on the state it carried - which is exactly the "
-                + "mistake #521 found in the EXCHANGER pair");
+                + "mistake #521 found in the EXCHANGER pair"),
+
+        /**
+         * The detector's report carries per-finding grades, so its tier is the floor over every
+         * grade it can emit and not a claim about any one of them.
+         *
+         * <p>{@code RecordMutableComponentLeakDetector} is the case that taught this. It reports
+         * an observed mutation of a shared record's component at VERDICT grade and a shared record
+         * that merely holds a mutable component at PROMPT, and is rated PROMPT overall because a
+         * tier carries the weakest grade the detector can produce. Raising the detector would let
+         * a {@code minTrust = VERDICT} gate admit the prompt-grade finding too, which is a claim
+         * the library does not make. The corpus pair exercises one grade and cannot raise a floor
+         * that exists because of the other.
+         */
+        GRADED("the detector's report implements GradedFindings, so its tier is the floor over "
+                + "every grade it can emit; a pair exercises one grade and promoting the detector "
+                + "would let a VERDICT-only gate admit the weaker ones");
 
         private final String reason;
 
@@ -157,6 +174,38 @@ final class PairEvidence {
         return eligible;
     }
 
+    /**
+     * {@return whether {@code detector}'s report grades its findings individually}
+     *
+     * <p>Resolved by reflection rather than from a list, because a list of seven class names is a
+     * second copy of a fact the code already states, and the copy is the one that goes stale when
+     * an eighth detector starts grading.
+     *
+     * @param detector the detector to inspect
+     */
+    static boolean carriesPerFindingGrades(DetectorType detector) {
+        String name = "se.deversity.asynctest.diagnostics."
+                + DetectorExposure.classOf(detector);
+        Class<?> type;
+        try {
+            type = Class.forName(name);
+        } catch (ClassNotFoundException e) {
+            // A detector this module cannot load is one it cannot vouch for either. Holding it
+            // back is the safe reading, and everyReportingDetectorWasExposed would have failed
+            // first if the name were wrong in a way that mattered.
+            return true;
+        }
+        if (GradedFindings.class.isAssignableFrom(type)) {
+            return true;
+        }
+        for (Class<?> nested : type.getDeclaredClasses()) {
+            if (GradedFindings.class.isAssignableFrom(nested)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** {@return whether {@code lane} holds both directions for {@code detector}} */
     private static boolean hasPairIn(CorpusLane lane, DetectorType detector) {
         Set<RecordingSubject.Expectation> directions =
@@ -190,6 +239,9 @@ final class PairEvidence {
             // Not a pair at all. everyPairIsAPair owns that, and reporting it here too would
             // give one defect two owners and two failure messages.
             return null;
+        }
+        if (carriesPerFindingGrades(detector)) {
+            return HeldBack.GRADED;
         }
         if (classes.size() > 1) {
             return HeldBack.CROSS_CLASS;
