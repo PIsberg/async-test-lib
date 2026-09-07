@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`TrustTier.VERDICT` goes from 21 of 146 to 68.** 47 detectors were already measured in both
+  directions by a corpus pair meeting the documented bar - same class, halves differing only in
+  the state their calls carry - and sat at `PROMPT` because registering a pair is a manual step
+  that nothing enforced. `DetectorTrustCoverageTest` asks whether a VERDICT has evidence and never
+  the reverse, so the measurement ran green nightly while a build gated on `minTrust = VERDICT`
+  ignored the detector. `EveryEligiblePairIsPromotedOrExplainedTest` now derives eligibility from
+  the rows and fails until a qualifying pair is registered or explained, so the backlog cannot
+  rebuild. `FACT` and `ADVISORY` detectors are excluded: those tiers classify the kind of claim a
+  finding makes rather than record missing evidence.
+- **`Corpus.recordingByTestMethod` searches both pair lanes.** It searched only the recording one,
+  which silently meant an agent-lane pair could not back a tier at all.
+
+### Fixed
+
+- **`ExchangerDetector` no longer reports a null-payload rendezvous** (#521).
+  `Exchanger.exchange(null)` is permitted and a payload-free handoff is how the class is used as a
+  pure rendezvous; the report already printed the count as "legal" and then called it a warning.
+  The corpus pair moves onto the hazard the detector actually models: a recorded timeout fires, and
+  both payload shapes stay silent. The null count is still collected and printed as context on a
+  run that had something to report.
+
+
 ## [1.11.2] - 2026-09-06
 
 ### Fixed

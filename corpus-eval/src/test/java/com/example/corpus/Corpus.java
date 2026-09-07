@@ -2245,22 +2245,33 @@ final class Corpus {
                             + "phase, which is the cycle it exists for. The pair separates on "
                             + "whether the protocol ended in its terminal state"),
 
-            new RecordingSubject("recorded_exchanger_exchangedNothing", JDK,
+            new RecordingSubject("recorded_exchanger_timedOutWithNoPartner", JDK,
                     "java.util.concurrent.Exchanger",
                     DetectorType.EXCHANGER, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "an exchange completes with a null payload, which means the partner "
-                            + "arrived with nothing to give. An Exchanger is a rendezvous for "
-                            + "two threads to swap objects, so an empty swap is a handshake "
-                            + "that succeeded and transferred nothing"),
+                    "an exchange that timed out is one where no partner ever arrived, and an "
+                            + "Exchanger needs exactly two threads to meet. The thread that did "
+                            + "arrive is left holding a handoff that will never complete, which "
+                            + "is the hazard the class carries and the one this detector models"),
+            new RecordingSubject("recorded_exchanger_exchangedNothing", JDK,
+                    "java.util.concurrent.Exchanger",
+                    DetectorType.EXCHANGER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the rendezvous completes with a null payload, which the JDK permits: "
+                            + "exchange(null) is legal and a payload-free handoff is how an "
+                            + "Exchanger is used as a pure rendezvous, where the meeting is the "
+                            + "synchronisation and what crossed is nobody's business. This row "
+                            + "used to be MUST_FIRE on a rationale that described the mechanism "
+                            + "without arguing it was a defect (#521)"),
 
             new RecordingSubject("recorded_exchanger_exchangedAPayload", JDK,
                     "java.util.concurrent.Exchanger",
                     DetectorType.EXCHANGER, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
-                    "the same rendezvous recorded start to finish with a real payload, which "
-                            + "is every correct use of the class. The pair separates on what "
-                            + "crossed rather than on how the threads met"),
+                    "the same rendezvous recorded start to finish with a real payload. With "
+                            + "the null row now silent too, both payload shapes are correct and "
+                            + "the pair separates on how the threads met rather than on what "
+                            + "crossed, which is the axis the detector actually models"),
 
             new RecordingSubject("recorded_condition_awaitedWithNoSignal", JDK,
                     "java.util.concurrent.locks.Condition",
@@ -3301,9 +3312,14 @@ final class Corpus {
                 .collect(Collectors.toCollection(() -> EnumSet.noneOf(DetectorType.class)));
     }
 
-    /** {@return the recording subject for {@code testMethod}, or {@code null}} */
+    /** {@return the pair-lane subject for {@code testMethod}, from either lane, or {@code null}} */
     static RecordingSubject recordingByTestMethod(String testMethod) {
-        return RECORDING_SUBJECTS.stream()
+        // Both pair lanes, not just the recording one. Searching only RECORDING_SUBJECTS silently
+        // restricted META-INF/async-test/verdict-evidence-corpus to recording rows: an agent-lane
+        // pair could not back a tier at all, because the gate resolving the file's ids would
+        // report the row as not existing. Both lanes are held to their stated outcomes per
+        // subject on every run, so both can be evidence.
+        return java.util.stream.Stream.concat(RECORDING_SUBJECTS.stream(), AGENT_SUBJECTS.stream())
                 .filter(subject -> subject.testMethod().equals(testMethod))
                 .findFirst()
                 .orElse(null);

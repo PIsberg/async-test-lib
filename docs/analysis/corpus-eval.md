@@ -1716,3 +1716,57 @@ discipline, and discipline is what a gate is for.
 
 The rest of that sweep, the parts not closed here, is
 [corpus-eval-future-improvements.md](corpus-eval-future-improvements.md).
+
+## The second promotion wave, and the gap that made it necessary
+
+The promotion channel above was built on 2026-08-29, when the recording lane held twelve pairs and
+eleven of them were registered. The lane then grew to 129 pairs across two lanes and nothing went
+back. On 2026-09-07 the roster still read nineteen VERDICT, and the reason turned out to be
+nothing to do with the evidence.
+
+Registering a pair is a manual step, and no gate anywhere notices one that skips it.
+`DetectorTrustCoverageTest` asks whether a VERDICT tier has evidence, which is the direction that
+stops an unearned promotion. Nobody had asked the reverse: whether evidence has a tier. So 116
+detectors reported at PROMPT while holding a pair this module held to both directions on every
+run, and a build gated on `minTrust = VERDICT` ignored every one of them. The measurement was
+green every night and changed nothing.
+
+**What qualified, and what did not.** Of the 120 unregistered pairs, 116 name the same class in
+both halves, which is the bar this document already states. Four do not and stay held back on the
+rule that held three back in the first wave. Of the 116, a further filter applies in the recording
+lane: both halves must reach the detector through the same `record*`/`register*` methods, so that
+what separates them is the state the calls carry. That leaves 47 after the tier filter below, and
+they are promoted. **VERDICT goes from 21 of 146 to 68.**
+
+The shape rule is a proxy for "varies the defect and nothing else", which is a judgement no rule
+can make, so it is deliberately conservative in both directions it can be wrong:
+
+- It holds back sound pairs. `RESOURCE_LEAKS` pairs opened-never-closed against opened-and-closed,
+  where the missing call *is* the defect. The escape hatch is a named entry in
+  `PairEvidence.REVIEWED_DESPITE_SHAPE` carrying the reading that justifies it, not a looser rule.
+  It is empty.
+- It would not have caught the `EXCHANGER` pair, whose halves named the same class and whose flaw
+  was in the rationale rather than in the calls. #521 caught that one, and a rule never would have.
+
+Three exclusions are worth stating because each is a different kind of reason. Cross-class pairs
+stay held back, as before. `FACT` and `ADVISORY` detectors are not candidates at all: those tiers
+classify the kind of claim a finding makes rather than record missing evidence - a `FACT` report
+says something was observed and leaves the judgement to the reader - so a pair does not turn one
+into a verdict. Two detectors were caught by that after a first pass tried to promote them.
+
+**What now prevents it recurring.** `EveryEligiblePairIsPromotedOrExplainedTest` derives
+eligibility from the rows rather than from a list, and fails until a qualifying pair is registered
+or explicitly held. The backlog cannot rebuild, because the thing that created it - a manual step
+with no gate behind it - is now a gate.
+
+Two defects in that gate were found by checking its output against the rows rather than trusting
+it, and both are the kind that would have made it vouch for everything. It first reported every
+recording-lane pair as eligible, because asking a lane where the detector has no rows returns
+"nothing wrong here". And the call-shape rule is vacuous in the agent lane, where bodies make no
+`record*` call at all and every pair therefore compares equal on the empty set; that lane is now
+an explicit branch, with `AgentRowPremise` named as what actually holds it to the same property.
+
+**One thing the wave fixed on the way.** `Corpus.recordingByTestMethod` searched only the recording
+lane, which silently meant an agent-lane pair could not be registered as evidence at all: the gate
+resolving the file's ids would report the row as not existing. Both lanes hold their subjects to
+stated outcomes every run, so both can back a tier, and it now searches both.

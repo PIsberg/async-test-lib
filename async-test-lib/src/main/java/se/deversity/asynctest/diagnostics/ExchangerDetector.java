@@ -132,18 +132,26 @@ public class ExchangerDetector {
         /**
          * {@return whether there are issues}
          *
-         * <p>A null payload counts. #517 argued it should not, on the grounds that
-         * {@code Exchanger.exchange(null)} is permitted and a payload-free rendezvous is a normal
-         * use of one. The corpus already answers that in the other direction:
-         * {@code recorded_exchanger_exchangedNothing} is a MUST_FIRE row whose written rationale
-         * is that an empty swap is "a handshake that succeeded and transferred nothing", paired
-         * against {@code recorded_exchanger_exchangedAPayload}. That pair is deliberate ground
-         * truth, so changing this is the owner's call rather than a defect fix.
+         * <p>A null payload does not count, settling #521. {@code Exchanger.exchange(null)} is
+         * permitted by the JDK, and using an exchanger as a pure rendezvous where the handoff is
+         * the synchronisation and the payload is irrelevant is a normal way to use one. This
+         * method used to report it, and the report text conceded the point in the same breath by
+         * printing the count as "legal" and then calling it a warning.
+         *
+         * <p>What kept it was a corpus pair whose rationale said an empty swap is "a handshake
+         * that succeeded and transferred nothing". That is a description of the mechanism and not
+         * an argument that the mechanism is a defect, and the pair's own rationale said what was
+         * wrong with it: it "separates on what crossed rather than on how the threads met". The
+         * payload is not this detector's hazard. A partner that never arrives is, and
+         * {@link #recordTimeout} and {@link #recordInterrupted} are where that lands.
+         *
+         * <p>The count is still collected and still printed, because a run that reported a
+         * timeout is a run where knowing how many exchanges carried nothing is worth having. It
+         * is context on a finding rather than a finding of its own.
          */
         public boolean hasIssues() {
             return !timedOutExchangers.isEmpty()
-                || !interruptedExchangers.isEmpty()
-                || nullValueExchanges > 0;
+                || !interruptedExchangers.isEmpty();
         }
 
         /**
@@ -196,7 +204,6 @@ public class ExchangerDetector {
             if (nullValueExchanges > 0) {
                 sb.append("  Null value exchanges (legal; a rendezvous carries no payload): ")
                   .append(nullValueExchanges).append(System.lineSeparator());
-                sb.append("  Warning: Exchanging null values may indicate logic errors\n");
             }
 
             if (!hasIssues()) {

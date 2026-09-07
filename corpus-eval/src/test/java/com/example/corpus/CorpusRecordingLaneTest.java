@@ -535,6 +535,10 @@ class CorpusRecordingLaneTest {
     private static final java.util.concurrent.Phaser ADVANCING_PHASER =
             new java.util.concurrent.Phaser(1);
 
+    /** The exchanger whose partner never arrives, for the timed-out row. */
+    private static final java.util.concurrent.Exchanger<String> ORPHANED_EXCHANGER =
+            new java.util.concurrent.Exchanger<>();
+
     /** The rendezvous whose completion carries no payload. */
     private static final java.util.concurrent.Exchanger<String> EMPTY_EXCHANGER =
             new java.util.concurrent.Exchanger<>();
@@ -3020,7 +3024,26 @@ class CorpusRecordingLaneTest {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.exchangerDetector();
         detector.registerExchanger(EMPTY_EXCHANGER, "empty-exchanger");
+        detector.recordExchangeStart(EMPTY_EXCHANGER, "empty-exchanger");
         detector.recordExchangeComplete(EMPTY_EXCHANGER, "empty-exchanger", null);
+    }
+
+    /**
+     * A rendezvous where the partner never came, which is this detector's actual hazard.
+     *
+     * <p>The MUST_FIRE half used to be the null-payload row, on a rationale that described an
+     * empty swap without arguing it was a defect. #521 settled that: {@code exchange(null)} is
+     * permitted and a payload-free handoff is a normal use of the class. What is not normal is an
+     * exchange that never found its second thread - the arriving thread is left on a handoff that
+     * cannot complete, and {@code recordTimeout} is how that reaches the detector.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_exchanger_timedOutWithNoPartner() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.exchangerDetector();
+        detector.registerExchanger(ORPHANED_EXCHANGER, "orphaned-exchanger");
+        detector.recordExchangeStart(ORPHANED_EXCHANGER, "orphaned-exchanger");
+        detector.recordTimeout(ORPHANED_EXCHANGER);
     }
 
     /** The same rendezvous recorded start to finish with a real payload. */
