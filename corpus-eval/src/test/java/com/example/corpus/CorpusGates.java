@@ -13,6 +13,8 @@ import java.util.stream.Collectors;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.diagnostics.DetectorFeed;
+import se.deversity.asynctest.diagnostics.IssueSeverity;
+import se.deversity.asynctest.diagnostics.TrustTier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -112,6 +114,7 @@ final class CorpusGates {
         everyPairedDetectorIsExposed(lane);
         everyReportingDetectorWasExposed(findings, lane);
         everySubjectGotTheOutcomeItsRecordedCallsOblige(findings, lane);
+        noCollateralFindingOnASilentRow(findings, lane);
         if (lane == CorpusLane.AGENT_PAIRS) {
             noAgentRowRecordedItsOwnFinding();
             return;
@@ -237,7 +240,7 @@ final class CorpusGates {
     }
 
     /** A recording test method without a row would be a subject with no stated expectation. */
-    private static void everyRecordingSubjectIsExercised(CorpusLane lane, Class<?> laneTest) {
+    static void everyRecordingSubjectIsExercised(CorpusLane lane, Class<?> laneTest) {
         Set<String> exercised = Arrays.stream(laneTest.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(AsyncTest.class))
                 .map(Method::getName)
@@ -251,7 +254,7 @@ final class CorpusGates {
                         + "and every row a method");
     }
 
-    private static void everyRecordingFindingIsAttributed(List<CorpusRecorder.Finding> findings,
+    static void everyRecordingFindingIsAttributed(List<CorpusRecorder.Finding> findings,
                                                           CorpusLane lane) {
         List<String> orphans = findings.stream()
                 .map(CorpusRecorder.Finding::subject)
@@ -271,7 +274,7 @@ final class CorpusGates {
      *
      * @param lane the lane that ran
      */
-    private static void everyPairedDetectorIsExposed(CorpusLane lane) {
+    static void everyPairedDetectorIsExposed(CorpusLane lane) {
         List<String> unexposed = Corpus.pairedDetectors(lane).stream()
                 .filter(type -> !DetectorExposure.isExposed(type, lane))
                 .map(Enum::name)
@@ -292,7 +295,7 @@ final class CorpusGates {
      *
      * @param findings what the detectors reported
      */
-    private static void everySubjectGotTheOutcomeItsRecordedCallsOblige(
+    static void everySubjectGotTheOutcomeItsRecordedCallsOblige(
             List<CorpusRecorder.Finding> findings, CorpusLane lane) {
         List<String> wrong = new ArrayList<>();
         for (RecordingSubject subject : Corpus.subjectsFor(lane)) {
@@ -315,6 +318,91 @@ final class CorpusGates {
                 "the recording lane's expectations follow from the calls each body makes, not "
                         + "from how the scheduler interleaved them, so every one of these is a "
                         + "change in what the detector concludes: " + String.join(" | ", wrong));
+    }
+
+    /**
+     * A correct twin must draw no VERDICT-tier finding from any detector, not only from its own.
+     *
+     * <p>{@link #everySubjectGotTheOutcomeItsRecordedCallsOblige} matches a finding to the detector
+     * the row names, which is the whole question for the firing half and half of it for the silent
+     * one. A {@code MUST_STAY_SILENT} body is this module writing down that a use is correct, so a
+     * VERDICT-tier finding from any other detector on that body is the library saying that same
+     * code is wrong. Nothing looked for one, and {@link CorpusReport} filtered its per-subject
+     * table the same way, so such a finding would not even have been printed.
+     *
+     * <p>The tier bar is the one lane one already uses. {@link CorpusReport#isFalsePositive}
+     * counts a finding against documented-safe code only at VERDICT/HIGH or VERDICT/CRITICAL,
+     * because that is where the library claims the code is wrong rather than asking a question,
+     * and a silent row's claim is no broader: it says its own hazard is absent, not that the body
+     * is above every remark any of the 146 detectors could make.
+     *
+     * <p>That distinction was measured rather than assumed. The first version of this gate was
+     * absolute, and it failed on {@code agent_deadlock_noThreadBlockedOnAnother}, whose two nested
+     * monitors are held across a {@code Thread.sleep} that {@code SleepInLockDetector} reports at
+     * PROMPT/MEDIUM. The sleep looked like harness scaffolding until {@link AgentRowPremise}
+     * refused the row without it: a silent row has to go through the same substituted call sites
+     * as the twin it is paired with, and the twin sleeps. So the finding is a true PROMPT-tier
+     * observation about a body that only ever claimed to be free of deadlock, and the absolute
+     * form of this gate was wrong rather than the row. Sub-VERDICT collateral is printed by the
+     * report instead of asserted, which is what the tier system is for.
+     *
+     * <p>Firing rows are out of scope at every tier. Their bodies are wrong on purpose, so a second
+     * detector speaking is a second true positive: both latch detectors report the timed-out await
+     * in {@code agent_countDownLatch_awaitTimedOut}, and both are right to.
+     *
+     * @param findings what the detectors reported
+     * @param lane     the lane that produced them
+     */
+    static void noCollateralFindingOnASilentRow(List<CorpusRecorder.Finding> findings,
+                                                CorpusLane lane) {
+        List<String> collateral = new ArrayList<>();
+        for (CorpusRecorder.Finding finding : collateralOnSilentRows(findings, lane)) {
+            if (finding.tier() != TrustTier.VERDICT
+                    || (finding.severity() != IssueSeverity.HIGH
+                            && finding.severity() != IssueSeverity.CRITICAL)) {
+                continue;
+            }
+            collateral.add(finding.detector() + " reported " + finding.tier() + "/"
+                    + finding.severity() + " on " + finding.subject() + ", whose row states only "
+                    + "that " + DetectorExposure.classOf(
+                            Corpus.pairByTestMethod(lane, finding.subject()).detector())
+                    + " stays silent: " + finding.evidence());
+        }
+
+        assertTrue(collateral.isEmpty(),
+                "these rows are the corpus's own statement that a use is correct, and another "
+                        + "detector made the library's strongest claim about them anyway. At this "
+                        + "tier there is no reading under which both are right: either the finding "
+                        + "is a false positive on code this module vouches for, or the row's "
+                        + "rationale is wrong about what the body does: " + collateral);
+    }
+
+    /**
+     * {@return every finding on a silent row that came from a detector other than the row's own}
+     *
+     * <p>Shared with {@link CorpusReport} so that what the gate asserts and what the report prints
+     * are the same set, differing only in the tier bar. A second copy of this loop would be a
+     * second definition of "collateral", and the copy is the one that goes stale.
+     *
+     * @param findings what the detectors reported
+     * @param lane     the lane that produced them
+     */
+    static List<CorpusRecorder.Finding> collateralOnSilentRows(
+            List<CorpusRecorder.Finding> findings, CorpusLane lane) {
+        List<CorpusRecorder.Finding> collateral = new ArrayList<>();
+        for (RecordingSubject subject : Corpus.subjectsFor(lane)) {
+            if (subject.expectation() != RecordingSubject.Expectation.MUST_STAY_SILENT) {
+                continue;
+            }
+            String own = DetectorExposure.classOf(subject.detector());
+            for (CorpusRecorder.Finding finding : findings) {
+                if (finding.subject().equals(subject.testMethod())
+                        && !finding.detector().equals(own)) {
+                    collateral.add(finding);
+                }
+            }
+        }
+        return collateral;
     }
 
     /** {@return what the detector said about {@code subject}, for a failure message} */
@@ -343,7 +431,7 @@ final class CorpusGates {
                 "every @AsyncTest method must have a Corpus row and every Corpus row a method");
     }
 
-    private static void everyFindingIsAttributed(List<CorpusRecorder.Finding> findings,
+    static void everyFindingIsAttributed(List<CorpusRecorder.Finding> findings,
                                                  List<CorpusRecorder.Crash> crashes) {
         List<String> orphans = findings.stream()
                 .map(CorpusRecorder.Finding::subject)
@@ -360,7 +448,7 @@ final class CorpusGates {
         assertTrue(orphanCrashes.isEmpty(), "crashes attributed to no subject: " + orphanCrashes);
     }
 
-    private static void noFalsePositiveOnDocumentedThreadSafeCode(List<CorpusRecorder.Finding> findings) {
+    static void noFalsePositiveOnDocumentedThreadSafeCode(List<CorpusRecorder.Finding> findings) {
         List<CorpusRecorder.Finding> falsePositives = findings.stream()
                 .filter(finding -> {
                     Subject subject = Corpus.byTestMethod(finding.subject());
@@ -382,7 +470,7 @@ final class CorpusGates {
      * false and every denominator printed in the report is wrong. Reading the report's zeroes as
      * "looked and saw nothing" depends on this holding.
      */
-    private static void everyReportingDetectorWasExposed(List<CorpusRecorder.Finding> findings,
+    static void everyReportingDetectorWasExposed(List<CorpusRecorder.Finding> findings,
                                                          CorpusLane lane) {
         List<String> unexposed = findings.stream()
                 .map(CorpusRecorder.Finding::detector)
@@ -412,7 +500,7 @@ final class CorpusGates {
      *
      * @param lane which lane is running
      */
-    private static void theAgentIsAttachedTheWayThisLaneRequires(CorpusLane lane) {
+    static void theAgentIsAttachedTheWayThisLaneRequires(CorpusLane lane) {
         boolean launched = ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
                 .anyMatch(argument -> argument.startsWith("-javaagent:")
                         && argument.contains("async-test-agent"));
@@ -460,7 +548,7 @@ final class CorpusGates {
      *
      * @param findings what the detectors reported in this lane
      */
-    private static void theUnsafeGroupIsDetected(List<CorpusRecorder.Finding> findings) {
+    static void theUnsafeGroupIsDetected(List<CorpusRecorder.Finding> findings) {
         Set<String> detected = findings.stream()
                 .filter(finding -> contractOf(finding.subject()) == Contract.NOT_THREAD_SAFE)
                 .map(CorpusRecorder.Finding::subject)
@@ -498,7 +586,7 @@ final class CorpusGates {
      * detectors have no input and must produce nothing at all - which is what makes the attached
      * lane's findings attributable to the agent rather than to the harness.
      */
-    private static void theAgentFedSetIsSilentWithoutTheAgent(List<CorpusRecorder.Finding> findings) {
+    static void theAgentFedSetIsSilentWithoutTheAgent(List<CorpusRecorder.Finding> findings) {
         List<String> spoke = findings.stream()
                 .filter(finding -> DetectorExposure.typeOf(finding.detector())
                         .map(CorpusGates::isAgentFed)
