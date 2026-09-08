@@ -213,25 +213,49 @@ class CorpusGatesTest {
     }
 
     @Test
-    @DisplayName("the same finding at PROMPT tier passes, which is the bar lane one already uses")
-    void aPromptCollateralFindingOnASilentRowPasses() {
+    @DisplayName("a PROMPT finding on a recording-lane silent row fails: that lane's bar is absolute")
+    void aPromptCollateralFindingOnARecordingSilentRowFails() {
         RecordingSubject silent = aSilentRow();
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.noCollateralFindingOnASilentRow(
+                        List.of(finding(silent.testMethod(),
+                                DetectorExposure.classOf(aDetectorOtherThan(silent.detector())),
+                                TrustTier.PROMPT, IssueSeverity.MEDIUM)),
+                        CorpusLane.RECORDING));
+    }
+
+    @Test
+    @DisplayName("so does a VERDICT finding at LOW severity, which the agent-pair bar would allow")
+    void aLowSeverityVerdictCollateralFindingFailsInTheRecordingLane() {
+        RecordingSubject silent = aSilentRow();
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.noCollateralFindingOnASilentRow(
+                        List.of(finding(silent.testMethod(),
+                                DetectorExposure.classOf(aDetectorOtherThan(silent.detector())),
+                                TrustTier.VERDICT, IssueSeverity.LOW)),
+                        CorpusLane.RECORDING));
+    }
+
+    @Test
+    @DisplayName("the same PROMPT finding passes in the agent-pair lane, where the bar is VERDICT")
+    void aPromptCollateralFindingInTheAgentPairLanePasses() {
+        RecordingSubject silent = aSilentRow(CorpusLane.AGENT_PAIRS);
         assertDoesNotThrow(() -> CorpusGates.noCollateralFindingOnASilentRow(
                 List.of(finding(silent.testMethod(),
                         DetectorExposure.classOf(aDetectorOtherThan(silent.detector())),
                         TrustTier.PROMPT, IssueSeverity.MEDIUM)),
-                CorpusLane.RECORDING));
+                CorpusLane.AGENT_PAIRS));
     }
 
     @Test
-    @DisplayName("a VERDICT finding at LOW severity passes, as it does on a documented-safe subject")
-    void aLowSeverityVerdictCollateralFindingPasses() {
-        RecordingSubject silent = aSilentRow();
+    @DisplayName("and so does a VERDICT finding at MEDIUM, which is the one entry that lane prints")
+    void aMediumSeverityVerdictCollateralFindingInTheAgentPairLanePasses() {
+        RecordingSubject silent = aSilentRow(CorpusLane.AGENT_PAIRS);
         assertDoesNotThrow(() -> CorpusGates.noCollateralFindingOnASilentRow(
                 List.of(finding(silent.testMethod(),
                         DetectorExposure.classOf(aDetectorOtherThan(silent.detector())),
-                        TrustTier.VERDICT, IssueSeverity.LOW)),
-                CorpusLane.RECORDING));
+                        TrustTier.VERDICT, IssueSeverity.MEDIUM)),
+                CorpusLane.AGENT_PAIRS));
     }
 
     @Test
@@ -288,19 +312,34 @@ class CorpusGatesTest {
     }
 
     private static RecordingSubject aSilentRow() {
-        return aRowExpecting(RecordingSubject.Expectation.MUST_STAY_SILENT);
+        return aSilentRow(CorpusLane.RECORDING);
+    }
+
+    /**
+     * {@return a {@code MUST_STAY_SILENT} row of {@code lane}}
+     *
+     * <p>The lane is a parameter because the collateral bar now differs by lane, so a test of the
+     * agent-pair bar has to hand the gate a row that lane actually holds. Passing a recording-lane
+     * row with {@code AGENT_PAIRS} would exercise nothing: {@code collateralOnSilentRows} walks
+     * the lane's own subjects, so the finding would match no row and every bar would pass it.
+     *
+     * @param lane the lane whose rows the caller is testing
+     */
+    private static RecordingSubject aSilentRow(CorpusLane lane) {
+        return aRowExpecting(lane, RecordingSubject.Expectation.MUST_STAY_SILENT);
     }
 
     private static RecordingSubject aFiringRow() {
-        return aRowExpecting(RecordingSubject.Expectation.MUST_FIRE);
+        return aRowExpecting(CorpusLane.RECORDING, RecordingSubject.Expectation.MUST_FIRE);
     }
 
-    private static RecordingSubject aRowExpecting(RecordingSubject.Expectation expectation) {
-        return Corpus.subjectsFor(CorpusLane.RECORDING).stream()
+    private static RecordingSubject aRowExpecting(CorpusLane lane,
+                                                  RecordingSubject.Expectation expectation) {
+        return Corpus.subjectsFor(lane).stream()
                 .filter(subject -> subject.expectation() == expectation)
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException(
-                        "the recording lane has no " + expectation + " row"));
+                        "the " + lane.propertyValue() + " lane has no " + expectation + " row"));
     }
 
     /** {@return any detector the trust table knows, where which one is beside the point} */

@@ -35,6 +35,9 @@ enum CorpusLane {
      * from either, and the point of this lane is that every finding in it is attributable to a
      * {@code record*} call the test made - which is what lets its assertions be structural
      * rather than probabilistic.
+     *
+     * <p>That attributability is also why this lane, and only this lane, holds its silent rows to
+     * an absolute collateral bar. See {@link #failsOnAnyCollateral()}.
      */
     RECORDING("recording", "corpus-eval-recording.md"),
 
@@ -53,6 +56,9 @@ enum CorpusLane {
      * API. That is the inverse of {@link SilentRowPremise} on the recording lane, and for the same
      * reason. There, a silent row that reaches no detector proves nothing; here, a firing row that
      * recorded its own finding proves nothing about the agent.
+     *
+     * <p>Its silent rows keep the tier bar rather than the recording lane's absolute one, for a
+     * reason that follows from the premise above. See {@link #failsOnAnyCollateral()}.
      */
     AGENT_PAIRS("agent-pairs", "corpus-eval-agent-pairs.md");
 
@@ -72,6 +78,45 @@ enum CorpusLane {
     /** {@return the file this lane writes its report to, under {@code target/corpus-eval}} */
     String reportFile() {
         return reportFile;
+    }
+
+    /**
+     * {@return whether a silent row here fails on collateral from any detector, at any tier}
+     *
+     * <p>This is the one gate that means two different things in two lanes, so the asymmetry is
+     * stated here rather than inside {@code CorpusGates}, where only a reader of that file would
+     * find it. Both lanes assert the same idea - a {@code MUST_STAY_SILENT} body is this module
+     * writing down that a use is correct, so a finding from a detector other than the row's own is
+     * a claim against code the corpus vouches for. They differ in how much of that claim the row
+     * is entitled to refuse.
+     *
+     * <p><strong>The recording lane: absolute.</strong> Its bodies are written here, line by line,
+     * to make exactly the {@code record*} calls the row is about. Nothing else in such a body is
+     * incidental, because there is nothing else in it: no scaffolding a detector could legitimately
+     * remark on, and no second feed a finding could have arrived through. A finding from another
+     * detector is therefore either that detector being wrong about correct code, or this row's
+     * rationale being wrong about what it wrote - and both are defects the module exists to catch,
+     * at PROMPT tier as much as at VERDICT. All 119 of its silent rows already clear this bar with
+     * room to spare: the lane's whole run produces 117 findings for 117 must-fire rows and nothing
+     * else, so the ratchet costs nothing today and refuses the first regression that would.
+     *
+     * <p><strong>The agent-pair lane: VERDICT at HIGH or CRITICAL.</strong> Here the body cannot be
+     * only what the row is about. {@link AgentRowPremise} requires the silent half to go through
+     * the same substituted call sites as the twin it is paired with, which drags in real
+     * scaffolding the row never claimed anything about:
+     * {@code agent_deadlock_noThreadBlockedOnAnother} holds two nested monitors across a
+     * {@code Thread.sleep} because its firing twin must, and {@code SleepInLockDetector} is right
+     * to remark on that. A row that says "no deadlock here" has not said "and nothing else in this
+     * body is worth a word". So the bar is the one {@link CorpusReport#isFalsePositive} uses for
+     * documented-safe code: the tier and severity at which the library stops asking a question and
+     * claims the code is wrong.
+     *
+     * <p>The bar is a property of how a lane's bodies are written, not of how good its detectors
+     * are, which is why it belongs on the lane. A new lane picks its answer from that same
+     * question: can a body here contain anything the row is not making a claim about?
+     */
+    boolean failsOnAnyCollateral() {
+        return this == RECORDING;
     }
 
     /** {@return the lane this JVM is running, defaulting to the attached one} */

@@ -11,25 +11,14 @@ closed in the same change, and are described in [corpus-eval.md](corpus-eval.md)
 - `CorpusGatesTest`, which shows each gate failing on input it must reject;
 - a pairing-symmetry check, which holds the README's "add subjects in pairs" rule to being true.
 
+Item 1 of what follows was closed on 2026-09-08: the recording lane's collateral bar is now
+absolute, so its 119 silent rows are asserted to draw nothing from any of the 146 detectors at any
+tier, while the agent-pair lane keeps the VERDICT/HIGH bar its `AgentRowPremise` scaffolding
+requires. The asymmetry is reasoned about on `CorpusLane.failsOnAnyCollateral()` and recorded under
+"What the gates could not catch" in [corpus-eval.md](corpus-eval.md). The numbering below is left
+as it was so that references to an item still resolve.
+
 What follows is the remainder, in the order worth doing them.
-
-## 1. Sub-VERDICT collateral on a silent row is printed, not gated
-
-`noCollateralFindingOnASilentRow` fails a run only at VERDICT/HIGH or VERDICT/CRITICAL, matching
-`CorpusReport.isFalsePositive`. Everything below that is listed in the report's "Collateral
-findings on silent rows" section and asserted by nothing, which is the right call for the one entry
-that exists today - `SleepInLockDetector` on the deadlock pair's silent half, where the sleep is
-required by `AgentRowPremise` and the finding is true. It is the wrong call as a permanent
-arrangement: the section is a list nobody is obliged to read, which is where the collateral set
-already spent its life before this change.
-
-The recording lane could take the absolute version today at no cost. All 118 of its silent rows are
-silent across the whole roster at every tier, measured 2026-09-07, so a per-lane bar - absolute in
-the recording lane, VERDICT in the agent-pair lane - would ratchet 118 rows to their strongest form
-and leave the one genuine exception where it belongs. It was not done in the same change because a
-gate that means two different things in two lanes needs the asymmetry written down where the next
-reader of either lane will find it, and that is a decision about how the module explains itself
-rather than a line of code.
 
 ## 2. Nothing checks that `CorpusGatesTest` still bites
 
