@@ -54,6 +54,13 @@ final class PairEvidence {
     /**
      * Pairs a reviewer accepted although the two halves call different detector methods.
      *
+     * <p>An entry here is a reading, not a promotion, and the two are recorded separately on
+     * purpose: the promotion is the line in {@code META-INF/async-test/verdict-evidence-corpus}
+     * plus the tier in {@code DetectorTrust}, which is what a build gated on {@code minTrust}
+     * actually reads. This map is where the argument for that line lives, so that a later reader
+     * asking why a shape-failing pair was promoted finds the answer next to the rule it escaped
+     * rather than in a merged pull request nobody re-opens.
+     *
      * <p>The shape rule below is deliberately blunt and has a known false negative:
      * {@code RESOURCE_LEAKS} pairs an opened-and-never-closed row against opened-and-closed, so
      * the missing call <em>is</em> the defect and the pair is sound. Only a reader can tell that
@@ -65,9 +72,34 @@ final class PairEvidence {
             new EnumMap<>(DetectorType.class);
 
     static {
-        // Empty on purpose. Adding an entry is a claim that someone read both bodies and found
-        // the differing call to be the defect itself. An entry with no such reading is worth
+        // Each entry is a claim that someone read both bodies and found the differing call to be
+        // the defect itself, not an incidental difference. An entry with no such reading is worth
         // less than the PROMPT tier it replaces.
+        //
+        // All three below share one shape: the detector's whole model is "this was started and
+        // the call that finishes it never came", so the call the silent half adds is the defect
+        // by definition rather than by coincidence. That is the RESOURCE_LEAKS reading the rule's
+        // own javadoc names as its known false negative, found three more times.
+        REVIEWED_DESPITE_SHAPE.put(DetectorType.FUTURE_IGNORED,
+                "the halves differ by recordInspect alone, on the same pool and the same submit. "
+                        + "Never inspecting a submitted Future is precisely what the detector "
+                        + "reports, so the missing call is the defect and not a difference in how "
+                        + "the two rows happen to talk to the detector");
+        REVIEWED_DESPITE_SHAPE.put(DetectorType.EXECUTOR_SHUTDOWN,
+                "the halves differ by recordShutdownCalled and recordAwaitTerminationCalled, "
+                        + "which are the two halves of the protocol the detector's own fix text "
+                        + "prescribes. They differ in one other way - the firing row shares one "
+                        + "pool because 240 leaked pools would exhaust the runner - and that "
+                        + "cannot be what silences the correct half: "
+                        + "ExecutorShutdownDetectorTest.testDetectsExecutorNotShutDown fires on a "
+                        + "single freshly created pool with no shutdown recorded");
+        REVIEWED_DESPITE_SHAPE.put(DetectorType.STREAM_CLOSING,
+                "the halves differ by recordStreamClosed, the leaked descriptor the detector "
+                        + "exists for. The firing row shares one stream for the same reason the "
+                        + "executor row shares one pool, and the same check applies: "
+                        + "StreamClosingDetectorTest.testDetectsUnclosedStreams fires on a fresh "
+                        + "stream that is opened and never closed, so instance sharing is not "
+                        + "what separates the halves");
     }
 
     private PairEvidence() {

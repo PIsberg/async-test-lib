@@ -133,6 +133,31 @@ class CorpusClaimsInDocsTest {
                         + "comment counts as a claim: phrase one so it does not: " + stale);
     }
 
+    @Test
+    @DisplayName("the count of corpus-backed verdicts is right wherever a comment states it")
+    void theVerdictEvidenceCountIsStatedCorrectly() {
+        long promoted = PairEvidence.promoted().size();
+        Path gates = repoRoot().resolve(SOURCE_DIR + "CorpusGates.java");
+        Path premise = repoRoot().resolve(SOURCE_DIR + "SilentRowPremise.java");
+
+        List<String> stale = new ArrayList<>();
+        checkCount(stale, gates, promoted, "detectors are classified VERDICT",
+                "the evidence file names " + promoted + " detectors");
+        checkCount(stale, premise, promoted, "silent rows now back",
+                "the evidence file names " + promoted + " pairs, each of which is a silent row "
+                        + "backing a verdict");
+
+        assertTrue(stale.isEmpty(),
+                "promoting a pair adds a line to META-INF/async-test/verdict-evidence-corpus and "
+                        + "leaves every sentence counting those lines behind. That is not "
+                        + "hypothetical: these two said eight and nine while the file held 55, "
+                        + "and the promotion that fixed them made them wrong again in the same "
+                        + "branch. Hence this check rather than a third correction: " + stale);
+    }
+
+    /** Where this module's sources live, relative to the reactor root. */
+    private static final String SOURCE_DIR = "corpus-eval/src/test/java/com/example/corpus/";
+
     /**
      * The floor above which "of the N" is read as a claim about the detector roster.
      *
