@@ -554,4 +554,69 @@ public class BlockingQueueDetectorTest {
                 "the second discard has no offer left to attach to: one offer, one drop. Got "
                         + detector.analyze());
     }
+
+    /**
+     * A capacity read that straddles a concurrent offer must not silence saturation for the run.
+     *
+     * <p>{@code observeQueue} learns a bound as {@code remainingCapacity() + size()}, two reads
+     * that are not taken together. An offer landing between them makes the sum one too large, and
+     * {@code widerBound} keeps the larger value for the rest of the run. A queue of three then
+     * needs a high-water mark of 3.6 to count as saturated, which it can never reach, so the one
+     * signal this detector gates on is switched off by a transient race.
+     *
+     * <p>That is not hypothetical: four threads offering to a bounded queue of three reproduced it
+     * about once in a hundred runs, and it is what made
+     * {@code DiscardedOfferEndToEndTest.thePoppedResultIsTheFinding} flaky, where the checked
+     * bean's report went missing entirely because saturation is the only thing it can report.
+     *
+     * <p>The straddle is modelled rather than raced for, so the test fails every time rather than
+     * once in a hundred. {@link StraddlingQueue} reports one inconsistent pair and is honest
+     * afterwards, which is what a real interleaving looks like.
+     */
+    @Test
+    void testACapacityReadThatStraddlesAnOfferDoesNotSilenceSaturation() {
+        StraddlingQueue queue = new StraddlingQueue(3);
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+
+        for (int i = 0; i < 8; i++) {
+            detector.observeQueue(queue);
+            detector.recordOffer(queue, "straddled", queue.offer("element"));
+        }
+
+        assertTrue(detector.analyze().toString().contains("3/3"),
+                "the queue filled to three of three and every further offer was rejected, so it "
+                        + "saturated. One capacity read straddled an offer and read four; keeping "
+                        + "that reading means no high-water mark can ever reach 90% of it, and "
+                        + "the detector reports nothing at all. Got " + detector.analyze());
+    }
+
+    /**
+     * A bounded queue whose first capacity read is inconsistent, the way a real one's can be.
+     *
+     * <p>{@code remainingCapacity()} and {@code size()} are separate reads, so a concurrent offer
+     * between them makes the sum one too large. This reproduces that on the first observation and
+     * behaves normally afterwards, which is what makes the resulting test deterministic where the
+     * race is not.
+     */
+    private static final class StraddlingQueue
+            extends java.util.concurrent.ArrayBlockingQueue<String> {
+
+        private static final long serialVersionUID = 1L;
+
+        private boolean straddleSpent;
+
+        StraddlingQueue(int capacity) {
+            super(capacity);
+        }
+
+        @Override
+        public int size() {
+            if (!straddleSpent) {
+                straddleSpent = true;
+                // The element an interleaved offer added between the caller's two reads.
+                return super.size() + 1;
+            }
+            return super.size();
+        }
+    }
 }

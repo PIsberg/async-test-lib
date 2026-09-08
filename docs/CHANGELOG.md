@@ -23,6 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`BlockingQueueDetector` no longer loses saturation on a queue the agent observed.** A bound is
+  read as `remainingCapacity() + size()`, two reads that an offer can land between, and the sum is
+  then one too large. `widerBound` keeps the larger value for the rest of the run, so a queue of
+  three needs a high-water mark of 3.6 to count as saturated and can never reach it. Saturation is
+  the only signal `BlockingQueueReport.hasIssues` gates on once no element was dropped, so one
+  straddled read switched the detector off for that queue and nothing said so. Four threads
+  offering to a bounded queue of three reproduced it 8 times in 400 runs; the read is now bracketed
+  by a second `size()` and retried when the two disagree, which measured 0 in 400. This affects
+  every queue reached through the agent's woven hooks; an explicit `registerQueue` was never
+  affected.
 - **`ExchangerDetector` no longer reports a null-payload rendezvous** (#521).
   `Exchanger.exchange(null)` is permitted and a payload-free handoff is how the class is used as a
   pure rendezvous; the report already printed the count as "legal" and then called it a warning.
