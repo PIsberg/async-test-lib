@@ -7,6 +7,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
+import java.util.Set;
+import java.util.TreeSet;
+
+import se.deversity.asynctest.DetectorType;
+import se.deversity.asynctest.diagnostics.DetectorFeed;
+import se.deversity.asynctest.diagnostics.DetectorFeeds;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,6 +44,7 @@ class CorpusClaimsInDocsTest {
 
     private static final Path README = repoRoot().resolve("README.md");
     private static final Path EVAL = repoRoot().resolve("docs/analysis/corpus-eval.md");
+    private static final Path MODULE_README = repoRoot().resolve("corpus-eval/README.md");
 
     @Test
     @DisplayName("the subject counts in README and the corpus eval match the corpus")
@@ -59,6 +69,137 @@ class CorpusClaimsInDocsTest {
                 "these documents state corpus numbers the corpus no longer produces. The generated "
                         + "reports under target/corpus-eval/ are the authority and the prose is a "
                         + "copy of one run, so the copy is what has to move: " + stale);
+    }
+
+    @Test
+    @DisplayName("the module's own README states the corpus it ships with, and its lanes")
+    void theModuleReadmeAgreesWithTheModule() {
+        long total = Corpus.subjects().size();
+        long classes = Corpus.subjects().stream().map(Subject::className).distinct().count();
+        long libraries = corpusLibraries().size();
+        long agentFed = java.util.Arrays.stream(DetectorType.values())
+                .filter(type -> DetectorFeeds.feedOf(type) == DetectorFeed.AGENT)
+                .count();
+        int lanes = CorpusLane.values().length;
+
+        List<String> stale = new ArrayList<>();
+        check(stale, MODULE_README, total + " subjects drawn from " + classes,
+                "the corpus holds " + total + " subjects over " + classes + " distinct classes");
+        checkCount(stale, MODULE_README, lanes, "lanes and writes one report per lane",
+                "CorpusLane declares " + lanes + " lanes");
+        checkCount(stale, MODULE_README, libraries, "corpus libraries",
+                "the corpus draws subjects from " + libraries + " third-party libraries besides "
+                        + "the JDK, each a dependency this module puts on a classpath");
+        checkCount(stale, MODULE_README, agentFed, "agent-fed detectors",
+                "DetectorFeeds classifies " + agentFed + " detectors as AGENT-fed, which is what "
+                        + "the agent-off lane is the control for");
+        for (CorpusLane lane : CorpusLane.values()) {
+            check(stale, MODULE_README, "`" + lane.propertyValue() + "`",
+                    "CorpusLane declares the " + lane.propertyValue() + " lane, and the lane "
+                            + "table is what a reader uses to find its report");
+        }
+
+        assertTrue(stale.isEmpty(),
+                "corpus-eval/README.md is the first thing a reader of this module opens, and it "
+                        + "states numbers the module no longer produces. This is the drift that "
+                        + "went unnoticed until 2026-09-07 precisely because nothing read it: "
+                        + stale);
+    }
+
+    @Test
+    @DisplayName("no source in this module counts against a roster the library no longer ships")
+    void theModulesOwnJavadocCountsAgainstTheCurrentRoster() throws IOException {
+        int roster = DetectorType.values().length;
+        Pattern denominator = Pattern.compile("of the (\\d+)\\b");
+
+        List<String> stale = new ArrayList<>();
+        for (Path source : sources()) {
+            Matcher matcher = denominator.matcher(read(source));
+            while (matcher.find()) {
+                int stated = Integer.parseInt(matcher.group(1));
+                if (stated >= ROSTER_SIZED && stated != roster) {
+                    stale.add(repoRoot().relativize(source) + " says \"of the " + stated
+                            + "\", and the library ships " + roster + " detectors");
+                }
+            }
+        }
+
+        assertTrue(stale.isEmpty(),
+                "these sentences divide by a detector roster that no longer exists. Four of them "
+                        + "named a roster of 142 for long enough that it grew twice underneath "
+                        + "them, which is what a count nobody reads does. Re-read the sentence "
+                        + "rather than only the number: the numerator usually moved too. Note "
+                        + "that this check reads source text, so an example written into a "
+                        + "comment counts as a claim: phrase one so it does not: " + stale);
+    }
+
+    /**
+     * The floor above which "of the N" is read as a claim about the detector roster.
+     *
+     * <p>Without it this check would fail on "one of the 4 lanes" and every other small count that
+     * happens to share the phrasing. A roster has been three digits since long before this module
+     * existed, so the floor separates the two uses without a list of exceptions to maintain.
+     */
+    private static final int ROSTER_SIZED = 100;
+
+    /** {@return every Java source in this module} */
+    private static List<Path> sources() throws IOException {
+        try (Stream<Path> tree = Files.walk(repoRoot().resolve("corpus-eval/src"))) {
+            return tree.filter(path -> path.toString().endsWith(".java")).toList();
+        }
+    }
+
+    /**
+     * {@return every third-party library the corpus draws a subject from, JDK classes aside}
+     *
+     * <p>Across every lane, not only {@link Corpus#subjects()}. The sentence this backs is about
+     * what the module puts on a classpath, and HikariCP earns its dependency by appearing in
+     * recording rows alone - counting eval subjects would say seven and quietly mean something
+     * else. That is the same mistake in miniature as the one this test exists to catch.
+     */
+    private static Set<String> corpusLibraries() {
+        List<String> all = new ArrayList<>();
+        Corpus.subjects().forEach(subject -> all.add(subject.library()));
+        for (CorpusLane lane : CorpusLane.values()) {
+            Corpus.subjectsFor(lane).forEach(subject -> all.add(subject.library()));
+        }
+        Set<String> libraries = new TreeSet<>();
+        for (String library : all) {
+            if (!library.startsWith("jdk:")) {
+                libraries.add(library.substring(0, library.lastIndexOf(':')));
+            }
+        }
+        return libraries;
+    }
+
+    /**
+     * Records a stale claim unless {@code document} states {@code count} before {@code noun}.
+     *
+     * <p>Accepts the digit or the English word, because the documents write small counts as words
+     * and a gate that forced "4 lanes" into that prose would be paid for in readability by every
+     * future sentence. This is still the number in its sentence rather than a regex over every
+     * integer in the file: the noun has to follow it.
+     *
+     * @param stale    where a failure is collected
+     * @param document the file whose prose is the claim
+     * @param count    what the module actually produces
+     * @param noun     the words the count must precede
+     * @param because  what the module says instead, for the failure message
+     */
+    private static void checkCount(List<String> stale, Path document, long count, String noun,
+                                   String because) {
+        String text = read(document);
+        if (!text.contains(count + " " + noun) && !text.contains(word(count) + " " + noun)) {
+            stale.add(repoRoot().relativize(document) + " no longer says \"" + count + " " + noun
+                    + "\" (or \"" + word(count) + " " + noun + "\"), and " + because);
+        }
+    }
+
+    /** {@return the English word for {@code count}, or its digits past the ones prose spells out} */
+    private static String word(long count) {
+        List<String> words = List.of("zero", "one", "two", "three", "four", "five", "six", "seven",
+                "eight", "nine", "ten", "eleven", "twelve");
+        return count >= 0 && count < words.size() ? words.get((int) count) : String.valueOf(count);
     }
 
     private static void check(List<String> stale, Path document, String claim, String because) {

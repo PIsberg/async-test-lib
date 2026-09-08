@@ -24,7 +24,7 @@ import se.deversity.asynctest.DetectorType;
  * satisfies that for free. That is not a hypothetical: before #409 the silent half of
  * {@code CONCURRENT_MAP_CHECK_THEN_ACT} was three lines of Caffeine with no detector call in them,
  * so a detector that fired on every single {@code recordCheckThenAct} would have passed it. The
- * row was measuring nothing while reading as evidence, and nine silent rows now back a
+ * row was measuring nothing while reading as evidence, and 55 silent rows now back a
  * {@code VERDICT} tier through {@code META-INF/async-test/verdict-evidence-corpus}.
  *
  * <p>{@code CorpusRecordingLaneTest.thePooledRowsPremiseHeld()} already does this properly for one

@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
  *
  * <p>Every rate is printed over the denominator it was measured against. A finding count on its
  * own cannot distinguish a detector that looked and saw nothing from one that was never fed, and
- * in this corpus 137 of the 142 are never fed at all, so the exposure section is not decoration.
+ * in this corpus 125 of the 146 are never fed at all, so the exposure section is not decoration.
  */
 final class CorpusReport {
 
@@ -299,14 +299,15 @@ final class CorpusReport {
      * <p>The per-subject table above filters each row to the detector it names, which is what the
      * row is a claim about. That filter used to hide the rest: a finding from any other detector
      * on a body the corpus writes down as correct appeared in no table and failed no gate.
-     * {@code CorpusGates.noCollateralFindingOnASilentRow} fails the run for one at VERDICT tier,
-     * where the library is claiming the code is wrong. Below that tier a finding on a correct twin
-     * is a question rather than a verdict, and the answer is a judgement about a body this module
-     * wrote - so it is printed here and left to a reader instead of being asserted.
+     * {@code CorpusGates.noCollateralFindingOnASilentRow} fails the run on one, at a bar that
+     * depends on the lane and is reasoned about on {@link CorpusLane#failsOnAnyCollateral()}.
+     * Where that bar is the tier one, a finding below it is a question rather than a verdict and
+     * the answer is a judgement about a body this module wrote, so it is printed here and left to
+     * a reader instead of being asserted.
      *
-     * <p>Empty in the recording lane, where all 118 silent rows are silent across the whole
-     * roster. The one entry the agent-pair lane prints is discussed in
-     * {@code CorpusGates.noCollateralFindingOnASilentRow}.
+     * <p>Structurally empty in the recording lane, whose bar is absolute: anything this method
+     * would print there fails the run first, which is why the sentence it prints says so. The one
+     * entry the agent-pair lane prints is discussed on the gate.
      *
      * @param findings what the detectors reported
      * @param lane     the lane that produced them
@@ -321,9 +322,15 @@ final class CorpusReport {
         StringBuilder out = new StringBuilder();
         out.append("\n## Collateral findings on silent rows\n\n")
                 .append("A row below states that one named detector stays silent, and another ")
-                .append("detector reported on the same body. None is at VERDICT tier, which is ")
-                .append("the tier the run fails on; each is a remark about a body whose row only ")
-                .append("ever claimed its own hazard is absent.\n\n")
+                .append("detector reported on the same body. Each is under the bar this lane ")
+                .append("fails on, or the run would have stopped. ")
+                .append(lane.failsOnAnyCollateral()
+                        ? "That bar is absolute here, so this section is empty by "
+                                + "construction and its presence is a defect in the gate."
+                        : "That bar is VERDICT tier at HIGH or CRITICAL severity, so each "
+                                + "entry is a remark about a body whose row only ever "
+                                + "claimed its own hazard is absent.")
+                .append("\n\n")
                 .append("| Subject | Its row's detector | Reported by | Tier / severity |\n")
                 .append("|---|---|---|---|\n");
         for (CorpusRecorder.Finding finding : collateral) {

@@ -1682,9 +1682,28 @@ Below VERDICT the report prints what the gate does not assert. A new "Collateral
 rows" section lists every finding a silent row drew from a detector other than its own, so the set
 is visible to a reader instead of invisible to everyone; `CorpusGates.collateralOnSilentRows` is
 shared between the gate and the report so the two cannot mean different things by "collateral".
-The recording lane prints nothing there: all 118 of its silent rows are silent across the whole
-roster, at every tier, so those rows moved from "its detector said nothing" to "nothing said
-anything" for free. The agent-pair lane prints the one row above.
+The recording lane prints nothing there, and since 2026-09-08 it is not allowed to. Its bar is
+absolute: any collateral finding at any tier fails the lane. The asymmetry is deliberate and lives
+on `CorpusLane.failsOnAnyCollateral()`, because it follows from how each lane's bodies are written
+rather than from how good its detectors are. A recording-lane body is written here to make exactly
+the `record*` calls its row is about, and contains nothing else for a detector to remark on
+legitimately, so a second detector speaking is either that detector being wrong about correct code
+or the row being wrong about what it wrote. An agent-pair body cannot be that clean: `AgentRowPremise`
+obliges the silent half to go through the same substituted call sites as its twin, which is how the
+`Thread.sleep` above gets there, so that lane keeps the VERDICT/HIGH bar.
+
+The ratchet was free at the moment it was applied. All 119 recording-lane silent rows were already
+silent across the whole roster at every tier, and the lane's entire run produces 117 findings for
+its 117 must-fire rows and nothing else, so what changed is not the measurement but whether a
+regression in it would be noticed. Those 119 rows now hold the strong form by assertion rather than
+by luck: not "its detector said nothing" but "none of the 146 said anything".
+
+One detail dates the paragraph above it. `SleepInLockDetector` sat at PROMPT when the uniform bar
+was chosen, so "sub-VERDICT collateral is printed rather than asserted" described the exception
+exactly. The 2026-09-08 promotion wave moved it to VERDICT, and the tolerated entry is now
+VERDICT/MEDIUM: the severity half of the bar holds it, not the tier half. Nothing is wrong, but a
+bar argued from one half while resting on the other is one promotion from being wrong, so the gate
+now says which half is load-bearing.
 
 Firing rows are out of scope at every tier. Their bodies are wrong on purpose, so a second detector
 speaking is a second true positive: both latch detectors report the timed-out await in

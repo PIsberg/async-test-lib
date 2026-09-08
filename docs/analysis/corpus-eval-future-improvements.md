@@ -11,25 +11,22 @@ closed in the same change, and are described in [corpus-eval.md](corpus-eval.md)
 - `CorpusGatesTest`, which shows each gate failing on input it must reject;
 - a pairing-symmetry check, which holds the README's "add subjects in pairs" rule to being true.
 
+Item 1 of what follows was closed on 2026-09-08: the recording lane's collateral bar is now
+absolute, so its 119 silent rows are asserted to draw nothing from any of the 146 detectors at any
+tier, while the agent-pair lane keeps the VERDICT/HIGH bar its `AgentRowPremise` scaffolding
+requires. The asymmetry is reasoned about on `CorpusLane.failsOnAnyCollateral()` and recorded under
+"What the gates could not catch" in [corpus-eval.md](corpus-eval.md). The numbering below is left
+as it was so that references to an item still resolve.
+
+Item 5 was closed the same day. `corpus-eval/README.md` said 45 classes where the corpus holds 82
+subjects over 76, three lanes where there are four, seven libraries where the module puts eight on
+a classpath, and two agent-fed detectors where `DetectorFeeds` names 18. Four sources divided by a
+roster of 142 that has since grown to 146, and two counted VERDICT evidence at eight and nine where
+the file holds 55. All are corrected, and `CorpusClaimsInDocsTest` now derives every one of them:
+two tests for the module README, and one that reads the module's own sources and fails on any
+sentence dividing by a roster the library no longer ships.
+
 What follows is the remainder, in the order worth doing them.
-
-## 1. Sub-VERDICT collateral on a silent row is printed, not gated
-
-`noCollateralFindingOnASilentRow` fails a run only at VERDICT/HIGH or VERDICT/CRITICAL, matching
-`CorpusReport.isFalsePositive`. Everything below that is listed in the report's "Collateral
-findings on silent rows" section and asserted by nothing, which is the right call for the one entry
-that exists today - `SleepInLockDetector` on the deadlock pair's silent half, where the sleep is
-required by `AgentRowPremise` and the finding is true. It is the wrong call as a permanent
-arrangement: the section is a list nobody is obliged to read, which is where the collateral set
-already spent its life before this change.
-
-The recording lane could take the absolute version today at no cost. All 118 of its silent rows are
-silent across the whole roster at every tier, measured 2026-09-07, so a per-lane bar - absolute in
-the recording lane, VERDICT in the agent-pair lane - would ratchet 118 rows to their strongest form
-and leave the one genuine exception where it belongs. It was not done in the same change because a
-gate that means two different things in two lanes needs the asymmetry written down where the next
-reader of either lane will find it, and that is a decision about how the module explains itself
-rather than a line of code.
 
 ## 2. Nothing checks that `CorpusGatesTest` still bites
 
@@ -107,25 +104,6 @@ The fix for both shapes is the same and is not small: let the gates take their c
 argument instead of reading the static one, so a test can hand them a corpus built for the
 occasion. That is a refactor of `CorpusGates`, `Corpus` and every caller, and it should be done
 when something else already needs it.
-
-## 5. The module's own prose is not checked
-
-`CorpusClaimsInDocsTest` pins the counts in the root `README.md` and in
-[corpus-eval.md](corpus-eval.md). It does not read `corpus-eval/README.md`, and that README has
-drifted:
-
-- "45 third-party classes", where the corpus holds 82 subjects over 68 distinct classes;
-- "A run executes three lanes", and a lane table with three rows, where there are four. The
-  `agent-pairs` lane is missing from both.
-
-Two counts inside `CorpusGates` itself have drifted the same way: "137 of the 142 detectors" where
-the roster is 146, and "Eight detectors are classified VERDICT" where
-`META-INF/async-test/verdict-evidence-corpus` now has eleven lines. `SilentRowPremise` says "nine
-silent rows" for the same eleven.
-
-Extending `CorpusClaimsInDocsTest` to the module README is a few lines. The counts inside javadoc
-are harder to gate without the "regex over every integer" failure the existing test's javadoc warns
-against, and are probably better served by deriving the sentence than by checking it.
 
 ## 6. The refusal list is reviewed by nothing but a build
 

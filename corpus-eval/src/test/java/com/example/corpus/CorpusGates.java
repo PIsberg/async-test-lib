@@ -166,7 +166,7 @@ final class CorpusGates {
      * grants it against a case that fires on a bug and a case that stays silent on the correct
      * twin. Its own gate resolves that evidence by reflection over its own test methods, which
      * cannot reach this module: this module depends on the library, so the library cannot depend
-     * back. Eight detectors are classified VERDICT on the strength of pairs that live here, named
+     * back. 55 detectors are classified VERDICT on the strength of pairs that live here, named
      * in {@code META-INF/async-test/verdict-evidence-corpus}.
      *
      * <p>A name in a file is not evidence. This resolves every line against the rows it names and
@@ -330,21 +330,36 @@ final class CorpusGates {
      * code is wrong. Nothing looked for one, and {@link CorpusReport} filtered its per-subject
      * table the same way, so such a finding would not even have been printed.
      *
-     * <p>The tier bar is the one lane one already uses. {@link CorpusReport#isFalsePositive}
-     * counts a finding against documented-safe code only at VERDICT/HIGH or VERDICT/CRITICAL,
-     * because that is where the library claims the code is wrong rather than asking a question,
-     * and a silent row's claim is no broader: it says its own hazard is absent, not that the body
-     * is above every remark any of the 146 detectors could make.
+     * <p>How much collateral a row may draw depends on the lane, and the reasoning lives on
+     * {@link CorpusLane#failsOnAnyCollateral()} because it is a statement about how each lane's
+     * bodies are written rather than about this gate. In short: the recording lane fails on any
+     * collateral finding at all, because its bodies contain nothing the row is not about; the
+     * agent-pair lane fails only at VERDICT/HIGH or VERDICT/CRITICAL, the bar
+     * {@link CorpusReport#isFalsePositive} uses, because {@link AgentRowPremise} obliges its
+     * bodies to carry scaffolding the row never spoke for.
      *
-     * <p>That distinction was measured rather than assumed. The first version of this gate was
-     * absolute, and it failed on {@code agent_deadlock_noThreadBlockedOnAnother}, whose two nested
-     * monitors are held across a {@code Thread.sleep} that {@code SleepInLockDetector} reports at
-     * PROMPT/MEDIUM. The sleep looked like harness scaffolding until {@link AgentRowPremise}
-     * refused the row without it: a silent row has to go through the same substituted call sites
-     * as the twin it is paired with, and the twin sleeps. So the finding is a true PROMPT-tier
-     * observation about a body that only ever claimed to be free of deadlock, and the absolute
-     * form of this gate was wrong rather than the row. Sub-VERDICT collateral is printed by the
-     * report instead of asserted, which is what the tier system is for.
+     * <p>That asymmetry was measured rather than assumed, in both directions. The first version of
+     * this gate was absolute everywhere, and it failed on
+     * {@code agent_deadlock_noThreadBlockedOnAnother}, whose two nested monitors are held across a
+     * {@code Thread.sleep} that {@code SleepInLockDetector} reports on. The sleep looked like
+     * harness scaffolding until {@link AgentRowPremise} refused the row without it: a silent row
+     * has to go through the same substituted call sites as the twin it is paired with, and the
+     * twin sleeps. So that finding is a true observation about a body that only ever claimed to be
+     * free of deadlock, and the absolute form was wrong for that lane rather than the row.
+     *
+     * <p>It was never wrong for the recording lane, and saying so uniformly cost that lane its
+     * ratchet. Every one of its silent rows was already clean across the whole roster at every
+     * tier when the uniform bar was chosen, and is still clean: the lane produces 117 findings for
+     * its 117 must-fire rows and nothing else. For 119 rows the gate was asserting a bar the
+     * corpus cleared by a margin nothing measured. It now asserts the margin.
+     *
+     * <p>One consequence is worth stating because it dates the paragraph above. When the uniform
+     * bar was written, {@code SleepInLockDetector} sat at PROMPT, and "sub-VERDICT collateral is
+     * printed rather than asserted" described the exception exactly. The 2026-09-08 promotion wave
+     * moved that detector to VERDICT, so the one entry this gate tolerates is now VERDICT at
+     * MEDIUM: it is the severity half of the bar holding it, not the tier half. A bar justified by
+     * one half while resting on the other is one promotion away from being wrong, and a reader
+     * should know which half is load-bearing.
      *
      * <p>Firing rows are out of scope at every tier. Their bodies are wrong on purpose, so a second
      * detector speaking is a second true positive: both latch detectors report the timed-out await
@@ -357,9 +372,7 @@ final class CorpusGates {
                                                 CorpusLane lane) {
         List<String> collateral = new ArrayList<>();
         for (CorpusRecorder.Finding finding : collateralOnSilentRows(findings, lane)) {
-            if (finding.tier() != TrustTier.VERDICT
-                    || (finding.severity() != IssueSeverity.HIGH
-                            && finding.severity() != IssueSeverity.CRITICAL)) {
+            if (!lane.failsOnAnyCollateral() && !isTheLibrarysStrongestClaim(finding)) {
                 continue;
             }
             collateral.add(finding.detector() + " reported " + finding.tier() + "/"
@@ -371,10 +384,36 @@ final class CorpusGates {
 
         assertTrue(collateral.isEmpty(),
                 "these rows are the corpus's own statement that a use is correct, and another "
-                        + "detector made the library's strongest claim about them anyway. At this "
-                        + "tier there is no reading under which both are right: either the finding "
-                        + "is a false positive on code this module vouches for, or the row's "
-                        + "rationale is wrong about what the body does: " + collateral);
+                        + "detector spoke about them anyway. " + barOf(lane) + " There is no "
+                        + "reading under which both are right: either the finding is a false "
+                        + "positive on code this module vouches for, or the row's rationale is "
+                        + "wrong about what the body does: " + collateral);
+    }
+
+    /**
+     * {@return whether {@code finding} is the library claiming the code is wrong, not asking}
+     *
+     * <p>The same pair of conditions {@link CorpusReport#isFalsePositive} uses on documented-safe
+     * subjects, so that "false positive" means one thing in this module. Kept as a named predicate
+     * because it is the agent-pair lane's whole bar, and an inlined tier-and-severity test reads as
+     * an arbitrary threshold rather than as the claim it stands for.
+     *
+     * @param finding what a detector reported
+     */
+    private static boolean isTheLibrarysStrongestClaim(CorpusRecorder.Finding finding) {
+        return finding.tier() == TrustTier.VERDICT
+                && (finding.severity() == IssueSeverity.HIGH
+                        || finding.severity() == IssueSeverity.CRITICAL);
+    }
+
+    /** {@return the sentence naming the bar {@code lane} applies, for a failure message} */
+    private static String barOf(CorpusLane lane) {
+        return lane.failsOnAnyCollateral()
+                ? "In the " + lane.propertyValue() + " lane the bar is absolute: these bodies "
+                        + "contain nothing their row is not about, so a finding from any other "
+                        + "detector, at any tier, is a defect on one side or the other."
+                : "In the " + lane.propertyValue() + " lane the bar is VERDICT at HIGH or "
+                        + "CRITICAL, which is the library making its strongest claim.";
     }
 
     /**
@@ -465,7 +504,7 @@ final class CorpusGates {
     /**
      * The exposure table's own gate, from the measured direction.
      *
-     * <p>{@code DetectorFeeds} claims 137 of the 142 detectors cannot say anything until the test
+     * <p>{@code DetectorFeeds} claims 125 of the 146 detectors cannot say anything until the test
      * body records what it did. This module records nothing, so if one of them speaks the claim is
      * false and every denominator printed in the report is wrong. Reading the report's zeroes as
      * "looked and saw nothing" depends on this holding.
