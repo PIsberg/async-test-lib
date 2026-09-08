@@ -141,9 +141,42 @@ public class BlockingQueueDetector {
                 .capacity.accumulateAndGet(observed, BlockingQueueDetector::widerBound);
     }
 
-    /** The bound a queue reports about itself, or {@code -1} when it has none. */
+    /** How many times a capacity read is retried before its inconsistency is accepted. */
+    private static final int COHERENT_READ_ATTEMPTS = 3;
+
+    /**
+     * {@return the bound a queue reports about itself, or {@code -1} when it has none}
+     *
+     * <p>A {@link BlockingQueue} states its bound only as {@code remainingCapacity() + size()},
+     * and those are two reads. An operation landing between them shifts the sum by an element,
+     * so the pair is bracketed by a second {@code size()} and retried when the two disagree: a
+     * coherent pair is one where nothing changed the queue around the read of the other half.
+     *
+     * <p>Both directions of an incoherent read do damage, and the one this guards against is the
+     * quiet one. An under-read invents a finding, which is loud and gets investigated. An
+     * over-read is permanent, because {@link #widerBound} keeps the larger value, and it silences
+     * saturation for the rest of the run: a queue of three read as four needs a high-water mark of
+     * 3.6 to count as saturated and can never reach it. Since saturation is the only signal
+     * {@code BlockingQueueReport.hasIssues} gates on for a queue with no dropped elements, one
+     * straddled read turns the detector off for that queue and nothing says so. Four threads
+     * offering to a bounded queue of three reproduced that about once in a hundred runs.
+     *
+     * <p>Capacity is immutable for every JDK bounded queue, so a coherent reading is the answer
+     * rather than a sample of one. After {@value #COHERENT_READ_ATTEMPTS} attempts the last sum is
+     * used anyway: persistent incoherence needs a modification inside every attempt, and the
+     * fallback keeps the old conservative behaviour rather than inventing a narrower bound.
+     *
+     * @param queue the queue to ask
+     */
     private static int observedCapacityOf(BlockingQueue<?> queue) {
-        long bound = (long) queue.remainingCapacity() + queue.size();
+        long bound = 0;
+        for (int attempt = 0; attempt < COHERENT_READ_ATTEMPTS; attempt++) {
+            int before = queue.size();
+            bound = (long) queue.remainingCapacity() + before;
+            if (queue.size() == before) {
+                break;
+            }
+        }
         return bound >= Integer.MAX_VALUE ? UNBOUNDED : (int) bound;
     }
 
