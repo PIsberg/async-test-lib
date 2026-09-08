@@ -1205,7 +1205,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 41. Exchanger Misuse Detector
 * **Severity**: `HIGH`
-* **Description**: Detects Exchanger misuse: `exchange()` timeouts, an odd number of participating threads that leaves one partner permanently unmatched, interruptions during exchange, and `null` values passed through the exchange.
+* **Description**: Detects Exchanger misuse: `exchange()` timeouts, an odd number of participating threads that leaves one partner permanently unmatched, and interruptions during exchange. A `null` payload is counted and printed next to those findings, but is not one on its own: `exchange(null)` is permitted, and a payload-free handoff is how an Exchanger is used as a pure rendezvous where the meeting is the synchronisation (#521).
 * **Buggy Code**:
   ```java
   Exchanger<Buffer> exchanger = new Exchanger<>();

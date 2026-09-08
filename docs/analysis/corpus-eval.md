@@ -1033,8 +1033,8 @@ Three of them are worth a sentence each for the shape they add:
 did the protocol complete, or did it end in the state the class documents as terminal? Each pair
 records a finished cycle against an abandoned one - a barrier left broken against one that
 arrives, awaits and completes; a `tryLock` that timed out against a lock taken and released; a
-phaser terminated against one that advanced a phase; an exchange carrying null against one
-carrying a payload; an await nobody signalled against the whole handshake.
+phaser terminated against one that advanced a phase; an exchange whose partner never arrived
+against one that met and completed; an await nobody signalled against the whole handshake.
 
 `ABA_PROBLEM`, `STABLE_VALUE_MISUSE` and `VAR_HANDLE_NON_ATOMIC_UPDATE` complete the wave at
 **57 of 146**, in 117 rows.
