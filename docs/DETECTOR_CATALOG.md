@@ -71,13 +71,22 @@ tests in this repository, which the gate resolves by reflection: `DEADLOCKS`, `L
 `INTERRUPT_MISHANDLING`, `UNCAUGHT_EXCEPTION_HANDLER`, `COMPLETABLE_FUTURE_COMPLETION_LEAKS` and
 `THREAD_LEAKS`. Nine of those ten are in the `ESSENTIALS` preset, which is the one to gate on.
 
-Eleven more are backed by the corpus eval's recording lane, where the pair is two uses of an
-unmodified third-party class rather than a twin written here: `SHARED_JSON_MAPPER_RECONFIG`,
-`SHARED_MESSAGE_DIGEST`, `SHARED_STATEFUL_CRYPTO`, `CONCURRENT_MAP_COMPUTE_RECURSION`,
-`SYNCHRONIZED_COLLECTION_ITERATION`, `SHARED_ITERATOR`, `MUTABLE_MAP_KEY`,
-`JDBC_CONNECTION_SHARED`, `CONCURRENT_MODIFICATIONS`, `SHARED_BYTE_BUFFER` and
-`WEAK_HASH_MAP_SHARED`. That lane lives in a downstream module, so
-reflection cannot reach it;
+Fifty-five more are backed by the corpus eval's pair lanes, where the pair is two uses of an
+unmodified third-party class rather than a twin written here. Eleven were registered in the first
+wave; forty-four followed on 2026-09-07, when it turned out they had been measured all along. The
+promotion channel and its bar were built when the recording lane held twelve pairs; the lane grew
+to 129 and nothing went back, because registering a pair is a manual step and no gate noticed one
+that skipped it. The library's own gate asks whether a VERDICT has evidence and never the reverse.
+So those detectors reported at PROMPT for a fortnight while a measurement that met the bar ran
+green every night, and a build gated on `minTrust = VERDICT` ignored every one of them.
+
+`EveryEligiblePairIsPromotedOrExplainedTest` in the corpus module now derives eligibility from the
+rows rather than from a list, and fails until a qualifying pair is either registered or explained,
+so the backlog cannot rebuild. A pair qualifies when the detector is at PROMPT, both halves name
+the same class, and - in the recording lane - both reach the detector through the same
+`record*`/`register*` methods, so what separates them is the state those calls carry and nothing
+else. Agent-lane bodies make no such calls, the woven call sites being the input, and
+`AgentRowPremise` holds them to the same property instead.
 [`META-INF/async-test/verdict-evidence-corpus`](../async-test-lib/src/main/resources/META-INF/async-test/verdict-evidence-corpus)
 names each pair and both modules check it, which is what keeps the tier from outliving the
 measurement.
@@ -131,14 +140,13 @@ up `synchronized` blocks in woven code. An undeclared lock in unwoven code stays
 still produces a finding, and so does inconsistent locking - two threads holding different locks
 have excluded nothing, which is a race however many locks were involved.
 
-**Classified, but not all measured.** Every detector now carries a tier, because a finding with no
-tier is one a reader has to rank alone. Most carry PROMPT, which is the honest default rather than
-a result: it says nobody has measured that detector's silent-on-correct-code direction, not that
-the detector is wrong. The two evals measure 33 distinct detectors of 146 between them (three
-appear in both), and extending them is mechanical rather than hard. Each new both-directions case
-either promotes a detector or writes down a limit, and both outcomes are worth having: the
-`CONCURRENT_MODIFICATIONS` pair, added with the tier mechanism, showed the detector firing on two
-threads appending to a `CopyOnWriteArrayList`, which is correct code with no iterator in sight.
+**Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
+tier is one a reader has to rank alone. The split is 65 VERDICT, 66 PROMPT, 11 FACT and 4
+ADVISORY. PROMPT is the honest default rather than a result: it says nobody has measured that
+detector's silent-on-correct-code direction, not that the detector is wrong. FACT and ADVISORY are
+statements about the kind of claim a finding makes rather than about missing evidence - a FACT
+report says something was observed and leaves the judgement to the reader - so neither is a
+weaker VERDICT and a pair does not promote them.
 
 **Practical consequence.** Gate on the tier, not on severity alone: `failOn = HIGH` with
 `minTrust = TrustTier.VERDICT` fails only on measured findings, while everything else still prints

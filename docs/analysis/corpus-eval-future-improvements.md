@@ -44,6 +44,25 @@ The standing form of it is mutation testing scoped to `CorpusGates`, which the r
 runs on the library. It is not obviously worth a two-hour job for five hundred lines of test-only
 code, so it is recorded rather than proposed.
 
+## 2b. Sixty-nine pairs are held back by a rule, not by a reading
+
+The 2026-09-07 promotion wave registered 47 of the 116 same-class pairs. The remaining 69 are held
+back because the two halves call different detector methods, which is a proxy for "varies the
+defect and nothing else" rather than the thing itself. Some of them are certainly sound:
+`RESOURCE_LEAKS`, `STREAM_CLOSING`, `EXECUTOR_SHUTDOWN`, `FUTURE_IGNORED` and
+`ATOMIC_NON_ATOMIC_UPDATE` all pair a body that omits the call that makes it correct against one
+that makes it, so the missing call is the defect.
+
+Each needs a reading of both bodies, and the outcome is either a named entry in
+`PairEvidence.REVIEWED_DESPITE_SHAPE` with the reason, or a rewritten pair. That is roughly an hour
+of careful work per handful and cannot be batched, which is why the wave stopped where the rule
+stops rather than where a reviewer's patience does. Four more are held back for naming two classes,
+which is the older rule and a rewrite rather than a reading.
+
+Worth doing in small batches, and worth resisting the urge to clear it in one pass: the wave that
+created this document's parent found the `EXCHANGER` pair wrong on a rationale no rule could read,
+and the same will be true of some of these 69.
+
 ## 3. Severity is not pinned on a firing row
 
 `RecordingSubject` states an expectation and nothing else, and
