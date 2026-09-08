@@ -14,9 +14,9 @@ package com.example.corpus;
  * do cooperate. It is a different measurement over a different denominator and must never be
  * merged into the other two: its subjects are still unmodified third-party classes, but the test
  * body calls the recording API the way a user following {@code AsyncTestContext} would, which is
- * exactly what the other lanes refuse to do. Without it, 137 of the 142 detectors have an
+ * exactly what the other lanes refuse to do. Without it, 125 of the 146 detectors have an
  * exposure of zero in every lane and "no false positive from detector X" and "X never ran" stay
- * the same row for 96% of the roster.
+ * the same row for 86% of the roster.
  *
  * <p>Surefire sets {@code corpus.lane} per execution; a plain {@code mvn test} runs all three.
  */

@@ -79,9 +79,9 @@ import java.security.InvalidKeyException;
  *
  * <p><strong>Why this is a separate measurement.</strong> The corpus's headline claim is that no
  * line of the subject and no line of the test cooperates with a detector, and that is exactly
- * what makes 137 of the 142 detectors unreachable there: they are fed by the {@code record*} and
+ * what makes 125 of the 146 detectors unreachable there: they are fed by the {@code record*} and
  * {@code register*} calls the corpus refuses to make. The result was a report in which "no false
- * positive from detector X" and "X never ran" were the same row for 96% of the roster. This lane
+ * positive from detector X" and "X never ran" were the same row for 86% of the roster. This lane
  * fixes that for a named handful by doing what a user following {@code AsyncTestContext} does,
  * and its numbers must never be merged into the unmodified lanes'.
  *

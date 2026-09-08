@@ -18,6 +18,14 @@ requires. The asymmetry is reasoned about on `CorpusLane.failsOnAnyCollateral()`
 "What the gates could not catch" in [corpus-eval.md](corpus-eval.md). The numbering below is left
 as it was so that references to an item still resolve.
 
+Item 5 was closed the same day. `corpus-eval/README.md` said 45 classes where the corpus holds 82
+subjects over 76, three lanes where there are four, seven libraries where the module puts eight on
+a classpath, and two agent-fed detectors where `DetectorFeeds` names 18. Four sources divided by a
+roster of 142 that has since grown to 146, and two counted VERDICT evidence at eight and nine where
+the file holds 55. All are corrected, and `CorpusClaimsInDocsTest` now derives every one of them:
+two tests for the module README, and one that reads the module's own sources and fails on any
+sentence dividing by a roster the library no longer ships.
+
 What follows is the remainder, in the order worth doing them.
 
 ## 2. Nothing checks that `CorpusGatesTest` still bites
@@ -96,25 +104,6 @@ The fix for both shapes is the same and is not small: let the gates take their c
 argument instead of reading the static one, so a test can hand them a corpus built for the
 occasion. That is a refactor of `CorpusGates`, `Corpus` and every caller, and it should be done
 when something else already needs it.
-
-## 5. The module's own prose is not checked
-
-`CorpusClaimsInDocsTest` pins the counts in the root `README.md` and in
-[corpus-eval.md](corpus-eval.md). It does not read `corpus-eval/README.md`, and that README has
-drifted:
-
-- "45 third-party classes", where the corpus holds 82 subjects over 68 distinct classes;
-- "A run executes three lanes", and a lane table with three rows, where there are four. The
-  `agent-pairs` lane is missing from both.
-
-Two counts inside `CorpusGates` itself have drifted the same way: "137 of the 142 detectors" where
-the roster is 146, and "Eight detectors are classified VERDICT" where
-`META-INF/async-test/verdict-evidence-corpus` now has eleven lines. `SilentRowPremise` says "nine
-silent rows" for the same eleven.
-
-Extending `CorpusClaimsInDocsTest` to the module README is a few lines. The counts inside javadoc
-are harder to gate without the "regex over every integer" failure the existing test's javadoc warns
-against, and are probably better served by deriving the sentence than by checking it.
 
 ## 6. The refusal list is reviewed by nothing but a build
 

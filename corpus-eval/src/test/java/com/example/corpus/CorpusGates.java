@@ -166,7 +166,7 @@ final class CorpusGates {
      * grants it against a case that fires on a bug and a case that stays silent on the correct
      * twin. Its own gate resolves that evidence by reflection over its own test methods, which
      * cannot reach this module: this module depends on the library, so the library cannot depend
-     * back. Eight detectors are classified VERDICT on the strength of pairs that live here, named
+     * back. 55 detectors are classified VERDICT on the strength of pairs that live here, named
      * in {@code META-INF/async-test/verdict-evidence-corpus}.
      *
      * <p>A name in a file is not evidence. This resolves every line against the rows it names and
@@ -504,7 +504,7 @@ final class CorpusGates {
     /**
      * The exposure table's own gate, from the measured direction.
      *
-     * <p>{@code DetectorFeeds} claims 137 of the 142 detectors cannot say anything until the test
+     * <p>{@code DetectorFeeds} claims 125 of the 146 detectors cannot say anything until the test
      * body records what it did. This module records nothing, so if one of them speaks the claim is
      * false and every denominator printed in the report is wrong. Reading the report's zeroes as
      * "looked and saw nothing" depends on this holding.

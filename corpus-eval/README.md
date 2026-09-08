@@ -1,13 +1,13 @@
 # corpus-eval
 
-Measures what the 146 detectors report on 45 third-party classes with a documented
-thread-safety contract, and how many of the 146 the run could feed at all. The write-up, with the
-numbers and what they do and do not support, is
+Measures what the 146 detectors report on 82 subjects drawn from 76 third-party classes with a
+documented thread-safety contract, and how many of the 146 the run could feed at all. The write-up,
+with the numbers and what they do and do not support, is
 [docs/analysis/corpus-eval.md](../docs/analysis/corpus-eval.md).
 
 ## Why it is a standalone module
 
-The seven corpus libraries are *subjects*, not tools. Keeping the module out of the reactor keeps
+The eight corpus libraries are *subjects*, not tools. Keeping the module out of the reactor keeps
 them off every classpath that matters: nothing in `async-test-lib`, the published artifacts or the
 Gradle build resolves them, exactly as `consumer-fixture/` stays outside for its own reason.
 
@@ -18,13 +18,14 @@ mvn install -DskipTests -Djacoco.skip=true    # so the module can resolve the cu
 mvn -f corpus-eval/pom.xml test
 ```
 
-A run executes three lanes and writes one report per lane under `target/corpus-eval/`:
+A run executes four lanes and writes one report per lane under `target/corpus-eval/`:
 
 | Lane | Report | What it is |
 |---|---|---|
 | `agent-on` | `corpus-eval.md` | The agent attached as `fields=true,collections=true`. Every number the write-up quotes comes from here. |
-| `agent-off` | `corpus-eval-agent-off.md` | The same subjects with nothing attached. The control: `DetectorFeeds` says the two agent-fed detectors have no input without the agent, so this lane must observe nothing from them, and `CorpusGates` asserts it. |
+| `agent-off` | `corpus-eval-agent-off.md` | The same subjects with nothing attached. The control: `DetectorFeeds` says the 18 agent-fed detectors have no input without the agent, so this lane must observe nothing from them, and `CorpusGates` asserts it. |
 | `recording` | `corpus-eval-recording.md` | The same libraries, with bodies that call the recording API. A different measurement over a different denominator, which is why it writes its own report and is never merged into the other two. |
+| `agent-pairs` | `corpus-eval-agent-pairs.md` | The mirror image of the recording lane, for the 18 agent-fed detectors it cannot reach. The agent is attached and the body records nothing: the difference between a firing row and its silent twin is a field declaration, and everything in between comes from the weaver. `AgentRowPremise` fails the lane if a body here touches the recording API. |
 
 Those files are the source of truth for a given run; the document under `docs/` is a copy of one.
 
