@@ -6,11 +6,20 @@ on:
     paths:
       - 'pom.xml'
       - '**/pom.xml'
+      - '.github/workflows/sbom.yml'
+      - '.github/scripts/verify-sbom.sh'
   pull_request:
     branches: [main]
     paths:
       - 'pom.xml'
       - '**/pom.xml'
+      - '.github/workflows/sbom.yml'
+      - '.github/scripts/verify-sbom.sh'
+  schedule:
+    # The uploaded artifact expires after 30 days and the paths filter above only fires on a pom
+    # change, so a month without a dependency bump left no current SBOM anywhere except the last
+    # release. Monday 05:00 UTC keeps one inside the retention window.
+    - cron: '0 5 * * 1'
   workflow_dispatch:
 
 concurrency:
@@ -34,6 +43,11 @@ jobs:
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: block
+          # results-receiver.actions.githubusercontent.com is where upload-artifact sends its
+          # FinalizeArtifact call. It is not in GitHub's meta ranges, so harden-runner blocked it
+          # in run 34254099745 and the step failed with a 403 from the intermediary after the
+          # content had already been uploaded. It usually resolves to an address the policy lets
+          # through, which is why the same list passed on either side of that run.
           allowed-endpoints: >
             agent.api.stepsecurity.io:443
             api.adoptium.net:443
@@ -42,7 +56,7 @@ jobs:
             objects.githubusercontent.com:443
             repo.maven.apache.org:443
             repo1.maven.org:443
-            uploads.github.com:443
+            results-receiver.actions.githubusercontent.com:443
 
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,6 +74,12 @@ jobs:
         # leaving no target/bom.xml for the artifact upload below. The bom attached
         # to GitHub releases is produced and cosign-signed by publish.yml at tag time.
         run: mvn -B org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom -Dcyclonedx.skipNotDeployed=false
+
+      - name: Verify the SBOM
+        # upload-artifact only warns on a path that does not exist, so a missing or collapsed BOM
+        # used to leave this job green. bom.json was absent for exactly that reason until the
+        # plugin's outputFormat was corrected to "all".
+        run: .github/scripts/verify-sbom.sh target
 
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

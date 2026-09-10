@@ -8,3 +8,7 @@
 # in a carriage return. It is only ever invoked as `python3 <path>` today, which survives that,
 # but pinning it costs nothing and removes the trap.
 .github/scripts/*.py text eol=lf
+
+# Same trap, and these are executed directly by their shebang in the workflows, so a
+# carriage return on the interpreter line would break them outright.
+.github/scripts/*.sh text eol=lf
