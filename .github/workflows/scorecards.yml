@@ -55,6 +55,7 @@ jobs:
             api.securityscorecards.dev:443
             github.com:443
             objects.githubusercontent.com:443
+            results-receiver.actions.githubusercontent.com:443
             www.bestpractices.coreinfrastructure.org:443
 
       - name: "Checkout code"

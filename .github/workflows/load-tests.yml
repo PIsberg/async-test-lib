@@ -67,6 +67,7 @@ jobs:
             plugins.gradle.org:443
             repo.maven.apache.org:443
             repo1.maven.org:443
+            results-receiver.actions.githubusercontent.com:443
             services.gradle.org:443
 
       - name: Checkout code

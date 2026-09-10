@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The SBOM job verifies what it generated, and stops depending on a lucky DNS answer.**
+  `upload-artifact` warns and exits 0 on a path that does not exist, so `sbom.yml` was green for
+  any BOM the plugin happened to emit, including none. `.github/scripts/verify-sbom.sh` now runs
+  in `sbom.yml` and in `publish.yml` and fails when either format is missing or empty, when the
+  JSON does not parse, when the schema is not CycloneDX 1.6, when the serial number is absent,
+  when fewer than 15 components are listed, or when any of the three modules, slf4j-api,
+  byte-buddy or asm has dropped out. Separately, `results-receiver.actions.githubusercontent.com`,
+  where `upload-artifact` sends its FinalizeArtifact call, was in no workflow's harden-runner
+  allow-list; run 34254099745 was blocked there with a 403 from the intermediary after the content
+  had already uploaded, while runs on either side of it passed on the identical list. Every
+  workflow that uploads an artifact now names the endpoint. `sbom.yml` also runs weekly, because
+  its artifact expires after 30 days and its paths filter only fires on a pom change, and it no
+  longer allows `uploads.github.com`, which nothing in that job calls.
 - **`TrustTier.VERDICT` goes from 21 of 146 to 65.** 44 detectors were already measured in both
   directions by a corpus pair meeting the documented bar - same class, halves differing only in
   the state their calls carry - and sat at `PROMPT` because registering a pair is a manual step
@@ -23,6 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The release SBOM ships as JSON as well as XML.** `cyclonedx-maven-plugin` was configured
+  with `<outputFormat>xml</outputFormat>`, while `sbom.yml` uploaded `target/bom.json` and
+  `publish.yml` signed it and attached it to the release. Both referenced a file the build never
+  wrote, and both skipped it in silence: `upload-artifact` only warns, and the publish loops guard
+  every file with `if [ -f ]`. Every release up to and including v1.11.2 therefore carries
+  `bom.xml`, `bom.xml.asc` and `bom.xml.sigstore.json` and no JSON at all, which is the format
+  Dependency-Track, grype and trivy read. `outputFormat` is now `all`; the Gradle aggregate task
+  writes both formats too, which is what its comment already claimed.
 - **`BlockingQueueDetector` no longer loses saturation on a queue the agent observed.** A bound is
   read as `remainingCapacity() + size()`, two reads that an offer can land between, and the sum is
   then one too large. `widerBound` keeps the larger value for the rest of the run, so a queue of

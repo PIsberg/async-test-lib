@@ -386,7 +386,12 @@
                     <includeRuntimeScope>true</includeRuntimeScope>
                     <includeSystemScope>true</includeSystemScope>
                     <includeTestScope>false</includeTestScope>
-                    <outputFormat>xml</outputFormat>
+                    <!-- "all" writes both target/bom.xml and target/bom.json. Both are attached to
+                         the GitHub release and signed by publish.yml, which referenced bom.json from
+                         the start while this said "xml": the JSON was silently skipped by the
+                         `if [ -f ]` guard there for every release up to and including v1.11.2.
+                         Consumers that ingest an SBOM (Dependency-Track, grype, trivy) read JSON. -->
+                    <outputFormat>all</outputFormat>
                     <outputName>bom</outputName>
                 </configuration>
             </plugin>

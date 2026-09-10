@@ -74,6 +74,7 @@ jobs:
             objects.githubusercontent.com:443
             raw.githubusercontent.com:443
             registry.npmjs.org:443
+            results-receiver.actions.githubusercontent.com:443
 
       - name: Note when the token is absent
         if: env.HAVE_TOKEN != 'true'

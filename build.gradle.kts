@@ -311,4 +311,5 @@ tasks.named<org.cyclonedx.gradle.CyclonedxAggregateTask>("cyclonedxBom") {
     includeBomSerialNumber.set(true)
     projectType.set(org.cyclonedx.model.Component.Type.LIBRARY)
     xmlOutput.set(layout.buildDirectory.file("reports/bom.xml"))
+    jsonOutput.set(layout.buildDirectory.file("reports/bom.json"))
 }

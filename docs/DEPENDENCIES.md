@@ -61,7 +61,7 @@ behind them.
 | PMD | `pmd.version`, `maven-pmd-plugin.version` | Static analysis. Pinned to a version whose `LooseCoupling` rule is JDK-26-clean — see [QUALITY_GATES.md](QUALITY_GATES.md#build-with-jdk-21-25-or-26) for the measurement. |
 | JaCoCo | `jacoco-maven-plugin.version` | Line/branch coverage feeding the codecov gate. |
 | PITest + its JUnit 5 plugin | `pitest-maven.version`, `pitest-junit5-plugin.version` | Mutation testing, 76% threshold — coverage that proves the assertions bite, not just that lines ran. |
-| CycloneDX | `cyclonedx-maven-plugin.version` | Generates the SBOM published with each release (`sbom.yml`). |
+| CycloneDX | `cyclonedx-maven-plugin.version` | Generates the CycloneDX 1.6 SBOM, `bom.xml` and `bom.json`, attached to and signed with each release by `publish.yml`. `sbom.yml` generates the same pair on every pom change and weekly; both verify it with `.github/scripts/verify-sbom.sh`. |
 | vibetags | `vibetags.version` | First-party annotation processor that regenerates the guardrail blocks in each module's `CLAUDE.md` from source annotations. |
 
 The remaining `maven-*` plugins in the properties block are standard Apache build plumbing
