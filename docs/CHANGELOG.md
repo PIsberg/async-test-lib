@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-09-10
+
 ### Changed
 
 - **The SBOM job verifies what it generated, and stops depending on a lucky DNS answer.**
