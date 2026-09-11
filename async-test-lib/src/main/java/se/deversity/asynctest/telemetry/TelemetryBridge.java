@@ -7,6 +7,7 @@ import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.diagnostics.VisibilityMonitor;
+import se.deversity.vibetags.annotations.AIKeepInSync;
 
 /**
  * Bridges agent-captured field-access telemetry into the library's live per-test
@@ -71,6 +72,19 @@ import se.deversity.asynctest.diagnostics.VisibilityMonitor;
  *
  * @since 1.7.0
  */
+@AIKeepInSync(
+    mirrors = {
+        "se.deversity.asynctest.diagnostics.DetectorFeeds",
+        "docs/DETECTOR_CATALOG.md"
+    },
+    reason = "DetectorFeeds.fedBy(AGENT) must equal the detectors the woven streams actually "
+           + "reach, and this class is one of those streams. The gate reflects over this "
+           + "class's declared constructors and methods and asserts the detector types it is "
+           + "compile-wired to are exactly {AtomicityValidator}. Routing a second detector "
+           + "here without adding its AGENT row leaves the catalog telling users the agent "
+           + "buys them nothing for that detector.",
+    enforcedBy = "se.deversity.asynctest.architecture.DetectorFeedCoverageTest"
+)
 public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback, AutoCloseable {
 
     private final AtomicityValidator atomicityValidator;

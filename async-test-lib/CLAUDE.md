@@ -168,6 +168,8 @@ you are editing here.
     <element path="se.deversity.asynctest.spi.DetectorFactory" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.spi.DetectorRegistry" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.spi.adapters.LegacyDetectorAdapter" rules=".claude/rules/async-test-public-api.md"/>
+    <element path="se.deversity.asynctest.spi.adapters.LegacyDetectorFactories" rules=".claude/rules/async-test-public-api.md"/>
+    <element path="se.deversity.asynctest.telemetry.TelemetryBridge" rules=".claude/rules/async-test-instrumentation.md"/>
   </scoped_rules>
 
 <rule>When you work on any element listed in <scoped_rules>, open its referenced rule file and apply the guardrails there. The rule files are the authoritative source for those elements.</rule>
