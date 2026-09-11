@@ -16,7 +16,7 @@ import se.deversity.vibetags.annotations.AILocked;
         "se.deversity.asynctest.AsyncTest",
         "se.deversity.asynctest.AsyncTestConfig",
         "se.deversity.asynctest.DetectorRegistry",
-        "se.deversity.asynctest.spi.LegacyDetectorFactories",
+        "se.deversity.asynctest.spi.adapters.LegacyDetectorFactories",
         "META-INF/async-test/builtin-detector-factories"
     },
     reason = "A detector is only reachable from the public API when all of these agree. The enum "
