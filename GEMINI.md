@@ -177,5 +177,7 @@ Detailed per-element guardrails live in scoped rule files that load automaticall
 - `se.deversity.asynctest.spi.DetectorFactory` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.spi.DetectorRegistry` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.spi.adapters.LegacyDetectorAdapter` → `.gemini/rules/async-test-public-api.md`
+- `se.deversity.asynctest.spi.adapters.LegacyDetectorFactories` → `.gemini/rules/async-test-public-api.md`
+- `se.deversity.asynctest.telemetry.TelemetryBridge` → `.gemini/rules/async-test-instrumentation.md`
 <!-- VIBETAGS-MODULE-END: async-test-lib -->
 <!-- VIBETAGS-END -->

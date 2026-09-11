@@ -82,4 +82,12 @@ This element is strictly excluded from AI context. Do not reference it.
 - **Target Filters**: XSS
 - **Rule**: Run raw input strings through approved sanitizers.
 - **Applies to**: `se.deversity.asynctest.report.JUnitXmlReportListener.onStructuredReport(java.lang.String,se.deversity.asynctest.diagnostics.IssueSeverity,java.lang.String)#report`, `se.deversity.asynctest.report.JsonReportListener.onStructuredReport(java.lang.String,se.deversity.asynctest.diagnostics.IssueSeverity,java.lang.String)#report`
+
+## Mirrored — Keep In Sync
+
+### se.deversity.asynctest.spi.adapters.LegacyDetectorFactories
+- **Rule**: Free to change, but every mirror must change in the same commit.
+- **Mirrors**: se.deversity.asynctest.diagnostics.DetectorTrust, META-INF/services/se.deversity.asynctest.spi.DetectorFactory
+- **Reason**: Every DetectorTrust row names the detector class an adapter here must construct, and the gate reads this file by path to check that each row is backed. Removing, renaming or forgetting to register an inner class leaves that row unbacked, and a row that does not resolve costs its detector the trust tier the failOn gate filters on.
+- **Enforced by**: se.deversity.asynctest.architecture.DetectorTrustCoverageTest
 <!-- VIBETAGS-END -->

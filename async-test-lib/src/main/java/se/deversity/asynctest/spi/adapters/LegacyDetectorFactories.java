@@ -149,6 +149,7 @@ import se.deversity.asynctest.diagnostics.ScopeResultEscapeDetector;
 import se.deversity.asynctest.diagnostics.LazyCollectionMisuseDetector;
 import se.deversity.asynctest.spi.Detector;
 import se.deversity.asynctest.spi.DetectorFactory;
+import se.deversity.vibetags.annotations.AIKeepInSync;
 
 /**
  * SPI factory bundle covering every legacy detector that does not yet have a
@@ -168,6 +169,18 @@ import se.deversity.asynctest.spi.DetectorFactory;
  *
  * @since 1.6.0
  */
+@AIKeepInSync(
+    mirrors = {
+        "se.deversity.asynctest.diagnostics.DetectorTrust",
+        "META-INF/services/se.deversity.asynctest.spi.DetectorFactory"
+    },
+    reason = "Every DetectorTrust row names the detector class an adapter here must "
+           + "construct, and the gate reads this file by path to check that each row is "
+           + "backed. Removing, renaming or forgetting to register an inner class leaves "
+           + "that row unbacked, and a row that does not resolve costs its detector the "
+           + "trust tier the failOn gate filters on.",
+    enforcedBy = "se.deversity.asynctest.architecture.DetectorTrustCoverageTest"
+)
 public final class LegacyDetectorFactories {
 
     private LegacyDetectorFactories() {}

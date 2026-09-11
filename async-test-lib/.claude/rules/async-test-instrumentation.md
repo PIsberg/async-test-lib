@@ -33,4 +33,12 @@ paths: ["**/benchmark/**", "**/telemetry/**", "**/agent/**", "**/analysis/**"]
 ### se.deversity.asynctest.benchmark.BenchmarkComparator.readStore(java.io.File)
 - **Rule**: Prohibit dynamic class loading, custom classloaders, runtime reflection hacks, or execution of dynamic external code.
 - **Reason**: Java native deserialization sink. The BASELINE_FILTER allow-list (ending in !*) must resolve every class in the stream and reject all others, preventing arbitrary class loading (CWE-502 RCE). Never widen the filter or remove setObjectInputFilter.
+
+## Mirrored — Keep In Sync
+
+### se.deversity.asynctest.telemetry.TelemetryBridge
+- **Rule**: Free to change, but every mirror must change in the same commit.
+- **Mirrors**: se.deversity.asynctest.diagnostics.DetectorFeeds, docs/DETECTOR_CATALOG.md
+- **Reason**: DetectorFeeds.fedBy(AGENT) must equal the detectors the woven streams actually reach, and this class is one of those streams. The gate reflects over this class's declared constructors and methods and asserts the detector types it is compile-wired to are exactly {AtomicityValidator}. Routing a second detector here without adding its AGENT row leaves the catalog telling users the agent buys them nothing for that detector.
+- **Enforced by**: se.deversity.asynctest.architecture.DetectorFeedCoverageTest
 <!-- VIBETAGS-END -->
