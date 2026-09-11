@@ -14,7 +14,7 @@ paths: ["**/DetectorType.java", "**/AsyncTestConfig.java", "**/DetectorRegistry.
 
 ### se.deversity.asynctest.DetectorType
 - **Rule**: Free to change, but every mirror must change in the same commit.
-- **Mirrors**: se.deversity.asynctest.AsyncTest, se.deversity.asynctest.AsyncTestConfig, se.deversity.asynctest.DetectorRegistry, se.deversity.asynctest.spi.LegacyDetectorFactories, META-INF/async-test/builtin-detector-factories
+- **Mirrors**: se.deversity.asynctest.AsyncTest, se.deversity.asynctest.AsyncTestConfig, se.deversity.asynctest.DetectorRegistry, se.deversity.asynctest.spi.adapters.LegacyDetectorFactories, META-INF/async-test/builtin-detector-factories
 - **Reason**: A detector is only reachable from the public API when all of these agree. The enum constant is the name users type in @AsyncTest(excludes=...); the annotation attribute, the config field and its Builder default carry it through resolution; the registry constructor instantiates it; and the SPI factory plus its entry in the built-in factory list are what detectAll loads. Adding the constant alone compiles and silently detects nothing.
 - **Enforced by**: se.deversity.asynctest.spi.AllDetectorsSpiCoverageTest
 
