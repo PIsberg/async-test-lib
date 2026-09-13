@@ -14,8 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   thread's lockset and the woven `Thread.sleep` passes it to `recordSleep(ms, monitor)`, which
   confirmed it with `Thread.holdsLock`. That is false for a `java.util.concurrent` lock however long
   the thread holds it, so every such sleep was dropped. Both types now answer for their holder
-  directly, and a lock held by a different thread still records nothing. `StampedLock` keeps no
-  owner and is still not reported (#543).
+  directly, and a lock held by a different thread still records nothing.
+- **A woven `Thread.sleep` is checked against every lock the thread holds, not only the innermost
+  one (#543).** The hook handed the detector the top of the lockset, so a `StampedLock` on top,
+  which keeps no owner, and a confirmable `ReentrantLock` held one level below an unconfirmable
+  entry were both dropped. The new `SleepInLockDetector.recordSleepUnderHeldLocks(long)` walks the
+  set and records against the first lock it can confirm. A `StampedLock` counts when this thread's
+  lockset holds it and the lock is locked in that mode, write for an exclusive entry and read for a
+  shared one; a caller naming a `StampedLock` to `recordSleep(ms, monitor)` still records nothing.
 
 ### Changed
 

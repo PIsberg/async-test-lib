@@ -515,6 +515,42 @@ class CorpusAgentPairLaneTest {
         counted(CorpusAgentPairLaneTest::sleepHoldingNothing);
     }
 
+    /**
+     * Sleeps with a StampedLock write stamp held.
+     *
+     * <p>A StampedLock keeps no owner, so neither {@code Thread.holdsLock} nor an owner query can
+     * say this thread holds it. The detector confirms it from the thread's own lockset entry,
+     * which the woven {@code writeLock} put there, and from the lock being write-locked (#543).
+     * Before that, the sleep was dropped whatever the lock's state.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_sleepStamped_whileHoldingTheWriteStamp() {
+        counted(() -> {
+            StampedLock lock = new StampedLock();
+            long stamp = lock.writeLock();
+            try {
+                Thread.sleep(1);
+            } finally {
+                lock.unlockWrite(stamp);
+            }
+        });
+    }
+
+    /** The same stamp taken and released, and the same sleep after it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_sleepStamped_afterReleasingTheWriteStamp() {
+        counted(() -> {
+            StampedLock lock = new StampedLock();
+            long stamp = lock.writeLock();
+            try {
+                Thread.onSpinWait();
+            } finally {
+                lock.unlockWrite(stamp);
+            }
+            Thread.sleep(1);
+        });
+    }
+
     // --- Lock order --------------------------------------------------------------------------
 
     /**
