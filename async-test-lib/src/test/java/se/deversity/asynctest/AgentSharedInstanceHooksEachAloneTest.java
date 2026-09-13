@@ -86,7 +86,7 @@ class AgentSharedInstanceHooksEachAloneTest {
 
     /** A fresh receiver of the hook's type, in a state every hook on that type can act on. */
     private static Object receiverFor(Class<?> type) {
-        if (type == SimpleDateFormat.class) {
+        if (type == SimpleDateFormat.class || type == java.text.DateFormat.class) {
             return new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT);
         }
         if (type == Matcher.class) {
@@ -104,7 +104,7 @@ class AgentSharedInstanceHooksEachAloneTest {
         if (type == Calendar.class) {
             return Calendar.getInstance(Locale.ROOT);
         }
-        if (type == StringBuilder.class) {
+        if (type == StringBuilder.class || type == Appendable.class) {
             return new StringBuilder();
         }
         if (type == NumberFormat.class) {
@@ -249,7 +249,8 @@ class AgentSharedInstanceHooksEachAloneTest {
     @DisplayName("hooks that return their receiver return that receiver, not a copy")
     void receiverReturningHooksReturnTheReceiver() throws Exception {
         for (Method hook : hooks()) {
-            if (hook.getReturnType() != StringBuilder.class && hook.getReturnType() != Formatter.class) {
+            if (hook.getReturnType() != StringBuilder.class && hook.getReturnType() != Formatter.class
+                    && hook.getReturnType() != Appendable.class) {
                 continue;
             }
             Object receiver = receiverFor(hook.getParameterTypes()[0]);

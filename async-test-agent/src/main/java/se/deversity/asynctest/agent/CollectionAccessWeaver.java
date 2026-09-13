@@ -306,6 +306,15 @@ final class CollectionAccessWeaver {
             Entry.call(SimpleDateFormat.class, "parse", "parse", String.class),
             Entry.call(SimpleDateFormat.class, "parse", "parse",
                     String.class, java.text.ParsePosition.class),
+            // The same three calls reached through DateFormat, which is how library code holds a
+            // SimpleDateFormat: Jackson keeps them in DateFormat fields, and an owner that is the
+            // supertype matched none of the entries above (#542). Listed after them so that a call
+            // whose owner is SimpleDateFormat keeps its own hook. DateFormat has stateless and
+            // synchronized subclasses too, so these hooks record only a SimpleDateFormat receiver.
+            Entry.call(java.text.DateFormat.class, "format", "format", Date.class),
+            Entry.call(java.text.DateFormat.class, "parse", "parse", String.class),
+            Entry.call(java.text.DateFormat.class, "parse", "parse",
+                    String.class, java.text.ParsePosition.class),
             Entry.call(Matcher.class, "find", "find"),
             Entry.call(Matcher.class, "matches", "matches"),
             Entry.call(Matcher.class, "group", "group"),
@@ -349,10 +358,25 @@ final class CollectionAccessWeaver {
             Entry.call(StringBuilder.class, "append", "append", boolean.class),
             Entry.call(StringBuilder.class, "append", "append", Object.class),
             Entry.call(StringBuilder.class, "append", "append", CharSequence.class),
+            // Appends reached through Appendable, which is how a library writes to a builder the
+            // caller hands it - Guava's Joiner.appendTo(StringBuilder, ...) delegates to exactly
+            // these (#542). The descriptors return Appendable, so a call whose owner is
+            // StringBuilder never matches them. Appendable is also StringBuffer and every Writer,
+            // so the hooks record only a StringBuilder receiver.
+            Entry.call(Appendable.class, "append", "append", CharSequence.class),
+            Entry.call(Appendable.class, "append", "append", char.class),
+            Entry.call(Appendable.class, "append", "append", CharSequence.class, int.class,
+                    int.class),
             // NumberFormat rather than DecimalFormat: the abstract parent is what a field is
             // usually typed as, and neither it nor any JDK subclass is thread safe.
             Entry.call(NumberFormat.class, "format", "format", double.class),
             Entry.call(NumberFormat.class, "format", "format", long.class),
+            // Parsing drives the same internal state, and a utility that parses with a format the
+            // caller supplies (Spring's NumberUtils.parseNumber) was invisible while only format
+            // was woven (#542).
+            Entry.call(NumberFormat.class, "parse", "parse", String.class),
+            Entry.call(NumberFormat.class, "parse", "parse", String.class,
+                    java.text.ParsePosition.class),
             Entry.call(Formatter.class, "format", "format", String.class, Object[].class),
             // The locale-taking overload is what an internationalised codebase calls, and it was
             // invisible while its sibling was woven (#434).
