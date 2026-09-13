@@ -829,6 +829,170 @@ final class Corpus {
                             + "matters because the detector keys on the thread's last outcome for "
                             + "the lock and could convict a later honest unlock instead"),
 
+            // --- Through library bytecode. The pairs above call the JDK type from the test, so
+            //     the substituted call site is one this module wrote. These call a public method
+            //     of Guava, Jackson or HikariCP, and the JDK call that feeds the detector is an
+            //     instruction inside that library's own class file. The body is the same bug and
+            //     the same fix; what changes is that nobody here compiled the call the agent had
+            //     to find. LibraryReach counts what this reaches, and says why the rest cannot be.
+
+            new RecordingSubject("agent_guavaHasher_oneHasherForEveryThread", GUAVA,
+                    "com.google.common.hash.Hasher",
+                    DetectorType.SHARED_MESSAGE_DIGEST, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "HashFunction.newHasher() is documented to return \"an initialized, stateful "
+                            + "Hasher\", and the SHA-256 one keeps that state in a cloned "
+                            + "MessageDigest. Every thread puts into the one hasher, so every "
+                            + "thread's update lands on the same digest from inside Guava"),
+
+            new RecordingSubject("agent_guavaHasher_oneHasherPerHash", GUAVA,
+                    "com.google.common.hash.Hasher",
+                    DetectorType.SHARED_MESSAGE_DIGEST, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a fresh hasher per hash, which clones a fresh digest. The same "
+                            + "MessageDigestHasher.update call site is reached on every execution, "
+                            + "so a finding here would mean the detector reports Guava's call "
+                            + "site rather than a digest two threads touched"),
+
+            new RecordingSubject("agent_jacksonStdDateFormat_oneFormatForEveryThread", JACKSON,
+                    "com.fasterxml.jackson.databind.util.StdDateFormat",
+                    DetectorType.CALENDAR, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "StdDateFormat caches a cloned Calendar in a field on first use and reads "
+                            + "every date field back out of it; its own javadoc says the blueprint "
+                            + "Calendar \"Cannot be used as is, due to thread-safety issues\". One "
+                            + "shared instance puts every thread on that one Calendar"),
+
+            new RecordingSubject("agent_jacksonStdDateFormat_oneFormatPerCall", JACKSON,
+                    "com.fasterxml.jackson.databind.util.StdDateFormat",
+                    DetectorType.CALENDAR, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "an instance per call caches its own Calendar, which no other thread can "
+                            + "reach. Same _format method, same Calendar.get call sites"),
+
+            new RecordingSubject("agent_jacksonSignature_oneBuilderForEveryThread", JACKSON,
+                    "com.fasterxml.jackson.databind.JavaType",
+                    DetectorType.STRING_BUILDER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a resolved JavaType is shared freely - TypeFactory caches them - but the "
+                            + "StringBuilder getGenericSignature appends into is the caller's, and "
+                            + "every thread passes the same one. The appends are in "
+                            + "TypeBase._classSignature, not in this module"),
+
+            new RecordingSubject("agent_jacksonSignature_oneBuilderPerCall", JACKSON,
+                    "com.fasterxml.jackson.databind.JavaType",
+                    DetectorType.STRING_BUILDER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same shared JavaType and the same signature, into a builder the call "
+                            + "made. Sharing the type is correct; only the builder was ever the bug"),
+
+            new RecordingSubject("agent_guavaMonitorTryEnter_leftAfterFailing", GUAVA,
+                    "com.google.common.util.concurrent.Monitor",
+                    DetectorType.TRY_LOCK_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the Monitor javadoc says a boolean enter \"should always appear as the "
+                            + "condition of an if statement\". This one does not: tryEnter fails "
+                            + "on a monitor another thread occupies, and leave() unlocks a lock "
+                            + "the worker never took. Both lock calls are Guava's"),
+
+            new RecordingSubject("agent_guavaMonitorTryEnter_leftOnlyWhenEntered", GUAVA,
+                    "com.google.common.util.concurrent.Monitor",
+                    DetectorType.TRY_LOCK_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the javadoc's shape, on the occupied monitor and on one the call can enter, "
+                            + "so this half reaches a successful tryLock and its unlock as well as "
+                            + "the failure. Leaving only when entered is the whole rule"),
+
+            new RecordingSubject("agent_guavaMonitorEnter_neverLeft", GUAVA,
+                    "com.google.common.util.concurrent.Monitor",
+                    DetectorType.LOCK_LEAKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "enter() with no leave(). The Monitor javadoc says a void enter \"should "
+                            + "always be followed immediately by a try/finally block\"; without "
+                            + "one, the ReentrantLock inside the monitor stays held"),
+
+            new RecordingSubject("agent_guavaMonitorEnter_leftInFinally", GUAVA,
+                    "com.google.common.util.concurrent.Monitor",
+                    DetectorType.LOCK_LEAKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "enter, try, finally leave: the first snippet in the Monitor javadoc. Guava's "
+                            + "lock and unlock balance, and nothing is held at analysis"),
+
+            new RecordingSubject("agent_guavaMonitorOrder_nestedBothWays", GUAVA,
+                    "com.google.common.util.concurrent.Monitor",
+                    DetectorType.LOCK_ORDER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "B entered inside A, then A inside B. Monitor.enter is a ReentrantLock.lock "
+                            + "in Guava's class file, so the two edges come from there and close "
+                            + "the same two-cycle the ReentrantLock row writes by hand"),
+
+            new RecordingSubject("agent_guavaMonitorOrder_nestedOneWay", GUAVA,
+                    "com.google.common.util.concurrent.Monitor",
+                    DetectorType.LOCK_ORDER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same two monitors, always A then B: one edge and no cycle"),
+
+            new RecordingSubject("agent_hikariSleep_whileOccupyingAMonitor", HIKARI,
+                    "com.zaxxer.hikari.util.UtilityElf",
+                    DetectorType.SLEEP_IN_LOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "HikariCP's quietlySleep, a stateless static helper, called while a Guava "
+                            + "monitor is occupied. The lock is recorded from Guava's woven lock "
+                            + "and the sleep from HikariCP's woven Thread.sleep, and neither "
+                            + "library's code knows about the other"),
+
+            new RecordingSubject("agent_hikariSleep_afterLeavingTheMonitor", HIKARI,
+                    "com.zaxxer.hikari.util.UtilityElf",
+                    DetectorType.SLEEP_IN_LOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same monitor traffic and the same sleep, with the sleep after the "
+                            + "leave, so the lockset is empty when HikariCP's sleep asks it"),
+
+            new RecordingSubject("agent_guavaLatchAwait_timedOut", GUAVA,
+                    "com.google.common.util.concurrent.Uninterruptibles",
+                    DetectorType.COUNTDOWN_LATCH, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "awaitUninterruptibly makes the timed await itself, on a latch of one that "
+                            + "nothing counts down, so the await Guava made times out and the "
+                            + "body drops the false Guava returns"),
+
+            new RecordingSubject("agent_guavaLatchAwait_sawItsCount", GUAVA,
+                    "com.google.common.util.concurrent.Uninterruptibles",
+                    DetectorType.COUNTDOWN_LATCH, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same Guava await on a latch this thread already counted down, which "
+                            + "returns true with no timing assumption"),
+
+            new RecordingSubject("agent_guavaQueuePut_filledToCapacity", GUAVA,
+                    "com.google.common.util.concurrent.Uninterruptibles",
+                    DetectorType.BLOCKING_QUEUE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "two putUninterruptibly calls into a queue of two before any take, so the "
+                            + "peak Guava's woven put observes reaches the bound. The bound is "
+                            + "read off the queue, not written in the body"),
+
+            new RecordingSubject("agent_guavaQueuePut_drainedAsItFilled", GUAVA,
+                    "com.google.common.util.concurrent.Uninterruptibles",
+                    DetectorType.BLOCKING_QUEUE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same Guava puts and takes, alternated, so the peak never leaves one of "
+                            + "two"),
+
+            new RecordingSubject("agent_guavaSemaphore_permitNeverReturned", GUAVA,
+                    "com.google.common.util.concurrent.Uninterruptibles",
+                    DetectorType.SEMAPHORE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "tryAcquireUninterruptibly takes the permit with Guava's woven tryAcquire, "
+                            + "and nothing releases it, so acquisitions exceed releases"),
+
+            new RecordingSubject("agent_guavaSemaphore_permitReturnedInFinally", GUAVA,
+                    "com.google.common.util.concurrent.Uninterruptibles",
+                    DetectorType.SEMAPHORE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same Guava acquisition, released in a finally when it succeeded. The "
+                            + "release is written in the body, because Guava has no release "
+                            + "helper; the acquisition the leak is made of is Guava's in both"),
+
             // --- Deadlock. The one detector here whose input is the JVM rather than a woven call
             //     site, and the one whose MUST_FIRE row leaves the JVM permanently changed: a real
             //     deadlock does not end. Both rows are therefore ordered last, and the silent row

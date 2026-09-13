@@ -88,13 +88,19 @@ fixed anything.
 **The eval prints its denominator before any rate**, because a finding count on its own cannot
 tell "no false positive from detector X" apart from "X never ran". In code that records nothing,
 only 21 of the 146 detectors can see anything at all, and two of those produced every finding in
-the corpus. Saying so is the difference between a measurement and a marketing number. A third lane
-exists for exactly that reason: it records what the body did, the way a user following
-`AsyncTestContext` would, and gives twelve more detectors a denominator over subjects that must
-fire and twins that must stay silent. Nine of those pairs are what let their detectors carry
-`VERDICT`, the tier a build can fail on. It is where HikariCP
-joins the corpus as an eighth library, because a connection pool is the one subject that cannot
-be exercised without something to pool.
+the corpus. Saying so is the difference between a measurement and a marketing number. Two more
+lanes exist for exactly that reason. One records what the body did, the way a user following
+`AsyncTestContext` would; the other attaches the agent and writes the bug next to its fix. Between
+them 131 of the 146 detectors are paired with a case that must fire and a twin that must stay
+silent, and the other 15 carry a written reason. 55 of those pairs are what let their detectors
+carry `VERDICT`, the tier a build can fail on. HikariCP joins the corpus as an eighth library
+in the recording lane, because a connection pool is the one subject that cannot be exercised
+without something to pool.
+
+Ten of the agent pairs put the woven JDK call inside Guava, Jackson or HikariCP instead of the test
+file, so 12 of the 18 agent-fed detectors are measured on a call site nobody here compiled. Their
+first run found a detector that dropped every sleep held under a `ReentrantLock`, which the
+test-file pair could not see because it sleeps inside a `synchronized` method.
 
 The method, the misses, the four platforms it was run on and what the numbers do not support are
 in [the corpus eval](docs/analysis/corpus-eval.md).

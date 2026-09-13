@@ -1,5 +1,13 @@
 package com.example.corpus;
 
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.type.TypeFactory;
+import com.fasterxml.jackson.databind.util.StdDateFormat;
+import com.google.common.hash.Hasher;
+import com.google.common.hash.Hashing;
+import com.google.common.util.concurrent.Monitor;
+import com.google.common.util.concurrent.Uninterruptibles;
+import com.zaxxer.hikari.util.UtilityElf;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
@@ -127,6 +135,7 @@ class CorpusAgentPairLaneTest {
     static void installRecorder() throws NoSuchAlgorithmException {
         CorpusRecorder.install();
         sharedDigest = MessageDigest.getInstance("SHA-256");
+        occupyTheMonitorFromAnotherThread();
     }
 
     @AfterAll
@@ -654,6 +663,376 @@ class CorpusAgentPairLaneTest {
                         + "DEADLOCK_STARTED=" + DEADLOCK_STARTED.get() + " when it ran");
     }
 
+    // --- Through library bytecode -----------------------------------------------------------
+    //
+    //     Every pair above calls the JDK type from this file, so the substituted call site is one
+    //     the test author wrote. That proves the detector's model and says nothing about the
+    //     question a user has: does the agent see the same call when it sits three frames down,
+    //     inside a jar nobody here compiled? These pairs move the call site into the library. The
+    //     body calls a public Guava, Jackson or HikariCP method, and the JDK call the detector is
+    //     fed by is an instruction in that library's own class file, woven at load time.
+    //
+    //     The shape of each pair is the one the JDK rows use - the bug against its fix, through
+    //     the same library methods - so a silent half is still evidence of a decision rather than
+    //     of a call nobody made.
+
+    /** A fixed instant, so every date-format body formats the same value. */
+    private static final Date EPOCH = new Date(0L);
+
+    /** A resolved Jackson type, which is immutable; the builder passed to it is the shared state. */
+    private static final JavaType STRING_TYPE =
+            TypeFactory.defaultInstance().constructType(String.class);
+
+    /**
+     * One Guava hasher for every thread.
+     *
+     * <p>{@code HashFunction.newHasher()} clones its prototype {@code MessageDigest} into a fresh
+     * {@code MessageDigestHasher}, and that hasher's {@code update} is the woven call site. Kept
+     * open for the whole run: {@code putBytes} never finishes it, so no body trips the hasher's
+     * own single-use check and the digest call is reached on every execution.
+     */
+    private static final Hasher SHARED_HASHER = Hashing.sha256().newHasher();
+
+    /** One Jackson date format for every thread; it caches its {@code Calendar} on first use. */
+    private static final StdDateFormat SHARED_STD_DATE_FORMAT = new StdDateFormat();
+
+    /** The builder every thread hands to Jackson's signature writer. */
+    private static final StringBuilder SHARED_SIGNATURE = new StringBuilder();
+
+    /** The lock-order pair's two Guava monitors, static for the reason LOCK_A and LOCK_B are. */
+    private static final Monitor MONITOR_A = new Monitor();
+
+    private static final Monitor MONITOR_B = new Monitor();
+
+    /**
+     * A Guava monitor another thread occupies for the whole run.
+     *
+     * <p>{@code tryEnter} is a {@code ReentrantLock.tryLock}, which succeeds for a thread that
+     * already holds the lock, so the trick the StampedLock row uses to force a failure does not
+     * carry over. A lock held by a thread that is not a worker does: every worker's
+     * {@code tryEnter} returns false, whoever else is running, which keeps the outcome structural.
+     */
+    private static final Monitor OCCUPIED_MONITOR = new Monitor();
+
+    /**
+     * Occupies {@link #OCCUPIED_MONITOR} from a daemon thread and returns once it is held.
+     *
+     * <p>Started before any row, so no detector context exists yet and the daemon's own
+     * {@code lock} feeds nothing. It never leaves: the fork exits around it, like the deadlock
+     * daemons below.
+     */
+    private static void occupyTheMonitorFromAnotherThread() {
+        Thread occupant = new Thread(() -> {
+            OCCUPIED_MONITOR.enter();
+            while (true) {
+                java.util.concurrent.locks.LockSupport.park();
+            }
+        }, "corpus-monitor-occupant");
+        occupant.setDaemon(true);
+        occupant.start();
+        while (!OCCUPIED_MONITOR.isOccupied()) {
+            Thread.onSpinWait();
+        }
+    }
+
+    /**
+     * Every thread feeds the one Guava hasher.
+     *
+     * <p>The digest update is inside {@code MessageDigestHashFunction.MessageDigestHasher}, so
+     * this body contains no {@code MessageDigest} call for the weaver to substitute. If the
+     * detector fires, it heard about the digest from Guava's bytecode.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaHasher_oneHasherForEveryThread() {
+        swallowingTheRace(() -> SHARED_HASHER.putBytes(PAYLOAD));
+    }
+
+    /** A hasher per hash, which is what {@code HashFunction.newHasher()} is documented to hand out. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaHasher_oneHasherPerHash() {
+        swallowingTheRace(() -> Hashing.sha256().newHasher().putBytes(PAYLOAD).hash());
+    }
+
+    /**
+     * Every thread formats through the one Jackson {@code StdDateFormat}.
+     *
+     * <p>The instance lazily clones a {@code GregorianCalendar} into a field and then reads the
+     * year, month and the rest back out of it with {@code Calendar.get}, which is the woven call.
+     * Jackson itself never shares one: its own configuration clones the format per use.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_jacksonStdDateFormat_oneFormatForEveryThread() {
+        swallowingTheRace(() -> SHARED_STD_DATE_FORMAT.format(EPOCH));
+    }
+
+    /** The same format call on an instance of its own, so the cached calendar is confined too. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_jacksonStdDateFormat_oneFormatPerCall() {
+        swallowingTheRace(() -> new StdDateFormat().format(EPOCH));
+    }
+
+    /**
+     * Every thread asks Jackson to write a type signature into the one builder.
+     *
+     * <p>{@code TypeBase._classSignature} appends character by character, and those appends are
+     * the woven call sites. The builder is reset after each call so the run does not accumulate
+     * 240 signatures; the reset races too, which is the point.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_jacksonSignature_oneBuilderForEveryThread() {
+        swallowingTheRace(() -> {
+            STRING_TYPE.getGenericSignature(SHARED_SIGNATURE);
+            SHARED_SIGNATURE.setLength(0);
+        });
+    }
+
+    /** The same signature written into a builder this call made. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_jacksonSignature_oneBuilderPerCall() {
+        swallowingTheRace(() -> {
+            StringBuilder mine = new StringBuilder();
+            STRING_TYPE.getGenericSignature(mine);
+            mine.setLength(0);
+        });
+    }
+
+    /**
+     * Leaves a Guava monitor after a {@code tryEnter} that returned false.
+     *
+     * <p>The Monitor javadoc says a boolean enter belongs in the condition of an {@code if}; this
+     * is the version that ignores it. {@code leave} calls {@code ReentrantLock.unlock} on a lock
+     * the worker never took, which throws, and the unlock is what the detector hears. Both calls
+     * are inside Guava.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaMonitorTryEnter_leftAfterFailing() {
+        swallowingTheRace(() -> {
+            OCCUPIED_MONITOR.tryEnter();
+            try {
+                Thread.onSpinWait();
+            } finally {
+                OCCUPIED_MONITOR.leave();
+            }
+        });
+    }
+
+    /**
+     * The javadoc's own shape, on the occupied monitor and on one this call can enter.
+     *
+     * <p>The second monitor is there so that this half reaches {@code unlock} as well: a silent
+     * row whose only tryEnter always fails would be silent partly because it never unlocked, and
+     * the detector keys on the thread's last outcome for a lock, which an honest unlock after a
+     * successful tryEnter is the case most likely to be misjudged.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaMonitorTryEnter_leftOnlyWhenEntered() {
+        swallowingTheRace(() -> {
+            if (OCCUPIED_MONITOR.tryEnter()) {
+                try {
+                    Thread.onSpinWait();
+                } finally {
+                    OCCUPIED_MONITOR.leave();
+                }
+            }
+            Monitor mine = new Monitor();
+            if (mine.tryEnter()) {
+                try {
+                    Thread.onSpinWait();
+                } finally {
+                    mine.leave();
+                }
+            }
+        });
+    }
+
+    /**
+     * Enters a Guava monitor and never leaves it.
+     *
+     * <p>A monitor per body execution, so the leak cannot block another worker. The lock the
+     * detector sees held at analysis is the {@code ReentrantLock} Guava keeps inside it.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaMonitorEnter_neverLeft() {
+        counted(() -> new Monitor().enter());
+    }
+
+    /** Enter, then try/finally leave, which is the first snippet in the Monitor javadoc. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaMonitorEnter_leftInFinally() {
+        counted(() -> {
+            Monitor mine = new Monitor();
+            mine.enter();
+            try {
+                Thread.onSpinWait();
+            } finally {
+                mine.leave();
+            }
+        });
+    }
+
+    /**
+     * Nests two Guava monitors one way and then the other, serialised for the reason the
+     * ReentrantLock row gives.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaMonitorOrder_nestedBothWays() {
+        counted(() -> {
+            synchronized (ORDER_GUARD) {
+                MONITOR_A.enter();
+                try {
+                    MONITOR_B.enter();
+                    MONITOR_B.leave();
+                } finally {
+                    MONITOR_A.leave();
+                }
+                MONITOR_B.enter();
+                try {
+                    MONITOR_A.enter();
+                    MONITOR_A.leave();
+                } finally {
+                    MONITOR_B.leave();
+                }
+            }
+        });
+    }
+
+    /** The same two monitors, always A before B. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaMonitorOrder_nestedOneWay() {
+        counted(() -> {
+            synchronized (ORDER_GUARD) {
+                MONITOR_A.enter();
+                try {
+                    MONITOR_B.enter();
+                    MONITOR_B.leave();
+                } finally {
+                    MONITOR_A.leave();
+                }
+                MONITOR_A.enter();
+                try {
+                    MONITOR_B.enter();
+                    MONITOR_B.leave();
+                } finally {
+                    MONITOR_A.leave();
+                }
+            }
+        });
+    }
+
+    /**
+     * HikariCP's sleep helper, called while occupying a Guava monitor.
+     *
+     * <p>Two libraries and no JDK call in the body. The lock is taken by Guava's woven
+     * {@code lock}, which puts it in the thread's lockset; the sleep is HikariCP's woven
+     * {@code Thread.sleep}, which asks the lockset what is held. Neither library knows the other
+     * is there, which is how a sleep under a lock is usually written.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_hikariSleep_whileOccupyingAMonitor() {
+        counted(() -> {
+            Monitor mine = new Monitor();
+            mine.enter();
+            try {
+                UtilityElf.quietlySleep(1);
+            } finally {
+                mine.leave();
+            }
+        });
+    }
+
+    /** The same monitor traffic and the same sleep, with the sleep after the leave. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_hikariSleep_afterLeavingTheMonitor() {
+        counted(() -> {
+            Monitor mine = new Monitor();
+            mine.enter();
+            try {
+                Thread.onSpinWait();
+            } finally {
+                mine.leave();
+            }
+            UtilityElf.quietlySleep(1);
+        });
+    }
+
+    /**
+     * Waits through Guava on a latch nothing counts down.
+     *
+     * <p>{@code Uninterruptibles.awaitUninterruptibly} makes the timed {@code await} itself, so
+     * the timeout the detector reports is observed in Guava's class file. The body then drops the
+     * boolean Guava hands back.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaLatchAwait_timedOut() {
+        counted(() -> Uninterruptibles.awaitUninterruptibly(
+                new CountDownLatch(1), 1, TimeUnit.MILLISECONDS));
+    }
+
+    /** The same Guava await, on a latch this thread counted down first. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaLatchAwait_sawItsCount() {
+        counted(() -> {
+            CountDownLatch reached = new CountDownLatch(1);
+            reached.countDown();
+            Uninterruptibles.awaitUninterruptibly(reached, 1, TimeUnit.SECONDS);
+        });
+    }
+
+    /**
+     * Fills a queue of two through Guava's put before taking anything back.
+     *
+     * <p>{@code putUninterruptibly} is the woven {@code BlockingQueue.put}. The take goes through
+     * Guava too, and is not a substituted call at all, so what the detector counts is the puts.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaQueuePut_filledToCapacity() {
+        counted(() -> {
+            BlockingQueue<String> saturated = new ArrayBlockingQueue<>(2);
+            Uninterruptibles.putUninterruptibly(saturated, "first");
+            Uninterruptibles.putUninterruptibly(saturated, "second");
+            Uninterruptibles.takeUninterruptibly(saturated);
+        });
+    }
+
+    /** The same puts and takes, alternated, so the queue never holds more than one. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaQueuePut_drainedAsItFilled() {
+        counted(() -> {
+            BlockingQueue<String> keepingUp = new ArrayBlockingQueue<>(2);
+            Uninterruptibles.putUninterruptibly(keepingUp, "first");
+            Uninterruptibles.takeUninterruptibly(keepingUp);
+            Uninterruptibles.putUninterruptibly(keepingUp, "second");
+            Uninterruptibles.takeUninterruptibly(keepingUp);
+        });
+    }
+
+    /**
+     * Takes a permit through Guava and never gives it back.
+     *
+     * <p>The acquisition is Guava's woven {@code tryAcquire(int, long, TimeUnit)}. The release
+     * in the twin is written here, because Guava has no release helper; the acquisition, which
+     * is the half the leak is made of, is the library's in both.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaSemaphore_permitNeverReturned() {
+        counted(() -> Uninterruptibles.tryAcquireUninterruptibly(
+                new Semaphore(1), 1, 1, TimeUnit.SECONDS));
+    }
+
+    /** The same Guava acquisition, with the release in a finally. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaSemaphore_permitReturnedInFinally() {
+        counted(() -> {
+            Semaphore balanced = new Semaphore(1);
+            if (Uninterruptibles.tryAcquireUninterruptibly(balanced, 1, 1, TimeUnit.SECONDS)) {
+                try {
+                    Thread.onSpinWait();
+                } finally {
+                    balanced.release();
+                }
+            }
+        });
+    }
     // --- Deadlock ----------------------------------------------------------------------------
 
     /** The two monitors the deadlock rows take, in opposite orders. */

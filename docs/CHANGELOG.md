@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`SleepInLockDetector` reports a sleep held under a `ReentrantLock` or `ReentrantReadWriteLock`,
+  not only under a monitor.** With the agent attached, a woven `Lock.lock()` puts the lock on the
+  thread's lockset and the woven `Thread.sleep` passes it to `recordSleep(ms, monitor)`, which
+  confirmed it with `Thread.holdsLock`. That is false for a `java.util.concurrent` lock however long
+  the thread holds it, so every such sleep was dropped. Both types now answer for their holder
+  directly, and a lock held by a different thread still records nothing. `StampedLock` keeps no
+  owner and is still not reported (#543).
+
+### Changed
+
+- **The corpus measures 12 of the 18 agent-fed detectors on a call site inside a library.** Ten new
+  agent-lane pairs call only Guava, Jackson or HikariCP, so the JDK call the detector is fed by is
+  woven inside the library's own class file rather than written in the test. A run with those
+  three libraries excluded from weaving silenced exactly the ten firing rows and changed no other
+  row. `LibraryReach` and `EveryAgentFedDetectorIsReachedThroughALibraryTest` account for the other
+  six, two of which are a weaver limit: a `SimpleDateFormat` held as a `DateFormat`, or a
+  `StringBuilder` passed as an `Appendable`, is not observed (#542). `AgentRowPremise` now pairs a
+  firing row with the silent row of the same class, since a detector can have a JDK pair and a
+  library pair.
+
 ## [1.12.0] - 2026-09-10
 
 ### Changed
