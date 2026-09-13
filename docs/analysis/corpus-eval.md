@@ -1850,7 +1850,7 @@ nothing in this module. That was a one-off run when this section was written. It
 `agent-pairs-library-excluded` ([#544](https://github.com/PIsberg/async-test-lib/issues/544)): every
 library row runs again with the libraries on the agent's exclude list, and the run fails if a firing
 row still fires, if a library row's package is missing from that list, or if a row did not run its
-full 240 executions. Only library rows run in it, 20 of 54, in about 16 s. Verified by breaking it:
+full 240 executions. Only library rows run in it: 20 of 54 when it was added, in about 16 s. Verified by breaking it:
 `agent_guavaMonitorEnter_neverLeft` rewritten to take a `ReentrantLock` in the test body, with its
 silent twin taking and releasing one too so the same-calls premise still holds. The agent-pair lane
 stayed green, 54 of 54, because the leak is real wherever it is written; the exclusion lane went red
