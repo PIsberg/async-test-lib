@@ -252,7 +252,32 @@
                                 <asynctest.agent>fields=true,collections=true</asynctest.agent>
                             </systemPropertyVariables>
                         </configuration>
+                    </execution>                    <!-- Lane five: lane four's library rows again, with every corpus library
+                         excluded from weaving. A library pair claims its finding came from a JDK
+                         call inside the library; with the library unwoven that call is not
+                         substituted, so each firing row must go silent here, and one that still
+                         fires is being fed from the test body instead (#544). Only library rows
+                         run (LibraryRowsOnly), and CorpusGates.checkLibraryExclusionLane fails if
+                         a library row's package is missing from this excludes list, so a library
+                         added to the corpus has to be added here too. -->
+                    <execution>
+                        <id>agent-pairs-library-excluded</id>
+                        <phase>test</phase>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <includes>
+                                <include>**/CorpusAgentPairLaneTest.java</include>
+                            </includes>
+                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=excludes=com.google;com.fasterxml;com.zaxxer;org.springframework,fields=true,collections=true</argLine>
+                            <reportsDirectory>${project.build.directory}/surefire-reports-agent-pairs-library-excluded</reportsDirectory>
+                            <systemPropertyVariables>
+                                <license.mock.mode>true</license.mock.mode>
+                                <corpus.lane>agent-pairs-library-excluded</corpus.lane>
+                                <asynctest.agent>excludes=com.google;com.fasterxml;com.zaxxer;org.springframework,fields=true,collections=true</asynctest.agent>
+                            </systemPropertyVariables>
+                        </configuration>
                     </execution>
+
                     <!-- Lane two: the same subjects with nothing attached and nothing recorded.
                          It is the control that turns the exposure table from a claim into a
                          measurement: with the agent detached the agent-fed detectors have no

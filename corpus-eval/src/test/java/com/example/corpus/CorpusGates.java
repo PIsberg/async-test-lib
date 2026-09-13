@@ -105,6 +105,101 @@ final class CorpusGates {
      * @param findings what the detectors reported
      * @param lane     the lane that produced them
      */
+    /**
+     * Holds the library rows to going silent when their libraries are not woven (#544).
+     *
+     * <p>A library pair claims its finding came from a JDK call inside the library. In this lane
+     * the agent is attached with every library package on its exclude list, so those calls are
+     * no longer substituted and nothing in a firing body should reach the detector. A row that
+     * still fires is reaching it from somewhere else - most likely a woven JDK call someone wrote
+     * into the test body - and its pair has stopped measuring what {@link LibraryReach} counts it
+     * for.
+     *
+     * <p>Two premises are checked first, because either would make the silence vacuous: every
+     * library row's package must actually be on the exclude list (a row from a library added
+     * later, without updating the pom, would fire here for the right reason and be reported for
+     * the wrong one), and every library row must have run its full N x M.
+     *
+     * @param findings            what the lane reported
+     * @param laneTest            the lane's test class, whose methods the rows must name
+     * @param executionsPerRow    body executions each row owes
+     */
+    static void checkLibraryExclusionLane(List<CorpusRecorder.Finding> findings,
+                                          Class<?> laneTest,
+                                          int executionsPerRow) {
+        CorpusLane lane = CorpusLane.AGENT_PAIRS_LIBRARY_EXCLUDED;
+        theAgentIsAttachedTheWayThisLaneRequires(lane);
+        List<RecordingSubject> rows = Corpus.subjectsFor(lane);
+        assertFalse(rows.isEmpty(), "the library-exclusion lane found no library rows to run");
+
+        Set<String> methods = Arrays.stream(laneTest.getDeclaredMethods())
+                .filter(method -> method.isAnnotationPresent(AsyncTest.class))
+                .map(Method::getName)
+                .collect(Collectors.toUnmodifiableSet());
+        List<String> missing = rows.stream().map(RecordingSubject::testMethod)
+                .filter(name -> !methods.contains(name)).toList();
+        assertTrue(missing.isEmpty(), "library rows with no @AsyncTest method: " + missing);
+
+        List<String> excluded = excludedPrefixes();
+        List<String> notExcluded = rows.stream()
+                .filter(row -> excluded.stream().noneMatch(prefix -> row.className().startsWith(prefix)))
+                .map(row -> row.testMethod() + " (" + row.className() + ")")
+                .toList();
+        assertTrue(notExcluded.isEmpty(),
+                "these library rows name a class the agent's excludes= list does not cover, so "
+                        + "their library is still woven in this lane and silence proves nothing. "
+                        + "Add the package to the agent-pairs-library-excluded execution in "
+                        + "corpus-eval/pom.xml. Excluded: " + excluded + "; uncovered: " + notExcluded);
+
+        assertEquals(rows.size() * executionsPerRow, CorpusRecorder.bodyExecutions(),
+                "every library row must run its full " + executionsPerRow + " executions here, or "
+                        + "a silent row may be a row that did not run");
+
+        List<String> stillFiring = new ArrayList<>();
+        for (RecordingSubject row : rows) {
+            String detectorClass = DetectorExposure.classOf(row.detector());
+            boolean fired = findings.stream().anyMatch(finding ->
+                    finding.subject().equals(row.testMethod())
+                            && finding.detector().equals(detectorClass));
+            if (fired) {
+                stillFiring.add(row.testMethod() + " [" + detectorClass + ", "
+                        + row.expectation() + "]: " + evidenceFor(findings, row, detectorClass));
+            }
+        }
+        assertTrue(stillFiring.isEmpty(),
+                "with Guava, Jackson and the other corpus libraries excluded from weaving, these "
+                        + "library rows still reached their detector, so the finding did not come "
+                        + "from the library's bytecode. Look for a woven JDK call in the body "
+                        + "itself: " + String.join(" | ", stillFiring));
+    }
+
+    /** {@return the package prefixes the running JVM's -javaagent excludes= option names} */
+    private static List<String> excludedPrefixes() {
+        for (String argument : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
+            int options = argument.startsWith("-javaagent:") ? argument.indexOf('=') : -1;
+            if (options < 0 || !argument.contains("async-test-agent")) {
+                continue;
+            }
+            List<String> prefixes = new ArrayList<>();
+            boolean inExcludes = false;
+            for (String token : argument.substring(options + 1).split("[,;]")) {
+                int equals = token.indexOf('=');
+                if (equals >= 0) {
+                    inExcludes = token.substring(0, equals).trim().equalsIgnoreCase("excludes");
+                    token = token.substring(equals + 1);
+                    if (!inExcludes) {
+                        continue;
+                    }
+                }
+                if (inExcludes && !token.isBlank()) {
+                    prefixes.add(token.trim());
+                }
+            }
+            return prefixes;
+        }
+        return List.of();
+    }
+
     static void checkPairLane(List<CorpusRecorder.Finding> findings,
                               CorpusLane lane,
                               Class<?> laneTest) {
@@ -544,7 +639,7 @@ final class CorpusGates {
                 .anyMatch(argument -> argument.startsWith("-javaagent:")
                         && argument.contains("async-test-agent"));
 
-        if (lane == CorpusLane.AGENT_ON || lane == CorpusLane.AGENT_PAIRS) {
+        if (lane.attachesTheAgent()) {
             assertTrue(launched,
                     "the agent-on lane must attach the agent with -javaagent at JVM startup. "
                             + "Self-attaching from the first @AsyncTest weaves only classes loaded "

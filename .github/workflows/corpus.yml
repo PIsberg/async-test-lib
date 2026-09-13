@@ -129,6 +129,8 @@ jobs:
             corpus-eval/target/surefire-reports/
             corpus-eval/target/surefire-reports-agent-off/
             corpus-eval/target/surefire-reports-recording/
+            corpus-eval/target/surefire-reports-agent-pairs/
+            corpus-eval/target/surefire-reports-agent-pairs-library-excluded/
           retention-days: 7
 
   corpus-summary:

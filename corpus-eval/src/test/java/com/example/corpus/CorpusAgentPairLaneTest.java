@@ -70,7 +70,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * progress. That is the bug doing what the bug does, and it happens after the substituted call
  * site has already reported. Letting it out would fail the run for succeeding.
  */
-@ExtendWith(SubjectTracking.class)
+@ExtendWith({SubjectTracking.class, LibraryRowsOnly.class})
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class CorpusAgentPairLaneTest {
 
@@ -147,6 +147,13 @@ class CorpusAgentPairLaneTest {
                 CorpusRecorder.findings(), THREADS, INVOCATIONS, lane);
         System.out.println("Corpus agent-pair-lane report written to " + report.toAbsolutePath());
         System.out.println(CorpusReport.recordingSummary(CorpusRecorder.findings(), lane));
+        if (lane == CorpusLane.AGENT_PAIRS_LIBRARY_EXCLUDED) {
+            // Only library rows ran, so the deadlock ordering premise and the full pair-lane gates
+            // have nothing to check here; this lane asks one question and gates on it alone.
+            CorpusGates.checkLibraryExclusionLane(CorpusRecorder.findings(),
+                    CorpusAgentPairLaneTest.class, THREADS * INVOCATIONS);
+            return;
+        }
         theDeadlockRowsRanInOrder();
         CorpusGates.checkPairLane(
                 CorpusRecorder.findings(), lane, CorpusAgentPairLaneTest.class);

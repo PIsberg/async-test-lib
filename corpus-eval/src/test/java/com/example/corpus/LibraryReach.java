@@ -22,9 +22,10 @@ import java.util.Set;
  * list in prose is true when written and quietly false a month later.
  * {@code EveryAgentFedDetectorIsReachedThroughALibraryTest} holds it to both directions.
  *
- * <p>Verified once by exclusion rather than assumed: with {@code excludes=com.google;com.fasterxml;
- * com.zaxxer} added to the agent-pair lane's agent options, every library MUST_FIRE row went
- * silent and no other row moved, so each of those findings came from the library's bytecode.
+ * <p>Checked by exclusion on every run rather than assumed: the {@code agent-pairs-library-excluded}
+ * lane runs the library rows with those libraries on the agent's exclude list, and every library
+ * MUST_FIRE row must go silent there, so each of these findings came from the library's bytecode
+ * ({@link CorpusGates#checkLibraryExclusionLane}, #544).
  */
 final class LibraryReach {
 

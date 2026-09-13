@@ -3446,6 +3446,13 @@ final class Corpus {
      * is written once against this and reads the same either way.
      */
     static List<RecordingSubject> subjectsFor(CorpusLane lane) {
+        if (lane == CorpusLane.AGENT_PAIRS_LIBRARY_EXCLUDED) {
+            // The library rows only: a JDK row calls the JDK from the test file, so excluding the
+            // libraries from weaving says nothing about where its finding came from.
+            return AGENT_SUBJECTS.stream()
+                    .filter(subject -> !subject.library().startsWith("jdk:"))
+                    .toList();
+        }
         return lane == CorpusLane.AGENT_PAIRS ? AGENT_SUBJECTS : RECORDING_SUBJECTS;
     }
 

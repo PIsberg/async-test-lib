@@ -18,7 +18,7 @@ mvn install -DskipTests -Djacoco.skip=true    # so the module can resolve the cu
 mvn -f corpus-eval/pom.xml test
 ```
 
-A run executes four lanes and writes one report per lane under `target/corpus-eval/`:
+A run executes five lanes and writes one report per lane under `target/corpus-eval/`:
 
 | Lane | Report | What it is |
 |---|---|---|
@@ -26,6 +26,7 @@ A run executes four lanes and writes one report per lane under `target/corpus-ev
 | `agent-off` | `corpus-eval-agent-off.md` | The same subjects with nothing attached. The control: `DetectorFeeds` says the 18 agent-fed detectors have no input without the agent, so this lane must observe nothing from them, and `CorpusGates` asserts it. |
 | `recording` | `corpus-eval-recording.md` | The same libraries, with bodies that call the recording API. A different measurement over a different denominator, which is why it writes its own report and is never merged into the other two. |
 | `agent-pairs` | `corpus-eval-agent-pairs.md` | The mirror image of the recording lane, for the 18 agent-fed detectors it cannot reach. The agent is attached and the body records nothing: the difference between a firing row and its silent twin is a field declaration, and everything in between comes from the weaver. `AgentRowPremise` fails the lane if a body here touches the recording API. Some pairs call the JDK type from the test file; others call only Guava, Jackson or HikariCP, so the woven call sits inside the library, and `LibraryReach` accounts for which agent-fed detectors that reaches. |
+| `agent-pairs-library-excluded` | `corpus-eval-agent-pairs-library-excluded.md` | The agent-pair lane's library rows again, with every corpus library on the agent's `excludes=` list. A library pair claims its finding came from a JDK call inside the library, so with the library unwoven each firing row must go silent. `CorpusGates.checkLibraryExclusionLane` fails on a row that still fires, on a library row whose package the excludes list does not cover, and on a row that did not run in full. |
 
 Those files are the source of truth for a given run; the document under `docs/` is a copy of one.
 

@@ -50,6 +50,7 @@ final class DetectorExposure {
             // records into a denominator this table says is zero.
             case AGENT -> lane == CorpusLane.AGENT_ON
                     || lane == CorpusLane.AGENT_PAIRS
+                    || lane == CorpusLane.AGENT_PAIRS_LIBRARY_EXCLUDED
                     || (lane == CorpusLane.RECORDING
                             && Corpus.recordedDetectors().contains(type));
             // Exposure is what a lane actually feeds, not what it could feed in principle. The
