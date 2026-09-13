@@ -1570,8 +1570,8 @@ is the same defect the netty `ByteBuf` note above refuses to leave unremarked. I
 | | Detectors |
 |---|---|
 | Paired in the recording lane | 116 |
-| Paired in the agent-pair lane | 14 |
-| ...less `SHARED_MESSAGE_DIGEST`, which is paired in both | -1 |
+| Paired in the agent-pair lane | 16 |
+| ...less `SHARED_MESSAGE_DIGEST`, `LATCH_MISUSE` and `BLOCKING_QUEUE`, which are paired in both | -3 |
 | Paired by lane one over 82 subjects (`ATOMICITY_VIOLATIONS`, `SHARED_COLLECTIONS`) | +2 |
 | **Total paired** | **131** |
 | Refused: every recorded event is a finding, so no silent twin can exist | 7 |
@@ -1810,3 +1810,96 @@ an explicit branch, with `AgentRowPremise` named as what actually holds it to th
 lane, which silently meant an agent-lane pair could not be registered as evidence at all: the gate
 resolving the file's ids would report the row as not existing. Both lanes hold their subjects to
 stated outcomes every run, so both can back a tier, and it now searches both.
+
+## Through library bytecode: agent pairs whose call nobody here compiled
+
+Every agent-lane pair up to this point wrote its JDK call in `CorpusAgentPairLaneTest` itself. That
+measures the detector's model, and it left the question an evaluating team actually has
+unanswered: does the agent see the call when it sits inside a jar nobody on this project compiled?
+The two are not the same question. The weaver substitutes a call by exact descriptor and by the
+static type of the receiver at the call site, so "seen in a test file" does not imply "seen in
+Guava". Lane one answers it for two detectors, `ATOMICITY_VIOLATIONS` and `SHARED_COLLECTIONS`.
+For the other sixteen agent-fed detectors there was no evidence either way.
+
+**Ten pairs, twenty rows, all in the agent-pair lane.** Each body calls a public method of Guava,
+Jackson or HikariCP and nothing else that the weaver substitutes; the JDK call the detector is fed
+by is an instruction inside the library's own class file, woven when it loads. The pair shape is the
+one the JDK rows use, the bug against its fix through the same library methods:
+
+| Detector | Body calls | Woven call inside the library | Fires on | Stays silent on |
+|---|---|---|---|---|
+| `SHARED_MESSAGE_DIGEST` | Guava `Hasher.putBytes` | `MessageDigest.update` in `MessageDigestHashFunction` | one `Hasher` for every thread | a `Hasher` per hash |
+| `CALENDAR` | Jackson `StdDateFormat.format` | `Calendar.get` in `StdDateFormat._format` | one `StdDateFormat` | one per call |
+| `STRING_BUILDER` | Jackson `JavaType.getGenericSignature` | `StringBuilder.append` in `TypeBase._classSignature` | one builder handed in by every thread | a builder per call |
+| `TRY_LOCK_MISUSE` | Guava `Monitor.tryEnter`, `leave` | `ReentrantLock.tryLock`, `unlock` in `Monitor` | `leave()` after a failed `tryEnter()` | `leave()` only inside `if (tryEnter())` |
+| `LOCK_LEAKS` | Guava `Monitor.enter` | `ReentrantLock.lock` in `Monitor` | `enter()` with no `leave()` | enter, try, finally leave |
+| `LOCK_ORDER` | Guava `Monitor.enter`, `leave` | `ReentrantLock.lock` in `Monitor` | two monitors nested both ways | always A then B |
+| `SLEEP_IN_LOCK` | HikariCP `UtilityElf.quietlySleep` inside a Guava `Monitor` | `Thread.sleep` in HikariCP, `ReentrantLock.lock` in Guava | the sleep while the monitor is occupied | the sleep after `leave()` |
+| `COUNTDOWN_LATCH` | Guava `Uninterruptibles.awaitUninterruptibly` | `CountDownLatch.await(long, TimeUnit)` | a latch nothing counts down | a latch counted down first |
+| `BLOCKING_QUEUE` | Guava `Uninterruptibles.putUninterruptibly` | `BlockingQueue.put` | two puts into a queue of two | puts and takes alternated |
+| `SEMAPHORE` | Guava `Uninterruptibles.tryAcquireUninterruptibly` | `Semaphore.tryAcquire(int, long, TimeUnit)` | a permit never released | released in a finally |
+
+Nine were as stated on the first run. The tenth was a detector defect, below.
+
+**Where the finding came from was checked rather than assumed.** A body that calls no woven JDK
+method can still be wrong about that, so the lane was run once with
+`excludes=com.google;com.fasterxml;com.zaxxer` added to the agent options of the `agent-pairs`
+execution. Exactly the ten library MUST_FIRE rows went silent, and none of the other 44 rows
+changed outcome. Each of those ten findings therefore came from the library's bytecode and from
+nothing in this module. That was a one-off run, not a gate; making it one is
+[#544](https://github.com/PIsberg/async-test-lib/issues/544).
+
+**What the first run found.** `agent_hikariSleep_whileOccupyingAMonitor` came out `SILENT but must
+fire`, and the row was right. `AgentSleepHooks` passes whatever sits on top of the agent's lockset
+to `SleepInLockDetector.recordSleep(ms, monitor)`, and the woven `Lock.lock()` puts a
+`ReentrantLock` there. The detector then confirmed the lock with `Thread.holdsLock`, which answers
+false for a `java.util.concurrent` lock however long the thread has held it. So every sleep under
+`lock()` was dropped, and only intrinsic monitors could ever be reported, although the hook's own
+javadoc says both feed it. The JDK pair never saw this because it sleeps inside a `synchronized`
+method.
+
+It is fixed in the same change: `ReentrantLock` and `ReentrantReadWriteLock` report their holder
+exactly, so they are asked the question the JVM answers for a monitor, and a lock held by another
+thread still records nothing. Verified failing-first: two of three new cases in
+`SleepInLockOnVirtualThreadsTest` were red before the fix and green after, and the corpus row went
+from silent to `fired (1)`. `StampedLock`, which keeps no owner, and a confirmable lock sitting
+below the top of the lockset are still dropped; that is
+[#543](https://github.com/PIsberg/async-test-lib/issues/543).
+
+**Where it stops.** With these pairs, 12 of the 18 agent-fed detectors are measured in both
+directions on call sites inside a library. `LibraryReach` records why the other six are not, and
+`EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions, the same
+arrangement `DetectorCoverage` uses for refusals:
+
+| Detector | Why no corpus library reaches it |
+|---|---|
+| `SIMPLE_DATE_FORMAT` | Jackson builds `SimpleDateFormat` instances but formats through a `DateFormat` reference, which the weaver does not substitute ([#542](https://github.com/PIsberg/async-test-lib/issues/542)) |
+| `SHARED_DECIMAL_FORMAT` | the only woven `NumberFormat.format` is on a local in Spring's `StopWatch`; Spring's `NumberUtils` takes a caller's format but calls `parse`, which is not woven ([#542](https://github.com/PIsberg/async-test-lib/issues/542)) |
+| `SHARED_MATCHER` | every library creates a `Matcher` per call, so there is a silent half and no bug to pair it with ([#545](https://github.com/PIsberg/async-test-lib/issues/545)) |
+| `SHARED_FORMATTER` | no corpus library calls `Formatter.format` ([#545](https://github.com/PIsberg/async-test-lib/issues/545)) |
+| `LATCH_MISUSE` | no corpus library counts down a latch the caller supplies ([#545](https://github.com/PIsberg/async-test-lib/issues/545)) |
+| `EXPLICIT_GC` | no corpus library calls `System.gc`, and the detector is refused in every lane |
+
+The first two rows are the more useful finding. They are not corpus limits, they are agent limits
+that a user's own dependencies hit: a shared `SimpleDateFormat` held as a `DateFormat`, or a shared
+`StringBuilder` passed to Guava's `Joiner.appendTo`, which goes through `Appendable`, is invisible
+to its detector. The JDK pairs could not show that, because the test file calls the concrete type.
+Both are read from the weaver's owner rule and the library sources rather than run; a pair that
+proves each belongs with the fix in #542.
+
+**One gate had to change for this.** `AgentRowPremise` compared a firing row against the first
+silent row naming the same detector. With a JDK pair and a library pair for one detector, that
+would compare the Guava `Monitor` body against the `ReentrantLock` body and report `enter` as a
+dropped call. The twin is now the nearest silent row of the same detector and class, the following
+one on a tie, and `AgentRowPremiseTwinTest` pins the three shapes that lookup must get right.
+Verified by mutation: restoring first-match fails
+`backToBackPairsResolveToTheFollowingRow`. A mutation that drops only the class condition survives,
+because declaration order already pairs every current row; the condition is a backstop and is
+documented as one.
+
+**What these pairs do not show.** The library code is unmodified, but the decision to share an
+instance is still written in the test body, so this is "the agent sees a library's call site", not
+"the corpus found a bug in Guava". Two rows are also not pure: the `SEMAPHORE` silent half writes
+its `release()` in the body, because Guava has no release helper, and the `SLEEP_IN_LOCK` pair
+composes two libraries that know nothing of each other, which is how that bug is usually written
+but means neither library alone carries the finding.

@@ -65,6 +65,24 @@ class CorpusClaimsInDocsTest {
         check(stale, EVAL, safe + " documented-safe",
                 "the documented-safe group is " + safe + " subjects");
 
+        // The pairing roster and the library reach, both derived rather than counted. The README
+        // said "twelve more detectors" and "Nine of those pairs" while the lanes grew to pair 131,
+        // because nothing read that sentence either.
+        int roster = DetectorType.values().length;
+        long paired = DetectorCoverage.paired().size();
+        long refused = DetectorCoverage.refused().size();
+        long reached = LibraryReach.reached().size();
+        long agentFed = LibraryReach.agentFed().size();
+        check(stale, README, paired + " of the " + roster + " detectors are paired",
+                "DetectorCoverage pairs " + paired + " detectors");
+        check(stale, README, "the other " + refused + " carry a written reason",
+                "DetectorCoverage refuses " + refused + " detectors");
+        for (Path document : List.of(README, EVAL)) {
+            check(stale, document, reached + " of the " + agentFed + " agent-fed detectors",
+                    "LibraryReach measures " + reached + " of " + agentFed
+                            + " agent-fed detectors on a call site inside a library");
+        }
+
         assertTrue(stale.isEmpty(),
                 "these documents state corpus numbers the corpus no longer produces. The generated "
                         + "reports under target/corpus-eval/ are the authority and the prose is a "

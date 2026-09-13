@@ -81,6 +81,12 @@ final class AgentRowPremise {
      * this and still be measuring nothing - which is exactly how the first draft of the
      * StringBuilder and Formatter rows failed, silently and in the MUST_FIRE direction. The
      * MUST_FIRE half is what catches that, by having to actually fire.
+     *
+     * <p>A detector can have more than one pair here - the JDK type called from this file, and
+     * the same call reached through a library - so the twin is looked up by class as well as by
+     * detector. Matching on the detector alone would compare the Guava Monitor rows against the
+     * ReentrantLock rows and report {@code enter} as a dropped call, which says what the two
+     * classes happen to call rather than whether either pair is sound.
      */
     static List<String> pairsWhoseSilentRowDropsACall() {
         String source = read();
@@ -90,11 +96,7 @@ final class AgentRowPremise {
             if (loud.expectation() != RecordingSubject.Expectation.MUST_FIRE) {
                 continue;
             }
-            RecordingSubject quiet = Corpus.subjectsFor(CorpusLane.AGENT_PAIRS).stream()
-                    .filter(s -> s.detector() == loud.detector())
-                    .filter(s -> s.expectation() == RecordingSubject.Expectation.MUST_STAY_SILENT)
-                    .findFirst()
-                    .orElse(null);
+            RecordingSubject quiet = twinOf(loud);
             if (quiet == null) {
                 broken.add(loud.testMethod() + " fires for " + loud.detector()
                         + " with no MUST_STAY_SILENT twin, so nothing says the detector is "
@@ -112,6 +114,39 @@ final class AgentRowPremise {
             }
         }
         return broken;
+    }
+
+    /**
+     * {@return the MUST_STAY_SILENT row paired with {@code loud}, or {@code null} when it has none}
+     *
+     * <p>Same detector, same class, and the nearest such row in declaration order, the following
+     * one on a tie. Rows are declared as pairs, so nearest is the pair; the tie rule matters only
+     * where one class carries two pairs for one detector back to back, as the BlockingQueue rows
+     * do, and there the firing row precedes its twin. Distance does the pairing today; the class
+     * condition is a backstop for a row declared away from its twin, and a mutation that drops it
+     * survives every current test for that reason.
+     *
+     * @param loud a MUST_FIRE row of the agent lane
+     */
+    static RecordingSubject twinOf(RecordingSubject loud) {
+        List<RecordingSubject> rows = Corpus.subjectsFor(CorpusLane.AGENT_PAIRS);
+        int at = rows.indexOf(loud);
+        RecordingSubject best = null;
+        int bestDistance = Integer.MAX_VALUE;
+        for (int i = 0; i < rows.size(); i++) {
+            RecordingSubject candidate = rows.get(i);
+            if (candidate.detector() != loud.detector()
+                    || !candidate.className().equals(loud.className())
+                    || candidate.expectation() != RecordingSubject.Expectation.MUST_STAY_SILENT) {
+                continue;
+            }
+            int distance = Math.abs(i - at);
+            if (distance < bestDistance || (distance == bestDistance && i > at)) {
+                best = candidate;
+                bestDistance = distance;
+            }
+        }
+        return best;
     }
 
     /**
