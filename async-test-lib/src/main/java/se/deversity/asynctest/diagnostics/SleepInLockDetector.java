@@ -120,15 +120,24 @@ public class SleepInLockDetector {
      * {@code getLockedMonitors()} happens to return first. A caller that names a monitor it does
      * not hold records nothing, so this cannot be used to assert a finding into existence.
      *
+     * <p>The name says monitor, and the agent passes whatever its lockset holds on top, which
+     * includes a {@code ReentrantLock} taken with {@code lock()} and the owner of a
+     * {@code ReentrantReadWriteLock} view. {@code Thread.holdsLock} answers false for both however
+     * long the thread has held them, so a sleep under a {@code java.util.concurrent} lock was
+     * dropped. Those two types report their holder exactly, so they are asked the same question
+     * the JVM answers for a monitor, and the refusal to take the caller's word still holds.
+     * {@code StampedLock} records no owner and stays unconfirmable, so it records nothing.
+     *
      * @param sleepDurationMs the duration of the sleep in milliseconds
-     * @param monitor the object whose monitor the caller believes it holds; ignored when it does
-     *                not, and when it is {@code null}
+     * @param monitor the object whose monitor or lock the caller believes it holds; ignored when
+     *                it does not, and when it is {@code null}
      */
     public void recordSleep(long sleepDurationMs, @Nullable Object monitor) {
         if (!enabled || !monitoring || sleepDurationMs <= 0 || monitor == null) {
             return;
         }
-        if (!Thread.holdsLock(monitor)) {
+        String lockType = heldByCurrentThread(monitor);
+        if (lockType == null) {
             return;
         }
         Thread currentThread = Thread.currentThread();
@@ -137,7 +146,30 @@ public class SleepInLockDetector {
                 currentThread.getName(),
                 sleepDurationMs,
                 currentThread.getStackTrace(),
-                "synchronized"));
+                lockType));
+    }
+
+    /**
+     * {@return how the calling thread holds {@code lock}, or {@code null} when it cannot be confirmed}
+     *
+     * <p>The monitor is asked first, because any object can be one, a {@code ReentrantLock}
+     * included.
+     *
+     * @param lock a monitor, a {@code ReentrantLock} or a {@code ReentrantReadWriteLock}
+     */
+    private static @Nullable String heldByCurrentThread(Object lock) {
+        if (Thread.holdsLock(lock)) {
+            return "synchronized";
+        }
+        if (lock instanceof java.util.concurrent.locks.ReentrantLock reentrant
+                && reentrant.isHeldByCurrentThread()) {
+            return "ReentrantLock";
+        }
+        if (lock instanceof java.util.concurrent.locks.ReentrantReadWriteLock readWrite
+                && (readWrite.isWriteLockedByCurrentThread() || readWrite.getReadHoldCount() > 0)) {
+            return "ReentrantReadWriteLock";
+        }
+        return null;
     }
 
     /** Adds one event under the list's own lock and keeps the count in step with it. */

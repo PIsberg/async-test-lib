@@ -4,6 +4,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -86,5 +88,82 @@ class SleepInLockOnVirtualThreadsTest {
                 "the caller named a monitor it does not hold. Reporting that would make the "
                         + "overload a way to assert a finding into existence rather than a way to "
                         + "have the JVM confirm one");
+    }
+
+    // --- java.util.concurrent locks. The agent's lockset holds these as well as monitors, and it
+    //     hands the top entry to recordSleep. Thread.holdsLock answers false for a ReentrantLock
+    //     however long the thread has held it, so a sleep under lock() was dropped on the floor.
+    //     Found by the corpus pair that sleeps in HikariCP while occupying a Guava Monitor.
+
+    @Test
+    @DisplayName("a sleep while holding a ReentrantLock is reported")
+    void reportsASleepHeldUnderAReentrantLock() throws Exception {
+        SleepInLockDetector detector = new SleepInLockDetector();
+        detector.startMonitoring();
+        ReentrantLock lock = new ReentrantLock();
+
+        Thread worker = Thread.ofVirtual().name("lock-sleeper").start(() -> {
+            lock.lock();
+            try {
+                detector.recordSleep(50, lock);
+            } finally {
+                lock.unlock();
+            }
+        });
+        worker.join(5_000);
+
+        SleepInLockDetector.SleepInLockReport report = detector.analyze();
+        assertTrue(report.hasIssues(),
+                "the thread held the lock for the whole sleep, which queues every other caller "
+                        + "behind a thread doing nothing - the same defect as under a monitor. "
+                        + "Report: " + report);
+        assertTrue(report.toString().contains("lock-sleeper"),
+                "and the report names the sleeping thread: " + report);
+    }
+
+    @Test
+    @DisplayName("a sleep while holding either side of a ReentrantReadWriteLock is reported")
+    void reportsASleepHeldUnderEitherSideOfAReadWriteLock() throws Exception {
+        for (boolean write : new boolean[] {true, false}) {
+            SleepInLockDetector detector = new SleepInLockDetector();
+            detector.startMonitoring();
+            ReentrantReadWriteLock owner = new ReentrantReadWriteLock();
+            java.util.concurrent.locks.Lock side = write ? owner.writeLock() : owner.readLock();
+
+            // The agent's lockset records the owner for both views, so the owner is what arrives.
+            Thread worker = Thread.ofVirtual().start(() -> {
+                side.lock();
+                try {
+                    detector.recordSleep(50, owner);
+                } finally {
+                    side.unlock();
+                }
+            });
+            worker.join(5_000);
+
+            assertTrue(detector.analyze().hasIssues(),
+                    "a sleeping " + (write ? "writer" : "reader") + " blocks every writer for "
+                            + "as long as it sleeps");
+        }
+    }
+
+    @Test
+    @DisplayName("a ReentrantLock another thread holds is not evidence")
+    void staysSilentWhenTheNamedLockIsHeldByAnotherThread() throws Exception {
+        SleepInLockDetector detector = new SleepInLockDetector();
+        detector.startMonitoring();
+        ReentrantLock lock = new ReentrantLock();
+        lock.lock();
+        try {
+            Thread worker = Thread.ofVirtual().start(() -> detector.recordSleep(50, lock));
+            worker.join(5_000);
+        } finally {
+            lock.unlock();
+        }
+
+        assertFalse(detector.analyze().hasIssues(),
+                "the lock is held, but not by the thread that slept. Accepting it would make the "
+                        + "overload a way to assert a finding into existence, which the monitor "
+                        + "path already refuses");
     }
 }
