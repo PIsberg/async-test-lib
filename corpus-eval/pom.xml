@@ -268,12 +268,12 @@
                             <includes>
                                 <include>**/CorpusAgentPairLaneTest.java</include>
                             </includes>
-                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=excludes=com.google;com.fasterxml;com.zaxxer;org.springframework,fields=true,collections=true</argLine>
+                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=excludes=com.google;com.fasterxml;com.zaxxer;org.springframework;org.apache.commons,fields=true,collections=true</argLine>
                             <reportsDirectory>${project.build.directory}/surefire-reports-agent-pairs-library-excluded</reportsDirectory>
                             <systemPropertyVariables>
                                 <license.mock.mode>true</license.mock.mode>
                                 <corpus.lane>agent-pairs-library-excluded</corpus.lane>
-                                <asynctest.agent>excludes=com.google;com.fasterxml;com.zaxxer;org.springframework,fields=true,collections=true</asynctest.agent>
+                                <asynctest.agent>excludes=com.google;com.fasterxml;com.zaxxer;org.springframework;org.apache.commons,fields=true,collections=true</asynctest.agent>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>

@@ -952,6 +952,19 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "the same shared Joiner and the same parts, into a builder the call made"),
 
+            new RecordingSubject("agent_lang3FormattableAppend_oneFormatterForEveryThread", LANG3,
+                    "org.apache.commons.lang3.text.FormattableUtils",
+                    DetectorType.SHARED_FORMATTER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "FormattableUtils is a stateless helper, but append(seq, formatter, ...) pads the "
+                            + "text and calls formatter.format on the Formatter it is handed, and "
+                            + "every thread hands it the same one. The format call is commons-lang3's"),
+
+            new RecordingSubject("agent_lang3FormattableAppend_oneFormatterPerCall", LANG3,
+                    "org.apache.commons.lang3.text.FormattableUtils",
+                    DetectorType.SHARED_FORMATTER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same commons-lang3 call into a Formatter this call built and closes"),
             new RecordingSubject("agent_guavaMonitorTryEnter_leftAfterFailing", GUAVA,
                     "com.google.common.util.concurrent.Monitor",
                     DetectorType.TRY_LOCK_MISUSE, Contract.THREAD_SAFE,

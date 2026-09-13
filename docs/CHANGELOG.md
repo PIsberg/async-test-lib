@@ -51,13 +51,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with a check on every build, at about 16 s per corpus leg: only the library rows run in it.
   Verified by rewriting one library row to take its lock in the test body. The agent-pair lane
   stayed green and the new lane failed naming that row.
-- **The corpus measures 14 of the 18 agent-fed detectors on a call site inside a library.** Ten new
+- **`SHARED_FORMATTER` is measured through library bytecode too (#545).** commons-lang3's
+  `FormattableUtils.append` calls `format` on the `Formatter` it is handed, which the earlier survey
+  missed because it searched for fields and locals rather than parameters. A new agent-lane pair
+  shares one `Formatter` across threads through it, against one per call. The same widened search
+  found that a woven call made through a method reference, such as `builder::append` or
+  `latch::countDown`, was never observed (#550).
+- **The corpus measures 15 of the 18 agent-fed detectors on a call site inside a library.** Ten new
   agent-lane pairs call only Guava, Jackson or HikariCP, so the JDK call the detector is fed by is
   woven inside the library's own class file rather than written in the test. A run with those
   three libraries excluded from weaving silenced exactly the ten firing rows and changed no other
-  row, and three more reach their object through a wider static type (see the #542 entry).
-  `LibraryReach` and `EveryAgentFedDetectorIsReachedThroughALibraryTest` account for the other
-  four. `AgentRowPremise` now pairs a
+  row, three more reach their object through a wider static type (see the #542 entry), and the
+  commons-lang3 pair above adds one more. `LibraryReach` and
+  `EveryAgentFedDetectorIsReachedThroughALibraryTest` account for the other three. `AgentRowPremise` now pairs a
   firing row with the silent row of the same class, since a detector can have a JDK pair and a
   library pair.
 
