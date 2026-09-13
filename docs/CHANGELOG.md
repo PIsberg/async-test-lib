@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The agent sees a `SimpleDateFormat`, `StringBuilder` or `NumberFormat` reached through a wider
+  static type (#542).** The weaver matched a call only when its owner was the concrete type or a
+  subtype, so `dateFormat.format(date)` on a `SimpleDateFormat` held as a `DateFormat`,
+  `appendable.append(s)` on a `StringBuilder` passed as an `Appendable`, and every
+  `NumberFormat.parse` were never observed. That is how Jackson, Guava's `Joiner.appendTo` and
+  Spring's `NumberUtils` hold these objects. The table now weaves `DateFormat.format`/`parse`,
+  `Appendable.append` (three overloads) and `NumberFormat.parse` (two). `DateFormat` and `Appendable`
+  have thread-safe implementations, so those hooks record only when the runtime receiver is a
+  `SimpleDateFormat` or `StringBuilder`; a shared `StringBuffer` or stateless `DateFormat` stays silent.
+  Each `Appendable`-typed call in a woven class now passes through a hook that costs one
+  `instanceof` when the receiver is not a builder.
 - **`SleepInLockDetector` reports a sleep held under a `ReentrantLock` or `ReentrantReadWriteLock`,
   not only under a monitor.** With the agent attached, a woven `Lock.lock()` puts the lock on the
   thread's lockset and the woven `Thread.sleep` passes it to `recordSleep(ms, monitor)`, which
@@ -30,16 +41,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the agent's `excludes=` list, so the JDK calls inside Guava, Jackson and HikariCP are no longer
   substituted. Every library firing row must go silent there. It also fails when a library row's
   package is missing from the list or a row did not run in full. This replaces a one-off manual run
-  with a check on every build, at about 16 s per corpus leg: only the 20 library rows run in it.
+  with a check on every build, at about 16 s per corpus leg: only the library rows run in it.
   Verified by rewriting one library row to take its lock in the test body. The agent-pair lane
   stayed green and the new lane failed naming that row.
-- **The corpus measures 12 of the 18 agent-fed detectors on a call site inside a library.** Ten new
+- **The corpus measures 14 of the 18 agent-fed detectors on a call site inside a library.** Ten new
   agent-lane pairs call only Guava, Jackson or HikariCP, so the JDK call the detector is fed by is
   woven inside the library's own class file rather than written in the test. A run with those
   three libraries excluded from weaving silenced exactly the ten firing rows and changed no other
-  row. `LibraryReach` and `EveryAgentFedDetectorIsReachedThroughALibraryTest` account for the other
-  six, two of which are a weaver limit: a `SimpleDateFormat` held as a `DateFormat`, or a
-  `StringBuilder` passed as an `Appendable`, is not observed (#542). `AgentRowPremise` now pairs a
+  row, and three more reach their object through a wider static type (see the #542 entry).
+  `LibraryReach` and `EveryAgentFedDetectorIsReachedThroughALibraryTest` account for the other
+  four. `AgentRowPremise` now pairs a
   firing row with the silent row of the same class, since a detector can have a JDK pair and a
   library pair.
 

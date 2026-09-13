@@ -98,7 +98,7 @@ in the recording lane, because a connection pool is the one subject that cannot 
 without something to pool.
 
 Ten of the agent pairs put the woven JDK call inside Guava, Jackson or HikariCP instead of the test
-file, so 12 of the 18 agent-fed detectors are measured on a call site nobody here compiled. Their
+file, so 14 of the 18 agent-fed detectors are measured on a call site nobody here compiled. Their
 first run found a detector that dropped every sleep held under a `ReentrantLock`, which the
 test-file pair could not see because it sleeps inside a `synchronized` method.
 

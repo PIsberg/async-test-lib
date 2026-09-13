@@ -903,6 +903,55 @@ final class Corpus {
                     "the same shared JavaType and the same signature, into a builder the call "
                             + "made. Sharing the type is correct; only the builder was ever the bug"),
 
+            // --- Through a wider static type (#542): these libraries hold the JDK object as a
+            //     DateFormat, a NumberFormat they parse with, or an Appendable, which the weaver
+            //     did not match until the wider entries existed.
+
+            new RecordingSubject("agent_jacksonRfc1123Parse_oneFormatForEveryThread", JACKSON,
+                    "com.fasterxml.jackson.databind.util.StdDateFormat",
+                    DetectorType.SIMPLE_DATE_FORMAT, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "StdDateFormat parses RFC 1123 text with a SimpleDateFormat it clones into a "
+                            + "field typed DateFormat, and its javadoc says the blueprint formats "
+                            + "\"cannot be used as is, due to thread-safety issues\". One shared "
+                            + "instance puts every thread in that one SimpleDateFormat's parse"),
+
+            new RecordingSubject("agent_jacksonRfc1123Parse_oneFormatPerCall", JACKSON,
+                    "com.fasterxml.jackson.databind.util.StdDateFormat",
+                    DetectorType.SIMPLE_DATE_FORMAT, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "an instance per call clones its own SimpleDateFormat. Same DateFormat.parse "
+                            + "call site in Jackson, reached on every execution"),
+
+            new RecordingSubject("agent_springParseNumber_oneFormatForEveryThread", SPRING,
+                    "org.springframework.util.NumberUtils",
+                    DetectorType.SHARED_DECIMAL_FORMAT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "NumberUtils is a stateless utility, but parseNumber(String, Class, "
+                            + "NumberFormat) parses with the format the caller hands it, and every "
+                            + "thread hands it the same DecimalFormat. The parse is Spring's"),
+
+            new RecordingSubject("agent_springParseNumber_oneFormatPerCall", SPRING,
+                    "org.springframework.util.NumberUtils",
+                    DetectorType.SHARED_DECIMAL_FORMAT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same Spring call with a DecimalFormat built for it, so no two threads "
+                            + "parse with one instance"),
+
+            new RecordingSubject("agent_guavaJoinerAppendTo_oneBuilderForEveryThread", GUAVA,
+                    "com.google.common.base.Joiner",
+                    DetectorType.STRING_BUILDER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "Joiner documents itself as thread-safe and is, but appendTo(StringBuilder, "
+                            + "Iterable) writes into the caller's builder through Appendable, and "
+                            + "every thread passes the same one"),
+
+            new RecordingSubject("agent_guavaJoinerAppendTo_oneBuilderPerCall", GUAVA,
+                    "com.google.common.base.Joiner",
+                    DetectorType.STRING_BUILDER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same shared Joiner and the same parts, into a builder the call made"),
+
             new RecordingSubject("agent_guavaMonitorTryEnter_leftAfterFailing", GUAVA,
                     "com.google.common.util.concurrent.Monitor",
                     DetectorType.TRY_LOCK_MISUSE, Contract.THREAD_SAFE,
