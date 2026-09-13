@@ -67,19 +67,21 @@ true positive. Nothing is inferred from how the code looks.
 | | Result |
 |---|---|
 | Documented not thread-safe | 39 of 39 detected |
-| Documented thread-safe, with any finding at all | **2 of 100** |
+| Documented thread-safe, with any finding at all | **2–3 of 100** |
 | Documented thread-safe, with a `VERDICT`-tier HIGH or CRITICAL | **0 of 100** |
 
-A hundred documented-safe subjects is what puts a **95% upper bound of 3.0%** on the rate of
-findings a `VERDICT`-gated build would fail on; the bound comes from the size of that denominator
-rather than from the run of zeroes, which is why the safe side is the larger half of the corpus on
+Identical at the gated tier on four platforms: JDK 21, 25 and 26 on Linux, and 26 on Windows. A
+hundred documented-safe subjects is what puts a **95% upper bound of 3.0%** on the rate of findings
+a `VERDICT`-gated build would fail on; the bound comes from the size of that denominator rather
+than from the run of zeroes, which is why the safe side is the larger half of the corpus on
 purpose. The last forty were chosen before they were first run, and none was dropped for what it
 drew.
 
-The two `PROMPT`-tier findings are what that widening bought. Caffeine's weak interner writes its
-striped buffer table only after winning a CAS spinlock, which is not a lock the model counts.
-Netty's adaptive allocator updates a chunk's byte count under a `StampedLock` the agent does track,
-and why that was not enough is not yet diagnosed. Both are filed as issues
+The `PROMPT`-tier findings are what that widening bought. Two appear on every run: Caffeine's weak
+interner writes its striped buffer table only after winning a CAS spinlock, which is not a lock the
+model counts, and Netty's adaptive allocator updates a chunk's byte count under a `StampedLock` the
+agent does track, for a reason not yet diagnosed. A third, a Caffeine bounded cache reaching the
+same striped buffer, appears on some runs. All are filed as issues
 ([#554](https://github.com/PIsberg/async-test-lib/issues/554),
 [#555](https://github.com/PIsberg/async-test-lib/issues/555)), the same way the four
 findings before them were: `ConcurrentReferenceHashMap`'s hint

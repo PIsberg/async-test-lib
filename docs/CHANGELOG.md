@@ -47,16 +47,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The corpus eval's lane one grows from 82 subjects to 139: 100 documented thread-safe, 39 not.**
   Sixty documented-safe subjects bounded the rate of `VERDICT`-tier false positives at 5.0% at 95%;
-  a hundred bound it at 3.0%, and that column is still zero on JDK 26. The forty new safe subjects
-  and seventeen unsafe ones were fixed before their first run, and every quoted javadoc sentence was
-  checked against its sources jar (JDK rows against both 21 and 26). Below the gate the widening
-  found two `PROMPT`-tier findings on documented-safe code, Caffeine's CAS-spinlock-guarded
-  `StripedBuffer` (#554) and Netty's `AdaptivePoolingAllocator` chunk counter (#555); both stay in
-  the corpus and are filed rather than dropped. All 39 unsafe subjects are detected, and five
-  agent-fed detectors that had never spoken in lane one now fire on their JDK subject:
-  `StringBuilder`, `SimpleDateFormat` (also through a `DateFormat`), `Matcher`, `DecimalFormat` and
-  `Formatter`. The agent-pair `CALENDAR` row no longer claims a javadoc contract `Calendar` does not
-  state.
+  a hundred bound it at 3.0%, and that column is still zero on JDK 21, 25 and 26 on Linux and 26 on
+  Windows. The forty new safe subjects and seventeen unsafe ones were fixed before their first run,
+  and every quoted javadoc sentence was checked against its sources jar (JDK rows against both 21
+  and 26). Below the gate the widening found `PROMPT`-tier findings on 2 or 3 documented-safe
+  subjects per run: Caffeine's CAS-spinlock-guarded `StripedBuffer`, on two subjects (#554), and
+  Netty's `AdaptivePoolingAllocator` chunk counter (#555); all stay in the corpus and are filed
+  rather than dropped. All 39 unsafe subjects are detected, and five agent-fed detectors that had
+  never spoken in lane one now fire on their JDK subject: `StringBuilder`, `SimpleDateFormat` (also
+  through a `DateFormat`), `Matcher`, `DecimalFormat` and `Formatter`. The agent-pair `CALENDAR`
+  row no longer claims a javadoc contract `Calendar` does not state.
+- **Lane one fails when a subject leaves something publishing after it.** A `TimedSemaphore` timer
+  left running by the new subject added about 1,100 events to every later subject's count while
+  every gate stayed green. It is now stopped in an `@AfterEach`, and
+  `CorpusGates.nothingPublishesAfterTheLastSubject` fails the lane if the telemetry counter moves by
+  more than 100 events in the 250 ms after the last subject (430 with the leak, 20 to 30 without).
 - **`AsyncTestConfig`'s public boolean fields and `detect*`/`monitor*` builder setters survive 2.0.0
   (#383).** `docs/analysis/roadmap-v2.md` planned to remove them in Train 3, but none of the 151 fields
   or 145 setters was ever deprecated. The roadmap's own Consumers rule requires two minor releases
