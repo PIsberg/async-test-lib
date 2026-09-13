@@ -739,6 +739,45 @@ final class CorpusGates {
                         + "read and cannot have seen anything; these did: " + spoke);
     }
 
+    /**
+     * How many events may still be published in the quiet window after the last subject.
+     *
+     * <p>Not zero, because the harness itself publishes. Surefire's forked JVM runs a periodic
+     * stream flusher, {@code org.apache.maven.surefire}, which the agent weaves like any other
+     * class on the classpath. Sampled over 700 stack snapshots once the TimedSemaphore timer was
+     * stopped, it was the only thread seen inside woven code, and the counter moved by 20 to 30
+     * events per 250 ms on JDK 26. A subject that leaves a task
+     * running is a different order of magnitude: the TimedSemaphore timer this exists for published
+     * about 1,100 events per later subject, and 430 in a 250 ms window on JDK 26.
+     */
+    static final long QUIET_WINDOW_ALLOWANCE = 100;
+
+    /**
+     * Nothing a subject started may keep publishing once the subjects are done.
+     *
+     * <p>Events are attributed to a subject by the telemetry counter's movement while it runs, and
+     * subjects run one after another. A background thread a subject leaves running, a periodic
+     * timer, a scheduler, an executor that never stops, therefore adds its own events to every
+     * subject that runs after it, and nothing else notices: the sixth wave's {@code TimedSemaphore}
+     * timer raised the median event count of the 52 older subjects that ran after it by 1,094 while
+     * the 30 that ran before it moved by 60, and every gate stayed green. The leak is still running
+     * when the last subject ends, which is where this looks for it.
+     *
+     * @param publishedAtStart the telemetry counter when the window opened
+     * @param publishedAtEnd   the counter when it closed
+     * @param windowMillis     how long the window was held open
+     */
+    static void nothingPublishesAfterTheLastSubject(long publishedAtStart, long publishedAtEnd,
+                                                    long windowMillis) {
+        long published = publishedAtEnd - publishedAtStart;
+        assertTrue(published <= QUIET_WINDOW_ALLOWANCE,
+                published + " events were published in the " + windowMillis + " ms after the last "
+                        + "subject finished, and at most " + QUIET_WINDOW_ALLOWANCE + " may be. A "
+                        + "subject has left something running - a timer, a scheduler, an executor - "
+                        + "whose woven accesses land in the event count of every subject that runs "
+                        + "after it. Stop it in an @AfterEach.");
+    }
+
     private static boolean isAgentFed(DetectorType type) {
         return DetectorExposure.feedOf(type) == DetectorFeed.AGENT;
     }

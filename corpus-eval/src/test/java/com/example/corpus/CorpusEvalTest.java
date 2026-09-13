@@ -244,8 +244,14 @@ class CorpusEvalTest {
         CorpusRecorder.install();
     }
 
+    /** How long the counter must stay flat after the last subject; see {@link CorpusGates#nothingPublishesAfterTheLastSubject}. */
+    private static final long QUIET_WINDOW_MS = 250;
+
     @AfterAll
-    static void reportAndGate() {
+    static void reportAndGate() throws InterruptedException {
+        long quietFrom = se.deversity.asynctest.telemetry.TelemetryRegistry.publishedEvents();
+        Thread.sleep(QUIET_WINDOW_MS);
+        long quietTo = se.deversity.asynctest.telemetry.TelemetryRegistry.publishedEvents();
         CorpusRecorder.uninstall();
         CorpusLane lane = CorpusLane.current();
         Path report = CorpusReport.write(
@@ -254,6 +260,7 @@ class CorpusEvalTest {
         System.out.println(CorpusReport.exposure(CorpusRecorder.findings(), lane));
         System.out.println(CorpusReport.summary(CorpusRecorder.findings(), CorpusRecorder.crashes(), lane));
         CorpusGates.check(CorpusRecorder.findings(), CorpusRecorder.crashes(), lane);
+        CorpusGates.nothingPublishesAfterTheLastSubject(quietFrom, quietTo, QUIET_WINDOW_MS);
     }
 
     /**
@@ -534,6 +541,21 @@ class CorpusEvalTest {
         } catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException("the default provider registers DRBG on every supported JDK", e);
         }
+    }
+
+    /**
+     * Cancels the semaphore's period timer once its subject is done.
+     *
+     * <p>The first {@code tryAcquire} schedules a task at a fixed rate that never ends on its own,
+     * and its woven field writes then land in the event count of every subject that runs after it:
+     * the median older subject gained 1,094 events that way before this existed. Every instance
+     * builds a semaphore, and shutting down one that never started is a no-op.
+     * {@link CorpusGates#nothingPublishesAfterTheLastSubject} fails the lane if a subject leaks like
+     * this again.
+     */
+    @org.junit.jupiter.api.AfterEach
+    void stopTheSemaphoreTimer() {
+        timedSemaphore.shutdown();
     }
 
     private static void unsafeOperation(Runnable operation) {

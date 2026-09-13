@@ -51,6 +51,23 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  */
 class CorpusGatesTest {
 
+    // --- Quiescence after the last subject ------------------------------------------------------
+
+    @Test
+    @DisplayName("a subject that keeps publishing after the run fails the quiescence gate")
+    void eventsAfterTheLastSubjectFailQuiescence() {
+        // A TimedSemaphore timer left running published 430 events in this window on JDK 26.
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.nothingPublishesAfterTheLastSubject(1_000L, 1_300L, 250L));
+    }
+
+    @Test
+    @DisplayName("a counter that stays within the allowance passes the quiescence gate")
+    void aQuietWindowPassesQuiescence() {
+        assertDoesNotThrow(() -> CorpusGates.nothingPublishesAfterTheLastSubject(1_000L, 1_000L, 250L));
+        assertDoesNotThrow(() -> CorpusGates.nothingPublishesAfterTheLastSubject(
+                1_000L, 1_000L + CorpusGates.QUIET_WINDOW_ALLOWANCE, 250L));
+    }
     // --- Attribution -------------------------------------------------------------------------
 
     @Test
