@@ -244,8 +244,14 @@ class CorpusEvalTest {
         CorpusRecorder.install();
     }
 
+    /** How long the counter must stay flat after the last subject; see {@link CorpusGates#nothingPublishesAfterTheLastSubject}. */
+    private static final long QUIET_WINDOW_MS = 250;
+
     @AfterAll
-    static void reportAndGate() {
+    static void reportAndGate() throws InterruptedException {
+        long quietFrom = se.deversity.asynctest.telemetry.TelemetryRegistry.publishedEvents();
+        Thread.sleep(QUIET_WINDOW_MS);
+        long quietTo = se.deversity.asynctest.telemetry.TelemetryRegistry.publishedEvents();
         CorpusRecorder.uninstall();
         CorpusLane lane = CorpusLane.current();
         Path report = CorpusReport.write(
@@ -254,6 +260,7 @@ class CorpusEvalTest {
         System.out.println(CorpusReport.exposure(CorpusRecorder.findings(), lane));
         System.out.println(CorpusReport.summary(CorpusRecorder.findings(), CorpusRecorder.crashes(), lane));
         CorpusGates.check(CorpusRecorder.findings(), CorpusRecorder.crashes(), lane);
+        CorpusGates.nothingPublishesAfterTheLastSubject(quietFrom, quietTo, QUIET_WINDOW_MS);
     }
 
     /**
@@ -370,6 +377,186 @@ class CorpusEvalTest {
 
     private final org.springframework.core.convert.ConversionService conversionService =
             new org.springframework.core.convert.support.DefaultConversionService();
+
+    // --- Sixth wave (see Corpus): forty documented-safe subjects and seventeen documented-unsafe.
+
+    private final com.google.common.collect.BiMap<String, String> synchronizedBiMap =
+            com.google.common.collect.Maps.synchronizedBiMap(com.google.common.collect.HashBiMap.create());
+    private final java.util.NavigableMap<String, String> guavaSynchronizedNavigableMap =
+            com.google.common.collect.Maps.synchronizedNavigableMap(new java.util.TreeMap<>());
+    private final java.util.NavigableSet<String> guavaSynchronizedNavigableSet =
+            com.google.common.collect.Sets.synchronizedNavigableSet(new java.util.TreeSet<>());
+    private final com.google.common.collect.SetMultimap<String, String> synchronizedSetMultimap =
+            com.google.common.collect.Multimaps.synchronizedSetMultimap(HashMultimap.create());
+    private final com.google.common.collect.ListMultimap<String, String> synchronizedListMultimap =
+            com.google.common.collect.Multimaps.synchronizedListMultimap(ArrayListMultimap.create());
+
+    /** Expires after 50 microseconds, so the run takes both the cached path and the recompute. */
+    private final Supplier<Object> expiringMemoized =
+            Suppliers.memoizeWithExpiration(Object::new, 50, TimeUnit.MICROSECONDS);
+    private final com.google.common.util.concurrent.AtomicDouble atomicDouble =
+            new com.google.common.util.concurrent.AtomicDouble();
+    private final com.google.common.util.concurrent.AtomicDoubleArray atomicDoubleArray =
+            new com.google.common.util.concurrent.AtomicDoubleArray(4);
+    private final com.google.common.cache.AbstractCache.SimpleStatsCounter simpleStatsCounter =
+            new com.google.common.cache.AbstractCache.SimpleStatsCounter();
+    private final com.google.common.cache.Cache<String, Integer> guavaMapCache =
+            CacheBuilder.newBuilder().maximumSize(64).build();
+    private final EventBus registryEventBus = new EventBus();
+
+    /**
+     * One timer thread for every semaphore the run builds. Without an external service each
+     * instance starts its own non-daemon scheduler on first acquire and never stops it.
+     */
+    private static final java.util.concurrent.ScheduledExecutorService TIMED_SEMAPHORE_TIMER =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread timer = new Thread(runnable, "corpus-timed-semaphore");
+                timer.setDaemon(true);
+                return timer;
+            });
+    private final org.apache.commons.lang3.concurrent.TimedSemaphore timedSemaphore =
+            org.apache.commons.lang3.concurrent.TimedSemaphore.builder()
+                    .setService(TIMED_SEMAPHORE_TIMER)
+                    .setPeriod(5)
+                    .setTimeUnit(TimeUnit.MILLISECONDS)
+                    .setLimit(100)
+                    .get();
+    private final org.apache.commons.lang3.concurrent.BackgroundInitializer<Object> backgroundInitializer =
+            org.apache.commons.lang3.concurrent.BackgroundInitializer.<Object>builder()
+                    .setInitializer(Object::new)
+                    .get();
+    private final org.apache.commons.lang3.concurrent.BasicThreadFactory basicThreadFactory =
+            org.apache.commons.lang3.concurrent.BasicThreadFactory.builder()
+                    .namingPattern("corpus-worker-%d")
+                    .daemon(true)
+                    .build();
+    private final org.apache.commons.lang3.concurrent.locks.LockingVisitors.ReadWriteLockVisitor<java.util.List<Long>>
+            readWriteLockVisitor = org.apache.commons.lang3.concurrent.locks.LockingVisitors
+                    .reentrantReadWriteLockVisitor(new java.util.ArrayList<>());
+    private final org.apache.commons.lang3.concurrent.locks.LockingVisitors.StampedLockVisitor<java.util.List<Long>>
+            stampedLockVisitor = org.apache.commons.lang3.concurrent.locks.LockingVisitors
+                    .stampedLockVisitor(new java.util.ArrayList<>());
+    private final java.util.Queue<String> synchronizedFifoQueue =
+            org.apache.commons.collections4.QueueUtils.synchronizedQueue(
+                    new org.apache.commons.collections4.queue.CircularFifoQueue<>(8));
+
+    private final java.util.concurrent.ConcurrentLinkedDeque<String> concurrentDeque =
+            new java.util.concurrent.ConcurrentLinkedDeque<>();
+    private final java.util.concurrent.LinkedBlockingDeque<String> blockingDeque =
+            new java.util.concurrent.LinkedBlockingDeque<>(64);
+    private final java.util.concurrent.ArrayBlockingQueue<String> arrayBlockingQueue =
+            new java.util.concurrent.ArrayBlockingQueue<>(64);
+    private final java.util.concurrent.PriorityBlockingQueue<Integer> priorityBlockingQueue =
+            new java.util.concurrent.PriorityBlockingQueue<>();
+    private final java.util.concurrent.LinkedTransferQueue<String> transferQueue =
+            new java.util.concurrent.LinkedTransferQueue<>();
+    private final java.util.concurrent.ConcurrentSkipListSet<Integer> skipListSet =
+            new java.util.concurrent.ConcurrentSkipListSet<>();
+    private final java.util.concurrent.CopyOnWriteArraySet<String> copyOnWriteSet =
+            new java.util.concurrent.CopyOnWriteArraySet<>();
+    private final java.util.Vector<String> vector = new java.util.Vector<>();
+    private final Map<String, String> synchronizedMap =
+            java.util.Collections.synchronizedMap(new HashMap<>());
+    private final java.util.NavigableMap<Integer, String> synchronizedNavigableMap =
+            java.util.Collections.synchronizedNavigableMap(new java.util.TreeMap<>());
+    private final java.util.Set<String> synchronizedSet =
+            java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    private final java.util.Random random = new java.util.Random(42L);
+
+    /**
+     * Pinned to DRBG, which the default provider registers as thread-safe. The platform default on
+     * Linux is NativePRNG, which reads the entropy device, and a subject here does no I/O. Static
+     * because instantiating and seeding one per test instance would cost far more than the subject.
+     */
+    private static final java.security.SecureRandom SECURE_RANDOM = drbg();
+    private final java.util.Properties properties = new java.util.Properties();
+    private final java.util.concurrent.atomic.AtomicLong atomicLong =
+            new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicReference<Integer> atomicReference =
+            new java.util.concurrent.atomic.AtomicReference<>(0);
+
+    /** Thirty-two keys against a bound of sixteen, so eviction runs in every round. */
+    private final com.fasterxml.jackson.databind.util.LRUMap<String, String> jacksonLruMap =
+            new com.fasterxml.jackson.databind.util.LRUMap<>(4, 16);
+    private final com.github.benmanes.caffeine.cache.Interner<String> caffeineStrongInterner =
+            com.github.benmanes.caffeine.cache.Interner.newStrongInterner();
+    private final com.github.benmanes.caffeine.cache.Interner<String> caffeineWeakInterner =
+            com.github.benmanes.caffeine.cache.Interner.newWeakInterner();
+
+    /**
+     * Thirty-two keys against a bound of eight: the write buffer, frequency sketch and eviction
+     * lock the single-key caffeine rows never reach. Maintenance runs on the caller, not on the
+     * common pool, so what is exercised stays inside the barrier.
+     */
+    private final Cache<String, String> evictingCaffeineCache =
+            Caffeine.newBuilder().maximumSize(8).executor(Runnable::run).build();
+    private final com.github.benmanes.caffeine.cache.AsyncCache<String, Integer> mergeAsyncCache =
+            Caffeine.newBuilder().maximumSize(64).executor(Runnable::run).buildAsync();
+    private final com.github.benmanes.caffeine.cache.stats.ConcurrentStatsCounter caffeineStatsCounter =
+            new com.github.benmanes.caffeine.cache.stats.ConcurrentStatsCounter();
+
+    /** Static for the reason the pooled allocator is bounded: one allocator, not one per test instance. */
+    private static final ByteBufAllocator ADAPTIVE_ALLOCATOR =
+            new io.netty.buffer.AdaptiveByteBufAllocator(false);
+
+    private final StringBuilder sharedStringBuilder = new StringBuilder();
+    private final SimpleDateFormat simpleDateFormat =
+            new SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT);
+    private final java.text.DateFormat dateFormat =
+            java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT, java.util.Locale.ROOT);
+    private final java.util.regex.Matcher sharedMatcher =
+            java.util.regex.Pattern.compile("([a-z]+)-([0-9]+)").matcher("abc-123 def-456");
+    private final java.text.DecimalFormat decimalFormat = new java.text.DecimalFormat("#,##0.00");
+    private final java.util.Formatter sharedFormatter = new java.util.Formatter(new StringBuilder());
+    private final java.util.ArrayDeque<String> arrayDeque = new java.util.ArrayDeque<>();
+    private final java.util.PriorityQueue<Integer> priorityQueue = new java.util.PriorityQueue<>();
+
+    private final com.google.common.collect.TreeMultimap<String, String> treeMultimap =
+            com.google.common.collect.TreeMultimap.create();
+    private final com.google.common.collect.LinkedHashMultimap<String, String> linkedHashMultimap =
+            com.google.common.collect.LinkedHashMultimap.create();
+    private final com.google.common.collect.TreeBasedTable<String, String, String> treeBasedTable =
+            com.google.common.collect.TreeBasedTable.create();
+    private final com.google.common.math.PairedStatsAccumulator pairedStatsAccumulator =
+            new com.google.common.math.PairedStatsAccumulator();
+    private final org.apache.commons.collections4.multimap.HashSetValuedHashMap<String, Long> hashSetValuedHashMap =
+            new org.apache.commons.collections4.multimap.HashSetValuedHashMap<>();
+    private final org.apache.commons.lang3.builder.HashCodeBuilder hashCodeBuilder =
+            new org.apache.commons.lang3.builder.HashCodeBuilder();
+    private final org.springframework.util.StopWatch springStopWatch = new org.springframework.util.StopWatch();
+    private final org.springframework.util.LinkedMultiValueMap<String, String> linkedMultiValueMap =
+            new org.springframework.util.LinkedMultiValueMap<>();
+    private final com.fasterxml.jackson.databind.util.TokenBuffer tokenBuffer =
+            new com.fasterxml.jackson.databind.util.TokenBuffer((com.fasterxml.jackson.core.ObjectCodec) null, false);
+
+    {
+        // Only the last lap is kept, so 240 start/stop pairs do not grow a task list.
+        springStopWatch.setKeepTaskList(false);
+    }
+
+    /** {@return a DRBG instance, which the default provider always registers} */
+    private static java.security.SecureRandom drbg() {
+        try {
+            return java.security.SecureRandom.getInstance("DRBG");
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("the default provider registers DRBG on every supported JDK", e);
+        }
+    }
+
+    /**
+     * Cancels the semaphore's period timer once its subject is done.
+     *
+     * <p>The first {@code tryAcquire} schedules a task at a fixed rate that never ends on its own,
+     * and its woven field writes then land in the event count of every subject that runs after it:
+     * the median older subject gained 1,094 events that way before this existed. Every instance
+     * builds a semaphore, and shutting down one that never started is a no-op.
+     * {@link CorpusGates#nothingPublishesAfterTheLastSubject} fails the lane if a subject leaks like
+     * this again.
+     */
+    @org.junit.jupiter.api.AfterEach
+    void stopTheSemaphoreTimer() {
+        timedSemaphore.shutdown();
+    }
 
     private static void unsafeOperation(Runnable operation) {
         CorpusRecorder.countBodyExecution();
@@ -1053,5 +1240,500 @@ class CorpusEvalTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void conversionService_convert() {
         safeOperation(() -> conversionService.convert("42", Integer.class));
+    }
+
+    // --- Sixth wave, documented thread-safe: guava ------------------------------------------
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void synchronizedBiMap_forcePutAndInverse() {
+        safeOperation(() -> {
+            synchronizedBiMap.forcePut("key", "value");
+            synchronizedBiMap.inverse().get("value");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void guavaSynchronizedNavigableMap_putAndPollFirst() {
+        safeOperation(() -> {
+            guavaSynchronizedNavigableMap.put("key", "value");
+            guavaSynchronizedNavigableMap.ceilingEntry("k");
+            guavaSynchronizedNavigableMap.pollFirstEntry();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void guavaSynchronizedNavigableSet_addAndPollFirst() {
+        safeOperation(() -> {
+            guavaSynchronizedNavigableSet.add("key");
+            guavaSynchronizedNavigableSet.ceiling("k");
+            guavaSynchronizedNavigableSet.pollFirst();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void synchronizedSetMultimap_putAndRemove() {
+        safeOperation(() -> {
+            synchronizedSetMultimap.put("key", "value");
+            synchronizedSetMultimap.get("key").size();
+            synchronizedSetMultimap.remove("key", "value");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void synchronizedListMultimap_putAndRemove() {
+        safeOperation(() -> {
+            synchronizedListMultimap.put("key", "value");
+            synchronizedListMultimap.get("key").size();
+            synchronizedListMultimap.remove("key", "value");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void expiringMemoizedSupplier_get() {
+        safeOperation(expiringMemoized::get);
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void atomicDouble_addAndCompareAndSet() {
+        safeOperation(() -> {
+            atomicDouble.addAndGet(1.0);
+            double seen = atomicDouble.get();
+            atomicDouble.compareAndSet(seen, seen + 1.0);
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void atomicDoubleArray_addAndCompareAndSet() {
+        safeOperation(() -> {
+            int slot = (int) (Thread.currentThread().threadId() % 4);
+            atomicDoubleArray.addAndGet(slot, 1.0);
+            double seen = atomicDoubleArray.get(slot);
+            atomicDoubleArray.compareAndSet(slot, seen, seen + 1.0);
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void simpleStatsCounter_recordAndSnapshot() {
+        safeOperation(() -> {
+            simpleStatsCounter.recordHits(1);
+            simpleStatsCounter.recordMisses(1);
+            simpleStatsCounter.recordLoadSuccess(1_000L);
+            simpleStatsCounter.snapshot();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void guavaCacheAsMap_merge() {
+        safeOperation(() -> {
+            guavaMapCache.asMap().merge("key", 1, Integer::sum);
+            guavaMapCache.asMap().computeIfPresent("key", (key, count) -> count > 1_000 ? 0 : count);
+        });
+    }
+
+    /**
+     * A fresh subscriber per execution. Two threads unregistering one shared subscriber would make
+     * one of them throw by contract, which is a usage error rather than the bus's thread-safety.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void eventBus_registerAndUnregister() {
+        safeOperation(() -> {
+            CountingSubscriber subscriber = new CountingSubscriber();
+            registryEventBus.register(subscriber);
+            registryEventBus.unregister(subscriber);
+        });
+    }
+
+    // --- Sixth wave, documented thread-safe: commons ----------------------------------------
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void timedSemaphore_tryAcquire() {
+        safeOperation(() -> {
+            timedSemaphore.tryAcquire();
+            timedSemaphore.getAvailablePermits();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void backgroundInitializer_startAndGet() {
+        safeOperation(() -> {
+            backgroundInitializer.start();
+            try {
+                backgroundInitializer.get();
+            } catch (ConcurrentException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void basicThreadFactory_newThread() {
+        safeOperation(() -> {
+            basicThreadFactory.newThread(() -> { });
+            basicThreadFactory.getThreadCount();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void readWriteLockVisitor_writeAndRead() {
+        safeOperation(() -> {
+            long element = Thread.currentThread().threadId() % 4;
+            readWriteLockVisitor.acceptWriteLocked(list -> {
+                list.add(element);
+                if (list.size() > 16) {
+                    list.clear();
+                }
+            });
+            readWriteLockVisitor.applyReadLocked(list -> list.contains(element));
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void stampedLockVisitor_writeAndRead() {
+        safeOperation(() -> {
+            long element = Thread.currentThread().threadId() % 4;
+            stampedLockVisitor.acceptWriteLocked(list -> {
+                list.add(element);
+                if (list.size() > 16) {
+                    list.clear();
+                }
+            });
+            stampedLockVisitor.applyReadLocked(list -> list.contains(element));
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void synchronizedCircularFifoQueue_addAndPoll() {
+        safeOperation(() -> {
+            synchronizedFifoQueue.add("element");
+            synchronizedFifoQueue.poll();
+        });
+    }
+
+    // --- Sixth wave, documented thread-safe: JDK --------------------------------------------
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void concurrentLinkedDeque_offerFirstAndPollLast() {
+        safeOperation(() -> {
+            concurrentDeque.offerFirst("element");
+            concurrentDeque.pollLast();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void linkedBlockingDeque_offerAndPollLast() {
+        safeOperation(() -> {
+            blockingDeque.offer("a");
+            blockingDeque.offerFirst("b");
+            blockingDeque.pollLast();
+            blockingDeque.poll();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void arrayBlockingQueue_offerAndPoll() {
+        safeOperation(() -> {
+            arrayBlockingQueue.offer("element");
+            arrayBlockingQueue.poll();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void priorityBlockingQueue_offerAndPoll() {
+        safeOperation(() -> {
+            priorityBlockingQueue.offer(java.util.concurrent.ThreadLocalRandom.current().nextInt(100));
+            priorityBlockingQueue.poll();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void linkedTransferQueue_offerAndPoll() {
+        safeOperation(() -> {
+            transferQueue.offer("element");
+            transferQueue.poll();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void concurrentSkipListSet_addAndContains() {
+        safeOperation(() -> {
+            int element = java.util.concurrent.ThreadLocalRandom.current().nextInt(16);
+            skipListSet.add(element);
+            skipListSet.contains(element);
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void copyOnWriteArraySet_addAndIterate() {
+        safeOperation(() -> {
+            copyOnWriteSet.add("e" + java.util.concurrent.ThreadLocalRandom.current().nextInt(8));
+            for (String element : copyOnWriteSet) {
+                element.length();
+            }
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void vector_addAndGet() {
+        safeOperation(() -> {
+            vector.add("element");
+            vector.get(0);
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void synchronizedMap_putAndGet() {
+        safeOperation(() -> {
+            synchronizedMap.put("key", "value");
+            synchronizedMap.get("key");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void synchronizedNavigableMap_putAndCeilingKey() {
+        safeOperation(() -> {
+            int key = java.util.concurrent.ThreadLocalRandom.current().nextInt(16);
+            synchronizedNavigableMap.put(key, "value");
+            synchronizedNavigableMap.ceilingKey(key);
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void synchronizedSet_addAndContains() {
+        safeOperation(() -> {
+            synchronizedSet.add("element");
+            synchronizedSet.contains("element");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void random_nextInt() {
+        safeOperation(() -> random.nextInt(100));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void secureRandom_nextBytes() {
+        safeOperation(() -> SECURE_RANDOM.nextBytes(new byte[16]));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void properties_setPropertyAndGetProperty() {
+        safeOperation(() -> {
+            properties.setProperty("key", "value");
+            properties.getProperty("key");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void atomicLong_incrementAndGet() {
+        safeOperation(atomicLong::incrementAndGet);
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void atomicReference_updateAndGet() {
+        safeOperation(() -> atomicReference.updateAndGet(value -> value + 1));
+    }
+
+    // --- Sixth wave, documented thread-safe: jackson, caffeine, netty -----------------------
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void jacksonLruMap_putAndEvict() {
+        safeOperation(() -> {
+            String key = "k" + java.util.concurrent.ThreadLocalRandom.current().nextInt(32);
+            jacksonLruMap.put(key, "value");
+            jacksonLruMap.get(key);
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void caffeineStrongInterner_intern() {
+        safeOperation(() -> caffeineStrongInterner.intern(
+                "k" + java.util.concurrent.ThreadLocalRandom.current().nextInt(16)));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void caffeineWeakInterner_intern() {
+        safeOperation(() -> caffeineWeakInterner.intern(
+                "k" + java.util.concurrent.ThreadLocalRandom.current().nextInt(16)));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void caffeineBoundedCache_evictUnderPressure() {
+        safeOperation(() -> {
+            String key = "k" + java.util.concurrent.ThreadLocalRandom.current().nextInt(32);
+            evictingCaffeineCache.put(key, "value");
+            evictingCaffeineCache.getIfPresent(key);
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void asyncCacheSynchronous_asMapMerge() {
+        safeOperation(() -> mergeAsyncCache.synchronous().asMap().merge(
+                "k" + java.util.concurrent.ThreadLocalRandom.current().nextInt(4), 1, Integer::sum));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void concurrentStatsCounter_recordAndSnapshot() {
+        safeOperation(() -> {
+            caffeineStatsCounter.recordHits(1);
+            caffeineStatsCounter.recordMisses(1);
+            caffeineStatsCounter.snapshot();
+        });
+    }
+
+    /** The instance is an {@code AdaptiveByteBufAllocator}, reached through {@code ByteBufAllocator}. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void adaptiveByteBufAllocator_bufferAndRelease() {
+        safeOperation(() -> {
+            ByteBuf buffer = ADAPTIVE_ALLOCATOR.heapBuffer(64);
+            try {
+                buffer.writeInt(7);
+            } finally {
+                buffer.release();
+            }
+        });
+    }
+
+    // --- Sixth wave, documented NOT thread-safe: JDK ----------------------------------------
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void stringBuilder_appendAndLength() {
+        unsafeOperation(() -> {
+            sharedStringBuilder.append("x");
+            sharedStringBuilder.length();
+        });
+    }
+
+    /** The date varies so an interleaving that corrupts the calendar produces a visible difference. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void simpleDateFormat_format() {
+        unsafeOperation(() -> simpleDateFormat.format(new Date(
+                java.util.concurrent.ThreadLocalRandom.current().nextLong(0, 4_000_000_000_000L))));
+    }
+
+    /** Held as a {@code DateFormat}, which is how libraries hold one; the runtime type is SimpleDateFormat. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void dateFormat_formatThroughSupertype() {
+        unsafeOperation(() -> dateFormat.format(new Date(
+                java.util.concurrent.ThreadLocalRandom.current().nextLong(0, 4_000_000_000_000L))));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void matcher_resetFindAndGroup() {
+        unsafeOperation(() -> {
+            sharedMatcher.reset();
+            if (sharedMatcher.find()) {
+                sharedMatcher.group(1);
+            }
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void decimalFormat_format() {
+        unsafeOperation(() -> decimalFormat.format(
+                java.util.concurrent.ThreadLocalRandom.current().nextDouble(1e6)));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void formatter_format() {
+        unsafeOperation(() -> sharedFormatter.format("%d;", 1));
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void arrayDeque_offerAndPoll() {
+        unsafeOperation(() -> {
+            arrayDeque.offer("element");
+            arrayDeque.poll();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void priorityQueue_offerAndPoll() {
+        unsafeOperation(() -> {
+            priorityQueue.offer(java.util.concurrent.ThreadLocalRandom.current().nextInt(100));
+            priorityQueue.poll();
+        });
+    }
+
+    // --- Sixth wave, documented NOT thread-safe: libraries ----------------------------------
+    //
+    // One fixed key for the tree-backed subjects. A red-black tree corrupted by concurrent
+    // rotations can cycle, and a body that then loops until the round timeout would measure the
+    // harness rather than the detectors.
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void treeMultimap_putAndRemove() {
+        unsafeOperation(() -> {
+            treeMultimap.put("key", "value");
+            treeMultimap.remove("key", "value");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void linkedHashMultimap_putAndRemove() {
+        unsafeOperation(() -> {
+            linkedHashMultimap.put("key", "value");
+            linkedHashMultimap.remove("key", "value");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void treeBasedTable_putAndRemove() {
+        unsafeOperation(() -> {
+            treeBasedTable.put("key", "column", "value");
+            treeBasedTable.get("key", "column");
+            treeBasedTable.remove("key", "column");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void pairedStatsAccumulator_add() {
+        unsafeOperation(() -> {
+            double x = Thread.currentThread().threadId() % 7;
+            pairedStatsAccumulator.add(x, x * 2.0);
+            pairedStatsAccumulator.count();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void hashSetValuedHashMap_put() {
+        unsafeOperation(() -> {
+            long value = Thread.currentThread().threadId() % 4;
+            hashSetValuedHashMap.put("key", value);
+            hashSetValuedHashMap.containsMapping("key", value);
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void hashCodeBuilder_appendAndHash() {
+        unsafeOperation(() -> hashCodeBuilder
+                .append((int) (Thread.currentThread().threadId() % 4))
+                .toHashCode());
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void springStopWatch_startStop() {
+        unsafeOperation(() -> {
+            springStopWatch.start("task");
+            springStopWatch.stop();
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void linkedMultiValueMap_addAndRemove() {
+        unsafeOperation(() -> {
+            linkedMultiValueMap.add("key", "value");
+            linkedMultiValueMap.remove("key");
+        });
+    }
+
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void tokenBuffer_writeNumber() {
+        unsafeOperation(() -> {
+            try {
+                tokenBuffer.writeNumber(7);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
     }
 }

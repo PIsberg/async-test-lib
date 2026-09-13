@@ -22,11 +22,11 @@ The [detector-accuracy eval](detector-accuracy-eval.md) measures 20 of the 146 d
 twins written for the test. It answers "does the analyzer's model hold", and it cannot answer the
 question an evaluating team asks first: on code neither the library nor the test author wrote, does
 a finding mean something is wrong, and how much noise comes with it. This document answers that on
-82 subjects drawn from eight third-party libraries and the JDK.
+139 subjects drawn from eight third-party libraries and the JDK.
 
 ## What was measured
 
-Eighty-two subjects from `commons-lang3:3.20.0`, `commons-collections4:4.5.0`, `guava:33.4.8-jre`,
+139 subjects from `commons-lang3:3.20.0`, `commons-collections4:4.5.0`, `guava:33.4.8-jre`,
 `jackson-databind:2.22.2`, `caffeine:3.2.4`, `netty-buffer:4.2.17.Final`, `spring-core:7.0.9`,
 `HikariCP:7.0.2` and the JDK the run is on, each exercised by one shared instance under `@AsyncTest(threads = 6, invocations = 40)` with
 `detectAll = true`. No detector is configured, nothing is recorded by hand, and no line of the
@@ -43,16 +43,17 @@ Every subject runs twice, in two lanes:
 Ground truth is each class's own javadoc, quoted with its file and line in that library's sources
 jar in [`Corpus.java`](../../corpus-eval/src/test/java/com/example/corpus/Corpus.java):
 
-- **Twenty-two classes document themselves as not thread-safe.** Sharing one instance across
+- **Thirty-nine subjects document themselves as not thread-safe.** Sharing one instance across
   threads is the defect a user would have written, so a finding is a true positive.
-- **Sixty document themselves as safe for concurrent use.** Sharing one instance is the usage the
-  class exists for, so a finding is noise.
+- **A hundred document themselves as safe for concurrent use.** Sharing one instance is the usage
+  the class exists for, so a finding is noise.
 
 The safe side is the larger half on purpose, and it was not always. A zero over 22 documented-safe
 classes bounds the false-positive rate near 13% at 95% confidence, because the rule of three sets
 that bound from the size of the denominator and not from the length of the run of zeroes. Sixty
-subjects put it at 5.0%. Every one of the 38 added was picked for shared mutable state behind a
-real mechanism - striped locks, copy-on-write, a synchronized decorator, a monitor the caller is
+subjects put it at 5.0%, and the 100 documented-safe subjects now in the corpus put it at 3.0%.
+Every one added since the first 22 was picked for shared mutable state behind a real mechanism -
+striped locks, copy-on-write, a synchronized decorator, a CAS spinlock, a monitor the caller is
 told to hold - and never for being trivially safe, because a stateless utility class enlarges the
 denominator without ever having been able to draw a finding. That buys a smaller number and not a
 stronger claim.
@@ -81,52 +82,55 @@ and listed in [DETECTOR_CATALOG.md](../DETECTOR_CATALOG.md#what-feeds-each-detec
 | `ZERO_CONFIG` | 3 | yes, by `ThreadMXBean`, thread dumps and the runner | yes, the same |
 | `RECORDING` | 125 | no, nothing here calls a `record*` API | no, the same |
 
-So the attached lane exposes 21 detectors of 146 and the control lane 3. Two of the eighteen
-agent-fed produce every finding this eval has recorded, on every platform. The other sixteen model
-locks, latches, date formats and builders, and a corpus whose entire test body is "share one
-instance and call it" never writes those idioms down for them to see. Their silence is correct,
-which is why the detection gate names the two and not the eighteen. That is the denominator
-for everything below, and it is checked rather than asserted: `CorpusGates` fails the run if a
-detector the feed table says cannot be fed reports anyway, and fails the control lane if either
-agent-fed detector is heard from at all. The control lane's measured result is zero findings from
-zero exposed agent-fed detectors, which is what makes the attached lane's findings attributable to
-the agent rather than to the harness.
+So the attached lane exposes 21 detectors of 146 and the control lane 3. Seven of the eighteen
+agent-fed produce every finding this eval has recorded. Two of them, `AtomicityValidator` and
+`SharedCollectionDetector`, did so alone until the sixth wave added JDK subjects whose documented
+defect is the one a shared-instance detector models: a `StringBuilder`, a `SimpleDateFormat`, a
+`Matcher`, a `DecimalFormat` and a `Formatter`. The other eleven model locks, latches, queues,
+calendars, digests and GC calls, and a corpus whose entire test body is "share one instance and call it" never writes
+those idioms down for them to see. Their silence is correct, which is why the detection gate names
+the two and not the eighteen. That is the denominator for everything below, and it is checked
+rather than asserted: `CorpusGates` fails the run if a detector the feed table says cannot be fed
+reports anyway, and fails the control lane if any agent-fed detector is heard from at all. The
+control lane's measured result is zero findings from zero exposed agent-fed detectors, which is
+what makes the attached lane's findings attributable to the agent rather than to the harness.
 
-Per exposed detector, over the 60 documented-safe and 22 documented-unsafe subjects, from run **L**
-below:
+Per exposed detector, over the 100 documented-safe and 39 documented-unsafe subjects, from run
+**L** below:
 
 | Detector | Feed | Safe exposed | ...with a finding | Unsafe exposed | ...with a finding |
 |---|---|---:|---:|---:|---:|
-| `AtomicityValidator` | AGENT | 60 | 0 | 22 | 16 |
-| `SharedCollectionDetector` | AGENT | 60 | 0 | 22 | 14 |
-| `LockOrderValidator` | AGENT | 60 | 0 | 22 | 0 |
-| `SemaphoreMisuseDetector` | AGENT | 60 | 0 | 22 | 0 |
-| `LockLeakDetector` | AGENT | 60 | 0 | 22 | 0 |
-| `BlockingQueueDetector` | AGENT | 60 | 0 | 22 | 0 |
-| `SimpleDateFormatDetector` | AGENT | 60 | 0 | 22 | 0 |
-| `CountDownLatchDetector` | AGENT | 60 | 0 | 22 | 0 |
-| `SleepInLockDetector` | AGENT | 60 | 0 | 22 | 0 |
-| `CalendarDetector` | AGENT | 60 | 0 | 22 | 0 |
-| `StringBuilderDetector` | AGENT | 60 | 0 | 22 | 0 |
-| `SharedFormatterDetector` | AGENT | 60 | 0 | 22 | 0 |
-| `SharedMatcherDetector` | AGENT | 60 | 0 | 22 | 0 |
-| `SharedDecimalFormatDetector` | AGENT | 60 | 0 | 22 | 0 |
-| `SharedMessageDigestDetector` | AGENT | 60 | 0 | 22 | 0 |
-| `ExplicitGcDetector` | AGENT | 60 | 0 | 22 | 0 |
-| `TryLockMisuseDetector` | AGENT | 60 | 0 | 22 | 0 |
-| `LatchMisuseDetector` | AGENT | 60 | 0 | 22 | 0 |
-| `DeadlockDetector` | ZERO_CONFIG | 60 | 0 | 22 | 0 |
-| `LivelockDetector` | ZERO_CONFIG | 60 | 0 | 22 | 0 |
-| `StaticInitDeadlockDetector` | ZERO_CONFIG | 60 | 0 | 22 | 0 |
+| `AtomicityValidator` | AGENT | 100 | 3 | 39 | 22 |
+| `SharedCollectionDetector` | AGENT | 100 | 0 | 39 | 21 |
+| `SimpleDateFormatDetector` | AGENT | 100 | 0 | 39 | 2 |
+| `StringBuilderDetector` | AGENT | 100 | 0 | 39 | 1 |
+| `SharedFormatterDetector` | AGENT | 100 | 0 | 39 | 1 |
+| `SharedMatcherDetector` | AGENT | 100 | 0 | 39 | 1 |
+| `SharedDecimalFormatDetector` | AGENT | 100 | 0 | 39 | 1 |
+| `LockOrderValidator` | AGENT | 100 | 0 | 39 | 0 |
+| `SemaphoreMisuseDetector` | AGENT | 100 | 0 | 39 | 0 |
+| `LockLeakDetector` | AGENT | 100 | 0 | 39 | 0 |
+| `BlockingQueueDetector` | AGENT | 100 | 0 | 39 | 0 |
+| `CountDownLatchDetector` | AGENT | 100 | 0 | 39 | 0 |
+| `SleepInLockDetector` | AGENT | 100 | 0 | 39 | 0 |
+| `CalendarDetector` | AGENT | 100 | 0 | 39 | 0 |
+| `SharedMessageDigestDetector` | AGENT | 100 | 0 | 39 | 0 |
+| `ExplicitGcDetector` | AGENT | 100 | 0 | 39 | 0 |
+| `TryLockMisuseDetector` | AGENT | 100 | 0 | 39 | 0 |
+| `LatchMisuseDetector` | AGENT | 100 | 0 | 39 | 0 |
+| `DeadlockDetector` | ZERO_CONFIG | 100 | 0 | 39 | 0 |
+| `LivelockDetector` | ZERO_CONFIG | 100 | 0 | 39 | 0 |
+| `StaticInitDeadlockDetector` | ZERO_CONFIG | 100 | 0 | 39 | 0 |
 
-The sixteen agent-fed zeroes are not sixteen failures. `StringBuilderDetector` is the clearest
-case: it is exposed on all 82 subjects, one of which is a `StringBuffer` shared across six threads,
-and it correctly says nothing, because the class it models is the other one. The rest model locks,
-latches, date formats and matchers, and no subject here writes those idioms down. The detection
-gate names the two detectors this corpus actually exercises for exactly that reason: requiring all
-eighteen to fire would fail on correct silence.
+The eleven agent-fed zeroes are not eleven failures. They model locks, latches, queues, calendars,
+digests and GC calls, and no subject here writes those idioms down. The five shared-instance detectors that now
+fire are also the clearest case of a correct zero: `StringBuilderDetector` is exposed on all 139
+subjects, one of which is a `StringBuffer` shared across six threads, and it says nothing there,
+because the class it models is the other one; it fires on the one `StringBuilder`. The detection
+gate still names only the two detectors that also fire on library subjects, for the reason
+given in the sixth-wave section below.
 
-The three zero-config rows are the ones worth reading twice. They are exposed on all 82 subjects
+The three zero-config rows are the ones worth reading twice. They are exposed on all 139 subjects
 and reported nothing, which is a measured zero: none of these subjects deadlocks, livelocks or
 parks in a class initializer, and the detectors that would have said so were running. The 125
 recording-fed detectors have no row, because a rate over an exposure of zero is not a rate.
@@ -139,7 +143,7 @@ is not reproducible.
 
 | Key | JDK | OS | Agent | Source |
 |---|---|---|---|---|
-| **L** | 26 (Temurin) | Windows 11 26200 (amd64) | `fields=true,collections=true` | local run, 2026-08-24 |
+| **L** | 26 (Oracle HotSpot) | Windows 11 26200 (amd64) | `fields=true,collections=true` | local run, 2026-09-13 |
 | **C21** | 21 (Temurin) | ubuntu-latest | `fields=true,collections=true` | corpus workflow, `Corpus Eval (Java 21)` |
 | **C25** | 25 (Temurin) | ubuntu-latest | `fields=true,collections=true` | corpus workflow, `Corpus Eval (Java 25)` |
 | **C26** | 26 (Temurin) | ubuntu-latest | `fields=true,collections=true` | corpus workflow, `Corpus Eval (Java 26)` |
@@ -187,18 +191,26 @@ existing suite can still lose classes the same way.
 
 | Measure | **L** | **C21** | **C25** | **C26** |
 |---|---:|---:|---:|---:|
-| Documented-thread-safe with a VERDICT-tier HIGH or CRITICAL finding | **0 of 60** | **0 of 60** | **0 of 60** | **0 of 60** |
-| Documented-not-thread-safe with at least one finding | **22 of 22** | **22 of 22** | **22 of 22** | **22 of 22** |
-| Documented-thread-safe with any finding at all | **0 of 60** | **0 of 60** | **0 of 60** | **0 of 60** |
-| `AtomicityValidator`, documented-unsafe subjects with a finding | 16 of 22 | 16 of 22 | 16 of 22 | 16 of 22 |
-| `SharedCollectionDetector`, documented-unsafe subjects with a finding | 14 of 22 | 14 of 22 | 14 of 22 | 14 of 22 |
-| `mutableInt_incrementAndGet`, events / findings | 1,439 / 1 | 1,455 / 1 | 1,455 / 1 | 1,455 / 1 |
-| `rateLimiter_tryAcquire`, events / findings | 6,431 / 0 | 6,431 / 0 | 6,431 / 0 | 6,431 / 0 |
+| Documented-thread-safe with a VERDICT-tier HIGH or CRITICAL finding | **0 of 100** | **0 of 100** | **0 of 100** | **0 of 100** |
+| Documented-not-thread-safe with at least one finding | **39 of 39** | **39 of 39** | **39 of 39** | **39 of 39** |
+| Documented-thread-safe with any finding at all | **3 of 100** | **2 of 100** | **2 of 100** | **2 of 100** |
+| `AtomicityValidator`, documented-unsafe subjects with a finding | 22 of 39 | 22 of 39 | 22 of 39 | 22 of 39 |
+| `SharedCollectionDetector`, documented-unsafe subjects with a finding | 21 of 39 | 21 of 39 | 21 of 39 | 21 of 39 |
+| The five shared-instance detectors, documented-unsafe subjects with a finding | 6 of 39 | 6 of 39 | 6 of 39 | 6 of 39 |
+| `mutableInt_incrementAndGet`, events / findings | 1,489 / 1 | 1,455 / 1 | 1,455 / 1 | 1,445 / 1 |
+| `rateLimiter_tryAcquire`, events / findings | 6,481 / 0 | 6,431 / 0 | 6,431 / 0 | 6,672 / 0 |
 | Telemetry events dropped | 0 | 0 | 0 | 0 |
 
-Every row is identical on all four platforms, over the corpus as it now stands: the same 22
-subjects detected, the same zero noise over a safe side that is now 60 wide, the same per-detector
-split, and per-subject event counts that agree to within 1.1%. The thirty-seven documented-safe
+The C columns are corpus workflow run 34782981328, on the commit that also stopped the
+`TimedSemaphore` timer described in the sixth-wave section; the event rows would not be comparable
+without it. Every count agrees on all four platforms but one: the same 39 subjects detected,
+the same zero at the gated tier over a safe side that is now 100 wide, the same per-detector split,
+and per-subject event counts that agree to within 4%. The row that is not is the noise column, and
+the difference is one subject, `caffeineBoundedCache_evictUnderPressure`, which drew a `PROMPT`-tier
+finding on 2 of the 10 lane runs whose reports were kept during the sixth wave: once on JDK 26 locally and once on the
+JDK 26 CI leg of the run before this one. It shares `StripedBuffer.table` with the Caffeine
+subject that fires every time, reached on a schedule rather than on every run, and it is recorded
+on [#554](https://github.com/PIsberg/async-test-lib/issues/554). The thirty-seven documented-safe
 subjects added in 2026-08-29 hold at zero on Linux and on JDK 21 and 25, not only on the machine
 they were written on - which is the question a single-machine zero cannot answer, and the reason
 this table has a platform key at all. The rows that used to differ were
@@ -245,100 +257,157 @@ real defect rather than variance ([#316](https://github.com/PIsberg/async-test-l
 
 | Subject | Library | Contract | Events | Findings | Detectors (tier/severity) | Crashes |
 |---|---|---|---:|---:|---|---:|
-| `mutableInt_incrementAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 1439 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `mutableLong_incrementAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 1439 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `stopWatch_splitAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 5667 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 66 |
-| `lruMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 5409 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `flat3Map_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 4559 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `listOrderedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 1670 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `passiveExpiringMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3119 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `arrayListMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 4177 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `evictingQueue_addAndPoll` | guava:33.4.8-jre | NOT_THREAD_SAFE | 2159 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `guavaStopwatch_startStop` | guava:33.4.8-jre | NOT_THREAD_SAFE | 2391 | 1 | AtomicityValidator (PROMPT/HIGH) | 9 |
-| `statsAccumulator_add` | guava:33.4.8-jre | NOT_THREAD_SAFE | 4269 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `hashMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 1459 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `linkedListMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 4571 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `minMaxPriorityQueue_addAndPoll` | guava:33.4.8-jre | NOT_THREAD_SAFE | 16337 | 1 | AtomicityValidator (PROMPT/HIGH) | 70 |
-| `hashedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3893 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `linkedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3913 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `multiKeyMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 7913 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `caseInsensitiveMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3893 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `lazyMap_get` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 1203 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `fastDateFormat_format` | commons-lang3:3.20.0 | THREAD_SAFE | 4511 | 0 | - | 0 |
-| `atomicSafeInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 1160 | 0 | - | 0 |
-| `lazyInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 1162 | 0 | - | 0 |
-| `synchronizedBag_addAndCount` | commons-collections4:4.5.0 | THREAD_SAFE | 4030 | 0 | - | 0 |
-| `rateLimiter_tryAcquire` | guava:33.4.8-jre | THREAD_SAFE | 6431 | 0 | - | 0 |
-| `eventBus_post` | guava:33.4.8-jre | THREAD_SAFE | 31366 | 0 | - | 0 |
-| `bloomFilter_putAndMightContain` | guava:33.4.8-jre | THREAD_SAFE | 27844 | 0 | - | 0 |
-| `atomicLongMap_incrementAndGet` | guava:33.4.8-jre | THREAD_SAFE | 907 | 0 | - | 0 |
-| `sequenceWriter_write` | jackson-databind:2.22.2 | NOT_THREAD_SAFE | 25299 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 239 |
-| `hashBasedTable_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 3848 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `guavaLoadingCache_get` | guava:33.4.8-jre | THREAD_SAFE | 10604 | 0 | - | 0 |
-| `concurrentHashMultiset_add` | guava:33.4.8-jre | THREAD_SAFE | 1395 | 0 | - | 0 |
-| `memoizedSupplier_get` | guava:33.4.8-jre | THREAD_SAFE | 1409 | 0 | - | 0 |
-| `joiner_join` | guava:33.4.8-jre | THREAD_SAFE | 4041 | 0 | - | 0 |
-| `splitter_splitToList` | guava:33.4.8-jre | THREAD_SAFE | 33325 | 0 | - | 0 |
-| `patternFilenameFilter_accept` | guava:33.4.8-jre | THREAD_SAFE | 911 | 0 | - | 0 |
-| `fixedOrderComparator_compare` | commons-collections4:4.5.0 | THREAD_SAFE | 1391 | 0 | - | 0 |
-| `fileBackedOutputStream_writeAndReset` | guava:33.4.8-jre | THREAD_SAFE | 3551 | 0 | - | 0 |
-| `objectMapper_reconfigureWhileWriting` | jackson-databind:2.22.2 | NOT_THREAD_SAFE | 119129 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `objectMapper_configuredThenShared` | jackson-databind:2.22.2 | THREAD_SAFE | 112905 | 0 | - | 0 |
-| `objectReader_readValue` | jackson-databind:2.22.2 | THREAD_SAFE | 75562 | 0 | - | 0 |
-| `objectWriter_writeValueAsString` | jackson-databind:2.22.2 | THREAD_SAFE | 82306 | 0 | - | 0 |
-| `caffeineCache_getAndPut` | caffeine:3.2.4 | THREAD_SAFE | 11173 | 0 | - | 0 |
-| `caffeineAsMap_computeIfAbsent` | caffeine:3.2.4 | THREAD_SAFE | 3464 | 0 | - | 0 |
-| `pooledByteBufAllocator_bufferAndRelease` | netty-buffer:4.2.17.Final | THREAD_SAFE | 62814 | 0 | - | 0 |
-| `concurrentReferenceHashMap_putAndGet` | spring-core:7.0.9 | THREAD_SAFE | 10304 | 0 | - | 0 |
-| `concurrentHashMap_putAndGet` | jdk:26 | THREAD_SAFE | 901 | 0 | - | 0 |
-| `copyOnWriteArrayList_addAndIterate` | jdk:26 | THREAD_SAFE | 911 | 0 | - | 0 |
-| `stringBuffer_appendAndLength` | jdk:26 | THREAD_SAFE | 901 | 0 | - | 0 |
-| `concurrentLinkedQueue_addAndPoll` | jdk:26 | THREAD_SAFE | 911 | 0 | - | 0 |
-| `linkedBlockingQueue_offerAndPoll` | jdk:26 | THREAD_SAFE | 921 | 0 | - | 0 |
-| `hashtable_putAndGet` | jdk:26 | THREAD_SAFE | 911 | 0 | - | 0 |
-| `concurrentSkipListMap_putAndGet` | jdk:26 | THREAD_SAFE | 911 | 0 | - | 0 |
-| `synchronizedList_addUnderItsMonitor` | jdk:26 | THREAD_SAFE | 1151 | 0 | - | 0 |
-| `threadLocalRandom_nextInt` | jdk:26 | THREAD_SAFE | 431 | 0 | - | 0 |
-| `atomicInteger_incrementAndGet` | jdk:26 | THREAD_SAFE | 671 | 0 | - | 0 |
-| `thresholdCircuitBreaker_incrementAndCheckState` | commons-lang3:3.20.0 | THREAD_SAFE | 1861 | 0 | - | 0 |
-| `eventCountCircuitBreaker_incrementAndCheckState` | commons-lang3:3.20.0 | THREAD_SAFE | 4227 | 0 | - | 0 |
-| `memoizer_compute` | commons-lang3:3.20.0 | THREAD_SAFE | 1151 | 0 | - | 0 |
-| `constantInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 911 | 0 | - | 0 |
-| `atomicInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 1168 | 0 | - | 0 |
-| `range_contains` | commons-lang3:3.20.0 | THREAD_SAFE | 1631 | 0 | - | 0 |
-| `staticBucketMap_putAndGet` | commons-collections4:4.5.0 | THREAD_SAFE | 3554 | 0 | - | 0 |
-| `commonsReferenceHashMap_putAndGet` | commons-collections4:4.5.0 | THREAD_SAFE | 7877 | 0 | - | 0 |
-| `synchronizedCollection_addAndSize` | commons-collections4:4.5.0 | THREAD_SAFE | 1871 | 0 | - | 0 |
-| `synchronizedSortedBag_addAndCount` | commons-collections4:4.5.0 | THREAD_SAFE | 4270 | 0 | - | 0 |
-| `synchronizedMultiSet_addAndCount` | commons-collections4:4.5.0 | THREAD_SAFE | 4259 | 0 | - | 0 |
-| `synchronizedQueue_addAndPoll` | commons-collections4:4.5.0 | THREAD_SAFE | 2041 | 0 | - | 0 |
-| `strongInterner_intern` | guava:33.4.8-jre | THREAD_SAFE | 3658 | 0 | - | 0 |
-| `weakInterner_intern` | guava:33.4.8-jre | THREAD_SAFE | 3181 | 0 | - | 0 |
-| `guavaSynchronizedQueue_addAndPoll` | guava:33.4.8-jre | THREAD_SAFE | 1871 | 0 | - | 0 |
-| `guavaSynchronizedDeque_addAndPoll` | guava:33.4.8-jre | THREAD_SAFE | 1871 | 0 | - | 0 |
-| `synchronizedTable_putAndGet` | guava:33.4.8-jre | THREAD_SAFE | 4755 | 0 | - | 0 |
-| `concurrentHashSet_addAndContains` | guava:33.4.8-jre | THREAD_SAFE | 911 | 0 | - | 0 |
-| `hashFunction_hashString` | guava:33.4.8-jre | THREAD_SAFE | 3071 | 0 | - | 0 |
-| `mapMakerMap_putAndGet` | guava:33.4.8-jre | THREAD_SAFE | 911 | 0 | - | 0 |
-| `synchronizedSupplier_get` | guava:33.4.8-jre | THREAD_SAFE | 2195 | 0 | - | 0 |
-| `guavaCache_getAndPut` | guava:33.4.8-jre | THREAD_SAFE | 29704 | 0 | - | 0 |
-| `asyncCache_getAndJoin` | caffeine:3.2.4 | THREAD_SAFE | 4180 | 0 | - | 0 |
-| `asyncLoadingCache_getAndJoin` | caffeine:3.2.4 | THREAD_SAFE | 4324 | 0 | - | 0 |
-| `caffeineLoadingCache_get` | caffeine:3.2.4 | THREAD_SAFE | 3793 | 0 | - | 0 |
-| `unpooledByteBufAllocator_bufferAndRelease` | netty-buffer:4.2.17.Final | THREAD_SAFE | 9086 | 0 | - | 0 |
-| `conversionService_convert` | spring-core:7.0.9 | THREAD_SAFE | 7890 | 0 | - | 0 |
+| `mutableInt_incrementAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 1489 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `mutableLong_incrementAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 1489 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `stopWatch_splitAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 6831 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 59 |
+| `lruMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 5425 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `flat3Map_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 4599 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `listOrderedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 1732 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `passiveExpiringMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3169 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `arrayListMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 2027 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `evictingQueue_addAndPoll` | guava:33.4.8-jre | NOT_THREAD_SAFE | 2209 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `guavaStopwatch_startStop` | guava:33.4.8-jre | NOT_THREAD_SAFE | 2440 | 1 | AtomicityValidator (PROMPT/HIGH) | 11 |
+| `statsAccumulator_add` | guava:33.4.8-jre | NOT_THREAD_SAFE | 4349 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `hashMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 1483 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `linkedListMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 4635 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `minMaxPriorityQueue_addAndPoll` | guava:33.4.8-jre | NOT_THREAD_SAFE | 16512 | 1 | AtomicityValidator (PROMPT/HIGH) | 53 |
+| `hashedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3943 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `linkedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 4243 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `multiKeyMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 7973 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `caseInsensitiveMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3943 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `lazyMap_get` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 1253 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `fastDateFormat_format` | commons-lang3:3.20.0 | THREAD_SAFE | 4557 | 0 | - | 0 |
+| `atomicSafeInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 2284 | 0 | - | 0 |
+| `lazyInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 1212 | 0 | - | 0 |
+| `synchronizedBag_addAndCount` | commons-collections4:4.5.0 | THREAD_SAFE | 4070 | 0 | - | 0 |
+| `rateLimiter_tryAcquire` | guava:33.4.8-jre | THREAD_SAFE | 6481 | 0 | - | 0 |
+| `eventBus_post` | guava:33.4.8-jre | THREAD_SAFE | 31381 | 0 | - | 0 |
+| `bloomFilter_putAndMightContain` | guava:33.4.8-jre | THREAD_SAFE | 28476 | 0 | - | 0 |
+| `atomicLongMap_incrementAndGet` | guava:33.4.8-jre | THREAD_SAFE | 961 | 0 | - | 0 |
+| `sequenceWriter_write` | jackson-databind:2.22.2 | NOT_THREAD_SAFE | 25109 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 239 |
+| `hashBasedTable_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 3903 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `guavaLoadingCache_get` | guava:33.4.8-jre | THREAD_SAFE | 10654 | 0 | - | 0 |
+| `concurrentHashMultiset_add` | guava:33.4.8-jre | THREAD_SAFE | 1443 | 0 | - | 0 |
+| `memoizedSupplier_get` | guava:33.4.8-jre | THREAD_SAFE | 1462 | 0 | - | 0 |
+| `joiner_join` | guava:33.4.8-jre | THREAD_SAFE | 4081 | 0 | - | 0 |
+| `splitter_splitToList` | guava:33.4.8-jre | THREAD_SAFE | 33616 | 0 | - | 0 |
+| `patternFilenameFilter_accept` | guava:33.4.8-jre | THREAD_SAFE | 961 | 0 | - | 0 |
+| `fixedOrderComparator_compare` | commons-collections4:4.5.0 | THREAD_SAFE | 1441 | 0 | - | 0 |
+| `fileBackedOutputStream_writeAndReset` | guava:33.4.8-jre | THREAD_SAFE | 5341 | 0 | - | 0 |
+| `objectMapper_reconfigureWhileWriting` | jackson-databind:2.22.2 | NOT_THREAD_SAFE | 120446 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `objectMapper_configuredThenShared` | jackson-databind:2.22.2 | THREAD_SAFE | 114565 | 0 | - | 0 |
+| `objectReader_readValue` | jackson-databind:2.22.2 | THREAD_SAFE | 75545 | 0 | - | 0 |
+| `objectWriter_writeValueAsString` | jackson-databind:2.22.2 | THREAD_SAFE | 84058 | 0 | - | 0 |
+| `caffeineCache_getAndPut` | caffeine:3.2.4 | THREAD_SAFE | 8757 | 0 | - | 0 |
+| `caffeineAsMap_computeIfAbsent` | caffeine:3.2.4 | THREAD_SAFE | 3603 | 0 | - | 0 |
+| `pooledByteBufAllocator_bufferAndRelease` | netty-buffer:4.2.17.Final | THREAD_SAFE | 61332 | 0 | - | 0 |
+| `concurrentReferenceHashMap_putAndGet` | spring-core:7.0.9 | THREAD_SAFE | 10473 | 0 | - | 0 |
+| `concurrentHashMap_putAndGet` | jdk:26 | THREAD_SAFE | 1889 | 0 | - | 0 |
+| `copyOnWriteArrayList_addAndIterate` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
+| `stringBuffer_appendAndLength` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
+| `concurrentLinkedQueue_addAndPoll` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
+| `linkedBlockingQueue_offerAndPoll` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
+| `hashtable_putAndGet` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
+| `concurrentSkipListMap_putAndGet` | jdk:26 | THREAD_SAFE | 951 | 0 | - | 0 |
+| `synchronizedList_addUnderItsMonitor` | jdk:26 | THREAD_SAFE | 1201 | 0 | - | 0 |
+| `threadLocalRandom_nextInt` | jdk:26 | THREAD_SAFE | 481 | 0 | - | 0 |
+| `atomicInteger_incrementAndGet` | jdk:26 | THREAD_SAFE | 711 | 0 | - | 0 |
+| `thresholdCircuitBreaker_incrementAndCheckState` | commons-lang3:3.20.0 | THREAD_SAFE | 1921 | 0 | - | 0 |
+| `eventCountCircuitBreaker_incrementAndCheckState` | commons-lang3:3.20.0 | THREAD_SAFE | 4209 | 0 | - | 0 |
+| `memoizer_compute` | commons-lang3:3.20.0 | THREAD_SAFE | 1201 | 0 | - | 0 |
+| `constantInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 961 | 0 | - | 0 |
+| `atomicInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 1209 | 0 | - | 0 |
+| `range_contains` | commons-lang3:3.20.0 | THREAD_SAFE | 1681 | 0 | - | 0 |
+| `staticBucketMap_putAndGet` | commons-collections4:4.5.0 | THREAD_SAFE | 3604 | 0 | - | 0 |
+| `commonsReferenceHashMap_putAndGet` | commons-collections4:4.5.0 | THREAD_SAFE | 7927 | 0 | - | 0 |
+| `synchronizedCollection_addAndSize` | commons-collections4:4.5.0 | THREAD_SAFE | 1921 | 0 | - | 0 |
+| `synchronizedSortedBag_addAndCount` | commons-collections4:4.5.0 | THREAD_SAFE | 4320 | 0 | - | 0 |
+| `synchronizedMultiSet_addAndCount` | commons-collections4:4.5.0 | THREAD_SAFE | 4319 | 0 | - | 0 |
+| `synchronizedQueue_addAndPoll` | commons-collections4:4.5.0 | THREAD_SAFE | 2326 | 0 | - | 0 |
+| `strongInterner_intern` | guava:33.4.8-jre | THREAD_SAFE | 3718 | 0 | - | 0 |
+| `weakInterner_intern` | guava:33.4.8-jre | THREAD_SAFE | 3241 | 0 | - | 0 |
+| `guavaSynchronizedQueue_addAndPoll` | guava:33.4.8-jre | THREAD_SAFE | 1921 | 0 | - | 0 |
+| `guavaSynchronizedDeque_addAndPoll` | guava:33.4.8-jre | THREAD_SAFE | 1921 | 0 | - | 0 |
+| `synchronizedTable_putAndGet` | guava:33.4.8-jre | THREAD_SAFE | 4805 | 0 | - | 0 |
+| `concurrentHashSet_addAndContains` | guava:33.4.8-jre | THREAD_SAFE | 951 | 0 | - | 0 |
+| `hashFunction_hashString` | guava:33.4.8-jre | THREAD_SAFE | 3121 | 0 | - | 0 |
+| `mapMakerMap_putAndGet` | guava:33.4.8-jre | THREAD_SAFE | 1202 | 0 | - | 0 |
+| `synchronizedSupplier_get` | guava:33.4.8-jre | THREAD_SAFE | 1201 | 0 | - | 0 |
+| `guavaCache_getAndPut` | guava:33.4.8-jre | THREAD_SAFE | 29735 | 0 | - | 0 |
+| `asyncCache_getAndJoin` | caffeine:3.2.4 | THREAD_SAFE | 4233 | 0 | - | 0 |
+| `asyncLoadingCache_getAndJoin` | caffeine:3.2.4 | THREAD_SAFE | 4374 | 0 | - | 0 |
+| `caffeineLoadingCache_get` | caffeine:3.2.4 | THREAD_SAFE | 3842 | 0 | - | 0 |
+| `unpooledByteBufAllocator_bufferAndRelease` | netty-buffer:4.2.17.Final | THREAD_SAFE | 9141 | 0 | - | 0 |
+| `conversionService_convert` | spring-core:7.0.9 | THREAD_SAFE | 7940 | 0 | - | 0 |
+| `synchronizedBiMap_forcePutAndInverse` | guava:33.4.8-jre | THREAD_SAFE | 5546 | 0 | - | 0 |
+| `guavaSynchronizedNavigableMap_putAndPollFirst` | guava:33.4.8-jre | THREAD_SAFE | 3121 | 0 | - | 0 |
+| `guavaSynchronizedNavigableSet_addAndPollFirst` | guava:33.4.8-jre | THREAD_SAFE | 2631 | 0 | - | 0 |
+| `synchronizedSetMultimap_putAndRemove` | guava:33.4.8-jre | THREAD_SAFE | 7906 | 0 | - | 0 |
+| `synchronizedListMultimap_putAndRemove` | guava:33.4.8-jre | THREAD_SAFE | 8178 | 0 | - | 0 |
+| `expiringMemoizedSupplier_get` | guava:33.4.8-jre | THREAD_SAFE | 1791 | 0 | - | 0 |
+| `atomicDouble_addAndCompareAndSet` | guava:33.4.8-jre | THREAD_SAFE | 2361 | 0 | - | 0 |
+| `atomicDoubleArray_addAndCompareAndSet` | guava:33.4.8-jre | THREAD_SAFE | 2426 | 0 | - | 0 |
+| `simpleStatsCounter_recordAndSnapshot` | guava:33.4.8-jre | THREAD_SAFE | 3841 | 0 | - | 0 |
+| `guavaCacheAsMap_merge` | guava:33.4.8-jre | THREAD_SAFE | 65711 | 0 | - | 0 |
+| `eventBus_registerAndUnregister` | guava:33.4.8-jre | THREAD_SAFE | 40478 | 0 | - | 0 |
+| `timedSemaphore_tryAcquire` | commons-lang3:3.20.0 | THREAD_SAFE | 4110 | 0 | - | 0 |
+| `backgroundInitializer_startAndGet` | commons-lang3:3.20.0 | THREAD_SAFE | 1691 | 0 | - | 0 |
+| `basicThreadFactory_newThread` | commons-lang3:3.20.0 | THREAD_SAFE | 3121 | 0 | - | 0 |
+| `readWriteLockVisitor_writeAndRead` | commons-lang3:3.20.0 | THREAD_SAFE | 1921 | 0 | - | 0 |
+| `stampedLockVisitor_writeAndRead` | commons-lang3:3.20.0 | THREAD_SAFE | 1921 | 0 | - | 0 |
+| `synchronizedCircularFifoQueue_addAndPoll` | commons-collections4:4.5.0 | THREAD_SAFE | 9885 | 0 | - | 0 |
+| `concurrentLinkedDeque_offerFirstAndPollLast` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
+| `linkedBlockingDeque_offerAndPollLast` | jdk:26 | THREAD_SAFE | 1441 | 0 | - | 0 |
+| `arrayBlockingQueue_offerAndPoll` | jdk:26 | THREAD_SAFE | 971 | 0 | - | 0 |
+| `priorityBlockingQueue_offerAndPoll` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
+| `linkedTransferQueue_offerAndPoll` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
+| `concurrentSkipListSet_addAndContains` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
+| `copyOnWriteArraySet_addAndIterate` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
+| `vector_addAndGet` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
+| `synchronizedMap_putAndGet` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
+| `synchronizedNavigableMap_putAndCeilingKey` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
+| `synchronizedSet_addAndContains` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
+| `random_nextInt` | jdk:26 | THREAD_SAFE | 721 | 0 | - | 0 |
+| `secureRandom_nextBytes` | jdk:26 | THREAD_SAFE | 721 | 0 | - | 0 |
+| `properties_setPropertyAndGetProperty` | jdk:26 | THREAD_SAFE | 951 | 0 | - | 0 |
+| `atomicLong_incrementAndGet` | jdk:26 | THREAD_SAFE | 721 | 0 | - | 0 |
+| `atomicReference_updateAndGet` | jdk:26 | THREAD_SAFE | 721 | 0 | - | 0 |
+| `jacksonLruMap_putAndEvict` | jackson-databind:2.22.2 | THREAD_SAFE | 16030 | 0 | - | 0 |
+| `caffeineStrongInterner_intern` | caffeine:3.2.4 | THREAD_SAFE | 977 | 0 | - | 0 |
+| `caffeineWeakInterner_intern` | caffeine:3.2.4 | THREAD_SAFE | 6286 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `caffeineBoundedCache_evictUnderPressure` | caffeine:3.2.4 | THREAD_SAFE | 53419 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `asyncCacheSynchronous_asMapMerge` | caffeine:3.2.4 | THREAD_SAFE | 23269 | 0 | - | 0 |
+| `concurrentStatsCounter_recordAndSnapshot` | caffeine:3.2.4 | THREAD_SAFE | 3361 | 0 | - | 0 |
+| `adaptiveByteBufAllocator_bufferAndRelease` | netty-buffer:4.2.17.Final | THREAD_SAFE | 94314 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `stringBuilder_appendAndLength` | jdk:26 | NOT_THREAD_SAFE | 1009 | 1 | StringBuilderDetector (VERDICT/HIGH) | 0 |
+| `simpleDateFormat_format` | jdk:26 | NOT_THREAD_SAFE | 769 | 1 | SimpleDateFormatDetector (VERDICT/HIGH) | 0 |
+| `dateFormat_formatThroughSupertype` | jdk:26 | NOT_THREAD_SAFE | 769 | 1 | SimpleDateFormatDetector (VERDICT/HIGH) | 0 |
+| `matcher_resetFindAndGroup` | jdk:26 | NOT_THREAD_SAFE | 1269 | 1 | SharedMatcherDetector (VERDICT/HIGH) | 17 |
+| `decimalFormat_format` | jdk:26 | NOT_THREAD_SAFE | 769 | 1 | SharedDecimalFormatDetector (VERDICT/HIGH) | 0 |
+| `formatter_format` | jdk:26 | NOT_THREAD_SAFE | 765 | 1 | SharedFormatterDetector (VERDICT/HIGH) | 0 |
+| `arrayDeque_offerAndPoll` | jdk:26 | NOT_THREAD_SAFE | 1009 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `priorityQueue_offerAndPoll` | jdk:26 | NOT_THREAD_SAFE | 1364 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 238 |
+| `treeMultimap_putAndRemove` | guava:33.4.8-jre | NOT_THREAD_SAFE | 6188 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `linkedHashMultimap_putAndRemove` | guava:33.4.8-jre | NOT_THREAD_SAFE | 12856 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `treeBasedTable_putAndRemove` | guava:33.4.8-jre | NOT_THREAD_SAFE | 5810 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `pairedStatsAccumulator_add` | guava:33.4.8-jre | NOT_THREAD_SAFE | 6995 | 1 | AtomicityValidator (PROMPT/HIGH) | 240 |
+| `hashSetValuedHashMap_put` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 1736 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `hashCodeBuilder_appendAndHash` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 1966 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `springStopWatch_startStop` | spring-core:7.0.9 | NOT_THREAD_SAFE | 3774 | 1 | AtomicityValidator (PROMPT/HIGH) | 33 |
+| `linkedMultiValueMap_addAndRemove` | spring-core:7.0.9 | NOT_THREAD_SAFE | 1489 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 3 |
+| `tokenBuffer_writeNumber` | jackson-databind:2.22.2 | NOT_THREAD_SAFE | 4423 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
 
 | Measure | **L** | **L-off** |
 |---|---|---|
 | Detectors exposed at all | 21 of 146 | 3 of 146 |
-| Documented-thread-safe classes with a VERDICT-tier HIGH or CRITICAL finding | 0 of 60 | 0 of 60 |
-| Documented-thread-safe classes with any finding at all | **0 of 60** | 0 of 60 |
-| Documented-not-thread-safe classes with at least one finding | 22 of 22 | 0 of 22 |
-| Documented-not-thread-safe classes that threw out of their own code | 4 of 22 | 4 of 22 |
-| Distinct detectors that produced any finding | 2 of 21 exposed | 0 of 3 exposed |
+| Documented-thread-safe subjects with a VERDICT-tier HIGH or CRITICAL finding | 0 of 100 | 0 of 100 |
+| Documented-thread-safe subjects with any finding at all | **3 of 100** | 0 of 100 |
+| Documented-not-thread-safe subjects with at least one finding | 39 of 39 | 0 of 39 |
+| Documented-not-thread-safe subjects that threw out of their own code | 9 of 39 | 11 of 39 |
+| Distinct detectors that produced any finding | 7 of 21 exposed | 0 of 3 exposed |
 
 The control column is the same on every platform: with nothing attached, all four runs observed
-nothing at all from any agent-fed detector, over all 82 subjects. Whatever moves between machines moves
+nothing at all from any agent-fed detector, over all 139 subjects. Whatever moves between machines moves
 inside the woven pipeline, not in the harness.
 
 ## What this means for a user
@@ -346,23 +415,31 @@ inside the woven pipeline, not in the harness.
 **The strongest claim held, on every platform.** `VERDICT` is the tier the library reserves for
 findings backed by a measured case that fires on a bug and stays silent on its correctly
 synchronized twin, and it is the tier `@AsyncTest(failOn = FailOn.HIGH, minTrust =
-TrustTier.VERDICT)` gates a merge on. Across 22 classes whose javadoc says they are safe for
+TrustTier.VERDICT)` gates a merge on. Across 100 subjects whose javadoc says they are safe for
 concurrent use, no finding reached it on any of the four runs: a build gated at that tier would not
-have failed on any of them, anywhere. This is the one result the cross-platform comparison leaves
-standing, and it is the result the tier system was built to produce.
+have failed on any of them, anywhere. That zero over 100 bounds the rate at 3.0% at 95%. This is
+the one result the cross-platform comparison leaves standing, and it is the result the tier system
+was built to produce.
 
-**Below the gate, the noise column is now empty.** Three classes drew a `PROMPT`-tier finding on
-every platform, and a fourth on CI only; all four were the same three model gaps, and the
-section below records the rules that closed them. Zero of the twenty-two documented-safe classes
-now draw any finding at all, on any of the four runs this document keys.
+**Below the gate, the noise column is two or three subjects wide.** Over the first 60
+documented-safe subjects it was empty, after four findings were traced to three model gaps and
+closed by the rules recorded below. The sixth wave's forty added two that fire on every run and a
+third that fires on some, all `PROMPT`-tier, all from `AtomicityValidator`, and all on idioms
+nobody had pointed the model at yet: Caffeine's CAS spinlock
+([#554](https://github.com/PIsberg/async-test-lib/issues/554)) and a chunk counter in Netty's
+adaptive allocator whose cause is not yet diagnosed
+([#555](https://github.com/PIsberg/async-test-lib/issues/555)). Two or three of 100 puts the
+one-sided 95% bound on the rate of any finding at all at 6.2% to 7.6%. A user who fails a build on
+`PROMPT` findings should expect that kind of noise on unfamiliar code; a user who gates on
+`VERDICT` should not.
 
 **What attaching the agent buys, in one number.** Twenty-one detectors of 146 could see anything in
-this corpus, and two of them produced every finding in it, on every platform. That is not a defect
-in the other 144: 125 of them are told what happened by the test body, and this corpus tells them
-nothing on purpose, while sixteen of the agent-fed eighteen model idioms no subject here writes.
+this corpus, and seven of them produced every finding in it. That is not a defect in the other
+139: 125 of them are told what happened by the test body, and this corpus tells them nothing on
+purpose, while eleven of the agent-fed eighteen model idioms no subject here writes.
 A user attaching the agent to an existing suite and changing no test code is buying the
 `AGENT` set; a user willing to record is buying the rest. The control lane is what makes that
-concrete: with the agent detached the same 82 subjects produced zero findings, so nothing in the
+concrete: with the agent detached the same 139 subjects produced zero findings, so nothing in the
 attached lane's column came from the harness.
 
 ## The three findings on documented-thread-safe code, and the rules that closed them
@@ -508,37 +585,128 @@ unsafe cell moved with the rules and is declared under "Divergences to expect":
 `AtomicityValidator` one, guava's lazy array allocation being the same miss-checked one-shot
 shape the settled single-check rule excuses.
 
+## The sixth wave: a hundred documented-safe subjects, and what the widening found
+
+Sixty documented-safe subjects bounded the rate at the gated tier at 5.0%. This wave added forty
+more, and seventeen documented-unsafe ones, to take that bound to 3.0% and to find out whether the
+zero in the noise column survived code it had not been tuned on. It did at the gated tier and did
+not below it, and both halves are the result.
+
+**How the rows were chosen, and why that order matters.** Four read-only passes surveyed the
+unpacked sources jars of all eight corpus libraries and the `java.base` sources of JDK 21 and 26
+for classes whose own javadoc states a contract, and for each candidate named the shared mutable
+state and its guard. The list was then fixed before the first run, and nothing was added or dropped
+after seeing what a subject drew. That is the only order in which a zero means anything: a safe
+subject kept for staying quiet shrinks the printed bound and says nothing about the next library.
+Every quoted sentence was checked mechanically against its source, the library rows at the cited
+file and line and the JDK rows in both JDKs' sources, since those rows carry no line number.
+Candidates were refused for the reasons the corpus always refuses them: a contract that lives on a
+private field or reads as history, a class that is stateless or immutable, a body that needs a
+subclass of our own, and classes from `jackson-core` and `netty-common`, which are on the classpath
+only transitively and would need dependency rows of their own.
+
+| Side | Library | Added | Examples |
+|---|---|---:|---|
+| Safe | guava | 11 | synchronized bimap, navigable map and set, set and list multimaps; `AtomicDouble`, `AtomicDoubleArray`; expiring memoizer; cache stats counter; cache `asMap().merge`; `EventBus` registry |
+| Safe | commons | 6 | `TimedSemaphore`, `BackgroundInitializer`, `BasicThreadFactory`; `ReadWriteLock` and `StampedLock` visitors; a synchronized ring-buffer queue |
+| Safe | JDK | 16 | `ConcurrentLinkedDeque`, four blocking queues and deques, `ConcurrentSkipListSet`, `CopyOnWriteArraySet`, `Vector`, three `Collections.synchronized*`, `Random`, `SecureRandom` (DRBG), `Properties`, `AtomicLong`, `AtomicReference` |
+| Safe | jackson, caffeine, netty | 7 | Jackson `LRUMap` under eviction; Caffeine strong and weak interners, a bounded cache under eviction, `AsyncCache.synchronous().asMap()`, `ConcurrentStatsCounter`; Netty `AdaptiveByteBufAllocator` |
+| Unsafe | JDK | 8 | `StringBuilder`, `SimpleDateFormat` held directly and as a `DateFormat`, `Matcher`, `DecimalFormat`, `Formatter`, `ArrayDeque`, `PriorityQueue` |
+| Unsafe | libraries | 9 | Guava `TreeMultimap`, `LinkedHashMultimap`, `TreeBasedTable`, `PairedStatsAccumulator`; commons `HashSetValuedHashMap`, `HashCodeBuilder`; Spring `StopWatch`, `LinkedMultiValueMap`; Jackson `TokenBuffer` |
+
+**At the gated tier, the zero held.** No documented-safe subject drew a `VERDICT`-tier HIGH or
+CRITICAL finding, so the bound a `VERDICT`-gated build can rely on is now 3.0%.
+
+**Below it, two findings on every run, and a third on some.** All three are `PROMPT`/HIGH from
+`AtomicityValidator`, and none is a bug in the library. The first two appeared on all 10 lane runs
+whose reports were kept, four local and six CI legs:
+
+- `caffeineWeakInterner_intern` on `StripedBuffer.table`. Caffeine writes that `volatile` table only
+  after winning a CAS on `tableBusy` from 0 to 1, re-checks it under that spinlock, and releases in
+  a `finally`; readers take a snapshot and retry. The validator does not count a CAS-acquired
+  spinlock as a guard ([#554](https://github.com/PIsberg/async-test-lib/issues/554)).
+- `adaptiveByteBufAllocator_bufferAndRelease` on `SizeClassedChunk.allocatedBytes`, a plain `int`
+  mutated inside `Magazine.tryAllocate` under a `StampedLock` write stamp the agent does weave. Why
+  that did not satisfy the lockset is not diagnosed: a chunk handed between magazines under two
+  different locks, the unlocked allocation path, or the stamp not reaching the lockset are all
+  consistent with the evidence ([#555](https://github.com/PIsberg/async-test-lib/issues/555)).
+
+The third, `caffeineBoundedCache_evictUnderPressure`, appeared on 2 of those 10 runs, both on JDK
+26: `StripedBuffer.table` again, plus the producer fields of Caffeine's MPSC write buffer, which
+look like the same CAS-guarded family and are recorded on #554 as such without having been traced.
+
+All three stay in the corpus. The noise column over 100 is 2 or 3 depending on the run, and the
+one-sided 95% bound on the rate of any finding at all is 6.2% at 2 and 7.6% at 3. The earlier
+findings of this kind were each closed by a rule with its own twin pair; these are filed to be
+closed the same way, not quietened by a threshold.
+
+**The unsafe side stayed complete, and five detectors spoke in this lane for the first time.** All
+39 documented-unsafe subjects drew a finding. `SimpleDateFormatDetector` fired on both date-format
+subjects, including the one held as a `DateFormat`, which is the supertype call #542 taught the
+weaver; `StringBuilderDetector`, `SharedFormatterDetector`, `SharedMatcherDetector` and
+`SharedDecimalFormatDetector` each fired on their one subject. They are measured here and not
+gated. `CorpusGates.EXERCISED_AGENT_DETECTORS` feeds `LibraryReach` and `DetectorCoverage` as well
+as the detection gate, and a lane-one finding there is counted as reached through library bytecode.
+These five were reached through a JDK call written in `CorpusEvalTest` itself, so adding them would
+turn a true count into a false one. Four of the five already have library reach measured in the
+agent-pair lane; `SHARED_MATCHER` has none, for the reason
+[#545](https://github.com/PIsberg/async-test-lib/issues/545) records.
+
+**One subject corrupted every event count after it, and a gate now catches that.** The first
+`timedSemaphore_tryAcquire` body left `TimedSemaphore`'s fixed-rate period timer running after its
+own test ended. Its woven field writes then landed in the event window of every later subject:
+against the pre-wave run, the 30 older subjects that run before it moved by a median of 60 events
+and the 52 that run after it by a median of 1,094, and no gate noticed, because events are printed
+rather than gated. An `@AfterEach` now shuts the semaphore down, and
+`CorpusGates.nothingPublishesAfterTheLastSubject` fails lane one if the telemetry counter moves by
+more than 100 events in the 250 ms after the last subject. Verified failing-first: with the gate in
+and the fix out, the lane went red at 430 events; with the fix, green, and the post-timer median
+fell to 0. The allowance is not zero because Surefire's forked-JVM stream flusher is woven like any
+other class on the classpath; stack sampling after the fix found it the only thread inside woven
+code, with the counter moving by 20 to 30 events per window.
+
+**What it cost on CI.** Nothing measurable. The three corpus legs took 3 min 25 s to 4 min 34 s on
+the run keyed above, against 3 min 38 s to 4 min 33 s on the last run on `main` before the wave.
+Local timings on the machine behind run **L** moved between 18 s and 105 s for lane one across
+runs of the same code, with the unchanged agent-pair lane moving as much, so they are not quoted as
+a cost.
+
+**One stale rationale went with it.** The agent-pair row for `CALENDAR` said Calendar is documented
+as not thread-safe. The survey found no such sentence in `Calendar.java` on either JDK, so the row
+now says its ground truth is the cached field set rather than a quote.
+
 ## What this does not measure
 
-- **Eighty-two subjects from eight libraries and the JDK is not an ecosystem study.** It bounds
-  the false-positive rate at the tier that gates builds, over a stated denominator, and it does
-  not support a claim about the JVM ecosystem. Sixty documented-safe subjects put that bound at
-  5.0%, which is a useful number and not a vanishing one.
+- **139 subjects from eight libraries and the JDK is not an ecosystem study.** It bounds the
+  false-positive rate at the tier that gates builds, over a stated denominator, and it does not
+  support a claim about the JVM ecosystem. A hundred documented-safe subjects put that bound at
+  3.0%, which is a useful number and not a vanishing one.
 - **125 detectors of 146 are not measured in the unmodified lanes at all.** Their exposure there
   is zero, so those lanes say nothing about them in either direction. Twelve are measured in the
   recording lane below, which is a different eval over a different denominator and is reported
   separately for that reason.
-- **A noise column of zero is a measurement, not a guarantee.** All sixty documented-safe
-  classes produce nothing, and each of the last three went quiet because a specific idiom became
-  a rule the analyzer can check, never because a threshold moved. A correct class guarded by a
-  mechanism the weaver cannot see, a lock acquired inside unwoven code, a hand-rolled protocol on
+- **A noise column is a measurement, not a guarantee.** The first sixty documented-safe subjects
+  produced nothing, and each of the three before them went quiet because a specific idiom became
+  a rule the analyzer can check, never because a threshold moved. The next forty found two idioms
+  the model had not been taught, which is what this paragraph predicted: a correct class guarded by
+  a mechanism the weaver cannot see, a lock acquired inside unwoven code, a hand-rolled protocol on
   plain fields, will still draw a `PROMPT`-tier finding, and the tier system exists to price
-  exactly that. This corpus no longer contains such a class; the next library someone points the
-  agent at may.
+  exactly that. The next library someone points the agent at may hold a third.
 - **Detection is probabilistic, and the gate is built around that rather than excused by it.**
   `CorpusGates` fails the run when a documented-thread-safe class draws a VERDICT-tier HIGH or
   CRITICAL finding, when fewer than 85% of the documented-unsafe subjects draw a finding, when
   either `AtomicityValidator` or `SharedCollectionDetector` says nothing about any of them, when a
-  detector reports that the feed table says cannot be fed, and when the control lane hears from an
-  agent-fed detector. It still does not assert that a particular subject fires on a particular run,
-  because that would be a flaky gate rather than a measurement.
+  detector reports that the feed table says cannot be fed, when the control lane hears from an
+  agent-fed detector, and when something keeps publishing events after the last subject. It still
+  does not assert that a particular subject fires on a particular run, because that would be a
+  flaky gate rather than a measurement.
 
   The detection half of that list is new, and what it replaced is worth recording. The gate used to
   pass on one finding *or one crash* anywhere in the unsafe group, and four of those subjects
   throw on most runs, so the crash half satisfied it alone: both detectors could have gone silent
-  on all twenty-two subjects and the table above would still have been published green. Filtering
-  `SharedCollectionDetector` out of the findings before the gate drops detection to 16 of 22 and
-  now fails the floor of 18; the old gate stayed green on the same input. Crashes no longer count
+  on all twenty-two subjects of the time and the table above would still have been published
+  green. Filtering `SharedCollectionDetector` out of the findings before the gate dropped detection
+  to 16 of 22 and failed the floor of 18; the old gate stayed green on the same input. Crashes no longer count
   towards detection at all.
 - **The corpus classes are subjects, not endorsements.** They are on the test classpath of a
   standalone module and reach neither the reactor nor any published artifact.
@@ -1572,7 +1740,7 @@ is the same defect the netty `ByteBuf` note above refuses to leave unremarked. I
 | Paired in the recording lane | 116 |
 | Paired in the agent-pair lane | 16 |
 | ...less `SHARED_MESSAGE_DIGEST`, `LATCH_MISUSE` and `BLOCKING_QUEUE`, which are paired in both | -3 |
-| Paired by lane one over 82 subjects (`ATOMICITY_VIOLATIONS`, `SHARED_COLLECTIONS`) | +2 |
+| Paired by lane one over 139 subjects (`ATOMICITY_VIOLATIONS`, `SHARED_COLLECTIONS`) | +2 |
 | **Total paired** | **131** |
 | Refused: every recorded event is a finding, so no silent twin can exist | 7 |
 | Refused: the outcome is a threshold or a clock, not the recorded calls | 8 |

@@ -50,16 +50,21 @@ final class CorpusGates {
     /**
      * The agent-fed detectors this corpus actually exercises, each of which must fire somewhere.
      *
-     * <p>The lane exposes eighteen agent-fed detectors and two of them produce every finding in
-     * the report. That is not a defect in the other sixteen: they model locks, latches, date
-     * formats and builders, and a corpus whose whole test body is "share one instance and call
+     * <p>The lane exposes eighteen agent-fed detectors and seven of them produce every finding in
+     * the report. That is not a defect in the other eleven: they model locks, latches, queues,
+     * calendars and digests, and a corpus whose whole test body is "share one instance and call
      * it" never writes those idioms down for them to see. Requiring all eighteen to fire would
      * fail on correct silence.
      *
-     * <p>These two are different. Every finding this eval has recorded on any platform came from
-     * one of them, so either going quiet across all twenty-two documented-unsafe subjects is a
-     * regression rather than a schedule. Adding a subject that wakes a third detector breaks
-     * nothing here; this set is a floor on what must speak, not a ceiling on what may.
+     * <p>These two are different from the other five as well. Both fire on library subjects,
+     * whose woven call sits inside the library's own bytecode, and {@link LibraryReach} counts this
+     * set as reach through a library; either going quiet across the whole documented-unsafe group
+     * is a regression rather than a schedule. The five shared-instance detectors the sixth wave woke
+     * ({@code StringBuilderDetector}, {@code SimpleDateFormatDetector}, {@code SharedMatcherDetector},
+     * {@code SharedFormatterDetector}, {@code SharedDecimalFormatDetector}) fire on JDK calls
+     * written in {@code CorpusEvalTest} itself, so adding them here would count a test-file call
+     * as library reach. Adding a subject that wakes another detector breaks nothing here; this set
+     * is a floor on what must speak, not a ceiling on what may.
      */
     private static final Set<DetectorType> EXERCISED_AGENT_DETECTORS =
             EnumSet.of(DetectorType.ATOMICITY_VIOLATIONS, DetectorType.SHARED_COLLECTIONS);
@@ -669,7 +674,7 @@ final class CorpusGates {
      * <ul>
      *   <li>each of {@link #EXERCISED_AGENT_DETECTORS} must report on at least one
      *       documented-not-thread-safe subject. <em>Which</em> subjects a detector catches moves
-     *       with the scheduler; whether it catches any of twenty-two does not, so a detector that
+     *       with the scheduler; whether it catches any of the group does not, so a detector that
      *       has stopped working fails here on the first run rather than on the first reader.</li>
      *   <li>the group as a whole must reach {@link #UNSAFE_DETECTION_FLOOR} of its subjects, which
      *       catches the degradation that leaves each detector alive but firing far less often.</li>
@@ -732,6 +737,45 @@ final class CorpusGates {
         assertTrue(spoke.isEmpty(),
                 "the agent is not attached in this lane, so an agent-fed detector has no stream to "
                         + "read and cannot have seen anything; these did: " + spoke);
+    }
+
+    /**
+     * How many events may still be published in the quiet window after the last subject.
+     *
+     * <p>Not zero, because the harness itself publishes. Surefire's forked JVM runs a periodic
+     * stream flusher, {@code org.apache.maven.surefire}, which the agent weaves like any other
+     * class on the classpath. Sampled over 700 stack snapshots once the TimedSemaphore timer was
+     * stopped, it was the only thread seen inside woven code, and the counter moved by 20 to 30
+     * events per 250 ms on JDK 26. A subject that leaves a task
+     * running is a different order of magnitude: the TimedSemaphore timer this exists for published
+     * about 1,100 events per later subject, and 430 in a 250 ms window on JDK 26.
+     */
+    static final long QUIET_WINDOW_ALLOWANCE = 100;
+
+    /**
+     * Nothing a subject started may keep publishing once the subjects are done.
+     *
+     * <p>Events are attributed to a subject by the telemetry counter's movement while it runs, and
+     * subjects run one after another. A background thread a subject leaves running, a periodic
+     * timer, a scheduler, an executor that never stops, therefore adds its own events to every
+     * subject that runs after it, and nothing else notices: the sixth wave's {@code TimedSemaphore}
+     * timer raised the median event count of the 52 older subjects that ran after it by 1,094 while
+     * the 30 that ran before it moved by 60, and every gate stayed green. The leak is still running
+     * when the last subject ends, which is where this looks for it.
+     *
+     * @param publishedAtStart the telemetry counter when the window opened
+     * @param publishedAtEnd   the counter when it closed
+     * @param windowMillis     how long the window was held open
+     */
+    static void nothingPublishesAfterTheLastSubject(long publishedAtStart, long publishedAtEnd,
+                                                    long windowMillis) {
+        long published = publishedAtEnd - publishedAtStart;
+        assertTrue(published <= QUIET_WINDOW_ALLOWANCE,
+                published + " events were published in the " + windowMillis + " ms after the last "
+                        + "subject finished, and at most " + QUIET_WINDOW_ALLOWANCE + " may be. A "
+                        + "subject has left something running - a timer, a scheduler, an executor - "
+                        + "whose woven accesses land in the event count of every subject that runs "
+                        + "after it. Stop it in an @AfterEach.");
     }
 
     private static boolean isAgentFed(DetectorType type) {
