@@ -69,8 +69,9 @@ import se.deversity.vibetags.annotations.AIContract;
  * it unconditionally). Every Java record's {@code equals}/{@code hashCode}/{@code toString} calls
  * {@code ObjectMethods.bootstrap} with exactly such handles, so every record in a woven package
  * failed to instrument with a {@code StringIndexOutOfBoundsException}. This visitor rewrites the
- * one instruction kind it is about, {@code invokevirtual}/{@code invokeinterface} on a table
- * entry, and passes everything else through untouched, {@code invokedynamic} included.
+ * instruction kinds it is about, {@code invokevirtual}/{@code invokeinterface} on a table entry and
+ * a lambda factory's implementation handle that names one (#550), and passes everything else through
+ * untouched, every other {@code invokedynamic} included.
  *
  * <p>The matching preserves the old semantics: the call site's method name and full descriptor
  * must equal the hook's, receiver excluded, and the owner must be a subtype of the entry's
@@ -89,7 +90,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.9.8
  */
-@AIContract(reason = "The hook class name and the method names here are the other half of AgentCollectionHooks and AgentLockHooks: they are matched by erased signature at weave time, so renaming a hook or changing a parameter type breaks weaving with a NoSuchMethodError inside user code rather than at compile time. Each substitution must consume exactly the stack its original invocation consumed - stack-shape-neutral and member-free is what keeps retransformation safe under disableClassFormatChanges(). The visitor must never touch invokedynamic: parsing its constants is what made every Java record fail to instrument when this went through MemberSubstitution. Collection weaving is opt-in (collections=true) because it instruments every listed call in every matched class. The one-instruction lookahead behind whenResultDiscarded is a flag meaning the instruction just emitted was a substituted call whose result may be discarded: visitInsn(POP) is its only consumer and every other visit method must clear it, because a stale flag would turn an unrelated POP into a call whose parameter does not match the value on the stack, which is a VerifyError in the user's class at load time. SubstitutingVisitorClearsLookaheadEverywhereTest enumerates MethodVisitor to keep that override list complete.")
+@AIContract(reason = "The hook class name and the method names here are the other half of AgentCollectionHooks and AgentLockHooks: they are matched by erased signature at weave time, so renaming a hook or changing a parameter type breaks weaving with a NoSuchMethodError inside user code rather than at compile time. Each substitution must consume exactly the stack its original invocation consumed - stack-shape-neutral and member-free is what keeps retransformation safe under disableClassFormatChanges(). The visitor changes exactly one kind of invokedynamic: a LambdaMetafactory metafactory or non-serializable altMetafactory whose implementation handle matches a table entry is pointed at that entry's hook, so a method reference such as builder::append is observed (#550). Every other bootstrap, ObjectMethods for records above all, must pass through as the same argument array, read only through ASM's Handle: parsing bootstrap constants is what made every Java record fail to instrument when this went through MemberSubstitution, and a rewritten serializable lambda would fail to deserialize. Collection weaving is opt-in (collections=true) because it instruments every listed call in every matched class. The one-instruction lookahead behind whenResultDiscarded is a flag meaning the instruction just emitted was a substituted call whose result may be discarded: visitInsn(POP) is its only consumer and every other visit method must clear it, because a stale flag would turn an unrelated POP into a call whose parameter does not match the value on the stack, which is a VerifyError in the user's class at load time. SubstitutingVisitorClearsLookaheadEverywhereTest enumerates MethodVisitor to keep that override list complete.")
 final class CollectionAccessWeaver {
 
     /**
@@ -754,6 +755,12 @@ final class CollectionAccessWeaver {
     /** Rewrites matching virtual and interface invocations; passes every other instruction through. */
     private static final class SubstitutingMethodVisitor extends MethodVisitor {
 
+        /** The bootstrap owner whose implementation handles a method reference can name (#550). */
+        private static final String LAMBDA_METAFACTORY = "java/lang/invoke/LambdaMetafactory";
+
+        /** {@code LambdaMetafactory.FLAG_SERIALIZABLE}, which marks a lambda that must be left alone. */
+        private static final int FLAG_SERIALIZABLE = 1;
+
         private final List<Target> targets;
         private final TypePool typePool;
         private final Map<String, Boolean> assignable;
@@ -963,7 +970,125 @@ final class CollectionAccessWeaver {
         @Override
         public void visitInvokeDynamicInsn(String name, String descriptor, Handle bootstrapMethodHandle, Object... bootstrapMethodArguments) {
             justSubstituted = null;
-            super.visitInvokeDynamicInsn(name, descriptor, bootstrapMethodHandle, bootstrapMethodArguments);
+            Target target = methodReferenceTarget(bootstrapMethodHandle, bootstrapMethodArguments);
+            if (target == null) {
+                super.visitInvokeDynamicInsn(name, descriptor, bootstrapMethodHandle,
+                        bootstrapMethodArguments);
+                return;
+            }
+            Object[] redirected = bootstrapMethodArguments.clone();
+            redirected[1] = new Handle(Opcodes.H_INVOKESTATIC, target.hookOwnerInternalName(),
+                    target.hookMethodName(), target.hookDescriptor(), false);
+            super.visitInvokeDynamicInsn(name, capturingReceiverAs(descriptor, target),
+                    bootstrapMethodHandle, redirected);
+        }
+
+        /**
+         * {@return the table entry a method reference in this {@code invokedynamic} names, or {@code null}}
+         *
+         * <p>A method reference such as {@code builder::append} is not an {@code invokevirtual}.
+         * javac emits an {@code invokedynamic} to {@code LambdaMetafactory} whose second bootstrap
+         * argument is a handle to {@code StringBuilder.append(String)}, and the JVM makes the call
+         * from a hidden class it spins at link time, which no agent can weave. So the call was
+         * never observed, whatever the table said (#550). Replacing that handle with a static
+         * handle to the hook moves the call back into view: the factory accepts a static
+         * implementation whose first parameter is the receiver for both a bound reference
+         * ({@code builder::append}, receiver captured) and an unbound one
+         * ({@code StringBuilder::append}, receiver passed), and the hook's descriptor is the
+         * matched call's with the receiver prepended, so the lambda's shape is unchanged.
+         *
+         * <p>Deliberately narrow, because this is the one {@code invokedynamic} the visitor
+         * changes. Only {@code LambdaMetafactory} bootstraps are read, and only through ASM's
+         * {@link Handle}, never a constant parser: parsing every bootstrap's constants is what made
+         * every Java record fail to instrument under {@code MemberSubstitution}, and
+         * {@code ObjectMethods}, {@code StringConcatFactory} and everything else pass through as
+         * the same array. A serializable lambda is left alone too: its generated
+         * {@code $deserializeLambda$} compares the implementation method with the one it was
+         * compiled against, so a rewritten handle would make it fail to deserialize.
+         *
+         * @param bootstrap the bootstrap method handle
+         * @param arguments the bootstrap arguments as ASM decoded them
+         */
+        private @org.jspecify.annotations.Nullable Target methodReferenceTarget(Handle bootstrap,
+                                                                               Object[] arguments) {
+            if (!LAMBDA_METAFACTORY.equals(bootstrap.getOwner())
+                    || arguments.length < 3
+                    || !(arguments[1] instanceof Handle implementation)) {
+                return null;
+            }
+            boolean alternate = "altMetafactory".equals(bootstrap.getName());
+            if (!alternate && !"metafactory".equals(bootstrap.getName())) {
+                return null;
+            }
+            if (alternate && arguments.length > 3 && arguments[3] instanceof Integer flags
+                    && (flags & FLAG_SERIALIZABLE) != 0) {
+                return null;
+            }
+            return targetForReference(implementation);
+        }
+
+        /**
+         * {@return the {@code invokedynamic} descriptor, with a captured receiver typed as the hook takes it}
+         *
+         * <p>{@code LambdaMetafactory} requires each captured argument's type to equal the
+         * implementation's parameter type exactly, not merely be assignable to it. A bound
+         * {@code lock::lock} captures a {@code ReentrantLock} and the hook takes a {@code Lock}, so
+         * the factory refused the rewritten handle with "Type mismatch in captured lambda parameter
+         * 0" until the captured receiver was declared as the hook's type. The value on the stack is
+         * unchanged and is a subtype of that type, which the verifier accepts. An unbound
+         * reference captures nothing, and the factory adapts a non-captured argument leniently, so
+         * its descriptor is returned as it was.
+         *
+         * @param descriptor the call site's {@code invokedynamic} descriptor
+         * @param target     the entry the reference was redirected to
+         */
+        private String capturingReceiverAs(String descriptor, Target target) {
+            if (target.isStatic()) {
+                return descriptor;
+            }
+            Type[] captured = Type.getArgumentTypes(descriptor);
+            if (captured.length == 0 || captured[0].getSort() != Type.OBJECT) {
+                return descriptor;
+            }
+            Type receiver = Type.getObjectType(target.receiverType().getInternalName());
+            if (captured[0].equals(receiver)) {
+                return descriptor;
+            }
+            captured[0] = receiver;
+            return Type.getMethodDescriptor(Type.getReturnType(descriptor), captured);
+        }
+
+        /**
+         * {@return the table entry a method-reference handle names, or {@code null}}
+         *
+         * <p>The same matching as an invocation instruction: name and full descriptor, and an
+         * owner assignable to the entry's type for a virtual or interface handle, or the exact
+         * owner for a static one.
+         *
+         * @param implementation the lambda factory's implementation handle
+         */
+        private @org.jspecify.annotations.Nullable Target targetForReference(Handle implementation) {
+            int tag = implementation.getTag();
+            boolean virtual = tag == Opcodes.H_INVOKEVIRTUAL || tag == Opcodes.H_INVOKEINTERFACE;
+            boolean isStaticHandle = tag == Opcodes.H_INVOKESTATIC;
+            if (!virtual && !isStaticHandle) {
+                return null;
+            }
+            for (Target target : targets) {
+                if (!implementation.getName().equals(target.methodName())
+                        || !implementation.getDesc().equals(target.callSiteDescriptor())) {
+                    continue;
+                }
+                if (virtual && !target.isStatic()
+                        && ownerIsAssignable(implementation.getOwner(), target)) {
+                    return target;
+                }
+                if (isStaticHandle && target.isStatic()
+                        && implementation.getOwner().equals(target.receiverType().getInternalName())) {
+                    return target;
+                }
+            }
+            return null;
         }
 
         @Override
