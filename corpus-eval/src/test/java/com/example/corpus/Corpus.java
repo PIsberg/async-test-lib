@@ -780,6 +780,23 @@ final class Corpus {
                             + "a detector that reported this one would fire on every backoff loop "
                             + "and every poll interval ever written"),
 
+            new RecordingSubject("agent_sleepStamped_whileHoldingTheWriteStamp", JDK,
+                    "java.util.concurrent.locks.StampedLock",
+                    DetectorType.SLEEP_IN_LOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a one-millisecond sleep with a write stamp held, so every reader and writer "
+                            + "of the lock waits on a thread doing nothing. StampedLock records no "
+                            + "owner; the finding rests on the thread's own lockset entry and the "
+                            + "lock being write-locked, which is the shape #543 made reportable"),
+
+            new RecordingSubject("agent_sleepStamped_afterReleasingTheWriteStamp", JDK,
+                    "java.util.concurrent.locks.StampedLock",
+                    DetectorType.SLEEP_IN_LOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same stamp and the same sleep, with the unlockWrite before the sleep. "
+                            + "The lockset entry is gone and the lock is free, so a finding here "
+                            + "would mean a released stamp still reads as held"),
+
             new RecordingSubject("agent_lockOrder_nestedBothWays", JDK,
                     "java.util.concurrent.locks.ReentrantLock",
                     DetectorType.LOCK_ORDER, Contract.THREAD_SAFE,

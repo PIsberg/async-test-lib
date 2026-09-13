@@ -193,6 +193,37 @@ public final class HeldLocks {
     }
 
     /**
+     * {@return how many locks the calling thread currently holds by this class's accounting}
+     *
+     * <p>Package-private, with {@link #heldFromTop(int)} and {@link #sharedFromTop(int)}, so that
+     * {@code SleepInLockDetector} can walk the whole set. The innermost lock is not always one it
+     * can confirm, and one it can confirm may sit below it (#543).
+     */
+    static int depth() {
+        return FRAMES.get().depth;
+    }
+
+    /**
+     * {@return the lock {@code index} entries below the innermost one, or {@code null} past the end}
+     *
+     * @param index 0 for the most recently acquired lock
+     */
+    static @Nullable Object heldFromTop(int index) {
+        Frame frame = FRAMES.get();
+        return index < 0 || index >= frame.depth ? null : frame.locks[frame.depth - 1 - index];
+    }
+
+    /**
+     * {@return whether the lock {@code index} entries below the innermost one was taken shared}
+     *
+     * @param index 0 for the most recently acquired lock
+     */
+    static boolean sharedFromTop(int index) {
+        Frame frame = FRAMES.get();
+        return index >= 0 && index < frame.depth && frame.shared[frame.depth - 1 - index];
+    }
+
+    /**
      * {@return the most recently acquired lock this thread still holds, or {@code null}}
      *
      * <p>The innermost one rather than any one: a detector reporting a sleep under a lock wants

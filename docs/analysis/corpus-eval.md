@@ -1862,9 +1862,12 @@ It is fixed in the same change: `ReentrantLock` and `ReentrantReadWriteLock` rep
 exactly, so they are asked the question the JVM answers for a monitor, and a lock held by another
 thread still records nothing. Verified failing-first: two of three new cases in
 `SleepInLockOnVirtualThreadsTest` were red before the fix and green after, and the corpus row went
-from silent to `fired (1)`. `StampedLock`, which keeps no owner, and a confirmable lock sitting
-below the top of the lockset are still dropped; that is
-[#543](https://github.com/PIsberg/async-test-lib/issues/543).
+from silent to `fired (1)`. Two shapes were still dropped after it: a `StampedLock` on top of the
+lockset, which keeps no owner, and a confirmable lock sitting below an unconfirmable one. Both are
+fixed by [#543](https://github.com/PIsberg/async-test-lib/issues/543): the woven sleep now hands the
+detector the whole lockset, and a `StampedLock` entry counts when the lock is held in the entry's
+mode. `agent_sleepStamped_whileHoldingTheWriteStamp` and its released twin pair that shape through
+the agent, and were as stated on their first run.
 
 **Where it stops.** With these pairs, 12 of the 18 agent-fed detectors are measured in both
 directions on call sites inside a library. `LibraryReach` records why the other six are not, and

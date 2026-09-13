@@ -126,7 +126,8 @@ public class SleepInLockDetector {
      * long the thread has held them, so a sleep under a {@code java.util.concurrent} lock was
      * dropped. Those two types report their holder exactly, so they are asked the same question
      * the JVM answers for a monitor, and the refusal to take the caller's word still holds.
-     * {@code StampedLock} records no owner and stays unconfirmable, so it records nothing.
+     * {@code StampedLock} records no owner, so a caller naming one records nothing here; the
+     * agent's path goes through {@link #recordSleepUnderHeldLocks(long)} instead.
      *
      * @param sleepDurationMs the duration of the sleep in milliseconds
      * @param monitor the object whose monitor or lock the caller believes it holds; ignored when
@@ -137,12 +138,59 @@ public class SleepInLockDetector {
             return;
         }
         String lockType = heldByCurrentThread(monitor);
-        if (lockType == null) {
+        if (lockType != null) {
+            recordHolding(sleepDurationMs, monitor, lockType);
+        }
+    }
+
+    /**
+     * Record a {@code Thread.sleep()} made while the calling thread holds any lock on its
+     * {@link HeldLocks} set, confirming each before believing it.
+     *
+     * <p>This is what the agent's woven {@code Thread.sleep} calls. It used to pass only the top of
+     * the lockset to {@link #recordSleep(long, Object)}, which dropped two real cases (#543): a
+     * {@code StampedLock} on top, which that overload cannot confirm, and a confirmable lock one
+     * entry below an unconfirmable one. The walk goes from the innermost lock outwards and records
+     * against the first that is confirmed, so the report still names the lock the code was most
+     * immediately inside whenever that one can be checked.
+     *
+     * <p>Every entry is still confirmed against the lock itself; the lockset only says where to
+     * look. A monitor, a {@code ReentrantLock} and a {@code ReentrantReadWriteLock} are confirmed
+     * as in {@link #recordSleep(long, Object)}. A {@code StampedLock} keeps no owner, so it is
+     * accepted when this thread's lockset holds it <em>and</em> the lock is held in that mode by
+     * someone - write-locked for an exclusive entry, read-locked for a shared one. That is weaker
+     * than an owner check and is accepted only here, never from a caller-named object: the entry
+     * came from this thread's own acquisition, so the remaining gap is a stale entry coinciding
+     * with another thread holding the same lock.
+     *
+     * @param sleepDurationMs the duration of the sleep in milliseconds
+     * @since 1.12.1
+     */
+    public void recordSleepUnderHeldLocks(long sleepDurationMs) {
+        if (!enabled || !monitoring || sleepDurationMs <= 0) {
             return;
         }
+        for (int index = 0, depth = HeldLocks.depth(); index < depth; index++) {
+            Object lock = HeldLocks.heldFromTop(index);
+            if (lock == null) {
+                continue;
+            }
+            String lockType = heldByCurrentThread(lock);
+            if (lockType == null && lock instanceof java.util.concurrent.locks.StampedLock stamped
+                    && (HeldLocks.sharedFromTop(index) ? stamped.isReadLocked() : stamped.isWriteLocked())) {
+                lockType = "StampedLock";
+            }
+            if (lockType != null) {
+                recordHolding(sleepDurationMs, lock, lockType);
+                return;
+            }
+        }
+    }
+
+    private void recordHolding(long sleepDurationMs, Object lock, String lockType) {
         Thread currentThread = Thread.currentThread();
         record(new SleepInLockEvent(
-                monitor.getClass().getName() + "@" + System.identityHashCode(monitor),
+                lock.getClass().getName() + "@" + System.identityHashCode(lock),
                 currentThread.getName(),
                 sleepDurationMs,
                 currentThread.getStackTrace(),

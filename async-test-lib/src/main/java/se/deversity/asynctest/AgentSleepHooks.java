@@ -20,7 +20,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * <p>The agent has the answer for free. {@link se.deversity.asynctest.AgentLockHooks} maintains the
  * per-thread lockset that the woven {@code MONITORENTER} instructions and the substituted
- * {@code Lock.lock()} calls both feed, so {@link HeldLocks#topHeld()} is an array read on the
+ * {@code Lock.lock()} calls both feed, so {@link HeldLocks#anyHeld()} is a field read on the
  * calling thread. This hook is the two halves meeting: the sleep is seen by substitution, and
  * whether it mattered is answered by the lockset that was already there.
  *
@@ -32,7 +32,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.10.0
  */
-@AIContract(reason = "Called from bytecode the agent rewrites, through the static substitution path: the method name and erased signature here are matched by CollectionAccessWeaver.STATIC_ENTRIES and cannot change independently of it. The guard is the point - recording only when HeldLocks.topHeld() returns a lock is what separates the bug from rate limiting, back-off and polling, which are ordinary uses of Thread.sleep and vastly more common. Record before sleeping, not after: a sleep interrupted mid-way still held the lock for as long as it lasted, and the finding is about the holding rather than the completing. The hook must perform the original sleep and propagate InterruptedException unchanged. It must pass the monitor to recordSleep rather than calling the single-argument overload: that one resolves the held monitors through ThreadMXBean, which does not report virtual threads, so on the runner's default workers it answers none and the detector never fires. A sub-millisecond sleep must round up to one rather than truncate to zero: recordSleep drops anything at or below zero, so truncating turns a real lock-holding pause into the same silence an unwoven call site produces.")
+@AIContract(reason = "Called from bytecode the agent rewrites, through the static substitution path: the method name and erased signature here are matched by CollectionAccessWeaver.STATIC_ENTRIES and cannot change independently of it. The guard is the point - recording only when the thread's lockset holds a lock the detector can confirm is what separates the bug from rate limiting, back-off and polling, which are ordinary uses of Thread.sleep and vastly more common. Record before sleeping, not after: a sleep interrupted mid-way still held the lock for as long as it lasted, and the finding is about the holding rather than the completing. The hook must perform the original sleep and propagate InterruptedException unchanged. It must never call the single-argument recordSleep: that one resolves the held monitors through ThreadMXBean, which does not report virtual threads, so on the runner's default workers it answers none and the detector never fires. The plain forms must hand the detector the whole lockset (recordSleepUnderHeldLocks) rather than its top entry, which dropped a StampedLock on top and a confirmable lock below an unconfirmable one (#543). A sub-millisecond sleep must round up to one rather than truncate to zero: the detector drops anything at or below zero, so truncating turns a real lock-holding pause into the same silence an unwoven call site produces.")
 public final class AgentSleepHooks {
 
     private AgentSleepHooks() {
@@ -45,18 +45,11 @@ public final class AgentSleepHooks {
      * @throws InterruptedException if interrupted while sleeping
      */
     public static void sleep(long millis) throws InterruptedException {
-        Object held = HeldLocks.topHeld();
-        if (held != null) {
-            SleepInLockDetector detector = AsyncTestContext.currentSleepInLockDetector();
-            if (detector != null) {
-                // The two-argument overload, not recordSleep(millis). That one asks ThreadMXBean
-                // which monitors the thread holds, and ThreadMXBean does not report virtual
-                // threads - which the runner uses by default, so it would answer "none" for
-                // every worker and the finding would never fire. Naming the monitor routes it
-                // through Thread.holdsLock instead, which has no such blind spot.
-                detector.recordSleep(millis, held);
-            }
-        }
+        // Never recordSleep(millis): that one asks ThreadMXBean which monitors the thread holds,
+        // and ThreadMXBean does not report virtual threads - which the runner uses by default, so
+        // it would answer "none" for every worker and the finding would never fire. The lockset
+        // walk confirms each entry through Thread.holdsLock or the lock's own owner instead.
+        recordUnderLockset(millis);
         Thread.sleep(millis);
     }
 
@@ -65,7 +58,7 @@ public final class AgentSleepHooks {
      *
      * <p>A {@code synchronized} method takes its monitor from the {@code ACC_SYNCHRONIZED} access
      * flag, not from an instruction, so nothing in the body tells {@link HeldLocks} the lock is
-     * held and {@link HeldLocks#topHeld()} answers {@code null} inside one. That is #388, and the
+     * held and {@link HeldLocks#anyHeld()} answers {@code false} inside one. That is #388, and the
      * reason it looked unfixable was the assumption that the lockset had to learn the monitor:
      * pushing on method entry and popping on every exit needs a handler and a branch, which needs
      * new stack map frames, which {@code AsyncTestAgent} rules out.
@@ -104,10 +97,7 @@ public final class AgentSleepHooks {
      * @throws InterruptedException if interrupted while sleeping
      */
     public static void sleep(Duration duration) throws InterruptedException {
-        Object held = HeldLocks.topHeld();
-        if (held != null) {
-            recordHeld(recordableMillis(duration), held);
-        }
+        recordUnderLockset(recordableMillis(duration));
         Thread.sleep(duration);
     }
 
@@ -137,10 +127,7 @@ public final class AgentSleepHooks {
      * @throws InterruptedException if interrupted while sleeping
      */
     public static void sleep(long millis, int nanos) throws InterruptedException {
-        Object held = HeldLocks.topHeld();
-        if (held != null) {
-            recordHeld(recordableMillis(millis, nanos), held);
-        }
+        recordUnderLockset(recordableMillis(millis, nanos));
         Thread.sleep(millis, nanos);
     }
 
@@ -174,6 +161,26 @@ public final class AgentSleepHooks {
         SleepInLockDetector detector = AsyncTestContext.currentSleepInLockDetector();
         if (detector != null) {
             detector.recordSleep(millis, monitor);
+        }
+    }
+
+    /**
+     * Records a sleep against whichever lock on the calling thread's lockset can be confirmed.
+     *
+     * <p>Never the top entry alone: a {@code StampedLock} on top cannot be confirmed through the
+     * caller-named overload, and a confirmable lock can sit below an unconfirmable one, and both
+     * were dropped while this passed {@code topHeld()} (#543). The detector walks the set and
+     * still confirms every entry against the lock itself.
+     *
+     * @param millis how long the sleep was, in milliseconds
+     */
+    private static void recordUnderLockset(long millis) {
+        if (!HeldLocks.anyHeld()) {
+            return;
+        }
+        SleepInLockDetector detector = AsyncTestContext.currentSleepInLockDetector();
+        if (detector != null) {
+            detector.recordSleepUnderHeldLocks(millis);
         }
     }
 
