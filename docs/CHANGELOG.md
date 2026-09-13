@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The agent observes a woven JDK call made through a method reference (#550).** `builder::append`
+  or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from a hidden class
+  the agent cannot weave, so every detector the agent feeds was blind to it: a shared `StringBuilder`
+  appended to via `builder::append` drew no finding, while the lambda `s -> builder.append(s)` did.
+  The weaver now rewrites a `LambdaMetafactory` implementation handle that names a woven call to a
+  static handle on that call's hook, and widens the captured receiver in the call site's descriptor
+  to the hook's type, because the factory requires captured types to match exactly. Serializable
+  lambdas and every other `invokedynamic`, record `ObjectMethods` bootstraps included, pass through
+  untouched.
 - **The agent sees a `SimpleDateFormat`, `StringBuilder` or `NumberFormat` reached through a wider
   static type (#542).** The weaver matched a call only when its owner was the concrete type or a
   subtype, so `dateFormat.format(date)` on a `SimpleDateFormat` held as a `DateFormat`,

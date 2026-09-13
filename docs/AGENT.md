@@ -597,6 +597,13 @@ table above.
 - **JDK and framework classes are never instrumented.** Anything under `java.`/`jdk.`/`sun.`/
   `com.sun.`, Byte Buddy, this library, synthetic types, and bootstrap-loaded types are
   excluded by design.
+- **A serializable method reference is not woven.** A method reference such as `builder::append`
+or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from a hidden class
+  no agent can weave. The weaver points the lambda factory at the hook instead, so those calls are
+  observed like any other (#550), but it leaves a *serializable* lambda (`(Consumer<String> &`
+  `Serializable) builder::append`) alone: its generated `$deserializeLambda$` checks the
+  implementation method it was compiled against, and a rewritten one would fail to deserialize.
+  `MethodReferenceWeavingSparesConfinedUseTest` round-trips one to prove it still works.
 - **Drain is best-effort at JVM exit.** The drain thread flushes every 1 ms and once more on
   `stop()`, but events published in the final moments before an abrupt JVM exit may not be
   drained. (Under sustained overload the producer spin-waits rather than dropping events — the
