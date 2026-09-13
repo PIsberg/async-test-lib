@@ -50,16 +50,21 @@ final class CorpusGates {
     /**
      * The agent-fed detectors this corpus actually exercises, each of which must fire somewhere.
      *
-     * <p>The lane exposes eighteen agent-fed detectors and two of them produce every finding in
-     * the report. That is not a defect in the other sixteen: they model locks, latches, date
-     * formats and builders, and a corpus whose whole test body is "share one instance and call
+     * <p>The lane exposes eighteen agent-fed detectors and seven of them produce every finding in
+     * the report. That is not a defect in the other eleven: they model locks, latches, queues,
+     * calendars and digests, and a corpus whose whole test body is "share one instance and call
      * it" never writes those idioms down for them to see. Requiring all eighteen to fire would
      * fail on correct silence.
      *
-     * <p>These two are different. Every finding this eval has recorded on any platform came from
-     * one of them, so either going quiet across all twenty-two documented-unsafe subjects is a
-     * regression rather than a schedule. Adding a subject that wakes a third detector breaks
-     * nothing here; this set is a floor on what must speak, not a ceiling on what may.
+     * <p>These two are different from the other five as well. Both fire on library subjects,
+     * whose woven call sits inside the library's own bytecode, and {@link LibraryReach} counts this
+     * set as reach through a library; either going quiet across the whole documented-unsafe group
+     * is a regression rather than a schedule. The five shared-instance detectors the sixth wave woke
+     * ({@code StringBuilderDetector}, {@code SimpleDateFormatDetector}, {@code SharedMatcherDetector},
+     * {@code SharedFormatterDetector}, {@code SharedDecimalFormatDetector}) fire on JDK calls
+     * written in {@code CorpusEvalTest} itself, so adding them here would count a test-file call
+     * as library reach. Adding a subject that wakes another detector breaks nothing here; this set
+     * is a floor on what must speak, not a ceiling on what may.
      */
     private static final Set<DetectorType> EXERCISED_AGENT_DETECTORS =
             EnumSet.of(DetectorType.ATOMICITY_VIOLATIONS, DetectorType.SHARED_COLLECTIONS);
@@ -669,7 +674,7 @@ final class CorpusGates {
      * <ul>
      *   <li>each of {@link #EXERCISED_AGENT_DETECTORS} must report on at least one
      *       documented-not-thread-safe subject. <em>Which</em> subjects a detector catches moves
-     *       with the scheduler; whether it catches any of twenty-two does not, so a detector that
+     *       with the scheduler; whether it catches any of the group does not, so a detector that
      *       has stopped working fails here on the first run rather than on the first reader.</li>
      *   <li>the group as a whole must reach {@link #UNSAFE_DETECTION_FLOOR} of its subjects, which
      *       catches the degradation that leaves each detector alive but firing far less often.</li>

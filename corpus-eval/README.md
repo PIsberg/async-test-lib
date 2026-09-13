@@ -1,6 +1,6 @@
 # corpus-eval
 
-Measures what the 146 detectors report on 82 subjects drawn from 76 third-party classes with a
+Measures what the 146 detectors report on 139 subjects drawn from 116 third-party classes with a
 documented thread-safety contract, and how many of the 146 the run could feed at all. The write-up,
 with the numbers and what they do and do not support, is
 [docs/analysis/corpus-eval.md](../docs/analysis/corpus-eval.md).
@@ -80,6 +80,10 @@ by the test body itself is reported. It runs in the attached lane only.
    documented-thread-safe subject draws a VERDICT-tier HIGH or CRITICAL finding, if a detector the
    feed table says cannot be fed reports anyway, or if the control lane hears from the agent-fed
    pair.
+6. Keep what it drew. Decide the rows before the first run, and do not drop a documented-safe
+   subject because it drew a finding, or keep one because it stayed quiet: either choice shrinks the
+   printed bound without making the claim any stronger. A finding on a documented-safe subject is
+   the result, and it goes into an issue and the write-up rather than out of the corpus.
 
 ## Adding a recording-lane subject
 

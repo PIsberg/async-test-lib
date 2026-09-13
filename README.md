@@ -55,9 +55,9 @@ A concurrency detector is easy to make loud and hard to make right, so this proj
 independent bodies of evidence and the denominator each was measured over. Neither is a claim
 about the JVM ecosystem. Both are reproducible from this repository.
 
-### The corpus: 82 subjects nobody here wrote
+### The corpus: 139 subjects nobody here wrote
 
-`corpus-eval/` runs `@AsyncTest` over 82 subjects from commons-lang3, commons-collections4, Guava,
+`corpus-eval/` runs `@AsyncTest` over 139 subjects from commons-lang3, commons-collections4, Guava,
 Jackson, Caffeine, Netty, Spring, HikariCP and the JDK whose **own javadoc states a thread-safety
 contract**. That sentence is the ground truth, quoted in the corpus table with the file and line
 it came from, so a reader can check the classification without trusting this project. A finding on
@@ -66,28 +66,34 @@ true positive. Nothing is inferred from how the code looks.
 
 | | Result |
 |---|---|
-| Documented not thread-safe | 22 of 22 detected |
-| Documented thread-safe, with any finding at all | **0 of 60** |
-| Documented thread-safe, with a `VERDICT`-tier HIGH or CRITICAL | **0 of 60** |
+| Documented not thread-safe | 39 of 39 detected |
+| Documented thread-safe, with any finding at all | **2 of 100** |
+| Documented thread-safe, with a `VERDICT`-tier HIGH or CRITICAL | **0 of 100** |
 
-Identical on four platforms: JDK 21, 25 and 26 on Linux, and 26 on Windows. Sixty documented-safe
-subjects is what puts a **95% upper bound of 5.0%** on the false-positive rate; the bound comes
-from the size of that denominator rather than from the run of zeroes, which is why the safe side is
-the larger half of the corpus on purpose.
+A hundred documented-safe subjects is what puts a **95% upper bound of 3.0%** on the rate of
+findings a `VERDICT`-gated build would fail on; the bound comes from the size of that denominator
+rather than from the run of zeroes, which is why the safe side is the larger half of the corpus on
+purpose. The last forty were chosen before they were first run, and none was dropped for what it
+drew.
 
-The zero was not tuned. Each of the findings that used to sit in that column was traced to
-something the model could not see, filed as an issue, and closed by a rule that names an idiom and
-ships a twin pair in both directions: `ConcurrentReferenceHashMap`'s hint read re-established
-under its own lock, Netty's pool metadata built while the receiver is still exclusive to its
-builder, Jackson's racy single-check cache recognised by how it converges, and Guava's
-`synchronized`-method fields that compile to a flag and no monitor instruction. Detection stayed
-at the full unsafe group through every one of them, which is the number that matters while
-chasing the noise column: a rule that quietens a false positive by weakening detection has not
-fixed anything.
+The two `PROMPT`-tier findings are what that widening bought. Caffeine's weak interner writes its
+striped buffer table only after winning a CAS spinlock, which is not a lock the model counts.
+Netty's adaptive allocator updates a chunk's byte count under a `StampedLock` the agent does track,
+and why that was not enough is not yet diagnosed. Both are filed as issues
+([#554](https://github.com/PIsberg/async-test-lib/issues/554),
+[#555](https://github.com/PIsberg/async-test-lib/issues/555)), the same way the four
+findings before them were: `ConcurrentReferenceHashMap`'s hint
+read re-established under its own lock, Netty's pool metadata built while the receiver is still
+exclusive to its builder, Jackson's racy single-check cache recognised by how it converges, and
+Guava's `synchronized`-method fields that compile to a flag and no monitor instruction were each
+closed by a rule that names the idiom and ships a twin pair in both directions. Detection stayed at
+the full unsafe group through every one of them, which is the number that matters while chasing
+the noise column: a rule that quietens a false positive by weakening detection has not fixed
+anything.
 
 **The eval prints its denominator before any rate**, because a finding count on its own cannot
 tell "no false positive from detector X" apart from "X never ran". In code that records nothing,
-only 21 of the 146 detectors can see anything at all, and two of those produced every finding in
+only 21 of the 146 detectors can see anything at all, and seven of those produced every finding in
 the corpus. Saying so is the difference between a measurement and a marketing number. Two more
 lanes exist for exactly that reason. One records what the body did, the way a user following
 `AsyncTestContext` would; the other attaches the agent and writes the bug next to its fix. Between
