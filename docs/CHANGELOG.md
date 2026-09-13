@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A fifth corpus lane checks that each library pair's finding comes from the library (#544).**
+  `agent-pairs-library-excluded` reruns the agent-pair lane's library rows with every corpus library
+  on the agent's `excludes=` list, so the JDK calls inside Guava, Jackson and HikariCP are no longer
+  substituted. Every library firing row must go silent there. It also fails when a library row's
+  package is missing from the list or a row did not run in full. This replaces a one-off manual run
+  with a check on every build, at about 16 s per corpus leg: only the 20 library rows run in it.
+  Verified by rewriting one library row to take its lock in the test body. The agent-pair lane
+  stayed green and the new lane failed naming that row.
 - **The corpus measures 12 of the 18 agent-fed detectors on a call site inside a library.** Ten new
   agent-lane pairs call only Guava, Jackson or HikariCP, so the JDK call the detector is fed by is
   woven inside the library's own class file rather than written in the test. A run with those

@@ -125,7 +125,7 @@ final class CorpusReport {
         StringBuilder out = new StringBuilder();
         out.append("# Corpus eval run - ").append(lane.propertyValue()).append(" lane\n\n")
                 .append("The subjects are the same unmodified third-party classes the other lanes ")
-                .append(lane == CorpusLane.AGENT_PAIRS
+                .append(lane == CorpusLane.AGENT_PAIRS || lane == CorpusLane.AGENT_PAIRS_LIBRARY_EXCLUDED
                         ? "use, except that these subjects are JDK types. What differs is the "
                         + "test body, which records nothing and gets its entire input from the "
                         + "call sites the agent substitutes. These numbers are a "
@@ -144,6 +144,9 @@ final class CorpusReport {
                 .append(", detectAll=true, agent=")
                 .append(lane == CorpusLane.AGENT_PAIRS
                         ? "fields=true,collections=true (the only feed in this lane)\n"
+                        : lane == CorpusLane.AGENT_PAIRS_LIBRARY_EXCLUDED
+                        ? "fields=true,collections=true with the library packages excluded, so every "
+                        + "library row's firing half must be silent\n"
                         : "(not attached, on purpose)\n")
                 .append("- Body executions: ").append(CorpusRecorder.bodyExecutions()).append('\n')
                 .append(LibraryBuild.describe()).append("\n\n");

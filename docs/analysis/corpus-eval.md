@@ -1643,7 +1643,7 @@ class under `async-test-agent/target/classes`.
 
 ```bash
 mvn install -DskipTests -Djacoco.skip=true    # the reactor, so the module can resolve the version
-mvn -f corpus-eval/pom.xml test               # writes all four lanes under corpus-eval/target/corpus-eval/
+mvn -f corpus-eval/pom.xml test               # writes all five lanes under corpus-eval/target/corpus-eval/
 ```
 
 The generated reports carry the lane, the JVM, the OS, the configuration, the exposure tables and
@@ -1846,8 +1846,16 @@ method can still be wrong about that, so the lane was run once with
 `excludes=com.google;com.fasterxml;com.zaxxer` added to the agent options of the `agent-pairs`
 execution. Exactly the ten library MUST_FIRE rows went silent, and none of the other 44 rows
 changed outcome. Each of those ten findings therefore came from the library's bytecode and from
-nothing in this module. That was a one-off run, not a gate; making it one is
-[#544](https://github.com/PIsberg/async-test-lib/issues/544).
+nothing in this module. That was a one-off run when this section was written. It is now a fifth lane,
+`agent-pairs-library-excluded` ([#544](https://github.com/PIsberg/async-test-lib/issues/544)): every
+library row runs again with the libraries on the agent's exclude list, and the run fails if a firing
+row still fires, if a library row's package is missing from that list, or if a row did not run its
+full 240 executions. Only library rows run in it, 20 of 54, in about 16 s. Verified by breaking it:
+`agent_guavaMonitorEnter_neverLeft` rewritten to take a `ReentrantLock` in the test body, with its
+silent twin taking and releasing one too so the same-calls premise still holds. The agent-pair lane
+stayed green, 54 of 54, because the leak is real wherever it is written; the exclusion lane went red
+naming exactly that row. That is the regression the lane is for: a library pair quietly turning into
+a test-file pair while still being counted as library reach.
 
 **What the first run found.** `agent_hikariSleep_whileOccupyingAMonitor` came out `SILENT but must
 fire`, and the row was right. `AgentSleepHooks` passes whatever sits on top of the agent's lockset

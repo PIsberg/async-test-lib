@@ -60,7 +60,24 @@ enum CorpusLane {
      * <p>Its silent rows keep the tier bar rather than the recording lane's absolute one, for a
      * reason that follows from the premise above. See {@link #failsOnAnyCollateral()}.
      */
-    AGENT_PAIRS("agent-pairs", "corpus-eval-agent-pairs.md");
+    AGENT_PAIRS("agent-pairs", "corpus-eval-agent-pairs.md"),
+
+    /**
+     * The agent-pair lane's library rows again, with those libraries excluded from weaving.
+     *
+     * <p>A library pair's claim is that its finding came from a call inside Guava, Jackson or
+     * HikariCP, not from anything in the test file. Its body calls no woven JDK method, but that
+     * is a property of how it was written, and nothing re-checked it: a later edit that put a
+     * {@code countDown()} or a {@code release()} into a firing body would keep passing and keep
+     * being counted by {@link LibraryReach}, while the finding came from the test (#544).
+     *
+     * <p>So the same rows run here with every library package excluded from the agent. The JDK
+     * call sites inside those libraries are no longer substituted, and each firing row must
+     * therefore go silent: a finding that survives came from outside the library. Only library
+     * rows run, which keeps the lane to about half of the agent-pair lane's time.
+     */
+    AGENT_PAIRS_LIBRARY_EXCLUDED("agent-pairs-library-excluded",
+            "corpus-eval-agent-pairs-library-excluded.md");
 
     private final String propertyValue;
     private final String reportFile;
@@ -119,6 +136,11 @@ enum CorpusLane {
         return this == RECORDING;
     }
 
+    /** {@return whether the agent is attached with -javaagent in this lane} */
+    boolean attachesTheAgent() {
+        return this == AGENT_ON || this == AGENT_PAIRS || this == AGENT_PAIRS_LIBRARY_EXCLUDED;
+    }
+
     /** {@return the lane this JVM is running, defaulting to the attached one} */
     static CorpusLane current() {
         String configured = System.getProperty("corpus.lane", AGENT_ON.propertyValue);
@@ -128,7 +150,7 @@ enum CorpusLane {
             }
         }
         throw new IllegalStateException("-Dcorpus.lane=" + configured + " names no lane; expected "
-                + AGENT_ON.propertyValue + ", " + AGENT_OFF.propertyValue + " or "
-                + RECORDING.propertyValue + " or " + AGENT_PAIRS.propertyValue);
+                + "one of " + java.util.Arrays.stream(values())
+                        .map(lane -> lane.propertyValue).toList());
     }
 }
