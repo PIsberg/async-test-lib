@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`AsyncTestConfig`'s public boolean fields and `detect*`/`monitor*` builder setters survive 2.0.0
+  (#383).** `docs/analysis/roadmap-v2.md` planned to remove them in Train 3, but none of the 151 fields
+  or 145 setters was ever deprecated. The roadmap's own Consumers rule requires two minor releases
+  of deprecation first, which would have put warnings on every consumer's configuration code to
+  delete an API that still works. The roadmap now says they stay, and become one-line derivations
+  of the `EnumSet` once Train 1 lands. Removing the deprecated `@AsyncTest` attributes and
+  `AsyncTestContext.*Monitor()` accessors is still planned.
 - **A fifth corpus lane checks that each library pair's finding comes from the library (#544).**
   `agent-pairs-library-excluded` reruns the agent-pair lane's library rows with every corpus library
   on the agent's `excludes=` list, so the JDK calls inside Guava, Jackson and HikariCP are no longer

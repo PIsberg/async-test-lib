@@ -55,8 +55,8 @@ clear that it does **not** reduce line count on its own:
 
 What it does move is the *logic*: resolution stops being 147 independent expressions that can each
 be wrong, and becomes one loop over the enum. The 147 becomes 146 mechanical assignments that
-cannot be individually wrong and that Train 3 deletes outright. That is the win; a smaller file is
-not.
+cannot be individually wrong. They are not deleted in Train 3: the boolean surface stays public
+through 2.0.0 (decided 2026-09-13, see Train 3). That is the win; a smaller file is not.
 
 ### Recommended next step
 
@@ -151,14 +151,18 @@ name their replacement. Each item below says whether it is ready.
   `@deprecated` tag naming `preset` / `includes` / `excludes` and a `DetectorType`, and
   `DeprecationsNameTheirReplacementTest` keeps that true. Seven of them had no tag at all until
   2026-08-27.
-* Remove the deprecated public boolean fields/builder setters from `AsyncTestConfig`
-  (the `EnumSet` is already the source of truth). **Not ready, and the premise is wrong:** as of
-  2026-08-27 `AsyncTestConfig` carries ~146 `public final boolean detect*` fields and 140
-  `detect*(boolean)` builder setters, and *none of them is deprecated*. The Consumers rule below
-  requires a deprecation to ship first, so that clock has never started. Deciding it needs the
-  builder's replacement settled too: it has `includes`, `excludes` and `detectAll` but no
-  `preset(...)`, because preset resolution lives in `from(AsyncTest, int)` and never reaches the
-  builder. Tracked in issue #383.
+* ~~Remove the public boolean fields/builder setters from `AsyncTestConfig`.~~ **Dropped from
+  2.0.0, decided 2026-09-13 (#383).** They survive the breaking release. Measured that day:
+  `AsyncTestConfig` carries 151 `public final boolean` fields and 145 `detect*`/`monitor*`
+  builder setters, and none of them is deprecated. Removing them would first mean deprecating
+  about 296 members, which puts a warning on every consumer's configuration code and starts the
+  two-minor-release clock the Consumers rule below requires, all to delete an API that still
+  works. The builder also has nothing to point those deprecations at: it has `includes`,
+  `excludes` and `detectAll` but no `preset(...)`, because preset resolution lives in
+  `from(AsyncTest, int)` and never reaches it. What changes instead is Train 1's: once the
+  `EnumSet` is the source of truth, each field becomes a one-line derivation of it and stops being
+  an independent resolution that can be wrong. The annotation attributes and the `*Monitor()`
+  accessors are unaffected by this decision and stay on the list below.
 * Remove the 42 deprecated `*Monitor()` accessors from `AsyncTestContext` (renamed
   `*Detector()` aliases shipped in 1.7). Ready: all 42 name their replacement. Four are not a
   suffix swap and one defeats a global `Monitor` to `Detector` replace; `docs/MIGRATION.md` lists
@@ -191,4 +195,6 @@ name their replacement. Each item below says whether it is ready.
   factory-table pattern (owner action — the guardrails file is maintainer-owned).
 * **Consumers**: every removal in Train 3 ships deprecated (with `@deprecated` pointers to
   the replacement) for at least two minor releases first, so migration is a
-  find-and-replace, and the deprecations themselves document it.
+  find-and-replace, and the deprecations themselves document it. That rule is what took the
+  `AsyncTestConfig` booleans off the list: an API nobody has been warned about cannot be one
+  of the removals.
