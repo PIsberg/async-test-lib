@@ -936,6 +936,34 @@ class CorpusAgentPairLaneTest {
         });
     }
 
+    /** The Formatter every thread hands to commons-lang3's FormattableUtils. */
+    private static final Formatter SHARED_FORMATTABLE_SINK = new Formatter(new StringBuilder());
+
+    /**
+     * Every thread asks commons-lang3 to pad a value into the one Formatter.
+     *
+     * <p>{@code FormattableUtils.append} is the helper a {@code Formattable.formatTo} implementation
+     * calls with the {@code Formatter} it was handed; it pads the text and then calls
+     * {@code formatter.format(...)} itself. That call is the woven one, in commons-lang3's class
+     * file. The class is deprecated in favour of commons-text's copy, which does the same thing.
+     */
+    @SuppressWarnings("deprecation")
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_lang3FormattableAppend_oneFormatterForEveryThread() {
+        swallowingTheRace(() -> org.apache.commons.lang3.text.FormattableUtils.append(
+                "corpus", SHARED_FORMATTABLE_SINK, 0, 8, -1));
+    }
+
+    /** The same padding into a Formatter this call made. */
+    @SuppressWarnings("deprecation")
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_lang3FormattableAppend_oneFormatterPerCall() {
+        swallowingTheRace(() -> {
+            try (Formatter mine = new Formatter(new StringBuilder())) {
+                org.apache.commons.lang3.text.FormattableUtils.append("corpus", mine, 0, 8, -1);
+            }
+        });
+    }
     /**
      * Leaves a Guava monitor after a {@code tryEnter} that returned false.
      *

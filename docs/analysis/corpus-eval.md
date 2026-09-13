@@ -1877,16 +1877,15 @@ detector the whole lockset, and a `StampedLock` entry counts when the lock is he
 mode. `agent_sleepStamped_whileHoldingTheWriteStamp` and its released twin pair that shape through
 the agent, and were as stated on their first run.
 
-**Where it stops.** With these pairs and the two #542 added, 14 of the 18 agent-fed detectors are measured in both
-directions on call sites inside a library. `LibraryReach` records why the other four are not, and
+**Where it stops.** With these pairs, the two #542 added and the commons-lang3 one below, 15 of the 18 agent-fed detectors are measured in both
+directions on call sites inside a library. `LibraryReach` records why the other three are not, and
 `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions, the same
 arrangement `DetectorCoverage` uses for refusals:
 
 | Detector | Why no corpus library reaches it |
 |---|---|
 | `SHARED_MATCHER` | every library creates a `Matcher` per call, so there is a silent half and no bug to pair it with ([#545](https://github.com/PIsberg/async-test-lib/issues/545)) |
-| `SHARED_FORMATTER` | no corpus library calls `Formatter.format` ([#545](https://github.com/PIsberg/async-test-lib/issues/545)) |
-| `LATCH_MISUSE` | no corpus library counts down a latch the caller supplies ([#545](https://github.com/PIsberg/async-test-lib/issues/545)) |
+| `LATCH_MISUSE` | no corpus library counts down a latch the caller supplies; the usual library shape, `future.addListener(latch::countDown, executor)`, passes a method reference, which the agent cannot see ([#545](https://github.com/PIsberg/async-test-lib/issues/545), [#550](https://github.com/PIsberg/async-test-lib/issues/550)) |
 | `EXPLICIT_GC` | no corpus library calls `System.gc`, and the detector is refused in every lane |
 
 When this section was first written the table had two more rows, and they were the more useful
@@ -1905,6 +1904,20 @@ holds as a `DateFormat`; Spring's `NumberUtils.parseNumber` with a shared `Decim
 Guava's `Joiner.appendTo` into a shared builder. All six rows were as stated on their first run.
 Verified the other way by mutation: removing the `NumberFormat.parse` entries, or the
 `Appendable` entries, turns `WiderOwnerWeavingTest` red on exactly that detector.
+
+`SHARED_FORMATTER` was on that list with the reason that no corpus library calls `Formatter.format`,
+and that was wrong: the search behind it looked for `Formatter` fields and locals, not parameters.
+commons-lang3's `FormattableUtils.append(seq, formatter, ...)`, the helper a `Formattable.formatTo`
+implementation calls, pads the text and calls `format` on the `Formatter` it was handed.
+`agent_lang3FormattableAppend_oneFormatterForEveryThread` and its per-call twin pair it through that
+call and were as stated on their first run (#545).
+
+The same search, widened to parameters, is also what exposed a general agent limit. A library that
+counts down a caller's latch usually does it through a method reference, and a throwaway probe on a
+shared `StringBuilder` showed that `builder::append` produces no finding while the lambda
+`s -> builder.append(s)` does: the call behind a method reference is made from a hidden class the
+agent cannot weave. That is [#550](https://github.com/PIsberg/async-test-lib/issues/550), and it
+applies to every detector the agent feeds.
 
 **One gate had to change for this.** `AgentRowPremise` compared a firing row against the first
 silent row naming the same detector. With a JDK pair and a library pair for one detector, that
