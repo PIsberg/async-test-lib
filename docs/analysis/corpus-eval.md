@@ -1850,7 +1850,7 @@ nothing in this module. That was a one-off run when this section was written. It
 `agent-pairs-library-excluded` ([#544](https://github.com/PIsberg/async-test-lib/issues/544)): every
 library row runs again with the libraries on the agent's exclude list, and the run fails if a firing
 row still fires, if a library row's package is missing from that list, or if a row did not run its
-full 240 executions. Only library rows run in it, 20 of 54, in about 16 s. Verified by breaking it:
+full 240 executions. Only library rows run in it: 20 of 54 when it was added, in about 16 s. Verified by breaking it:
 `agent_guavaMonitorEnter_neverLeft` rewritten to take a `ReentrantLock` in the test body, with its
 silent twin taking and releasing one too so the same-calls premise still holds. The agent-pair lane
 stayed green, 54 of 54, because the leak is real wherever it is written; the exclusion lane went red
@@ -1877,26 +1877,34 @@ detector the whole lockset, and a `StampedLock` entry counts when the lock is he
 mode. `agent_sleepStamped_whileHoldingTheWriteStamp` and its released twin pair that shape through
 the agent, and were as stated on their first run.
 
-**Where it stops.** With these pairs, 12 of the 18 agent-fed detectors are measured in both
-directions on call sites inside a library. `LibraryReach` records why the other six are not, and
+**Where it stops.** With these pairs and the two #542 added, 14 of the 18 agent-fed detectors are measured in both
+directions on call sites inside a library. `LibraryReach` records why the other four are not, and
 `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions, the same
 arrangement `DetectorCoverage` uses for refusals:
 
 | Detector | Why no corpus library reaches it |
 |---|---|
-| `SIMPLE_DATE_FORMAT` | Jackson builds `SimpleDateFormat` instances but formats through a `DateFormat` reference, which the weaver does not substitute ([#542](https://github.com/PIsberg/async-test-lib/issues/542)) |
-| `SHARED_DECIMAL_FORMAT` | the only woven `NumberFormat.format` is on a local in Spring's `StopWatch`; Spring's `NumberUtils` takes a caller's format but calls `parse`, which is not woven ([#542](https://github.com/PIsberg/async-test-lib/issues/542)) |
 | `SHARED_MATCHER` | every library creates a `Matcher` per call, so there is a silent half and no bug to pair it with ([#545](https://github.com/PIsberg/async-test-lib/issues/545)) |
 | `SHARED_FORMATTER` | no corpus library calls `Formatter.format` ([#545](https://github.com/PIsberg/async-test-lib/issues/545)) |
 | `LATCH_MISUSE` | no corpus library counts down a latch the caller supplies ([#545](https://github.com/PIsberg/async-test-lib/issues/545)) |
 | `EXPLICIT_GC` | no corpus library calls `System.gc`, and the detector is refused in every lane |
 
-The first two rows are the more useful finding. They are not corpus limits, they are agent limits
-that a user's own dependencies hit: a shared `SimpleDateFormat` held as a `DateFormat`, or a shared
-`StringBuilder` passed to Guava's `Joiner.appendTo`, which goes through `Appendable`, is invisible
-to its detector. The JDK pairs could not show that, because the test file calls the concrete type.
-Both are read from the weaver's owner rule and the library sources rather than run; a pair that
-proves each belongs with the fix in #542.
+When this section was first written the table had two more rows, and they were the more useful
+finding, because they were agent limits rather than corpus limits. The weaver matched a call only
+when its owner was the entry's type or a subtype, so a `SimpleDateFormat` held as a `DateFormat`,
+a `StringBuilder` passed as an `Appendable`, and any `NumberFormat.parse` were never substituted.
+That is how Jackson, Guava and Spring hold those objects, so a user's own dependencies hit it.
+
+[#542](https://github.com/PIsberg/async-test-lib/issues/542) widened the table to `DateFormat.format`/`parse`,
+`Appendable.append` and `NumberFormat.parse`. The first two have thread-safe implementations (a
+stateless `DateFormat` subclass, `StringBuffer`, every `Writer`), so their hooks record only when
+the runtime receiver is a `SimpleDateFormat` or a `StringBuilder`; `WiderOwnerWeavingSparesConfinedUseTest`
+shares one of each safe kind and must stay silent. Three pairs now go through exactly those call
+sites: Jackson's `StdDateFormat` parsing RFC 1123 text, which it does with a `SimpleDateFormat` it
+holds as a `DateFormat`; Spring's `NumberUtils.parseNumber` with a shared `DecimalFormat`; and
+Guava's `Joiner.appendTo` into a shared builder. All six rows were as stated on their first run.
+Verified the other way by mutation: removing the `NumberFormat.parse` entries, or the
+`Appendable` entries, turns `WiderOwnerWeavingTest` red on exactly that detector.
 
 **One gate had to change for this.** `AgentRowPremise` compared a firing row against the first
 silent row naming the same detector. With a JDK pair and a library pair for one detector, that

@@ -839,6 +839,103 @@ class CorpusAgentPairLaneTest {
         });
     }
 
+    // --- Through a wider static type (#542). The three pairs below reach their JDK object only
+    //     through DateFormat, NumberFormat.parse or Appendable, which is how these libraries hold
+    //     it. Before the weaver matched those owners, all three firing rows would have been silent.
+
+    /** RFC 1123 text, which StdDateFormat hands to the SimpleDateFormat it keeps as a DateFormat. */
+    private static final String RFC_1123_EPOCH = "Thu, 01 Jan 1970 00:00:00 GMT";
+
+    /** One Jackson date format every thread parses RFC 1123 text with. */
+    private static final StdDateFormat SHARED_RFC_PARSER = new StdDateFormat();
+
+    /** One DecimalFormat every thread hands to Spring's NumberUtils. */
+    private static final java.text.NumberFormat SHARED_NUMBER_FORMAT =
+            new java.text.DecimalFormat("#.##",
+                    java.text.DecimalFormatSymbols.getInstance(java.util.Locale.ROOT));
+
+    /** The builder every thread hands to Guava's Joiner. */
+    private static final StringBuilder SHARED_JOINED = new StringBuilder();
+
+    /** A thread-safe Joiner, as Guava documents; only the builder passed to it is shared state. */
+    private static final com.google.common.base.Joiner JOINER =
+            com.google.common.base.Joiner.on(',');
+
+    /**
+     * Every thread parses RFC 1123 text through the one Jackson {@code StdDateFormat}.
+     *
+     * <p>{@code StdDateFormat} lazily clones a {@code SimpleDateFormat} into a field typed
+     * {@code DateFormat} and calls {@code parse(String, ParsePosition)} on it. The owner of that
+     * call is {@code DateFormat}, which is what the weaver could not match.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_jacksonRfc1123Parse_oneFormatForEveryThread() {
+        swallowingTheRace(() -> {
+            try {
+                SHARED_RFC_PARSER.parse(RFC_1123_EPOCH);
+            } catch (java.text.ParseException raced) {
+                // A shared format mangled mid-parse is the bug doing what the bug does.
+            }
+        });
+    }
+
+    /** The same RFC 1123 parse on a format this call built. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_jacksonRfc1123Parse_oneFormatPerCall() {
+        swallowingTheRace(() -> {
+            try {
+                new StdDateFormat().parse(RFC_1123_EPOCH);
+            } catch (java.text.ParseException unexpected) {
+                throw new IllegalStateException("a confined format parses RFC 1123", unexpected);
+            }
+        });
+    }
+
+    /**
+     * Every thread parses with the one DecimalFormat, through Spring's {@code NumberUtils}.
+     *
+     * <p>{@code parseNumber(String, Class, NumberFormat)} calls {@code NumberFormat.parse} on the
+     * format it is handed, which the weaver did not substitute at all while only {@code format}
+     * was in its table.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_springParseNumber_oneFormatForEveryThread() {
+        swallowingTheRace(() -> org.springframework.util.NumberUtils.parseNumber(
+                "12.5", Double.class, SHARED_NUMBER_FORMAT));
+    }
+
+    /** The same Spring call with a format built for it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_springParseNumber_oneFormatPerCall() {
+        swallowingTheRace(() -> org.springframework.util.NumberUtils.parseNumber(
+                "12.5", Double.class, new java.text.DecimalFormat("#.##",
+                        java.text.DecimalFormatSymbols.getInstance(java.util.Locale.ROOT))));
+    }
+
+    /**
+     * Every thread asks Guava to join into the one builder.
+     *
+     * <p>{@code Joiner.appendTo(StringBuilder, Iterable)} writes through {@code Appendable}, so
+     * the append the detector hears is an {@code Appendable.append} call in Guava's class file.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaJoinerAppendTo_oneBuilderForEveryThread() {
+        swallowingTheRace(() -> {
+            JOINER.appendTo(SHARED_JOINED, java.util.List.of("a", "b", "c"));
+            SHARED_JOINED.setLength(0);
+        });
+    }
+
+    /** The same join into a builder this call made. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaJoinerAppendTo_oneBuilderPerCall() {
+        swallowingTheRace(() -> {
+            StringBuilder mine = new StringBuilder();
+            JOINER.appendTo(mine, java.util.List.of("a", "b", "c"));
+            mine.setLength(0);
+        });
+    }
+
     /**
      * Leaves a Guava monitor after a {@code tryEnter} that returned false.
      *

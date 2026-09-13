@@ -33,16 +33,6 @@ final class LibraryReach {
     private static final Map<DetectorType, String> UNREACHED = new EnumMap<>(DetectorType.class);
 
     static {
-        unreached(DetectorType.SIMPLE_DATE_FORMAT,
-                "Jackson builds SimpleDateFormat instances in its date serializers and "
-                        + "StdDateFormat, but formats and parses through a DateFormat reference, and the weaver substitutes a call "
-                        + "only when its owner is SimpleDateFormat or a subtype. The one "
-                        + "SimpleDateFormat-typed call, in netty's Version, is on a local");
-        unreached(DetectorType.SHARED_DECIMAL_FORMAT,
-                "the only woven NumberFormat.format call is in Spring's StopWatch.prettyPrint, on "
-                        + "a NumberFormat it creates per call. Spring's NumberUtils takes a "
-                        + "caller's format but calls parse, which is not woven, and "
-                        + "commons-collections4's MapUtils parses with an instance of its own");
         unreached(DetectorType.SHARED_MATCHER,
                 "every corpus library creates a Matcher per call from a shared Pattern, which is "
                         + "the correct shape, so there is a silent half and no library bug to pair "

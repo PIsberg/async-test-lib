@@ -96,6 +96,16 @@ class WovenOverloadCoverageTest {
         decided("java.text.SimpleDateFormat#format(java.lang.Object, java.lang.StringBuffer, "
                         + "java.text.FieldPosition)",
                 "the Format SPI; same reason as the Date form");
+        decided("java.text.DateFormat#format(java.lang.Object)",
+                "declared final on java.text.Format; same reason as NumberFormat.format(Object)");
+        decided("java.text.DateFormat#format(java.util.Date, java.lang.StringBuffer, "
+                        + "java.text.FieldPosition)",
+                "the Format SPI a DateFormat subclass implements, and the one format(Date) calls "
+                        + "itself; a library reaches a shared format through format(Date), which "
+                        + "is woven (#542)");
+        decided("java.text.DateFormat#format(java.lang.Object, java.lang.StringBuffer, "
+                        + "java.text.FieldPosition)",
+                "the Format SPI; same reason as the Date form");
 
         // KNOWN_GAP is deliberately empty. The three entries it held - Thread.sleep(Duration),
         // Thread.sleep(long, int) and Map.remove(Object, Object) - were closed in #440, and the

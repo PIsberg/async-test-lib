@@ -2,7 +2,9 @@ package se.deversity.asynctest;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
+import java.io.IOException;
 import java.security.MessageDigest;
+import java.text.DateFormat;
 import java.text.NumberFormat;
 import java.text.ParseException;
 import java.text.ParsePosition;
@@ -54,7 +56,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.10.0
  */
-@AIContract(reason = "Called from bytecode the agent rewrites: the method names and erased signatures here are matched by CollectionAccessWeaver.SHARED_INSTANCE_ENTRIES and cannot change independently of it. Every hook must perform the original operation and propagate its exceptions unchanged, and must record before delegating only where the original cannot throw first - the detector's question is 'did two threads touch this instance', which a call that threw still answers. The receiver types are deliberately concrete and free of thread-safe subclasses: adding one that has a safe subclass, Random being the standing example with ThreadLocalRandom, turns every substituted call site into a potential false positive on correct code.")
+@AIContract(reason = "Called from bytecode the agent rewrites: the method names and erased signatures here are matched by CollectionAccessWeaver.SHARED_INSTANCE_ENTRIES and cannot change independently of it. Every hook must perform the original operation and propagate its exceptions unchanged, and must record before delegating only where the original cannot throw first - the detector's question is 'did two threads touch this instance', which a call that threw still answers. A receiver type that has thread-safe subclasses may be woven only when its hook checks the runtime type before recording: DateFormat records only a SimpleDateFormat and Appendable only a StringBuilder (#542). Without that check, Random being the standing example with ThreadLocalRandom, every substituted call site becomes a potential false positive on correct code.")
 public final class AgentSharedInstanceHooks {
 
     private AgentSharedInstanceHooks() {
@@ -109,6 +111,73 @@ public final class AgentSharedInstanceHooks {
             detector.recordParse(receiver, receiver.getClass().getName());
         }
         return receiver.parse(source, position);
+    }
+
+    /**
+     * Weaves {@code DateFormat.format(Date)}, recording only when the receiver is a
+     * {@code SimpleDateFormat}.
+     *
+     * <p>Library code rarely holds the concrete type. Jackson builds {@code SimpleDateFormat}
+     * instances and keeps them in {@code DateFormat} fields, and the weaver matches a call only
+     * when its owner is the entry's type or a subtype, so none of those calls was substituted
+     * (#542). {@code DateFormat} has subclasses of every kind, including stateless ones, so the
+     * static type is not evidence and the runtime type is checked before recording.
+     *
+     * @param receiver the format
+     * @param date     the date to format
+     * @return the formatted text
+     * @since 1.12.1
+     */
+    public static String format(DateFormat receiver, Date date) {
+        if (receiver instanceof SimpleDateFormat simple) {
+            SimpleDateFormatDetector detector = AsyncTestContext.currentSimpleDateFormatDetector();
+            if (detector != null) {
+                detector.recordFormat(simple, simple.getClass().getName());
+            }
+        }
+        return receiver.format(date);
+    }
+
+    /**
+     * Weaves {@code DateFormat.parse(String)}, recording only when the receiver is a
+     * {@code SimpleDateFormat}.
+     *
+     * @param receiver the format
+     * @param source   the text to parse
+     * @return the parsed date
+     * @throws ParseException if the text cannot be parsed
+     * @since 1.12.1
+     */
+    public static Date parse(DateFormat receiver, String source) throws ParseException {
+        recordDateFormatParse(receiver);
+        return receiver.parse(source);
+    }
+
+    /**
+     * Weaves {@code DateFormat.parse(String, ParsePosition)}, recording only when the receiver is
+     * a {@code SimpleDateFormat}.
+     *
+     * <p>Jackson's {@code StdDateFormat} parses RFC 1123 text through exactly this call, on a
+     * {@code SimpleDateFormat} it holds as a {@code DateFormat}.
+     *
+     * @param receiver the format
+     * @param source   the text to parse
+     * @param position where to start, updated to where parsing stopped
+     * @return the parsed date, or {@code null} if the text did not match
+     * @since 1.12.1
+     */
+    public static Date parse(DateFormat receiver, String source, ParsePosition position) {
+        recordDateFormatParse(receiver);
+        return receiver.parse(source, position);
+    }
+
+    private static void recordDateFormatParse(DateFormat receiver) {
+        if (receiver instanceof SimpleDateFormat simple) {
+            SimpleDateFormatDetector detector = AsyncTestContext.currentSimpleDateFormatDetector();
+            if (detector != null) {
+                detector.recordParse(simple, simple.getClass().getName());
+            }
+        }
     }
 
     /**
@@ -484,6 +553,66 @@ public final class AgentSharedInstanceHooks {
     }
 
     /**
+     * Weaves {@code Appendable.append(CharSequence)}, recording only when the receiver is a
+     * {@code StringBuilder}.
+     *
+     * <p>Library code appends through {@code Appendable}: Guava's {@code Joiner.appendTo} takes a
+     * {@code StringBuilder} and writes to it through that interface, so a builder shared across
+     * threads and handed to Guava was never observed (#542). {@code Appendable} is also
+     * {@code StringBuffer}, {@code Writer} and a dozen safe things, which is why the static type
+     * alone is not evidence and the runtime type is checked before recording.
+     *
+     * @param receiver the appendable
+     * @param value    the sequence to append
+     * @return the receiver, so the call chain is unchanged
+     * @throws IOException if the receiver's append throws
+     * @since 1.12.1
+     */
+    public static Appendable append(Appendable receiver, CharSequence value) throws IOException {
+        if (receiver instanceof StringBuilder builder) {
+            recordBuilder(builder);
+        }
+        return receiver.append(value);
+    }
+
+    /**
+     * Weaves {@code Appendable.append(char)}, recording only when the receiver is a
+     * {@code StringBuilder}.
+     *
+     * @param receiver the appendable
+     * @param value    the character to append
+     * @return the receiver, so the call chain is unchanged
+     * @throws IOException if the receiver's append throws
+     * @since 1.12.1
+     */
+    public static Appendable append(Appendable receiver, char value) throws IOException {
+        if (receiver instanceof StringBuilder builder) {
+            recordBuilder(builder);
+        }
+        return receiver.append(value);
+    }
+
+    /**
+     * Weaves {@code Appendable.append(CharSequence, int, int)}, recording only when the receiver
+     * is a {@code StringBuilder}.
+     *
+     * @param receiver the appendable
+     * @param value    the sequence to append from
+     * @param start    the first index to append
+     * @param end      the index after the last one to append
+     * @return the receiver, so the call chain is unchanged
+     * @throws IOException if the receiver's append throws
+     * @since 1.12.1
+     */
+    public static Appendable append(Appendable receiver, CharSequence value, int start, int end)
+            throws IOException {
+        if (receiver instanceof StringBuilder builder) {
+            recordBuilder(builder);
+        }
+        return receiver.append(value, start, end);
+    }
+
+    /**
      * Weaves {@code NumberFormat.format(long)}.
      *
      * <p>Formatting an integral value is at least as common as formatting a {@code double}, and
@@ -508,6 +637,39 @@ public final class AgentSharedInstanceHooks {
     public static String format(NumberFormat receiver, double value) {
         recordNumberFormat(receiver);
         return receiver.format(value);
+    }
+
+    /**
+     * Weaves {@code NumberFormat.parse(String)}.
+     *
+     * <p>Parsing drives the same digit list and position state formatting does, and a caller that
+     * hands a shared format to a parsing utility (Spring's {@code NumberUtils.parseNumber} takes
+     * one) was invisible while only {@code format} was woven (#542). Every JDK
+     * {@code NumberFormat} is unsafe to share, so no runtime check is needed here.
+     *
+     * @param receiver the format
+     * @param source   the text to parse
+     * @return the parsed number
+     * @throws ParseException if the text cannot be parsed
+     * @since 1.12.1
+     */
+    public static Number parse(NumberFormat receiver, String source) throws ParseException {
+        recordNumberFormat(receiver);
+        return receiver.parse(source);
+    }
+
+    /**
+     * Weaves {@code NumberFormat.parse(String, ParsePosition)}.
+     *
+     * @param receiver the format
+     * @param source   the text to parse
+     * @param position where to start, updated to where parsing stopped
+     * @return the parsed number, or {@code null} if the text did not match
+     * @since 1.12.1
+     */
+    public static Number parse(NumberFormat receiver, String source, ParsePosition position) {
+        recordNumberFormat(receiver);
+        return receiver.parse(source, position);
     }
 
     private static void recordNumberFormat(NumberFormat receiver) {

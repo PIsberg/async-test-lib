@@ -134,6 +134,11 @@ class AgentSharedInstanceHooksTest {
             AgentSharedInstanceHooks.format(one, new Date(0));
             AgentSharedInstanceHooks.parse(one, "2026-09-02");
             AgentSharedInstanceHooks.parse(one, "2026-09-02", new ParsePosition(0));
+            // The same three through the DateFormat-typed hooks (#542), on the same instance.
+            java.text.DateFormat wide = one;
+            AgentSharedInstanceHooks.format(wide, new Date(0));
+            AgentSharedInstanceHooks.parse(wide, "2026-09-02");
+            AgentSharedInstanceHooks.parse(wide, "2026-09-02", new ParsePosition(0));
         }));
         assertTrue(with(shared, () -> AsyncTestContext.simpleDateFormatDetector().analyze().hasIssues()),
                 "one SimpleDateFormat used by two threads through the hooks must be reported");
@@ -144,6 +149,10 @@ class AgentSharedInstanceHooksTest {
             AgentSharedInstanceHooks.format(mine, new Date(0));
             AgentSharedInstanceHooks.parse(mine, "2026-09-02");
             AgentSharedInstanceHooks.parse(mine, "2026-09-02", new ParsePosition(0));
+            java.text.DateFormat wide = mine;
+            AgentSharedInstanceHooks.format(wide, new Date(0));
+            AgentSharedInstanceHooks.parse(wide, "2026-09-02");
+            AgentSharedInstanceHooks.parse(wide, "2026-09-02", new ParsePosition(0));
         }));
         assertFalse(with(confined, () -> AsyncTestContext.simpleDateFormatDetector().analyze().hasIssues()),
                 "one SimpleDateFormat per thread, through the same hooks, is correct code");
@@ -241,7 +250,10 @@ class AgentSharedInstanceHooksTest {
     void stringBuilder() {
         AsyncTestContext shared = newContext();
         StringBuilder one = new StringBuilder();
-        onTwoThreads(shared, true, () -> appendEverything(one));
+        onTwoThreads(shared, true, () -> {
+            appendEverything(one);
+            appendThroughAppendable(one);
+        });
         assertTrue(with(shared, () -> AsyncTestContext.stringBuilderDetector().analyze().hasIssues()),
                 "one StringBuilder appended to by two threads through the hooks must be reported");
 
@@ -249,7 +261,8 @@ class AgentSharedInstanceHooksTest {
         onTwoThreads(confined, false, () -> {
             StringBuilder mine = new StringBuilder();
             assertSame(mine, appendEverything(mine), "append returns the receiver, as the original does");
-            assertEquals("s1c23.0truexyz", mine.toString(), "every append delegated");
+            appendThroughAppendable(mine);
+            assertEquals("s1c23.0truexyzabdef", mine.toString(), "every append delegated");
         });
         assertFalse(with(confined, () -> AsyncTestContext.stringBuilderDetector().analyze().hasIssues()),
                 "one StringBuilder per thread, through the same hooks, is correct code");
@@ -267,6 +280,16 @@ class AgentSharedInstanceHooksTest {
         return AgentSharedInstanceHooks.append(sb, (CharSequence) "yz");
     }
 
+    /** The three Appendable-typed append hooks once each, on {@code sb} (#542). */
+    private static void appendThroughAppendable(StringBuilder sb) {
+        quietly(() -> {
+            Appendable wide = sb;
+            AgentSharedInstanceHooks.append(wide, "ab");
+            AgentSharedInstanceHooks.append(wide, 'd');
+            AgentSharedInstanceHooks.append(wide, "xefx", 1, 3);
+        });
+    }
+
     @Test
     @DisplayName("a DecimalFormat two threads format through the hooks is reported; one each is not")
     void decimalFormat() {
@@ -275,6 +298,10 @@ class AgentSharedInstanceHooksTest {
         onTwoThreads(shared, true, () -> {
             AgentSharedInstanceHooks.format(one, 42L);
             AgentSharedInstanceHooks.format(one, 4.2);
+            quietly(() -> {
+                AgentSharedInstanceHooks.parse(one, "4.20");
+                AgentSharedInstanceHooks.parse(one, "4.20", new ParsePosition(0));
+            });
         });
         assertTrue(with(shared, () -> AsyncTestContext.sharedDecimalFormatDetector().analyze().hasIssues()),
                 "one DecimalFormat used by two threads through the hooks must be reported");
@@ -284,6 +311,10 @@ class AgentSharedInstanceHooksTest {
             NumberFormat mine = rootDecimalFormat();
             assertEquals("42.00", AgentSharedInstanceHooks.format(mine, 42L), "format(long) delegates");
             assertEquals("4.20", AgentSharedInstanceHooks.format(mine, 4.2), "format(double) delegates");
+            quietly(() -> {
+                AgentSharedInstanceHooks.parse(mine, "4.20");
+                AgentSharedInstanceHooks.parse(mine, "4.20", new ParsePosition(0));
+            });
         });
         assertFalse(with(confined, () -> AsyncTestContext.sharedDecimalFormatDetector().analyze().hasIssues()),
                 "one DecimalFormat per thread, through the same hooks, is correct code");
@@ -338,7 +369,7 @@ class AgentSharedInstanceHooksTest {
                 .filter(m -> Modifier.isStatic(m.getModifiers()))
                 .filter(m -> m.getDeclaringClass() == AgentSharedInstanceHooks.class)
                 .count();
-        assertEquals(33, hooks,
+        assertEquals(41, hooks,
                 "the shared-instance hooks and the calls in this class are one list, written by "
                         + "hand because each family needs its own receiver and arguments. If this "
                         + "count moved, the new hook belongs in the family test above, or it is "
