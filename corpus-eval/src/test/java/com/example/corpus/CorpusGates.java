@@ -754,10 +754,12 @@ final class CorpusGates {
      *
      * <p>A subject that leaves a task running is a different order of magnitude: the TimedSemaphore
      * timer this exists for published about 1,100 events per later subject, and 430 in a 250 ms
-     * window on JDK 26. The allowance is left at 100 until the CI legs have measured the window
-     * with Surefire excluded; lowering it on one local zero would trade a flake for a guess.
+     * window on JDK 26. With Surefire excluded the window read 0 events on every measurement taken:
+     * locally on JDK 26, and on the Java 21, 25 and 26 CI legs of PR #581 (run 34876816963). The
+     * allowance is 20, above that floor for harness noise nobody has seen yet and more than
+     * twenty times below the smallest leak this gate has caught.
      */
-    static final long QUIET_WINDOW_ALLOWANCE = 100;
+    static final long QUIET_WINDOW_ALLOWANCE = 20;
 
     /**
      * Nothing a subject started may keep publishing once the subjects are done.

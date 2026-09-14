@@ -669,11 +669,12 @@ against the pre-wave run, the 30 older subjects that run before it moved by a me
 and the 52 that run after it by a median of 1,094, and no gate noticed, because events are printed
 rather than gated. An `@AfterEach` now shuts the semaphore down, and
 `CorpusGates.nothingPublishesAfterTheLastSubject` fails lane one if the telemetry counter moves by
-more than 100 events in the 250 ms after the last subject. Verified failing-first: with the gate in
+more than 20 events in the 250 ms after the last subject. Verified failing-first: with the gate in
 and the fix out, the lane went red at 430 events; with the fix, green, and the post-timer median
-fell to 0. The allowance is not zero because Surefire's forked-JVM stream flusher is woven like any
-other class on the classpath; stack sampling after the fix found it the only thread inside woven
-code, with the counter moving by 20 to 30 events per window.
+fell to 0. The allowance was 100 at first, because Surefire's forked-JVM command reader was woven
+like any other class on the classpath and moved the counter by 20 to 30 events per window, and by
+261 and 271 on two CI runs. Lane one now excludes Surefire from weaving (#561), the window reads 0
+locally and on all three CI legs, and the allowance is 20.
 
 **What it cost on CI.** Nothing measurable. The three corpus legs took 3 min 25 s to 4 min 34 s on
 the run keyed above, against 3 min 38 s to 4 min 33 s on the last run on `main` before the wave.
