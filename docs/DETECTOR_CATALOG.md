@@ -436,7 +436,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 6. ThreadLocal Leak Detector
 * **Severity**: `MEDIUM`
-* **Description**: Detects `ThreadLocal` variables set during execution but not cleaned up, causing memory leaks in recycled thread pools.
+* **Description**: Detects `ThreadLocal` variables set during execution but not cleaned up, causing memory leaks in recycled thread pools. Cleanup is judged per thread and per round, because a value lives in one thread's map: a `remove()` recorded on one thread does not clear another thread's value, and one recorded in an earlier round does not clear a later round's. The accumulation line counts only values a thread still holds, so a thread that removed every `ThreadLocal` it set is not reported for retaining them.
 * **Buggy Code**:
   ```java
   private static final ThreadLocal<UserContext> CTX = new ThreadLocal<>();

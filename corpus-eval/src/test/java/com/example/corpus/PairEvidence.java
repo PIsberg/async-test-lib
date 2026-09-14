@@ -108,11 +108,12 @@ final class PairEvidence {
                 + "the inspection and the detector only compares the two, so fire-and-forget by "
                 + "design and a whenComplete handler (a different Future identity) fire, while "
                 + "isDone() counts as handling the exception; needs to observe get/join itself");
-        HELD_ON_MODEL.put(DetectorType.THREAD_LOCAL_LEAKS, "cleanup is one flag per ThreadLocal "
-                + "for the whole run, so removing on one thread in one round silences every "
-                + "other thread, a withInitial per-thread cache meant to stay fires, and "
-                + "threadLocalAccumulation counts entries already removed; needs per-thread, "
-                + "per-body cleanup tracking");
+        HELD_ON_MODEL.put(DetectorType.THREAD_LOCAL_LEAKS, "a finding means a value was left "
+                + "set at the end of a round, which a withInitial per-thread cache meant to stay "
+                + "on a pooled thread does by design, and which leaks nothing on the default "
+                + "virtual threads; needs a declaration of which values are request-scoped "
+                + "(#565 made cleanup per thread and per round and stopped counting removed "
+                + "values as retained)");
         HELD_ON_MODEL.put(DetectorType.SCHEDULED_EXECUTOR, "the separator is durationMs > 1000 on "
                 + "a duration the body passes in; pool size and queued work are never consulted, "
                 + "so a dedicated scheduler running one slow nightly job fires and a real overrun "

@@ -35,6 +35,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   let a colliding fresh pool inherit an earlier pool's shutdown (part of #564).
   `ExecutorShutdownAccuracyTest` pins four cases, three red before the fix.
 
+- **`ThreadLocalMonitor` judges cleanup per thread and per round, in both directions (#565).**
+  It kept one `cleanedUp` flag per `ThreadLocal` for the whole run, so a `remove()` recorded on
+  one thread, or in round one, silenced every other thread and every later round that left its
+  value set. The accumulation rule counted every `ThreadLocal` a thread had touched, including
+  removed ones, so a thread that tidied up after six was reported for retaining six values. A
+  value is now held per thread until that thread's own cleanup, a round that ends with any value
+  held is what the missing-cleanup finding needs, and only values still held count toward
+  accumulation. `ThreadLocalMonitor` state is keyed by identity instead of `identityHashCode`
+  (part of #564). `ThreadLocalMonitorAccuracyTest` pins four cases, three red before the fix.
+
 - **`AtomicityValidator` sees a compare-and-swap spinlock and an object handed between owners (#554,
   #555).** With `fields=true`, a won int `VarHandle.compareAndSet(this, 0, 1)` is now a lock on that
   receiver's flag, released by the swap back, a set through the handle or the holder's write, so a
