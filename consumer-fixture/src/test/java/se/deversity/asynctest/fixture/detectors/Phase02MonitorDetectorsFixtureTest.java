@@ -271,21 +271,52 @@ class Phase02MonitorDetectorsFixtureTest {
     void conditionVariables() {
         reachable("conditionVariableDetector()", AsyncTestContext::conditionVariableDetector);
 
-        // A signal with nobody awaiting is lost, and an await that times out is a waiter
-        // that gave up - the detector pairs the two to spot conditions nobody ever signals.
+        // The producer signals the wrong condition: the consumer waits on notEmpty, the item
+        // arrives and notFull is signalled, so the consumer is still parked when the run is
+        // analysed. A signal with nobody waiting, or an await that times out, would not be
+        // reported: both are how correct code runs (#583).
         var conditionDetector = AsyncTestContext.conditionVariableDetector();
         ReentrantLock lock = new ReentrantLock();
-        Condition ready = lock.newCondition();
-        conditionDetector.registerCondition(ready, "fixture-condition");
-        lock.lock();
+        Condition notEmpty = lock.newCondition();
+        Condition notFull = lock.newCondition();
+        conditionDetector.registerCondition(notEmpty, "fixture-not-empty");
+        conditionDetector.registerCondition(notFull, "fixture-not-full");
+        boolean[] itemReady = {false};
+        java.util.concurrent.CountDownLatch waiting = new java.util.concurrent.CountDownLatch(1);
+        Thread consumer = new Thread(() -> {
+            lock.lock();
+            try {
+                while (!itemReady[0]) {
+                    conditionDetector.recordAwait(notEmpty, "fixture-not-empty");
+                    waiting.countDown();
+                    // Bounded so the parked daemon eventually leaves; long past the analysis.
+                    boolean signalled = notEmpty.await(30, TimeUnit.SECONDS);
+                    conditionDetector.recordAwaitExit(notEmpty, "fixture-not-empty", !signalled);
+                    if (!signalled) {
+                        return;
+                    }
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                lock.unlock();
+            }
+        });
+        consumer.setDaemon(true);
+        consumer.start();
         try {
-            conditionDetector.recordAwait(ready, "fixture-condition");
-            ready.await(1, TimeUnit.MILLISECONDS);   // always timed
-            conditionDetector.recordAwaitExit(ready, "fixture-condition", true);
-            conditionDetector.recordSignal(ready, "fixture-condition", true);
-            ready.signalAll();
+            if (!waiting.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("the fixture consumer never reached its await");
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            return;
+        }
+        lock.lock();   // acquirable only once the consumer's await has released it
+        try {
+            itemReady[0] = true;
+            conditionDetector.recordSignal(notFull, "fixture-not-full", false);
+            notFull.signal();   // the bug: notEmpty is the condition the consumer waits on
         } finally {
             lock.unlock();
         }

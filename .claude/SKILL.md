@@ -314,7 +314,7 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 | `detectLockLeaks` | `LOCK_LEAKS` | Locks acquired but never released |
 | `detectSharedRandom` | `SHARED_RANDOM` | `java.util.Random` used across threads |
 | `detectBlockingQueueIssues` | `BLOCKING_QUEUE` | Queue saturation or imbalance |
-| `detectConditionVariableIssues` | `CONDITION_VARIABLES` | Lost signals, stuck waiters |
+| `detectConditionVariableIssues` | `CONDITION_VARIABLES` | Stuck waiters, wakeups no signal accounts for |
 | `detectSimpleDateFormatIssues` | `SIMPLE_DATE_FORMAT` | Non-thread-safe `SimpleDateFormat` |
 | `detectParallelStreamIssues` | `PARALLEL_STREAMS` | Stateful lambdas and side effects |
 | `detectResourceLeaks` | `RESOURCE_LEAKS` | `AutoCloseable` not closed |

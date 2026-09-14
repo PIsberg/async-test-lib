@@ -9,7 +9,7 @@
     <version>1.0.0</version>
     <packaging>jar</packaging>
     <name>Async Test Lib - Condition Variable Example</name>
-    <description>Demonstrates ConditionVariableDetector: signal() instead of signalAll() wakes wrong thread</description>
+    <description>Demonstrates ConditionVariableDetector: put() signals the wrong condition and strands a waiting consumer</description>
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>

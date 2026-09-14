@@ -2297,4 +2297,100 @@ class DetectorAccuracyEvalTest {
                         + "timeout was a wait that started too early rather than a countDown() "
                         + "that never came (#477). Report: " + detector.analyze());
     }
+
+    /**
+     * Starts a consumer that waits on {@code notEmpty} until {@code ready[0]}, recording each
+     * await and its exit, and returns once the consumer is inside its first await. Every read and
+     * write of {@code ready} happens under {@code lock}.
+     */
+    private static Thread parkedConsumer(ConditionVariableDetector detector, ReentrantLock lock,
+            java.util.concurrent.locks.Condition notEmpty, boolean[] ready) throws InterruptedException {
+        CountDownLatch waiting = new CountDownLatch(1);
+        Thread consumer = new Thread(() -> {
+            lock.lock();
+            try {
+                while (!ready[0]) {
+                    detector.recordAwait(notEmpty, "not-empty");
+                    waiting.countDown();
+                    boolean signalled = notEmpty.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                    detector.recordAwaitExit(notEmpty, "not-empty", !signalled);
+                    if (!signalled) {
+                        return;
+                    }
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                lock.unlock();
+            }
+        });
+        consumer.setDaemon(true);
+        consumer.start();
+        assertTrue(waiting.await(10, java.util.concurrent.TimeUnit.SECONDS), "consumer never waited");
+        return consumer;
+    }
+
+    @Test
+    @DisplayName("condition variable: the producer signals the wrong condition, the consumer stays parked (true positive)")
+    void conditionVariableFiresWhenTheProducerSignalsTheWrongCondition() throws InterruptedException {
+        ConditionVariableDetector detector = new ConditionVariableDetector();
+        ReentrantLock lock = new ReentrantLock();
+        java.util.concurrent.locks.Condition notEmpty = lock.newCondition();
+        java.util.concurrent.locks.Condition notFull = lock.newCondition();
+        detector.registerCondition(notEmpty, "not-empty");
+        detector.registerCondition(notFull, "not-full");
+        boolean[] ready = {false};
+
+        Thread consumer = parkedConsumer(detector, lock, notEmpty, ready);
+        lock.lock();   // acquirable only once the consumer's await has released it
+        try {
+            ready[0] = true;
+            detector.recordSignal(notFull, "not-full", false);   // the bug: nobody waits on notFull
+            notFull.signal();
+        } finally {
+            lock.unlock();
+        }
+
+        try {
+            var report = detector.analyze();
+            assertTrue(report.hasIssues(),
+                    "the item is ready but the consumer is parked on a condition nobody signalled. "
+                            + "Report:\n" + report);
+        } finally {
+            consumer.interrupt();
+            consumer.join();
+        }
+    }
+
+    @Test
+    @DisplayName("condition variable: the twin that signals the consumer's condition stays silent (true negative)")
+    void conditionVariableStaysSilentWhenTheProducerSignalsTheRightCondition() throws InterruptedException {
+        ConditionVariableDetector detector = new ConditionVariableDetector();
+        ReentrantLock lock = new ReentrantLock();
+        java.util.concurrent.locks.Condition notEmpty = lock.newCondition();
+        java.util.concurrent.locks.Condition notFull = lock.newCondition();
+        detector.registerCondition(notEmpty, "not-empty");
+        detector.registerCondition(notFull, "not-full");
+        boolean[] ready = {false};
+
+        Thread consumer = parkedConsumer(detector, lock, notEmpty, ready);
+        lock.lock();
+        try {
+            ready[0] = true;
+            detector.recordSignal(notEmpty, "not-empty", false);
+            notEmpty.signal();
+            // A second producer signalling with nobody waiting is ordinary predicate-guarded code.
+            detector.recordSignal(notFull, "not-full", true);
+            notFull.signalAll();
+        } finally {
+            lock.unlock();
+        }
+        consumer.join();
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(),
+                "the consumer was woken by the signal on its own condition and saw the item; a "
+                        + "signal into an empty condition is not a lost wakeup (#583). Report:\n"
+                        + report);
+    }
 }

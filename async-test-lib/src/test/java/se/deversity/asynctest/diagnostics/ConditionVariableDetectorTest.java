@@ -21,34 +21,33 @@ public class ConditionVariableDetectorTest {
         detector.registerCondition(condition, "normal-condition");
         
         detector.recordAwait(condition, "normal-condition");
-        detector.recordAwaitExit(condition, "normal-condition", false);
         detector.recordSignal(condition, "normal-condition", false);
-        detector.recordSignal(condition, "normal-condition", false); // Match the 2 awaits
+        detector.recordAwaitExit(condition, "normal-condition", false);
         
         ConditionVariableDetector.ConditionVariableReport report = detector.analyze();
         
         assertNotNull(report);
-        // Lost signal is expected since we signaled before any waiters in this test
-        // Just verify the report is generated correctly
+        assertFalse(report.hasIssues(), "the await was woken by the signal recorded while it waited");
         assertTrue(report.threadActivity.containsKey("normal-condition"), "Should track activity");
     }
 
     @Test
-    void testLostSignalDetection() {
+    void testSignalWithNoWaiterIsANoteNotAFinding() {
         ConditionVariableDetector detector = new ConditionVariableDetector();
         ReentrantLock lock = new ReentrantLock();
         Condition condition = lock.newCondition();
         
-        detector.registerCondition(condition, "lost-signal-condition");
+        detector.registerCondition(condition, "no-waiter-condition");
         
-        // Signal without any waiters - lost signal!
-        detector.recordSignal(condition, "lost-signal-condition", false);
+        // Signal without any waiters: correct whenever the consumer tests its predicate first (#583)
+        detector.recordSignal(condition, "no-waiter-condition", false);
         
         ConditionVariableDetector.ConditionVariableReport report = detector.analyze();
         
         assertNotNull(report);
-        assertTrue(report.hasIssues(), "Should detect lost signal");
-        assertFalse(report.lostSignals.isEmpty(), "Should report lost signals");
+        assertFalse(report.hasIssues(), "A signal with nobody waiting is not a finding");
+        assertFalse(report.signalsWithNoWaiter.isEmpty(), "It is still shown as a note");
+        assertTrue(report.toString().contains("not a finding"), report.toString());
     }
 
     @Test
@@ -164,14 +163,14 @@ public class ConditionVariableDetectorTest {
         
         detector.registerCondition(condition, "test-condition");
         
-        // Create lost signal scenario
-        detector.recordSignal(condition, "test-condition", false);
+        // A thread left inside an await: the stuck-waiter finding
+        detector.recordAwait(condition, "test-condition");
         
         ConditionVariableDetector.ConditionVariableReport report = detector.analyze();
         
         String reportStr = report.toString();
         assertNotNull(reportStr);
         assertTrue(reportStr.contains("CONDITION VARIABLE ISSUES DETECTED"), "Report should have header");
-        assertTrue(reportStr.contains("Lost Signals"), "Report should mention lost signals");
+        assertTrue(reportStr.contains("Stuck Waiters"), "Report should mention stuck waiters");
     }
 }

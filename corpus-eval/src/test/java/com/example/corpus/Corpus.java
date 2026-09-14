@@ -2927,10 +2927,11 @@ final class Corpus {
                     "java.util.concurrent.locks.Condition",
                     DetectorType.CONDITION_VARIABLES, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "an await is recorded with no signal ever recorded for that condition. The "
-                            + "waiter is then parked on a condition nothing will ever announce, "
-                            + "which is the Condition form of the lost-wakeup the missed-signal "
-                            + "pair covers for monitors"),
+                    "an await is recorded as returning woken with no signal ever recorded for "
+                            + "that condition. Since #583 the detector pairs each await with the "
+                            + "signals made while it waited, so this is a wakeup nothing accounts "
+                            + "for, the Condition form of the lost-wakeup the missed-signal pair "
+                            + "covers for monitors"),
 
             new RecordingSubject("recorded_condition_awaitedAndSignalled", JDK,
                     "java.util.concurrent.locks.Condition",
