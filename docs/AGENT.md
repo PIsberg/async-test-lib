@@ -232,11 +232,13 @@ Three limits worth knowing before switching it on:
   receiver's flag, released by a `compareAndSet(this, 1, 0)`, an `int` `set` through the handle, or
   a plain write to the field by the holder. A volatile field replaced only while it is held is safe
   publication, which is how Caffeine's `StripedBuffer` table reads now (#554). Separately, the
-  object a reference `getAndSet` returns, or a `Queue.poll` hands back, is reported as taken: it
+  object a reference `getAndSet` returns, or a `Queue.poll` or JCTools `MessagePassingQueue`
+  `poll`/`relaxedPoll` hands back, is reported as taken: it
   starts a new ownership generation, exclusive to the taker until another thread touches it, and
   locks only have to agree within a generation. That is netty's chunk moving between magazines
   (#555). A spinlock released through a mechanism the weaver does not see (an
-  `AtomicIntegerFieldUpdater`, `Unsafe`) is not modelled at all, and its writes still report.
+  `AtomicIntegerFieldUpdater`, `Unsafe`) is not modelled at all, and its writes still report
+  ([#558](https://github.com/PIsberg/async-test-lib/issues/558)).
 - **Thread-safe types are skipped.** A receiver from `java.util.concurrent`, a
   `Collections.synchronizedX` wrapper, a `Hashtable` or a `Vector` synchronizes where nothing can
   be woven, so recording it would report every shared use. Those calls are delegated and never

@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`AtomicityValidator` sees a compare-and-swap spinlock and an object handed between owners (#554,
+  #555).** With `fields=true`, a won int `VarHandle.compareAndSet(this, 0, 1)` is now a lock on that
+  receiver's flag, released by the swap back, a set through the handle or the holder's write, so a
+  volatile field replaced only under it is safe publication. The object a reference `getAndSet`, a
+  `Queue`/`BlockingQueue` `poll` or a JCTools `MessagePassingQueue` `poll`/`relaxedPoll` returns is
+  reported as taken: it starts an ownership generation exclusive to the taker, locks only have to
+  agree within a generation, and the take corroborates the builder's construction accesses.
+  Documented-thread-safe Caffeine and netty classes drew `PROMPT` findings for both; the corpus
+  noise column went from 2 or 3 of 100 to 0 of 100 on JDK 21, 25 and 26 and on the local JDK 26
+  run, with all 39 documented-unsafe subjects still detected. Each shape is pinned in both
+  directions in `DetectorAccuracyEvalTest`, `OwnershipTransferWeavingTest` and
+  `SpinLockWeavingTest`. Not modelled yet: spinlocks through `AtomicIntegerFieldUpdater` or atomic
+  objects (#558), and an alias racing a taker after its last access (#559).
+
 - **The agent observes a woven JDK call made through a method reference (#550).** `builder::append`
   or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from a hidden class
   the agent cannot weave, so every detector the agent feeds was blind to it: a shared `StringBuilder`
@@ -50,10 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a hundred bound it at 3.0%, and that column is still zero on JDK 21, 25 and 26 on Linux and 26 on
   Windows. The forty new safe subjects and seventeen unsafe ones were fixed before their first run,
   and every quoted javadoc sentence was checked against its sources jar (JDK rows against both 21
-  and 26). Below the gate the widening found `PROMPT`-tier findings on 2 or 3 documented-safe
-  subjects per run: Caffeine's CAS-spinlock-guarded `StripedBuffer`, on two subjects (#554), and
-  Netty's `AdaptivePoolingAllocator` chunk counter (#555); all stay in the corpus and are filed
-  rather than dropped. All 39 unsafe subjects are detected, and five agent-fed detectors that had
+  and 26). Below the gate the widening first found `PROMPT`-tier findings on 2 or 3
+  documented-safe subjects per run, Caffeine's CAS-spinlock-guarded `StripedBuffer` (#554) and
+  netty's `AdaptivePoolingAllocator` hand-offs (#555); they stayed in the corpus, and the model
+  changes under Fixed take the column to 0 of 100 on all four platforms. All 39 unsafe subjects are detected, and five agent-fed detectors that had
   never spoken in lane one now fire on their JDK subject: `StringBuilder`, `SimpleDateFormat` (also
   through a `DateFormat`), `Matcher`, `DecimalFormat` and `Formatter`. The agent-pair `CALENDAR`
   row no longer claims a javadoc contract `Calendar` does not state.
