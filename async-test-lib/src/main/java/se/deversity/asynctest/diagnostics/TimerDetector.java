@@ -1,7 +1,9 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -48,8 +50,18 @@ public class TimerDetector {
         final AtomicInteger failedTasks      = new AtomicInteger(0);
         final AtomicInteger longRunningTasks = new AtomicInteger(0);
         volatile boolean cancelled = false;
+        /**
+         * An exception was recorded from a thread that is not a timer thread, so there is no
+         * thread to ask and the record is taken at its word, as the recording API always has.
+         */
         volatile boolean threadDied = false;
-        /** Tracks per-task durations to identify long-running tasks. */
+        /**
+         * The timer threads an exception was recorded on. Whether one of them died is asked of
+         * the thread at analysis rather than assumed at the record: a task that catches its
+         * exception, records it and carries on leaves the timer running (#567).
+         */
+        final Set<Thread> threadsThatRecordedAnException = ConcurrentHashMap.newKeySet();
+        /** Tracks per-task durations to identify long-running tasks, in {@code nanoTime}. */
         final Map<String, Long> taskStartTimes = new ConcurrentHashMap<>();
 
         TimerState(String name) {
@@ -86,7 +98,8 @@ public class TimerDetector {
         if (!enabled || timer == null || taskName == null) return;
         TimerState state = resolve(timer, name);
         state.scheduledTasks.incrementAndGet();
-        state.taskStartTimes.put(taskName + "@" + System.nanoTime(), System.currentTimeMillis());
+        // No start time here. It was stored under a key recordTaskComplete never removes, so it
+        // grew by one entry per schedule and measured nothing; a task's run starts at recordTaskRun.
     }
 
     /**
@@ -99,7 +112,7 @@ public class TimerDetector {
     public void recordTaskRun(java.util.Timer timer, String name, String taskName) {
         if (!enabled || timer == null || taskName == null) return;
         TimerState state = resolve(timer, name);
-        state.taskStartTimes.put(taskName, System.currentTimeMillis());
+        state.taskStartTimes.put(taskName, System.nanoTime());
     }
 
     /**
@@ -116,7 +129,9 @@ public class TimerDetector {
 
         Long startTime = state.taskStartTimes.remove(taskName);
         if (startTime != null) {
-            long elapsed = System.currentTimeMillis() - startTime;
+            // Monotonic: a wall clock stepped by NTP between run and complete made a task look
+            // longer, or negative, without it having run for that long.
+            long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime);
             if (elapsed > LONG_TASK_THRESHOLD_MS) {
                 state.longRunningTasks.incrementAndGet();
             }
@@ -139,7 +154,42 @@ public class TimerDetector {
         if (!enabled || timer == null) return;
         TimerState state = resolve(timer, name);
         state.failedTasks.incrementAndGet();
-        state.threadDied = true; // timer thread is now dead
+        Thread current = Thread.currentThread();
+        if (TIMER_THREAD_CLASS.equals(current.getClass().getName())) {
+            state.threadsThatRecordedAnException.add(current);
+        } else {
+            state.threadDied = true;
+        }
+    }
+
+    /**
+     * The class of every thread a {@link java.util.Timer} runs its tasks on. Package-private in
+     * the JDK, so matched by name; a record from any other thread cannot be checked against a
+     * timer thread and keeps its old meaning.
+     */
+    private static final String TIMER_THREAD_CLASS = "java.util.TimerThread";
+
+    /**
+     * How long analysis waits for a timer thread to finish dying after a task's exception escaped.
+     * The thread exits as soon as the exception leaves {@code run()}, so this bounds a race rather
+     * than measuring anything; a thread still alive after it kept running, which is what a caught
+     * exception looks like, and a miss here errs towards silence.
+     */
+    private static final long DEATH_WAIT_MS = 1_000;
+
+    private static boolean anyDied(Set<Thread> threads) {
+        for (Thread thread : threads) {
+            try {
+                thread.join(DEATH_WAIT_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+            if (!thread.isAlive()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -170,7 +220,8 @@ public class TimerDetector {
         for (TimerState state : timers.values()) {
             report.totalTimers++;
 
-            if (state.threadDied) {
+            if (state.threadDied || anyDied(state.threadsThatRecordedAnException)) {
+                state.threadDied = true;
                 report.timerThreadFailures.add(String.format(
                         "%s: timer thread died due to uncaught exception in a task — "
                         + "%d scheduled task(s) silently cancelled",

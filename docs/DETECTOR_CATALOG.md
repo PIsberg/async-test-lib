@@ -1505,7 +1505,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 55. Timer Sharing Detector
 * **Severity**: `HIGH`
-* **Description**: `java.util.Timer` runs all scheduled tasks on a single thread, and an uncaught exception in any `TimerTask` kills that thread — silently cancelling every remaining scheduled task with no error reported. The detector flags long-running tasks, failures, and post-cancellation scheduling attempts.
+* **Description**: `java.util.Timer` runs all scheduled tasks on a single thread, and an uncaught exception in any `TimerTask` kills that thread — silently cancelling every remaining scheduled task with no error reported. The detector flags long-running tasks, failures, and post-cancellation scheduling attempts. A task exception recorded on the timer thread is reported as a thread death only when that thread actually died, so a task that catches its exception, records it and carries on is not reported; an exception recorded from any other thread cannot be checked and is taken at its word. Task durations are measured with `System.nanoTime`, against a 100 ms threshold.
 * **Buggy Code**:
   ```java
   Timer timer = new Timer("worker");
